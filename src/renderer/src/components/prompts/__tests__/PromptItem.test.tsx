@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { Prompt } from '../../../types'
+import { PREVIEW_MAX } from '../../../config/promptConfig'
 import PromptItem from '../PromptItem'
 
 const basePrompt: Prompt = {
@@ -17,17 +18,17 @@ describe('PromptItem', () => {
     expect(screen.getByText('テストタイトル')).toBeInTheDocument()
   })
 
-  it('コンテンツが 50 文字以内のとき全文表示される', () => {
+  it(`コンテンツが ${PREVIEW_MAX} 文字以内のとき全文表示される`, () => {
     render(<PromptItem prompt={basePrompt} onDelete={vi.fn()} />)
     expect(screen.getByText('テストコンテンツ')).toBeInTheDocument()
   })
 
-  it('コンテンツが 50 文字を超えるとき省略表示される', () => {
-    const longContent = 'あ'.repeat(51)
+  it(`コンテンツが ${PREVIEW_MAX} 文字を超えるとき省略表示される`, () => {
+    const longContent = 'あ'.repeat(PREVIEW_MAX + 1)
     render(
       <PromptItem prompt={{ ...basePrompt, content: longContent }} onDelete={vi.fn()} />
     )
-    expect(screen.getByText('あ'.repeat(50) + '…')).toBeInTheDocument()
+    expect(screen.getByText('あ'.repeat(PREVIEW_MAX) + '…')).toBeInTheDocument()
   })
 
   it('削除ボタンが存在する', () => {

@@ -1,3 +1,4 @@
+'use client'
 import { usePrompts } from '../../hooks/usePrompts'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'

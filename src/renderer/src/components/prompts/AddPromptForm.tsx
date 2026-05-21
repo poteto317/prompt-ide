@@ -30,7 +30,7 @@ export default function AddPromptForm({ onAdd }: Props) {
         onChange={(e) => setTitle(e.target.value)}
       />
       <textarea
-        className="add-prompt-form__input add-prompt-form__input--textarea"
+        className="add-prompt-form__input"
         placeholder="プロンプト内容"
         aria-label="プロンプト内容"
         value={content}
