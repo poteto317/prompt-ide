@@ -1,5 +1,5 @@
 import { sidebarTitles, sidebarPlaceholders } from '../config/sidebarTitles'
-import { Panel } from '../types'
+import type { Panel } from '../types'
 
 interface Props {
   activePanel: Panel

@@ -1,4 +1,4 @@
-import { Panel } from '../types'
+import type { Panel } from '../types'
 
 export const sidebarTitles: Record<Panel, string> = {
   explorer: 'エクスプローラー',

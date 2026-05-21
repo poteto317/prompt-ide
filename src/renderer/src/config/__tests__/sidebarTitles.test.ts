@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sidebarTitles, sidebarPlaceholders } from '../sidebarTitles'
-import { Panel } from '../../types'
+import type { Panel } from '../../types'
 
 const ALL_PANELS: Panel[] = ['explorer', 'source-control', 'prompts']
 
