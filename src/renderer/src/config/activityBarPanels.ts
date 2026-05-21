@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react'
 import ExplorerIcon from '../components/icons/ExplorerIcon'
 import GitIcon from '../components/icons/GitIcon'
 import PromptIcon from '../components/icons/PromptIcon'
@@ -5,7 +6,7 @@ import type { Panel } from '../types'
 
 export interface ActivityBarPanel {
   panel: Panel
-  Icon: React.ComponentType
+  Icon: ComponentType
   title: string
 }
 
