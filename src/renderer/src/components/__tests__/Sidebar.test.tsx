@@ -24,13 +24,18 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('prompts 以外のパネルに切り替えると PromptsPanel が非表示になる', () => {
-    const { rerender } = render(<Sidebar activePanel="prompts" />)
-    expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
+  it('prompts 以外のパネルに切り替えると PromptsPanel のラッパーに sidebar__panel--hidden クラスが付く', () => {
+    const { rerender, container } = render(<Sidebar activePanel="prompts" />)
+
+    // prompts 表示中: hidden クラスなし
+    expect(container.querySelector('.sidebar__panel--hidden')).toBeNull()
+    expect(container.querySelector('.sidebar__panel')).not.toBeNull()
 
     rerender(<Sidebar activePanel="explorer" />)
-    expect(screen.getByText(sidebarPlaceholders.explorer)).toBeInTheDocument()
-    // PromptsPanel は DOM に存在するが非表示（hidden クラスで display:none）
+
+    // explorer に切り替え: hidden クラスが付いて非表示になる
+    expect(container.querySelector('.sidebar__panel--hidden')).not.toBeNull()
+    // PromptsPanel 自体は DOM に残っている（アンマウントされていない）
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
