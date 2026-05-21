@@ -1,0 +1,34 @@
+import { activityBarPanels } from '../config/activityBarPanels'
+import { SettingsIcon } from './icons'
+import type { Panel } from '../types'
+
+interface Props {
+  activePanel: Panel
+  sidebarOpen: boolean
+  onPanelChange: (panel: Panel) => void
+}
+
+export default function ActivityBar({ activePanel, sidebarOpen, onPanelChange }: Props) {
+  return (
+    <div className="activity-bar">
+      {activityBarPanels.map(({ panel, Icon, title }) => (
+        <button
+          key={panel}
+          type="button"
+          className={`activity-bar__item${activePanel === panel ? ' active' : ''}`}
+          title={title}
+          aria-label={title}
+          aria-pressed={activePanel === panel && sidebarOpen}
+          onClick={() => onPanelChange(panel)}
+        >
+          <Icon />
+        </button>
+      ))}
+      <div className="activity-bar__bottom">
+        <button type="button" className="activity-bar__item" title="設定" aria-label="設定" disabled>
+          <SettingsIcon />
+        </button>
+      </div>
+    </div>
+  )
+}

@@ -1,0 +1,5 @@
+export { default as ExplorerIcon } from './ExplorerIcon'
+export { default as GitIcon } from './GitIcon'
+export { default as PromptIcon } from './PromptIcon'
+export { default as SettingsIcon } from './SettingsIcon'
+export { default as BranchIcon } from './BranchIcon'
