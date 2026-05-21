@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Panel } from '../types'
+import type { Panel } from '../types'
 
 interface PanelState {
   activePanel: Panel

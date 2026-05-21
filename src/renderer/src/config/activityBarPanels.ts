@@ -1,7 +1,7 @@
 import ExplorerIcon from '../components/icons/ExplorerIcon'
 import GitIcon from '../components/icons/GitIcon'
 import PromptIcon from '../components/icons/PromptIcon'
-import { Panel } from '../types'
+import type { Panel } from '../types'
 
 export interface ActivityBarPanel {
   panel: Panel
