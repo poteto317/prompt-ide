@@ -10,7 +10,7 @@ export default function App(): React.JSX.Element {
   return (
     <>
       <div className="ide-root">
-        <ActivityBar activePanel={activePanel} onPanelChange={handlePanelChange} />
+        <ActivityBar activePanel={activePanel} sidebarOpen={sidebarOpen} onPanelChange={handlePanelChange} />
         <div className="ide-main">
           {sidebarOpen && <Sidebar activePanel={activePanel} />}
           <EditorPanel />
