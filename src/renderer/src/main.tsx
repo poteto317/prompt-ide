@@ -1,3 +1,4 @@
+import './lib/monaco-config'
 import './assets/main.css'
 
 import { StrictMode } from 'react'
