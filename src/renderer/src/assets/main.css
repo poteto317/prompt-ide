@@ -178,9 +178,6 @@ body {
   white-space: nowrap;
 }
 
-.status-bar__item:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
 
 .status-bar__spacer {
   flex: 1;
