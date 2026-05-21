@@ -16,9 +16,10 @@ describe('Sidebar', () => {
     expect(screen.getByText(sidebarPlaceholders['source-control'])).toBeInTheDocument()
   })
 
-  it('prompts: 正しいヘッダーとプレースホルダーが表示される', () => {
+  it('prompts: ヘッダーが表示され PromptsPanel が描画される', () => {
     render(<Sidebar activePanel="prompts" />)
     expect(screen.getByText(sidebarTitles.prompts)).toBeInTheDocument()
-    expect(screen.getByText(sidebarPlaceholders.prompts)).toBeInTheDocument()
+    expect(screen.queryByText(sidebarPlaceholders.prompts)).not.toBeInTheDocument()
+    expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 })
