@@ -15,13 +15,15 @@ export default function ActivityBar({ activePanel, onPanelChange }: Props) {
           key={panel}
           className={`activity-bar__item${activePanel === panel ? ' active' : ''}`}
           title={title}
+          aria-label={title}
+          aria-pressed={activePanel === panel}
           onClick={() => onPanelChange(panel)}
         >
           <Icon />
         </button>
       ))}
       <div className="activity-bar__bottom">
-        <button className="activity-bar__item" title="設定">
+        <button className="activity-bar__item" title="設定" aria-label="設定">
           <SettingsIcon />
         </button>
       </div>

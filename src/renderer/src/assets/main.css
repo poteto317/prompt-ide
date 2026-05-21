@@ -2,7 +2,6 @@
 
 body {
   overflow: hidden;
-  user-select: none;
 }
 
 #root {
@@ -36,6 +35,7 @@ body {
   align-items: center;
   padding-top: 4px;
   flex-shrink: 0;
+  user-select: none;
 }
 
 .activity-bar__item {
@@ -73,6 +73,11 @@ body {
 
 .activity-bar__item:hover {
   color: rgba(255, 255, 255, 0.8);
+}
+
+.activity-bar__item:focus-visible {
+  outline: 2px solid #007acc;
+  outline-offset: -2px;
 }
 
 .activity-bar__bottom {
@@ -136,7 +141,6 @@ body {
   color: #969696;
   font-size: 13px;
   border-right: 1px solid #252526;
-  cursor: pointer;
   user-select: none;
   white-space: nowrap;
 }
@@ -169,7 +173,6 @@ body {
   display: flex;
   align-items: center;
   gap: 4px;
-  cursor: pointer;
   padding: 0 6px;
   height: 100%;
   white-space: nowrap;
