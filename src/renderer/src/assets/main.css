@@ -124,6 +124,19 @@ body {
   line-height: 1.7;
 }
 
+/* ---- Sidebar Panel (always-mount wrapper) ---- */
+
+.sidebar__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar__panel--hidden {
+  display: none;
+}
+
 /* ---- Prompts Panel ---- */
 
 .prompts-panel {

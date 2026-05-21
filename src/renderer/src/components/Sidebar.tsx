@@ -1,5 +1,5 @@
+import PromptsPanel from './prompts/PromptsPanel'
 import { sidebarTitles, sidebarPlaceholders } from '../config/sidebarTitles'
-import { sidebarPanelComponents } from '../config/sidebarPanelComponents'
 import type { Panel } from '../types'
 
 interface Props {
@@ -7,13 +7,23 @@ interface Props {
 }
 
 export default function Sidebar({ activePanel }: Props) {
-  const PanelComponent = sidebarPanelComponents[activePanel]
   return (
     <div className="sidebar">
       <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
-      {PanelComponent ? (
-        <PanelComponent />
-      ) : (
+      {/*
+        PromptsPanel は常時マウントして usePrompts の state を維持する。
+        activePanel に応じて表示/非表示のみ切り替える。
+      */}
+      <div
+        className={
+          activePanel === 'prompts'
+            ? 'sidebar__panel'
+            : 'sidebar__panel sidebar__panel--hidden'
+        }
+      >
+        <PromptsPanel />
+      </div>
+      {activePanel !== 'prompts' && (
         <div className="sidebar__placeholder">{sidebarPlaceholders[activePanel]}</div>
       )}
     </div>
