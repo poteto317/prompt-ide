@@ -7,6 +7,7 @@ import { activityBarPanels } from '../../config/activityBarPanels'
 describe('ActivityBar', () => {
   const defaultProps = {
     activePanel: 'explorer' as const,
+    sidebarOpen: true,
     onPanelChange: vi.fn(),
   }
 
@@ -64,6 +65,12 @@ describe('ActivityBar', () => {
     render(<ActivityBar {...defaultProps} />)
     const inactiveBtn = screen.getByTitle('ソース管理')
     expect(inactiveBtn).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('サイドバーが閉じている場合はアクティブパネルでも aria-pressed が false', () => {
+    render(<ActivityBar {...defaultProps} sidebarOpen={false} />)
+    const activeBtn = screen.getByTitle('エクスプローラー')
+    expect(activeBtn).toHaveAttribute('aria-pressed', 'false')
   })
 
   it('全ボタンに type="button" が設定されている', () => {

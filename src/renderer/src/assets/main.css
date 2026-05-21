@@ -80,6 +80,15 @@ body {
   outline-offset: -2px;
 }
 
+.activity-bar__item:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.activity-bar__item:disabled:hover {
+  color: rgba(255, 255, 255, 0.4);
+}
+
 .activity-bar__bottom {
   margin-top: auto;
   margin-bottom: 4px;

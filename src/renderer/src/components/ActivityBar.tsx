@@ -4,10 +4,11 @@ import type { Panel } from '../types'
 
 interface Props {
   activePanel: Panel
+  sidebarOpen: boolean
   onPanelChange: (panel: Panel) => void
 }
 
-export default function ActivityBar({ activePanel, onPanelChange }: Props) {
+export default function ActivityBar({ activePanel, sidebarOpen, onPanelChange }: Props) {
   return (
     <div className="activity-bar">
       {activityBarPanels.map(({ panel, Icon, title }) => (
@@ -17,7 +18,7 @@ export default function ActivityBar({ activePanel, onPanelChange }: Props) {
           className={`activity-bar__item${activePanel === panel ? ' active' : ''}`}
           title={title}
           aria-label={title}
-          aria-pressed={activePanel === panel}
+          aria-pressed={activePanel === panel && sidebarOpen}
           onClick={() => onPanelChange(panel)}
         >
           <Icon />
