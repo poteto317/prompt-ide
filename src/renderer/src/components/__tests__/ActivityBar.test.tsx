@@ -46,4 +46,23 @@ describe('ActivityBar', () => {
     render(<ActivityBar {...defaultProps} />)
     expect(screen.getByTitle('設定')).toBeInTheDocument()
   })
+
+  it('各パネルボタンに aria-label が設定されている', () => {
+    render(<ActivityBar {...defaultProps} />)
+    activityBarPanels.forEach(({ title }) => {
+      expect(screen.getByRole('button', { name: title })).toBeInTheDocument()
+    })
+  })
+
+  it('アクティブなボタンの aria-pressed が true', () => {
+    render(<ActivityBar {...defaultProps} />)
+    const activeBtn = screen.getByTitle('エクスプローラー')
+    expect(activeBtn).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('非アクティブなボタンの aria-pressed が false', () => {
+    render(<ActivityBar {...defaultProps} />)
+    const inactiveBtn = screen.getByTitle('ソース管理')
+    expect(inactiveBtn).toHaveAttribute('aria-pressed', 'false')
+  })
 })
