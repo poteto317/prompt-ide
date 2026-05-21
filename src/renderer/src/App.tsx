@@ -1,35 +1,33 @@
-import Versions from './components/Versions'
-import electronLogo from './assets/electron.svg'
+import { useState } from 'react'
+import ActivityBar from './components/ActivityBar'
+import Sidebar from './components/Sidebar'
+import EditorPanel from './components/EditorPanel'
+import StatusBar from './components/StatusBar'
+import { Panel } from './types'
 
-function App(): React.JSX.Element {
-  const ipcHandle = (): void => window.electron.ipcRenderer.send('ping')
+export default function App(): React.JSX.Element {
+  const [activePanel, setActivePanel] = useState<Panel>('explorer')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  const handlePanelChange = (panel: Panel): void => {
+    if (activePanel === panel) {
+      setSidebarOpen((prev) => !prev)
+    } else {
+      setActivePanel(panel)
+      setSidebarOpen(true)
+    }
+  }
 
   return (
     <>
-      <img alt="logo" className="logo" src={electronLogo} />
-      <div className="creator">Powered by electron-vite</div>
-      <div className="text">
-        Build an Electron app with <span className="react">React</span>
-        &nbsp;and <span className="ts">TypeScript</span>
-      </div>
-      <p className="tip">
-        Please try pressing <code>F12</code> to open the devTool
-      </p>
-      <div className="actions">
-        <div className="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">
-            Documentation
-          </a>
-        </div>
-        <div className="action">
-          <a target="_blank" rel="noreferrer" onClick={ipcHandle}>
-            Send IPC
-          </a>
+      <div className="ide-root">
+        <ActivityBar activePanel={activePanel} onPanelChange={handlePanelChange} />
+        <div className="ide-main">
+          {sidebarOpen && <Sidebar activePanel={activePanel} />}
+          <EditorPanel />
         </div>
       </div>
-      <Versions></Versions>
+      <StatusBar />
     </>
   )
 }
-
-export default App
