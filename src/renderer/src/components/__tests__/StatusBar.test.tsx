@@ -22,4 +22,10 @@ describe('StatusBar', () => {
     render(<StatusBar />)
     expect(screen.getByText('UTF-8')).toBeInTheDocument()
   })
+
+  it('ボタンなどのインタラクティブ要素が存在しない（表示専用）', () => {
+    render(<StatusBar />)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
 })

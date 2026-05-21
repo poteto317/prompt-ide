@@ -65,4 +65,12 @@ describe('ActivityBar', () => {
     const inactiveBtn = screen.getByTitle('ソース管理')
     expect(inactiveBtn).toHaveAttribute('aria-pressed', 'false')
   })
+
+  it('全ボタンに type="button" が設定されている', () => {
+    render(<ActivityBar {...defaultProps} />)
+    const allButtons = screen.getAllByRole('button')
+    allButtons.forEach((btn) => {
+      expect(btn).toHaveAttribute('type', 'button')
+    })
+  })
 })

@@ -13,6 +13,7 @@ export default function ActivityBar({ activePanel, onPanelChange }: Props) {
       {activityBarPanels.map(({ panel, Icon, title }) => (
         <button
           key={panel}
+          type="button"
           className={`activity-bar__item${activePanel === panel ? ' active' : ''}`}
           title={title}
           aria-label={title}
@@ -23,7 +24,7 @@ export default function ActivityBar({ activePanel, onPanelChange }: Props) {
         </button>
       ))}
       <div className="activity-bar__bottom">
-        <button className="activity-bar__item" title="設定" aria-label="設定">
+        <button type="button" className="activity-bar__item" title="設定" aria-label="設定">
           <SettingsIcon />
         </button>
       </div>
