@@ -73,4 +73,18 @@ describe('ActivityBar', () => {
       expect(btn).toHaveAttribute('type', 'button')
     })
   })
+
+  it('設定ボタンは disabled になっている（未実装プレースホルダー）', () => {
+    render(<ActivityBar {...defaultProps} />)
+    expect(screen.getByTitle('設定')).toBeDisabled()
+  })
+
+  it('ボタン内のSVGアイコンに aria-hidden が設定されている', () => {
+    render(<ActivityBar {...defaultProps} />)
+    const svgs = document.querySelectorAll('button svg')
+    expect(svgs.length).toBeGreaterThan(0)
+    svgs.forEach((svg) => {
+      expect(svg).toHaveAttribute('aria-hidden', 'true')
+    })
+  })
 })
