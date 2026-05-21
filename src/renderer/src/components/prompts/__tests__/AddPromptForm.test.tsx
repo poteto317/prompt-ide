@@ -28,6 +28,20 @@ describe('AddPromptForm', () => {
     expect(screen.getByRole('button', { name: '追加' })).toBeDisabled()
   })
 
+  it('タイトルが空白のみのとき送信ボタンが disabled', async () => {
+    render(<AddPromptForm onAdd={vi.fn()} />)
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), '   ')
+    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), '内容')
+    expect(screen.getByRole('button', { name: '追加' })).toBeDisabled()
+  })
+
+  it('コンテンツが空白のみのとき送信ボタンが disabled', async () => {
+    render(<AddPromptForm onAdd={vi.fn()} />)
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), 'タイトル')
+    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), '   ')
+    expect(screen.getByRole('button', { name: '追加' })).toBeDisabled()
+  })
+
   it('タイトルとコンテンツを入力すると送信ボタンが有効になる', async () => {
     render(<AddPromptForm onAdd={vi.fn()} />)
     await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), 'タイトル')
@@ -43,6 +57,15 @@ describe('AddPromptForm', () => {
     await userEvent.click(screen.getByRole('button', { name: '追加' }))
     expect(onAdd).toHaveBeenCalledOnce()
     expect(onAdd).toHaveBeenCalledWith('マイタイトル', 'マイコンテンツ')
+  })
+
+  it('前後に空白があっても trim して onAdd が呼ばれる', async () => {
+    const onAdd = vi.fn()
+    render(<AddPromptForm onAdd={onAdd} />)
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), '  タイトル  ')
+    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), '  内容  ')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    expect(onAdd).toHaveBeenCalledWith('タイトル', '内容')
   })
 
   it('送信後にフォームがリセットされる', async () => {
