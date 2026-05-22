@@ -6,3 +6,17 @@ export type Prompt = {
   content: string
   createdAt: number
 }
+
+export type FileTreeNode = {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  children?: FileTreeNode[]
+}
+
+export type OpenFile = {
+  path: string
+  name: string
+  content: string
+  language: string
+}
