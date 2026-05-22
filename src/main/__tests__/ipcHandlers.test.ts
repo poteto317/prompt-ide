@@ -52,11 +52,47 @@ describe('registerIpcHandlers', () => {
     expect(mockReadDirRecursive).toHaveBeenCalledWith('/project')
   })
 
-  it('fs:readFile: readFileContent を filePath で呼ぶ', async () => {
-    mockReadFileContent.mockResolvedValue('const x = 1')
-    const handler = getRegisteredHandler('fs:readFile')
-    const result = await handler(null, '/project/index.ts')
-    expect(mockReadFileContent).toHaveBeenCalledWith('/project/index.ts')
-    expect(result).toBe('const x = 1')
+  describe('fs:readFile', () => {
+    it('allowedFolder が未設定のとき "No folder open" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('fs:readFile')
+      await expect(handler(null, '/project/index.ts')).rejects.toThrow('No folder open')
+    })
+
+    it('dialog:openFolder 成功後に allowedFolder 内のファイルを readFileContent で読む', async () => {
+      mockOpenFolderDialog.mockResolvedValue('/project')
+      await getRegisteredHandler('dialog:openFolder')()
+
+      mockReadFileContent.mockResolvedValue('const x = 1')
+      const handler = getRegisteredHandler('fs:readFile')
+      const result = await handler(null, '/project/src/index.ts')
+      expect(mockReadFileContent).toHaveBeenCalledWith('/project/src/index.ts')
+      expect(result).toBe('const x = 1')
+    })
+
+    it('allowedFolder 外のパスは "Access denied" エラーをスロー', async () => {
+      mockOpenFolderDialog.mockResolvedValue('/project')
+      await getRegisteredHandler('dialog:openFolder')()
+
+      const handler = getRegisteredHandler('fs:readFile')
+      await expect(handler(null, '/etc/passwd')).rejects.toThrow('Access denied')
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+
+    it('パストラバーサル (/project/../etc/passwd) は "Access denied" エラーをスロー', async () => {
+      mockOpenFolderDialog.mockResolvedValue('/project')
+      await getRegisteredHandler('dialog:openFolder')()
+
+      const handler = getRegisteredHandler('fs:readFile')
+      await expect(handler(null, '/project/../etc/passwd')).rejects.toThrow('Access denied')
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+
+    it('dialog:openFolder が null を返したとき allowedFolder は変わらない', async () => {
+      mockOpenFolderDialog.mockResolvedValue(null)
+      await getRegisteredHandler('dialog:openFolder')()
+
+      const handler = getRegisteredHandler('fs:readFile')
+      await expect(handler(null, '/project/index.ts')).rejects.toThrow('No folder open')
+    })
   })
 })
