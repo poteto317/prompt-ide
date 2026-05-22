@@ -29,6 +29,11 @@ beforeEach(() => {
   registerIpcHandlers(mockIpcMain)
 })
 
+async function openFolder(path: string): Promise<void> {
+  mockOpenFolderDialog.mockResolvedValue(path)
+  await getRegisteredHandler('dialog:openFolder')()
+}
+
 describe('registerIpcHandlers', () => {
   it('dialog:openFolder: openFolderDialog に委譲する', async () => {
     mockOpenFolderDialog.mockResolvedValue('/project')
@@ -45,11 +50,26 @@ describe('registerIpcHandlers', () => {
     expect(result).toBeNull()
   })
 
-  it('fs:readDirectory: readDirRecursive を folderPath で呼ぶ', async () => {
-    mockReadDirRecursive.mockResolvedValue([])
-    const handler = getRegisteredHandler('fs:readDirectory')
-    await handler(null, '/project')
-    expect(mockReadDirRecursive).toHaveBeenCalledWith('/project')
+  describe('fs:readDirectory', () => {
+    it('allowedFolder が未設定のとき "No folder open" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('fs:readDirectory')
+      await expect(handler(null, '/project')).rejects.toThrow('No folder open')
+    })
+
+    it('dialog:openFolder 成功後に allowedFolder と同じパスで readDirRecursive を呼ぶ', async () => {
+      await openFolder('/project')
+      mockReadDirRecursive.mockResolvedValue([])
+      const handler = getRegisteredHandler('fs:readDirectory')
+      await handler(null, '/project')
+      expect(mockReadDirRecursive).toHaveBeenCalledWith('/project')
+    })
+
+    it('allowedFolder と異なるパスは "Access denied" エラーをスロー', async () => {
+      await openFolder('/project')
+      const handler = getRegisteredHandler('fs:readDirectory')
+      await expect(handler(null, '/other')).rejects.toThrow('Access denied')
+      expect(mockReadDirRecursive).not.toHaveBeenCalled()
+    })
   })
 
   describe('fs:readFile', () => {
@@ -59,9 +79,7 @@ describe('registerIpcHandlers', () => {
     })
 
     it('dialog:openFolder 成功後に allowedFolder 内のファイルを readFileContent で読む', async () => {
-      mockOpenFolderDialog.mockResolvedValue('/project')
-      await getRegisteredHandler('dialog:openFolder')()
-
+      await openFolder('/project')
       mockReadFileContent.mockResolvedValue('const x = 1')
       const handler = getRegisteredHandler('fs:readFile')
       const result = await handler(null, '/project/src/index.ts')
@@ -70,27 +88,31 @@ describe('registerIpcHandlers', () => {
     })
 
     it('allowedFolder 外のパスは "Access denied" エラーをスロー', async () => {
-      mockOpenFolderDialog.mockResolvedValue('/project')
-      await getRegisteredHandler('dialog:openFolder')()
-
+      await openFolder('/project')
       const handler = getRegisteredHandler('fs:readFile')
       await expect(handler(null, '/etc/passwd')).rejects.toThrow('Access denied')
       expect(mockReadFileContent).not.toHaveBeenCalled()
     })
 
     it('パストラバーサル (/project/../etc/passwd) は "Access denied" エラーをスロー', async () => {
-      mockOpenFolderDialog.mockResolvedValue('/project')
-      await getRegisteredHandler('dialog:openFolder')()
-
+      await openFolder('/project')
       const handler = getRegisteredHandler('fs:readFile')
       await expect(handler(null, '/project/../etc/passwd')).rejects.toThrow('Access denied')
       expect(mockReadFileContent).not.toHaveBeenCalled()
     })
 
+    it('..foo という名前のファイルは allowedFolder 内なら許可される', async () => {
+      await openFolder('/project')
+      mockReadFileContent.mockResolvedValue('data')
+      const handler = getRegisteredHandler('fs:readFile')
+      const result = await handler(null, '/project/..foo')
+      expect(mockReadFileContent).toHaveBeenCalledWith('/project/..foo')
+      expect(result).toBe('data')
+    })
+
     it('dialog:openFolder が null を返したとき allowedFolder は変わらない', async () => {
       mockOpenFolderDialog.mockResolvedValue(null)
       await getRegisteredHandler('dialog:openFolder')()
-
       const handler = getRegisteredHandler('fs:readFile')
       await expect(handler(null, '/project/index.ts')).rejects.toThrow('No folder open')
     })
