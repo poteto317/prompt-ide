@@ -63,4 +63,29 @@ describe('FileItem', () => {
 
     expect(parseInt(styleDepth2)).toBeGreaterThan(parseInt(styleDepth0))
   })
+
+  it('tabIndex={0} が設定されている', () => {
+    render(<FileItem node={fileNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    expect(screen.getByRole('treeitem')).toHaveAttribute('tabindex', '0')
+  })
+
+  it('Enter キーで onSelectFile がノードを引数に呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onSelectFile = vi.fn()
+    render(<FileItem node={fileNode} openFilePath={null} onSelectFile={onSelectFile} depth={0} />)
+    const item = screen.getByRole('treeitem')
+    item.focus()
+    await user.keyboard('{Enter}')
+    expect(onSelectFile).toHaveBeenCalledWith(fileNode)
+  })
+
+  it('Space キーで onSelectFile がノードを引数に呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onSelectFile = vi.fn()
+    render(<FileItem node={fileNode} openFilePath={null} onSelectFile={onSelectFile} depth={0} />)
+    const item = screen.getByRole('treeitem')
+    item.focus()
+    await user.keyboard(' ')
+    expect(onSelectFile).toHaveBeenCalledWith(fileNode)
+  })
 })
