@@ -38,7 +38,7 @@ export default function ExplorerPanel({
           >
             フォルダを変更
           </button>
-          <div role="tree" className="file-tree">
+          <div role="tree" aria-label="ファイルツリー" className="file-tree">
             {fileTree.map((node) => (
               <FileTreeItem
                 key={node.path}
