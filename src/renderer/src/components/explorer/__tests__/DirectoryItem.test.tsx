@@ -68,4 +68,45 @@ describe('DirectoryItem', () => {
     render(<DirectoryItem node={emptyDirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
     expect(screen.getByText('empty')).toBeInTheDocument()
   })
+
+  it('tabIndex={0} が設定されている', () => {
+    const { container } = render(
+      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+    )
+    const dirItem = container.querySelector('[aria-expanded]')
+    expect(dirItem).toHaveAttribute('tabindex', '0')
+  })
+
+  it('展開時に子ノードが role="group" のラッパーに含まれる', () => {
+    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    expect(screen.getByRole('group')).toBeInTheDocument()
+  })
+
+  it('折りたたみ時に role="group" が表示されない', async () => {
+    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    await userEvent.click(screen.getByText('src'))
+    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+  })
+
+  it('Enter キーで子ノードが折りたたまれる', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+    )
+    const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
+    dirItem.focus()
+    await user.keyboard('{Enter}')
+    expect(screen.queryByText('index.ts')).not.toBeInTheDocument()
+  })
+
+  it('Space キーで子ノードが折りたたまれる', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+    )
+    const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
+    dirItem.focus()
+    await user.keyboard(' ')
+    expect(screen.queryByText('index.ts')).not.toBeInTheDocument()
+  })
 })
