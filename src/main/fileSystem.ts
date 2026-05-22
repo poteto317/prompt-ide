@@ -1,7 +1,7 @@
 import { join } from 'path'
 import { readdir, readFile } from 'node:fs/promises'
 import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
-import type { FileTreeNode } from '../shared/types'
+import type { FileTreeNode } from '@shared/types'
 
 export type { FileTreeNode }
 
