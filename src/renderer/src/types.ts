@@ -14,6 +14,8 @@ export type FileTreeNode = {
   children?: FileTreeNode[]
 }
 
+export type FileNode = FileTreeNode & { type: 'file' }
+
 export type OpenFile = {
   path: string
   name: string
