@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import type { FileTreeNode } from '../../types'
+import type { FileNode } from '../../types'
 import { createOpenFile } from '../fileUtils'
 
 describe('createOpenFile', () => {
-  const node: FileTreeNode = {
+  const node: FileNode = {
     name: 'index.ts',
     path: '/project/src/index.ts',
     type: 'file',
@@ -22,10 +22,10 @@ describe('createOpenFile', () => {
   })
 
   it('異なる拡張子のファイルで正しい language が設定される', () => {
-    const jsonNode: FileTreeNode = { name: 'package.json', path: '/p/package.json', type: 'file' }
+    const jsonNode: FileNode = { name: 'package.json', path: '/p/package.json', type: 'file' }
     expect(createOpenFile(jsonNode, '{}').language).toBe('json')
 
-    const mdNode: FileTreeNode = { name: 'README.md', path: '/p/README.md', type: 'file' }
+    const mdNode: FileNode = { name: 'README.md', path: '/p/README.md', type: 'file' }
     expect(createOpenFile(mdNode, '# Hi').language).toBe('markdown')
   })
 
