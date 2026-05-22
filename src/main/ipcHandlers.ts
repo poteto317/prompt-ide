@@ -1,4 +1,5 @@
-import type { IpcMain } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { app } from 'electron'
 import { sep } from 'path'
 import { realpath } from 'node:fs/promises'
 import { openFolderDialog } from './dialogService'
@@ -13,16 +14,23 @@ async function assertWithinFolder(allowedRealpath: string, targetPath: string): 
 }
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
-  let allowedFolder: string | null = null
+  const allowedFolders = new Map<number, string>()
 
-  ipcMain.handle('dialog:openFolder', async () => {
+  app.on('web-contents-created', (_event, webContents) => {
+    webContents.on('destroyed', () => {
+      allowedFolders.delete(webContents.id)
+    })
+  })
+
+  ipcMain.handle('dialog:openFolder', async (event: IpcMainInvokeEvent) => {
     const result = await openFolderDialog()
-    if (result !== null) allowedFolder = await realpath(result)
+    if (result !== null) allowedFolders.set(event.sender.id, await realpath(result))
     return result
   })
 
-  ipcMain.handle('fs:readDirectory', async (_event, folderPath: string) => {
-    if (allowedFolder === null) throw new Error('No folder open')
+  ipcMain.handle('fs:readDirectory', async (event: IpcMainInvokeEvent, folderPath: string) => {
+    const allowedFolder = allowedFolders.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
     const resolvedTarget = await realpath(folderPath)
     if (resolvedTarget !== allowedFolder) {
       throw new Error(`Access denied: ${folderPath}`)
@@ -30,8 +38,9 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return readDirRecursive(folderPath)
   })
 
-  ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
-    if (allowedFolder === null) throw new Error('No folder open')
+  ipcMain.handle('fs:readFile', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const allowedFolder = allowedFolders.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
     await assertWithinFolder(allowedFolder, filePath)
     return readFileContent(filePath)
   })
