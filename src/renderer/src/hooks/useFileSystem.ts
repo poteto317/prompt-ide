@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FileTreeNode, OpenFile } from '../types'
+import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
@@ -34,10 +34,12 @@ export function useFileSystem(): FileSystemState {
 
   const selectFile = async (node: FileTreeNode): Promise<void> => {
     if (node.type !== 'file') return
+    // TypeScript resets property narrowing after `await`; capture the narrowed type here.
+    const fileNode = node as FileNode
     setError(null)
     try {
-      const content = await fileSystemApi.readFileContent(node.path)
-      setOpenFile(createOpenFile(node, content))
+      const content = await fileSystemApi.readFileContent(fileNode.path)
+      setOpenFile(createOpenFile(fileNode, content))
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
     }

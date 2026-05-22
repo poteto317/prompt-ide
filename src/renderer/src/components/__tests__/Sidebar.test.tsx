@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
 import { sidebarTitles } from '../../config/sidebarTitles'
