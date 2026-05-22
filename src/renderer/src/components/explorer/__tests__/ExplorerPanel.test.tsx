@@ -116,6 +116,20 @@ describe('ExplorerPanel', () => {
     expect(screen.getByText('permission denied')).toBeInTheDocument()
   })
 
+  it('role="tree" に aria-label="ファイルツリー" が付与されている', () => {
+    render(
+      <ExplorerPanel
+        folderPath="/p"
+        fileTree={mockTree}
+        openFilePath={null}
+        onOpenFolder={vi.fn()}
+        onSelectFile={vi.fn()}
+        error={null}
+      />
+    )
+    expect(screen.getByRole('tree', { name: 'ファイルツリー' })).toBeInTheDocument()
+  })
+
   it('error が null のとき error メッセージは表示されない', () => {
     const { container } = render(
       <ExplorerPanel
