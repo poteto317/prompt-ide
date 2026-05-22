@@ -1,3 +1,9 @@
+import type { FileTreeNode } from '../../shared/types'
+
+export type { FileTreeNode }
+
+export type FileNode = FileTreeNode & { type: 'file' }
+
 export type Panel = 'explorer' | 'source-control' | 'prompts'
 
 export type Prompt = {
@@ -6,15 +12,6 @@ export type Prompt = {
   content: string
   createdAt: number
 }
-
-export type FileTreeNode = {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileTreeNode[]
-}
-
-export type FileNode = FileTreeNode & { type: 'file' }
 
 export type OpenFile = {
   path: string
