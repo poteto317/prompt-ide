@@ -72,6 +72,36 @@ describe('ExplorerPanel', () => {
     expect(screen.queryByRole('button', { name: 'フォルダを開く' })).not.toBeInTheDocument()
   })
 
+  it('folderPath が指定されているとき「フォルダを変更」ボタンが表示される', () => {
+    render(
+      <ExplorerPanel
+        folderPath="/p"
+        fileTree={mockTree}
+        openFilePath={null}
+        onOpenFolder={vi.fn()}
+        onSelectFile={vi.fn()}
+        error={null}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'フォルダを変更' })).toBeInTheDocument()
+  })
+
+  it('「フォルダを変更」ボタンクリックで onOpenFolder が呼ばれる', async () => {
+    const onOpenFolder = vi.fn()
+    render(
+      <ExplorerPanel
+        folderPath="/p"
+        fileTree={mockTree}
+        openFilePath={null}
+        onOpenFolder={onOpenFolder}
+        onSelectFile={vi.fn()}
+        error={null}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを変更' }))
+    expect(onOpenFolder).toHaveBeenCalledOnce()
+  })
+
   it('error が渡されたとき error.message が表示される', () => {
     render(
       <ExplorerPanel
