@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron'
-import type { FileTreeNode } from '../shared/types'
+import type { FileTreeNode } from '@shared/types'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
