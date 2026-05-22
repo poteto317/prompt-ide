@@ -1,11 +1,12 @@
 import type { IpcMain } from 'electron'
-import { resolve, relative } from 'path'
+import { resolve, sep } from 'path'
 import { openFolderDialog } from './dialogService'
 import { readDirRecursive, readFileContent } from './fileSystem'
 
 function assertWithinFolder(folderPath: string, filePath: string): void {
-  const rel = relative(folderPath, resolve(filePath))
-  if (rel.startsWith('..')) {
+  const resolvedFolder = resolve(folderPath)
+  const resolvedFile = resolve(filePath)
+  if (!resolvedFile.startsWith(resolvedFolder + sep)) {
     throw new Error(`Access denied: ${filePath}`)
   }
 }
@@ -19,9 +20,13 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return result
   })
 
-  ipcMain.handle('fs:readDirectory', (_event, folderPath: string) =>
-    readDirRecursive(folderPath)
-  )
+  ipcMain.handle('fs:readDirectory', async (_event, folderPath: string) => {
+    if (allowedFolder === null) throw new Error('No folder open')
+    if (resolve(folderPath) !== resolve(allowedFolder)) {
+      throw new Error(`Access denied: ${folderPath}`)
+    }
+    return readDirRecursive(folderPath)
+  })
 
   ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
     if (allowedFolder === null) throw new Error('No folder open')
