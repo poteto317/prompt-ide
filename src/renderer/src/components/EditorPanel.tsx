@@ -1,20 +1,31 @@
 import Editor from '@monaco-editor/react'
-import { WELCOME_CODE } from '../config/welcomeCode'
 import { editorOptions } from '../lib/editorOptions'
+import type { OpenFile } from '../types'
+import WelcomeView from './editor/WelcomeView'
+import EditorTabs from './editor/EditorTabs'
 
-export default function EditorPanel() {
+const fileEditorOptions = { ...editorOptions, readOnly: false }
+
+interface Props {
+  openFile: OpenFile | null
+}
+
+export default function EditorPanel({ openFile }: Props) {
+  if (openFile === null) {
+    return <WelcomeView />
+  }
+
   return (
     <div className="editor-panel">
-      <div className="editor-tabs">
-        <div className="editor-tab editor-tab--active">welcome.ts</div>
-      </div>
+      <EditorTabs fileName={openFile.name} />
       <div className="editor-body">
         <Editor
+          key={openFile.path}
           height="100%"
-          language="typescript"
+          language={openFile.language}
           theme="vs-dark"
-          defaultValue={WELCOME_CODE}
-          options={editorOptions}
+          value={openFile.content}
+          options={fileEditorOptions}
         />
       </div>
     </div>

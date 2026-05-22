@@ -24,4 +24,26 @@ describe('App', () => {
     await userEvent.click(gitBtn)
     expect(screen.getByText(sidebarTitles['source-control'])).toBeInTheDocument()
   })
+
+  it('サイドバーを閉じて再度開いてもプロンプトが保持される', async () => {
+    render(<App />)
+
+    // prompts パネルへ切り替え
+    const promptsBtn = screen.getByTitle(activityBarPanels[2].title)
+    await userEvent.click(promptsBtn)
+
+    // プロンプトを追加
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), 'テストタイトル')
+    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), 'テスト内容')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    expect(screen.getByText('テストタイトル')).toBeInTheDocument()
+
+    // 同じパネルを再クリックしてサイドバーを閉じる
+    await userEvent.click(promptsBtn)
+    expect(screen.queryByText('テストタイトル')).not.toBeInTheDocument()
+
+    // 再度開く
+    await userEvent.click(promptsBtn)
+    expect(screen.getByText('テストタイトル')).toBeInTheDocument()
+  })
 })
