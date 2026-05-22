@@ -270,6 +270,23 @@ body {
   background: #1177bb;
 }
 
+.explorer-panel__change-btn {
+  margin: 6px 12px;
+  background: none;
+  color: #969696;
+  border: 1px solid #555555;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+.explorer-panel__change-btn:hover {
+  color: #cccccc;
+  border-color: #888888;
+}
+
 .explorer-panel__error {
   margin: 8px 12px;
   font-size: 12px;
