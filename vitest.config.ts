@@ -6,9 +6,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'jsdom',
+    environmentMatchGlobs: [['src/main/**', 'node']],
     globals: true,
     setupFiles: ['./src/renderer/src/__tests__/setup.ts'],
-    include: ['src/renderer/src/**/*.test.{ts,tsx}'],
+    include: ['src/renderer/src/**/*.test.{ts,tsx}', 'src/main/**/*.test.ts'],
     alias: {
       '@monaco-editor/react': resolve(
         __dirname,
