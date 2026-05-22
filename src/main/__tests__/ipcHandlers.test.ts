@@ -4,6 +4,7 @@ const mockHandle = vi.hoisted(() => vi.fn())
 const mockOpenFolderDialog = vi.hoisted(() => vi.fn())
 const mockReadDirRecursive = vi.hoisted(() => vi.fn())
 const mockReadFileContent = vi.hoisted(() => vi.fn())
+const mockRealpath = vi.hoisted(() => vi.fn())
 
 vi.mock('../dialogService', () => ({
   openFolderDialog: mockOpenFolderDialog,
@@ -14,6 +15,12 @@ vi.mock('../fileSystem', () => ({
   readFileContent: mockReadFileContent,
 }))
 
+vi.mock('node:fs/promises', () => ({
+  default: { realpath: mockRealpath },
+  realpath: mockRealpath,
+}))
+
+import { resolve as resolvePath } from 'path'
 import { registerIpcHandlers } from '../ipcHandlers'
 
 function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown {
@@ -26,6 +33,7 @@ const mockIpcMain = { handle: mockHandle } as never
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockRealpath.mockImplementation((p: string) => Promise.resolve(resolvePath(p)))
   registerIpcHandlers(mockIpcMain)
 })
 
@@ -107,6 +115,26 @@ describe('registerIpcHandlers', () => {
       const handler = getRegisteredHandler('fs:readFile')
       const result = await handler(null, '/project/..foo')
       expect(mockReadFileContent).toHaveBeenCalledWith('/project/..foo')
+      expect(result).toBe('data')
+    })
+
+    it('シンボリックリンク経由の allowedFolder 外パスは "Access denied" エラーをスロー', async () => {
+      await openFolder('/project')
+      mockRealpath.mockImplementation((p: string) => {
+        if (p === '/project/link') return Promise.resolve('/etc/passwd')
+        return Promise.resolve(p)
+      })
+      const handler = getRegisteredHandler('fs:readFile')
+      await expect(handler(null, '/project/link')).rejects.toThrow('Access denied')
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+
+    it('allowedFolder がルート "/" のとき配下ファイルへのアクセスが許可される', async () => {
+      await openFolder('/')
+      mockReadFileContent.mockResolvedValue('data')
+      const handler = getRegisteredHandler('fs:readFile')
+      const result = await handler(null, '/etc/passwd')
+      expect(mockReadFileContent).toHaveBeenCalledWith('/etc/passwd')
       expect(result).toBe('data')
     })
 

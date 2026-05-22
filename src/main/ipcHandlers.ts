@@ -1,13 +1,14 @@
 import type { IpcMain } from 'electron'
-import { resolve, sep } from 'path'
+import { sep } from 'path'
+import { realpath } from 'node:fs/promises'
 import { openFolderDialog } from './dialogService'
 import { readDirRecursive, readFileContent } from './fileSystem'
 
-function assertWithinFolder(folderPath: string, filePath: string): void {
-  const resolvedFolder = resolve(folderPath)
-  const resolvedFile = resolve(filePath)
-  if (!resolvedFile.startsWith(resolvedFolder + sep)) {
-    throw new Error(`Access denied: ${filePath}`)
+async function assertWithinFolder(allowedRealpath: string, targetPath: string): Promise<void> {
+  const resolvedTarget = await realpath(targetPath)
+  const prefix = allowedRealpath.endsWith(sep) ? allowedRealpath : allowedRealpath + sep
+  if (!resolvedTarget.startsWith(prefix)) {
+    throw new Error(`Access denied: ${targetPath}`)
   }
 }
 
@@ -16,13 +17,14 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('dialog:openFolder', async () => {
     const result = await openFolderDialog()
-    if (result !== null) allowedFolder = result
+    if (result !== null) allowedFolder = await realpath(result)
     return result
   })
 
   ipcMain.handle('fs:readDirectory', async (_event, folderPath: string) => {
     if (allowedFolder === null) throw new Error('No folder open')
-    if (resolve(folderPath) !== resolve(allowedFolder)) {
+    const resolvedTarget = await realpath(folderPath)
+    if (resolvedTarget !== allowedFolder) {
       throw new Error(`Access denied: ${folderPath}`)
     }
     return readDirRecursive(folderPath)
@@ -30,7 +32,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('fs:readFile', async (_event, filePath: string) => {
     if (allowedFolder === null) throw new Error('No folder open')
-    assertWithinFolder(allowedFolder, filePath)
+    await assertWithinFolder(allowedFolder, filePath)
     return readFileContent(filePath)
   })
 }
