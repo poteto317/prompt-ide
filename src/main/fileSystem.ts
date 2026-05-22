@@ -1,13 +1,9 @@
 import { join } from 'path'
 import { readdir, readFile } from 'node:fs/promises'
 import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
+import type { FileTreeNode } from '../shared/types'
 
-export type FileTreeNode = {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileTreeNode[]
-}
+export type { FileTreeNode }
 
 export function readFileContent(filePath: string): Promise<string> {
   return readFile(filePath, 'utf-8')

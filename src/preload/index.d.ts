@@ -1,11 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-
-interface FileTreeNode {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileTreeNode[]
-}
+import type { FileTreeNode } from '../shared/types'
 
 declare global {
   interface Window {
