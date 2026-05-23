@@ -1,23 +1,13 @@
 'use client'
-import { useState } from 'react'
+import { usePromptForm } from '../../hooks/usePromptForm'
 
 interface Props {
   onAdd: (title: string, content: string) => void
 }
 
 export default function AddPromptForm({ onAdd }: Props) {
-  const [title, setTitle] = useState('')
-  const [content, setContent] = useState('')
-
-  const isDisabled = title.trim() === '' || content.trim() === ''
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
-    e.preventDefault()
-    if (isDisabled) return
-    onAdd(title.trim(), content.trim())
-    setTitle('')
-    setContent('')
-  }
+  const { title, content, isDisabled, handleTitleChange, handleContentChange, handleSubmit } =
+    usePromptForm(onAdd)
 
   return (
     <form className="add-prompt-form" onSubmit={handleSubmit}>
@@ -27,14 +17,14 @@ export default function AddPromptForm({ onAdd }: Props) {
         placeholder="タイトル"
         aria-label="タイトル"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={handleTitleChange}
       />
       <textarea
         className="add-prompt-form__input"
         placeholder="プロンプト内容"
         aria-label="プロンプト内容"
         value={content}
-        onChange={(e) => setContent(e.target.value)}
+        onChange={handleContentChange}
         rows={3}
       />
       <button

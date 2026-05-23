@@ -1,62 +1,77 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
-import { sidebarTitles, sidebarPlaceholders } from '../../config/sidebarTitles'
+import { sidebarTitles } from '../../config/sidebarTitles'
+
+const defaultProps = {
+  folderPath: null as string | null,
+  fileTree: [],
+  openFilePath: null as string | null,
+  onOpenFolder: vi.fn(),
+  onSelectFile: vi.fn(),
+  error: null as Error | null,
+  prompts: [],
+  onAddPrompt: vi.fn(),
+  onDeletePrompt: vi.fn(),
+}
 
 describe('Sidebar', () => {
-  it('explorer: 正しいヘッダーとプレースホルダーが表示される', () => {
-    render(<Sidebar activePanel="explorer" />)
+  it('explorer: 正しいヘッダーが表示され ExplorerPanel が描画される', () => {
+    render(<Sidebar activePanel="explorer" {...defaultProps} />)
     expect(screen.getByText(sidebarTitles.explorer)).toBeInTheDocument()
-    expect(screen.getByText(sidebarPlaceholders.explorer)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'フォルダを開く' })).toBeInTheDocument()
   })
 
-  it('source-control: 正しいヘッダーとプレースホルダーが表示される', () => {
-    render(<Sidebar activePanel="source-control" />)
+  it('source-control: 正しいヘッダーが表示される', () => {
+    render(<Sidebar activePanel="source-control" {...defaultProps} />)
     expect(screen.getByText(sidebarTitles['source-control'])).toBeInTheDocument()
-    expect(screen.getByText(sidebarPlaceholders['source-control'])).toBeInTheDocument()
   })
 
   it('prompts: ヘッダーが表示され PromptsPanel が描画される', () => {
-    render(<Sidebar activePanel="prompts" />)
+    render(<Sidebar activePanel="prompts" {...defaultProps} />)
     expect(screen.getByText(sidebarTitles.prompts)).toBeInTheDocument()
-    expect(screen.queryByText(sidebarPlaceholders.prompts)).not.toBeInTheDocument()
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
   it('prompts 以外のパネルに切り替えると PromptsPanel のラッパーに sidebar__panel--hidden クラスが付く', () => {
-    const { rerender, container } = render(<Sidebar activePanel="prompts" />)
+    const { rerender, container } = render(<Sidebar activePanel="prompts" {...defaultProps} />)
 
-    // prompts 表示中: hidden クラスなし
-    expect(container.querySelector('.sidebar__panel--hidden')).toBeNull()
-    expect(container.querySelector('.sidebar__panel')).not.toBeNull()
+    rerender(<Sidebar activePanel="explorer" {...defaultProps} />)
 
-    rerender(<Sidebar activePanel="explorer" />)
-
-    // explorer に切り替え: hidden クラスが付いて非表示になる
-    expect(container.querySelector('.sidebar__panel--hidden')).not.toBeNull()
-    // PromptsPanel 自体は DOM に残っている（アンマウントされていない）
+    // explorer に切り替え: PromptsPanel のラッパーが hidden
+    const panels = container.querySelectorAll('.sidebar__panel')
+    const promptsWrapper = Array.from(panels).find((el) =>
+      el.textContent?.includes('プロンプトがありません')
+    )
+    expect(promptsWrapper).toHaveClass('sidebar__panel--hidden')
+    // PromptsPanel 自体は DOM に残っている
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('パネルを切り替えて prompts に戻っても追加したプロンプトが保持される', async () => {
-    const { rerender } = render(<Sidebar activePanel="prompts" />)
+  it('source-control: explorer/prompts パネルは非表示でプレースホルダーが表示される', () => {
+    const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
+    const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
+    const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
+    const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
+    expect(hiddenPanels).toHaveLength(2)
+    expect(activePanels).toHaveLength(1)
+    expect(screen.getByText('ソース管理は未実装です')).toBeInTheDocument()
+  })
 
-    // プロンプトを追加
-    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), 'テストタイトル')
-    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), 'テスト内容')
-    await userEvent.click(screen.getByRole('button', { name: '追加' }))
-    expect(screen.getByText('テストタイトル')).toBeInTheDocument()
+  it('explorer に切り替えても PromptsPanel は DOM に残る（常時マウント）', () => {
+    const { rerender } = render(<Sidebar activePanel="prompts" {...defaultProps} />)
+    rerender(<Sidebar activePanel="explorer" {...defaultProps} />)
+    expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
+  })
 
-    // explorer に切り替え
-    rerender(<Sidebar activePanel="explorer" />)
-    expect(screen.getByText(sidebarTitles.explorer)).toBeInTheDocument()
-
-    // prompts に戻す
-    rerender(<Sidebar activePanel="prompts" />)
-
-    // 追加したプロンプトが保持されている
-    expect(screen.getByText('テストタイトル')).toBeInTheDocument()
-    expect(screen.queryByText('プロンプトがありません')).not.toBeInTheDocument()
+  it('error が渡されたとき ExplorerPanel に error.message が表示される', () => {
+    render(
+      <Sidebar
+        activePanel="explorer"
+        {...defaultProps}
+        error={new Error('folder open failed')}
+      />
+    )
+    expect(screen.getByText('folder open failed')).toBeInTheDocument()
   })
 })
