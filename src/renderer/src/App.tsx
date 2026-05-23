@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { useAppState } from './hooks/useAppState'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
@@ -10,7 +11,14 @@ export default function App(): React.JSX.Element {
     folderPath, fileTree, openFile, error, openFolder, selectFile,
     prompts, addPrompt, deletePrompt,
     gitStatus, gitLoading, gitError, refreshGitStatus,
+    apiKey, apiKeyLoaded, saveApiKey,
+    isExecuting, result, executionError, executePrompt, clearResult,
   } = useAppState()
+
+  const handleRunPrompt = useCallback(
+    (content: string) => executePrompt(content, openFile?.content ?? null),
+    [executePrompt, openFile]
+  )
 
   return (
     <>
@@ -29,13 +37,24 @@ export default function App(): React.JSX.Element {
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}
+              onRunPrompt={handleRunPrompt}
+              isExecuting={isExecuting}
               gitStatus={gitStatus}
               gitLoading={gitLoading}
               gitError={gitError}
               onRefreshGitStatus={refreshGitStatus}
+              apiKey={apiKey}
+              apiKeyLoaded={apiKeyLoaded}
+              onSaveApiKey={saveApiKey}
             />
           )}
-          <EditorPanel openFile={openFile} />
+          <EditorPanel
+            openFile={openFile}
+            isExecuting={isExecuting}
+            result={result}
+            executionError={executionError}
+            onClearResult={clearResult}
+          />
         </div>
       </div>
       <StatusBar />

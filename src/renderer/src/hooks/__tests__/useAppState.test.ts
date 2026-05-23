@@ -37,10 +37,30 @@ const mockUseGitStatus = vi.hoisted(() =>
   }))
 )
 
+const mockUseSettings = vi.hoisted(() =>
+  vi.fn(() => ({
+    apiKey: '',
+    apiKeyLoaded: false,
+    saveApiKey: vi.fn(),
+  }))
+)
+
+const mockUsePromptExecution = vi.hoisted(() =>
+  vi.fn(() => ({
+    isExecuting: false,
+    result: null,
+    executionError: null,
+    executePrompt: vi.fn(),
+    clearResult: vi.fn(),
+  }))
+)
+
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
 vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
+vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
+vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
 
 import { useAppState } from '../useAppState'
 
@@ -87,11 +107,37 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('selectFile')
   })
 
-  it('4フックの返り値にキーの重複がない', () => {
+  it('6フックの返り値にキーの重複がない', () => {
     const { result } = renderHook(() => useAppState())
     const keys = Object.keys(result.current)
     const uniqueKeys = new Set(keys)
     expect(keys.length).toBe(uniqueKeys.size)
+  })
+
+  it('useSettings を呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUseSettings).toHaveBeenCalledOnce()
+  })
+
+  it('usePromptExecution を呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUsePromptExecution).toHaveBeenCalledOnce()
+  })
+
+  it('settings の値が含まれる（apiKey, apiKeyLoaded, saveApiKey）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('apiKey', '')
+    expect(result.current).toHaveProperty('apiKeyLoaded', false)
+    expect(result.current).toHaveProperty('saveApiKey')
+  })
+
+  it('execution の値が含まれる（isExecuting, result, executionError, executePrompt, clearResult）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('isExecuting', false)
+    expect(result.current).toHaveProperty('result', null)
+    expect(result.current).toHaveProperty('executionError', null)
+    expect(result.current).toHaveProperty('executePrompt')
+    expect(result.current).toHaveProperty('clearResult')
   })
 
   it('prompts の値が含まれる（prompts, addPrompt, deletePrompt）', () => {

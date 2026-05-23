@@ -8,6 +8,7 @@ const defaultProps = {
   prompts: [] as Prompt[],
   onAdd: vi.fn(),
   onDelete: vi.fn(),
+  onRun: vi.fn(),
 }
 
 const samplePrompt: Prompt = {
@@ -43,5 +44,17 @@ describe('PromptsPanel', () => {
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onDelete={onDelete} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを削除' }))
     expect(onDelete).toHaveBeenCalledWith('p1')
+  })
+
+  it('実行ボタンクリックで onRun がプロンプト内容とともに呼ばれる', async () => {
+    const onRun = vi.fn()
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+    expect(onRun).toHaveBeenCalledWith('テスト内容')
+  })
+
+  it('isRunDisabled=true のとき実行ボタンが disabled になる', () => {
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} isRunDisabled={true} />)
+    expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeDisabled()
   })
 })

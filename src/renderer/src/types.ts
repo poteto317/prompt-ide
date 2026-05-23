@@ -4,7 +4,7 @@ export type { FileTreeNode }
 
 export type FileNode = FileTreeNode & { type: 'file' }
 
-export type Panel = 'explorer' | 'source-control' | 'prompts'
+export type Panel = 'explorer' | 'source-control' | 'prompts' | 'settings'
 
 export type Prompt = {
   id: string

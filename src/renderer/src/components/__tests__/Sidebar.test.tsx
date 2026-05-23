@@ -13,10 +13,15 @@ const defaultProps = {
   prompts: [],
   onAddPrompt: vi.fn(),
   onDeletePrompt: vi.fn(),
+  onRunPrompt: vi.fn(),
+  isExecuting: false,
   gitStatus: null,
   gitLoading: false,
   gitError: null,
   onRefreshGitStatus: vi.fn(),
+  apiKey: '',
+  apiKeyLoaded: true,
+  onSaveApiKey: vi.fn(),
 }
 
 describe('Sidebar', () => {
@@ -52,14 +57,20 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('source-control: explorer/prompts パネルは非表示で SourceControlPanel が表示される', () => {
+  it('source-control: explorer/prompts/settings パネルは非表示で SourceControlPanel が表示される', () => {
     const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
     const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
     const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
     const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
-    expect(hiddenPanels).toHaveLength(2)
+    expect(hiddenPanels).toHaveLength(3)
     expect(activePanels).toHaveLength(1)
     expect(screen.getByText('フォルダを開いてください')).toBeInTheDocument()
+  })
+
+  it('settings: 正しいヘッダーが表示され SettingsPanel が描画される', () => {
+    render(<Sidebar activePanel="settings" {...defaultProps} />)
+    expect(screen.getByText(sidebarTitles.settings)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
   })
 
   it('explorer に切り替えても PromptsPanel は DOM に残る（常時マウント）', () => {
