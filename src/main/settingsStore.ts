@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron'
 import { join } from 'node:path'
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, chmod } from 'node:fs/promises'
 
 interface SettingsFile {
   encryptedApiKey?: string
@@ -48,4 +48,5 @@ export async function setApiKey(apiKey: string): Promise<void> {
     JSON.stringify({ encryptedApiKey }, null, 2),
     { encoding: 'utf-8', mode: 0o600 }
   )
+  await chmod(getSettingsPath(), 0o600)
 }

@@ -48,6 +48,25 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('保存しました')).toBeInTheDocument()
   })
 
+  it('保存時に trim した値が onSave に渡される', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsPanel {...defaultProps} onSave={onSave} />)
+    await user.type(screen.getByLabelText('API キー'), '  sk-ant-test  ')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(onSave).toHaveBeenCalledWith('sk-ant-test')
+  })
+
+  it('保存成功後に入力欄がクリアされる（レンダラー state にキーを残さない）', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn().mockResolvedValue(undefined)
+    render(<SettingsPanel {...defaultProps} onSave={onSave} />)
+    await user.type(screen.getByLabelText('API キー'), 'sk-ant-test')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    const input = screen.getByLabelText('API キー') as HTMLInputElement
+    expect(input.value).toBe('')
+  })
+
   it('onSave が reject したときエラーメッセージが表示される', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn().mockRejectedValue(new Error('キーストアが利用できません'))

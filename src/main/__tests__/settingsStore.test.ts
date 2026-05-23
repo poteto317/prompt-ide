@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
 const mockMkdir = vi.hoisted(() => vi.fn())
+const mockChmod = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
@@ -14,10 +15,11 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('node:fs/promises', () => ({
-  default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir },
+  default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir, chmod: mockChmod },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
+  chmod: mockChmod,
 }))
 
 import { getApiKey, setApiKey } from '../settingsStore'
@@ -32,6 +34,7 @@ beforeEach(() => {
   mockIsEncryptionAvailable.mockReturnValue(true)
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
+  mockChmod.mockResolvedValue(undefined)
 })
 
 describe('getApiKey', () => {
@@ -112,5 +115,15 @@ describe('setApiKey', () => {
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
     expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-abc')
+  })
+
+  it('writeFile 後に chmod(0o600) を呼んで既存ファイルの権限も確実に設定する', async () => {
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
+    await setApiKey('sk-ant-abc')
+    expect(mockChmod).toHaveBeenCalledWith('/mock/userData/settings.json', 0o600)
+    // chmod は writeFile の後に呼ばれる
+    const writeOrder = mockWriteFile.mock.invocationCallOrder[0]
+    const chmodOrder = mockChmod.mock.invocationCallOrder[0]
+    expect(chmodOrder).toBeGreaterThan(writeOrder)
   })
 })

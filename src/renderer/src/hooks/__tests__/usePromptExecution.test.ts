@@ -79,6 +79,28 @@ describe('usePromptExecution', () => {
     expect(result.current.executionError).toBeNull()
   })
 
+  it('先行実行の完了が後続実行の result を上書きしない（競合対策）', async () => {
+    let resolveFirst!: (v: string) => void
+    let resolveSecond!: (v: string) => void
+    mockRunPrompt
+      .mockImplementationOnce(() => new Promise<string>((resolve) => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise<string>((resolve) => { resolveSecond = resolve }))
+
+    const { result } = renderHook(() => usePromptExecution())
+
+    act(() => { result.current.executePrompt('first', null) })
+    act(() => { result.current.executePrompt('second', null) })
+
+    // 先行実行が後から完了しても result に反映されない
+    await act(async () => { resolveFirst('first result') })
+    expect(result.current.result).toBeNull()
+
+    // 後続実行が完了すると result に反映される
+    await act(async () => { resolveSecond('second result') })
+    expect(result.current.result).toBe('second result')
+    expect(result.current.isExecuting).toBe(false)
+  })
+
   it('再実行前に前回の result / executionError がクリアされる', async () => {
     mockRunPrompt.mockRejectedValueOnce(new Error('first error'))
     mockRunPrompt.mockResolvedValueOnce('second result')

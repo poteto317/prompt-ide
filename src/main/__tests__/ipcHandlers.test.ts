@@ -263,11 +263,39 @@ describe('registerIpcHandlers', () => {
       await handler(makeEvent(1), 'sk-ant-new')
       expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
     })
+
+    it('trim した値を setApiKey に渡す', async () => {
+      mockSetApiKey.mockResolvedValue(undefined)
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await handler(makeEvent(1), '  sk-ant-new  ')
+      expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
+    })
+
+    it('空文字のとき "API キーが空です" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await expect(handler(makeEvent(1), '')).rejects.toThrow('API キーが空です')
+      expect(mockSetApiKey).not.toHaveBeenCalled()
+    })
+
+    it('空白のみのとき "API キーが空です" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await expect(handler(makeEvent(1), '   ')).rejects.toThrow('API キーが空です')
+      expect(mockSetApiKey).not.toHaveBeenCalled()
+    })
   })
 
   describe('claude:runPrompt', () => {
     it('API キーが未設定のとき "API キーが設定されていません" エラーをスロー', async () => {
       mockGetApiKey.mockResolvedValue('')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('API キーが設定されていません')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('API キーが空白のみのとき "API キーが設定されていません" エラーをスロー', async () => {
+      mockGetApiKey.mockResolvedValue('   ')
       const handler = getRegisteredHandler('claude:runPrompt')
       await expect(
         handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })

@@ -20,10 +20,12 @@ export default function SettingsPanel({ hasKey, apiKeyLoaded, onSave }: Props) {
   }, [])
 
   const handleSave = useCallback(async () => {
+    const trimmed = inputValue.trim()
     setIsSaving(true)
     setSaveError(null)
     try {
-      await onSave(inputValue)
+      await onSave(trimmed)
+      setInputValue('')
       setSaved(true)
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => setSaved(false), 2000)
