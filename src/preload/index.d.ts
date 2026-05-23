@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { FileTreeNode } from '@shared/types'
+import type { FileTreeNode, GitStatusResult } from '@shared/types'
 
 declare global {
   interface Window {
@@ -8,6 +8,7 @@ declare global {
       openFolder(): Promise<string | null>
       readDirectory(path: string): Promise<FileTreeNode[]>
       readFile(path: string): Promise<string>
+      getGitStatus(): Promise<GitStatusResult>
     }
   }
 }

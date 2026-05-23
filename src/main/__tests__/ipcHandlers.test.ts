@@ -6,6 +6,7 @@ const mockReadDirRecursive = vi.hoisted(() => vi.fn())
 const mockReadFileContent = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 const mockAppOn = vi.hoisted(() => vi.fn())
+const mockGetGitStatus = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { on: mockAppOn },
@@ -23,6 +24,10 @@ vi.mock('../fileSystem', () => ({
 vi.mock('node:fs/promises', () => ({
   default: { realpath: mockRealpath },
   realpath: mockRealpath,
+}))
+
+vi.mock('../gitService', () => ({
+  getGitStatus: mockGetGitStatus,
 }))
 
 import { resolve as resolvePath } from 'path'
@@ -195,6 +200,30 @@ describe('registerIpcHandlers', () => {
       await expect(handler(makeEvent(1), '/project-b/index.ts')).rejects.toThrow('Access denied')
       await expect(handler(makeEvent(2), '/project-b/index.ts')).resolves.toBe('data')
       await expect(handler(makeEvent(2), '/project-a/index.ts')).rejects.toThrow('Access denied')
+    })
+  })
+
+  describe('git:getStatus', () => {
+    it('allowedFolder が未設定のとき "No folder open" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('git:getStatus')
+      await expect(handler(makeEvent(1))).rejects.toThrow('No folder open')
+    })
+
+    it('dialog:openFolder 成功後に allowedFolder を引数に getGitStatus を呼ぶ', async () => {
+      await openFolder('/project')
+      const mockResult = { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] }
+      mockGetGitStatus.mockResolvedValue(mockResult)
+      const handler = getRegisteredHandler('git:getStatus')
+      const result = await handler(makeEvent(1))
+      expect(mockGetGitStatus).toHaveBeenCalledWith('/project')
+      expect(result).toEqual(mockResult)
+    })
+
+    it('getGitStatus が throw した場合エラーが伝播する', async () => {
+      await openFolder('/project')
+      mockGetGitStatus.mockRejectedValue(new Error('git error'))
+      const handler = getRegisteredHandler('git:getStatus')
+      await expect(handler(makeEvent(1))).rejects.toThrow('git error')
     })
   })
 })
