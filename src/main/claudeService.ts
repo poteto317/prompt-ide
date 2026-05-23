@@ -6,7 +6,7 @@ export async function runPrompt(
   fileContent: string | null
 ): Promise<string> {
   const client = new Anthropic({ apiKey })
-  const userMessage = fileContent
+  const userMessage = fileContent !== null
     ? `${promptContent}\n\n---\n\n${fileContent}`
     : promptContent
   const message = await client.messages.create({

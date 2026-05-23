@@ -39,7 +39,7 @@ const mockUseGitStatus = vi.hoisted(() =>
 
 const mockUseSettings = vi.hoisted(() =>
   vi.fn(() => ({
-    apiKey: '',
+    hasKey: false,
     apiKeyLoaded: false,
     saveApiKey: vi.fn(),
   }))
@@ -107,11 +107,21 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('selectFile')
   })
 
-  it('6フックの返り値にキーの重複がない', () => {
-    const { result } = renderHook(() => useAppState())
-    const keys = Object.keys(result.current)
-    const uniqueKeys = new Set(keys)
-    expect(keys.length).toBe(uniqueKeys.size)
+  it('6フックの返り値にキーの重複がない（各フックのキー集合が互いに素）', () => {
+    const keysets = [
+      Object.keys(mockUsePanelState()),
+      Object.keys(mockUseFileSystem()),
+      Object.keys(mockUsePrompts()),
+      Object.keys(mockUseGitStatus()),
+      Object.keys(mockUseSettings()),
+      Object.keys(mockUsePromptExecution()),
+    ]
+    for (let i = 0; i < keysets.length; i++) {
+      for (let j = i + 1; j < keysets.length; j++) {
+        const intersection = keysets[i].filter((k) => keysets[j].includes(k))
+        expect(intersection).toHaveLength(0)
+      }
+    }
   })
 
   it('useSettings を呼び出す', () => {
@@ -124,9 +134,9 @@ describe('useAppState', () => {
     expect(mockUsePromptExecution).toHaveBeenCalledOnce()
   })
 
-  it('settings の値が含まれる（apiKey, apiKeyLoaded, saveApiKey）', () => {
+  it('settings の値が含まれる（hasKey, apiKeyLoaded, saveApiKey）', () => {
     const { result } = renderHook(() => useAppState())
-    expect(result.current).toHaveProperty('apiKey', '')
+    expect(result.current).toHaveProperty('hasKey', false)
     expect(result.current).toHaveProperty('apiKeyLoaded', false)
     expect(result.current).toHaveProperty('saveApiKey')
   })

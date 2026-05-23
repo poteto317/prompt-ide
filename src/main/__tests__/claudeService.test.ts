@@ -45,6 +45,16 @@ describe('runPrompt', () => {
     )
   })
 
+  it('fileContent が空文字のときもセパレーターで結合して送信する（null との区別）', async () => {
+    mockCreate.mockResolvedValue(makeTextResponse('result'))
+    await runPrompt('sk-ant-key', 'プロンプト', '')
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [{ role: 'user', content: 'プロンプト\n\n---\n\n' }],
+      })
+    )
+  })
+
   it('モデルとして claude-haiku-4-5-20251001 を使用する', async () => {
     mockCreate.mockResolvedValue(makeTextResponse('result'))
     await runPrompt('sk-ant-key', 'プロンプト', null)

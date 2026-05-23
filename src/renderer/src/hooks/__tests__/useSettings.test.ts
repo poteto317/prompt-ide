@@ -11,40 +11,40 @@ const mockSetApiKey = vi.mocked(claudeApi.setApiKey)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockGetApiKey.mockResolvedValue('')
+  mockGetApiKey.mockResolvedValue(false)
   mockSetApiKey.mockResolvedValue(undefined)
 })
 
 describe('useSettings', () => {
-  it('初期状態: apiKey="", apiKeyLoaded=false', () => {
+  it('初期状態: hasKey=false, apiKeyLoaded=false', () => {
     const { result } = renderHook(() => useSettings())
-    expect(result.current.apiKey).toBe('')
+    expect(result.current.hasKey).toBe(false)
     expect(result.current.apiKeyLoaded).toBe(false)
   })
 
-  it('mount 時に getApiKey が呼ばれ apiKey と apiKeyLoaded がセットされる', async () => {
-    mockGetApiKey.mockResolvedValue('sk-ant-test')
+  it('mount 時に getApiKey が呼ばれ hasKey と apiKeyLoaded がセットされる（キーあり）', async () => {
+    mockGetApiKey.mockResolvedValue(true)
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
-    expect(result.current.apiKey).toBe('sk-ant-test')
+    expect(result.current.hasKey).toBe(true)
     expect(mockGetApiKey).toHaveBeenCalledOnce()
   })
 
-  it('getApiKey が空文字を返したとき apiKey="" で apiKeyLoaded=true になる', async () => {
-    mockGetApiKey.mockResolvedValue('')
+  it('getApiKey が false を返したとき hasKey=false で apiKeyLoaded=true になる', async () => {
+    mockGetApiKey.mockResolvedValue(false)
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
-    expect(result.current.apiKey).toBe('')
+    expect(result.current.hasKey).toBe(false)
   })
 
-  it('getApiKey が reject したとき apiKeyLoaded=true になり apiKey="" のまま', async () => {
-    mockGetApiKey.mockRejectedValue(new Error('network error'))
+  it('getApiKey が reject したとき apiKeyLoaded=true になり hasKey=false のまま', async () => {
+    mockGetApiKey.mockRejectedValue(new Error('keystore unavailable'))
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
-    expect(result.current.apiKey).toBe('')
+    expect(result.current.hasKey).toBe(false)
   })
 
-  it('saveApiKey を呼ぶと setApiKey IPC が呼ばれ apiKey state が更新される', async () => {
+  it('saveApiKey を呼ぶと setApiKey IPC が呼ばれ hasKey が true になる', async () => {
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
 
@@ -52,6 +52,6 @@ describe('useSettings', () => {
       await result.current.saveApiKey('sk-ant-new')
     })
     expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
-    expect(result.current.apiKey).toBe('sk-ant-new')
+    expect(result.current.hasKey).toBe(true)
   })
 })

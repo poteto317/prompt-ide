@@ -54,7 +54,10 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return getGitStatus(allowedFolder)
   })
 
-  ipcMain.handle('settings:getApiKey', async () => getApiKey())
+  ipcMain.handle('settings:getApiKey', async () => {
+    const key = await getApiKey()
+    return key.length > 0
+  })
 
   ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) =>
     setApiKey(apiKey)

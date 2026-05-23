@@ -678,9 +678,19 @@ body {
   cursor: default;
 }
 
+.settings-panel__status {
+  font-size: 11px;
+  color: #4ec9b0;
+}
+
 .settings-panel__saved {
   font-size: 12px;
   color: #4ec9b0;
+}
+
+.settings-panel__error {
+  font-size: 12px;
+  color: #f48771;
 }
 
 /* ---- PromptItem 実行ボタン ---- */
