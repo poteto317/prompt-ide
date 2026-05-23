@@ -408,3 +408,136 @@ body {
 .status-bar__spacer {
   flex: 1;
 }
+
+/* ---- Source Control Panel ---- */
+
+.source-control-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.source-control-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.source-control-panel__refresh-btn {
+  background: none;
+  color: #969696;
+  border: 1px solid #555555;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.source-control-panel__refresh-btn:hover:not(:disabled) {
+  color: #cccccc;
+  border-color: #888888;
+}
+
+.source-control-panel__refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.source-control-panel__error {
+  margin: 8px 12px;
+  font-size: 12px;
+  color: #f48771;
+}
+
+.source-control-panel__loading,
+.source-control-panel__no-repo,
+.source-control-panel__empty,
+.source-control-panel__placeholder {
+  padding: 12px;
+  color: #6c6c6c;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.source-control-panel__branch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #cccccc;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.source-control-panel__ahead {
+  color: #4ec9b0;
+  font-size: 11px;
+}
+
+.source-control-panel__behind {
+  color: #f48771;
+  font-size: 11px;
+}
+
+.source-control-panel__section {
+  flex-shrink: 0;
+}
+
+.source-control-panel__section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #969696;
+  padding: 6px 12px 2px;
+  margin: 0;
+  user-select: none;
+}
+
+.source-control-panel__file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.source-control-panel__file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.source-control-panel__file-item:hover {
+  background: #2a2d2e;
+}
+
+.source-control-panel__file-status {
+  font-size: 11px;
+  font-weight: 700;
+  width: 14px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.source-control-panel__file-status--staged {
+  color: #4ec9b0;
+}
+
+.source-control-panel__file-status--changed {
+  color: #e2c08d;
+}
+
+.source-control-panel__file-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
