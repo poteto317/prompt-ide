@@ -4,6 +4,7 @@ import { sep } from 'path'
 import { realpath } from 'node:fs/promises'
 import { openFolderDialog } from './dialogService'
 import { readDirRecursive, readFileContent } from './fileSystem'
+import { getGitStatus } from './gitService'
 
 async function assertWithinFolder(allowedRealpath: string, targetPath: string): Promise<void> {
   const resolvedTarget = await realpath(targetPath)
@@ -43,5 +44,11 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     if (allowedFolder === undefined) throw new Error('No folder open')
     await assertWithinFolder(allowedFolder, filePath)
     return readFileContent(filePath)
+  })
+
+  ipcMain.handle('git:getStatus', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = allowedFolders.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
+    return getGitStatus(allowedFolder)
   })
 }

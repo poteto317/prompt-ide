@@ -9,6 +9,7 @@ export default function App(): React.JSX.Element {
     activePanel, sidebarOpen, handlePanelChange,
     folderPath, fileTree, openFile, error, openFolder, selectFile,
     prompts, addPrompt, deletePrompt,
+    gitStatus, gitLoading, gitError, refreshGitStatus,
   } = useAppState()
 
   return (
@@ -28,6 +29,10 @@ export default function App(): React.JSX.Element {
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}
+              gitStatus={gitStatus}
+              gitLoading={gitLoading}
+              gitError={gitError}
+              onRefreshGitStatus={refreshGitStatus}
             />
           )}
           <EditorPanel openFile={openFile} />
