@@ -36,4 +36,10 @@ describe('openFolderDialog', () => {
     const result = await openFolderDialog()
     expect(result).toBe('/project')
   })
+
+  it('canceled=false でも filePaths が空のとき null を返す', async () => {
+    mockShowOpenDialog.mockResolvedValue({ canceled: false, filePaths: [] })
+    const result = await openFolderDialog()
+    expect(result).toBeNull()
+  })
 })
