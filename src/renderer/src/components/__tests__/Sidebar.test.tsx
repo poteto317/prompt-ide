@@ -13,6 +13,10 @@ const defaultProps = {
   prompts: [],
   onAddPrompt: vi.fn(),
   onDeletePrompt: vi.fn(),
+  gitStatus: null,
+  gitLoading: false,
+  gitError: null,
+  onRefreshGitStatus: vi.fn(),
 }
 
 describe('Sidebar', () => {
@@ -48,14 +52,14 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('source-control: explorer/prompts パネルは非表示でプレースホルダーが表示される', () => {
+  it('source-control: explorer/prompts パネルは非表示で SourceControlPanel が表示される', () => {
     const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
     const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
     const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
     const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
     expect(hiddenPanels).toHaveLength(2)
     expect(activePanels).toHaveLength(1)
-    expect(screen.getByText('ソース管理は未実装です')).toBeInTheDocument()
+    expect(screen.getByText('フォルダを開いてください')).toBeInTheDocument()
   })
 
   it('explorer に切り替えても PromptsPanel は DOM に残る（常時マウント）', () => {

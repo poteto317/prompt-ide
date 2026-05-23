@@ -1,8 +1,10 @@
 import PromptsPanel from './prompts/PromptsPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
+import SourceControlPanel from './source-control/SourceControlPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
 import type { Panel, FileTreeNode, Prompt } from '../types'
+import type { GitStatusResult } from '@shared/types'
 
 interface Props {
   activePanel: Panel
@@ -15,6 +17,10 @@ interface Props {
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
+  gitStatus: GitStatusResult | null
+  gitLoading: boolean
+  gitError: Error | null
+  onRefreshGitStatus: () => void
 }
 
 export default function Sidebar({
@@ -28,6 +34,10 @@ export default function Sidebar({
   prompts,
   onAddPrompt,
   onDeletePrompt,
+  gitStatus,
+  gitLoading,
+  gitError,
+  onRefreshGitStatus,
 }: Props) {
   return (
     <div className="sidebar">
@@ -50,7 +60,12 @@ export default function Sidebar({
         <PromptsPanel prompts={prompts} onAdd={onAddPrompt} onDelete={onDeletePrompt} />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>
-        <p className="source-control-panel__placeholder">ソース管理は未実装です</p>
+        <SourceControlPanel
+          gitStatus={gitStatus}
+          gitLoading={gitLoading}
+          gitError={gitError}
+          onRefresh={onRefreshGitStatus}
+        />
       </PanelContainer>
     </div>
   )
