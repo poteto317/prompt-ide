@@ -28,9 +28,19 @@ const mockUsePrompts = vi.hoisted(() =>
   }))
 )
 
+const mockUseGitStatus = vi.hoisted(() =>
+  vi.fn(() => ({
+    gitStatus: null,
+    gitLoading: false,
+    gitError: null,
+    refreshGitStatus: vi.fn(),
+  }))
+)
+
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
+vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
 
 import { useAppState } from '../useAppState'
 
@@ -54,6 +64,12 @@ describe('useAppState', () => {
     expect(mockUsePrompts).toHaveBeenCalledOnce()
   })
 
+  it('useGitStatus を呼び出す（folderPath を引数に）', () => {
+    renderHook(() => useAppState())
+    expect(mockUseGitStatus).toHaveBeenCalledOnce()
+    expect(mockUseGitStatus).toHaveBeenCalledWith(null)
+  })
+
   it('panelState の値が含まれる（activePanel, sidebarOpen, handlePanelChange）', () => {
     const { result } = renderHook(() => useAppState())
     expect(result.current).toHaveProperty('activePanel', 'explorer')
@@ -71,7 +87,7 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('selectFile')
   })
 
-  it('3フックの返り値にキーの重複がない', () => {
+  it('4フックの返り値にキーの重複がない', () => {
     const { result } = renderHook(() => useAppState())
     const keys = Object.keys(result.current)
     const uniqueKeys = new Set(keys)
@@ -83,5 +99,13 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('prompts')
     expect(result.current).toHaveProperty('addPrompt')
     expect(result.current).toHaveProperty('deletePrompt')
+  })
+
+  it('git の値が含まれる（gitStatus, gitLoading, gitError, refreshGitStatus）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('gitStatus', null)
+    expect(result.current).toHaveProperty('gitLoading', false)
+    expect(result.current).toHaveProperty('gitError', null)
+    expect(result.current).toHaveProperty('refreshGitStatus')
   })
 })
