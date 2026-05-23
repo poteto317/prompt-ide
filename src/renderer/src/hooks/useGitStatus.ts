@@ -2,7 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { GitStatusResult } from '@shared/types'
 import * as gitApi from '../lib/gitApi'
 
-export function useGitStatus(folderPath: string | null) {
+interface GitStatusState {
+  gitStatus: GitStatusResult | null
+  gitLoading: boolean
+  gitError: Error | null
+  refreshGitStatus: () => Promise<void>
+}
+
+export function useGitStatus(folderPath: string | null): GitStatusState {
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [gitError, setGitError] = useState<Error | null>(null)
