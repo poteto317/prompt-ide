@@ -10,6 +10,8 @@ export function useGitStatus(folderPath: string | null) {
   const refreshGitStatus = useCallback(async (): Promise<void> => {
     if (folderPath === null) {
       setGitStatus(null)
+      setGitLoading(false)
+      setGitError(null)
       return
     }
     setGitLoading(true)

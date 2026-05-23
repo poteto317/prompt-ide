@@ -83,7 +83,7 @@ describe('useGitStatus', () => {
     expect(mockGetGitStatus).toHaveBeenCalledTimes(2)
   })
 
-  it('folderPath が null に戻ると gitStatus が null にリセットされる', async () => {
+  it('folderPath が null に戻ると gitStatus / gitLoading / gitError が全てリセットされる', async () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
     const { result, rerender } = renderHook(
       ({ path }: { path: string | null }) => useGitStatus(path),
@@ -93,6 +93,22 @@ describe('useGitStatus', () => {
 
     rerender({ path: null })
     await waitFor(() => expect(result.current.gitStatus).toBeNull())
+    expect(result.current.gitLoading).toBe(false)
+    expect(result.current.gitError).toBeNull()
+  })
+
+  it('エラー後に folderPath が null に戻ると gitError もリセットされる', async () => {
+    mockGetGitStatus.mockRejectedValue(new Error('network error'))
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string | null }) => useGitStatus(path),
+      { initialProps: { path: '/project' as string | null } }
+    )
+    await waitFor(() => expect(result.current.gitError).toBeInstanceOf(Error))
+
+    rerender({ path: null })
+    await waitFor(() => expect(result.current.gitError).toBeNull())
+    expect(result.current.gitStatus).toBeNull()
+    expect(result.current.gitLoading).toBe(false)
   })
 
   it('isRepo: false の結果もそのまま gitStatus にセットされる', async () => {
