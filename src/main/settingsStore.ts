@@ -22,10 +22,12 @@ export async function getApiKey(): Promise<string> {
       return safeStorage.decryptString(buf)
     }
 
-    // Legacy plain-text migration: re-save encrypted then return
+    // Legacy plain-text migration: trim, validate, re-save encrypted then return
     if (data.apiKey) {
-      await setApiKey(data.apiKey)
-      return data.apiKey
+      const trimmed = data.apiKey.trim()
+      if (trimmed.length === 0) return ''
+      await setApiKey(trimmed)
+      return trimmed
     }
 
     return ''
