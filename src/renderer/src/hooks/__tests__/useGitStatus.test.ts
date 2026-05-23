@@ -117,4 +117,34 @@ describe('useGitStatus', () => {
     const { result } = renderHook(() => useGitStatus('/not-a-repo'))
     await waitFor(() => expect(result.current.gitStatus).toEqual(notRepo))
   })
+
+  it('リクエスト中に folderPath が変わると古いレスポンスは無視される（競合状態防止）', async () => {
+    let resolveFirst!: (v: GitStatusResult) => void
+    const firstResult: GitStatusResult = { ...mockResult, branch: 'old' }
+    const secondResult: GitStatusResult = { ...mockResult, branch: 'new' }
+
+    mockGetGitStatus
+      .mockImplementationOnce(
+        () => new Promise<GitStatusResult>((resolve) => { resolveFirst = resolve })
+      )
+      .mockResolvedValueOnce(secondResult)
+
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string | null }) => useGitStatus(path),
+      { initialProps: { path: '/project-a' as string | null } }
+    )
+
+    // 1回目のリクエストが pending の間に folderPath を変更する
+    rerender({ path: '/project-b' })
+
+    // 2回目のリクエストが完了するのを待つ
+    await waitFor(() => expect(result.current.gitStatus).toEqual(secondResult))
+
+    // 1回目の古いレスポンスを遅れて返す
+    resolveFirst(firstResult)
+    await act(async () => {})
+
+    // 古い結果で上書きされていないこと
+    expect(result.current.gitStatus).toEqual(secondResult)
+  })
 })

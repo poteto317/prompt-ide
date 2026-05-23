@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { GitStatusResult } from '@shared/types'
 import * as gitApi from '../lib/gitApi'
 
@@ -6,8 +6,10 @@ export function useGitStatus(folderPath: string | null) {
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [gitError, setGitError] = useState<Error | null>(null)
+  const latestRequestId = useRef(0)
 
   const refreshGitStatus = useCallback(async (): Promise<void> => {
+    const requestId = ++latestRequestId.current
     if (folderPath === null) {
       setGitStatus(null)
       setGitLoading(false)
@@ -17,11 +19,18 @@ export function useGitStatus(folderPath: string | null) {
     setGitLoading(true)
     setGitError(null)
     try {
-      setGitStatus(await gitApi.getGitStatus())
+      const result = await gitApi.getGitStatus()
+      if (requestId === latestRequestId.current) {
+        setGitStatus(result)
+      }
     } catch (err) {
-      setGitError(err instanceof Error ? err : new Error(String(err)))
+      if (requestId === latestRequestId.current) {
+        setGitError(err instanceof Error ? err : new Error(String(err)))
+      }
     } finally {
-      setGitLoading(false)
+      if (requestId === latestRequestId.current) {
+        setGitLoading(false)
+      }
     }
   }, [folderPath])
 
