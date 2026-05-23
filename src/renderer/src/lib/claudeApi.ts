@@ -1,0 +1,11 @@
+export function getApiKey(): Promise<string> {
+  return window.api.getApiKey()
+}
+
+export function setApiKey(apiKey: string): Promise<void> {
+  return window.api.setApiKey(apiKey)
+}
+
+export function runPrompt(promptContent: string, fileContent: string | null): Promise<string> {
+  return window.api.runPrompt(promptContent, fileContent)
+}

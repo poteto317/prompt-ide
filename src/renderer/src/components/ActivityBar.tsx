@@ -1,5 +1,4 @@
 import { activityBarPanels } from '../config/activityBarPanels'
-import { SettingsIcon } from './icons'
 import type { Panel } from '../types'
 
 interface Props {
@@ -24,11 +23,6 @@ export default function ActivityBar({ activePanel, sidebarOpen, onPanelChange }:
           <Icon />
         </button>
       ))}
-      <div className="activity-bar__bottom">
-        <button type="button" className="activity-bar__item" title="設定" aria-label="設定" disabled>
-          <SettingsIcon />
-        </button>
-      </div>
     </div>
   )
 }

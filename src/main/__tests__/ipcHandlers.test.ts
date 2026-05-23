@@ -7,6 +7,9 @@ const mockReadFileContent = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 const mockAppOn = vi.hoisted(() => vi.fn())
 const mockGetGitStatus = vi.hoisted(() => vi.fn())
+const mockGetApiKey = vi.hoisted(() => vi.fn())
+const mockSetApiKey = vi.hoisted(() => vi.fn())
+const mockRunPrompt = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { on: mockAppOn },
@@ -28,6 +31,15 @@ vi.mock('node:fs/promises', () => ({
 
 vi.mock('../gitService', () => ({
   getGitStatus: mockGetGitStatus,
+}))
+
+vi.mock('../settingsStore', () => ({
+  getApiKey: mockGetApiKey,
+  setApiKey: mockSetApiKey,
+}))
+
+vi.mock('../claudeService', () => ({
+  runPrompt: mockRunPrompt,
 }))
 
 import { resolve as resolvePath } from 'path'
@@ -224,6 +236,54 @@ describe('registerIpcHandlers', () => {
       mockGetGitStatus.mockRejectedValue(new Error('git error'))
       const handler = getRegisteredHandler('git:getStatus')
       await expect(handler(makeEvent(1))).rejects.toThrow('git error')
+    })
+  })
+
+  describe('settings:getApiKey', () => {
+    it('getApiKey の返値をそのまま返す', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-test')
+      const handler = getRegisteredHandler('settings:getApiKey')
+      const result = await handler(makeEvent(1))
+      expect(mockGetApiKey).toHaveBeenCalledOnce()
+      expect(result).toBe('sk-ant-test')
+    })
+  })
+
+  describe('settings:setApiKey', () => {
+    it('setApiKey を呼び出す', async () => {
+      mockSetApiKey.mockResolvedValue(undefined)
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await handler(makeEvent(1), 'sk-ant-new')
+      expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
+    })
+  })
+
+  describe('claude:runPrompt', () => {
+    it('API キーが未設定のとき "API キーが設定されていません" エラーをスロー', async () => {
+      mockGetApiKey.mockResolvedValue('')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('API キーが設定されていません')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('API キーが設定されているとき runPrompt を呼んで結果を返す', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-key')
+      mockRunPrompt.mockResolvedValue('回答テキスト')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      const result = await handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: 'ファイル' })
+      expect(mockRunPrompt).toHaveBeenCalledWith('sk-ant-key', 'プロンプト', 'ファイル')
+      expect(result).toBe('回答テキスト')
+    })
+
+    it('runPrompt が throw した場合エラーが伝播する', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-key')
+      mockRunPrompt.mockRejectedValue(new Error('api error'))
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('api error')
     })
   })
 })

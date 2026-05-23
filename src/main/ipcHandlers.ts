@@ -5,6 +5,8 @@ import { realpath } from 'node:fs/promises'
 import { openFolderDialog } from './dialogService'
 import { readDirRecursive, readFileContent } from './fileSystem'
 import { getGitStatus } from './gitService'
+import { getApiKey, setApiKey } from './settingsStore'
+import { runPrompt } from './claudeService'
 
 async function assertWithinFolder(allowedRealpath: string, targetPath: string): Promise<void> {
   const resolvedTarget = await realpath(targetPath)
@@ -51,4 +53,22 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     if (allowedFolder === undefined) throw new Error('No folder open')
     return getGitStatus(allowedFolder)
   })
+
+  ipcMain.handle('settings:getApiKey', async () => getApiKey())
+
+  ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) =>
+    setApiKey(apiKey)
+  )
+
+  ipcMain.handle(
+    'claude:runPrompt',
+    async (
+      _event: IpcMainInvokeEvent,
+      { promptContent, fileContent }: { promptContent: string; fileContent: string | null }
+    ) => {
+      const apiKey = await getApiKey()
+      if (!apiKey) throw new Error('API キーが設定されていません')
+      return runPrompt(apiKey, promptContent, fileContent)
+    }
+  )
 }

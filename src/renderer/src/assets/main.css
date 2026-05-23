@@ -541,3 +541,170 @@ body {
   text-overflow: ellipsis;
   font-size: 12px;
 }
+
+/* ---- Output Panel ---- */
+
+.output-panel {
+  height: 200px;
+  border-top: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  background: #1e1e1e;
+}
+
+.output-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.output-panel__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #969696;
+  user-select: none;
+}
+
+.output-panel__clear-btn {
+  background: none;
+  color: #969696;
+  border: 1px solid #555555;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.output-panel__clear-btn:hover {
+  color: #cccccc;
+  border-color: #888888;
+}
+
+.output-panel__content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+
+.output-panel__loading {
+  font-size: 13px;
+  color: #6c6c6c;
+  margin: 0;
+}
+
+.output-panel__text {
+  font-size: 13px;
+  color: #cccccc;
+  white-space: pre-wrap;
+  margin: 0;
+  font-family: inherit;
+  line-height: 1.6;
+}
+
+.output-panel__error {
+  font-size: 13px;
+  color: #f48771;
+  margin: 0;
+}
+
+/* ---- Settings Panel ---- */
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.settings-panel__section {
+  padding: 12px;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-panel__label {
+  font-size: 11px;
+  color: #969696;
+  user-select: none;
+}
+
+.settings-panel__input {
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  font-family: inherit;
+}
+
+.settings-panel__input:focus {
+  border-color: #007acc;
+}
+
+.settings-panel__input:disabled {
+  opacity: 0.4;
+}
+
+.settings-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-panel__save-btn {
+  background: #0e639c;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.settings-panel__save-btn:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.settings-panel__save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-panel__saved {
+  font-size: 12px;
+  color: #4ec9b0;
+}
+
+/* ---- PromptItem 実行ボタン ---- */
+
+.prompt-item__actions {
+  display: flex;
+  gap: 4px;
+  align-self: flex-end;
+}
+
+.prompt-item__run {
+  font-size: 11px;
+  color: #4ec9b0;
+  background: none;
+  border: 1px solid #4ec9b0;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.prompt-item__run:hover:not(:disabled) {
+  background: rgba(78, 201, 176, 0.1);
+}
+
+.prompt-item__run:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
