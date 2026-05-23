@@ -68,13 +68,17 @@ describe('runPrompt', () => {
     await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow('network error')
   })
 
-  it('block.type が text でない場合 Unexpected response type エラーを投げる', async () => {
+  it('block.type が text でない場合 予期しないレスポンス形式です エラーを投げる（type 情報を含む）', async () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'tool_use', id: 'x', name: 'y', input: {} }] })
-    await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow('Unexpected response type')
+    await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow(
+      '予期しないレスポンス形式です（type: tool_use）'
+    )
   })
 
-  it('message.content が空配列のとき Unexpected response type エラーを投げる', async () => {
+  it('message.content が空配列のとき 予期しないレスポンス形式です（type: なし）エラーを投げる', async () => {
     mockCreate.mockResolvedValue({ content: [] })
-    await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow('Unexpected response type')
+    await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow(
+      '予期しないレスポンス形式です（type: なし）'
+    )
   })
 })

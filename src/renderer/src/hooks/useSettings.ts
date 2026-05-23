@@ -13,9 +13,9 @@ export function useSettings(): SettingsState {
 
   useEffect(() => {
     claudeApi
-      .getApiKey()
+      .hasApiKey()
       .then((has) => setHasKey(has))
-      .catch((err) => { console.error('[useSettings] getApiKey failed:', err) })
+      .catch((err) => { console.error('[useSettings] hasApiKey failed:', err) })
       .finally(() => setApiKeyLoaded(true))
   }, [])
 

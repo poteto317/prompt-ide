@@ -9,7 +9,7 @@ Object.defineProperty(window, 'api', {
     readDirectory: () => Promise.resolve([]),
     readFile: () => Promise.resolve(''),
     getGitStatus: () => Promise.resolve({ isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }),
-    getApiKey: () => Promise.resolve(false),
+    hasApiKey: () => Promise.resolve(false),
     setApiKey: () => Promise.resolve(),
     runPrompt: () => Promise.resolve(''),
   },

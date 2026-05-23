@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getApiKey, setApiKey, runPrompt } from '../claudeApi'
+import { hasApiKey, setApiKey, runPrompt } from '../claudeApi'
 
 const mockApi = {
-  getApiKey: vi.fn(),
+  hasApiKey: vi.fn(),
   setApiKey: vi.fn(),
   runPrompt: vi.fn(),
 }
@@ -12,17 +12,17 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('getApiKey', () => {
-  it('window.api.getApiKey を呼び出し boolean を返す（キーあり）', async () => {
-    mockApi.getApiKey.mockResolvedValue(true)
-    const result = await getApiKey()
-    expect(mockApi.getApiKey).toHaveBeenCalledOnce()
+describe('hasApiKey', () => {
+  it('window.api.hasApiKey を呼び出し boolean を返す（キーあり）', async () => {
+    mockApi.hasApiKey.mockResolvedValue(true)
+    const result = await hasApiKey()
+    expect(mockApi.hasApiKey).toHaveBeenCalledOnce()
     expect(result).toBe(true)
   })
 
-  it('window.api.getApiKey を呼び出し boolean を返す（キーなし）', async () => {
-    mockApi.getApiKey.mockResolvedValue(false)
-    const result = await getApiKey()
+  it('window.api.hasApiKey を呼び出し boolean を返す（キーなし）', async () => {
+    mockApi.hasApiKey.mockResolvedValue(false)
+    const result = await hasApiKey()
     expect(result).toBe(false)
   })
 })

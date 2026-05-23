@@ -15,6 +15,10 @@ export async function runPrompt(
     messages: [{ role: 'user', content: userMessage }],
   })
   const block = message.content.find((b) => b.type === 'text')
-  if (!block || block.type !== 'text') throw new Error('Unexpected response type')
+  if (!block || block.type !== 'text') {
+    const first = message.content[0]
+    const type = first ? first.type : 'なし'
+    throw new Error(`予期しないレスポンス形式です（type: ${type}）`)
+  }
   return block.text
 }

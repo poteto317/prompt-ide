@@ -1,5 +1,5 @@
-export function getApiKey(): Promise<boolean> {
-  return window.api.getApiKey()
+export function hasApiKey(): Promise<boolean> {
+  return window.api.hasApiKey()
 }
 
 export function setApiKey(apiKey: string): Promise<void> {
