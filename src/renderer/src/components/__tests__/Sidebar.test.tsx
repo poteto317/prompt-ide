@@ -48,12 +48,14 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('source-control: ExplorerPanel と PromptsPanel の両ラッパーが hidden になる', () => {
+  it('source-control: explorer/prompts パネルは非表示でプレースホルダーが表示される', () => {
     const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
-    const panels = container.querySelectorAll('.sidebar__panel')
-    panels.forEach((panel) => {
-      expect(panel).toHaveClass('sidebar__panel--hidden')
-    })
+    const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
+    const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
+    const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
+    expect(hiddenPanels).toHaveLength(2)
+    expect(activePanels).toHaveLength(1)
+    expect(screen.getByText('ソース管理は未実装です')).toBeInTheDocument()
   })
 
   it('explorer に切り替えても PromptsPanel は DOM に残る（常時マウント）', () => {

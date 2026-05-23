@@ -49,6 +49,9 @@ export default function Sidebar({
       <PanelContainer isActive={activePanel === 'prompts'}>
         <PromptsPanel prompts={prompts} onAdd={onAddPrompt} onDelete={onDeletePrompt} />
       </PanelContainer>
+      <PanelContainer isActive={activePanel === 'source-control'}>
+        <p className="source-control-panel__placeholder">ソース管理は未実装です</p>
+      </PanelContainer>
     </div>
   )
 }
