@@ -47,4 +47,9 @@ describe('EditorPanel — openFile あり', () => {
     render(<EditorPanel openFile={mockOpenFile} />)
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
+
+  it('エディタは readOnly: true で描画される（ファイルビューア）', () => {
+    render(<EditorPanel openFile={mockOpenFile} />)
+    expect(screen.getByTestId('monaco-editor')).toHaveAttribute('data-readonly', 'true')
+  })
 })
