@@ -10,6 +10,9 @@ interface SettingsFile {
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')
 
 export async function getApiKey(): Promise<string> {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('システムのキーストアが利用できません。APIキーを安全に保存できません。')
+  }
   try {
     const content = await readFile(getSettingsPath(), 'utf-8')
     const data = JSON.parse(content) as SettingsFile
@@ -33,6 +36,9 @@ export async function getApiKey(): Promise<string> {
 }
 
 export async function setApiKey(apiKey: string): Promise<void> {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('システムのキーストアが利用できません。APIキーを安全に保存できません。')
+  }
   const dir = app.getPath('userData')
   await mkdir(dir, { recursive: true })
   const encrypted = safeStorage.encryptString(apiKey)

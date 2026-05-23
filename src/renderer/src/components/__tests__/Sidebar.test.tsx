@@ -19,7 +19,7 @@ const defaultProps = {
   gitLoading: false,
   gitError: null,
   onRefreshGitStatus: vi.fn(),
-  apiKey: '',
+  hasKey: false,
   apiKeyLoaded: true,
   onSaveApiKey: vi.fn(),
 }

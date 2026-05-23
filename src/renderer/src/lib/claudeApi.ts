@@ -1,4 +1,4 @@
-export function getApiKey(): Promise<string> {
+export function getApiKey(): Promise<boolean> {
   return window.api.getApiKey()
 }
 

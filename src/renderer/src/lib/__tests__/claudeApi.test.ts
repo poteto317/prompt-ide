@@ -13,11 +13,17 @@ beforeEach(() => {
 })
 
 describe('getApiKey', () => {
-  it('window.api.getApiKey を呼び出し結果を返す', async () => {
-    mockApi.getApiKey.mockResolvedValue('sk-ant-test')
+  it('window.api.getApiKey を呼び出し boolean を返す（キーあり）', async () => {
+    mockApi.getApiKey.mockResolvedValue(true)
     const result = await getApiKey()
     expect(mockApi.getApiKey).toHaveBeenCalledOnce()
-    expect(result).toBe('sk-ant-test')
+    expect(result).toBe(true)
+  })
+
+  it('window.api.getApiKey を呼び出し boolean を返す（キーなし）', async () => {
+    mockApi.getApiKey.mockResolvedValue(false)
+    const result = await getApiKey()
+    expect(result).toBe(false)
   })
 })
 

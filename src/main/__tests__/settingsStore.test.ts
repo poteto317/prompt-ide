@@ -7,6 +7,7 @@ const mockMkdir = vi.hoisted(() => vi.fn())
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
   safeStorage: {
+    isEncryptionAvailable: vi.fn(() => true),
     encryptString: vi.fn((str: string) => Buffer.from(str)),
     decryptString: vi.fn((buf: Buffer) => buf.toString('utf-8')),
   },
@@ -22,16 +23,24 @@ vi.mock('node:fs/promises', () => ({
 import { getApiKey, setApiKey } from '../settingsStore'
 import { safeStorage } from 'electron'
 
+const mockIsEncryptionAvailable = vi.mocked(safeStorage.isEncryptionAvailable)
 const mockEncrypt = vi.mocked(safeStorage.encryptString)
 const mockDecrypt = vi.mocked(safeStorage.decryptString)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockIsEncryptionAvailable.mockReturnValue(true)
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
 })
 
 describe('getApiKey', () => {
+  it('isEncryptionAvailable() が false のとき エラーを投げる', async () => {
+    mockIsEncryptionAvailable.mockReturnValue(false)
+    await expect(getApiKey()).rejects.toThrow('システムのキーストアが利用できません')
+    expect(mockReadFile).not.toHaveBeenCalled()
+  })
+
   it('ファイルが存在しない場合は空文字を返す', async () => {
     const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
     mockReadFile.mockRejectedValue(err)
@@ -76,6 +85,12 @@ describe('getApiKey', () => {
 })
 
 describe('setApiKey', () => {
+  it('isEncryptionAvailable() が false のとき エラーを投げる', async () => {
+    mockIsEncryptionAvailable.mockReturnValue(false)
+    await expect(setApiKey('sk-ant-abc')).rejects.toThrow('システムのキーストアが利用できません')
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
+
   it('safeStorage で暗号化して設定ファイルに書き込む', async () => {
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')

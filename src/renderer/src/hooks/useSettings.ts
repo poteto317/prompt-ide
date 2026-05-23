@@ -2,27 +2,27 @@ import { useState, useEffect, useCallback } from 'react'
 import * as claudeApi from '../lib/claudeApi'
 
 interface SettingsState {
-  apiKey: string
+  hasKey: boolean
   apiKeyLoaded: boolean
   saveApiKey: (key: string) => Promise<void>
 }
 
 export function useSettings(): SettingsState {
-  const [apiKey, setApiKey] = useState('')
+  const [hasKey, setHasKey] = useState(false)
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false)
 
   useEffect(() => {
     claudeApi
       .getApiKey()
-      .then((key) => setApiKey(key))
+      .then((has) => setHasKey(has))
       .catch(() => {})
       .finally(() => setApiKeyLoaded(true))
   }, [])
 
   const saveApiKey = useCallback(async (key: string): Promise<void> => {
     await claudeApi.setApiKey(key)
-    setApiKey(key)
+    setHasKey(true)
   }, [])
 
-  return { apiKey, apiKeyLoaded, saveApiKey }
+  return { hasKey, apiKeyLoaded, saveApiKey }
 }

@@ -240,12 +240,19 @@ describe('registerIpcHandlers', () => {
   })
 
   describe('settings:getApiKey', () => {
-    it('getApiKey の返値をそのまま返す', async () => {
+    it('getApiKey がキーを返すとき true を返す（平文キーは renderer に渡さない）', async () => {
       mockGetApiKey.mockResolvedValue('sk-ant-test')
       const handler = getRegisteredHandler('settings:getApiKey')
       const result = await handler(makeEvent(1))
       expect(mockGetApiKey).toHaveBeenCalledOnce()
-      expect(result).toBe('sk-ant-test')
+      expect(result).toBe(true)
+    })
+
+    it('getApiKey が空文字を返すとき false を返す', async () => {
+      mockGetApiKey.mockResolvedValue('')
+      const handler = getRegisteredHandler('settings:getApiKey')
+      const result = await handler(makeEvent(1))
+      expect(result).toBe(false)
     })
   })
 

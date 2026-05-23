@@ -24,7 +24,7 @@ interface Props {
   gitLoading: boolean
   gitError: Error | null
   onRefreshGitStatus: () => void
-  apiKey: string
+  hasKey: boolean
   apiKeyLoaded: boolean
   onSaveApiKey: (key: string) => Promise<void>
 }
@@ -46,7 +46,7 @@ export default function Sidebar({
   gitLoading,
   gitError,
   onRefreshGitStatus,
-  apiKey,
+  hasKey,
   apiKeyLoaded,
   onSaveApiKey,
 }: Props) {
@@ -82,7 +82,7 @@ export default function Sidebar({
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'settings'}>
         <SettingsPanel
-          apiKey={apiKey}
+          hasKey={hasKey}
           apiKeyLoaded={apiKeyLoaded}
           onSave={onSaveApiKey}
         />
