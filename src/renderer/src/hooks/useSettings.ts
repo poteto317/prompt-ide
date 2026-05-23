@@ -12,10 +12,11 @@ export function useSettings(): SettingsState {
   const [apiKeyLoaded, setApiKeyLoaded] = useState(false)
 
   useEffect(() => {
-    claudeApi.getApiKey().then((key) => {
-      setApiKey(key)
-      setApiKeyLoaded(true)
-    })
+    claudeApi
+      .getApiKey()
+      .then((key) => setApiKey(key))
+      .catch(() => {})
+      .finally(() => setApiKeyLoaded(true))
   }, [])
 
   const saveApiKey = useCallback(async (key: string): Promise<void> => {

@@ -14,7 +14,7 @@ export async function runPrompt(
     max_tokens: 4096,
     messages: [{ role: 'user', content: userMessage }],
   })
-  const block = message.content[0]
-  if (block.type !== 'text') throw new Error('Unexpected response type')
+  const block = message.content.find((b) => b.type === 'text')
+  if (!block || block.type !== 'text') throw new Error('Unexpected response type')
   return block.text
 }

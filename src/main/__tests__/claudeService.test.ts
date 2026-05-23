@@ -62,4 +62,9 @@ describe('runPrompt', () => {
     mockCreate.mockResolvedValue({ content: [{ type: 'tool_use', id: 'x', name: 'y', input: {} }] })
     await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow('Unexpected response type')
   })
+
+  it('message.content が空配列のとき Unexpected response type エラーを投げる', async () => {
+    mockCreate.mockResolvedValue({ content: [] })
+    await expect(runPrompt('sk-ant-key', 'プロンプト', null)).rejects.toThrow('Unexpected response type')
+  })
 })

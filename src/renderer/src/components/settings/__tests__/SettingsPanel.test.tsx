@@ -47,4 +47,15 @@ describe('SettingsPanel', () => {
     const input = screen.getByLabelText('API キー') as HTMLInputElement
     expect(input.value).toBe('sk-ant-existing')
   })
+
+  it('apiKeyLoaded が false → true になると inputValue が apiKey に同期される', () => {
+    const { rerender } = render(
+      <SettingsPanel apiKey="" apiKeyLoaded={false} onSave={vi.fn()} />
+    )
+    const input = screen.getByLabelText('API キー') as HTMLInputElement
+    expect(input.value).toBe('')
+
+    rerender(<SettingsPanel apiKey="sk-ant-loaded" apiKeyLoaded={true} onSave={vi.fn()} />)
+    expect(input.value).toBe('sk-ant-loaded')
+  })
 })
