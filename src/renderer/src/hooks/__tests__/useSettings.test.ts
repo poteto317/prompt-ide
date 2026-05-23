@@ -6,12 +6,12 @@ vi.mock('../../lib/claudeApi')
 import * as claudeApi from '../../lib/claudeApi'
 import { useSettings } from '../useSettings'
 
-const mockGetApiKey = vi.mocked(claudeApi.getApiKey)
+const mockHasApiKey = vi.mocked(claudeApi.hasApiKey)
 const mockSetApiKey = vi.mocked(claudeApi.setApiKey)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockGetApiKey.mockResolvedValue(false)
+  mockHasApiKey.mockResolvedValue(false)
   mockSetApiKey.mockResolvedValue(undefined)
 })
 
@@ -22,23 +22,23 @@ describe('useSettings', () => {
     expect(result.current.apiKeyLoaded).toBe(false)
   })
 
-  it('mount 時に getApiKey が呼ばれ hasKey と apiKeyLoaded がセットされる（キーあり）', async () => {
-    mockGetApiKey.mockResolvedValue(true)
+  it('mount 時に hasApiKey が呼ばれ hasKey と apiKeyLoaded がセットされる（キーあり）', async () => {
+    mockHasApiKey.mockResolvedValue(true)
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
     expect(result.current.hasKey).toBe(true)
-    expect(mockGetApiKey).toHaveBeenCalledOnce()
+    expect(mockHasApiKey).toHaveBeenCalledOnce()
   })
 
-  it('getApiKey が false を返したとき hasKey=false で apiKeyLoaded=true になる', async () => {
-    mockGetApiKey.mockResolvedValue(false)
+  it('hasApiKey が false を返したとき hasKey=false で apiKeyLoaded=true になる', async () => {
+    mockHasApiKey.mockResolvedValue(false)
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
     expect(result.current.hasKey).toBe(false)
   })
 
-  it('getApiKey が reject したとき apiKeyLoaded=true になり hasKey=false のまま', async () => {
-    mockGetApiKey.mockRejectedValue(new Error('keystore unavailable'))
+  it('hasApiKey が reject したとき apiKeyLoaded=true になり hasKey=false のまま', async () => {
+    mockHasApiKey.mockRejectedValue(new Error('keystore unavailable'))
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
@@ -46,9 +46,9 @@ describe('useSettings', () => {
     consoleSpy.mockRestore()
   })
 
-  it('getApiKey が reject したとき console.error が呼ばれる', async () => {
+  it('hasApiKey が reject したとき console.error が呼ばれる', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockGetApiKey.mockRejectedValue(new Error('keystore error'))
+    mockHasApiKey.mockRejectedValue(new Error('keystore error'))
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
     expect(consoleSpy).toHaveBeenCalledOnce()

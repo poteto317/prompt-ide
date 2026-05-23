@@ -22,6 +22,7 @@ export default function SettingsPanel({ hasKey, apiKeyLoaded, onSave }: Props) {
   const handleSave = useCallback(async () => {
     const trimmed = inputValue.trim()
     setIsSaving(true)
+    setSaved(false)
     setSaveError(null)
     try {
       await onSave(trimmed)
