@@ -4,7 +4,7 @@ import type { OpenFile } from '../types'
 import WelcomeView from './editor/WelcomeView'
 import EditorTabs from './editor/EditorTabs'
 
-const fileEditorOptions = { ...editorOptions, readOnly: false }
+const fileEditorOptions = { ...editorOptions, readOnly: true }
 
 interface Props {
   openFile: OpenFile | null
