@@ -85,6 +85,21 @@ describe('getApiKey', () => {
     expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-legacy')
     expect(mockWriteFile).toHaveBeenCalledOnce()
   })
+
+  it('レガシー平文 apiKey に前後スペースがある場合は trim して保存・返却する', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: '  sk-ant-legacy  ' }))
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-legacy'))
+    const result = await getApiKey()
+    expect(result).toBe('sk-ant-legacy')
+    expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-legacy')
+  })
+
+  it('レガシー平文 apiKey が空白のみの場合は空文字を返し保存しない', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: '   ' }))
+    const result = await getApiKey()
+    expect(result).toBe('')
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
 })
 
 describe('setApiKey', () => {

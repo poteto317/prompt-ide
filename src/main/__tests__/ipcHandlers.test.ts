@@ -254,6 +254,13 @@ describe('registerIpcHandlers', () => {
       const result = await handler(makeEvent(1))
       expect(result).toBe(false)
     })
+
+    it('getApiKey が空白のみを返すとき false を返す（trim ベース判定）', async () => {
+      mockGetApiKey.mockResolvedValue('   ')
+      const handler = getRegisteredHandler('settings:getApiKey')
+      const result = await handler(makeEvent(1))
+      expect(result).toBe(false)
+    })
   })
 
   describe('settings:setApiKey', () => {

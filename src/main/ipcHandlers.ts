@@ -56,7 +56,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle('settings:getApiKey', async () => {
     const key = await getApiKey()
-    return key.length > 0
+    return key.trim().length > 0
   })
 
   ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) => {
