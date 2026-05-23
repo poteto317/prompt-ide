@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Props {
   apiKey: string
@@ -11,6 +11,16 @@ export default function SettingsPanel({ apiKey, apiKeyLoaded, onSave }: Props) {
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (apiKeyLoaded) setInputValue(apiKey)
+  }, [apiKey, apiKeyLoaded])
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [])
 
   const handleSave = useCallback(async () => {
     setIsSaving(true)

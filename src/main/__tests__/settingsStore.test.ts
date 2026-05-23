@@ -6,6 +6,10 @@ const mockMkdir = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
+  safeStorage: {
+    encryptString: vi.fn((str: string) => Buffer.from(str)),
+    decryptString: vi.fn((buf: Buffer) => buf.toString('utf-8')),
+  },
 }))
 
 vi.mock('node:fs/promises', () => ({
@@ -16,6 +20,10 @@ vi.mock('node:fs/promises', () => ({
 }))
 
 import { getApiKey, setApiKey } from '../settingsStore'
+import { safeStorage } from 'electron'
+
+const mockEncrypt = vi.mocked(safeStorage.encryptString)
+const mockDecrypt = vi.mocked(safeStorage.decryptString)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -25,39 +33,69 @@ beforeEach(() => {
 
 describe('getApiKey', () => {
   it('ファイルが存在しない場合は空文字を返す', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'))
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockReadFile.mockRejectedValue(err)
     expect(await getApiKey()).toBe('')
   })
 
-  it('ファイルに apiKey が保存されている場合はその値を返す', async () => {
-    mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'sk-ant-test' }))
-    expect(await getApiKey()).toBe('sk-ant-test')
+  it('ENOENT 以外のエラーは伝播する', async () => {
+    const err = Object.assign(new Error('EPERM'), { code: 'EPERM' })
+    mockReadFile.mockRejectedValue(err)
+    await expect(getApiKey()).rejects.toThrow('EPERM')
   })
 
-  it('ファイルに apiKey が含まれていない場合は空文字を返す', async () => {
+  it('encryptedApiKey が保存されている場合は復号して返す', async () => {
+    const encrypted = Buffer.from('sk-ant-test')
+    const base64 = encrypted.toString('base64')
+    mockReadFile.mockResolvedValue(JSON.stringify({ encryptedApiKey: base64 }))
+    mockDecrypt.mockReturnValue('sk-ant-test')
+    expect(await getApiKey()).toBe('sk-ant-test')
+    expect(mockDecrypt).toHaveBeenCalledWith(expect.any(Buffer))
+  })
+
+  it('正しいパスのファイルを読み込む', async () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockReadFile.mockRejectedValue(err)
+    await getApiKey()
+    expect(mockReadFile).toHaveBeenCalledWith('/mock/userData/settings.json', 'utf-8')
+  })
+
+  it('apiKey が含まれていない場合は空文字を返す', async () => {
     mockReadFile.mockResolvedValue(JSON.stringify({}))
     expect(await getApiKey()).toBe('')
   })
 
-  it('正しいパスのファイルを読み込む', async () => {
-    mockReadFile.mockRejectedValue(new Error('ENOENT'))
-    await getApiKey()
-    expect(mockReadFile).toHaveBeenCalledWith('/mock/userData/settings.json', 'utf-8')
+  it('レガシー平文 apiKey を読み取り、暗号化して再保存する', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'sk-ant-legacy' }))
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-legacy'))
+    const result = await getApiKey()
+    expect(result).toBe('sk-ant-legacy')
+    expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-legacy')
+    expect(mockWriteFile).toHaveBeenCalledOnce()
   })
 })
 
 describe('setApiKey', () => {
-  it('設定ファイルに apiKey を書き込む', async () => {
+  it('safeStorage で暗号化して設定ファイルに書き込む', async () => {
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
+    const base64 = Buffer.from('sk-ant-abc').toString('base64')
     expect(mockWriteFile).toHaveBeenCalledWith(
       '/mock/userData/settings.json',
-      JSON.stringify({ apiKey: 'sk-ant-abc' }, null, 2),
-      'utf-8'
+      JSON.stringify({ encryptedApiKey: base64 }, null, 2),
+      { encoding: 'utf-8', mode: 0o600 }
     )
   })
 
   it('userData ディレクトリを再帰的に作成する', async () => {
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
     expect(mockMkdir).toHaveBeenCalledWith('/mock/userData', { recursive: true })
+  })
+
+  it('encryptString を呼び出す', async () => {
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
+    await setApiKey('sk-ant-abc')
+    expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-abc')
   })
 })

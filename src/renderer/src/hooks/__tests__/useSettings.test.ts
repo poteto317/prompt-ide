@@ -37,6 +37,13 @@ describe('useSettings', () => {
     expect(result.current.apiKey).toBe('')
   })
 
+  it('getApiKey が reject したとき apiKeyLoaded=true になり apiKey="" のまま', async () => {
+    mockGetApiKey.mockRejectedValue(new Error('network error'))
+    const { result } = renderHook(() => useSettings())
+    await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
+    expect(result.current.apiKey).toBe('')
+  })
+
   it('saveApiKey を呼ぶと setApiKey IPC が呼ばれ apiKey state が更新される', async () => {
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
