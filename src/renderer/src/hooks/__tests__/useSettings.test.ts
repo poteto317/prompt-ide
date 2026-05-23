@@ -39,9 +39,20 @@ describe('useSettings', () => {
 
   it('getApiKey が reject したとき apiKeyLoaded=true になり hasKey=false のまま', async () => {
     mockGetApiKey.mockRejectedValue(new Error('keystore unavailable'))
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const { result } = renderHook(() => useSettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
     expect(result.current.hasKey).toBe(false)
+    consoleSpy.mockRestore()
+  })
+
+  it('getApiKey が reject したとき console.error が呼ばれる', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockGetApiKey.mockRejectedValue(new Error('keystore error'))
+    const { result } = renderHook(() => useSettings())
+    await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
+    expect(consoleSpy).toHaveBeenCalledOnce()
+    consoleSpy.mockRestore()
   })
 
   it('saveApiKey を呼ぶと setApiKey IPC が呼ばれ hasKey が true になる', async () => {

@@ -20,6 +20,11 @@ const defaultProps = {
 }
 
 describe('EditorPanel — openFile なし', () => {
+  it('.editor-panel が入れ子にならない（WelcomeView との二重ラッパー防止）', () => {
+    const { container } = render(<EditorPanel {...defaultProps} />)
+    expect(container.querySelectorAll('.editor-panel')).toHaveLength(1)
+  })
+
   it('"welcome.ts" タブが描画される', () => {
     render(<EditorPanel {...defaultProps} />)
     expect(screen.getByText('welcome.ts')).toBeInTheDocument()

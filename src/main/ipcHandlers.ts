@@ -59,9 +59,12 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return key.length > 0
   })
 
-  ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) =>
-    setApiKey(apiKey)
-  )
+  ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) => {
+    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      throw new Error('API キーが空です')
+    }
+    return setApiKey(apiKey.trim())
+  })
 
   ipcMain.handle(
     'claude:runPrompt',
@@ -70,7 +73,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       { promptContent, fileContent }: { promptContent: string; fileContent: string | null }
     ) => {
       const apiKey = await getApiKey()
-      if (!apiKey) throw new Error('API キーが設定されていません')
+      if (apiKey.trim().length === 0) throw new Error('API キーが設定されていません')
       return runPrompt(apiKey, promptContent, fileContent)
     }
   )
