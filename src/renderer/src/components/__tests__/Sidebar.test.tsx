@@ -21,6 +21,7 @@ const defaultProps = {
   onRefreshGitStatus: vi.fn(),
   hasKey: false,
   apiKeyLoaded: true,
+  keyStoreError: null as string | null,
   onSaveApiKey: vi.fn(),
 }
 

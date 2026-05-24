@@ -11,7 +11,7 @@ export default function App(): React.JSX.Element {
     folderPath, fileTree, openFile, error, openFolder, selectFile,
     prompts, addPrompt, deletePrompt,
     gitStatus, gitLoading, gitError, refreshGitStatus,
-    hasKey, apiKeyLoaded, saveApiKey,
+    hasKey, apiKeyLoaded, keyStoreError, saveApiKey,
     isExecuting, result, executionError, executePrompt, clearResult,
   } = useAppState()
 
@@ -45,6 +45,7 @@ export default function App(): React.JSX.Element {
               onRefreshGitStatus={refreshGitStatus}
               hasKey={hasKey}
               apiKeyLoaded={apiKeyLoaded}
+              keyStoreError={keyStoreError}
               onSaveApiKey={saveApiKey}
             />
           )}

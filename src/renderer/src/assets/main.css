@@ -693,6 +693,13 @@ body {
   color: #f48771;
 }
 
+.settings-panel__keystore-error {
+  font-size: 12px;
+  color: #f48771;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
 /* ---- PromptItem 実行ボタン ---- */
 
 .prompt-item__actions {

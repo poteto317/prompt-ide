@@ -6,6 +6,7 @@ import SettingsPanel from '../SettingsPanel'
 const defaultProps = {
   hasKey: false,
   apiKeyLoaded: true,
+  keyStoreError: null as string | null,
   onSave: vi.fn(),
 }
 
@@ -97,5 +98,30 @@ describe('SettingsPanel', () => {
     render(<SettingsPanel {...defaultProps} hasKey={false} />)
     const input = screen.getByLabelText('API キー') as HTMLInputElement
     expect(input.placeholder).toBe('sk-ant-...')
+  })
+
+  it('keyStoreError があるときエラーメッセージが表示される', () => {
+    render(<SettingsPanel {...defaultProps} keyStoreError="システムのキーストアが利用できません" />)
+    expect(screen.getByText('システムのキーストアが利用できません')).toBeInTheDocument()
+  })
+
+  it('keyStoreError があるとき input が disabled になる', () => {
+    render(<SettingsPanel {...defaultProps} keyStoreError="キーストアエラー" />)
+    expect(screen.getByLabelText('API キー')).toBeDisabled()
+  })
+
+  it('keyStoreError があるとき保存ボタンが disabled になる', () => {
+    render(<SettingsPanel {...defaultProps} keyStoreError="キーストアエラー" />)
+    expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('keyStoreError があるとき「設定済み」インジケーターが表示されない', () => {
+    render(<SettingsPanel {...defaultProps} hasKey={true} keyStoreError="キーストアエラー" />)
+    expect(screen.queryByText(/設定済み/)).not.toBeInTheDocument()
+  })
+
+  it('keyStoreError が null のときエラーメッセージが表示されない', () => {
+    render(<SettingsPanel {...defaultProps} keyStoreError={null} />)
+    expect(screen.queryByText('システムのキーストアが利用できません')).not.toBeInTheDocument()
   })
 })

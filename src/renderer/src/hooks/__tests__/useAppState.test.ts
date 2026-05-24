@@ -41,6 +41,7 @@ const mockUseSettings = vi.hoisted(() =>
   vi.fn(() => ({
     hasKey: false,
     apiKeyLoaded: false,
+    keyStoreError: null as string | null,
     saveApiKey: vi.fn(),
   }))
 )
@@ -134,10 +135,11 @@ describe('useAppState', () => {
     expect(mockUsePromptExecution).toHaveBeenCalledOnce()
   })
 
-  it('settings の値が含まれる（hasKey, apiKeyLoaded, saveApiKey）', () => {
+  it('settings の値が含まれる（hasKey, apiKeyLoaded, keyStoreError, saveApiKey）', () => {
     const { result } = renderHook(() => useAppState())
     expect(result.current).toHaveProperty('hasKey', false)
     expect(result.current).toHaveProperty('apiKeyLoaded', false)
+    expect(result.current).toHaveProperty('keyStoreError', null)
     expect(result.current).toHaveProperty('saveApiKey')
   })
 
