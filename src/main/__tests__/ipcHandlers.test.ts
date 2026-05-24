@@ -327,6 +327,30 @@ describe('registerIpcHandlers', () => {
       expect(mockRunPrompt).toHaveBeenCalledWith('sk-ant-key', 'プロンプト', null)
     })
 
+    it('payload が undefined のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), undefined)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('payload が null のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), null)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('payload が数値のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), 42)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
     it('promptContent が文字列でないとき "promptContent は文字列である必要があります" エラーをスロー', async () => {
       const handler = getRegisteredHandler('claude:runPrompt')
       await expect(

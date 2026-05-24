@@ -68,10 +68,11 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
 
   ipcMain.handle(
     'claude:runPrompt',
-    async (
-      _event: IpcMainInvokeEvent,
-      { promptContent, fileContent }: { promptContent: string; fileContent: string | null }
-    ) => {
+    async (_event: IpcMainInvokeEvent, payload: unknown) => {
+      if (typeof payload !== 'object' || payload === null) {
+        throw new Error('引数はオブジェクトである必要があります')
+      }
+      const { promptContent, fileContent } = payload as Record<string, unknown>
       if (typeof promptContent !== 'string') {
         throw new Error('promptContent は文字列である必要があります')
       }
