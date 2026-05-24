@@ -3,10 +3,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 interface Props {
   hasKey: boolean
   apiKeyLoaded: boolean
+  keyStoreError: string | null
   onSave: (key: string) => Promise<void>
 }
 
-export default function SettingsPanel({ hasKey, apiKeyLoaded, onSave }: Props) {
+export default function SettingsPanel({ hasKey, apiKeyLoaded, keyStoreError, onSave }: Props) {
   const [inputValue, setInputValue] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -37,13 +38,16 @@ export default function SettingsPanel({ hasKey, apiKeyLoaded, onSave }: Props) {
     }
   }, [inputValue, onSave])
 
-  const isSaveDisabled = !apiKeyLoaded || isSaving || inputValue.trim().length === 0
+  const isSaveDisabled = !apiKeyLoaded || isSaving || inputValue.trim().length === 0 || keyStoreError !== null
 
   return (
     <div className="settings-panel">
       <div className="settings-panel__section">
         <p className="settings-panel__label">Anthropic API キー</p>
-        {apiKeyLoaded && hasKey && (
+        {keyStoreError && (
+          <p className="settings-panel__keystore-error">{keyStoreError}</p>
+        )}
+        {!keyStoreError && apiKeyLoaded && hasKey && (
           <p className="settings-panel__status">（設定済み）更新するには再入力してください</p>
         )}
         <input
@@ -51,7 +55,7 @@ export default function SettingsPanel({ hasKey, apiKeyLoaded, onSave }: Props) {
           className="settings-panel__input"
           placeholder={hasKey ? '新しいキーを入力...' : 'sk-ant-...'}
           value={inputValue}
-          disabled={!apiKeyLoaded || isSaving}
+          disabled={!apiKeyLoaded || isSaving || keyStoreError !== null}
           onChange={(e) => setInputValue(e.target.value)}
           aria-label="API キー"
         />

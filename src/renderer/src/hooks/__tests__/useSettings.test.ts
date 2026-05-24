@@ -16,10 +16,11 @@ beforeEach(() => {
 })
 
 describe('useSettings', () => {
-  it('初期状態: hasKey=false, apiKeyLoaded=false', () => {
+  it('初期状態: hasKey=false, apiKeyLoaded=false, keyStoreError=null', () => {
     const { result } = renderHook(() => useSettings())
     expect(result.current.hasKey).toBe(false)
     expect(result.current.apiKeyLoaded).toBe(false)
+    expect(result.current.keyStoreError).toBeNull()
   })
 
   it('mount 時に hasApiKey が呼ばれ hasKey と apiKeyLoaded がセットされる（キーあり）', async () => {
@@ -44,6 +45,31 @@ describe('useSettings', () => {
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
     expect(result.current.hasKey).toBe(false)
     consoleSpy.mockRestore()
+  })
+
+  it('hasApiKey が reject したとき keyStoreError にエラーメッセージがセットされる', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockHasApiKey.mockRejectedValue(new Error('システムのキーストアが利用できません'))
+    const { result } = renderHook(() => useSettings())
+    await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
+    expect(result.current.keyStoreError).toBe('システムのキーストアが利用できません')
+    consoleSpy.mockRestore()
+  })
+
+  it('hasApiKey が reject したとき Error でない場合もフォールバックメッセージがセットされる', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mockHasApiKey.mockRejectedValue('string error')
+    const { result } = renderHook(() => useSettings())
+    await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
+    expect(result.current.keyStoreError).toBe('キーストアへのアクセスに失敗しました')
+    consoleSpy.mockRestore()
+  })
+
+  it('hasApiKey が成功したとき keyStoreError は null のまま', async () => {
+    mockHasApiKey.mockResolvedValue(true)
+    const { result } = renderHook(() => useSettings())
+    await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
+    expect(result.current.keyStoreError).toBeNull()
   })
 
   it('hasApiKey が reject したとき console.error が呼ばれる', async () => {
