@@ -54,7 +54,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     return getGitStatus(allowedFolder)
   })
 
-  ipcMain.handle('settings:getApiKey', async () => {
+  ipcMain.handle('settings:hasApiKey', async () => {
     const key = await getApiKey()
     return key.trim().length > 0
   })
@@ -72,9 +72,16 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       _event: IpcMainInvokeEvent,
       { promptContent, fileContent }: { promptContent: string; fileContent: string | null }
     ) => {
+      if (typeof promptContent !== 'string') {
+        throw new Error('promptContent は文字列である必要があります')
+      }
+      if (fileContent !== null && typeof fileContent !== 'string') {
+        throw new Error('fileContent は文字列または null である必要があります')
+      }
       const apiKey = await getApiKey()
-      if (apiKey.trim().length === 0) throw new Error('API キーが設定されていません')
-      return runPrompt(apiKey, promptContent, fileContent)
+      const trimmedKey = apiKey.trim()
+      if (trimmedKey.length === 0) throw new Error('API キーが設定されていません')
+      return runPrompt(trimmedKey, promptContent, fileContent)
     }
   )
 }
