@@ -1,6 +1,7 @@
 import PromptsPanel from './prompts/PromptsPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
 import SourceControlPanel from './source-control/SourceControlPanel'
+import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
 import type { Panel, FileTreeNode, Prompt } from '../types'
@@ -17,10 +18,16 @@ interface Props {
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
+  onRunPrompt: (content: string) => void
+  isExecuting: boolean
   gitStatus: GitStatusResult | null
   gitLoading: boolean
   gitError: Error | null
   onRefreshGitStatus: () => void
+  hasKey: boolean
+  apiKeyLoaded: boolean
+  keyStoreError: string | null
+  onSaveApiKey: (key: string) => Promise<void>
 }
 
 export default function Sidebar({
@@ -34,18 +41,20 @@ export default function Sidebar({
   prompts,
   onAddPrompt,
   onDeletePrompt,
+  onRunPrompt,
+  isExecuting,
   gitStatus,
   gitLoading,
   gitError,
   onRefreshGitStatus,
+  hasKey,
+  apiKeyLoaded,
+  keyStoreError,
+  onSaveApiKey,
 }: Props) {
   return (
     <div className="sidebar">
       <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
-      {/*
-        各パネルを常時マウントして state を維持する。
-        activePanel に応じて表示/非表示のみ切り替える。
-      */}
       <PanelContainer isActive={activePanel === 'explorer'}>
         <ExplorerPanel
           folderPath={folderPath}
@@ -57,7 +66,13 @@ export default function Sidebar({
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'prompts'}>
-        <PromptsPanel prompts={prompts} onAdd={onAddPrompt} onDelete={onDeletePrompt} />
+        <PromptsPanel
+          prompts={prompts}
+          onAdd={onAddPrompt}
+          onDelete={onDeletePrompt}
+          onRun={onRunPrompt}
+          isRunDisabled={isExecuting}
+        />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>
         <SourceControlPanel
@@ -65,6 +80,14 @@ export default function Sidebar({
           gitLoading={gitLoading}
           gitError={gitError}
           onRefresh={onRefreshGitStatus}
+        />
+      </PanelContainer>
+      <PanelContainer isActive={activePanel === 'settings'}>
+        <SettingsPanel
+          hasKey={hasKey}
+          apiKeyLoaded={apiKeyLoaded}
+          keyStoreError={keyStoreError}
+          onSave={onSaveApiKey}
         />
       </PanelContainer>
     </div>

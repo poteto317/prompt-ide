@@ -43,7 +43,7 @@ describe('ActivityBar', () => {
     })
   })
 
-  it('Settings ボタンが常に描画される', () => {
+  it('設定パネルボタンが描画される', () => {
     render(<ActivityBar {...defaultProps} />)
     expect(screen.getByTitle('設定')).toBeInTheDocument()
   })
@@ -81,9 +81,9 @@ describe('ActivityBar', () => {
     })
   })
 
-  it('設定ボタンは disabled になっている（未実装プレースホルダー）', () => {
+  it('設定パネルボタンは有効（clickable）で disabled でない', () => {
     render(<ActivityBar {...defaultProps} />)
-    expect(screen.getByTitle('設定')).toBeDisabled()
+    expect(screen.getByTitle('設定')).not.toBeDisabled()
   })
 
   it('ボタン内のSVGアイコンに aria-hidden が設定されている', () => {

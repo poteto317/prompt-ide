@@ -5,7 +5,7 @@ import EditorTabs from './EditorTabs'
 
 export default function WelcomeView() {
   return (
-    <div className="editor-panel">
+    <>
       <EditorTabs fileName="welcome.ts" />
       <div className="editor-body">
         <Editor
@@ -16,6 +16,6 @@ export default function WelcomeView() {
           options={editorOptions}
         />
       </div>
-    </div>
+    </>
   )
 }

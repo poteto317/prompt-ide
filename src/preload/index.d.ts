@@ -9,6 +9,9 @@ declare global {
       readDirectory(path: string): Promise<FileTreeNode[]>
       readFile(path: string): Promise<string>
       getGitStatus(): Promise<GitStatusResult>
+      hasApiKey(): Promise<boolean>
+      setApiKey(apiKey: string): Promise<void>
+      runPrompt(promptContent: string, fileContent: string | null): Promise<string>
     }
   }
 }

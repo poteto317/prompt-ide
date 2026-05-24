@@ -37,10 +37,31 @@ const mockUseGitStatus = vi.hoisted(() =>
   }))
 )
 
+const mockUseSettings = vi.hoisted(() =>
+  vi.fn(() => ({
+    hasKey: false,
+    apiKeyLoaded: false,
+    keyStoreError: null as string | null,
+    saveApiKey: vi.fn(),
+  }))
+)
+
+const mockUsePromptExecution = vi.hoisted(() =>
+  vi.fn(() => ({
+    isExecuting: false,
+    result: null,
+    executionError: null,
+    executePrompt: vi.fn(),
+    clearResult: vi.fn(),
+  }))
+)
+
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
 vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
+vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
+vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
 
 import { useAppState } from '../useAppState'
 
@@ -87,11 +108,48 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('selectFile')
   })
 
-  it('4フックの返り値にキーの重複がない', () => {
+  it('6フックの返り値にキーの重複がない（各フックのキー集合が互いに素）', () => {
+    const keysets = [
+      Object.keys(mockUsePanelState()),
+      Object.keys(mockUseFileSystem()),
+      Object.keys(mockUsePrompts()),
+      Object.keys(mockUseGitStatus()),
+      Object.keys(mockUseSettings()),
+      Object.keys(mockUsePromptExecution()),
+    ]
+    for (let i = 0; i < keysets.length; i++) {
+      for (let j = i + 1; j < keysets.length; j++) {
+        const intersection = keysets[i].filter((k) => keysets[j].includes(k))
+        expect(intersection).toHaveLength(0)
+      }
+    }
+  })
+
+  it('useSettings を呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUseSettings).toHaveBeenCalledOnce()
+  })
+
+  it('usePromptExecution を呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUsePromptExecution).toHaveBeenCalledOnce()
+  })
+
+  it('settings の値が含まれる（hasKey, apiKeyLoaded, keyStoreError, saveApiKey）', () => {
     const { result } = renderHook(() => useAppState())
-    const keys = Object.keys(result.current)
-    const uniqueKeys = new Set(keys)
-    expect(keys.length).toBe(uniqueKeys.size)
+    expect(result.current).toHaveProperty('hasKey', false)
+    expect(result.current).toHaveProperty('apiKeyLoaded', false)
+    expect(result.current).toHaveProperty('keyStoreError', null)
+    expect(result.current).toHaveProperty('saveApiKey')
+  })
+
+  it('execution の値が含まれる（isExecuting, result, executionError, executePrompt, clearResult）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('isExecuting', false)
+    expect(result.current).toHaveProperty('result', null)
+    expect(result.current).toHaveProperty('executionError', null)
+    expect(result.current).toHaveProperty('executePrompt')
+    expect(result.current).toHaveProperty('clearResult')
   })
 
   it('prompts の値が含まれる（prompts, addPrompt, deletePrompt）', () => {
