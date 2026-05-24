@@ -7,6 +7,9 @@ const mockReadFileContent = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 const mockAppOn = vi.hoisted(() => vi.fn())
 const mockGetGitStatus = vi.hoisted(() => vi.fn())
+const mockGetApiKey = vi.hoisted(() => vi.fn())
+const mockSetApiKey = vi.hoisted(() => vi.fn())
+const mockRunPrompt = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { on: mockAppOn },
@@ -28,6 +31,15 @@ vi.mock('node:fs/promises', () => ({
 
 vi.mock('../gitService', () => ({
   getGitStatus: mockGetGitStatus,
+}))
+
+vi.mock('../settingsStore', () => ({
+  getApiKey: mockGetApiKey,
+  setApiKey: mockSetApiKey,
+}))
+
+vi.mock('../claudeService', () => ({
+  runPrompt: mockRunPrompt,
 }))
 
 import { resolve as resolvePath } from 'path'
@@ -224,6 +236,144 @@ describe('registerIpcHandlers', () => {
       mockGetGitStatus.mockRejectedValue(new Error('git error'))
       const handler = getRegisteredHandler('git:getStatus')
       await expect(handler(makeEvent(1))).rejects.toThrow('git error')
+    })
+  })
+
+  describe('settings:hasApiKey', () => {
+    it('getApiKey がキーを返すとき true を返す（平文キーは renderer に渡さない）', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-test')
+      const handler = getRegisteredHandler('settings:hasApiKey')
+      const result = await handler(makeEvent(1))
+      expect(mockGetApiKey).toHaveBeenCalledOnce()
+      expect(result).toBe(true)
+    })
+
+    it('getApiKey が空文字を返すとき false を返す', async () => {
+      mockGetApiKey.mockResolvedValue('')
+      const handler = getRegisteredHandler('settings:hasApiKey')
+      const result = await handler(makeEvent(1))
+      expect(result).toBe(false)
+    })
+
+    it('getApiKey が空白のみを返すとき false を返す（trim ベース判定）', async () => {
+      mockGetApiKey.mockResolvedValue('   ')
+      const handler = getRegisteredHandler('settings:hasApiKey')
+      const result = await handler(makeEvent(1))
+      expect(result).toBe(false)
+    })
+  })
+
+  describe('settings:setApiKey', () => {
+    it('setApiKey を呼び出す', async () => {
+      mockSetApiKey.mockResolvedValue(undefined)
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await handler(makeEvent(1), 'sk-ant-new')
+      expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
+    })
+
+    it('trim した値を setApiKey に渡す', async () => {
+      mockSetApiKey.mockResolvedValue(undefined)
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await handler(makeEvent(1), '  sk-ant-new  ')
+      expect(mockSetApiKey).toHaveBeenCalledWith('sk-ant-new')
+    })
+
+    it('空文字のとき "API キーが空です" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await expect(handler(makeEvent(1), '')).rejects.toThrow('API キーが空です')
+      expect(mockSetApiKey).not.toHaveBeenCalled()
+    })
+
+    it('空白のみのとき "API キーが空です" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('settings:setApiKey')
+      await expect(handler(makeEvent(1), '   ')).rejects.toThrow('API キーが空です')
+      expect(mockSetApiKey).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('claude:runPrompt', () => {
+    it('API キーが未設定のとき "API キーが設定されていません" エラーをスロー', async () => {
+      mockGetApiKey.mockResolvedValue('')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('API キーが設定されていません')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('API キーが空白のみのとき "API キーが設定されていません" エラーをスロー', async () => {
+      mockGetApiKey.mockResolvedValue('   ')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('API キーが設定されていません')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('API キーが設定されているとき runPrompt を呼んで結果を返す', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-key')
+      mockRunPrompt.mockResolvedValue('回答テキスト')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      const result = await handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: 'ファイル' })
+      expect(mockRunPrompt).toHaveBeenCalledWith('sk-ant-key', 'プロンプト', 'ファイル')
+      expect(result).toBe('回答テキスト')
+    })
+
+    it('getApiKey が前後スペースを含むキーを返したとき trim して runPrompt に渡す', async () => {
+      mockGetApiKey.mockResolvedValue('  sk-ant-key  ')
+      mockRunPrompt.mockResolvedValue('回答テキスト')
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      expect(mockRunPrompt).toHaveBeenCalledWith('sk-ant-key', 'プロンプト', null)
+    })
+
+    it('payload が undefined のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), undefined)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('payload が null のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), null)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('payload が数値のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), 42)
+      ).rejects.toThrow('引数はオブジェクトである必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('promptContent が文字列でないとき "promptContent は文字列である必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 123, fileContent: null })
+      ).rejects.toThrow('promptContent は文字列である必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('fileContent が null でも文字列でもないとき "fileContent は文字列または null である必要があります" エラーをスロー', async () => {
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: 123 })
+      ).rejects.toThrow('fileContent は文字列または null である必要があります')
+      expect(mockRunPrompt).not.toHaveBeenCalled()
+    })
+
+    it('runPrompt が throw した場合エラーが伝播する', async () => {
+      mockGetApiKey.mockResolvedValue('sk-ant-key')
+      mockRunPrompt.mockRejectedValue(new Error('api error'))
+      const handler = getRegisteredHandler('claude:runPrompt')
+      await expect(
+        handler(makeEvent(1), { promptContent: 'プロンプト', fileContent: null })
+      ).rejects.toThrow('api error')
     })
   })
 })
