@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron'
-import type { FileTreeNode, GitStatusResult } from '@shared/types'
+import type { FileTreeNode, GitStatusResult, Prompt } from '@shared/types'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -10,4 +10,6 @@ export const api = {
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),
   runPrompt: (promptContent: string, fileContent: string | null): Promise<string> =>
     ipcRenderer.invoke('claude:runPrompt', { promptContent, fileContent }),
+  loadPrompts: (): Promise<Prompt[]> => ipcRenderer.invoke('prompts:load'),
+  savePrompts: (prompts: Prompt[]): Promise<void> => ipcRenderer.invoke('prompts:save', prompts),
 }
