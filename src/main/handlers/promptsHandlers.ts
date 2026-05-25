@@ -1,22 +1,11 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { loadPrompts, savePrompts } from '../promptStore'
+import { isValidPrompt, sanitizePrompt } from '../promptUtils'
 import type { Prompt } from '@shared/types'
-
-function isValidPrompt(item: unknown): item is Prompt {
-  if (typeof item !== 'object' || item === null) return false
-  const p = item as Record<string, unknown>
-  return (
-    typeof p.id === 'string' &&
-    typeof p.title === 'string' &&
-    typeof p.content === 'string' &&
-    typeof p.createdAt === 'number'
-  )
-}
 
 function toPrompt(item: unknown): Prompt {
   if (!isValidPrompt(item)) throw new Error('プロンプトの形式が不正です')
-  const { id, title, content, createdAt } = item
-  return { id, title, content, createdAt }
+  return sanitizePrompt(item)
 }
 
 export function registerPromptsHandlers(ipcMain: IpcMain): void {
