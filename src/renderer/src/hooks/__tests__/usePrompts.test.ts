@@ -92,7 +92,8 @@ describe('addPrompt', () => {
 })
 
 describe('ロード完了前のミューテーション競合', () => {
-  it('ロード完了前に addPrompt してもプロンプトが失われない', async () => {
+  it('ロード完了前に addPrompt しても既存の永続化データが失われない（マージ）', async () => {
+    const stored: Prompt[] = [{ id: 'existing', title: '既存', content: 'C', createdAt: 1 }]
     let resolveLoad!: (value: Prompt[]) => void
     mockLoad.mockReturnValueOnce(
       new Promise<Prompt[]>((resolve) => {
@@ -101,17 +102,18 @@ describe('ロード完了前のミューテーション競合', () => {
     )
     const { result } = renderHook(() => usePrompts())
 
-    act(() => result.current.addPrompt('タイトル', 'コンテンツ'))
+    act(() => result.current.addPrompt('新規', 'コンテンツ'))
     expect(result.current.prompts).toHaveLength(1)
 
-    await act(async () => resolveLoad([]))
+    await act(async () => resolveLoad(stored))
     expect(result.current.promptsLoaded).toBe(true)
-    expect(result.current.prompts).toHaveLength(1)
-    expect(result.current.prompts[0].title).toBe('タイトル')
+    // 既存データと新規追加がマージされて両方残る
+    expect(result.current.prompts).toHaveLength(2)
+    expect(result.current.prompts.some((p) => p.id === 'existing')).toBe(true)
+    expect(result.current.prompts.some((p) => p.title === '新規')).toBe(true)
   })
 
-  it('ロード完了前に deletePrompt してもその操作が保持される', async () => {
-    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+  it('ロード完了前に deletePrompt した場合、ロード後にマージして削除が反映される', async () => {
     let resolveLoad!: (value: Prompt[]) => void
     mockLoad.mockReturnValueOnce(
       new Promise<Prompt[]>((resolve) => {
@@ -122,12 +124,18 @@ describe('ロード完了前のミューテーション競合', () => {
 
     act(() => result.current.deletePrompt('p1'))
 
+    const stored: Prompt[] = [
+      { id: 'p1', title: 'T1', content: 'C1', createdAt: 1 },
+      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 },
+    ]
     await act(async () => resolveLoad(stored))
     expect(result.current.promptsLoaded).toBe(true)
-    expect(result.current.prompts).toHaveLength(0)
+    // p1 が削除され p2 のみ残る
+    expect(result.current.prompts).toHaveLength(1)
+    expect(result.current.prompts[0].id).toBe('p2')
   })
 
-  it('ロード完了前にミューテーションがなければロードデータが反映される', async () => {
+  it('ロード完了前にミューテーションがなければロードデータがそのまま反映される', async () => {
     const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
     let resolveLoad!: (value: Prompt[]) => void
     mockLoad.mockReturnValueOnce(
@@ -140,6 +148,37 @@ describe('ロード完了前のミューテーション競合', () => {
     await act(async () => resolveLoad(stored))
     expect(result.current.promptsLoaded).toBe(true)
     expect(result.current.prompts).toEqual(stored)
+  })
+
+  it('ロード完了前の addPrompt はマージ後に save が呼ばれる', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+
+    act(() => result.current.addPrompt('新規', 'コンテンツ'))
+    expect(mockSave).not.toHaveBeenCalled()
+
+    const stored: Prompt[] = [{ id: 'existing', title: '既存', content: 'C', createdAt: 1 }]
+    await act(async () => resolveLoad(stored))
+
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'existing' }),
+        expect.objectContaining({ title: '新規' }),
+      ])
+    )
+  })
+
+  it('ロード完了前にミューテーションがない場合は save を呼ばない', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.promptsLoaded).toBe(true))
+    expect(mockSave).not.toHaveBeenCalled()
   })
 })
 
