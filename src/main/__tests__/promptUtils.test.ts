@@ -43,6 +43,18 @@ describe('isValidPrompt', () => {
     expect(isValidPrompt({ ...validPrompt, createdAt: '2024' })).toBe(false)
   })
 
+  it('createdAt が NaN の場合は無効', () => {
+    expect(isValidPrompt({ ...validPrompt, createdAt: NaN })).toBe(false)
+  })
+
+  it('createdAt が Infinity の場合は無効', () => {
+    expect(isValidPrompt({ ...validPrompt, createdAt: Infinity })).toBe(false)
+  })
+
+  it('createdAt が -Infinity の場合は無効', () => {
+    expect(isValidPrompt({ ...validPrompt, createdAt: -Infinity })).toBe(false)
+  })
+
   it('フィールドが欠落している場合は無効', () => {
     const { title: _t, ...withoutTitle } = validPrompt
     expect(isValidPrompt(withoutTitle)).toBe(false)
