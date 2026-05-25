@@ -77,5 +77,43 @@ describe('registerPromptsHandlers', () => {
         getRegisteredHandler('prompts:save')(makeEvent(1), null)
       ).rejects.toThrow('引数は配列である必要があります')
     })
+
+    it('id が string でない要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:save')(makeEvent(1), [
+          { id: 123, title: 'T', content: 'C', createdAt: 1 },
+        ])
+      ).rejects.toThrow('プロンプトの形式が不正です')
+      expect(mockSavePrompts).not.toHaveBeenCalled()
+    })
+
+    it('title が欠落している要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:save')(makeEvent(1), [
+          { id: 'p1', content: 'C', createdAt: 1 },
+        ])
+      ).rejects.toThrow('プロンプトの形式が不正です')
+    })
+
+    it('createdAt が number でない要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:save')(makeEvent(1), [
+          { id: 'p1', title: 'T', content: 'C', createdAt: '2024' },
+        ])
+      ).rejects.toThrow('プロンプトの形式が不正です')
+    })
+
+    it('余分なプロパティは除去されて savePrompts に渡される', async () => {
+      mockSavePrompts.mockResolvedValue(undefined)
+      const withExtra = { ...samplePrompt, extra: 'should be removed' }
+      await getRegisteredHandler('prompts:save')(makeEvent(1), [withExtra])
+      expect(mockSavePrompts).toHaveBeenCalledWith([samplePrompt])
+    })
+
+    it('配列内の null 要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:save')(makeEvent(1), [null])
+      ).rejects.toThrow('プロンプトの形式が不正です')
+    })
   })
 })

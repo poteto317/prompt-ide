@@ -25,7 +25,7 @@ describe('usePromptsPersistence', () => {
     it('promptsApi.loadPrompts を呼び出して配列を返す', async () => {
       mockLoadPrompts.mockResolvedValue([samplePrompt])
       const { result } = renderHook(() => usePromptsPersistence())
-      const loaded = await act(() => result.current.load())
+      const loaded = await result.current.load()
       expect(mockLoadPrompts).toHaveBeenCalledOnce()
       expect(loaded).toEqual([samplePrompt])
     })
@@ -33,14 +33,14 @@ describe('usePromptsPersistence', () => {
     it('空配列を返す場合も正しく返す', async () => {
       mockLoadPrompts.mockResolvedValue([])
       const { result } = renderHook(() => usePromptsPersistence())
-      const loaded = await act(() => result.current.load())
+      const loaded = await result.current.load()
       expect(loaded).toEqual([])
     })
 
     it('loadPrompts が失敗したとき [] を返す', async () => {
       mockLoadPrompts.mockRejectedValue(new Error('load error'))
       const { result } = renderHook(() => usePromptsPersistence())
-      const loaded = await act(() => result.current.load())
+      const loaded = await result.current.load()
       expect(loaded).toEqual([])
     })
 
