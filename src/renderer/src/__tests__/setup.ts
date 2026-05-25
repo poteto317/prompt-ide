@@ -12,5 +12,7 @@ Object.defineProperty(window, 'api', {
     hasApiKey: () => Promise.resolve(false),
     setApiKey: () => Promise.resolve(),
     runPrompt: () => Promise.resolve(''),
+    loadPrompts: () => Promise.resolve([]),
+    savePrompts: () => Promise.resolve(),
   },
 })
