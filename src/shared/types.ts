@@ -18,3 +18,10 @@ export type GitStatusResult = {
   behind: number
   files: GitFileStatus[]
 }
+
+export type Prompt = {
+  id: string
+  title: string
+  content: string
+  createdAt: number
+}
