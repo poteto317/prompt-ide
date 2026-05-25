@@ -182,6 +182,43 @@ describe('ロード完了前のミューテーション競合', () => {
   })
 })
 
+describe('クリーンアップ（アンマウント）', () => {
+  it('アンマウント後にロードが完了しても promptsLoaded は false のまま', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result, unmount } = renderHook(() => usePrompts())
+
+    unmount()
+    await act(async () => resolveLoad([{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]))
+
+    expect(result.current.promptsLoaded).toBe(false)
+    expect(result.current.prompts).toHaveLength(0)
+  })
+
+  it('ロード前に addPrompt しアンマウントした場合、ロード完了後も save が呼ばれない', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result, unmount } = renderHook(() => usePrompts())
+
+    // ロード完了前に addPrompt（pending op を積む）
+    act(() => result.current.addPrompt('新規', 'コンテンツ'))
+    // アンマウント
+    unmount()
+
+    // ロードが完了しても cancelled = true なので save は呼ばれない
+    await act(async () => resolveLoad([]))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+})
+
 describe('deletePrompt', () => {
   it('指定 ID のプロンプトが削除される', async () => {
     const stored: Prompt[] = [

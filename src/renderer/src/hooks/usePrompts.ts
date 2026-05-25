@@ -22,7 +22,9 @@ export function usePrompts(): PromptsState {
   const loadedRef = useRef(false)
 
   useEffect(() => {
+    let cancelled = false
     load().then((loaded) => {
+      if (cancelled) return
       let merged = loaded
       for (const op of pendingOpsRef.current) {
         merged =
@@ -33,11 +35,13 @@ export function usePrompts(): PromptsState {
       loadedRef.current = true
       promptsRef.current = merged
       setPrompts(merged)
-      if (pendingOpsRef.current.length > 0) {
-        save(merged)
-      }
+      if (pendingOpsRef.current.length > 0) save(merged)
+      pendingOpsRef.current = []
       setPromptsLoaded(true)
     })
+    return () => {
+      cancelled = true
+    }
   }, [load, save])
 
   const addPrompt = useCallback(
