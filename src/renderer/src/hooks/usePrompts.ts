@@ -15,17 +15,22 @@ export function usePrompts(): PromptsState {
   const promptsRef = useRef<Prompt[]>([])
   const [prompts, setPrompts] = useState<Prompt[]>([])
   const [promptsLoaded, setPromptsLoaded] = useState(false)
+  // ロード完了前にミューテーションが発生したかを追跡し、ロード結果による上書きを防ぐ
+  const mutatedRef = useRef(false)
 
   useEffect(() => {
     load().then((loaded) => {
-      promptsRef.current = loaded
-      setPrompts(loaded)
+      if (!mutatedRef.current) {
+        promptsRef.current = loaded
+        setPrompts(loaded)
+      }
       setPromptsLoaded(true)
     })
   }, [load])
 
   const addPrompt = useCallback(
     (title: string, content: string): void => {
+      mutatedRef.current = true
       const next = [...promptsRef.current, createPrompt(title, content)]
       promptsRef.current = next
       setPrompts(next)
@@ -36,6 +41,7 @@ export function usePrompts(): PromptsState {
 
   const deletePrompt = useCallback(
     (id: string): void => {
+      mutatedRef.current = true
       const next = promptsRef.current.filter((p) => p.id !== id)
       promptsRef.current = next
       setPrompts(next)

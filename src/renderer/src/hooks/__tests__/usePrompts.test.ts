@@ -91,6 +91,58 @@ describe('addPrompt', () => {
   })
 })
 
+describe('ロード完了前のミューテーション競合', () => {
+  it('ロード完了前に addPrompt してもプロンプトが失われない', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+
+    act(() => result.current.addPrompt('タイトル', 'コンテンツ'))
+    expect(result.current.prompts).toHaveLength(1)
+
+    await act(async () => resolveLoad([]))
+    expect(result.current.promptsLoaded).toBe(true)
+    expect(result.current.prompts).toHaveLength(1)
+    expect(result.current.prompts[0].title).toBe('タイトル')
+  })
+
+  it('ロード完了前に deletePrompt してもその操作が保持される', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+
+    act(() => result.current.deletePrompt('p1'))
+
+    await act(async () => resolveLoad(stored))
+    expect(result.current.promptsLoaded).toBe(true)
+    expect(result.current.prompts).toHaveLength(0)
+  })
+
+  it('ロード完了前にミューテーションがなければロードデータが反映される', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+
+    await act(async () => resolveLoad(stored))
+    expect(result.current.promptsLoaded).toBe(true)
+    expect(result.current.prompts).toEqual(stored)
+  })
+})
+
 describe('deletePrompt', () => {
   it('指定 ID のプロンプトが削除される', async () => {
     const stored: Prompt[] = [
