@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { FileTreeNode, GitStatusResult } from '@shared/types'
+import type { FileTreeNode, GitStatusResult, Prompt } from '@shared/types'
 
 declare global {
   interface Window {
@@ -12,6 +12,8 @@ declare global {
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>
       runPrompt(promptContent: string, fileContent: string | null): Promise<string>
+      loadPrompts(): Promise<Prompt[]>
+      savePrompts(prompts: Prompt[]): Promise<void>
     }
   }
 }
