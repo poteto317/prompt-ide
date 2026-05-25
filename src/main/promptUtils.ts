@@ -7,7 +7,8 @@ export function isValidPrompt(item: unknown): item is Prompt {
     typeof p.id === 'string' &&
     typeof p.title === 'string' &&
     typeof p.content === 'string' &&
-    typeof p.createdAt === 'number'
+    typeof p.createdAt === 'number' &&
+    Number.isFinite(p.createdAt)
   )
 }
 
