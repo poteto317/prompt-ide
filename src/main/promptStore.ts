@@ -1,32 +1,17 @@
 import { app } from 'electron'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isValidPrompt, sanitizePrompt } from './promptUtils'
 import type { Prompt } from '@shared/types'
 
 const promptsPath = (): string => join(app.getPath('userData'), 'prompts.json')
-
-function isValidPrompt(item: unknown): item is Prompt {
-  if (typeof item !== 'object' || item === null) return false
-  const p = item as Record<string, unknown>
-  return (
-    typeof p.id === 'string' &&
-    typeof p.title === 'string' &&
-    typeof p.content === 'string' &&
-    typeof p.createdAt === 'number'
-  )
-}
-
-function sanitize(item: Prompt): Prompt {
-  const { id, title, content, createdAt } = item
-  return { id, title, content, createdAt }
-}
 
 export async function loadPrompts(): Promise<Prompt[]> {
   try {
     const raw = await readFile(promptsPath(), 'utf-8')
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(isValidPrompt).map(sanitize)
+    return parsed.filter(isValidPrompt).map(sanitizePrompt)
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw err
