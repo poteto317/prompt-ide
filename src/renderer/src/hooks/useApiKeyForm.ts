@@ -35,6 +35,7 @@ export function useApiKeyForm({
 
   const handleSave = useCallback(async () => {
     const trimmed = inputValue.trim()
+    if (!apiKeyLoaded || isSaving || trimmed.length === 0 || keyStoreError !== null) return
     setIsSaving(true)
     setSaved(false)
     setSaveError(null)
@@ -49,7 +50,7 @@ export function useApiKeyForm({
     } finally {
       setIsSaving(false)
     }
-  }, [inputValue, onSave])
+  }, [inputValue, onSave, apiKeyLoaded, isSaving, keyStoreError])
 
   const isSaveDisabled =
     !apiKeyLoaded || isSaving || inputValue.trim().length === 0 || keyStoreError !== null

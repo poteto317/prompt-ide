@@ -7,11 +7,15 @@ interface Props {
   content: string
 }
 
+const SAFE_SCHEMES = ['http:', 'https:', 'mailto:']
+
 const components: Components = {
   a: ({ href, children, node: _node, ...props }) => {
-    const safeHref = href?.toLowerCase().startsWith('javascript:') ? '#' : href
+    const normalized = href?.toLowerCase() ?? ''
+    const isSafe = SAFE_SCHEMES.some((s) => normalized.startsWith(s))
+    if (!isSafe) return <span>{children}</span>
     return (
-      <a {...props} href={safeHref} target="_blank" rel="noopener noreferrer">
+      <a {...props} href={href} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     )
