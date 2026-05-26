@@ -1,3 +1,5 @@
+import MarkdownRenderer from './MarkdownRenderer'
+
 interface Props {
   isExecuting: boolean
   result: string | null
@@ -30,7 +32,7 @@ export default function OutputPanel({ isExecuting, result, executionError, onCle
           <p className="output-panel__loading">実行中...</p>
         )}
         {!isExecuting && result !== null && (
-          <pre className="output-panel__text">{result}</pre>
+          <MarkdownRenderer content={result} />
         )}
         {!isExecuting && executionError !== null && (
           <p className="output-panel__error">{executionError.message}</p>
