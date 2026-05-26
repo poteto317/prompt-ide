@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useApiKeyForm } from '../../hooks/useApiKeyForm'
 
 interface Props {
   hasKey: boolean
@@ -8,37 +8,8 @@ interface Props {
 }
 
 export default function SettingsPanel({ hasKey, apiKeyLoaded, keyStoreError, onSave }: Props) {
-  const [inputValue, setInputValue] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  const handleSave = useCallback(async () => {
-    const trimmed = inputValue.trim()
-    setIsSaving(true)
-    setSaved(false)
-    setSaveError(null)
-    try {
-      await onSave(trimmed)
-      setInputValue('')
-      setSaved(true)
-      if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => setSaved(false), 2000)
-    } catch (err) {
-      setSaveError(err instanceof Error ? err.message : '保存に失敗しました')
-    } finally {
-      setIsSaving(false)
-    }
-  }, [inputValue, onSave])
-
-  const isSaveDisabled = !apiKeyLoaded || isSaving || inputValue.trim().length === 0 || keyStoreError !== null
+  const { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave } =
+    useApiKeyForm({ apiKeyLoaded, keyStoreError, onSave })
 
   return (
     <div className="settings-panel">
