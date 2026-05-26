@@ -4,8 +4,8 @@ import MarkdownRenderer from '../MarkdownRenderer'
 
 describe('MarkdownRenderer', () => {
   it('**bold** が <strong> としてレンダリングされる', () => {
-    render(<MarkdownRenderer content="**太字テキスト**" />)
-    expect(screen.getByRole('strong')).toBeInTheDocument()
+    const { container } = render(<MarkdownRenderer content="**太字テキスト**" />)
+    expect(container.querySelector('strong')).toBeInTheDocument()
     expect(screen.getByText('太字テキスト')).toBeInTheDocument()
   })
 
@@ -90,5 +90,16 @@ describe('MarkdownRenderer', () => {
     expect(link).toBeInTheDocument()
     expect(link?.getAttribute('href')).not.toContain('javascript:')
     expect(link?.getAttribute('href')).not.toContain('JAVASCRIPT:')
+  })
+
+  it('リンクの title 属性が保持される', () => {
+    render(<MarkdownRenderer content='[リンク](https://example.com "ツールチップ")' />)
+    const link = screen.getByRole('link', { name: 'リンク' })
+    expect(link).toHaveAttribute('title', 'ツールチップ')
+  })
+
+  it('単一改行が <br> としてレンダリングされる（remark-breaks）', () => {
+    const { container } = render(<MarkdownRenderer content={'1行目\n2行目'} />)
+    expect(container.querySelector('br')).toBeInTheDocument()
   })
 })
