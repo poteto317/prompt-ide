@@ -146,6 +146,51 @@ describe('useApiKeyForm', () => {
     })
   })
 
+  describe('handleSave — ガード（早期 return）', () => {
+    it('inputValue が空のとき onSave が呼ばれない', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
+      // inputValue は '' のまま
+      await act(() => result.current.handleSave())
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('inputValue がスペースのみのとき onSave が呼ばれない', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
+      act(() => result.current.setInputValue('   '))
+      await act(() => result.current.handleSave())
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('apiKeyLoaded=false のとき onSave が呼ばれない', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() =>
+        useApiKeyForm({ ...defaultOptions, apiKeyLoaded: false, onSave })
+      )
+      act(() => result.current.setInputValue('sk-ant-test'))
+      await act(() => result.current.handleSave())
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('keyStoreError があるとき onSave が呼ばれない', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() =>
+        useApiKeyForm({ ...defaultOptions, keyStoreError: 'エラー', onSave })
+      )
+      act(() => result.current.setInputValue('sk-ant-test'))
+      await act(() => result.current.handleSave())
+      expect(onSave).not.toHaveBeenCalled()
+    })
+
+    it('ガード時は isSaving が変化しない', async () => {
+      const { result } = renderHook(() => useApiKeyForm(defaultOptions))
+      // inputValue が空 → ガード
+      await act(() => result.current.handleSave())
+      expect(result.current.isSaving).toBe(false)
+    })
+  })
+
   describe('クリーンアップ', () => {
     it('アンマウント後にタイマーがクリアされる（メモリリークなし）', async () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')

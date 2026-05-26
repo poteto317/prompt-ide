@@ -77,19 +77,39 @@ describe('MarkdownRenderer', () => {
     expect(link).toHaveAttribute('rel', 'noopener noreferrer')
   })
 
-  it('javascript: スキームの href が無害化される', () => {
-    const { container } = render(<MarkdownRenderer content="[XSS](javascript:alert(1))" />)
-    const link = container.querySelector('a')
-    expect(link).toBeInTheDocument()
-    expect(link?.getAttribute('href')).not.toContain('javascript:')
+  it('http: リンクが <a> としてレンダリングされる', () => {
+    render(<MarkdownRenderer content="[HTTP](http://example.com)" />)
+    expect(screen.getByRole('link', { name: 'HTTP' })).toBeInTheDocument()
   })
 
-  it('大文字混じりの JAVASCRIPT: スキームも無害化される', () => {
+  it('mailto: リンクが <a> としてレンダリングされる', () => {
+    render(<MarkdownRenderer content="[メール](mailto:user@example.com)" />)
+    const link = screen.getByRole('link', { name: 'メール' })
+    expect(link).toHaveAttribute('href', 'mailto:user@example.com')
+  })
+
+  it('javascript: スキームは <a> ではなく <span> としてレンダリングされる', () => {
+    const { container } = render(<MarkdownRenderer content="[XSS](javascript:alert(1))" />)
+    expect(container.querySelector('a')).not.toBeInTheDocument()
+    expect(screen.getByText('XSS')).toBeInTheDocument()
+  })
+
+  it('大文字混じりの JAVASCRIPT: スキームも <span> にフォールバックする', () => {
     const { container } = render(<MarkdownRenderer content="[XSS](JAVASCRIPT:alert(1))" />)
-    const link = container.querySelector('a')
-    expect(link).toBeInTheDocument()
-    expect(link?.getAttribute('href')).not.toContain('javascript:')
-    expect(link?.getAttribute('href')).not.toContain('JAVASCRIPT:')
+    expect(container.querySelector('a')).not.toBeInTheDocument()
+    expect(screen.getByText('XSS')).toBeInTheDocument()
+  })
+
+  it('data: スキームは <a> ではなく <span> としてレンダリングされる', () => {
+    const { container } = render(
+      <MarkdownRenderer content="[data](data:text/html,<script>alert(1)</script>)" />
+    )
+    expect(container.querySelector('a')).not.toBeInTheDocument()
+  })
+
+  it('file: スキームは <a> ではなく <span> としてレンダリングされる', () => {
+    const { container } = render(<MarkdownRenderer content="[local](file:///etc/passwd)" />)
+    expect(container.querySelector('a')).not.toBeInTheDocument()
   })
 
   it('リンクの title 属性が保持される', () => {
