@@ -45,6 +45,13 @@ describe('MarkdownRenderer', () => {
     expect(screen.getByRole('table')).toBeInTheDocument()
   })
 
+  it('テーブルが横スクロール可能なラッパーで包まれる', () => {
+    const { container } = render(<MarkdownRenderer content={'| A | B |\n|---|---|\n| 1 | 2 |'} />)
+    const wrapper = container.querySelector('.markdown-renderer__table-wrapper')
+    expect(wrapper).toBeInTheDocument()
+    expect(wrapper?.querySelector('table')).toBeInTheDocument()
+  })
+
   it('リンクが <a> としてレンダリングされる', () => {
     render(<MarkdownRenderer content="[リンク](https://example.com)" />)
     const link = screen.getByRole('link', { name: 'リンク' })
