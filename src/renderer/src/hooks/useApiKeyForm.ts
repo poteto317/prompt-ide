@@ -29,7 +29,7 @@ export function useApiKeyForm({
 
   useEffect(() => {
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
     }
   }, [])
 
@@ -43,7 +43,7 @@ export function useApiKeyForm({
       await onSave(trimmed)
       setInputValue('')
       setSaved(true)
-      if (timerRef.current) clearTimeout(timerRef.current)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : '保存に失敗しました')

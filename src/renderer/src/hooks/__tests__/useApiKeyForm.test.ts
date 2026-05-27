@@ -202,5 +202,21 @@ describe('useApiKeyForm', () => {
       await waitFor(() => expect(clearTimeoutSpy).toHaveBeenCalled())
       clearTimeoutSpy.mockRestore()
     })
+
+    it('2回目の保存で前回タイマーが clearTimeout される', async () => {
+      // timerRef.current !== null チェックにより、タイマーがセット済みのときは
+      // 次の保存で必ず clearTimeout が呼ばれることを検証する
+      const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+      const { result } = renderHook(() => useApiKeyForm(defaultOptions))
+      // 1回目の保存 → timerRef.current にタイマー ID がセットされる
+      act(() => result.current.setInputValue('sk-ant-test'))
+      await act(() => result.current.handleSave())
+      clearTimeoutSpy.mockClear()
+      // 2回目の保存 → timerRef.current !== null なので clearTimeout が呼ばれる
+      act(() => result.current.setInputValue('sk-ant-test-2'))
+      await act(() => result.current.handleSave())
+      await waitFor(() => expect(clearTimeoutSpy).toHaveBeenCalled())
+      clearTimeoutSpy.mockRestore()
+    })
   })
 })
