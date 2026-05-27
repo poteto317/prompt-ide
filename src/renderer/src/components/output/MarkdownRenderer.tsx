@@ -11,11 +11,11 @@ const SAFE_SCHEMES = ['http:', 'https:', 'mailto:']
 
 const components: Components = {
   a: ({ href, children, node: _node, ...props }) => {
-    const normalized = href?.toLowerCase() ?? ''
-    const isSafe = SAFE_SCHEMES.some((s) => normalized.startsWith(s))
+    const trimmedHref = href?.trim() ?? ''
+    const isSafe = SAFE_SCHEMES.some((s) => trimmedHref.toLowerCase().startsWith(s))
     if (!isSafe) return <span>{children}</span>
     return (
-      <a {...props} href={href} target="_blank" rel="noopener noreferrer">
+      <a {...props} href={trimmedHref} target="_blank" rel="noopener noreferrer">
         {children}
       </a>
     )
