@@ -37,8 +37,7 @@ describe('StagedSection', () => {
     expect(screen.getByText('A')).toBeInTheDocument()
   })
 
-  it('index が " " のとき "·" が表示される', () => {
-    // index が " " かつ workingDir が変更されている staged ファイル（通常はないが境界確認）
+  it('index が " " のとき staged フィルタで除外され何も描画しない', () => {
     // staged フィルタは index !== ' ' && index !== '?' なので ' ' は除外される
     const files: GitFileStatus[] = [{ path: 'file.ts', index: ' ', workingDir: ' ' }]
     const { container } = render(<StagedSection files={files} />)
