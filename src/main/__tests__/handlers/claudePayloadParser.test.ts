@@ -43,6 +43,16 @@ describe('parseClaudePayload', () => {
     it('payload が数値のとき例外をスロー', () => {
       expect(() => parseClaudePayload(42)).toThrow('引数はオブジェクトである必要があります')
     })
+
+    it('payload が配列のとき例外をスロー', () => {
+      expect(() => parseClaudePayload([])).toThrow('引数はオブジェクトである必要があります')
+    })
+
+    it('payload が要素入り配列のとき例外をスロー', () => {
+      expect(() => parseClaudePayload([{ promptContent: 'hi', fileContent: null }])).toThrow(
+        '引数はオブジェクトである必要があります'
+      )
+    })
   })
 
   describe('異常系 — promptContent', () => {

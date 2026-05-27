@@ -677,10 +677,15 @@ body {
   text-decoration: underline;
 }
 
+.markdown-renderer__table-wrapper {
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
 .markdown-renderer table {
   border-collapse: collapse;
   width: 100%;
-  margin: 8px 0;
+  margin: 0;
   font-size: 12px;
 }
 

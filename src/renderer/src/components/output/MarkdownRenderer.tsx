@@ -20,6 +20,11 @@ const components: Components = {
       </a>
     )
   },
+  table: ({ children, node: _node, ...props }) => (
+    <div className="markdown-renderer__table-wrapper">
+      <table {...props}>{children}</table>
+    </div>
+  ),
 }
 
 export default function MarkdownRenderer({ content }: Props) {

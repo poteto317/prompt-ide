@@ -4,7 +4,7 @@ export interface ClaudePayload {
 }
 
 export function parseClaudePayload(payload: unknown): ClaudePayload {
-  if (typeof payload !== 'object' || payload === null) {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
     throw new Error('引数はオブジェクトである必要があります')
   }
   const { promptContent, fileContent } = payload as Record<string, unknown>
