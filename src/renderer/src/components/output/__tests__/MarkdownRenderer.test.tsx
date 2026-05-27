@@ -142,4 +142,43 @@ describe('MarkdownRenderer', () => {
     expect(container.querySelector('a')).not.toBeInTheDocument()
     expect(screen.getByText('XSS')).toBeInTheDocument()
   })
+
+  it('https: 画像が <img> としてレンダリングされる', () => {
+    const { container } = render(
+      <MarkdownRenderer content="![説明](https://example.com/image.png)" />
+    )
+    const img = container.querySelector('img')
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('src', 'https://example.com/image.png')
+    expect(img).toHaveAttribute('alt', '説明')
+  })
+
+  it('http: 画像が <img> としてレンダリングされる', () => {
+    const { container } = render(
+      <MarkdownRenderer content="![画像](http://example.com/image.png)" />
+    )
+    expect(container.querySelector('img')).toBeInTheDocument()
+  })
+
+  it('file: 画像は <img> ではなく alt テキストの <span> にフォールバックする', () => {
+    const { container } = render(
+      <MarkdownRenderer content="![秘密ファイル](file:///etc/passwd)" />
+    )
+    expect(container.querySelector('img')).not.toBeInTheDocument()
+    expect(screen.getByText('秘密ファイル')).toBeInTheDocument()
+  })
+
+  it('javascript: 画像も <span> にフォールバックする', () => {
+    const { container } = render(
+      <MarkdownRenderer content="![XSS](javascript:alert(1))" />
+    )
+    expect(container.querySelector('img')).not.toBeInTheDocument()
+  })
+
+  it('data: 画像も <span> にフォールバックする', () => {
+    const { container } = render(
+      <MarkdownRenderer content="![data](data:image/svg+xml,<svg><script>alert(1)</script></svg>)" />
+    )
+    expect(container.querySelector('img')).not.toBeInTheDocument()
+  })
 })
