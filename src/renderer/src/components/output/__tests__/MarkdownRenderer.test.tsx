@@ -129,4 +129,17 @@ describe('MarkdownRenderer', () => {
     const { container } = render(<MarkdownRenderer content={'1行目\n2行目'} />)
     expect(container.querySelector('br')).toBeInTheDocument()
   })
+
+  it('前後スペース付き URL でも <a> としてレンダリングされ href が trim される', () => {
+    render(<MarkdownRenderer content={'[リンク]( https://example.com )'} />)
+    const link = screen.getByRole('link', { name: 'リンク' })
+    expect(link).toBeInTheDocument()
+    expect(link).not.toHaveAttribute('href', expect.stringContaining(' '))
+  })
+
+  it('前後スペース付き危険 URL も <span> にフォールバックする', () => {
+    const { container } = render(<MarkdownRenderer content={'[XSS]( javascript:alert(1) )'} />)
+    expect(container.querySelector('a')).not.toBeInTheDocument()
+    expect(screen.getByText('XSS')).toBeInTheDocument()
+  })
 })
