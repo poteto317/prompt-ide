@@ -181,4 +181,15 @@ describe('MarkdownRenderer', () => {
     )
     expect(container.querySelector('img')).not.toBeInTheDocument()
   })
+
+  it('行中の複数スペースが DOM テキストに保持される（CSS white-space: pre-wrap で表示される）', () => {
+    const { container } = render(<MarkdownRenderer content="Hello  World" />)
+    expect(container.textContent).toContain('Hello  World')
+  })
+
+  it('インデントを含むプレーンテキストがそのまま DOM に存在する', () => {
+    const { container } = render(<MarkdownRenderer content={'行1\n  インデントあり'} />)
+    expect(container.textContent).toContain('行1')
+    expect(container.textContent).toContain('インデントあり')
+  })
 })
