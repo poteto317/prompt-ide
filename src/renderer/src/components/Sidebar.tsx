@@ -72,6 +72,7 @@ export default function Sidebar({
           onDelete={onDeletePrompt}
           onRun={onRunPrompt}
           isRunDisabled={isExecuting}
+          isActive={activePanel === 'prompts'}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>
