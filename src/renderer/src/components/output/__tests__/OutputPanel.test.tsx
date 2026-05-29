@@ -58,4 +58,36 @@ describe('OutputPanel', () => {
     render(<OutputPanel {...defaultProps} result="テキスト" />)
     expect(screen.getByText('出力')).toBeInTheDocument()
   })
+
+  it('isExecuting=true のとき result があっても表示しない', () => {
+    render(<OutputPanel {...defaultProps} isExecuting={true} result="回答テキスト" />)
+    expect(screen.queryByText('回答テキスト')).not.toBeInTheDocument()
+    expect(screen.getByText('実行中...')).toBeInTheDocument()
+  })
+
+  it('isExecuting=true のとき executionError があってもエラーを表示しない', () => {
+    render(<OutputPanel {...defaultProps} isExecuting={true} executionError={new Error('エラー')} />)
+    expect(screen.queryByText('エラー')).not.toBeInTheDocument()
+    expect(screen.getByText('実行中...')).toBeInTheDocument()
+  })
+
+  it('result と executionError が両方ある場合は両方表示する', () => {
+    render(
+      <OutputPanel
+        {...defaultProps}
+        result="回答テキスト"
+        executionError={new Error('エラーメッセージ')}
+      />
+    )
+    expect(screen.getByText('回答テキスト')).toBeInTheDocument()
+    expect(screen.getByText('エラーメッセージ')).toBeInTheDocument()
+  })
+
+  it('executionError のときクリアボタンをクリックすると onClear が呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onClear = vi.fn()
+    render(<OutputPanel {...defaultProps} executionError={new Error('エラー')} onClear={onClear} />)
+    await user.click(screen.getByRole('button', { name: '出力をクリア' }))
+    expect(onClear).toHaveBeenCalledOnce()
+  })
 })

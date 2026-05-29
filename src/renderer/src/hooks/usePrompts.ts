@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Prompt } from '../types'
 import { createPrompt } from '../lib/promptFactory'
 import { usePromptsPersistence } from './usePromptsPersistence'
-
-type PendingOp = { type: 'add'; prompt: Prompt } | { type: 'delete'; id: string }
+import { mergePendingOps, type PendingOp } from '../lib/pendingOperationsMerger'
 
 interface PromptsState {
   prompts: Prompt[]
@@ -25,13 +24,7 @@ export function usePrompts(): PromptsState {
     let cancelled = false
     load().then((loaded) => {
       if (cancelled) return
-      let merged = loaded
-      for (const op of pendingOpsRef.current) {
-        merged =
-          op.type === 'add'
-            ? [...merged, op.prompt]
-            : merged.filter((p) => p.id !== op.id)
-      }
+      const merged = mergePendingOps(loaded, pendingOpsRef.current)
       loadedRef.current = true
       promptsRef.current = merged
       setPrompts(merged)
