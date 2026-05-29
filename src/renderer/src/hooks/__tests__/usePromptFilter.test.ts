@@ -171,14 +171,14 @@ describe('usePromptFilter', () => {
       expect(result.current.filteredPrompts[0].id).toBe('99')
     })
 
-    it('同じ件数でも prompts が差し替わったとき query がリセットされる', () => {
+    it('同じ件数で prompts が差し替わっても query はリセットされない', () => {
       let prompts: Prompt[] = [makePrompt({ id: 'a', title: 'AAA', content: '' })]
       const { result, rerender } = renderHook(() => usePromptFilter(prompts))
       act(() => result.current.setQuery('AAA'))
       expect(result.current.filteredPrompts).toHaveLength(1)
-      prompts = []
+      prompts = [makePrompt({ id: 'b', title: 'BBB', content: '' })]
       rerender()
-      expect(result.current.query).toBe('')
+      expect(result.current.query).toBe('AAA')
     })
   })
 

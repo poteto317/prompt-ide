@@ -149,7 +149,8 @@ describe('PromptsPanel', () => {
       render(
         <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={false} />
       )
-      expect(screen.getByRole('searchbox')).toHaveValue('')
+      await userEvent.type(screen.getByRole('searchbox'), 'テスト')
+      expect(screen.getByRole('searchbox')).toHaveValue('テスト')
     })
   })
 })

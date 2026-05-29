@@ -11,7 +11,7 @@ export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}) {
 
   useEffect(() => {
     if (prompts.length === 0) setQuery('')
-  }, [prompts])
+  }, [prompts.length])
 
   useEffect(() => {
     const wasActive = prevIsActiveRef.current
