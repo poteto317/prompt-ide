@@ -108,4 +108,40 @@ describe('PromptsPanel', () => {
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} isRunDisabled={true} />)
     expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeDisabled()
   })
+
+  describe('query の自動リセット', () => {
+    it('全件削除後に追加した新規プロンプトが表示される（Bug 1）', async () => {
+      const { rerender } = render(
+        <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} />
+      )
+      await userEvent.type(screen.getByRole('searchbox'), 'xyz')
+      expect(screen.getByText(/に一致するプロンプトはありません/)).toBeInTheDocument()
+
+      rerender(<PromptsPanel {...defaultProps} prompts={[]} />)
+      expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
+
+      const newPrompt = { id: 'p3', title: '新規プロンプト', content: '内容', createdAt: 3000000 }
+      rerender(<PromptsPanel {...defaultProps} prompts={[newPrompt]} />)
+      expect(screen.getByText('新規プロンプト')).toBeInTheDocument()
+      expect(screen.queryByText(/に一致するプロンプトはありません/)).not.toBeInTheDocument()
+    })
+
+    it('isActive が false に変わると query がリセットされる（Bug 2）', async () => {
+      const { rerender } = render(
+        <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={true} />
+      )
+      await userEvent.type(screen.getByRole('searchbox'), 'テスト')
+      expect(screen.queryByText('バグ修正')).not.toBeInTheDocument()
+
+      rerender(
+        <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={false} />
+      )
+      rerender(
+        <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={true} />
+      )
+      expect(screen.getByText('テストタイトル')).toBeInTheDocument()
+      expect(screen.getByText('バグ修正')).toBeInTheDocument()
+      expect(screen.getByRole('searchbox')).toHaveValue('')
+    })
+  })
 })

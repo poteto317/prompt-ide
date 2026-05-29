@@ -1,8 +1,20 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { Prompt } from '../types'
 
-export function usePromptFilter(prompts: Prompt[]) {
+interface Options {
+  isActive?: boolean
+}
+
+export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}) {
   const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    if (prompts.length === 0) setQuery('')
+  }, [prompts.length])
+
+  useEffect(() => {
+    if (isActive === false) setQuery('')
+  }, [isActive])
 
   const filteredPrompts = useMemo(() => {
     const q = query.trim().toLowerCase()
