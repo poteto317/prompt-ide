@@ -170,6 +170,16 @@ describe('usePromptFilter', () => {
       expect(result.current.filteredPrompts).toHaveLength(1)
       expect(result.current.filteredPrompts[0].id).toBe('99')
     })
+
+    it('同じ件数でも prompts が差し替わったとき query がリセットされる', () => {
+      let prompts: Prompt[] = [makePrompt({ id: 'a', title: 'AAA', content: '' })]
+      const { result, rerender } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.setQuery('AAA'))
+      expect(result.current.filteredPrompts).toHaveLength(1)
+      prompts = []
+      rerender()
+      expect(result.current.query).toBe('')
+    })
   })
 
   describe('isActive が false になったとき query をリセットする', () => {
@@ -198,6 +208,13 @@ describe('usePromptFilter', () => {
 
     it('isActive が undefined のとき query をリセットしない', () => {
       const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      act(() => result.current.setQuery('リファクタリング'))
+      expect(result.current.query).toBe('リファクタリング')
+    })
+
+    it('isActive が初回から false でも query をリセットしない（初回マウント保護）', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS, { isActive: false }))
+      expect(result.current.query).toBe('')
       act(() => result.current.setQuery('リファクタリング'))
       expect(result.current.query).toBe('リファクタリング')
     })

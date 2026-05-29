@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import type { Prompt } from '../types'
 
 interface Options {
@@ -7,13 +7,16 @@ interface Options {
 
 export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}) {
   const [query, setQuery] = useState('')
+  const prevIsActiveRef = useRef(isActive)
 
   useEffect(() => {
     if (prompts.length === 0) setQuery('')
-  }, [prompts.length])
+  }, [prompts])
 
   useEffect(() => {
-    if (isActive === false) setQuery('')
+    const wasActive = prevIsActiveRef.current
+    prevIsActiveRef.current = isActive
+    if (wasActive && isActive === false) setQuery('')
   }, [isActive])
 
   const filteredPrompts = useMemo(() => {
