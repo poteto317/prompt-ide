@@ -146,6 +146,35 @@ describe('useApiKeyForm', () => {
     })
   })
 
+  describe('setInputValue — 型互換', () => {
+    it('コールバック形式（prev => ...）で値を更新できる', () => {
+      const { result } = renderHook(() => useApiKeyForm(defaultOptions))
+      act(() => result.current.setInputValue('base'))
+      act(() => result.current.setInputValue((prev) => prev + '_extra'))
+      expect(result.current.inputValue).toBe('base_extra')
+    })
+  })
+
+  describe('isSaveDisabled と handleSave ガードの一貫性', () => {
+    it('スペース付き有効値は isSaveDisabled=false かつ handleSave が onSave を呼ぶ', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
+      act(() => result.current.setInputValue('  sk-ant-test  '))
+      expect(result.current.isSaveDisabled).toBe(false)
+      await act(() => result.current.handleSave())
+      expect(onSave).toHaveBeenCalledWith('sk-ant-test')
+    })
+
+    it('スペースのみの入力は isSaveDisabled=true かつ handleSave も onSave を呼ばない', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
+      act(() => result.current.setInputValue('   '))
+      expect(result.current.isSaveDisabled).toBe(true)
+      await act(() => result.current.handleSave())
+      expect(onSave).not.toHaveBeenCalled()
+    })
+  })
+
   describe('handleSave — ガード（早期 return）', () => {
     it('inputValue が空のとき onSave が呼ばれない', async () => {
       const onSave = vi.fn().mockResolvedValue(undefined)
