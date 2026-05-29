@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { Prompt } from '../../../types'
@@ -136,11 +136,19 @@ describe('PromptsPanel', () => {
       rerender(
         <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={false} />
       )
+      await act(async () => {})
       rerender(
         <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={true} />
       )
       expect(screen.getByText('テストタイトル')).toBeInTheDocument()
       expect(screen.getByText('バグ修正')).toBeInTheDocument()
+      expect(screen.getByRole('searchbox')).toHaveValue('')
+    })
+
+    it('isActive が初回から false でも query はリセットされない', async () => {
+      render(
+        <PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} isActive={false} />
+      )
       expect(screen.getByRole('searchbox')).toHaveValue('')
     })
   })
