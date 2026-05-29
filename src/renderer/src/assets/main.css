@@ -152,7 +152,41 @@ body {
   padding: 4px 0;
 }
 
+.prompts-panel__search {
+  padding: 6px 8px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.prompts-panel__search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.prompts-panel__search-input:focus {
+  border-color: #007acc;
+}
+
+.prompts-panel__search-input::placeholder {
+  color: #666666;
+}
+
 .prompts-panel__empty {
+  padding: 12px;
+  color: #6c6c6c;
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.prompts-panel__no-results {
   padding: 12px;
   color: #6c6c6c;
   font-size: 12px;
