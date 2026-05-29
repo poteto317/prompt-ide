@@ -10,10 +10,11 @@ interface Props {
   onDelete: (id: string) => void
   onRun: (content: string) => void
   isRunDisabled?: boolean
+  isActive?: boolean
 }
 
-export default function PromptsPanel({ prompts, onAdd, onDelete, onRun, isRunDisabled = false }: Props) {
-  const { filteredPrompts, query, setQuery } = usePromptFilter(prompts)
+export default function PromptsPanel({ prompts, onAdd, onDelete, onRun, isRunDisabled = false, isActive }: Props) {
+  const { filteredPrompts, query, setQuery } = usePromptFilter(prompts, { isActive })
 
   return (
     <div className="prompts-panel">

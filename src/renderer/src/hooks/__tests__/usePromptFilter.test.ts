@@ -146,4 +146,60 @@ describe('usePromptFilter', () => {
       expect(result.current.filteredPrompts).toHaveLength(0)
     })
   })
+
+  describe('prompts.length が 0 になったとき query をリセットする', () => {
+    it('全件削除後に query が空文字になる', () => {
+      let prompts = PROMPTS
+      const { result, rerender } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.setQuery('xyz'))
+      expect(result.current.filteredPrompts).toHaveLength(0)
+      prompts = []
+      rerender()
+      expect(result.current.query).toBe('')
+    })
+
+    it('query リセット後に追加した新規プロンプトが表示される', () => {
+      let prompts = PROMPTS
+      const { result, rerender } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.setQuery('xyz'))
+      prompts = []
+      rerender()
+      expect(result.current.query).toBe('')
+      prompts = [makePrompt({ id: '99', title: '新規プロンプト', content: '' })]
+      rerender()
+      expect(result.current.filteredPrompts).toHaveLength(1)
+      expect(result.current.filteredPrompts[0].id).toBe('99')
+    })
+  })
+
+  describe('isActive が false になったとき query をリセットする', () => {
+    it('isActive が true → false に変わると query が空文字になる', () => {
+      let isActive = true
+      const { result, rerender } = renderHook(() => usePromptFilter(PROMPTS, { isActive }))
+      act(() => result.current.setQuery('リファクタリング'))
+      expect(result.current.filteredPrompts).toHaveLength(1)
+      isActive = false
+      rerender()
+      expect(result.current.query).toBe('')
+    })
+
+    it('isActive が false → true に戻っても query は空のまま', () => {
+      let isActive = true
+      const { result, rerender } = renderHook(() => usePromptFilter(PROMPTS, { isActive }))
+      act(() => result.current.setQuery('バグ'))
+      isActive = false
+      rerender()
+      expect(result.current.query).toBe('')
+      isActive = true
+      rerender()
+      expect(result.current.query).toBe('')
+      expect(result.current.filteredPrompts).toEqual(PROMPTS)
+    })
+
+    it('isActive が undefined のとき query をリセットしない', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      act(() => result.current.setQuery('リファクタリング'))
+      expect(result.current.query).toBe('リファクタリング')
+    })
+  })
 })
