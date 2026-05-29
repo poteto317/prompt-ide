@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react'
 
 interface UseApiKeyFormOptions {
   apiKeyLoaded: boolean
@@ -8,7 +8,7 @@ interface UseApiKeyFormOptions {
 
 interface UseApiKeyFormResult {
   inputValue: string
-  setInputValue: (v: string) => void
+  setInputValue: Dispatch<SetStateAction<string>>
   isSaving: boolean
   saved: boolean
   saveError: string | null
@@ -33,14 +33,15 @@ export function useApiKeyForm({
     }
   }, [])
 
+  const trimmedInput = inputValue.trim()
+
   const handleSave = useCallback(async () => {
-    const trimmed = inputValue.trim()
-    if (!apiKeyLoaded || isSaving || trimmed.length === 0 || keyStoreError !== null) return
+    if (!apiKeyLoaded || isSaving || trimmedInput.length === 0 || keyStoreError !== null) return
     setIsSaving(true)
     setSaved(false)
     setSaveError(null)
     try {
-      await onSave(trimmed)
+      await onSave(trimmedInput)
       setInputValue('')
       setSaved(true)
       if (timerRef.current !== null) clearTimeout(timerRef.current)
@@ -50,10 +51,9 @@ export function useApiKeyForm({
     } finally {
       setIsSaving(false)
     }
-  }, [inputValue, onSave, apiKeyLoaded, isSaving, keyStoreError])
+  }, [trimmedInput, onSave, apiKeyLoaded, isSaving, keyStoreError])
 
-  const isSaveDisabled =
-    !apiKeyLoaded || isSaving || inputValue.trim().length === 0 || keyStoreError !== null
+  const isSaveDisabled = !apiKeyLoaded || isSaving || trimmedInput.length === 0 || keyStoreError !== null
 
   return { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave }
 }
