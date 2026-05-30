@@ -170,6 +170,16 @@ describe('usePromptFilter', () => {
       expect(result.current.filteredPrompts).toHaveLength(1)
       expect(result.current.filteredPrompts[0].id).toBe('99')
     })
+
+    it('同じ件数で prompts が差し替わっても query はリセットされない', () => {
+      let prompts: Prompt[] = [makePrompt({ id: 'a', title: 'AAA', content: '' })]
+      const { result, rerender } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.setQuery('AAA'))
+      expect(result.current.filteredPrompts).toHaveLength(1)
+      prompts = [makePrompt({ id: 'b', title: 'BBB', content: '' })]
+      rerender()
+      expect(result.current.query).toBe('AAA')
+    })
   })
 
   describe('isActive が false になったとき query をリセットする', () => {
@@ -199,6 +209,24 @@ describe('usePromptFilter', () => {
     it('isActive が undefined のとき query をリセットしない', () => {
       const { result } = renderHook(() => usePromptFilter(PROMPTS))
       act(() => result.current.setQuery('リファクタリング'))
+      expect(result.current.query).toBe('リファクタリング')
+    })
+
+    it('isActive が初回から false でも query をリセットしない（初回マウント保護）', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS, { isActive: false }))
+      expect(result.current.query).toBe('')
+      act(() => result.current.setQuery('リファクタリング'))
+      expect(result.current.query).toBe('リファクタリング')
+    })
+
+    it('isActive が undefined から false に変わっても query をリセットしない', () => {
+      // prevIsActiveRef が undefined で初期化されるため wasActive=undefined(falsy) → guard 非発火
+      // 旧コード(isActive===false で無条件 reset)との差分を検証する回帰テスト
+      let options: { isActive?: boolean } = {}
+      const { result, rerender } = renderHook(() => usePromptFilter(PROMPTS, options))
+      act(() => result.current.setQuery('リファクタリング'))
+      options = { isActive: false }
+      rerender()
       expect(result.current.query).toBe('リファクタリング')
     })
   })
