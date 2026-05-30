@@ -4,14 +4,23 @@
 - コードの修正や提案を行った後は、必ずターミナルで検証コマンドを実行して動作確認を行うこと。
 - 修正内容に自信がある場合でも、検証ステップを省略しないこと。
 - **`git commit` や `git push` はユーザーから明示的に指示がある場合のみ実行すること。** 自動実行は禁止。
+- **`gh` コマンドで日本語を含む PR / Issue 本文を扱う場合、Windows (PowerShell) では必ず UTF-8 に固定してから実行すること。**
+  ```powershell
+  chcp 65001
+  [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  $OutputEncoding = [Console]::OutputEncoding
+  ```
+  文字化けした既存本文は再利用せず、正常なテキストで上書きすること。
 
 # PR レビューフロー
 
 PR へのコミットをプッシュした後は、以下の手順を必ず実施すること。
 
-1. **未解決スレッドの確認**
-   - `gh api graphql` で PR の reviewThreads を取得し、未解決スレッドがないか確認する
-   - 未解決スレッドがある場合は `resolveReviewThread` ミューテーションですべて Resolve してから次へ
+1. **対応済みスレッドの Resolve**
+   - `gh api graphql` で PR の `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
+   - **対応済みの指摘のみ** `resolveReviewThread` ミューテーションで Resolve する（未対応の指摘を機械的に Resolve しないこと）
+   - すべてのスレッドが解決済みになったら次のステップへ
 
 2. **コードレビューの依頼**
    - 未解決スレッドが 0 件になったら `/code-review` スキルを実行してレビューを依頼する
@@ -33,6 +42,7 @@ import { Foo } from "@/types/foo";
 ## コンポーネント設計
 
 - **'use client'**: クライアントコンポーネントには必ず宣言
+- **ダークモード対応**: Tailwind の `dark:` プレフィックスを使用
 - **アクセシビリティ**: `aria-label` を適切に設定
 
 ### ドラッグハンドルとスワイプの競合防止
@@ -61,7 +71,7 @@ import { Foo } from "@/types/foo";
 
 ## テスト
 
-- **タイマーリークの防止**: テスト内で `setInterval` / `setTimeout` を使ったモック実装を書く場合は、返ってくる ID を変数に保持し、`afterEach` で必ず `clearInterval` / `clearTimeout` すること。
+- **タイマーリークの防止**: テスト内で `setInterval` / `setTimeout` を使ったモック実装を書く場合は、返ってくる ID を変数に保持し、`afterEach` で必ず `clearInterval` / `clearTimeout` すること。`jest.useFakeTimers()` 下でも interval はテスト間をまたいで残る場合があり、予期せぬ tick / open handle の原因になる。
 
 ```typescript
 // ❌ 悪い例 — interval ID を捨てているためテスト間をまたいでリークする
@@ -82,7 +92,8 @@ mockStart.mockImplementation((onTick: () => void) => {
 コードを変更した際は、関連するドキュメントも必ず同時に更新する。
 
 - **コード例の同期**: ドキュメントに掲載しているコードサンプルは、実装変更時に現行コードと一致しているか確認し、ずれがあれば同じコミットで修正する。
-- **過去の状態と現在の状態の区別**: バグ修正記録で「修正前の状態」を記述する場合は過去形を使い、現在も同じ状態であるかのような誤読を防ぐ。
+- **過去の状態と現在の状態の区別**: バグ修正記録で「修正前の状態」を記述する場合は過去形（「〜していた」「〜だった」）を使い、現在も同じ状態であるかのような誤読を防ぐ。
+- **修正済みであることの明記**: 「このPRで修正」「このコミットで変更」など、どのタイミングで対応したかを明記する。
 
 ## Hooks・関数の実装ルール
 
