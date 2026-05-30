@@ -218,5 +218,16 @@ describe('usePromptFilter', () => {
       act(() => result.current.setQuery('リファクタリング'))
       expect(result.current.query).toBe('リファクタリング')
     })
+
+    it('isActive が undefined から false に変わっても query をリセットしない', () => {
+      // prevIsActiveRef が undefined で初期化されるため wasActive=undefined(falsy) → guard 非発火
+      // 旧コード(isActive===false で無条件 reset)との差分を検証する回帰テスト
+      let options: { isActive?: boolean } = {}
+      const { result, rerender } = renderHook(() => usePromptFilter(PROMPTS, options))
+      act(() => result.current.setQuery('リファクタリング'))
+      options = { isActive: false }
+      rerender()
+      expect(result.current.query).toBe('リファクタリング')
+    })
   })
 })
