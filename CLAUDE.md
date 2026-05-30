@@ -76,7 +76,7 @@ import { Foo } from "@/types/foo";
 
 ### 選択状態の ARIA
 
-色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={isSelected}` を付与する。
+色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={currentValue === c.value}` を付与する。
 
 ```tsx
 // ❌ 悪い例 — ring だけでは支援技術に選択状態が伝わらない
