@@ -439,7 +439,7 @@ export const STAGES = [
 - `progressUtils`: `isValidTask` の不正入力除外
 - `useProgressTasks`: ロード/保存・ミューテーション・ロード前マージ
 - コンポーネント: once/repeatable の表示差・記録/完了操作・履歴展開
-- main `progressStore`: load の ENOERROR、書き込みキューの直列化
+- main `progressStore`: load の ENOENT、書き込みキューの直列化
 
 ### 7.14 段階的な実装順（PR 分割の目安）
 
