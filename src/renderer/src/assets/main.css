@@ -237,6 +237,91 @@ body {
   color: #f48771;
 }
 
+.prompt-item__edit-btn {
+  font-size: 11px;
+  color: #6c6c6c;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.prompt-item__edit-btn:hover {
+  color: #cccccc;
+}
+
+.prompt-item--editing {
+  background: #252526;
+}
+
+.prompt-item__edit-title {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 2px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.prompt-item__edit-title:focus {
+  border-color: #007acc;
+}
+
+.prompt-item__edit-content {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 2px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.prompt-item__edit-content:focus {
+  border-color: #007acc;
+}
+
+.prompt-item__edit-actions {
+  display: flex;
+  gap: 4px;
+  align-self: flex-end;
+}
+
+.prompt-item__save {
+  font-size: 11px;
+  color: #ffffff;
+  background: #0e639c;
+  border: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.prompt-item__save:hover {
+  background: #1177bb;
+}
+
+.prompt-item__cancel {
+  font-size: 11px;
+  color: #cccccc;
+  background: none;
+  border: 1px solid #555555;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+.prompt-item__cancel:hover {
+  border-color: #999999;
+}
+
 .add-prompt-form {
   display: flex;
   flex-direction: column;

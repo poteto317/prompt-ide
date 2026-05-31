@@ -18,6 +18,7 @@ interface Props {
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
+  onEditPrompt: (id: string, title: string, content: string) => void
   onRunPrompt: (content: string) => void
   isExecuting: boolean
   gitStatus: GitStatusResult | null
@@ -41,6 +42,7 @@ export default function Sidebar({
   prompts,
   onAddPrompt,
   onDeletePrompt,
+  onEditPrompt,
   onRunPrompt,
   isExecuting,
   gitStatus,
@@ -70,6 +72,7 @@ export default function Sidebar({
           prompts={prompts}
           onAdd={onAddPrompt}
           onDelete={onDeletePrompt}
+          onEdit={onEditPrompt}
           onRun={onRunPrompt}
           isRunDisabled={isExecuting}
           isActive={activePanel === 'prompts'}
