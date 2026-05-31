@@ -134,5 +134,71 @@ describe('PromptItem', () => {
       expect(onEdit).not.toHaveBeenCalled()
       expect(screen.getByRole('button', { name: 'プロンプトを編集' })).toBeInTheDocument()
     })
+
+    describe('保存ボタンの disabled 制御（trim・空チェック）', () => {
+      it('タイトルを空にすると保存ボタンが disabled になる', async () => {
+        render(<PromptItem {...defaultProps} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+        await userEvent.clear(titleInput)
+        expect(screen.getByRole('button', { name: '変更を保存' })).toBeDisabled()
+      })
+
+      it('内容を空にすると保存ボタンが disabled になる', async () => {
+        render(<PromptItem {...defaultProps} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const contentInput = screen.getByRole('textbox', { name: '内容を編集' })
+        await userEvent.clear(contentInput)
+        expect(screen.getByRole('button', { name: '変更を保存' })).toBeDisabled()
+      })
+
+      it('タイトルが空白のみのとき保存ボタンが disabled になる', async () => {
+        render(<PromptItem {...defaultProps} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+        await userEvent.clear(titleInput)
+        await userEvent.type(titleInput, '   ')
+        expect(screen.getByRole('button', { name: '変更を保存' })).toBeDisabled()
+      })
+
+      it('内容が空白のみのとき保存ボタンが disabled になる', async () => {
+        render(<PromptItem {...defaultProps} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const contentInput = screen.getByRole('textbox', { name: '内容を編集' })
+        await userEvent.clear(contentInput)
+        await userEvent.type(contentInput, '   ')
+        expect(screen.getByRole('button', { name: '変更を保存' })).toBeDisabled()
+      })
+
+      it('タイトルと内容が両方入力されているとき保存ボタンが enabled になる', async () => {
+        render(<PromptItem {...defaultProps} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        expect(screen.getByRole('button', { name: '変更を保存' })).toBeEnabled()
+      })
+
+      it('前後に空白があるタイトル・内容で保存すると trim された値で onEdit が呼ばれる', async () => {
+        const onEdit = vi.fn()
+        render(<PromptItem {...defaultProps} onEdit={onEdit} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+        const contentInput = screen.getByRole('textbox', { name: '内容を編集' })
+        await userEvent.clear(titleInput)
+        await userEvent.type(titleInput, '  trimされるタイトル  ')
+        await userEvent.clear(contentInput)
+        await userEvent.type(contentInput, '  trimされる内容  ')
+        await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+        expect(onEdit).toHaveBeenCalledWith('test-id-1', 'trimされるタイトル', 'trimされる内容')
+      })
+
+      it('保存ボタンが disabled のとき onEdit が呼ばれない', async () => {
+        const onEdit = vi.fn()
+        render(<PromptItem {...defaultProps} onEdit={onEdit} />)
+        await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+        const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+        await userEvent.clear(titleInput)
+        await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
+        expect(onEdit).not.toHaveBeenCalled()
+      })
+    })
   })
 })

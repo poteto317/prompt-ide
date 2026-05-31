@@ -22,8 +22,11 @@ export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisab
     setIsEditing(true)
   }
 
+  const isSaveDisabled = editTitle.trim() === '' || editContent.trim() === ''
+
   const handleSave = () => {
-    onEdit(prompt.id, editTitle, editContent)
+    if (isSaveDisabled) return
+    onEdit(prompt.id, editTitle.trim(), editContent.trim())
     setIsEditing(false)
   }
 
@@ -53,6 +56,7 @@ export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisab
             type="button"
             className="prompt-item__save"
             aria-label="変更を保存"
+            disabled={isSaveDisabled}
             onClick={handleSave}
           >
             保存
