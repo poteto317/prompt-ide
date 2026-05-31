@@ -59,6 +59,7 @@ import { Foo } from "@/types/foo";
 </SwipeableItem>
 
 // ✅ 良い例 — capture で伝播を止め、スワイプと干渉しない
+// attributes・listeners は dnd-kit の useSortable / useDraggable の戻り値
 <SwipeableItem ...>
   <button
     {...attributes}
@@ -75,13 +76,13 @@ import { Foo } from "@/types/foo";
 
 ### 選択状態の ARIA
 
-色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={isSelected}` を付与する。
+色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={currentValue === c.value}` を付与する。
 
 ```tsx
 // ❌ 悪い例 — ring だけでは支援技術に選択状態が伝わらない
 <div className="flex gap-1">
   {colors.map((c) => (
-    <button key={c.value} className={isSelected ? "ring-2" : ""} />
+    <button key={c.value} className={currentValue === c.value ? "ring-2" : ""} />
   ))}
 </div>
 
@@ -133,8 +134,10 @@ const activateTimer = () => {
     activeIntervalId = setInterval(onTick, INTERVAL_MS);
   });
 };
-// beforeEach で activeIntervalId = null にリセット
-// afterEach で clearInterval(activeIntervalId) してから jest.useRealTimers()
+// beforeEach: activeIntervalId = null にリセット
+// afterEach:
+//   if (activeIntervalId !== null) clearInterval(activeIntervalId)  ← null チェック必須（型エラー防止）
+//   jest.useRealTimers()
 ```
 
 ## ドキュメントの同期管理
