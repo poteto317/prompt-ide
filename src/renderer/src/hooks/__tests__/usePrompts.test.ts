@@ -251,3 +251,71 @@ describe('deletePrompt', () => {
     expect(result.current.prompts).toHaveLength(1)
   })
 })
+
+describe('updatePrompt', () => {
+  it('指定 ID のプロンプトの title と content が更新される', async () => {
+    const stored: Prompt[] = [
+      { id: 'p1', title: '旧タイトル', content: '旧コンテンツ', createdAt: 1 },
+    ]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('p1', '新タイトル', '新コンテンツ'))
+    expect(result.current.prompts[0].title).toBe('新タイトル')
+    expect(result.current.prompts[0].content).toBe('新コンテンツ')
+  })
+
+  it('updatePrompt 後に save が呼ばれる', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('p1', '新T', '新C'))
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'p1', title: '新T', content: '新C' }),
+      ])
+    )
+  })
+
+  it('他のプロンプトは変化しない', async () => {
+    const stored: Prompt[] = [
+      { id: 'p1', title: 'T1', content: 'C1', createdAt: 1 },
+      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 },
+    ]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    act(() => result.current.updatePrompt('p1', '新T1', '新C1'))
+    expect(result.current.prompts[1].title).toBe('T2')
+    expect(result.current.prompts[1].content).toBe('C2')
+  })
+
+  it('存在しない ID を指定しても他のプロンプトは変化しない', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('non-existent', '新T', '新C'))
+    expect(result.current.prompts[0].title).toBe('T')
+    expect(result.current.prompts[0].content).toBe('C')
+  })
+
+  it('ロード完了前に updatePrompt しても createdAt は保持される', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+
+    act(() => result.current.updatePrompt('p1', '新T', '新C'))
+
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 999 }]
+    await act(async () => resolveLoad(stored))
+    expect(result.current.prompts[0].createdAt).toBe(999)
+    expect(result.current.prompts[0].title).toBe('新T')
+    expect(result.current.prompts[0].content).toBe('新C')
+  })
+})
