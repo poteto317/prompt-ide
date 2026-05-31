@@ -9,6 +9,7 @@ const defaultProps = {
   onAdd: vi.fn(),
   onDelete: vi.fn(),
   onRun: vi.fn(),
+  onEdit: vi.fn(),
 }
 
 const samplePrompt: Prompt = {

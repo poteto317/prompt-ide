@@ -1,4 +1,5 @@
 'use client'
+import { useState } from 'react'
 import type { Prompt } from '../../types'
 import { truncatePreview } from '../../lib/promptUtils'
 
@@ -6,10 +7,69 @@ interface Props {
   prompt: Prompt
   onDelete: (id: string) => void
   onRun: (content: string) => void
+  onEdit: (id: string, title: string, content: string) => void
   isRunDisabled?: boolean
 }
 
-export default function PromptItem({ prompt, onDelete, onRun, isRunDisabled = false }: Props) {
+export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisabled = false }: Props) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+
+  const handleEditStart = () => {
+    setEditTitle(prompt.title)
+    setEditContent(prompt.content)
+    setIsEditing(true)
+  }
+
+  const handleSave = () => {
+    onEdit(prompt.id, editTitle, editContent)
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setIsEditing(false)
+  }
+
+  if (isEditing) {
+    return (
+      <div className="prompt-item prompt-item--editing">
+        <input
+          className="prompt-item__edit-title"
+          type="text"
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          aria-label="タイトルを編集"
+        />
+        <textarea
+          className="prompt-item__edit-content"
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          aria-label="内容を編集"
+          rows={4}
+        />
+        <div className="prompt-item__edit-actions">
+          <button
+            type="button"
+            className="prompt-item__save"
+            aria-label="変更を保存"
+            onClick={handleSave}
+          >
+            保存
+          </button>
+          <button
+            type="button"
+            className="prompt-item__cancel"
+            aria-label="編集をキャンセル"
+            onClick={handleCancel}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="prompt-item">
       <div className="prompt-item__title">{prompt.title}</div>
@@ -23,6 +83,14 @@ export default function PromptItem({ prompt, onDelete, onRun, isRunDisabled = fa
           onClick={() => onRun(prompt.content)}
         >
           実行
+        </button>
+        <button
+          type="button"
+          className="prompt-item__edit-btn"
+          aria-label="プロンプトを編集"
+          onClick={handleEditStart}
+        >
+          編集
         </button>
         <button
           type="button"

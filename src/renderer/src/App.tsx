@@ -9,7 +9,7 @@ export default function App(): React.JSX.Element {
   const {
     activePanel, sidebarOpen, handlePanelChange,
     folderPath, fileTree, openFile, error, openFolder, selectFile,
-    prompts, addPrompt, deletePrompt,
+    prompts, addPrompt, deletePrompt, updatePrompt,
     gitStatus, gitLoading, gitError, refreshGitStatus,
     hasKey, apiKeyLoaded, keyStoreError, saveApiKey,
     isExecuting, result, executionError, executePrompt, clearResult,
@@ -37,6 +37,7 @@ export default function App(): React.JSX.Element {
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}
+              onEditPrompt={updatePrompt}
               onRunPrompt={handleRunPrompt}
               isExecuting={isExecuting}
               gitStatus={gitStatus}

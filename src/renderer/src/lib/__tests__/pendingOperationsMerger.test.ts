@@ -88,4 +88,40 @@ describe('mergePendingOps', () => {
     expect(loaded).toHaveLength(1)
     expect(result).toHaveLength(2)
   })
+
+  it('update op が適用されて title と content が更新される', () => {
+    const loaded = [p('a'), p('b')]
+    const pending: PendingOp[] = [{ type: 'update', id: 'a', title: '新Ta', content: '新Ca' }]
+    const result = mergePendingOps(loaded, pending)
+    expect(result).toHaveLength(2)
+    expect(result[0].title).toBe('新Ta')
+    expect(result[0].content).toBe('新Ca')
+    expect(result[0].id).toBe('a')
+  })
+
+  it('update op は createdAt を変更しない', () => {
+    const loaded = [{ id: 'a', title: 'T', content: 'C', createdAt: 999 }]
+    const pending: PendingOp[] = [{ type: 'update', id: 'a', title: '新T', content: '新C' }]
+    const result = mergePendingOps(loaded, pending)
+    expect(result[0].createdAt).toBe(999)
+  })
+
+  it('存在しない ID を update しても他が変わらない', () => {
+    const loaded = [p('a')]
+    const pending: PendingOp[] = [{ type: 'update', id: 'non-existent', title: '新T', content: '新C' }]
+    const result = mergePendingOps(loaded, pending)
+    expect(result).toEqual(loaded)
+  })
+
+  it('add → update を順に適用してもマージが正しい', () => {
+    const loaded: Prompt[] = []
+    const pending: PendingOp[] = [
+      { type: 'add', prompt: p('x') },
+      { type: 'update', id: 'x', title: '更新Tx', content: '更新Cx' },
+    ]
+    const result = mergePendingOps(loaded, pending)
+    expect(result).toHaveLength(1)
+    expect(result[0].title).toBe('更新Tx')
+    expect(result[0].content).toBe('更新Cx')
+  })
 })

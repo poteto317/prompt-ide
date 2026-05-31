@@ -9,11 +9,12 @@ interface Props {
   onAdd: (title: string, content: string) => void
   onDelete: (id: string) => void
   onRun: (content: string) => void
+  onEdit: (id: string, title: string, content: string) => void
   isRunDisabled?: boolean
   isActive?: boolean
 }
 
-export default function PromptsPanel({ prompts, onAdd, onDelete, onRun, isRunDisabled = false, isActive }: Props) {
+export default function PromptsPanel({ prompts, onAdd, onDelete, onRun, onEdit, isRunDisabled = false, isActive }: Props) {
   const { filteredPrompts, query, setQuery } = usePromptFilter(prompts, { isActive })
 
   return (
@@ -42,6 +43,7 @@ export default function PromptsPanel({ prompts, onAdd, onDelete, onRun, isRunDis
               prompt={prompt}
               onDelete={onDelete}
               onRun={onRun}
+              onEdit={onEdit}
               isRunDisabled={isRunDisabled}
             />
           ))
