@@ -76,7 +76,7 @@ import { Foo } from "@/types/foo";
 
 ### 選択状態の ARIA
 
-色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={選択状態の判定式}` を付与する（変数名・比較式は実装に応じて変える）。
+色スウォッチなど「どれが選択中か」を視覚的に表現する場合、支援技術にも状態を伝える。グループコンテナに `role="radiogroup"`、各選択肢に `role="radio"` + `aria-checked={/* 選択状態の判定式 */}` を付与する（変数名・比較式は実装に応じて変える）。
 
 ```tsx
 // ❌ 悪い例 — ring だけでは支援技術に選択状態が伝わらない
@@ -135,12 +135,13 @@ const activateTimer = () => {
   });
 };
 beforeEach(() => {
-  activeIntervalId = null
-})
+  jest.useFakeTimers();
+  activeIntervalId = null;
+});
 afterEach(() => {
-  if (activeIntervalId !== null) clearInterval(activeIntervalId) // timer が起動済みの場合のみクリア（リーク防止）
-  jest.useRealTimers()
-})
+  if (activeIntervalId !== null) clearInterval(activeIntervalId); // timer が起動済みの場合のみクリア（リーク防止）
+  jest.useRealTimers();
+});
 ```
 
 ## ドキュメントの同期管理
