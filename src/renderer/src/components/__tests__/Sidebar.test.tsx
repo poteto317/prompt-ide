@@ -13,6 +13,7 @@ const defaultProps = {
   prompts: [],
   onAddPrompt: vi.fn(),
   onDeletePrompt: vi.fn(),
+  onEditPrompt: vi.fn(),
   onRunPrompt: vi.fn(),
   isExecuting: false,
   gitStatus: null,

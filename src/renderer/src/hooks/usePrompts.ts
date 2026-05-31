@@ -9,6 +9,7 @@ interface PromptsState {
   promptsLoaded: boolean
   addPrompt: (title: string, content: string) => void
   deletePrompt: (id: string) => void
+  updatePrompt: (id: string, title: string, content: string) => void
 }
 
 export function usePrompts(): PromptsState {
@@ -72,5 +73,22 @@ export function usePrompts(): PromptsState {
     [save]
   )
 
-  return { prompts, promptsLoaded, addPrompt, deletePrompt }
+  const updatePrompt = useCallback(
+    (id: string, title: string, content: string): void => {
+      if (!loadedRef.current) {
+        pendingOpsRef.current = [...pendingOpsRef.current, { type: 'update', id, title, content }]
+        const next = promptsRef.current.map((p) => (p.id === id ? { ...p, title, content } : p))
+        promptsRef.current = next
+        setPrompts(next)
+        return
+      }
+      const next = promptsRef.current.map((p) => (p.id === id ? { ...p, title, content } : p))
+      promptsRef.current = next
+      setPrompts(next)
+      save(next)
+    },
+    [save]
+  )
+
+  return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt }
 }
