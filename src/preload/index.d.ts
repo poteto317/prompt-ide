@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { FileTreeNode, GitStatusResult, Prompt } from '@shared/types'
+import type { FileTreeNode, GitStatusResult, Prompt, Task } from '@shared/types'
 
 declare global {
   interface Window {
@@ -14,6 +14,8 @@ declare global {
       runPrompt(promptContent: string, fileContent: string | null): Promise<string>
       loadPrompts(): Promise<Prompt[]>
       savePrompts(prompts: Prompt[]): Promise<void>
+      loadTasks(): Promise<Task[]>
+      saveTasks(tasks: Task[]): Promise<void>
     }
   }
 }
