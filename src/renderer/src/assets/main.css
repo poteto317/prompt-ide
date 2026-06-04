@@ -523,7 +523,6 @@ body {
   white-space: nowrap;
 }
 
-
 .status-bar__spacer {
   flex: 1;
 }
@@ -743,9 +742,15 @@ body {
   line-height: 1.3;
 }
 
-.markdown-renderer h1 { font-size: 18px; }
-.markdown-renderer h2 { font-size: 16px; }
-.markdown-renderer h3 { font-size: 14px; }
+.markdown-renderer h1 {
+  font-size: 18px;
+}
+.markdown-renderer h2 {
+  font-size: 16px;
+}
+.markdown-renderer h3 {
+  font-size: 14px;
+}
 
 .markdown-renderer code {
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
@@ -950,6 +955,361 @@ body {
 }
 
 .prompt-item__run:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ---- 進捗管理パネル ---- */
+
+.progress-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.progress-panel__selector {
+  padding: 6px 8px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.progress-panel__select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.progress-panel__select:focus {
+  border-color: #007acc;
+}
+
+.progress-panel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.progress-panel__empty {
+  padding: 12px;
+  color: #6c6c6c;
+  font-size: 12px;
+  margin: 0;
+}
+
+.progress-panel__task-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+}
+
+.progress-panel__task-title {
+  font-size: 13px;
+  color: #cccccc;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.progress-panel__task-progress {
+  font-size: 11px;
+  color: #4ec9b0;
+  flex-shrink: 0;
+}
+
+.progress-panel__delete {
+  font-size: 11px;
+  color: #6c6c6c;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.progress-panel__delete:hover {
+  color: #f48771;
+}
+
+/* ---- ステッパー ---- */
+
+.stage-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.stage-row {
+  padding: 8px 12px;
+  border-bottom: 1px solid #3c3c3c;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-row--current {
+  background: #2a2d2e;
+  border-left: 2px solid #007acc;
+}
+
+.stage-row__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stage-row__icon {
+  font-size: 13px;
+  color: #6c6c6c;
+  flex-shrink: 0;
+}
+
+.stage-row--done .stage-row__icon {
+  color: #4ec9b0;
+}
+
+.stage-row--in_progress .stage-row__icon {
+  color: #007acc;
+}
+
+.stage-row--skipped .stage-row__icon {
+  color: #6c6c6c;
+}
+
+.stage-row__name {
+  font-size: 12px;
+  color: #cccccc;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stage-row__kind {
+  font-size: 10px;
+  color: #6c6c6c;
+  flex-shrink: 0;
+}
+
+.stage-row__badge {
+  font-size: 10px;
+  color: #ffffff;
+  background: #0e639c;
+  border-radius: 8px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.stage-row__toggle {
+  font-size: 11px;
+  color: #6c6c6c;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.stage-row__toggle:hover {
+  color: #cccccc;
+}
+
+/* ---- ステージ操作ボタン ---- */
+
+.stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.stage-actions__btn {
+  font-size: 11px;
+  background: none;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid #555555;
+  color: #cccccc;
+}
+
+.stage-actions__btn:hover {
+  border-color: #999999;
+}
+
+.stage-actions__btn--complete {
+  color: #4ec9b0;
+  border-color: #4ec9b0;
+}
+
+.stage-actions__btn--complete:hover {
+  background: rgba(78, 201, 176, 0.1);
+}
+
+.stage-actions__btn--advance {
+  color: #ffffff;
+  background: #0e639c;
+  border-color: #0e639c;
+}
+
+.stage-actions__btn--advance:hover {
+  background: #1177bb;
+}
+
+/* ---- ステージ履歴 ---- */
+
+.stage-history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 0 18px;
+}
+
+.stage-history__empty {
+  font-size: 11px;
+  color: #6c6c6c;
+  margin: 0;
+}
+
+.stage-history__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stage-history__item {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  color: #cccccc;
+  border-left: 1px solid #3c3c3c;
+  padding-left: 8px;
+}
+
+.stage-history__date {
+  color: #6c6c6c;
+}
+
+.stage-history__meta {
+  color: #4ec9b0;
+}
+
+.stage-history__record {
+  display: flex;
+  gap: 4px;
+}
+
+.stage-history__record-input {
+  flex: 1;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 2px;
+  color: #cccccc;
+  font-size: 11px;
+  padding: 3px 6px;
+  outline: none;
+}
+
+.stage-history__record-input:focus {
+  border-color: #007acc;
+}
+
+.stage-history__record-btn {
+  font-size: 11px;
+  color: #cccccc;
+  background: none;
+  border: 1px solid #555555;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.stage-history__record-btn:hover {
+  border-color: #999999;
+}
+
+/* ---- 凡例 ---- */
+
+.stage-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 0;
+  border-top: 1px solid #3c3c3c;
+}
+
+.stage-legend__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stage-legend__icon {
+  font-size: 12px;
+  color: #cccccc;
+  margin: 0;
+}
+
+.stage-legend__label {
+  font-size: 11px;
+  color: #6c6c6c;
+  margin: 0;
+}
+
+/* ---- タスク追加フォーム ---- */
+
+.add-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.add-task-form__input {
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.add-task-form__input:focus {
+  border-color: #007acc;
+}
+
+.add-task-form__button {
+  background: #0e639c;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.add-task-form__button:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.add-task-form__button:disabled {
   opacity: 0.4;
   cursor: default;
 }

@@ -1,10 +1,11 @@
 import PromptsPanel from './prompts/PromptsPanel'
+import ProgressPanel from './progress/ProgressPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
 import SourceControlPanel from './source-control/SourceControlPanel'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
-import type { Panel, FileTreeNode, Prompt } from '../types'
+import type { Panel, FileTreeNode, Prompt, Task, StageId } from '../types'
 import type { GitStatusResult } from '@shared/types'
 
 interface Props {
@@ -21,6 +22,14 @@ interface Props {
   onEditPrompt: (id: string, title: string, content: string) => void
   onRunPrompt: (content: string) => void
   isExecuting: boolean
+  tasks: Task[]
+  onAddTask: (title: string) => void
+  onDeleteTask: (id: string) => void
+  onRecordEvent: (taskId: string, stageId: StageId, note?: string) => void
+  onCompleteStage: (taskId: string, stageId: StageId) => void
+  onReopenStage: (taskId: string, stageId: StageId) => void
+  onSkipStage: (taskId: string, stageId: StageId) => void
+  onAdvanceStage: (taskId: string) => void
   gitStatus: GitStatusResult | null
   gitLoading: boolean
   gitError: Error | null
@@ -45,6 +54,14 @@ export default function Sidebar({
   onEditPrompt,
   onRunPrompt,
   isExecuting,
+  tasks,
+  onAddTask,
+  onDeleteTask,
+  onRecordEvent,
+  onCompleteStage,
+  onReopenStage,
+  onSkipStage,
+  onAdvanceStage,
   gitStatus,
   gitLoading,
   gitError,
@@ -52,7 +69,7 @@ export default function Sidebar({
   hasKey,
   apiKeyLoaded,
   keyStoreError,
-  onSaveApiKey,
+  onSaveApiKey
 }: Props) {
   return (
     <div className="sidebar">
@@ -76,6 +93,18 @@ export default function Sidebar({
           onRun={onRunPrompt}
           isRunDisabled={isExecuting}
           isActive={activePanel === 'prompts'}
+        />
+      </PanelContainer>
+      <PanelContainer isActive={activePanel === 'progress'}>
+        <ProgressPanel
+          tasks={tasks}
+          onAddTask={onAddTask}
+          onDeleteTask={onDeleteTask}
+          onRecordEvent={onRecordEvent}
+          onCompleteStage={onCompleteStage}
+          onReopenStage={onReopenStage}
+          onSkipStage={onSkipStage}
+          onAdvanceStage={onAdvanceStage}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>
