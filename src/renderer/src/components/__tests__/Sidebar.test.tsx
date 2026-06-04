@@ -16,6 +16,14 @@ const defaultProps = {
   onEditPrompt: vi.fn(),
   onRunPrompt: vi.fn(),
   isExecuting: false,
+  tasks: [],
+  onAddTask: vi.fn(),
+  onDeleteTask: vi.fn(),
+  onRecordEvent: vi.fn(),
+  onCompleteStage: vi.fn(),
+  onReopenStage: vi.fn(),
+  onSkipStage: vi.fn(),
+  onAdvanceStage: vi.fn(),
   gitStatus: null,
   gitLoading: false,
   gitError: null,
@@ -23,7 +31,7 @@ const defaultProps = {
   hasKey: false,
   apiKeyLoaded: true,
   keyStoreError: null as string | null,
-  onSaveApiKey: vi.fn(),
+  onSaveApiKey: vi.fn()
 }
 
 describe('Sidebar', () => {
@@ -59,14 +67,21 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('source-control: explorer/prompts/settings パネルは非表示で SourceControlPanel が表示される', () => {
+  it('source-control: explorer/prompts/progress/settings パネルは非表示で SourceControlPanel が表示される', () => {
     const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
     const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
     const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
     const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
-    expect(hiddenPanels).toHaveLength(3)
+    expect(hiddenPanels).toHaveLength(4)
     expect(activePanels).toHaveLength(1)
     expect(screen.getByText('フォルダを開いてください')).toBeInTheDocument()
+  })
+
+  it('progress: 正しいヘッダーが表示され ProgressPanel が描画される', () => {
+    render(<Sidebar activePanel="progress" {...defaultProps} />)
+    expect(screen.getByText(sidebarTitles.progress)).toBeInTheDocument()
+    // tasks=[] なので ProgressPanel の空メッセージが表示される
+    expect(screen.getByText('タスクがありません')).toBeInTheDocument()
   })
 
   it('settings: 正しいヘッダーが表示され SettingsPanel が描画される', () => {
@@ -83,11 +98,7 @@ describe('Sidebar', () => {
 
   it('error が渡されたとき ExplorerPanel に error.message が表示される', () => {
     render(
-      <Sidebar
-        activePanel="explorer"
-        {...defaultProps}
-        error={new Error('folder open failed')}
-      />
+      <Sidebar activePanel="explorer" {...defaultProps} error={new Error('folder open failed')} />
     )
     expect(screen.getByText('folder open failed')).toBeInTheDocument()
   })
