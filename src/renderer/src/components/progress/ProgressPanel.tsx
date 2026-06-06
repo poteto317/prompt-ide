@@ -35,7 +35,7 @@ export default function ProgressPanel({
       {tasks.length > 1 && (
         <TaskSelector
           tasks={tasks}
-          selectedId={selectedTask?.id ?? null}
+          selectedId={selectedId}
           onSelect={setSelectedId}
         />
       )}
