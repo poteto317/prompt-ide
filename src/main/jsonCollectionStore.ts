@@ -12,6 +12,7 @@ interface JsonCollectionStoreConfig<T> {
   fileName: string
   isValid: (item: unknown) => item is T
   sanitize: (item: T) => T
+  migrate?: (item: unknown) => unknown
 }
 
 /**
@@ -22,7 +23,8 @@ interface JsonCollectionStoreConfig<T> {
 export function createJsonCollectionStore<T>({
   fileName,
   isValid,
-  sanitize
+  sanitize,
+  migrate
 }: JsonCollectionStoreConfig<T>): JsonCollectionStore<T> {
   const filePath = (): string => join(app.getPath('userData'), fileName)
 
@@ -31,7 +33,8 @@ export function createJsonCollectionStore<T>({
       const raw = await readFile(filePath(), 'utf-8')
       const parsed = JSON.parse(raw)
       if (!Array.isArray(parsed)) return []
-      return parsed.filter(isValid).map(sanitize)
+      const items = migrate ? parsed.map(migrate) : parsed
+      return items.filter(isValid).map(sanitize)
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []
       throw err

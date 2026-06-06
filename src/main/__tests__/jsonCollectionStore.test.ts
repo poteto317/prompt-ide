@@ -74,6 +74,35 @@ describe('load', () => {
     const result = await makeStore().load()
     expect((result[0] as unknown as Record<string, unknown>).extra).toBeUndefined()
   })
+
+  describe('migrate オプション', () => {
+    it('migrate が指定された場合、isValid の前に各要素を変換する', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([{ id: 1, extra: 'x' }]))
+      // migrate で id を文字列に変換 → isValid を通過できるようにする
+      const migrate = (item: unknown): unknown => {
+        if (typeof item === 'object' && item !== null) {
+          const t = item as Record<string, unknown>
+          return { ...t, id: String(t.id) }
+        }
+        return item
+      }
+      const store = createJsonCollectionStore<Item>({ fileName: 'items.json', isValid, sanitize, migrate })
+      const result = await store.load()
+      expect(result).toEqual([{ id: '1' }])
+    })
+
+    it('migrate が指定されない場合は従来どおり isValid でフィルタする', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([{ id: 'a' }, { id: 1 }]))
+      expect(await makeStore().load()).toEqual([{ id: 'a' }])
+    })
+
+    it('migrate が非オブジェクトを返した場合でも isValid で除外される', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([{ id: 'a' }]))
+      const migrate = (_: unknown): unknown => null
+      const store = createJsonCollectionStore<Item>({ fileName: 'items.json', isValid, sanitize, migrate })
+      expect(await store.load()).toEqual([])
+    })
+  })
 })
 
 describe('save', () => {
