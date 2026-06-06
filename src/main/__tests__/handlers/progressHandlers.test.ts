@@ -30,7 +30,16 @@ const sampleTask: Task = {
   createdAt: 1000,
   updatedAt: 2000,
   currentStageId: 'plan',
-  stages: [{ id: 'plan', status: 'done', events: [{ id: 'e1', occurredAt: 500 }] }]
+  stages: [
+    { id: 'plan', status: 'done', events: [{ id: 'e1', occurredAt: 500 }] },
+    { id: 'implement', status: 'not_started', events: [] },
+    { id: 'refactor', status: 'not_started', events: [] },
+    { id: 'localReview', status: 'not_started', events: [] },
+    { id: 'commit', status: 'not_started', events: [] },
+    { id: 'prCreate', status: 'not_started', events: [] },
+    { id: 'prReview', status: 'not_started', events: [] },
+    { id: 'prMerge', status: 'not_started', events: [] }
+  ]
 }
 
 beforeEach(() => {

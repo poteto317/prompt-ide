@@ -13,7 +13,7 @@ export default function TaskSelector({ tasks, selectedId, onSelect }: Props) {
       <select
         className="progress-panel__select"
         aria-label="タスクを選択"
-        value={selectedId ?? ''}
+        value={selectedId ?? tasks[0]?.id ?? ''}
         onChange={(e) => onSelect(e.target.value)}
       >
         {tasks.map((task) => (

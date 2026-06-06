@@ -42,5 +42,10 @@ export function isValidTask(item: unknown): item is Task {
   if (typeof t.updatedAt !== 'number' || !Number.isFinite(t.updatedAt)) return false
   if (!isStageId(t.currentStageId)) return false
   if (!Array.isArray(t.stages)) return false
-  return t.stages.every(isValidStage)
+  if (!t.stages.every(isValidStage)) return false
+  const stageIds = (t.stages as Array<Record<string, unknown>>).map((s) => s.id as string)
+  if (new Set(stageIds).size !== stageIds.length) return false
+  if (!STAGE_IDS.every((id) => stageIds.includes(id))) return false
+  if (!stageIds.includes(t.currentStageId as string)) return false
+  return true
 }
