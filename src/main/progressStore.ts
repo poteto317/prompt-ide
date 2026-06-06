@@ -2,7 +2,7 @@ import { createJsonCollectionStore } from './jsonCollectionStore'
 import { isValidTask } from './progressValidation'
 import { sanitizeTask } from './progressSanitize'
 import { STAGE_IDS } from './progressConstants'
-import type { Task } from '@shared/types'
+import type { Stage, Task } from '@shared/types'
 
 function migrateRawTask(item: unknown): unknown {
   if (typeof item !== 'object' || item === null) return item
@@ -16,9 +16,9 @@ function migrateRawTask(item: unknown): unknown {
       .filter((id): id is string => typeof id === 'string')
   )
 
-  const missingStages = STAGE_IDS.filter((id) => !existingIds.has(id)).map((id) => ({
+  const missingStages: Stage[] = STAGE_IDS.filter((id) => !existingIds.has(id)).map((id) => ({
     id,
-    status: 'not_started',
+    status: 'not_started' as const,
     events: []
   }))
 
