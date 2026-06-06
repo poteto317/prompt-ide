@@ -86,6 +86,56 @@ describe('loadTasks', () => {
     const result = await loadTasks()
     expect((result[0] as Record<string, unknown>).extra).toBeUndefined()
   })
+
+  describe('マイグレーション（旧形式タスクの補完）', () => {
+    it('stages が空のタスクに全 8 ステージを補完してロードする', async () => {
+      const legacyTask = { ...sampleTask, stages: [] }
+      mockReadFile.mockResolvedValue(JSON.stringify([legacyTask]))
+      const result = await loadTasks()
+      expect(result).toHaveLength(1)
+      const stageIds = result[0].stages.map((s) => s.id)
+      expect(stageIds).toEqual(expect.arrayContaining([
+        'plan', 'implement', 'refactor', 'localReview',
+        'commit', 'prCreate', 'prReview', 'prMerge'
+      ]))
+    })
+
+    it('一部ステージが欠落しているタスクに不足分を補完する', async () => {
+      const partialTask = {
+        ...sampleTask,
+        stages: [
+          { id: 'plan', status: 'done', events: [] },
+          { id: 'implement', status: 'done', events: [] }
+        ]
+      }
+      mockReadFile.mockResolvedValue(JSON.stringify([partialTask]))
+      const result = await loadTasks()
+      expect(result).toHaveLength(1)
+      const stageIds = result[0].stages.map((s) => s.id)
+      expect(stageIds).toHaveLength(8)
+      expect(stageIds).toContain('refactor')
+      expect(stageIds).toContain('prMerge')
+    })
+
+    it('補完されたステージの status は not_started', async () => {
+      const legacyTask = {
+        ...sampleTask,
+        currentStageId: 'plan',
+        stages: [{ id: 'plan', status: 'in_progress', events: [] }]
+      }
+      mockReadFile.mockResolvedValue(JSON.stringify([legacyTask]))
+      const result = await loadTasks()
+      const addedStages = result[0].stages.filter((s) => s.id !== 'plan')
+      expect(addedStages.every((s) => s.status === 'not_started')).toBe(true)
+      expect(addedStages.every((s) => s.events.length === 0)).toBe(true)
+    })
+
+    it('全ステージ揃っているタスクはそのまま返す', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([sampleTask]))
+      const result = await loadTasks()
+      expect(result[0].stages).toHaveLength(8)
+    })
+  })
 })
 
 describe('saveTasks', () => {

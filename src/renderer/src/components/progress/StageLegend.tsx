@@ -1,3 +1,4 @@
+'use client'
 export default function StageLegend() {
   return (
     <dl className="stage-legend" aria-label="凡例">

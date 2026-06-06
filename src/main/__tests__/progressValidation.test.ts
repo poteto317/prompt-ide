@@ -84,7 +84,8 @@ describe('isValidTask', () => {
   })
 
   it('stages に重複した id が含まれる場合は拒否する', () => {
-    const duplicated = [...ALL_STAGES.slice(0, 7), { ...ALL_STAGES[0] }]
+    // 全 8 ステージ + plan の複製（9 件）→ 欠落なし・重複あり
+    const duplicated = [...ALL_STAGES, { ...ALL_STAGES[0] }]
     expect(isValidTask({ ...validTask, stages: duplicated })).toBe(false)
   })
 

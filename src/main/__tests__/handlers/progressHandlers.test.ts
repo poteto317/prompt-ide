@@ -81,5 +81,12 @@ describe('registerProgressHandlers', () => {
       await expect(getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])).rejects.toThrow()
       expect(mockSaveTasks).not.toHaveBeenCalled()
     })
+
+    it('不正な形式の要素があると "タスクデータの形式が不正です" を含むエラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])
+      ).rejects.toThrow('タスクデータの形式が不正です')
+      expect(mockSaveTasks).not.toHaveBeenCalled()
+    })
   })
 })
