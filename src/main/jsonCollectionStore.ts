@@ -33,7 +33,15 @@ export function createJsonCollectionStore<T>({
       const raw = await readFile(filePath(), 'utf-8')
       const parsed = JSON.parse(raw)
       if (!Array.isArray(parsed)) return []
-      const items = migrate ? parsed.map(migrate) : parsed
+      const items = migrate
+        ? parsed.map((item: unknown) => {
+            try {
+              return migrate(item)
+            } catch {
+              return item
+            }
+          })
+        : parsed
       return items.filter(isValid).map(sanitize)
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') return []

@@ -1,4 +1,4 @@
-import type { Stage, StageId, Task } from '../types'
+import type { StageId, Task } from '../types'
 import { STAGES } from '../config/stageConfig'
 import { getStageIndex } from '../config/stageConfigUtils'
 
@@ -13,11 +13,11 @@ export function reopenStage(task: Task, stageId: StageId): Task {
 
   const stages = task.stages.map((stage) => {
     if (stage.id === stageId) {
-      return { ...stage, status: stage.events.length > 0 ? 'in_progress' : 'not_started' } as Stage
+      return { ...stage, status: stage.events.length > 0 ? 'in_progress' : ('not_started' as const) }
     }
     const index = getStageIndex(stage.id)
     if (index > targetIndex && stage.status === 'done') {
-      return { ...stage, status: 'in_progress' } as Stage
+      return { ...stage, status: 'in_progress' as const }
     }
     return stage
   })
@@ -36,10 +36,10 @@ export function advanceCurrentStage(task: Task): Task {
 
   const stages = task.stages.map((stage) => {
     if (stage.id === task.currentStageId) {
-      return stage.status === 'skipped' ? stage : ({ ...stage, status: 'done' } as Stage)
+      return stage.status === 'skipped' ? stage : { ...stage, status: 'done' as const }
     }
     if (nextStage && stage.id === nextStage.id && stage.status === 'not_started') {
-      return { ...stage, status: 'in_progress' } as Stage
+      return { ...stage, status: 'in_progress' as const }
     }
     return stage
   })

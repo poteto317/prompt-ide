@@ -102,6 +102,21 @@ describe('load', () => {
       const store = createJsonCollectionStore<Item>({ fileName: 'items.json', isValid, sanitize, migrate })
       expect(await store.load()).toEqual([])
     })
+
+    it('migrate が単一要素で例外を throw しても他の要素はロードされる', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify([{ id: 'a' }, { id: 'b' }]))
+      let callCount = 0
+      const migrate = (item: unknown): unknown => {
+        callCount++
+        if (callCount === 1) throw new Error('migrate 失敗')
+        return item
+      }
+      const store = createJsonCollectionStore<Item>({ fileName: 'items.json', isValid, sanitize, migrate })
+      // 1件目は migrate が throw → 元の item にフォールバック（isValid を通過）
+      // 2件目は正常に migrate
+      const result = await store.load()
+      expect(result).toEqual([{ id: 'a' }, { id: 'b' }])
+    })
   })
 })
 
