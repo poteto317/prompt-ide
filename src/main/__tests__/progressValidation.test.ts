@@ -2,19 +2,24 @@ import { describe, it, expect } from 'vitest'
 import { isValidTask } from '../progressValidation'
 import type { Task } from '@shared/types'
 
+const ALL_STAGES: Task['stages'] = [
+  { id: 'plan', status: 'in_progress', events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }] },
+  { id: 'implement', status: 'not_started', events: [] },
+  { id: 'refactor', status: 'not_started', events: [] },
+  { id: 'localReview', status: 'not_started', events: [] },
+  { id: 'commit', status: 'not_started', events: [] },
+  { id: 'prCreate', status: 'not_started', events: [] },
+  { id: 'prReview', status: 'not_started', events: [] },
+  { id: 'prMerge', status: 'not_started', events: [] }
+]
+
 const validTask: Task = {
   id: 't1',
   title: 'タスク',
   createdAt: 1000,
   updatedAt: 2000,
   currentStageId: 'plan',
-  stages: [
-    {
-      id: 'plan',
-      status: 'in_progress',
-      events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }]
-    }
-  ]
+  stages: ALL_STAGES
 }
 
 describe('isValidTask', () => {
@@ -54,7 +59,7 @@ describe('isValidTask', () => {
     expect(isValidTask({ ...validTask, currentStageId: 'unknown' })).toBe(false)
   })
 
-  it('全ての既知 stage id を受け入れる', () => {
+  it('全ての既知 stage id を currentStageId として受け入れる', () => {
     const ids = [
       'plan',
       'implement',
@@ -66,7 +71,7 @@ describe('isValidTask', () => {
       'prMerge'
     ]
     for (const id of ids) {
-      expect(isValidTask({ ...validTask, currentStageId: id, stages: [] })).toBe(true)
+      expect(isValidTask({ ...validTask, currentStageId: id })).toBe(true)
     }
   })
 
@@ -74,8 +79,18 @@ describe('isValidTask', () => {
     expect(isValidTask({ ...validTask, stages: {} })).toBe(false)
   })
 
-  it('空の stages を受け入れる', () => {
-    expect(isValidTask({ ...validTask, stages: [] })).toBe(true)
+  it('全 8 ステージが揃っていない（欠落あり）場合は拒否する', () => {
+    expect(isValidTask({ ...validTask, stages: ALL_STAGES.slice(0, 7) })).toBe(false)
+  })
+
+  it('stages に重複した id が含まれる場合は拒否する', () => {
+    const duplicated = [...ALL_STAGES.slice(0, 7), { ...ALL_STAGES[0] }]
+    expect(isValidTask({ ...validTask, stages: duplicated })).toBe(false)
+  })
+
+  it('currentStageId が stages に存在しない場合は拒否する', () => {
+    const stagesWithoutPlan = ALL_STAGES.filter((s) => s.id !== 'plan')
+    expect(isValidTask({ ...validTask, currentStageId: 'plan', stages: stagesWithoutPlan })).toBe(false)
   })
 
   it('未知の stage id を拒否する', () => {

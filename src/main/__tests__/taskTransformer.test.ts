@@ -2,19 +2,24 @@ import { describe, it, expect } from 'vitest'
 import { toTask } from '../taskTransformer'
 import type { Task } from '@shared/types'
 
+const ALL_STAGES: Task['stages'] = [
+  { id: 'plan', status: 'done', events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }] },
+  { id: 'implement', status: 'not_started', events: [] },
+  { id: 'refactor', status: 'not_started', events: [] },
+  { id: 'localReview', status: 'not_started', events: [] },
+  { id: 'commit', status: 'not_started', events: [] },
+  { id: 'prCreate', status: 'not_started', events: [] },
+  { id: 'prReview', status: 'not_started', events: [] },
+  { id: 'prMerge', status: 'not_started', events: [] }
+]
+
 const validTask: Task = {
   id: 't1',
   title: 'タスク',
   createdAt: 1000,
   updatedAt: 2000,
   currentStageId: 'plan',
-  stages: [
-    {
-      id: 'plan',
-      status: 'done',
-      events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }]
-    }
-  ]
+  stages: ALL_STAGES
 }
 
 describe('toTask', () => {
@@ -35,7 +40,7 @@ describe('toTask', () => {
     it('ネストした余分なプロパティも除去される', () => {
       const withExtraInStage = {
         ...validTask,
-        stages: [{ ...validTask.stages[0], unexpected: 'field' }]
+        stages: ALL_STAGES.map((s, i) => (i === 0 ? { ...s, unexpected: 'field' } : s))
       }
       const result = toTask(withExtraInStage)
       expect(result.stages[0]).not.toHaveProperty('unexpected')
@@ -59,9 +64,8 @@ describe('toTask', () => {
       expect(() => toTask(withBadMeta)).toThrow('タスクの形式が不正です')
     })
 
-    it('ステージが空配列のタスクも変換できる', () => {
-      const result = toTask({ ...validTask, stages: [] })
-      expect(result.stages).toEqual([])
+    it('全 8 ステージ未満（空配列）のタスクはエラーをスロー', () => {
+      expect(() => toTask({ ...validTask, stages: [] })).toThrow('タスクの形式が不正です')
     })
   })
 
