@@ -62,6 +62,14 @@ describe('ProgressPanel', () => {
     ).toBeInTheDocument()
   })
 
+  it('複数タスクがある場合、セレクタの value は先頭タスクの id で初期化される', () => {
+    const a = createTask('タスクA')
+    const b = createTask('タスクB')
+    renderPanel([a, b])
+    // TaskSelector の value は useSelectedTask が返す selectedId（先頭タスクの id）
+    expect(screen.getByLabelText('タスクを選択')).toHaveValue(a.id)
+  })
+
   it('削除ボタンで onDeleteTask を呼ぶ', async () => {
     const a = createTask('a')
     renderPanel([a])
