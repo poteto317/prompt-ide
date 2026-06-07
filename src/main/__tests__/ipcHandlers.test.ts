@@ -1,31 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockHandle = vi.hoisted(() => vi.fn())
-const mockAppOn = vi.hoisted(() => vi.fn())
+const mockSetupFolderAccessLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterFileSystemHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterGitHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterSettingsHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterPromptsHandlers = vi.hoisted(() => vi.fn())
+const mockRegisterProgressHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterClaudeHandlers = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
-  app: { on: mockAppOn },
+  app: {}
+}))
+
+vi.mock('../folderAccessLifecycle', () => ({
+  setupFolderAccessLifecycle: mockSetupFolderAccessLifecycle
 }))
 
 vi.mock('../handlers/fileSystemHandlers', () => ({
-  registerFileSystemHandlers: mockRegisterFileSystemHandlers,
+  registerFileSystemHandlers: mockRegisterFileSystemHandlers
 }))
 vi.mock('../handlers/gitHandlers', () => ({
-  registerGitHandlers: mockRegisterGitHandlers,
+  registerGitHandlers: mockRegisterGitHandlers
 }))
 vi.mock('../handlers/settingsHandlers', () => ({
-  registerSettingsHandlers: mockRegisterSettingsHandlers,
+  registerSettingsHandlers: mockRegisterSettingsHandlers
 }))
 vi.mock('../handlers/promptsHandlers', () => ({
-  registerPromptsHandlers: mockRegisterPromptsHandlers,
+  registerPromptsHandlers: mockRegisterPromptsHandlers
+}))
+vi.mock('../handlers/progressHandlers', () => ({
+  registerProgressHandlers: mockRegisterProgressHandlers
 }))
 vi.mock('../handlers/claudeHandlers', () => ({
-  registerClaudeHandlers: mockRegisterClaudeHandlers,
+  registerClaudeHandlers: mockRegisterClaudeHandlers
 }))
 
 import { registerIpcHandlers } from '../ipcHandlers'
@@ -59,14 +67,20 @@ describe('registerIpcHandlers', () => {
     expect(mockRegisterPromptsHandlers).toHaveBeenCalledWith(mockIpcMain)
   })
 
+  it('registerProgressHandlers を呼び出す', () => {
+    registerIpcHandlers(mockIpcMain)
+    expect(mockRegisterProgressHandlers).toHaveBeenCalledWith(mockIpcMain)
+  })
+
   it('registerClaudeHandlers を呼び出す', () => {
     registerIpcHandlers(mockIpcMain)
     expect(mockRegisterClaudeHandlers).toHaveBeenCalledWith(mockIpcMain)
   })
 
-  it('app.on("web-contents-created") リスナーを登録する', () => {
+  it('setupFolderAccessLifecycle を app と FolderAccessManager を引数に呼び出す', () => {
     registerIpcHandlers(mockIpcMain)
-    expect(mockAppOn).toHaveBeenCalledWith('web-contents-created', expect.any(Function))
+    expect(mockSetupFolderAccessLifecycle).toHaveBeenCalledOnce()
+    expect(mockSetupFolderAccessLifecycle).toHaveBeenCalledWith(expect.any(Object), expect.any(Object))
   })
 
   it('fileSystemHandlers と gitHandlers に同一の FolderAccessManager インスタンスを渡す', () => {
@@ -74,23 +88,5 @@ describe('registerIpcHandlers', () => {
     const fsArg = mockRegisterFileSystemHandlers.mock.calls[0][1]
     const gitArg = mockRegisterGitHandlers.mock.calls[0][1]
     expect(fsArg).toBe(gitArg)
-  })
-
-  it('webContents が destroyed になっても FolderAccessManager の delete がエラーにならない', () => {
-    registerIpcHandlers(mockIpcMain)
-    const webContentsCreatedCb = mockAppOn.mock.calls.find(
-      ([event]) => event === 'web-contents-created'
-    )![1]
-
-    let destroyedCb: (() => void) | undefined
-    const mockWebContents = {
-      id: 1,
-      on: (_event: string, cb: () => void) => {
-        if (_event === 'destroyed') destroyedCb = cb
-      },
-    }
-    webContentsCreatedCb(null, mockWebContents)
-    expect(destroyedCb).toBeDefined()
-    expect(() => destroyedCb!()).not.toThrow()
   })
 })
