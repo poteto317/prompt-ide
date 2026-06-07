@@ -1,27 +1,4 @@
-export type FileTreeNode = {
-  name: string
-  path: string
-  type: 'file' | 'directory'
-  children?: FileTreeNode[]
-}
-
-export type GitFileStatus = {
-  path: string
-  index: string
-  workingDir: string
-}
-
-export type GitStatusResult = {
-  isRepo: boolean
-  branch: string | null
-  ahead: number
-  behind: number
-  files: GitFileStatus[]
-}
-
-export type Prompt = {
-  id: string
-  title: string
-  content: string
-  createdAt: number
-}
+export type * from './types/fileSystem'
+export type * from './types/git'
+export type * from './types/prompt'
+export type * from './types/progress'

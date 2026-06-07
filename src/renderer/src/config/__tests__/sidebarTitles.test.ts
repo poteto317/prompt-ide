@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { sidebarTitles } from '../sidebarTitles'
 import type { Panel } from '../../types'
 
-const ALL_PANELS: Panel[] = ['explorer', 'source-control', 'prompts', 'settings']
+const ALL_PANELS: Panel[] = ['explorer', 'source-control', 'prompts', 'progress', 'settings']
 
 describe('sidebarTitles', () => {
   it('Panel 型の全値にタイトルが定義されている', () => {

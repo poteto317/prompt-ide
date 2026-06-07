@@ -7,12 +7,40 @@ import StatusBar from './components/StatusBar'
 
 export default function App(): React.JSX.Element {
   const {
-    activePanel, sidebarOpen, handlePanelChange,
-    folderPath, fileTree, openFile, error, openFolder, selectFile,
-    prompts, addPrompt, deletePrompt, updatePrompt,
-    gitStatus, gitLoading, gitError, refreshGitStatus,
-    hasKey, apiKeyLoaded, keyStoreError, saveApiKey,
-    isExecuting, result, executionError, executePrompt, clearResult,
+    activePanel,
+    sidebarOpen,
+    handlePanelChange,
+    folderPath,
+    fileTree,
+    openFile,
+    error,
+    openFolder,
+    selectFile,
+    prompts,
+    addPrompt,
+    deletePrompt,
+    updatePrompt,
+    tasks,
+    addTask,
+    deleteTask,
+    recordEvent,
+    completeStage,
+    reopenStage,
+    skipStage,
+    advanceStage,
+    gitStatus,
+    gitLoading,
+    gitError,
+    refreshGitStatus,
+    hasKey,
+    apiKeyLoaded,
+    keyStoreError,
+    saveApiKey,
+    isExecuting,
+    result,
+    executionError,
+    executePrompt,
+    clearResult
   } = useAppState()
 
   const handleRunPrompt = useCallback(
@@ -23,7 +51,11 @@ export default function App(): React.JSX.Element {
   return (
     <>
       <div className="ide-root">
-        <ActivityBar activePanel={activePanel} sidebarOpen={sidebarOpen} onPanelChange={handlePanelChange} />
+        <ActivityBar
+          activePanel={activePanel}
+          sidebarOpen={sidebarOpen}
+          onPanelChange={handlePanelChange}
+        />
         <div className="ide-main">
           {sidebarOpen && (
             <Sidebar
@@ -40,6 +72,14 @@ export default function App(): React.JSX.Element {
               onEditPrompt={updatePrompt}
               onRunPrompt={handleRunPrompt}
               isExecuting={isExecuting}
+              tasks={tasks}
+              onAddTask={addTask}
+              onDeleteTask={deleteTask}
+              onRecordEvent={recordEvent}
+              onCompleteStage={completeStage}
+              onReopenStage={reopenStage}
+              onSkipStage={skipStage}
+              onAdvanceStage={advanceStage}
               gitStatus={gitStatus}
               gitLoading={gitLoading}
               gitError={gitError}
