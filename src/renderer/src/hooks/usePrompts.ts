@@ -46,14 +46,12 @@ export function usePrompts(): PromptsState {
 
   const reorderPrompts = useCallback(
     (activeId: string, overId: string): void => {
-      apply((prompts) => {
-        const activeIndex = prompts.findIndex((p) => p.id === activeId)
-        const overIndex = prompts.findIndex((p) => p.id === overId)
-        if (activeIndex === -1 || overIndex === -1) return prompts
-        return arrayMove(prompts, activeIndex, overIndex)
-      })
+      const activeIndex = prompts.findIndex((p) => p.id === activeId)
+      const overIndex = prompts.findIndex((p) => p.id === overId)
+      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) return
+      apply((currentPrompts) => arrayMove(currentPrompts, activeIndex, overIndex))
     },
-    [apply]
+    [apply, prompts]
   )
 
   return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt, reorderPrompts }

@@ -343,11 +343,50 @@ describe('reorderPrompts', () => {
     expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
   })
 
+  it('存在しない activeId を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('non-existent', 'p2'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('存在しない overId を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p1', 'non-existent'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
   it('同一 ID を渡すと配列が変わらない', async () => {
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
     await waitFor(() => expect(result.current.prompts).toHaveLength(3))
     act(() => result.current.reorderPrompts('p2', 'p2'))
     expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('同一 ID を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p2', 'p2'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('reorderPrompts 後に save が呼ばれる', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    expect(mockSave).toHaveBeenCalledOnce()
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: 'p1' })])
+    )
   })
 })
