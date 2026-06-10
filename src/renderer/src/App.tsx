@@ -20,6 +20,7 @@ export default function App(): React.JSX.Element {
     addPrompt,
     deletePrompt,
     updatePrompt,
+    reorderPrompts,
     tasks,
     addTask,
     deleteTask,
@@ -70,6 +71,7 @@ export default function App(): React.JSX.Element {
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}
               onEditPrompt={updatePrompt}
+              onReorderPrompt={reorderPrompts}
               onRunPrompt={handleRunPrompt}
               isExecuting={isExecuting}
               tasks={tasks}

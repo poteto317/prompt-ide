@@ -1,5 +1,7 @@
 'use client'
 import { useState } from 'react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import type { Prompt } from '../../types'
 import { truncatePreview } from '../../lib/promptUtils'
 
@@ -9,12 +11,31 @@ interface Props {
   onRun: (content: string) => void
   onEdit: (id: string, title: string, content: string) => void
   isRunDisabled?: boolean
+  isSortable?: boolean
 }
 
-export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisabled = false }: Props) {
+export default function PromptItem({
+  prompt,
+  onDelete,
+  onRun,
+  onEdit,
+  isRunDisabled = false,
+  isSortable = false
+}: Props) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: prompt.id,
+    disabled: !isSortable
+  })
+
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1
+  }
 
   const handleEditStart = () => {
     setEditTitle(prompt.title)
@@ -36,7 +57,7 @@ export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisab
 
   if (isEditing) {
     return (
-      <div className="prompt-item prompt-item--editing">
+      <div ref={setNodeRef} style={dragStyle} className="prompt-item prompt-item--editing">
         <input
           className="prompt-item__edit-title"
           type="text"
@@ -75,7 +96,21 @@ export default function PromptItem({ prompt, onDelete, onRun, onEdit, isRunDisab
   }
 
   return (
-    <div className="prompt-item">
+    <div ref={setNodeRef} style={dragStyle} className="prompt-item">
+      {isSortable && (
+        <button
+          {...attributes}
+          {...listeners}
+          type="button"
+          style={{ touchAction: 'none' }}
+          className="prompt-item__drag-handle"
+          aria-label="並び替え"
+          onTouchStartCapture={(e) => e.stopPropagation()}
+          onMouseDownCapture={(e) => e.stopPropagation()}
+        >
+          ⠿
+        </button>
+      )}
       <div className="prompt-item__title">{prompt.title}</div>
       <div className="prompt-item__preview">{truncatePreview(prompt.content)}</div>
       <div className="prompt-item__actions">

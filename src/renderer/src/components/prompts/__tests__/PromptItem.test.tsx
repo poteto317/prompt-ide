@@ -5,6 +5,21 @@ import type { Prompt } from '../../../types'
 import { PREVIEW_MAX } from '../../../config/promptConfig'
 import PromptItem from '../PromptItem'
 
+vi.mock('@dnd-kit/sortable', () => ({
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false
+  })
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } }
+}))
+
 const basePrompt: Prompt = {
   id: 'test-id-1',
   title: 'テストタイトル',
@@ -199,6 +214,18 @@ describe('PromptItem', () => {
         await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
         expect(onEdit).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('ドラッグハンドル', () => {
+    it('isSortable=true のときドラッグハンドルが表示される', () => {
+      render(<PromptItem {...defaultProps} isSortable />)
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    })
+
+    it('isSortable=false（デフォルト）のときドラッグハンドルが表示されない', () => {
+      render(<PromptItem {...defaultProps} />)
+      expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
     })
   })
 })
