@@ -219,7 +219,8 @@ body {
   transition: opacity 0.1s;
 }
 
-.prompt-item:hover .prompt-item__drag-handle {
+.prompt-item:hover .prompt-item__drag-handle,
+.prompt-item__drag-handle:focus-visible {
   opacity: 1;
 }
 
