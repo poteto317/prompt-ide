@@ -200,6 +200,31 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  position: relative;
+}
+
+.prompt-item__drag-handle {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: grab;
+  color: #6c6c6c;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.prompt-item:hover .prompt-item__drag-handle {
+  opacity: 1;
+}
+
+.prompt-item__drag-handle:active {
+  cursor: grabbing;
 }
 
 .prompt-item:hover {

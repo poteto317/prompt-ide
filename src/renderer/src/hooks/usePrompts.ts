@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { arrayMove } from '@dnd-kit/sortable'
 import type { Prompt } from '../types'
 import { createPrompt } from '../lib/promptFactory'
 import { usePromptsPersistence } from './usePromptsPersistence'
@@ -10,6 +11,7 @@ interface PromptsState {
   addPrompt: (title: string, content: string) => void
   deletePrompt: (id: string) => void
   updatePrompt: (id: string, title: string, content: string) => void
+  reorderPrompts: (activeId: string, overId: string) => void
 }
 
 export function usePrompts(): PromptsState {
@@ -42,5 +44,17 @@ export function usePrompts(): PromptsState {
     [apply]
   )
 
-  return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt }
+  const reorderPrompts = useCallback(
+    (activeId: string, overId: string): void => {
+      apply((prompts) => {
+        const activeIndex = prompts.findIndex((p) => p.id === activeId)
+        const overIndex = prompts.findIndex((p) => p.id === overId)
+        if (activeIndex === -1 || overIndex === -1) return prompts
+        return arrayMove(prompts, activeIndex, overIndex)
+      })
+    },
+    [apply]
+  )
+
+  return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt, reorderPrompts }
 }

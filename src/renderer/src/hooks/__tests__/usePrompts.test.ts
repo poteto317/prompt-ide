@@ -319,3 +319,35 @@ describe('updatePrompt', () => {
     expect(result.current.prompts[0].content).toBe('新C')
   })
 })
+
+describe('reorderPrompts', () => {
+  const stored: Prompt[] = [
+    { id: 'p1', title: 'A', content: 'a', createdAt: 1 },
+    { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    { id: 'p3', title: 'C', content: 'c', createdAt: 3 }
+  ]
+
+  it('指定した2つの要素の順序が入れ替わる', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p2', 'p3', 'p1'])
+  })
+
+  it('存在しない activeId を渡すと配列が変わらない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('non-existent', 'p2'))
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('同一 ID を渡すと配列が変わらない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p2', 'p2'))
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+  })
+})

@@ -4,12 +4,46 @@ import { describe, it, expect, vi } from 'vitest'
 import type { Prompt } from '../../../types'
 import PromptsPanel from '../PromptsPanel'
 
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({
+    children,
+    onDragEnd
+  }: {
+    children: React.ReactNode
+    onDragEnd: (e: unknown) => void
+  }) => <div data-testid="dnd-context" data-on-drag-end={String(!!onDragEnd)}>{children}</div>,
+  PointerSensor: class {},
+  KeyboardSensor: class {},
+  closestCenter: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => [])
+}))
+
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  sortableKeyboardCoordinates: {},
+  verticalListSortingStrategy: {},
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false
+  })
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } }
+}))
+
 const defaultProps = {
   prompts: [] as Prompt[],
   onAdd: vi.fn(),
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
+  onReorder: vi.fn()
 }
 
 const samplePrompt: Prompt = {
@@ -152,6 +186,24 @@ describe('PromptsPanel', () => {
       )
       await userEvent.type(screen.getByRole('searchbox'), 'テスト')
       expect(screen.getByRole('searchbox')).toHaveValue('テスト')
+    })
+  })
+
+  describe('DnD コンテキスト', () => {
+    it('プロンプトがあるとき DndContext がレンダリングされる', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.getByTestId('dnd-context')).toBeInTheDocument()
+    })
+
+    it('検索フィルタが active のときドラッグハンドルが表示されない', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} />)
+      await userEvent.type(screen.getByRole('searchbox'), 'テスト')
+      expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
+    })
+
+    it('検索フィルタが空のときドラッグハンドルが表示される', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
     })
   })
 })
