@@ -61,7 +61,10 @@ export function useBufferedPersistence<T>({
 
   const apply = useCallback(
     (transform: Transform<T>): void => {
-      const next = transform(itemsRef.current)
+      const prev = itemsRef.current
+      const next = transform(prev)
+      // transform が同一参照を返した場合は変更なしとみなし、state 更新も save もスキップする
+      if (next === prev) return
       itemsRef.current = next
       setItems(next)
       if (!loadedRef.current) {

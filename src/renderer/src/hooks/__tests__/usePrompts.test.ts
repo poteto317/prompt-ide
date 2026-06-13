@@ -389,4 +389,30 @@ describe('reorderPrompts', () => {
       expect.arrayContaining([expect.objectContaining({ id: 'p1' })])
     )
   })
+
+  it('reorderPrompts の参照が prompts 変更後も安定している（依存配列に prompts を含まない）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    const firstRef = result.current.reorderPrompts
+    // prompts を変化させる操作を実行
+    act(() => result.current.addPrompt('新規', '内容'))
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    expect(result.current.reorderPrompts).toBe(firstRef)
+  })
+
+  it('直前の add で増えた要素も含めて最新の配列を基準に並び替える（stale closure 回避）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    // add 直後（再レンダー前提）に reorder しても最新配列を基準に動作する
+    act(() => {
+      result.current.addPrompt('新規', '内容') // 末尾に追加 → [p1,p2,p3,new]
+    })
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    const newId = result.current.prompts[3].id
+    act(() => result.current.reorderPrompts(newId, 'p1'))
+    // new が先頭へ移動する
+    expect(result.current.prompts.map((p) => p.id)).toEqual([newId, 'p1', 'p2', 'p3'])
+  })
 })

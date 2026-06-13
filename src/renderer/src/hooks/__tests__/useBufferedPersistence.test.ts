@@ -62,6 +62,44 @@ describe('ロード後の apply', () => {
   })
 })
 
+describe('no-op transform（同一参照を返す）', () => {
+  it('transform が同一参照を返したとき save が呼ばれない', async () => {
+    const stored: Item[] = [{ id: 'a' }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = await mountLoaded()
+    vi.clearAllMocks()
+    // 受け取った配列をそのまま返す = 変更なし
+    act(() => result.current.apply((items) => items))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('transform が同一参照を返したとき items の参照が維持される', async () => {
+    const stored: Item[] = [{ id: 'a' }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = await mountLoaded()
+    const before = result.current.items
+    act(() => result.current.apply((items) => items))
+    expect(result.current.items).toBe(before)
+  })
+
+  it('ロード前に同一参照を返す transform はバッファされず save もされない', async () => {
+    let resolveLoad!: (items: Item[]) => void
+    mockLoad.mockReturnValue(new Promise<Item[]>((resolve) => (resolveLoad = resolve)))
+
+    const { result } = mount()
+    // ロード前の no-op はバッファに積まれてはいけない
+    act(() => result.current.apply((items) => items))
+
+    await act(async () => {
+      resolveLoad([{ id: 'stored' }])
+    })
+
+    await waitFor(() => expect(result.current.loaded).toBe(true))
+    expect(result.current.items).toEqual([{ id: 'stored' }])
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+})
+
 describe('ロード前ミューテーションのバッファリング', () => {
   it('ロード前の apply は即時反映されるが save はされない', async () => {
     let resolveLoad!: (items: Item[]) => void
