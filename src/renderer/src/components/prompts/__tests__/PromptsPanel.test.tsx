@@ -4,12 +4,54 @@ import { describe, it, expect, vi } from 'vitest'
 import type { Prompt } from '../../../types'
 import PromptsPanel from '../PromptsPanel'
 
+// DndContext に渡された onDragEnd を捕捉し、テストから直接起動できるようにする
+const dndState = vi.hoisted(() => ({
+  onDragEnd: undefined as ((e: unknown) => void) | undefined
+}))
+
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({
+    children,
+    onDragEnd
+  }: {
+    children: React.ReactNode
+    onDragEnd: (e: unknown) => void
+  }) => {
+    dndState.onDragEnd = onDragEnd
+    return <div data-testid="dnd-context" data-on-drag-end={String(!!onDragEnd)}>{children}</div>
+  },
+  PointerSensor: class {},
+  KeyboardSensor: class {},
+  closestCenter: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => [])
+}))
+
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  sortableKeyboardCoordinates: {},
+  verticalListSortingStrategy: {},
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false
+  })
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } }
+}))
+
 const defaultProps = {
   prompts: [] as Prompt[],
   onAdd: vi.fn(),
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
+  onReorder: vi.fn()
 }
 
 const samplePrompt: Prompt = {
@@ -152,6 +194,61 @@ describe('PromptsPanel', () => {
       )
       await userEvent.type(screen.getByRole('searchbox'), 'テスト')
       expect(screen.getByRole('searchbox')).toHaveValue('テスト')
+    })
+  })
+
+  describe('DnD コンテキスト', () => {
+    it('プロンプトがあるとき DndContext がレンダリングされる', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.getByTestId('dnd-context')).toBeInTheDocument()
+    })
+
+    it('検索フィルタが active のときドラッグハンドルが表示されない', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} />)
+      await userEvent.type(screen.getByRole('searchbox'), 'テスト')
+      expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
+    })
+
+    it('検索フィルタが空のときドラッグハンドルが表示される', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    })
+
+    it('空白のみの query ではドラッグハンドルが表示される（usePromptFilter と同じ trim ベース判定）', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      await userEvent.type(screen.getByRole('searchbox'), '   ')
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    })
+  })
+
+  describe('handleDragEnd → onReorder', () => {
+    it('over が存在し active と異なる ID のとき onReorder が両 ID で呼ばれる', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
+      expect(onReorder).toHaveBeenCalledWith('p1', 'p2')
+      expect(onReorder).toHaveBeenCalledOnce()
+    })
+
+    it('over が null のとき onReorder は呼ばれない（ドロップ先なし）', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: null }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('active と over が同一 ID のとき onReorder は呼ばれない（順序不変）', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p1' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('数値 ID でも String 化して onReorder に渡される', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
+      expect(onReorder).toHaveBeenCalledWith('1', '2')
     })
   })
 })

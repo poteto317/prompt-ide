@@ -319,3 +319,125 @@ describe('updatePrompt', () => {
     expect(result.current.prompts[0].content).toBe('新C')
   })
 })
+
+describe('reorderPrompts', () => {
+  const stored: Prompt[] = [
+    { id: 'p1', title: 'A', content: 'a', createdAt: 1 },
+    { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    { id: 'p3', title: 'C', content: 'c', createdAt: 3 }
+  ]
+
+  it('active を over の位置へ移動する（arrayMove：間の要素はシフト）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    // p1 を p3 の位置へ移動。間の p2 は前へシフトする（swap なら ['p3','p2','p1'] になる）
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p2', 'p3', 'p1'])
+  })
+
+  it('単純な swap ではなく move であることを4要素で確認する', async () => {
+    const four: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1 },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+      { id: 'p3', title: 'C', content: 'c', createdAt: 3 },
+      { id: 'p4', title: 'D', content: 'd', createdAt: 4 }
+    ]
+    mockLoad.mockResolvedValue(four)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    // move: p1 を index2 へ → ['p2','p3','p1','p4']（swap なら ['p3','p2','p1','p4']）
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p2', 'p3', 'p1', 'p4'])
+  })
+
+  it('後方から前方への move も間の要素をシフトする', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p3', 'p1'))
+    // p3 を先頭へ移動。p1,p2 は後ろへシフト（swap なら ['p3','p2','p1']）
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p3', 'p1', 'p2'])
+  })
+
+  it('存在しない activeId を渡すと配列が変わらない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('non-existent', 'p2'))
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('存在しない activeId を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('non-existent', 'p2'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('存在しない overId を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p1', 'non-existent'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('同一 ID を渡すと配列が変わらない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p2', 'p2'))
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2', 'p3'])
+  })
+
+  it('同一 ID を渡すと save が呼ばれない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p2', 'p2'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('reorderPrompts 後に save が呼ばれる', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    vi.clearAllMocks()
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    expect(mockSave).toHaveBeenCalledOnce()
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: 'p1' })])
+    )
+  })
+
+  it('reorderPrompts の参照が prompts 変更後も安定している（依存配列に prompts を含まない）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    const firstRef = result.current.reorderPrompts
+    // prompts を変化させる操作を実行
+    act(() => result.current.addPrompt('新規', '内容'))
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    expect(result.current.reorderPrompts).toBe(firstRef)
+  })
+
+  it('直前の add で増えた要素も含めて最新の配列を基準に並び替える（stale closure 回避）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    // add 直後（再レンダー前提）に reorder しても最新配列を基準に動作する
+    act(() => {
+      result.current.addPrompt('新規', '内容') // 末尾に追加 → [p1,p2,p3,new]
+    })
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    const newId = result.current.prompts[3].id
+    act(() => result.current.reorderPrompts(newId, 'p1'))
+    // new が先頭へ移動する
+    expect(result.current.prompts.map((p) => p.id)).toEqual([newId, 'p1', 'p2', 'p3'])
+  })
+})

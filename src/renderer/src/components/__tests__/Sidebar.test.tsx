@@ -14,6 +14,7 @@ const defaultProps = {
   onAddPrompt: vi.fn(),
   onDeletePrompt: vi.fn(),
   onEditPrompt: vi.fn(),
+  onReorderPrompt: vi.fn(),
   onRunPrompt: vi.fn(),
   isExecuting: false,
   tasks: [],
@@ -101,5 +102,16 @@ describe('Sidebar', () => {
       <Sidebar activePanel="explorer" {...defaultProps} error={new Error('folder open failed')} />
     )
     expect(screen.getByText('folder open failed')).toBeInTheDocument()
+  })
+
+  it('prompts: onReorderPrompt を渡すと PromptsPanel 経由で並び替えハンドルが表示される', () => {
+    render(
+      <Sidebar
+        activePanel="prompts"
+        {...defaultProps}
+        prompts={[{ id: 'p1', title: 'プロンプト1', content: '内容1', createdAt: 1000000 }]}
+      />
+    )
+    expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
   })
 })

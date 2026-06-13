@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
+/**
+ * items を受け取り、変更後の配列を返す純粋関数。
+ *
+ * 【重要な前提】変更を加える場合は必ず新しい配列参照を返すこと。
+ * `apply` は「返り値が引数と同一参照（`next === prev`）かどうか」で変更の有無を判定する。
+ * 同一参照を返した場合は確定的な no-op として扱われ、state 更新・save に加えて
+ * **ロード前の pendingRef へのバッファリングもスキップされる**（＝ロード後にも適用されない）。
+ * そのため「今は変化が無くてもロード後に効かせたい操作」で同一参照（や引数の in-place 変更）を
+ * 返してはならない。変更意図があるなら `[...items]` 等で必ず新しい参照を返すこと。
+ */
 export type Transform<T> = (items: T[]) => T[]
 
 interface BufferedPersistenceConfig<T> {
@@ -61,7 +71,12 @@ export function useBufferedPersistence<T>({
 
   const apply = useCallback(
     (transform: Transform<T>): void => {
-      const next = transform(itemsRef.current)
+      const prev = itemsRef.current
+      const next = transform(prev)
+      // transform が同一参照を返した場合は変更なしとみなし、state 更新・save をスキップする。
+      // ロード前でも pendingRef に積まないため、ロード後にも適用されない確定的な no-op となる。
+      // 変更意図がある transform は必ず新しい参照を返すこと（Transform<T> の JSDoc を参照）。
+      if (next === prev) return
       itemsRef.current = next
       setItems(next)
       if (!loadedRef.current) {
