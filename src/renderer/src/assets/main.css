@@ -203,6 +203,11 @@ body {
   position: relative;
 }
 
+/* ドラッグハンドル（絶対配置・left:2px〜約24px）と本文が重ならないよう左余白を確保 */
+.prompt-item--sortable {
+  padding-left: 28px;
+}
+
 .prompt-item__drag-handle {
   position: absolute;
   top: 50%;

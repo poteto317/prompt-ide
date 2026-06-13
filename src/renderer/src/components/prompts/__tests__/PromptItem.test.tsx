@@ -227,5 +227,15 @@ describe('PromptItem', () => {
       render(<PromptItem {...defaultProps} />)
       expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
     })
+
+    it('isSortable=true のときハンドル分の余白用クラス prompt-item--sortable が付与される', () => {
+      const { container } = render(<PromptItem {...defaultProps} isSortable />)
+      expect(container.querySelector('.prompt-item')).toHaveClass('prompt-item--sortable')
+    })
+
+    it('isSortable=false のとき prompt-item--sortable は付与されない', () => {
+      const { container } = render(<PromptItem {...defaultProps} />)
+      expect(container.querySelector('.prompt-item')).not.toHaveClass('prompt-item--sortable')
+    })
   })
 })
