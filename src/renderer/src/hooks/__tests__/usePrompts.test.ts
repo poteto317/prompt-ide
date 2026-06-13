@@ -327,12 +327,37 @@ describe('reorderPrompts', () => {
     { id: 'p3', title: 'C', content: 'c', createdAt: 3 }
   ]
 
-  it('指定した2つの要素の順序が入れ替わる', async () => {
+  it('active を over の位置へ移動する（arrayMove：間の要素はシフト）', async () => {
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
     await waitFor(() => expect(result.current.prompts).toHaveLength(3))
     act(() => result.current.reorderPrompts('p1', 'p3'))
+    // p1 を p3 の位置へ移動。間の p2 は前へシフトする（swap なら ['p3','p2','p1'] になる）
     expect(result.current.prompts.map((p) => p.id)).toEqual(['p2', 'p3', 'p1'])
+  })
+
+  it('単純な swap ではなく move であることを4要素で確認する', async () => {
+    const four: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1 },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+      { id: 'p3', title: 'C', content: 'c', createdAt: 3 },
+      { id: 'p4', title: 'D', content: 'd', createdAt: 4 }
+    ]
+    mockLoad.mockResolvedValue(four)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(4))
+    act(() => result.current.reorderPrompts('p1', 'p3'))
+    // move: p1 を index2 へ → ['p2','p3','p1','p4']（swap なら ['p3','p2','p1','p4']）
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p2', 'p3', 'p1', 'p4'])
+  })
+
+  it('後方から前方への move も間の要素をシフトする', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    act(() => result.current.reorderPrompts('p3', 'p1'))
+    // p3 を先頭へ移動。p1,p2 は後ろへシフト（swap なら ['p3','p2','p1']）
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p3', 'p1', 'p2'])
   })
 
   it('存在しない activeId を渡すと配列が変わらない', async () => {
