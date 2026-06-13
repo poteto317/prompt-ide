@@ -46,12 +46,19 @@ export function usePrompts(): PromptsState {
 
   const reorderPrompts = useCallback(
     (activeId: string, overId: string): void => {
-      const activeIndex = prompts.findIndex((p) => p.id === activeId)
-      const overIndex = prompts.findIndex((p) => p.id === overId)
-      if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) return
-      apply((currentPrompts) => arrayMove(currentPrompts, activeIndex, overIndex))
+      // インデックス計算を transform 内部で行うことで、常に最新の配列を基準に並び替える
+      // （クロージャの prompts を参照しないため stale closure を回避し、参照も安定する）。
+      // 順序が変わらない場合は同一参照を返し、apply 側の no-op 検出で save をスキップする。
+      apply((currentPrompts) => {
+        const activeIndex = currentPrompts.findIndex((p) => p.id === activeId)
+        const overIndex = currentPrompts.findIndex((p) => p.id === overId)
+        if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+          return currentPrompts
+        }
+        return arrayMove(currentPrompts, activeIndex, overIndex)
+      })
     },
-    [apply, prompts]
+    [apply]
   )
 
   return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt, reorderPrompts }
