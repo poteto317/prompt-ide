@@ -20,6 +20,7 @@ interface Props {
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
   onEditPrompt: (id: string, title: string, content: string) => void
+  onReorderPrompt: (activeId: string, overId: string) => void
   onRunPrompt: (content: string) => void
   isExecuting: boolean
   tasks: Task[]
@@ -52,6 +53,7 @@ export default function Sidebar({
   onAddPrompt,
   onDeletePrompt,
   onEditPrompt,
+  onReorderPrompt,
   onRunPrompt,
   isExecuting,
   tasks,
@@ -90,6 +92,7 @@ export default function Sidebar({
           onAdd={onAddPrompt}
           onDelete={onDeletePrompt}
           onEdit={onEditPrompt}
+          onReorder={onReorderPrompt}
           onRun={onRunPrompt}
           isRunDisabled={isExecuting}
           isActive={activePanel === 'prompts'}
