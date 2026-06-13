@@ -205,5 +205,11 @@ describe('PromptsPanel', () => {
       render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
       expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
     })
+
+    it('空白のみの query ではドラッグハンドルが表示される（usePromptFilter と同じ trim ベース判定）', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      await userEvent.type(screen.getByRole('searchbox'), '   ')
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    })
   })
 })

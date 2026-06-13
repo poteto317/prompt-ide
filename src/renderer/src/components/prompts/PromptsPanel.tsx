@@ -46,7 +46,7 @@ export default function PromptsPanel({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  const isSortable = query === ''
+  const isSortable = query.trim() === ''
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     if (over && active.id !== over.id) {
