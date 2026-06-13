@@ -96,7 +96,11 @@ export default function PromptItem({
   }
 
   return (
-    <div ref={setNodeRef} style={dragStyle} className="prompt-item">
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      className={`prompt-item${isSortable ? ' prompt-item--sortable' : ''}`}
+    >
       {isSortable && (
         <button
           {...attributes}

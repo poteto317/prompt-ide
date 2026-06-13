@@ -104,13 +104,11 @@ describe('Sidebar', () => {
     expect(screen.getByText('folder open failed')).toBeInTheDocument()
   })
 
-  it('prompts: 並び替えボタンが存在し、ドラッグ操作後に onReorderPrompt が呼ばれる準備ができている', () => {
-    const onReorderPrompt = vi.fn()
+  it('prompts: onReorderPrompt を渡すと PromptsPanel 経由で並び替えハンドルが表示される', () => {
     render(
       <Sidebar
         activePanel="prompts"
         {...defaultProps}
-        onReorderPrompt={onReorderPrompt}
         prompts={[{ id: 'p1', title: 'プロンプト1', content: '内容1', createdAt: 1000000 }]}
       />
     )
