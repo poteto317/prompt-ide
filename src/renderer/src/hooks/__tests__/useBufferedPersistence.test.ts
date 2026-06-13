@@ -98,6 +98,34 @@ describe('no-op transform（同一参照を返す）', () => {
     expect(result.current.items).toEqual([{ id: 'stored' }])
     expect(mockSave).not.toHaveBeenCalled()
   })
+
+  // Transform<T> の契約（変更時は必ず新しい参照を返す）の回帰ガード。
+  // in-place 変更で同一参照を返すと変更とみなされず永続化されない、という前提を明文化する。
+  it('【契約】in-place 変更で同一参照を返すと no-op 扱いになり save されない', async () => {
+    const stored: Item[] = [{ id: 'a' }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = await mountLoaded()
+    vi.clearAllMocks()
+    // アンチパターン: 引数配列を直接変更して同一参照を返す
+    act(() =>
+      result.current.apply((items) => {
+        items.push({ id: 'b' })
+        return items
+      })
+    )
+    // 同一参照のため変更が検出されず、save されない（＝永続化されない）
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('【契約】変更時に新しい参照を返せば確実に save される', async () => {
+    const stored: Item[] = [{ id: 'a' }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = await mountLoaded()
+    vi.clearAllMocks()
+    // 正しいパターン: 新しい配列参照を返す
+    act(() => result.current.apply((items) => [...items, { id: 'b' }]))
+    expect(mockSave).toHaveBeenCalledWith([{ id: 'a' }, { id: 'b' }])
+  })
 })
 
 describe('ロード前ミューテーションのバッファリング', () => {
