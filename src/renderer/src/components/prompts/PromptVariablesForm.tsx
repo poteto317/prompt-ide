@@ -22,8 +22,18 @@ export default function PromptVariablesForm({
   // インスタンスごとに一意な id 接頭辞（複数プロンプト同時編集での id 衝突を防ぐ）
   const fieldIdPrefix = useId()
 
+  // 実行中（isRunDisabled）は Enter キーでの submit も防ぐ。
+  // ボタンの disabled だけでは form の Enter submit を塞げないため form 側でもガードする。
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>): void => {
+    if (isRunDisabled) {
+      e.preventDefault()
+      return
+    }
+    handleSubmit(e)
+  }
+
   return (
-    <form className="prompt-item__variables-form" onSubmit={handleSubmit}>
+    <form className="prompt-item__variables-form" onSubmit={handleFormSubmit}>
       <div className="prompt-item__variables-title">変数を入力して実行</div>
       {variables.map((name) => {
         const fieldId = `${fieldIdPrefix}-${name}`

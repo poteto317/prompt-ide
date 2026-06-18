@@ -72,4 +72,21 @@ describe('PromptVariablesForm', () => {
     await userEvent.click(screen.getByRole('button', { name: '変数入力をキャンセル' }))
     expect(onCancel).toHaveBeenCalledOnce()
   })
+
+  it('全入力済みなら Enter キーで onSubmit が呼ばれる', async () => {
+    const onSubmit = vi.fn()
+    render(<PromptVariablesForm {...defaultProps} onSubmit={onSubmit} />)
+    await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
+    await userEvent.type(screen.getByRole('textbox', { name: '変数 topic の値' }), 'React{Enter}')
+    expect(onSubmit).toHaveBeenCalledWith({ name: '田中', topic: 'React' })
+  })
+
+  it('isRunDisabled=true のとき全入力済みでも Enter キーで onSubmit が呼ばれない', async () => {
+    const onSubmit = vi.fn()
+    render(<PromptVariablesForm {...defaultProps} onSubmit={onSubmit} isRunDisabled />)
+    await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
+    await userEvent.type(screen.getByRole('textbox', { name: '変数 topic の値' }), 'React{Enter}')
+    // form の onSubmit ガードにより、実行中は Enter でも submit されない
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
 })

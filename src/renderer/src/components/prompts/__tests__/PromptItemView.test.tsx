@@ -15,7 +15,7 @@ const basePrompt: Prompt = {
 const defaultProps = {
   prompt: basePrompt,
   isSortable: false,
-  dragHandleProps: { attributes: {} as never, listeners: undefined },
+  dragHandleProps: { attributes: {} as never, listeners: {} },
   isRunDisabled: false,
   onRun: vi.fn(),
   onEditStart: vi.fn(),
