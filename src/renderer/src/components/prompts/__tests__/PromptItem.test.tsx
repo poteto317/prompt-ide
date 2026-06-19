@@ -150,6 +150,18 @@ describe('PromptItem', () => {
       expect(screen.getByRole('button', { name: 'プロンプトを編集' })).toBeInTheDocument()
     })
 
+    it('変更してキャンセル後に再度開くと変更が破棄され元の値に戻る', async () => {
+      render(<PromptItem {...defaultProps} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+      const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+      await userEvent.clear(titleInput)
+      await userEvent.type(titleInput, '破棄される変更')
+      await userEvent.click(screen.getByRole('button', { name: '編集をキャンセル' }))
+      // 再度開くと元の値（破棄されている）
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+      expect(screen.getByRole('textbox', { name: 'タイトルを編集' })).toHaveValue('テストタイトル')
+    })
+
     describe('保存ボタンの disabled 制御（trim・空チェック）', () => {
       it('タイトルを空にすると保存ボタンが disabled になる', async () => {
         render(<PromptItem {...defaultProps} />)
@@ -236,6 +248,75 @@ describe('PromptItem', () => {
     it('isSortable=false のとき prompt-item--sortable は付与されない', () => {
       const { container } = render(<PromptItem {...defaultProps} />)
       expect(container.querySelector('.prompt-item')).not.toHaveClass('prompt-item--sortable')
+    })
+  })
+
+  describe('変数テンプレート', () => {
+    const varPrompt: Prompt = {
+      id: 'var-1',
+      title: '挨拶',
+      content: '{{name}} さんへ、{{topic}} について教えて',
+      createdAt: 2000000,
+    }
+
+    it('変数なしのプロンプトは実行クリックで onRun が即呼ばれる（回帰確認）', async () => {
+      const onRun = vi.fn()
+      render(<PromptItem {...defaultProps} onRun={onRun} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      expect(onRun).toHaveBeenCalledWith('テストコンテンツ')
+    })
+
+    it('変数を含むプロンプトは実行クリックで変数入力モードに遷移する', async () => {
+      const onRun = vi.fn()
+      render(<PromptItem {...defaultProps} prompt={varPrompt} onRun={onRun} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      // この時点ではまだ実行されず、変数ごとの入力欄が表示される
+      expect(onRun).not.toHaveBeenCalled()
+      expect(screen.getByRole('textbox', { name: '変数 name の値' })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: '変数 topic の値' })).toBeInTheDocument()
+    })
+
+    it('変数値を入力して実行すると onRun が補間済み文字列で呼ばれる', async () => {
+      const onRun = vi.fn()
+      render(<PromptItem {...defaultProps} prompt={varPrompt} onRun={onRun} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
+      await userEvent.type(screen.getByRole('textbox', { name: '変数 topic の値' }), 'React')
+      await userEvent.click(screen.getByRole('button', { name: '変数を差し込んで実行' }))
+      expect(onRun).toHaveBeenCalledWith('田中 さんへ、React について教えて')
+    })
+
+    it('変数が未入力のとき実行ボタンが disabled', async () => {
+      render(<PromptItem {...defaultProps} prompt={varPrompt} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      expect(screen.getByRole('button', { name: '変数を差し込んで実行' })).toBeDisabled()
+    })
+
+    it('isRunDisabled=true のときメイン実行ボタンが無効で変数入力モードに入れない', async () => {
+      render(<PromptItem {...defaultProps} prompt={varPrompt} isRunDisabled />)
+      const runBtn = screen.getByRole('button', { name: 'プロンプトを実行' })
+      expect(runBtn).toBeDisabled()
+      await userEvent.click(runBtn)
+      // disabled のため入力モードに遷移しない
+      expect(screen.queryByRole('textbox', { name: '変数 name の値' })).not.toBeInTheDocument()
+    })
+
+    it('キャンセルで通常表示に戻る', async () => {
+      render(<PromptItem {...defaultProps} prompt={varPrompt} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      await userEvent.click(screen.getByRole('button', { name: '変数入力をキャンセル' }))
+      expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeInTheDocument()
+      expect(screen.queryByRole('textbox', { name: '変数 name の値' })).not.toBeInTheDocument()
+    })
+
+    it('入力してキャンセル後に再度開くと入力値が破棄され空に戻る', async () => {
+      render(<PromptItem {...defaultProps} prompt={varPrompt} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
+      await userEvent.click(screen.getByRole('button', { name: '変数入力をキャンセル' }))
+      // 再度開くと入力欄は空（破棄されている）
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      expect(screen.getByRole('textbox', { name: '変数 name の値' })).toHaveValue('')
     })
   })
 })
