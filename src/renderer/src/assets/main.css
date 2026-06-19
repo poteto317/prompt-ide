@@ -325,6 +325,50 @@ body {
   align-self: flex-end;
 }
 
+.prompt-item--filling-variables {
+  background: #252526;
+}
+
+/* form 要素が中間ラッパになるため、元の .prompt-item と同じ縦並び・行間を再現する */
+.prompt-item__variables-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt-item__variables-title {
+  font-size: 11px;
+  color: #999999;
+  margin-bottom: 2px;
+}
+
+.prompt-item__variable-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.prompt-item__variable-label {
+  font-size: 11px;
+  color: #cccccc;
+}
+
+.prompt-item__variable-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 2px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+
+.prompt-item__variable-input:focus {
+  border-color: #007acc;
+}
+
 .prompt-item__save {
   font-size: 11px;
   color: #ffffff;
