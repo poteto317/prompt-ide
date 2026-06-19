@@ -28,14 +28,19 @@ describe('PromptVariablesForm', () => {
     expect(screen.getByRole('textbox', { name: '変数 name の値' })).toHaveFocus()
   })
 
-  it('複数インスタンスでも input の id が衝突しない（useId による一意化）', () => {
-    const { container: c1 } = render(<PromptVariablesForm {...defaultProps} />)
-    const { container: c2 } = render(<PromptVariablesForm {...defaultProps} />)
-    const id1 = c1.querySelector('input')?.getAttribute('id')
-    const id2 = c2.querySelector('input')?.getAttribute('id')
-    expect(id1).toBeTruthy()
-    expect(id2).toBeTruthy()
-    expect(id1).not.toBe(id2)
+  it('同一ツリー内に複数インスタンスを描画しても input の id が衝突しない（useId）', () => {
+    // 同一 React root に2インスタンスを同時描画し、id がすべて一意であることを検証
+    const { container } = render(
+      <>
+        <PromptVariablesForm {...defaultProps} />
+        <PromptVariablesForm {...defaultProps} />
+      </>
+    )
+    const ids = Array.from(container.querySelectorAll('input')).map((el) => el.id)
+    // 2インスタンス × 2変数 = 4 input、すべて空でなく一意
+    expect(ids).toHaveLength(4)
+    expect(ids.every((id) => id !== '')).toBe(true)
+    expect(new Set(ids).size).toBe(4)
   })
 
   it('未入力のとき実行ボタンが disabled', () => {
