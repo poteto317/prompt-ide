@@ -32,6 +32,7 @@ const defaultProps = {
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
+  onTogglePin: vi.fn(),
 }
 
 describe('PromptItem', () => {
@@ -317,6 +318,22 @@ describe('PromptItem', () => {
       // 再度開くと入力欄は空（破棄されている）
       await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
       expect(screen.getByRole('textbox', { name: '変数 name の値' })).toHaveValue('')
+    })
+  })
+
+  describe('ピン留め', () => {
+    it('ピン留めボタンクリックで onTogglePin が prompt.id とともに呼ばれる', async () => {
+      const onTogglePin = vi.fn()
+      render(<PromptItem {...defaultProps} onTogglePin={onTogglePin} />)
+      await userEvent.click(screen.getByRole('button', { name: 'ピン留め' }))
+      expect(onTogglePin).toHaveBeenCalledWith('test-id-1')
+    })
+
+    it('pinned=true のとき prompt-item--pinned クラスが付与される', () => {
+      const { container } = render(
+        <PromptItem {...defaultProps} prompt={{ ...basePrompt, pinned: true }} />
+      )
+      expect(container.querySelector('.prompt-item')).toHaveClass('prompt-item--pinned')
     })
   })
 })
