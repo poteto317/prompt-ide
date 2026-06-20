@@ -485,6 +485,24 @@ describe('togglePromptPin', () => {
     )
   })
 
+  it('ロード後に存在しないIDを渡すと save が呼ばれない（no-op）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    vi.clearAllMocks()
+    act(() => result.current.togglePromptPin('non-existent'))
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
+  it('ロード後に存在しないIDを渡しても prompts の参照が維持される（no-op）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    const before = result.current.prompts
+    act(() => result.current.togglePromptPin('non-existent'))
+    expect(result.current.prompts).toBe(before)
+  })
+
   it('参照が prompts 変更後も安定している（依存配列に prompts を含まない）', async () => {
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
