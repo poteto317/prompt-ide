@@ -19,7 +19,8 @@ const defaultProps = {
   isRunDisabled: false,
   onRun: vi.fn(),
   onEditStart: vi.fn(),
-  onDelete: vi.fn()
+  onDelete: vi.fn(),
+  onTogglePin: vi.fn()
 }
 
 describe('PromptItemView', () => {
@@ -69,5 +70,38 @@ describe('PromptItemView', () => {
     render(<PromptItemView {...defaultProps} onDelete={onDelete} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを削除' }))
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+
+  describe('ピン留めボタン', () => {
+    it('未ピンのとき aria-label が「ピン留め」で aria-pressed=false', () => {
+      render(<PromptItemView {...defaultProps} prompt={{ ...basePrompt, pinned: false }} />)
+      const btn = screen.getByRole('button', { name: 'ピン留め' })
+      expect(btn).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('pinned 未指定でも「ピン留め」ボタンが表示される', () => {
+      render(<PromptItemView {...defaultProps} />)
+      expect(screen.getByRole('button', { name: 'ピン留め' })).toBeInTheDocument()
+    })
+
+    it('ピン留め済みのとき aria-label が「ピン留めを解除」で aria-pressed=true', () => {
+      render(<PromptItemView {...defaultProps} prompt={{ ...basePrompt, pinned: true }} />)
+      const btn = screen.getByRole('button', { name: 'ピン留めを解除' })
+      expect(btn).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('クリックで onTogglePin が呼ばれる', async () => {
+      const onTogglePin = vi.fn()
+      render(<PromptItemView {...defaultProps} onTogglePin={onTogglePin} />)
+      await userEvent.click(screen.getByRole('button', { name: 'ピン留め' }))
+      expect(onTogglePin).toHaveBeenCalledOnce()
+    })
+
+    it('スタイリングフックのクラス（pin ボタン・title）が付与される（CSS 重なり回避の回帰ガード）', () => {
+      const { container } = render(<PromptItemView {...defaultProps} />)
+      // ピンボタンは常時表示・絶対配置。title 側で padding-right を効かせるため両クラスの存在を保証する
+      expect(container.querySelector('.prompt-item__pin')).toBeInTheDocument()
+      expect(container.querySelector('.prompt-item__title')).toBeInTheDocument()
+    })
   })
 })
