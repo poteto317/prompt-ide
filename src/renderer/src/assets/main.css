@@ -237,6 +237,11 @@ body {
   background: #2a2d2e;
 }
 
+/* ピン留め行はホバー時も背景の上書きを防ぎ、ピン状態の視認性を保つ */
+.prompt-item--pinned:hover {
+  background: #34341f;
+}
+
 .prompt-item__title {
   font-size: 13px;
   color: #cccccc;
