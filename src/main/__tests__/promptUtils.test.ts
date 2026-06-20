@@ -59,6 +59,20 @@ describe('isValidPrompt', () => {
     const { title: _t, ...withoutTitle } = validPrompt
     expect(isValidPrompt(withoutTitle)).toBe(false)
   })
+
+  it('pinned が boolean の場合は有効', () => {
+    expect(isValidPrompt({ ...validPrompt, pinned: true })).toBe(true)
+    expect(isValidPrompt({ ...validPrompt, pinned: false })).toBe(true)
+  })
+
+  it('pinned が boolean 以外の場合は無効', () => {
+    expect(isValidPrompt({ ...validPrompt, pinned: 'true' })).toBe(false)
+    expect(isValidPrompt({ ...validPrompt, pinned: 1 })).toBe(false)
+  })
+
+  it('pinned が無い場合も有効（後方互換）', () => {
+    expect(isValidPrompt(validPrompt)).toBe(true)
+  })
 })
 
 describe('sanitizePrompt', () => {
@@ -79,5 +93,21 @@ describe('sanitizePrompt', () => {
     const original = { ...validPrompt }
     const result = sanitizePrompt(original)
     expect(result).not.toBe(original)
+  })
+
+  it('pinned が boolean のとき保持する', () => {
+    expect(sanitizePrompt({ ...validPrompt, pinned: true })).toEqual({
+      ...validPrompt,
+      pinned: true
+    })
+    expect(sanitizePrompt({ ...validPrompt, pinned: false })).toEqual({
+      ...validPrompt,
+      pinned: false
+    })
+  })
+
+  it('pinned が無いときは付与しない（未ピン扱い）', () => {
+    const result = sanitizePrompt(validPrompt)
+    expect('pinned' in result).toBe(false)
   })
 })

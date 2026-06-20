@@ -8,11 +8,16 @@ export function isValidPrompt(item: unknown): item is Prompt {
     typeof p.title === 'string' &&
     typeof p.content === 'string' &&
     typeof p.createdAt === 'number' &&
-    Number.isFinite(p.createdAt)
+    Number.isFinite(p.createdAt) &&
+    // pinned は任意。存在する場合は boolean のみ許可
+    (p.pinned === undefined || typeof p.pinned === 'boolean')
   )
 }
 
 export function sanitizePrompt(item: Prompt): Prompt {
   const { id, title, content, createdAt } = item
-  return { id, title, content, createdAt }
+  const base: Prompt = { id, title, content, createdAt }
+  // pinned は boolean のときだけ保持（未指定は付与しない＝未ピン扱い）
+  if (typeof item.pinned === 'boolean') base.pinned = item.pinned
+  return base
 }

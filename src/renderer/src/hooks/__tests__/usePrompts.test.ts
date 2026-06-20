@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Prompt } from '../../types'
+import { sortByPinned } from '../../lib/promptUtils'
 
 const mockLoad = vi.hoisted(() => vi.fn())
 const mockSave = vi.hoisted(() => vi.fn())
@@ -439,5 +440,112 @@ describe('reorderPrompts', () => {
     act(() => result.current.reorderPrompts(newId, 'p1'))
     // new が先頭へ移動する
     expect(result.current.prompts.map((p) => p.id)).toEqual([newId, 'p1', 'p2', 'p3'])
+  })
+})
+
+describe('togglePromptPin', () => {
+  const stored: Prompt[] = [
+    { id: 'p1', title: 'A', content: 'a', createdAt: 1 },
+    { id: 'p2', title: 'B', content: 'b', createdAt: 2, pinned: false }
+  ]
+
+  it('未ピン（pinned 無し）のプロンプトをピン留めする', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    act(() => result.current.togglePromptPin('p1'))
+    expect(result.current.prompts[0].pinned).toBe(true)
+  })
+
+  it('ピン留め済みのプロンプトを解除する', async () => {
+    mockLoad.mockResolvedValue([{ id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true }])
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.togglePromptPin('p1'))
+    expect(result.current.prompts[0].pinned).toBe(false)
+  })
+
+  it('対象以外のプロンプトは変化しない', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    act(() => result.current.togglePromptPin('p1'))
+    expect(result.current.prompts[1].pinned).toBe(false)
+  })
+
+  it('togglePromptPin 後に save が呼ばれる', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    vi.clearAllMocks()
+    act(() => result.current.togglePromptPin('p1'))
+    expect(mockSave).toHaveBeenCalledOnce()
+    expect(mockSave).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ id: 'p1', pinned: true })])
+    )
+  })
+
+  it('参照が prompts 変更後も安定している（依存配列に prompts を含まない）', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    const firstRef = result.current.togglePromptPin
+    act(() => result.current.addPrompt('新規', '内容'))
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+    expect(result.current.togglePromptPin).toBe(firstRef)
+  })
+
+  it('ロード完了前のトグルがロード後にマージされて保持される', async () => {
+    let resolveLoad!: (value: Prompt[]) => void
+    mockLoad.mockReturnValueOnce(
+      new Promise<Prompt[]>((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    const { result } = renderHook(() => usePrompts())
+    act(() => result.current.togglePromptPin('p1')) // ロード前
+    await act(async () => resolveLoad(stored))
+    await waitFor(() => expect(result.current.promptsLoaded).toBe(true))
+    expect(result.current.prompts.find((p) => p.id === 'p1')?.pinned).toBe(true)
+  })
+})
+
+describe('reorderPrompts × ピン留めの合成挙動', () => {
+  // 永続化配列は reorderPrompts（arrayMove）で更新され、表示は sortByPinned 適用後になる。
+  // この2層（永続化順 / 表示順）の合成が直感どおりになることを保証する回帰テスト。
+  const stored: Prompt[] = [
+    { id: 'p1', title: 'A', content: 'a', createdAt: 1 }, // 未ピン
+    { id: 'p2', title: 'B', content: 'b', createdAt: 2, pinned: true }, // ピン
+    { id: 'p3', title: 'C', content: 'c', createdAt: 3 } // 未ピン
+  ]
+
+  it('未ピン項目同士の並べ替えはピン項目を上部に保ったまま反映される', async () => {
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+
+    // 初期表示順は [B(ピン), A, C]
+    expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
+
+    // 表示上、未ピンの C を A の上へドラッグ（reorder は id ベース）
+    act(() => result.current.reorderPrompts('p3', 'p1'))
+
+    // 表示順は [B(ピン), C, A]（ピンは上部のまま、未ピンの相対順だけ入れ替わる）
+    expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p3', 'p1'])
+  })
+
+  it('ピン項目同士の並べ替えは上部グループ内で反映される', async () => {
+    mockLoad.mockResolvedValue([
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2, pinned: true },
+      { id: 'p3', title: 'C', content: 'c', createdAt: 3 }
+    ])
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+
+    act(() => result.current.reorderPrompts('p2', 'p1'))
+
+    // ピン2件の順が入れ替わり、未ピンは末尾のまま
+    expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
   })
 })
