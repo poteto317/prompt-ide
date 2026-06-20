@@ -12,6 +12,7 @@ interface PromptsState {
   deletePrompt: (id: string) => void
   updatePrompt: (id: string, title: string, content: string) => void
   reorderPrompts: (activeId: string, overId: string) => void
+  togglePromptPin: (id: string) => void
 }
 
 export function usePrompts(): PromptsState {
@@ -61,5 +62,22 @@ export function usePrompts(): PromptsState {
     [apply]
   )
 
-  return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt, reorderPrompts }
+  const togglePromptPin = useCallback(
+    (id: string): void => {
+      apply((currentPrompts) =>
+        currentPrompts.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p))
+      )
+    },
+    [apply]
+  )
+
+  return {
+    prompts,
+    promptsLoaded,
+    addPrompt,
+    deletePrompt,
+    updatePrompt,
+    reorderPrompts,
+    togglePromptPin
+  }
 }
