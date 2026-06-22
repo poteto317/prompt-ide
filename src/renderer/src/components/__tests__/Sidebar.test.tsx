@@ -15,6 +15,7 @@ const defaultProps = {
   onDeletePrompt: vi.fn(),
   onEditPrompt: vi.fn(),
   onReorderPrompt: vi.fn(),
+  onTogglePromptPin: vi.fn(),
   onRunPrompt: vi.fn(),
   isExecuting: false,
   tasks: [],

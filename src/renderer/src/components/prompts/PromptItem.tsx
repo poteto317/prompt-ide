@@ -13,6 +13,7 @@ interface Props {
   onDelete: (id: string) => void
   onRun: (content: string) => void
   onEdit: (id: string, title: string, content: string) => void
+  onTogglePin: (id: string) => void
   isRunDisabled?: boolean
   isSortable?: boolean
 }
@@ -22,6 +23,7 @@ export default function PromptItem({
   onDelete,
   onRun,
   onEdit,
+  onTogglePin,
   isRunDisabled = false,
   isSortable = false
 }: Props) {
@@ -64,7 +66,7 @@ export default function PromptItem({
     ? 'prompt-item prompt-item--filling-variables'
     : isEditing
       ? 'prompt-item prompt-item--editing'
-      : `prompt-item${isSortable ? ' prompt-item--sortable' : ''}`
+      : `prompt-item${isSortable ? ' prompt-item--sortable' : ''}${prompt.pinned ? ' prompt-item--pinned' : ''}`
 
   return (
     <div ref={setNodeRef} style={dragStyle} className={className}>
@@ -90,6 +92,7 @@ export default function PromptItem({
           onRun={handleRunClick}
           onEditStart={() => setIsEditing(true)}
           onDelete={() => onDelete(prompt.id)}
+          onTogglePin={() => onTogglePin(prompt.id)}
         />
       )}
     </div>

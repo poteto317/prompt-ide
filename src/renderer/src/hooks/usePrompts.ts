@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import type { Prompt } from '../types'
 import { createPrompt } from '../lib/promptFactory'
@@ -12,6 +12,7 @@ interface PromptsState {
   deletePrompt: (id: string) => void
   updatePrompt: (id: string, title: string, content: string) => void
   reorderPrompts: (activeId: string, overId: string) => void
+  togglePromptPin: (id: string) => void
 }
 
 export function usePrompts(): PromptsState {
@@ -21,6 +22,12 @@ export function usePrompts(): PromptsState {
     loaded: promptsLoaded,
     apply
   } = useBufferedPersistence<Prompt>({ load, save })
+
+  // loaded 状態を ref に写し、togglePromptPin の依存配列を [apply] のまま（参照安定）にする
+  const loadedRef = useRef(false)
+  useEffect(() => {
+    loadedRef.current = promptsLoaded
+  }, [promptsLoaded])
 
   const addPrompt = useCallback(
     (title: string, content: string): void => {
@@ -61,5 +68,27 @@ export function usePrompts(): PromptsState {
     [apply]
   )
 
-  return { prompts, promptsLoaded, addPrompt, deletePrompt, updatePrompt, reorderPrompts }
+  const togglePromptPin = useCallback(
+    (id: string): void => {
+      apply((currentPrompts) => {
+        // ロード後に対象IDが存在しない場合は同一参照を返し、不要な state 更新・save を避ける。
+        // ロード前は currentPrompts が未確定なため常に新配列を返し、ロード後にマージさせる。
+        if (loadedRef.current && !currentPrompts.some((p) => p.id === id)) {
+          return currentPrompts
+        }
+        return currentPrompts.map((p) => (p.id === id ? { ...p, pinned: !p.pinned } : p))
+      })
+    },
+    [apply]
+  )
+
+  return {
+    prompts,
+    promptsLoaded,
+    addPrompt,
+    deletePrompt,
+    updatePrompt,
+    reorderPrompts,
+    togglePromptPin
+  }
 }

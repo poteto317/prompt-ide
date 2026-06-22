@@ -14,6 +14,7 @@ interface Props {
   onRun: () => void
   onEditStart: () => void
   onDelete: () => void
+  onTogglePin: () => void
 }
 
 export default function PromptItemView({
@@ -23,7 +24,8 @@ export default function PromptItemView({
   isRunDisabled,
   onRun,
   onEditStart,
-  onDelete
+  onDelete,
+  onTogglePin
 }: Props) {
   return (
     <>
@@ -41,6 +43,15 @@ export default function PromptItemView({
           ⠿
         </button>
       )}
+      <button
+        type="button"
+        className={`prompt-item__pin${prompt.pinned ? ' prompt-item__pin--active' : ''}`}
+        aria-label={prompt.pinned ? 'ピン留めを解除' : 'ピン留め'}
+        aria-pressed={!!prompt.pinned}
+        onClick={onTogglePin}
+      >
+        {prompt.pinned ? '★' : '☆'}
+      </button>
       <div className="prompt-item__title">{prompt.title}</div>
       <div className="prompt-item__preview">{truncatePreview(prompt.content)}</div>
       <div className="prompt-item__actions">

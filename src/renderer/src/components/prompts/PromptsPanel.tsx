@@ -1,4 +1,5 @@
 'use client'
+import { useMemo } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -17,6 +18,7 @@ import type { Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
+import { sortByPinned } from '../../lib/promptUtils'
 
 interface Props {
   prompts: Prompt[]
@@ -25,6 +27,7 @@ interface Props {
   onRun: (content: string) => void
   onEdit: (id: string, title: string, content: string) => void
   onReorder: (activeId: string, overId: string) => void
+  onTogglePin: (id: string) => void
   isRunDisabled?: boolean
   isActive?: boolean
 }
@@ -36,10 +39,14 @@ export default function PromptsPanel({
   onRun,
   onEdit,
   onReorder,
+  onTogglePin,
   isRunDisabled = false,
   isActive
 }: Props) {
   const { filteredPrompts, query, setQuery } = usePromptFilter(prompts, { isActive })
+
+  // フィルタ結果にピン留め順を適用（ピン済みを上部へ固定）
+  const displayed = useMemo(() => sortByPinned(filteredPrompts), [filteredPrompts])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -76,10 +83,10 @@ export default function PromptsPanel({
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext
-              items={filteredPrompts.map((p) => p.id)}
+              items={displayed.map((p) => p.id)}
               strategy={verticalListSortingStrategy}
             >
-              {filteredPrompts.map((prompt) => (
+              {displayed.map((prompt) => (
                 <PromptItem
                   key={prompt.id}
                   prompt={prompt}
@@ -87,6 +94,7 @@ export default function PromptsPanel({
                   onDelete={onDelete}
                   onRun={onRun}
                   onEdit={onEdit}
+                  onTogglePin={onTogglePin}
                   isRunDisabled={isRunDisabled}
                 />
               ))}

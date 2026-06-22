@@ -237,6 +237,11 @@ body {
   background: #2a2d2e;
 }
 
+/* ピン留め行はホバー時も背景の上書きを防ぎ、ピン状態の視認性を保つ */
+.prompt-item--pinned:hover {
+  background: #34341f;
+}
+
 .prompt-item__title {
   font-size: 13px;
   color: #cccccc;
@@ -244,6 +249,8 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* 常時表示のピン留めボタン（右上に絶対配置）と省略記号が重ならないよう余白を確保 */
+  padding-right: 20px;
 }
 
 .prompt-item__preview {
@@ -323,6 +330,31 @@ body {
   display: flex;
   gap: 4px;
   align-self: flex-end;
+}
+
+.prompt-item--pinned {
+  background: #2b2b1e;
+}
+
+.prompt-item__pin {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+  color: #6c6c6c;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.prompt-item__pin:hover {
+  color: #cccccc;
+}
+
+.prompt-item__pin--active {
+  color: #e2c044;
 }
 
 .prompt-item--filling-variables {
