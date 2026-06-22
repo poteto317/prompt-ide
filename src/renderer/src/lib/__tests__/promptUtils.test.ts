@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { truncatePreview } from '../promptUtils'
+import { truncatePreview, sortByPinned } from '../promptUtils'
 import { PREVIEW_MAX } from '../../config/promptConfig'
+import type { Prompt } from '../../types'
 
 describe('truncatePreview', () => {
   it('50文字未満のコンテンツはそのまま返す', () => {
@@ -55,6 +56,52 @@ describe('truncatePreview', () => {
     // 日本語文字は UTF-16 で1コードユニット（BMP内）なので slice でも動作するが念のため確認
     const content = 'あ'.repeat(51)
     expect(truncatePreview(content)).toBe('あ'.repeat(50) + '…')
+  })
+})
+
+describe('sortByPinned', () => {
+  const make = (id: string, pinned?: boolean): Prompt => ({
+    id,
+    title: id,
+    content: id,
+    createdAt: 1,
+    ...(pinned === undefined ? {} : { pinned })
+  })
+
+  it('ピン留め済みを先頭へ寄せる', () => {
+    const result = sortByPinned([make('a'), make('b', true), make('c')])
+    expect(result.map((p) => p.id)).toEqual(['b', 'a', 'c'])
+  })
+
+  it('各グループ内の相対順序を維持する（安定ソート）', () => {
+    const result = sortByPinned([
+      make('a', true),
+      make('b'),
+      make('c', true),
+      make('d')
+    ])
+    expect(result.map((p) => p.id)).toEqual(['a', 'c', 'b', 'd'])
+  })
+
+  it('pinned: false は未ピン扱い', () => {
+    const result = sortByPinned([make('a', false), make('b', true)])
+    expect(result.map((p) => p.id)).toEqual(['b', 'a'])
+  })
+
+  it('全てピン / 全て未ピンなら順序そのまま', () => {
+    expect(sortByPinned([make('a', true), make('b', true)]).map((p) => p.id)).toEqual(['a', 'b'])
+    expect(sortByPinned([make('a'), make('b')]).map((p) => p.id)).toEqual(['a', 'b'])
+  })
+
+  it('空配列は空配列を返す', () => {
+    expect(sortByPinned([])).toEqual([])
+  })
+
+  it('入力配列を破壊しない', () => {
+    const input = [make('a'), make('b', true)]
+    const snapshot = input.map((p) => p.id)
+    sortByPinned(input)
+    expect(input.map((p) => p.id)).toEqual(snapshot)
   })
 })
 

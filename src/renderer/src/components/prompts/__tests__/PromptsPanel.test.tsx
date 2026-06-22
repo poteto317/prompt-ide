@@ -51,7 +51,8 @@ const defaultProps = {
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
-  onReorder: vi.fn()
+  onReorder: vi.fn(),
+  onTogglePin: vi.fn()
 }
 
 const samplePrompt: Prompt = {
@@ -249,6 +250,28 @@ describe('PromptsPanel', () => {
       render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
       act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
       expect(onReorder).toHaveBeenCalledWith('1', '2')
+    })
+  })
+
+  describe('ピン留め', () => {
+    it('ピン留め済みプロンプトが上部に表示される', () => {
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, { ...anotherPrompt, pinned: true }]}
+        />
+      )
+      const titles = screen.getAllByText(/テストタイトル|バグ修正/)
+      // anotherPrompt（ピン済み「バグ修正」）が先頭
+      expect(titles[0]).toHaveTextContent('バグ修正')
+      expect(titles[1]).toHaveTextContent('テストタイトル')
+    })
+
+    it('ピン留めボタンクリックで onTogglePin が prompt.id とともに呼ばれる', async () => {
+      const onTogglePin = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onTogglePin={onTogglePin} />)
+      await userEvent.click(screen.getByRole('button', { name: 'ピン留め' }))
+      expect(onTogglePin).toHaveBeenCalledWith('p1')
     })
   })
 })
