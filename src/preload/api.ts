@@ -13,6 +13,9 @@ export const api = {
     ipcRenderer.invoke('claude:runPrompt', { promptContent, fileContent }),
   loadPrompts: (): Promise<Prompt[]> => ipcRenderer.invoke('prompts:load'),
   savePrompts: (prompts: Prompt[]): Promise<void> => ipcRenderer.invoke('prompts:save', prompts),
+  exportPrompts: (prompts: Prompt[]): Promise<boolean> =>
+    ipcRenderer.invoke('prompts:export', prompts),
+  importPrompts: (): Promise<Prompt[] | null> => ipcRenderer.invoke('prompts:import'),
   loadTasks: (): Promise<Task[]> => ipcRenderer.invoke('progress:load'),
   saveTasks: (tasks: Task[]): Promise<void> => ipcRenderer.invoke('progress:save', tasks)
 }

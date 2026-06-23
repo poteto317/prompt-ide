@@ -4,6 +4,7 @@ import type { Prompt } from '../types'
 import { createPrompt } from '../lib/promptFactory'
 import { usePromptsPersistence } from './usePromptsPersistence'
 import { useBufferedPersistence } from './useBufferedPersistence'
+import { usePromptTransfer } from './usePromptTransfer'
 
 interface PromptsState {
   prompts: Prompt[]
@@ -13,6 +14,8 @@ interface PromptsState {
   updatePrompt: (id: string, title: string, content: string) => void
   reorderPrompts: (activeId: string, overId: string) => void
   togglePromptPin: (id: string) => void
+  exportPrompts: () => Promise<boolean>
+  importPrompts: () => Promise<number>
 }
 
 export function usePrompts(): PromptsState {
@@ -28,6 +31,9 @@ export function usePrompts(): PromptsState {
   useEffect(() => {
     loadedRef.current = promptsLoaded
   }, [promptsLoaded])
+
+  // インポート/エクスポートは専用フックへ委譲（永続化は apply 経由で共有）
+  const { exportPrompts, importPrompts } = usePromptTransfer(prompts, apply)
 
   const addPrompt = useCallback(
     (title: string, content: string): void => {
@@ -89,6 +95,8 @@ export function usePrompts(): PromptsState {
     deletePrompt,
     updatePrompt,
     reorderPrompts,
-    togglePromptPin
+    togglePromptPin,
+    exportPrompts,
+    importPrompts
   }
 }

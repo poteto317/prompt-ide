@@ -5,9 +5,16 @@ import { sortByPinned } from '../../lib/promptUtils'
 
 const mockLoad = vi.hoisted(() => vi.fn())
 const mockSave = vi.hoisted(() => vi.fn())
+const mockApiExport = vi.hoisted(() => vi.fn())
+const mockApiImport = vi.hoisted(() => vi.fn())
 
 vi.mock('../usePromptsPersistence', () => ({
   usePromptsPersistence: () => ({ load: mockLoad, save: mockSave }),
+}))
+
+vi.mock('../../lib/promptsApi', () => ({
+  exportPrompts: mockApiExport,
+  importPrompts: mockApiImport,
 }))
 
 import { usePrompts } from '../usePrompts'
@@ -16,6 +23,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockLoad.mockResolvedValue([])
   mockSave.mockImplementation(() => {})
+  mockApiExport.mockResolvedValue(true)
+  mockApiImport.mockResolvedValue(null)
 })
 
 describe('初期ロード', () => {
@@ -525,6 +534,37 @@ describe('togglePromptPin', () => {
     await act(async () => resolveLoad(stored))
     await waitFor(() => expect(result.current.promptsLoaded).toBe(true))
     expect(result.current.prompts.find((p) => p.id === 'p1')?.pinned).toBe(true)
+  })
+})
+
+describe('transfer 機能の配線（usePromptTransfer 統合）', () => {
+  // 詳細は usePromptTransfer.test.ts で網羅済み。public API 配線と save 到達のみ確認。
+  it('exportPrompts が現在の prompts で API を呼ぶ', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toEqual(stored))
+
+    await act(async () => {
+      await result.current.exportPrompts()
+    })
+    expect(mockApiExport).toHaveBeenCalledWith(stored)
+  })
+
+  it('importPrompts が取り込み分を末尾に追加し save まで通す', async () => {
+    mockApiImport.mockResolvedValue([{ id: 'imp1', title: '取込', content: 'X', createdAt: 100 }])
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.promptsLoaded).toBe(true))
+    vi.clearAllMocks()
+
+    let count: number | undefined
+    await act(async () => {
+      count = await result.current.importPrompts()
+    })
+    expect(count).toBe(1)
+    expect(result.current.prompts).toHaveLength(1)
+    expect(result.current.prompts[0].id).not.toBe('imp1')
+    expect(mockSave).toHaveBeenCalledOnce()
   })
 })
 

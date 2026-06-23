@@ -152,6 +152,39 @@ body {
   padding: 4px 0;
 }
 
+.prompts-panel__toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.prompts-panel__toolbar-button {
+  flex: 1;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.prompts-panel__toolbar-button:hover:not(:disabled) {
+  background: #4a4a4a;
+}
+
+.prompts-panel__toolbar-button:focus {
+  border-color: #007acc;
+}
+
+.prompts-panel__toolbar-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .prompts-panel__search {
   padding: 6px 8px;
   border-bottom: 1px solid #2d2d2d;
