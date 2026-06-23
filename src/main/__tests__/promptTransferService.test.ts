@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { PROMPT_EXPORT_KIND } from '@shared/types'
 import type { Prompt } from '@shared/types'
 
 const mockSaveJsonDialog = vi.hoisted(() => vi.fn())
@@ -43,7 +44,7 @@ describe('exportPromptsToFile', () => {
     expect(path).toBe('/out/prompts.json')
     expect(encoding).toBe('utf-8')
     const parsed = JSON.parse(content as string)
-    expect(parsed.kind).toBe('prompt-ide/prompts')
+    expect(parsed.kind).toBe(PROMPT_EXPORT_KIND)
     expect(parsed.prompts).toEqual([samplePrompt])
     expect(result).toBe(true)
   })

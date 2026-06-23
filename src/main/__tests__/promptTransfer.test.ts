@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { PROMPT_EXPORT_KIND } from '@shared/types'
 import type { Prompt } from '@shared/types'
 import { buildExport, parseImport } from '../promptTransfer'
 
@@ -12,7 +13,7 @@ const samplePrompt: Prompt = {
 describe('buildExport', () => {
   it('kind / version / exportedAt / prompts を持つエンベロープを生成する', () => {
     const result = buildExport([samplePrompt])
-    expect(result.kind).toBe('prompt-ide/prompts')
+    expect(result.kind).toBe(PROMPT_EXPORT_KIND)
     expect(result.version).toBe(1)
     expect(typeof result.exportedAt).toBe('number')
     expect(result.prompts).toEqual([samplePrompt])
@@ -63,17 +64,17 @@ describe('parseImport', () => {
   })
 
   it('version が 1 でないエンベロープは空配列を返す（未知バージョンの誤読み込み防止）', () => {
-    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', version: 2, prompts: [samplePrompt] })
+    const raw = JSON.stringify({ kind: PROMPT_EXPORT_KIND, version: 2, prompts: [samplePrompt] })
     expect(parseImport(raw)).toEqual([])
   })
 
   it('version が欠落しているエンベロープは空配列を返す', () => {
-    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', prompts: [samplePrompt] })
+    const raw = JSON.stringify({ kind: PROMPT_EXPORT_KIND, prompts: [samplePrompt] })
     expect(parseImport(raw)).toEqual([])
   })
 
   it('prompts が配列でないエンベロープは空配列を返す', () => {
-    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', version: 1, prompts: 'x' })
+    const raw = JSON.stringify({ kind: PROMPT_EXPORT_KIND, version: 1, prompts: 'x' })
     expect(parseImport(raw)).toEqual([])
   })
 
