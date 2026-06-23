@@ -31,6 +31,7 @@ function extractPromptList(parsed: unknown): unknown[] {
     typeof parsed === 'object' &&
     parsed !== null &&
     (parsed as Record<string, unknown>).kind === PROMPT_EXPORT_KIND &&
+    (parsed as Record<string, unknown>).version === 1 &&
     Array.isArray((parsed as Record<string, unknown>).prompts)
   ) {
     return (parsed as { prompts: unknown[] }).prompts

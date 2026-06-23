@@ -62,8 +62,18 @@ describe('parseImport', () => {
     expect(parseImport(raw)).toEqual([])
   })
 
+  it('version が 1 でないエンベロープは空配列を返す（未知バージョンの誤読み込み防止）', () => {
+    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', version: 2, prompts: [samplePrompt] })
+    expect(parseImport(raw)).toEqual([])
+  })
+
+  it('version が欠落しているエンベロープは空配列を返す', () => {
+    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', prompts: [samplePrompt] })
+    expect(parseImport(raw)).toEqual([])
+  })
+
   it('prompts が配列でないエンベロープは空配列を返す', () => {
-    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', prompts: 'x' })
+    const raw = JSON.stringify({ kind: 'prompt-ide/prompts', version: 1, prompts: 'x' })
     expect(parseImport(raw)).toEqual([])
   })
 
