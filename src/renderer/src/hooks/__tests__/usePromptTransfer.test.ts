@@ -128,3 +128,31 @@ describe('importPrompts', () => {
     expect(result.current.importPrompts).toBe(firstRef)
   })
 })
+
+describe('エラーハンドリング', () => {
+  it('exportPrompts で API がリジェクトしたとき false を返し apply は呼ばれない', async () => {
+    mockApiExport.mockRejectedValue(new Error('disk full'))
+    const apply = vi.fn()
+    const { result } = renderHook(() => usePromptTransfer([p1], apply))
+
+    let returned: boolean | undefined
+    await act(async () => {
+      returned = await result.current.exportPrompts()
+    })
+    expect(returned).toBe(false)
+    expect(apply).not.toHaveBeenCalled()
+  })
+
+  it('importPrompts で API がリジェクトしたとき 0 を返し apply は呼ばれない', async () => {
+    mockApiImport.mockRejectedValue(new Error('file not found'))
+    const apply = vi.fn()
+    const { result } = renderHook(() => usePromptTransfer([p1], apply))
+
+    let count: number | undefined
+    await act(async () => {
+      count = await result.current.importPrompts()
+    })
+    expect(count).toBe(0)
+    expect(apply).not.toHaveBeenCalled()
+  })
+})
