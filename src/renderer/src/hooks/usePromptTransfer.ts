@@ -19,16 +19,26 @@ export function usePromptTransfer(
     promptsRef.current = prompts
   }, [prompts])
 
-  const exportPrompts = useCallback((): Promise<boolean> => {
-    return apiExportPrompts(promptsRef.current)
+  const exportPrompts = useCallback(async (): Promise<boolean> => {
+    try {
+      return await apiExportPrompts(promptsRef.current)
+    } catch (err) {
+      console.error('[usePromptTransfer] export failed:', err)
+      return false
+    }
   }, [])
 
   const importPrompts = useCallback(async (): Promise<number> => {
-    const imported = await apiImportPrompts()
-    if (imported === null || imported.length === 0) return 0
-    const added = imported.map(cloneAsNewPrompt)
-    apply((prev) => [...prev, ...added])
-    return added.length
+    try {
+      const imported = await apiImportPrompts()
+      if (imported === null || imported.length === 0) return 0
+      const added = imported.map(cloneAsNewPrompt)
+      apply((prev) => [...prev, ...added])
+      return added.length
+    } catch (err) {
+      console.error('[usePromptTransfer] import failed:', err)
+      return 0
+    }
   }, [apply])
 
   return { exportPrompts, importPrompts }
