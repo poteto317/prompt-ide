@@ -4,10 +4,17 @@ import type { Prompt } from '@shared/types'
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockLoadPrompts = vi.hoisted(() => vi.fn())
 const mockSavePrompts = vi.hoisted(() => vi.fn())
+const mockExportPromptsToFile = vi.hoisted(() => vi.fn())
+const mockImportPromptsFromFile = vi.hoisted(() => vi.fn())
 
 vi.mock('../../promptStore', () => ({
   loadPrompts: mockLoadPrompts,
   savePrompts: mockSavePrompts,
+}))
+
+vi.mock('../../promptTransferService', () => ({
+  exportPromptsToFile: mockExportPromptsToFile,
+  importPromptsFromFile: mockImportPromptsFromFile,
 }))
 
 import { registerPromptsHandlers } from '../../handlers/promptsHandlers'
@@ -114,6 +121,57 @@ describe('registerPromptsHandlers', () => {
       await expect(
         getRegisteredHandler('prompts:save')(makeEvent(1), [null])
       ).rejects.toThrow('プロンプトの形式が不正です')
+    })
+  })
+
+  describe('prompts:export', () => {
+    it('検証済みの配列を exportPromptsToFile に渡し、その戻り値を返す', async () => {
+      mockExportPromptsToFile.mockResolvedValue(true)
+      const result = await getRegisteredHandler('prompts:export')(makeEvent(1), [samplePrompt])
+      expect(mockExportPromptsToFile).toHaveBeenCalledWith([samplePrompt])
+      expect(result).toBe(true)
+    })
+
+    it('サービスが false を返した場合はそのまま false を返す', async () => {
+      mockExportPromptsToFile.mockResolvedValue(false)
+      const result = await getRegisteredHandler('prompts:export')(makeEvent(1), [samplePrompt])
+      expect(result).toBe(false)
+    })
+
+    it('余分なプロパティは除去して exportPromptsToFile に渡される', async () => {
+      mockExportPromptsToFile.mockResolvedValue(true)
+      const withExtra = { ...samplePrompt, extra: 'remove me' }
+      await getRegisteredHandler('prompts:export')(makeEvent(1), [withExtra])
+      expect(mockExportPromptsToFile).toHaveBeenCalledWith([samplePrompt])
+    })
+
+    it('payload が配列でないとき "引数は配列である必要があります" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:export')(makeEvent(1), { not: 'array' })
+      ).rejects.toThrow('引数は配列である必要があります')
+      expect(mockExportPromptsToFile).not.toHaveBeenCalled()
+    })
+
+    it('不正なプロンプトを含むとき "プロンプトの形式が不正です" エラーをスロー', async () => {
+      await expect(
+        getRegisteredHandler('prompts:export')(makeEvent(1), [{ id: 123 }])
+      ).rejects.toThrow('プロンプトの形式が不正です')
+      expect(mockExportPromptsToFile).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('prompts:import', () => {
+    it('importPromptsFromFile の戻り値（Prompt 配列）をそのまま返す', async () => {
+      mockImportPromptsFromFile.mockResolvedValue([samplePrompt])
+      const result = await getRegisteredHandler('prompts:import')(makeEvent(1))
+      expect(mockImportPromptsFromFile).toHaveBeenCalledOnce()
+      expect(result).toEqual([samplePrompt])
+    })
+
+    it('importPromptsFromFile が null（キャンセル）を返した場合は null を返す', async () => {
+      mockImportPromptsFromFile.mockResolvedValue(null)
+      const result = await getRegisteredHandler('prompts:import')(makeEvent(1))
+      expect(result).toBeNull()
     })
   })
 })
