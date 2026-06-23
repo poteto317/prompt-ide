@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { createPrompt } from '../promptFactory'
+import type { Prompt } from '../../types'
+import { createPrompt, cloneAsNewPrompt } from '../promptFactory'
 
 describe('createPrompt', () => {
   it('titleとcontentを正しく持つPromptを返す', () => {
@@ -41,5 +42,48 @@ describe('createPrompt', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+})
+
+describe('cloneAsNewPrompt', () => {
+  const source: Prompt = {
+    id: 'original-id',
+    title: 'タイトル',
+    content: '内容',
+    createdAt: 1234567890,
+    pinned: true,
+  }
+
+  it('id を新しい UUID に再生成する', () => {
+    const cloned = cloneAsNewPrompt(source)
+    expect(cloned.id).not.toBe('original-id')
+    expect(cloned.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+  })
+
+  it('id 以外のフィールド（title/content/createdAt/pinned）を保持する', () => {
+    const cloned = cloneAsNewPrompt(source)
+    expect(cloned.title).toBe('タイトル')
+    expect(cloned.content).toBe('内容')
+    expect(cloned.createdAt).toBe(1234567890)
+    expect(cloned.pinned).toBe(true)
+  })
+
+  it('pinned が無いプロンプトでも複製できる', () => {
+    const { id: _id, ...rest } = source
+    const without: Prompt = { ...rest, id: 'x', pinned: undefined }
+    const cloned = cloneAsNewPrompt(without)
+    expect(cloned.pinned).toBeUndefined()
+    expect(cloned.id).not.toBe('x')
+  })
+
+  it('同じ入力でも 2 回呼ぶと異なる id になる', () => {
+    const a = cloneAsNewPrompt(source)
+    const b = cloneAsNewPrompt(source)
+    expect(a.id).not.toBe(b.id)
+  })
+
+  it('元のオブジェクトを破壊的に変更しない', () => {
+    cloneAsNewPrompt(source)
+    expect(source.id).toBe('original-id')
   })
 })

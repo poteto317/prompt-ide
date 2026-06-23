@@ -52,7 +52,9 @@ const defaultProps = {
   onRun: vi.fn(),
   onEdit: vi.fn(),
   onReorder: vi.fn(),
-  onTogglePin: vi.fn()
+  onTogglePin: vi.fn(),
+  onExport: vi.fn(),
+  onImport: vi.fn()
 }
 
 const samplePrompt: Prompt = {
@@ -250,6 +252,20 @@ describe('PromptsPanel', () => {
       render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
       act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
       expect(onReorder).toHaveBeenCalledWith('1', '2')
+    })
+  })
+
+  describe('ツールバー（PromptsToolbar 統合）', () => {
+    // ボタンの詳細仕様は PromptsToolbar.test.tsx で網羅。ここでは描画と disabled 連動のみ確認。
+    it('ツールバーが描画され、0 件時はエクスポートが prompts.length に連動して disabled になる', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[]} />)
+      expect(screen.getByRole('button', { name: 'プロンプトをインポート' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'プロンプトをエクスポート' })).toBeDisabled()
+    })
+
+    it('プロンプトがあるときエクスポートが有効になる', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.getByRole('button', { name: 'プロンプトをエクスポート' })).toBeEnabled()
     })
   })
 
