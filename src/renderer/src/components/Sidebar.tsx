@@ -22,6 +22,8 @@ interface Props {
   onEditPrompt: (id: string, title: string, content: string) => void
   onReorderPrompt: (activeId: string, overId: string) => void
   onTogglePromptPin: (id: string) => void
+  onExportPrompts: () => void
+  onImportPrompts: () => void
   onRunPrompt: (content: string) => void
   isExecuting: boolean
   tasks: Task[]
@@ -56,6 +58,8 @@ export default function Sidebar({
   onEditPrompt,
   onReorderPrompt,
   onTogglePromptPin,
+  onExportPrompts,
+  onImportPrompts,
   onRunPrompt,
   isExecuting,
   tasks,
@@ -96,6 +100,8 @@ export default function Sidebar({
           onEdit={onEditPrompt}
           onReorder={onReorderPrompt}
           onTogglePin={onTogglePromptPin}
+          onExport={onExportPrompts}
+          onImport={onImportPrompts}
           onRun={onRunPrompt}
           isRunDisabled={isExecuting}
           isActive={activePanel === 'prompts'}

@@ -22,6 +22,8 @@ export default function App(): React.JSX.Element {
     updatePrompt,
     reorderPrompts,
     togglePromptPin,
+    exportPrompts,
+    importPrompts,
     tasks,
     addTask,
     deleteTask,
@@ -74,6 +76,8 @@ export default function App(): React.JSX.Element {
               onEditPrompt={updatePrompt}
               onReorderPrompt={reorderPrompts}
               onTogglePromptPin={togglePromptPin}
+              onExportPrompts={exportPrompts}
+              onImportPrompts={importPrompts}
               onRunPrompt={handleRunPrompt}
               isExecuting={isExecuting}
               tasks={tasks}
