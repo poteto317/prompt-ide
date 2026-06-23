@@ -17,6 +17,7 @@ import {
 import type { Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
+import PromptsToolbar from './PromptsToolbar'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { sortByPinned } from '../../lib/promptUtils'
 
@@ -28,6 +29,8 @@ interface Props {
   onEdit: (id: string, title: string, content: string) => void
   onReorder: (activeId: string, overId: string) => void
   onTogglePin: (id: string) => void
+  onExport: () => void
+  onImport: () => void
   isRunDisabled?: boolean
   isActive?: boolean
 }
@@ -40,6 +43,8 @@ export default function PromptsPanel({
   onEdit,
   onReorder,
   onTogglePin,
+  onExport,
+  onImport,
   isRunDisabled = false,
   isActive
 }: Props) {
@@ -63,6 +68,11 @@ export default function PromptsPanel({
 
   return (
     <div className="prompts-panel">
+      <PromptsToolbar
+        onImport={onImport}
+        onExport={onExport}
+        isExportDisabled={prompts.length === 0}
+      />
       <div className="prompts-panel__search">
         <input
           className="prompts-panel__search-input"

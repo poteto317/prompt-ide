@@ -14,6 +14,8 @@ declare global {
       runPrompt(promptContent: string, fileContent: string | null): Promise<string>
       loadPrompts(): Promise<Prompt[]>
       savePrompts(prompts: Prompt[]): Promise<void>
+      exportPrompts(prompts: Prompt[]): Promise<boolean>
+      importPrompts(): Promise<Prompt[] | null>
       loadTasks(): Promise<Task[]>
       saveTasks(tasks: Task[]): Promise<void>
     }
