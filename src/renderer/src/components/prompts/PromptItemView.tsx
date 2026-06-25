@@ -54,6 +54,15 @@ export default function PromptItemView({
       </button>
       <div className="prompt-item__title">{prompt.title}</div>
       <div className="prompt-item__preview">{truncatePreview(prompt.content)}</div>
+      {prompt.tags && prompt.tags.length > 0 && (
+        <div className="prompt-item__tags">
+          {prompt.tags.map((tag) => (
+            <span key={tag} className="prompt-item__tag">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="prompt-item__actions">
         <button
           type="button"

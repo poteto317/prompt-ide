@@ -52,7 +52,7 @@ describe('usePromptEditForm', () => {
     act(() => result.current.handleTitleChange(changeInput('  T  ')))
     act(() => result.current.handleContentChange(changeTextarea('  C  ')))
     act(() => result.current.handleSave())
-    expect(onSubmit).toHaveBeenCalledWith('T', 'C')
+    expect(onSubmit).toHaveBeenCalledWith('T', 'C', [])
   })
 
   it('isSaveDisabled のとき handleSave で onSubmit は呼ばれない', () => {

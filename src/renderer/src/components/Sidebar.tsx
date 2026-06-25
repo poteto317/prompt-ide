@@ -19,7 +19,7 @@ interface Props {
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
-  onEditPrompt: (id: string, title: string, content: string) => void
+  onEditPrompt: (id: string, title: string, content: string, tags: string[]) => void
   onReorderPrompt: (activeId: string, overId: string) => void
   onTogglePromptPin: (id: string) => void
   onExportPrompts: () => void
