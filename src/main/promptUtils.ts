@@ -22,9 +22,10 @@ export function sanitizePrompt(item: Prompt): Prompt {
   const base: Prompt = { id, title, content, createdAt }
   // pinned は boolean のときだけ保持（未指定は付与しない＝未ピン扱い）
   if (typeof item.pinned === 'boolean') base.pinned = item.pinned
-  // tags は有効な string[] のときだけ保持
+  // tags は有効な string[] のときだけ保持（trim・空文字除去・重複排除の上、非空時のみ）
   if (Array.isArray(item.tags) && item.tags.every((t) => typeof t === 'string')) {
-    base.tags = item.tags
+    const sanitized = [...new Set(item.tags.map((t) => t.trim()).filter((t) => t.length > 0))]
+    if (sanitized.length > 0) base.tags = sanitized
   }
   return base
 }
