@@ -5,6 +5,8 @@ export type Prompt = {
   createdAt: number
   /** ピン留め（お気に入り）。未指定は未ピン扱い。 */
   pinned?: boolean
+  /** タグ。未指定はタグなし扱い。 */
+  tags?: string[]
 }
 
 export const PROMPT_EXPORT_KIND = 'prompt-ide/prompts' as const
