@@ -50,9 +50,10 @@ export default function PromptsPanel({
   isRunDisabled = false,
   isActive
 }: Props) {
-  const { filteredPrompts, query, setQuery, selectedTags, toggleTag } = usePromptFilter(prompts, {
-    isActive
-  })
+  const { filteredPrompts, query, setQuery, selectedTags, toggleTag, isFiltered } = usePromptFilter(
+    prompts,
+    { isActive }
+  )
 
   // フィルタ結果にピン留め順を適用（ピン済みを上部へ固定）
   const displayed = useMemo(() => sortByPinned(filteredPrompts), [filteredPrompts])
@@ -65,7 +66,7 @@ export default function PromptsPanel({
   )
 
   // テキスト検索中またはタグ絞り込み中は並び替えを無効化
-  const isSortable = query.trim() === '' && selectedTags.length === 0
+  const isSortable = !isFiltered
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     if (over && active.id !== over.id) {

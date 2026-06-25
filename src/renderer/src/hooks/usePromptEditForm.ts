@@ -38,7 +38,9 @@ export function usePromptEditForm(
 
   const handleSave = (): void => {
     if (isSaveDisabled) return
-    onSubmit(title.trim(), content.trim(), tags)
+    const pending = tagInput.trim()
+    const finalTags = pending && !tags.includes(pending) ? [...tags, pending] : tags
+    onSubmit(title.trim(), content.trim(), finalTags)
   }
 
   return {

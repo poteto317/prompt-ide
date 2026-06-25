@@ -236,6 +236,37 @@ describe('usePromptFilter', () => {
     })
   })
 
+  describe('isFiltered フラグ', () => {
+    it('query も selectedTags も空のとき false', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      expect(result.current.isFiltered).toBe(false)
+    })
+
+    it('query を入力すると true', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      act(() => result.current.setQuery('コード'))
+      expect(result.current.isFiltered).toBe(true)
+    })
+
+    it('タグを選択すると true', () => {
+      const tagged: Prompt = makePrompt({ id: 'a', tags: ['React'] })
+      const { result } = renderHook(() => usePromptFilter([tagged]))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(true)
+    })
+
+    it('query と selectedTags を両方クリアすると false に戻る', () => {
+      const tagged: Prompt = makePrompt({ id: 'a', tags: ['React'] })
+      const { result } = renderHook(() => usePromptFilter([tagged]))
+      act(() => result.current.setQuery('コード'))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(true)
+      act(() => result.current.setQuery(''))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(false)
+    })
+  })
+
   describe('タグフィルター', () => {
     const taggedA: Prompt = makePrompt({ id: 'a', title: 'A', tags: ['React', 'TypeScript'] })
     const taggedB: Prompt = makePrompt({ id: 'b', title: 'B', tags: ['Vue'] })
