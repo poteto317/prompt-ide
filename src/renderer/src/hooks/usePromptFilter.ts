@@ -41,5 +41,6 @@ export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}) {
     })
   }, [prompts, query, selectedTags])
 
-  return { filteredPrompts, query, setQuery, selectedTags, toggleTag }
+  const isFiltered = query.trim() !== '' || selectedTags.length > 0
+  return { filteredPrompts, query, setQuery, selectedTags, toggleTag, isFiltered }
 }
