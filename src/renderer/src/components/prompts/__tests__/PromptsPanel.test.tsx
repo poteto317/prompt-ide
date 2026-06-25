@@ -269,6 +269,86 @@ describe('PromptsPanel', () => {
     })
   })
 
+  describe('タグフィルター', () => {
+    const taggedPrompt: Prompt = {
+      id: 'p1',
+      title: 'タグ付きA',
+      content: 'コンテンツA',
+      createdAt: 1000000,
+      tags: ['React', 'TypeScript'],
+    }
+    const otherTaggedPrompt: Prompt = {
+      id: 'p2',
+      title: 'タグ付きB',
+      content: 'コンテンツB',
+      createdAt: 2000000,
+      tags: ['Vue'],
+    }
+    const noTagPrompt: Prompt = {
+      id: 'p3',
+      title: 'タグなし',
+      content: 'コンテンツC',
+      createdAt: 3000000,
+    }
+
+    it('タグを持つプロンプトがあるときタグフィルターバーが表示される', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[taggedPrompt]} />)
+      expect(screen.getByRole('button', { name: 'React' })).toBeInTheDocument()
+    })
+
+    it('タグが一切ないときタグフィルターバーは表示されない', () => {
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+      expect(screen.queryByRole('group', { name: 'タグで絞り込み' })).not.toBeInTheDocument()
+    })
+
+    it('タグをクリックすると該当タグを持つプロンプトだけが表示される', async () => {
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[taggedPrompt, otherTaggedPrompt, noTagPrompt]}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'React' }))
+      expect(screen.getByText('タグ付きA')).toBeInTheDocument()
+      expect(screen.queryByText('タグ付きB')).not.toBeInTheDocument()
+      expect(screen.queryByText('タグなし')).not.toBeInTheDocument()
+    })
+
+    it('同じタグをもう一度クリックすると絞り込みが解除される', async () => {
+      render(
+        <PromptsPanel {...defaultProps} prompts={[taggedPrompt, noTagPrompt]} />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'React' }))
+      expect(screen.queryByText('タグなし')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'React' }))
+      expect(screen.getByText('タグなし')).toBeInTheDocument()
+    })
+
+    it('タグ絞り込み中はドラッグハンドルが非表示になる', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[taggedPrompt]} />)
+      await userEvent.click(screen.getByRole('button', { name: 'React' }))
+      expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
+    })
+
+    it('選択中タグは aria-pressed=true になる', async () => {
+      render(<PromptsPanel {...defaultProps} prompts={[taggedPrompt]} />)
+      const chip = screen.getByRole('button', { name: 'React' })
+      expect(chip).toHaveAttribute('aria-pressed', 'false')
+      await userEvent.click(chip)
+      expect(chip).toHaveAttribute('aria-pressed', 'true')
+    })
+
+    it('タグフィルターで 0 件になったとき no-results メッセージが表示される', async () => {
+      render(
+        <PromptsPanel {...defaultProps} prompts={[taggedPrompt, otherTaggedPrompt]} />
+      )
+      // React のみ持つ taggedPrompt と Vue のみ持つ otherTaggedPrompt を AND 選択 → 0 件
+      await userEvent.click(screen.getByRole('button', { name: 'React' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Vue' }))
+      expect(screen.getByText('条件に一致するプロンプトはありません')).toBeInTheDocument()
+    })
+  })
+
   describe('ピン留め', () => {
     it('ピン留め済みプロンプトが上部に表示される', () => {
       render(
