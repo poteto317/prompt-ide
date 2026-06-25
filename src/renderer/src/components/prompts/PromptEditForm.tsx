@@ -1,16 +1,28 @@
 'use client'
 import type { Prompt } from '../../types'
 import { usePromptEditForm } from '../../hooks/usePromptEditForm'
+import TagInput from './TagInput'
 
 interface Props {
   prompt: Prompt
-  onSubmit: (title: string, content: string) => void
+  onSubmit: (title: string, content: string, tags: string[]) => void
   onCancel: () => void
 }
 
 export default function PromptEditForm({ prompt, onSubmit, onCancel }: Props) {
-  const { title, content, isSaveDisabled, handleTitleChange, handleContentChange, handleSave } =
-    usePromptEditForm(prompt, onSubmit)
+  const {
+    title,
+    content,
+    tags,
+    tagInput,
+    isSaveDisabled,
+    handleTitleChange,
+    handleContentChange,
+    handleTagInputChange,
+    handleTagInputKeyDown,
+    handleRemoveTag,
+    handleSave,
+  } = usePromptEditForm(prompt, onSubmit)
 
   return (
     <>
@@ -27,6 +39,13 @@ export default function PromptEditForm({ prompt, onSubmit, onCancel }: Props) {
         onChange={handleContentChange}
         aria-label="内容を編集"
         rows={4}
+      />
+      <TagInput
+        tags={tags}
+        tagInput={tagInput}
+        onTagInputChange={handleTagInputChange}
+        onTagInputKeyDown={handleTagInputKeyDown}
+        onRemoveTag={handleRemoveTag}
       />
       <div className="prompt-item__edit-actions">
         <button

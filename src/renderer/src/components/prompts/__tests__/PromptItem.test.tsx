@@ -130,7 +130,7 @@ describe('PromptItem', () => {
       await userEvent.clear(contentInput)
       await userEvent.type(contentInput, '新しい内容')
       await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
-      expect(onEdit).toHaveBeenCalledWith('test-id-1', '新しいタイトル', '新しい内容')
+      expect(onEdit).toHaveBeenCalledWith('test-id-1', '新しいタイトル', '新しい内容', [])
     })
 
     it('保存後に編集モードが終了してビュー表示に戻る', async () => {
@@ -215,7 +215,7 @@ describe('PromptItem', () => {
         await userEvent.clear(contentInput)
         await userEvent.type(contentInput, '  trimされる内容  ')
         await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
-        expect(onEdit).toHaveBeenCalledWith('test-id-1', 'trimされるタイトル', 'trimされる内容')
+        expect(onEdit).toHaveBeenCalledWith('test-id-1', 'trimされるタイトル', 'trimされる内容', [])
       })
 
       it('保存ボタンが disabled のとき onEdit が呼ばれない', async () => {
