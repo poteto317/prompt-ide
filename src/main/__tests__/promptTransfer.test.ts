@@ -29,6 +29,24 @@ describe('buildExport', () => {
     const result = buildExport([])
     expect(result.prompts).toEqual([])
   })
+
+  it('tags のスペースをトリムし重複を排除する', () => {
+    const p: Prompt = { ...samplePrompt, tags: [' React ', 'React', '  TypeScript  '] }
+    const result = buildExport([p])
+    expect(result.prompts[0].tags).toEqual(['React', 'TypeScript'])
+  })
+
+  it('tags が空文字のみの場合、tags プロパティを除去する', () => {
+    const p: Prompt = { ...samplePrompt, tags: ['  ', ''] }
+    const result = buildExport([p])
+    expect(result.prompts[0]).not.toHaveProperty('tags')
+  })
+
+  it('tags が空配列の場合、tags プロパティを除去する', () => {
+    const p: Prompt = { ...samplePrompt, tags: [] }
+    const result = buildExport([p])
+    expect(result.prompts[0]).not.toHaveProperty('tags')
+  })
 })
 
 describe('parseImport', () => {

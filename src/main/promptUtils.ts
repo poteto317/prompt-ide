@@ -10,7 +10,10 @@ export function isValidPrompt(item: unknown): item is Prompt {
     typeof p.createdAt === 'number' &&
     Number.isFinite(p.createdAt) &&
     // pinned は任意。存在する場合は boolean のみ許可
-    (p.pinned === undefined || typeof p.pinned === 'boolean')
+    (p.pinned === undefined || typeof p.pinned === 'boolean') &&
+    // tags は任意。存在する場合は全要素が string の配列のみ許可
+    (p.tags === undefined ||
+      (Array.isArray(p.tags) && p.tags.every((t) => typeof t === 'string')))
   )
 }
 
@@ -19,5 +22,10 @@ export function sanitizePrompt(item: Prompt): Prompt {
   const base: Prompt = { id, title, content, createdAt }
   // pinned は boolean のときだけ保持（未指定は付与しない＝未ピン扱い）
   if (typeof item.pinned === 'boolean') base.pinned = item.pinned
+  // tags は有効な string[] のときだけ保持（trim・空文字除去・重複排除の上、非空時のみ）
+  if (Array.isArray(item.tags) && item.tags.every((t) => typeof t === 'string')) {
+    const sanitized = [...new Set(item.tags.map((t) => t.trim()).filter((t) => t.length > 0))]
+    if (sanitized.length > 0) base.tags = sanitized
+  }
   return base
 }

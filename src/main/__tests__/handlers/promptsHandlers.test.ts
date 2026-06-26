@@ -117,6 +117,27 @@ describe('registerPromptsHandlers', () => {
       expect(mockSavePrompts).toHaveBeenCalledWith([samplePrompt])
     })
 
+    it('tags のスペースがトリムされ重複が排除されて savePrompts に渡される', async () => {
+      mockSavePrompts.mockResolvedValue(undefined)
+      const withDirtyTags = { ...samplePrompt, tags: [' ai ', 'ai', '  '] }
+      await getRegisteredHandler('prompts:save')(makeEvent(1), [withDirtyTags])
+      expect(mockSavePrompts).toHaveBeenCalledWith([{ ...samplePrompt, tags: ['ai'] }])
+    })
+
+    it('tags が空文字のみの場合、tags プロパティが除去されて savePrompts に渡される', async () => {
+      mockSavePrompts.mockResolvedValue(undefined)
+      const withEmptyTags = { ...samplePrompt, tags: ['  ', ''] }
+      await getRegisteredHandler('prompts:save')(makeEvent(1), [withEmptyTags])
+      expect(mockSavePrompts).toHaveBeenCalledWith([samplePrompt])
+    })
+
+    it('tags が空配列の場合、tags プロパティが除去されて savePrompts に渡される', async () => {
+      mockSavePrompts.mockResolvedValue(undefined)
+      const withEmptyArray = { ...samplePrompt, tags: [] }
+      await getRegisteredHandler('prompts:save')(makeEvent(1), [withEmptyArray])
+      expect(mockSavePrompts).toHaveBeenCalledWith([samplePrompt])
+    })
+
     it('配列内の null 要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
       await expect(
         getRegisteredHandler('prompts:save')(makeEvent(1), [null])

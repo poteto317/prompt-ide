@@ -328,6 +328,33 @@ describe('updatePrompt', () => {
     expect(result.current.prompts[0].title).toBe('新T')
     expect(result.current.prompts[0].content).toBe('新C')
   })
+
+  it('tags を渡すと更新される', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1 }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('p1', 'T', 'C', ['React', 'TypeScript']))
+    expect(result.current.prompts[0].tags).toEqual(['React', 'TypeScript'])
+  })
+
+  it('tags を空配列で渡すと tags が除去される', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1, tags: ['React'] }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('p1', 'T', 'C', []))
+    expect(result.current.prompts[0].tags).toBeUndefined()
+  })
+
+  it('tags を省略（undefined）すると既存タグが保持される', async () => {
+    const stored: Prompt[] = [{ id: 'p1', title: 'T', content: 'C', createdAt: 1, tags: ['React'] }]
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(1))
+    act(() => result.current.updatePrompt('p1', '新T', '新C'))
+    expect(result.current.prompts[0].tags).toEqual(['React'])
+  })
 })
 
 describe('reorderPrompts', () => {

@@ -73,6 +73,21 @@ describe('isValidPrompt', () => {
   it('pinned が無い場合も有効（後方互換）', () => {
     expect(isValidPrompt(validPrompt)).toBe(true)
   })
+
+  it('tags が string[] のとき有効', () => {
+    expect(isValidPrompt({ ...validPrompt, tags: ['React', 'TypeScript'] })).toBe(true)
+    expect(isValidPrompt({ ...validPrompt, tags: [] })).toBe(true)
+  })
+
+  it('tags が無い場合も有効（後方互換）', () => {
+    expect(isValidPrompt(validPrompt)).toBe(true)
+  })
+
+  it('tags が string[] 以外のとき無効', () => {
+    expect(isValidPrompt({ ...validPrompt, tags: 'React' })).toBe(false)
+    expect(isValidPrompt({ ...validPrompt, tags: [1, 2] })).toBe(false)
+    expect(isValidPrompt({ ...validPrompt, tags: null })).toBe(false)
+  })
 })
 
 describe('sanitizePrompt', () => {
@@ -109,5 +124,46 @@ describe('sanitizePrompt', () => {
   it('pinned が無いときは付与しない（未ピン扱い）', () => {
     const result = sanitizePrompt(validPrompt)
     expect('pinned' in result).toBe(false)
+  })
+
+  it('tags が有効な string[] のとき保持する', () => {
+    expect(sanitizePrompt({ ...validPrompt, tags: ['React', 'TypeScript'] })).toEqual({
+      ...validPrompt,
+      tags: ['React', 'TypeScript'],
+    })
+  })
+
+  it('tags が無いときは付与しない', () => {
+    const result = sanitizePrompt(validPrompt)
+    expect('tags' in result).toBe(false)
+  })
+
+  it('tags が空配列のときは付与しない', () => {
+    const result = sanitizePrompt({ ...validPrompt, tags: [] })
+    expect('tags' in result).toBe(false)
+  })
+
+  it('tags の前後スペースをトリムする', () => {
+    expect(sanitizePrompt({ ...validPrompt, tags: [' React ', ' TypeScript '] })).toEqual({
+      ...validPrompt,
+      tags: ['React', 'TypeScript'],
+    })
+  })
+
+  it('tags の空文字列（trim後）を除去する', () => {
+    const result = sanitizePrompt({ ...validPrompt, tags: ['React', '   ', 'TypeScript'] })
+    expect(result.tags).toEqual(['React', 'TypeScript'])
+  })
+
+  it('tags の重複を除去する', () => {
+    expect(sanitizePrompt({ ...validPrompt, tags: ['React', 'TypeScript', 'React'] })).toEqual({
+      ...validPrompt,
+      tags: ['React', 'TypeScript'],
+    })
+  })
+
+  it('trim・重複排除後に空になるとき tags を付与しない', () => {
+    const result = sanitizePrompt({ ...validPrompt, tags: ['  ', ''] })
+    expect('tags' in result).toBe(false)
   })
 })

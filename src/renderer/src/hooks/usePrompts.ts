@@ -11,7 +11,7 @@ interface PromptsState {
   promptsLoaded: boolean
   addPrompt: (title: string, content: string) => void
   deletePrompt: (id: string) => void
-  updatePrompt: (id: string, title: string, content: string) => void
+  updatePrompt: (id: string, title: string, content: string, tags?: string[]) => void
   reorderPrompts: (activeId: string, overId: string) => void
   togglePromptPin: (id: string) => void
   exportPrompts: () => Promise<boolean>
@@ -51,8 +51,15 @@ export function usePrompts(): PromptsState {
   )
 
   const updatePrompt = useCallback(
-    (id: string, title: string, content: string): void => {
-      apply((prompts) => prompts.map((p) => (p.id === id ? { ...p, title, content } : p)))
+    (id: string, title: string, content: string, tags?: string[]): void => {
+      apply((prompts) =>
+        prompts.map((p) => {
+          if (p.id !== id) return p
+          const next = { ...p, title, content }
+          if (tags !== undefined) next.tags = tags.length > 0 ? tags : undefined
+          return next
+        })
+      )
     },
     [apply]
   )

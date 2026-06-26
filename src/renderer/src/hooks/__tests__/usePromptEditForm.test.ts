@@ -52,7 +52,32 @@ describe('usePromptEditForm', () => {
     act(() => result.current.handleTitleChange(changeInput('  T  ')))
     act(() => result.current.handleContentChange(changeTextarea('  C  ')))
     act(() => result.current.handleSave())
-    expect(onSubmit).toHaveBeenCalledWith('T', 'C')
+    expect(onSubmit).toHaveBeenCalledWith('T', 'C', [])
+  })
+
+  it('未確定のタグ入力（Enter 前）が handleSave 時に自動確定される', () => {
+    const onSubmit = vi.fn()
+    const { result } = renderHook(() => usePromptEditForm(basePrompt, onSubmit))
+    act(() => result.current.handleTagInputChange(changeInput('React')))
+    act(() => result.current.handleSave())
+    expect(onSubmit).toHaveBeenCalledWith('元タイトル', '元コンテンツ', ['React'])
+  })
+
+  it('未確定タグが既存 tags と重複する場合は追加しない', () => {
+    const onSubmit = vi.fn()
+    const promptWithTag: typeof basePrompt = { ...basePrompt, tags: ['React'] }
+    const { result } = renderHook(() => usePromptEditForm(promptWithTag, onSubmit))
+    act(() => result.current.handleTagInputChange(changeInput('React')))
+    act(() => result.current.handleSave())
+    expect(onSubmit).toHaveBeenCalledWith('元タイトル', '元コンテンツ', ['React'])
+  })
+
+  it('未確定タグが空白のみの場合は追加しない', () => {
+    const onSubmit = vi.fn()
+    const { result } = renderHook(() => usePromptEditForm(basePrompt, onSubmit))
+    act(() => result.current.handleTagInputChange(changeInput('   ')))
+    act(() => result.current.handleSave())
+    expect(onSubmit).toHaveBeenCalledWith('元タイトル', '元コンテンツ', [])
   })
 
   it('isSaveDisabled のとき handleSave で onSubmit は呼ばれない', () => {
