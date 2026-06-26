@@ -12,6 +12,11 @@ const defaultProps = {
 }
 
 describe('TagInput', () => {
+  it('コンテナが role="group" aria-label="タグ" を持つ', () => {
+    render(<TagInput {...defaultProps} />)
+    expect(screen.getByRole('group', { name: 'タグ' })).toBeInTheDocument()
+  })
+
   it('タグ入力欄が表示される', () => {
     render(<TagInput {...defaultProps} />)
     expect(
