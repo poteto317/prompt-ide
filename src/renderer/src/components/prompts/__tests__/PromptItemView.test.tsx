@@ -72,6 +72,28 @@ describe('PromptItemView', () => {
     expect(onDelete).toHaveBeenCalledOnce()
   })
 
+  describe('タグ表示', () => {
+    it('tags があるとき各タグが表示される', () => {
+      render(
+        <PromptItemView {...defaultProps} prompt={{ ...basePrompt, tags: ['React', 'TypeScript'] }} />
+      )
+      expect(screen.getByText('React')).toBeInTheDocument()
+      expect(screen.getByText('TypeScript')).toBeInTheDocument()
+    })
+
+    it('tags が空のとき何も表示されない', () => {
+      const { container } = render(
+        <PromptItemView {...defaultProps} prompt={{ ...basePrompt, tags: [] }} />
+      )
+      expect(container.querySelector('.prompt-item__tags')).not.toBeInTheDocument()
+    })
+
+    it('tags が未定義のとき何も表示されない', () => {
+      const { container } = render(<PromptItemView {...defaultProps} />)
+      expect(container.querySelector('.prompt-item__tags')).not.toBeInTheDocument()
+    })
+  })
+
   describe('ピン留めボタン', () => {
     it('未ピンのとき aria-label が「ピン留め」で aria-pressed=false', () => {
       render(<PromptItemView {...defaultProps} prompt={{ ...basePrompt, pinned: false }} />)

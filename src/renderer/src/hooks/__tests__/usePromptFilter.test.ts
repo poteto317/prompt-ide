@@ -28,6 +28,11 @@ describe('usePromptFilter', () => {
       const { result } = renderHook(() => usePromptFilter(PROMPTS))
       expect(result.current.query).toBe('')
     })
+
+    it('query と selectedTags が両方空のとき prompts と同一参照を返す', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      expect(result.current.filteredPrompts).toBe(PROMPTS)
+    })
   })
 
   describe('title でのフィルタ', () => {
@@ -228,6 +233,107 @@ describe('usePromptFilter', () => {
       options = { isActive: false }
       rerender()
       expect(result.current.query).toBe('リファクタリング')
+    })
+  })
+
+  describe('isFiltered フラグ', () => {
+    it('query も selectedTags も空のとき false', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      expect(result.current.isFiltered).toBe(false)
+    })
+
+    it('query を入力すると true', () => {
+      const { result } = renderHook(() => usePromptFilter(PROMPTS))
+      act(() => result.current.setQuery('コード'))
+      expect(result.current.isFiltered).toBe(true)
+    })
+
+    it('タグを選択すると true', () => {
+      const tagged: Prompt = makePrompt({ id: 'a', tags: ['React'] })
+      const { result } = renderHook(() => usePromptFilter([tagged]))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(true)
+    })
+
+    it('query と selectedTags を両方クリアすると false に戻る', () => {
+      const tagged: Prompt = makePrompt({ id: 'a', tags: ['React'] })
+      const { result } = renderHook(() => usePromptFilter([tagged]))
+      act(() => result.current.setQuery('コード'))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(true)
+      act(() => result.current.setQuery(''))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.isFiltered).toBe(false)
+    })
+  })
+
+  describe('タグフィルター', () => {
+    const taggedA: Prompt = makePrompt({ id: 'a', title: 'A', tags: ['React', 'TypeScript'] })
+    const taggedB: Prompt = makePrompt({ id: 'b', title: 'B', tags: ['Vue'] })
+    const noTag: Prompt = makePrompt({ id: 'c', title: 'C' })
+
+    it('selectedTags の初期値は空配列', () => {
+      const { result } = renderHook(() => usePromptFilter([taggedA]))
+      expect(result.current.selectedTags).toEqual([])
+    })
+
+    it('toggleTag でタグを選択するとそのタグを持つプロンプトだけ返す', () => {
+      const { result } = renderHook(() => usePromptFilter([taggedA, taggedB, noTag]))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.filteredPrompts).toEqual([taggedA])
+    })
+
+    it('複数タグを選択すると全てのタグを持つプロンプトだけ返す（AND 条件）', () => {
+      const bothTags: Prompt = makePrompt({ id: 'd', tags: ['React', 'TypeScript'] })
+      const onlyReact: Prompt = makePrompt({ id: 'e', tags: ['React'] })
+      const { result } = renderHook(() => usePromptFilter([bothTags, onlyReact]))
+      act(() => result.current.toggleTag('React'))
+      act(() => result.current.toggleTag('TypeScript'))
+      expect(result.current.filteredPrompts).toEqual([bothTags])
+    })
+
+    it('同じタグをもう一度 toggleTag すると選択解除される', () => {
+      const { result } = renderHook(() => usePromptFilter([taggedA, noTag]))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.filteredPrompts).toEqual([taggedA])
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.filteredPrompts).toEqual([taggedA, noTag])
+    })
+
+    it('テキスト検索とタグフィルターの AND 条件が機能する', () => {
+      const { result } = renderHook(() => usePromptFilter([taggedA, taggedB]))
+      act(() => result.current.toggleTag('React'))
+      act(() => result.current.setQuery('A'))
+      expect(result.current.filteredPrompts).toEqual([taggedA])
+    })
+
+    it('prompts が空になると selectedTags がリセットされる', () => {
+      let prompts: Prompt[] = [taggedA]
+      const { result, rerender } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.selectedTags).toEqual(['React'])
+      prompts = []
+      rerender()
+      expect(result.current.selectedTags).toEqual([])
+    })
+
+    it('isActive が true → false に変わると selectedTags がリセットされる', () => {
+      let isActive = true
+      const { result, rerender } = renderHook(() => usePromptFilter([taggedA], { isActive }))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.selectedTags).toEqual(['React'])
+      isActive = false
+      rerender()
+      expect(result.current.selectedTags).toEqual([])
+    })
+
+    it('タグ解除後にフィルターが全解除されると prompts と同一参照を返す', () => {
+      const prompts = [taggedA, taggedB, noTag]
+      const { result } = renderHook(() => usePromptFilter(prompts))
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.filteredPrompts).not.toBe(prompts)
+      act(() => result.current.toggleTag('React'))
+      expect(result.current.filteredPrompts).toBe(prompts)
     })
   })
 })

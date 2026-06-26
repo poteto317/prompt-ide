@@ -18,7 +18,9 @@ import type { Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
+import PromptsTagFilter from './PromptsTagFilter'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
+import { useAllTags } from '../../hooks/useAllTags'
 import { sortByPinned } from '../../lib/promptUtils'
 
 interface Props {
@@ -26,7 +28,7 @@ interface Props {
   onAdd: (title: string, content: string) => void
   onDelete: (id: string) => void
   onRun: (content: string) => void
-  onEdit: (id: string, title: string, content: string) => void
+  onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onReorder: (activeId: string, overId: string) => void
   onTogglePin: (id: string) => void
   onExport: () => void
@@ -48,17 +50,23 @@ export default function PromptsPanel({
   isRunDisabled = false,
   isActive
 }: Props) {
-  const { filteredPrompts, query, setQuery } = usePromptFilter(prompts, { isActive })
+  const { filteredPrompts, query, setQuery, selectedTags, toggleTag, isFiltered } = usePromptFilter(
+    prompts,
+    { isActive }
+  )
 
   // フィルタ結果にピン留め順を適用（ピン済みを上部へ固定）
   const displayed = useMemo(() => sortByPinned(filteredPrompts), [filteredPrompts])
+
+  const allTags = useAllTags(prompts)
 
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  const isSortable = query.trim() === ''
+  // テキスト検索中またはタグ絞り込み中は並び替えを無効化
+  const isSortable = !isFiltered
 
   function handleDragEnd({ active, over }: DragEndEvent) {
     if (over && active.id !== over.id) {
@@ -83,12 +91,13 @@ export default function PromptsPanel({
           aria-label="プロンプトを検索"
         />
       </div>
+      <PromptsTagFilter tags={allTags} selectedTags={selectedTags} onToggle={toggleTag} />
       <div className="prompts-panel__list">
         {prompts.length === 0 ? (
           <p className="prompts-panel__empty">プロンプトがありません</p>
         ) : filteredPrompts.length === 0 ? (
           <p className="prompts-panel__no-results">
-            &ldquo;{query.trim()}&rdquo; に一致するプロンプトはありません
+            条件に一致するプロンプトはありません
           </p>
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>

@@ -227,6 +227,46 @@ body {
   margin: 0;
 }
 
+.prompts-panel__tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+.prompts-panel__tag-chip {
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 10px;
+  color: #aaaaaa;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  outline: none;
+  line-height: 1.4;
+}
+
+.prompts-panel__tag-chip:hover {
+  background: #4a4a4a;
+  color: #cccccc;
+}
+
+.prompts-panel__tag-chip:focus-visible {
+  border-color: #007acc;
+}
+
+.prompts-panel__tag-chip--active {
+  background: #007acc;
+  border-color: #007acc;
+  color: #ffffff;
+}
+
+.prompts-panel__tag-chip--active:hover {
+  background: #0062a3;
+}
+
 .prompt-item {
   padding: 8px 12px;
   border-bottom: 1px solid #3c3c3c;
@@ -292,6 +332,76 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.prompt-item__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.prompt-item__tag {
+  background: #2d4a6e;
+  border-radius: 10px;
+  color: #89b4e8;
+  font-size: 10px;
+  padding: 1px 7px;
+  line-height: 1.5;
+}
+
+.prompt-edit-form__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.prompt-edit-form__tag {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: #2d4a6e;
+  border-radius: 10px;
+  color: #89b4e8;
+  font-size: 11px;
+  padding: 2px 6px 2px 8px;
+  line-height: 1.4;
+}
+
+.prompt-edit-form__tag-remove {
+  background: none;
+  border: none;
+  color: #89b4e8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.prompt-edit-form__tag-remove:hover {
+  opacity: 1;
+}
+
+.prompt-edit-form__tag-input {
+  flex: 1;
+  min-width: 80px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #555555;
+  color: #cccccc;
+  font-size: 11px;
+  outline: none;
+  padding: 2px 4px;
+}
+
+.prompt-edit-form__tag-input:focus {
+  border-bottom-color: #007acc;
+}
+
+.prompt-edit-form__tag-input::placeholder {
+  color: #555555;
 }
 
 .prompt-item__delete {

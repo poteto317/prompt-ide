@@ -12,7 +12,7 @@ interface Props {
   prompt: Prompt
   onDelete: (id: string) => void
   onRun: (content: string) => void
-  onEdit: (id: string, title: string, content: string) => void
+  onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onTogglePin: (id: string) => void
   isRunDisabled?: boolean
   isSortable?: boolean
@@ -57,8 +57,8 @@ export default function PromptItem({
     setIsFillingVariables(false)
   }
 
-  const handleEditSubmit = (title: string, content: string): void => {
-    onEdit(prompt.id, title, content)
+  const handleEditSubmit = (title: string, content: string, tags: string[]): void => {
+    onEdit(prompt.id, title, content, tags)
     setIsEditing(false)
   }
 
