@@ -16,7 +16,7 @@ export default function TagInput({
   onRemoveTag,
 }: Props) {
   return (
-    <div className="prompt-edit-form__tags" aria-label="タグ">
+    <div className="prompt-edit-form__tags" role="group" aria-label="タグ">
       {tags.map((tag) => (
         <span key={tag} className="prompt-edit-form__tag">
           {tag}
