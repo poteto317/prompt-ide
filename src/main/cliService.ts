@@ -26,13 +26,12 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
   if (!config) return Promise.reject(new Error(`不明な CLI ツール: ${toolId}`))
 
   return new Promise((resolve, reject) => {
-    // timer を settle より前に let 宣言することで TDZ を回避する
-    let timer: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout> | null = null
     let settled = false
     const settle = (fn: () => void) => {
       if (settled) return
       settled = true
-      clearTimeout(timer)
+      if (timer !== null) clearTimeout(timer)
       fn()
     }
 
@@ -40,18 +39,11 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
     let output = ''
     let errorOutput = ''
 
-    timer = setTimeout(() => {
-      child.kill()
-      settle(() => reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`)))
-    }, CLI_TIMEOUT_MS)
-
     child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString('utf-8') })
     child.stderr.on('data', (chunk: Buffer) => { errorOutput += chunk.toString('utf-8') })
-
     child.stdin.on('error', () => {})
-    child.stdin.write(content, 'utf-8')
-    child.stdin.end()
 
+    // stdin 操作より先に close/error を登録して起動失敗時の早期イベントを確実に捕捉する
     child.on('close', (code, signal) => {
       if (code === 0) {
         settle(() => resolve(output))
@@ -65,5 +57,14 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
     child.on('error', (err) => {
       settle(() => reject(new Error(`CLI ツールの起動に失敗しました: ${err.message}`)))
     })
+
+    // リスナー登録後にタイマーと stdin 書き込みを開始する
+    timer = setTimeout(() => {
+      child.kill()
+      settle(() => reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`)))
+    }, CLI_TIMEOUT_MS)
+
+    child.stdin.write(content, 'utf-8')
+    child.stdin.end()
   })
 }
