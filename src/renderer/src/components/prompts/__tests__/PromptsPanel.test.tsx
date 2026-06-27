@@ -147,7 +147,7 @@ describe('PromptsPanel', () => {
     const onRun = vi.fn()
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容', 'claude')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
   })
 
   it('ツールセレクタで copilot に変更してから実行すると toolId が copilot で onRun に渡る', async () => {

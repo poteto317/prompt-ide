@@ -9,11 +9,14 @@ const TOOL_COMMANDS: Record<CLIOnlyToolId, { command: string; args: string[] }> 
 const CLI_TIMEOUT_MS = 30_000
 
 function buildEnv(): NodeJS.ProcessEnv {
-  const home = process.env.HOME ?? ''
-  const extra = ['/usr/local/bin', '/opt/homebrew/bin', home && `${home}/.local/bin`]
-    .filter(Boolean)
-    .join(':')
-  const basePath = process.env.PATH ? `${process.env.PATH}:${extra}` : extra
+  // Windows ではシステムの PATH をそのまま使う（Unix 固有パスや ':' 区切りは不要）
+  if (process.platform === 'win32') {
+    return { ...process.env }
+  }
+  const extra = ['/usr/local/bin', '/opt/homebrew/bin', process.env.HOME && `${process.env.HOME}/.local/bin`]
+    .filter(Boolean) as string[]
+  const extraStr = extra.join(':')
+  const basePath = process.env.PATH ? `${process.env.PATH}:${extraStr}` : extraStr
   return { ...process.env, PATH: basePath }
 }
 

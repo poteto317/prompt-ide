@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { CLIToolId } from '@shared/types'
 
-export const DEFAULT_CLI_TOOL: CLIToolId = 'claude'
+// 後方互換のため API をデフォルトにする（CLI 未インストール環境でも従来通り動作する）
+export const DEFAULT_CLI_TOOL: CLIToolId = 'api'
 
 export function useSelectedTool(): {
   selectedTool: CLIToolId
