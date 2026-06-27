@@ -3,6 +3,10 @@ import { describe, it, expect } from 'vitest'
 import { useSelectedTool, DEFAULT_CLI_TOOL } from '../useSelectedTool'
 
 describe('useSelectedTool', () => {
+  it('DEFAULT_CLI_TOOL は api（Claude API）で後方互換性を保つ', () => {
+    expect(DEFAULT_CLI_TOOL).toBe('api')
+  })
+
   it(`初期値は DEFAULT_CLI_TOOL (${DEFAULT_CLI_TOOL})`, () => {
     const { result } = renderHook(() => useSelectedTool())
     expect(result.current.selectedTool).toBe(DEFAULT_CLI_TOOL)
