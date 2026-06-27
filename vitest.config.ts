@@ -16,6 +16,9 @@ export default defineConfig({
         'src/renderer/src/__tests__/__mocks__/@monaco-editor/react.tsx'
       ),
     },
+    forks: {
+      maxForks: 5,
+    },
   },
   resolve: {
     alias: {
