@@ -633,4 +633,18 @@ describe('reorderPrompts × ピン留めの合成挙動', () => {
     // ピン2件の順が入れ替わり、未ピンは末尾のまま
     expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
   })
+
+  it('非ピン項目をピン項目の位置へ reorder すると sortByPinned で表示順は変わらない（境界またぎ no-op）', async () => {
+    // この no-op は PromptsPanel.handleDragEnd で境界チェックを行い発火させない設計。
+    // reorderPrompts 自体は arrayMove を実行するため永続化配列は変わるが、表示上は変わらない。
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+
+    // 非ピンの C をピン済みの B の位置へ（表示上 [B, A, C] → C を B の上へ）
+    act(() => result.current.reorderPrompts('p3', 'p2'))
+
+    // sortByPinned で B が再び先頭に戻り、表示順は変わらない
+    expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
+  })
 })
