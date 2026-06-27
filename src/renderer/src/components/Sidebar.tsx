@@ -5,7 +5,7 @@ import SourceControlPanel from './source-control/SourceControlPanel'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
-import type { Panel, FileTreeNode, Prompt, Task, StageId } from '../types'
+import type { CLIToolId, Panel, FileTreeNode, Prompt, Task, StageId } from '../types'
 import type { GitStatusResult } from '@shared/types'
 
 interface Props {
@@ -24,7 +24,7 @@ interface Props {
   onTogglePromptPin: (id: string) => void
   onExportPrompts: () => void
   onImportPrompts: () => void
-  onRunPrompt: (content: string) => void
+  onRunPrompt: (content: string, toolId: CLIToolId) => void
   isExecuting: boolean
   tasks: Task[]
   onAddTask: (title: string) => void

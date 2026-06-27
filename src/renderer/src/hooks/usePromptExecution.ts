@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef } from 'react'
-import * as claudeApi from '../lib/claudeApi'
+import type { CLIToolId } from '@shared/types'
+import { invokePrompt } from '../lib/promptInvoker'
 
 interface PromptExecutionState {
   isExecuting: boolean
   result: string | null
   executionError: Error | null
-  executePrompt: (promptContent: string, fileContent: string | null) => Promise<void>
+  executePrompt: (promptContent: string, fileContent: string | null, toolId: CLIToolId) => Promise<void>
   clearResult: () => void
 }
 
@@ -16,13 +17,13 @@ export function usePromptExecution(): PromptExecutionState {
   const requestIdRef = useRef(0)
 
   const executePrompt = useCallback(
-    async (promptContent: string, fileContent: string | null): Promise<void> => {
+    async (promptContent: string, fileContent: string | null, toolId: CLIToolId): Promise<void> => {
       const currentId = ++requestIdRef.current
       setIsExecuting(true)
       setResult(null)
       setExecutionError(null)
       try {
-        const text = await claudeApi.runPrompt(promptContent, fileContent)
+        const text = await invokePrompt(toolId, promptContent, fileContent)
         if (currentId !== requestIdRef.current) return
         setResult(text)
       } catch (err) {
