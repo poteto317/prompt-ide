@@ -18,12 +18,22 @@ function makeChild() {
   return child
 }
 
+let savedPath: string | undefined
+
 beforeEach(() => {
+  savedPath = process.env.PATH
   vi.clearAllMocks()
 })
 
 afterEach(() => {
+  // platform スパイと process.env.PATH をテスト失敗時も確実に復元する
+  vi.restoreAllMocks()
   vi.useRealTimers()
+  if (savedPath !== undefined) {
+    process.env.PATH = savedPath
+  } else {
+    delete process.env.PATH
+  }
 })
 
 describe('runCLIPrompt', () => {
@@ -165,6 +175,21 @@ describe('runCLIPrompt', () => {
     await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
   })
 
+  it('close/error リスナーが stdin.write より先に登録されるため起動直後の早期終了も捕捉できる', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    // stdin.write が呼ばれる前に close が発火するシナリオ（コマンドが即座に失敗する場合など）
+    // runCLIPrompt 内で close リスナーを stdin 操作より先に登録しているため捕捉できる
+    child.stdin.write = vi.fn().mockImplementation(() => {
+      child.stderr.emit('data', Buffer.from('claude: command not found'))
+      child.emit('close', 127, null)
+    })
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    await expect(promise).rejects.toThrow('claude: command not found')
+  })
+
   it('Unix 環境では /usr/local/bin と /opt/homebrew/bin を PATH に追加して spawn を呼ぶ', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
     const child = makeChild()
@@ -177,7 +202,6 @@ describe('runCLIPrompt', () => {
     const spawnEnv = mockSpawn.mock.calls[0][2].env as NodeJS.ProcessEnv
     expect(spawnEnv.PATH).toContain('/usr/local/bin')
     expect(spawnEnv.PATH).toContain('/opt/homebrew/bin')
-    vi.restoreAllMocks()
   })
 
   it('Windows 環境では Unix 固有パスを追加せず process.env をそのまま渡す', async () => {
@@ -185,7 +209,6 @@ describe('runCLIPrompt', () => {
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
 
-    const origPath = process.env.PATH
     process.env.PATH = 'C:\\Windows\\System32'
 
     const promise = runCLIPrompt('claude', 'テスト')
@@ -196,14 +219,10 @@ describe('runCLIPrompt', () => {
     expect(spawnEnv.PATH).toBe('C:\\Windows\\System32')
     expect(spawnEnv.PATH).not.toContain('/usr/local/bin')
     expect(spawnEnv.PATH).not.toContain('/opt/homebrew/bin')
-
-    process.env.PATH = origPath
-    vi.restoreAllMocks()
   })
 
   it('Unix 環境かつ process.env.PATH が undefined のとき PATH が先頭コロンなしで設定される', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
-    const origPath = process.env.PATH
     delete process.env.PATH
 
     const child = makeChild()
@@ -216,8 +235,5 @@ describe('runCLIPrompt', () => {
     const spawnEnv = mockSpawn.mock.calls[0][2].env as NodeJS.ProcessEnv
     expect(spawnEnv.PATH).not.toMatch(/^:/)
     expect(spawnEnv.PATH).toContain('/usr/local/bin')
-
-    process.env.PATH = origPath
-    vi.restoreAllMocks()
   })
 })
