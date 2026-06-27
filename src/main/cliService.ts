@@ -60,9 +60,14 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
 
     // リスナー登録後にタイマーと stdin 書き込みを開始する
     timer = setTimeout(() => {
-      child.kill()
-      settle(() => reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`)))
+      settle(() => {
+        child.kill()
+        reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`))
+      })
     }, CLI_TIMEOUT_MS)
+
+    // timer 代入前に close/error が settle 済みになった場合にタイマーが残らないよう即座にクリアする
+    if (settled) clearTimeout(timer)
 
     child.stdin.write(content, 'utf-8')
     child.stdin.end()

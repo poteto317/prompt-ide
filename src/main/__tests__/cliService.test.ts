@@ -162,6 +162,20 @@ describe('runCLIPrompt', () => {
     await expect(promise).rejects.toThrow('プロセスが終了コード null で終了しました')
   })
 
+  it('close が先に resolve した場合、タイムアウト経過後も kill は呼ばれない', async () => {
+    vi.useFakeTimers()
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    child.stdout.emit('data', Buffer.from('正常出力'))
+    child.emit('close', 0, null)  // タイムアウト前に正常終了
+    vi.advanceTimersByTime(30_000)  // タイムアウト時間を経過させる
+
+    await expect(promise).resolves.toBe('正常出力')
+    expect(child.kill).not.toHaveBeenCalled()
+  })
+
   it('タイムアウト後に OS が close イベントを発行しても二重 reject にならない', async () => {
     vi.useFakeTimers()
     const child = makeChild()
