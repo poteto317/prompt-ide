@@ -143,11 +143,33 @@ describe('PromptsPanel', () => {
     expect(onDelete).toHaveBeenCalledWith('p1')
   })
 
-  it('実行ボタンクリックで onRun がプロンプト内容とともに呼ばれる', async () => {
+  it('実行ボタンクリックで onRun がプロンプト内容と selectedTool とともに呼ばれる', async () => {
     const onRun = vi.fn()
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'claude')
+  })
+
+  it('ツールセレクタで copilot に変更してから実行すると toolId が copilot で onRun に渡る', async () => {
+    const onRun = vi.fn()
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '実行ツールを選択' }),
+      'copilot'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'copilot')
+  })
+
+  it('ツールセレクタで api に変更してから実行すると toolId が api で onRun に渡る', async () => {
+    const onRun = vi.fn()
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '実行ツールを選択' }),
+      'api'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
   })
 
   it('isRunDisabled=true のとき実行ボタンが disabled になる', () => {
@@ -252,6 +274,33 @@ describe('PromptsPanel', () => {
       render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
       act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
       expect(onReorder).toHaveBeenCalledWith('1', '2')
+    })
+
+    it('ピン済み→非ピンの境界をまたぐドラッグは onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      const pinnedPrompt = { ...anotherPrompt, pinned: true }
+      // 表示順は [pinnedPrompt(p2), samplePrompt(p1)]
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, pinnedPrompt]} onReorder={onReorder} />)
+      // 非ピン p1 → ピン済み p2 の位置へドラッグ（境界をまたぐ）
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('同じグループ内（未ピン同士）のドラッグは onReorder が呼ばれる', () => {
+      const onReorder = vi.fn()
+      const pinnedPrompt = { ...anotherPrompt, pinned: true }
+      const thirdPrompt = { id: 'p3', title: 'C', content: 'C内容', createdAt: 3000000 }
+      // 表示順は [pinnedPrompt(p2), samplePrompt(p1), thirdPrompt(p3)]
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, pinnedPrompt, thirdPrompt]}
+          onReorder={onReorder}
+        />
+      )
+      // 未ピン同士（p1 → p3）のドラッグは通常通り
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p3' } }))
+      expect(onReorder).toHaveBeenCalledWith('p1', 'p3')
     })
   })
 
