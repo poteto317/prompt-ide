@@ -1,6 +1,7 @@
 import type { FileTreeNode } from '@shared/types'
 
 export type {
+  CLIToolId,
   FileTreeNode,
   Prompt,
   Task,

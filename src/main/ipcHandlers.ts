@@ -8,6 +8,7 @@ import { registerSettingsHandlers } from './handlers/settingsHandlers'
 import { registerPromptsHandlers } from './handlers/promptsHandlers'
 import { registerProgressHandlers } from './handlers/progressHandlers'
 import { registerClaudeHandlers } from './handlers/claudeHandlers'
+import { registerCLIHandlers } from './handlers/cliHandlers'
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   const folderAccess = new FolderAccessManager()
@@ -20,4 +21,5 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   registerPromptsHandlers(ipcMain)
   registerProgressHandlers(ipcMain)
   registerClaudeHandlers(ipcMain)
+  registerCLIHandlers(ipcMain)
 }
