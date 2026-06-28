@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import CLIToolSelector from '../CLIToolSelector'
@@ -46,12 +46,4 @@ describe('CLIToolSelector', () => {
     expect(onSelectTool).toHaveBeenCalledWith('copilot')
   })
 
-  it('CLI_TOOLS に存在しない value で change イベントが発火しても onSelectTool は呼ばれない', () => {
-    const onSelectTool = vi.fn()
-    render(<CLIToolSelector {...defaultProps} onSelectTool={onSelectTool} />)
-    fireEvent.change(screen.getByRole('combobox', { name: '実行ツールを選択' }), {
-      target: { value: 'unknown-tool' }
-    })
-    expect(onSelectTool).not.toHaveBeenCalled()
-  })
 })

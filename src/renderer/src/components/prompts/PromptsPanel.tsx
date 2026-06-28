@@ -80,9 +80,11 @@ export default function PromptsPanel({
     if (!over || active.id === over.id) return
     const activePrompt = displayed.find((p) => p.id === String(active.id))
     const overPrompt = displayed.find((p) => p.id === String(over.id))
+    // displayed に存在しない ID（フィルタ変化等でリストから消えた要素）はスキップする
+    if (!activePrompt || !overPrompt) return
     // ピン済み/非ピン済みの境界をまたぐドラッグは sortByPinned で元の表示順に戻るため
     // サイレント no-op にならないようにスキップする
-    if (!!activePrompt?.pinned !== !!overPrompt?.pinned) return
+    if (!!activePrompt.pinned !== !!overPrompt.pinned) return
     onReorder(String(active.id), String(over.id))
   }
 

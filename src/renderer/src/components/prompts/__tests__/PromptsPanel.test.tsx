@@ -271,7 +271,10 @@ describe('PromptsPanel', () => {
 
     it('数値 ID でも String 化して onReorder に渡される', () => {
       const onReorder = vi.fn()
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      // DnD の id: 1, 2 が String() で '1', '2' に変換されるため、プロンプト ID も合わせる
+      const numId1 = { id: '1', title: 'A', content: 'A内容', createdAt: 1000000 }
+      const numId2 = { id: '2', title: 'B', content: 'B内容', createdAt: 2000000 }
+      render(<PromptsPanel {...defaultProps} prompts={[numId1, numId2]} onReorder={onReorder} />)
       act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
       expect(onReorder).toHaveBeenCalledWith('1', '2')
     })
@@ -283,6 +286,20 @@ describe('PromptsPanel', () => {
       render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, pinnedPrompt]} onReorder={onReorder} />)
       // 非ピン p1 → ピン済み p2 の位置へドラッグ（境界をまたぐ）
       act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('active.id が displayed に存在しないとき onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'nonexistent' }, over: { id: 'p1' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('over.id が displayed に存在しないとき onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'nonexistent' } }))
       expect(onReorder).not.toHaveBeenCalled()
     })
 
