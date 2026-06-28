@@ -66,9 +66,6 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
       })
     }, CLI_TIMEOUT_MS)
 
-    // timer 代入前に close/error が settle 済みになった場合にタイマーが残らないよう即座にクリアする
-    if (settled) clearTimeout(timer)
-
     child.stdin.write(content, 'utf-8')
     child.stdin.end()
   })

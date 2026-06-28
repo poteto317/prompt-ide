@@ -12,10 +12,7 @@ export default function CLIToolSelector({ selectedTool, onSelectTool }: Props) {
     <select
       className="prompts-panel__tool-select"
       value={selectedTool}
-      onChange={(e) => {
-        const next = e.target.value
-        if (CLI_TOOLS.some((t) => t.id === next)) onSelectTool(next as CLIToolId)
-      }}
+      onChange={(e) => onSelectTool(e.target.value as CLIToolId)}
       aria-label="実行ツールを選択"
     >
       {CLI_TOOLS.map((tool) => (
