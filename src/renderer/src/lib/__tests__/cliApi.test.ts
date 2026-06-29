@@ -5,7 +5,8 @@ const mockRunCLIPrompt = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
-  Object.assign(window, { api: { runCLIPrompt: mockRunCLIPrompt } })
+  const existing = (window as Window & { api?: Record<string, unknown> }).api ?? {}
+  Object.assign(window, { api: { ...existing, runCLIPrompt: mockRunCLIPrompt } })
 })
 
 describe('cliApi', () => {
