@@ -75,6 +75,10 @@ export function usePrompts(): PromptsState {
         if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
           return currentPrompts
         }
+        // ピン済み/非ピン済みの境界をまたぐ並び替えは永続化データを壊すためスキップする
+        if (!!currentPrompts[activeIndex].pinned !== !!currentPrompts[overIndex].pinned) {
+          return currentPrompts
+        }
         return arrayMove(currentPrompts, activeIndex, overIndex)
       })
     },

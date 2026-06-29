@@ -440,6 +440,35 @@ describe('reorderPrompts', () => {
     expect(mockSave).not.toHaveBeenCalled()
   })
 
+  it('ピン済み/非ピン済みの境界をまたぐ並び替えは配列が変わらない', async () => {
+    const mixed: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    ]
+    mockLoad.mockResolvedValue(mixed)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+
+    act(() => result.current.reorderPrompts('p2', 'p1'))
+
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2'])
+  })
+
+  it('ピン済み/非ピン済みの境界をまたぐ並び替えは save が呼ばれない', async () => {
+    const mixed: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    ]
+    mockLoad.mockResolvedValue(mixed)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    vi.clearAllMocks()
+
+    act(() => result.current.reorderPrompts('p2', 'p1'))
+
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
   it('reorderPrompts 後に save が呼ばれる', async () => {
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
@@ -634,9 +663,9 @@ describe('reorderPrompts × ピン留めの合成挙動', () => {
     expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
   })
 
-  it('非ピン項目をピン項目の位置へ reorder すると sortByPinned で表示順は変わらない（境界またぎ no-op）', async () => {
-    // この no-op は PromptsPanel.handleDragEnd で境界チェックを行い発火させない設計。
-    // reorderPrompts 自体は arrayMove を実行するため永続化配列は変わるが、表示上は変わらない。
+  it('非ピン項目をピン項目の位置へ reorder するとデータ層でスキップされ永続化配列も表示順も変わらない', async () => {
+    // ピン境界をまたぐ並び替えは reorderPrompts 内部で早期リターンするため、
+    // 永続化配列・表示順ともに変化しない。
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
     await waitFor(() => expect(result.current.prompts).toHaveLength(3))
