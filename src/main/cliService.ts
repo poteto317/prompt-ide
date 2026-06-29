@@ -13,8 +13,13 @@ function buildEnv(): NodeJS.ProcessEnv {
   if (process.platform === 'win32') {
     return { ...process.env }
   }
-  const extra = ['/usr/local/bin', '/opt/homebrew/bin', process.env.HOME && `${process.env.HOME}/.local/bin`]
-    .filter(Boolean) as string[]
+  const extra = [
+    '/usr/local/bin',
+    '/opt/homebrew/bin',
+    '/snap/bin',
+    process.env.HOME && `${process.env.HOME}/.local/bin`,
+    process.env.HOME && `${process.env.HOME}/.cargo/bin`,
+  ].filter(Boolean) as string[]
   const extraStr = extra.join(':')
   const basePath = process.env.PATH ? `${process.env.PATH}:${extraStr}` : extraStr
   return { ...process.env, PATH: basePath }

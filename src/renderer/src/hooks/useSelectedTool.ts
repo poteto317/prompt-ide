@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import type { CLIToolId } from '@shared/types'
 
 // 後方互換のため API をデフォルトにする（CLI 未インストール環境でも従来通り動作する）
@@ -9,8 +9,5 @@ export function useSelectedTool(): {
   selectTool: (tool: CLIToolId) => void
 } {
   const [selectedTool, setSelectedTool] = useState<CLIToolId>(DEFAULT_CLI_TOOL)
-  const selectTool = useCallback((tool: CLIToolId): void => {
-    setSelectedTool(tool)
-  }, [])
-  return { selectedTool, selectTool }
+  return { selectedTool, selectTool: setSelectedTool }
 }
