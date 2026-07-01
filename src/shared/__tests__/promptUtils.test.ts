@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildPromptContent } from '../cliUtils'
+import { buildPromptContent } from '../promptUtils'
 
 describe('buildPromptContent', () => {
   it('fileContent が null のとき promptContent をそのまま返す', () => {
