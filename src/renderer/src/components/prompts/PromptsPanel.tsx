@@ -14,7 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
-import type { CLIToolId, Prompt } from '../../types'
+import type { PromptToolId, Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
@@ -29,7 +29,7 @@ interface Props {
   prompts: Prompt[]
   onAdd: (title: string, content: string) => void
   onDelete: (id: string) => void
-  onRun: (content: string, toolId: CLIToolId) => void
+  onRun: (content: string, toolId: PromptToolId) => void
   onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onReorder: (activeId: string, overId: string) => void
   onTogglePin: (id: string) => void

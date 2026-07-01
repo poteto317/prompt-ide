@@ -1,15 +1,15 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
-import { useSelectedTool, DEFAULT_CLI_TOOL } from '../useSelectedTool'
+import { useSelectedTool, DEFAULT_PROMPT_TOOL } from '../useSelectedTool'
 
 describe('useSelectedTool', () => {
-  it('DEFAULT_CLI_TOOL は api（Claude API）で後方互換性を保つ', () => {
-    expect(DEFAULT_CLI_TOOL).toBe('api')
+  it('DEFAULT_PROMPT_TOOL は api（Claude API）で後方互換性を保つ', () => {
+    expect(DEFAULT_PROMPT_TOOL).toBe('api')
   })
 
-  it(`初期値は DEFAULT_CLI_TOOL (${DEFAULT_CLI_TOOL})`, () => {
+  it(`初期値は DEFAULT_PROMPT_TOOL (${DEFAULT_PROMPT_TOOL})`, () => {
     const { result } = renderHook(() => useSelectedTool())
-    expect(result.current.selectedTool).toBe(DEFAULT_CLI_TOOL)
+    expect(result.current.selectedTool).toBe(DEFAULT_PROMPT_TOOL)
   })
 
   it('selectTool で selectedTool が変わる', () => {

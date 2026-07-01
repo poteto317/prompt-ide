@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef } from 'react'
-import type { CLIToolId } from '@shared/types'
+import type { PromptToolId } from '@shared/types'
 import { invokePrompt } from '../lib/promptInvoker'
 
 interface PromptExecutionState {
   isExecuting: boolean
   result: string | null
   executionError: Error | null
-  executePrompt: (promptContent: string, fileContent: string | null, toolId: CLIToolId) => Promise<void>
+  executePrompt: (promptContent: string, fileContent: string | null, toolId: PromptToolId) => Promise<void>
   clearResult: () => void
 }
 
@@ -17,7 +17,7 @@ export function usePromptExecution(): PromptExecutionState {
   const requestIdRef = useRef(0)
 
   const executePrompt = useCallback(
-    async (promptContent: string, fileContent: string | null, toolId: CLIToolId): Promise<void> => {
+    async (promptContent: string, fileContent: string | null, toolId: PromptToolId): Promise<void> => {
       const currentId = ++requestIdRef.current
       setIsExecuting(true)
       setResult(null)
