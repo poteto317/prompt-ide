@@ -1,10 +1,10 @@
 import * as claudeApi from './claudeApi'
 import * as cliApi from './cliApi'
-import type { CLIToolId } from '@shared/types'
+import type { PromptToolId } from '@shared/types'
 import { buildPromptContent } from '@shared/promptUtils'
 
 export async function invokePrompt(
-  toolId: CLIToolId,
+  toolId: PromptToolId,
   promptContent: string,
   fileContent: string | null
 ): Promise<string> {

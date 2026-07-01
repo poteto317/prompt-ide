@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { CLIToolId } from './types'
+import type { PromptToolId } from './types'
 import { useAppState } from './hooks/useAppState'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
@@ -49,7 +49,7 @@ export default function App(): React.JSX.Element {
   } = useAppState()
 
   const handleRunPrompt = useCallback(
-    (content: string, toolId: CLIToolId) => executePrompt(content, openFile?.content ?? null, toolId),
+    (content: string, toolId: PromptToolId) => executePrompt(content, openFile?.content ?? null, toolId),
     [executePrompt, openFile]
   )
 

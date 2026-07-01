@@ -1,13 +1,13 @@
 import { useState } from 'react'
-import type { CLIToolId } from '@shared/types'
+import type { PromptToolId } from '@shared/types'
 
-// 後方互換のため API をデフォルトにする（CLI 未インストール環境でも従来通り動作する）
-export const DEFAULT_CLI_TOOL: CLIToolId = 'api'
+// API をデフォルトにする（CLI 未インストール環境でも従来通り動作する）
+export const DEFAULT_PROMPT_TOOL: PromptToolId = 'api'
 
 export function useSelectedTool(): {
-  selectedTool: CLIToolId
-  selectTool: (tool: CLIToolId) => void
+  selectedTool: PromptToolId
+  selectTool: (tool: PromptToolId) => void
 } {
-  const [selectedTool, setSelectedTool] = useState<CLIToolId>(DEFAULT_CLI_TOOL)
+  const [selectedTool, setSelectedTool] = useState<PromptToolId>(DEFAULT_PROMPT_TOOL)
   return { selectedTool, selectTool: setSelectedTool }
 }
