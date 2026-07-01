@@ -44,10 +44,13 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
     let output = ''
     let errorOutput = ''
 
-    child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString('utf-8') })
-    child.stderr.on('data', (chunk: Buffer) => { errorOutput += chunk.toString('utf-8') })
+    // setEncoding で StringDecoder に委ねることでチャンク境界でのマルチバイト文字化けを防ぐ
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => { output += chunk })
+    child.stderr.on('data', (chunk: string) => { errorOutput += chunk })
     child.stdin.on('error', (err: NodeJS.ErrnoException) => {
-      settle(() => reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`)))
+      settle(() => { child.kill(); reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`)) })
     })
 
     // stdin 操作より先に close/error を登録して起動失敗時の早期イベントを確実に捕捉する
