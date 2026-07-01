@@ -46,7 +46,9 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
 
     child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString('utf-8') })
     child.stderr.on('data', (chunk: Buffer) => { errorOutput += chunk.toString('utf-8') })
-    child.stdin.on('error', () => {})
+    child.stdin.on('error', (err: NodeJS.ErrnoException) => {
+      settle(() => reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`)))
+    })
 
     // stdin 操作より先に close/error を登録して起動失敗時の早期イベントを確実に捕捉する
     child.on('close', (code, signal) => {

@@ -189,6 +189,34 @@ describe('runCLIPrompt', () => {
     await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
   })
 
+  it('stdin error イベントが発火すると settle 経由で即時 reject する', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    const stdinError = new Error('EPIPE: broken pipe')
+    child.stdin.on.mock.calls
+      .filter(([event]: [string]) => event === 'error')
+      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+
+    await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました: EPIPE: broken pipe')
+  })
+
+  it('stdin error で reject 後に close(0) が来ても二重 resolve にならない', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    const stdinError = new Error('EPIPE: broken pipe')
+    child.stdin.on.mock.calls
+      .filter(([event]: [string]) => event === 'error')
+      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+    child.stdout.emit('data', Buffer.from('出力'))
+    child.emit('close', 0, null)
+
+    await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました')
+  })
+
   it('close/error リスナーが stdin.write より先に登録されるため起動直後の早期終了も捕捉できる', async () => {
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
