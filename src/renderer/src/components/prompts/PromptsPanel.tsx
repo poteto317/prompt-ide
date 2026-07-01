@@ -18,7 +18,7 @@ import type { PromptToolId, Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
-import CLIToolSelector from './CLIToolSelector'
+import ExecutionToolSelector from './ExecutionToolSelector'
 import PromptsTagFilter from './PromptsTagFilter'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
@@ -95,7 +95,7 @@ export default function PromptsPanel({
         onExport={onExport}
         isExportDisabled={prompts.length === 0}
       />
-      <CLIToolSelector selectedTool={selectedTool} onSelectTool={selectTool} />
+      <ExecutionToolSelector selectedTool={selectedTool} onSelectTool={selectTool} />
       <div className="prompts-panel__search">
         <input
           className="prompts-panel__search-input"
