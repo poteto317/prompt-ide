@@ -7,12 +7,15 @@ interface Props {
   onSelectTool: (tool: PromptToolId) => void
 }
 
-export default function CLIToolSelector({ selectedTool, onSelectTool }: Props) {
+export default function ExecutionToolSelector({ selectedTool, onSelectTool }: Props) {
   return (
     <select
       className="prompts-panel__tool-select"
       value={selectedTool}
-      onChange={(e) => onSelectTool(e.target.value as PromptToolId)}
+      onChange={(e) => {
+        const matched = EXECUTION_TOOLS.find((t) => t.id === e.target.value)
+        if (matched) onSelectTool(matched.id)
+      }}
       aria-label="実行ツールを選択"
     >
       {EXECUTION_TOOLS.map((tool) => (
