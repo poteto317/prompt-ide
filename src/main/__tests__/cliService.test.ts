@@ -11,8 +11,8 @@ vi.mock('node:child_process', () => ({
 import { runCLIPrompt } from '../cliService'
 
 function makeChild() {
-  const stdout = new EventEmitter()
-  const stderr = new EventEmitter()
+  const stdout = Object.assign(new EventEmitter(), { setEncoding: vi.fn() })
+  const stderr = Object.assign(new EventEmitter(), { setEncoding: vi.fn() })
   const stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() }
   const child = Object.assign(new EventEmitter(), { stdout, stderr, stdin, kill: vi.fn() })
   return child
@@ -42,13 +42,25 @@ describe('runCLIPrompt', () => {
     await expect(runCLIPrompt('unknown' as any, 'test')).rejects.toThrow('不明な CLI ツール: unknown')
   })
 
+  it('spawn 後に stdout/stderr の setEncoding("utf8") を呼ぶ', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    child.emit('close', 0, null)
+    await promise
+
+    expect(child.stdout.setEncoding).toHaveBeenCalledWith('utf8')
+    expect(child.stderr.setEncoding).toHaveBeenCalledWith('utf8')
+  })
+
   it('claude: stdout を収集して resolve する', async () => {
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
 
     const promise = runCLIPrompt('claude', 'テストプロンプト')
-    child.stdout.emit('data', Buffer.from('出力の1行目'))
-    child.stdout.emit('data', Buffer.from('\n出力の2行目'))
+    child.stdout.emit('data', '出力の1行目')
+    child.stdout.emit('data', '\n出力の2行目')
     child.emit('close', 0, null)
 
     await expect(promise).resolves.toBe('出力の1行目\n出力の2行目')
@@ -202,6 +214,20 @@ describe('runCLIPrompt', () => {
     await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました: EPIPE: broken pipe')
   })
 
+  it('stdin error イベントが発火すると child.kill() が呼ばれる', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    const stdinError = new Error('EPIPE: broken pipe')
+    child.stdin.on.mock.calls
+      .filter(([event]: [string]) => event === 'error')
+      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+
+    await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました')
+    expect(child.kill).toHaveBeenCalledOnce()
+  })
+
   it('stdin error で reject 後に close(0) が来ても二重 resolve にならない', async () => {
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
@@ -211,7 +237,7 @@ describe('runCLIPrompt', () => {
     child.stdin.on.mock.calls
       .filter(([event]: [string]) => event === 'error')
       .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
-    child.stdout.emit('data', Buffer.from('出力'))
+    child.stdout.emit('data', '出力')
     child.emit('close', 0, null)
 
     await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました')
