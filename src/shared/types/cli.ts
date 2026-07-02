@@ -9,8 +9,8 @@ export interface PromptTool {
   label: string
 }
 
-export const EXECUTION_TOOLS: PromptTool[] = [
+export const EXECUTION_TOOLS = [
   { id: 'claude', label: 'Claude CLI' },
   { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'api', label: 'Claude API' },
-]
+] as const satisfies readonly PromptTool[]
