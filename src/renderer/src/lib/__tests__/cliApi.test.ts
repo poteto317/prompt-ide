@@ -1,12 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { runCLIPrompt } from '../cliApi'
 
 const mockRunCLIPrompt = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
-  const existing = (window as Window & { api?: Record<string, unknown> }).api ?? {}
-  Object.assign(window, { api: { ...existing, runCLIPrompt: mockRunCLIPrompt } })
+  // window.api オブジェクト自体は維持しつつ runCLIPrompt のみ差し替える
+  Object.assign(window.api, { runCLIPrompt: mockRunCLIPrompt })
+})
+
+afterEach(() => {
+  // setup.ts の window.api スタブには runCLIPrompt が存在しないため
+  // テスト後に削除して他テストへの副作用を防ぐ
+  delete (window.api as Partial<Window['api']>).runCLIPrompt
 })
 
 describe('cliApi', () => {
