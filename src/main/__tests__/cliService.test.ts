@@ -19,20 +19,27 @@ function makeChild() {
 }
 
 let savedPath: string | undefined
+let savedHome: string | undefined
 
 beforeEach(() => {
   savedPath = process.env.PATH
+  savedHome = process.env.HOME
   vi.clearAllMocks()
 })
 
 afterEach(() => {
-  // platform スパイと process.env.PATH をテスト失敗時も確実に復元する
+  // platform スパイと process.env をテスト失敗時も確実に復元する
   vi.restoreAllMocks()
   vi.useRealTimers()
   if (savedPath !== undefined) {
     process.env.PATH = savedPath
   } else {
     delete process.env.PATH
+  }
+  if (savedHome !== undefined) {
+    process.env.HOME = savedHome
+  } else {
+    delete process.env.HOME
   }
 })
 
@@ -274,7 +281,6 @@ describe('runCLIPrompt', () => {
 
   it('Unix 環境では Linux 向けパス（/snap/bin, ~/.cargo/bin）も PATH に追加して spawn を呼ぶ', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
-    const savedHome = process.env.HOME
     process.env.HOME = '/home/testuser'
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
@@ -285,9 +291,8 @@ describe('runCLIPrompt', () => {
 
     const spawnEnv = mockSpawn.mock.calls[0][2].env as NodeJS.ProcessEnv
     expect(spawnEnv.PATH).toContain('/snap/bin')
+    expect(spawnEnv.PATH).toContain('/home/testuser/.local/bin')
     expect(spawnEnv.PATH).toContain('/home/testuser/.cargo/bin')
-
-    process.env.HOME = savedHome
   })
 
   it('Windows 環境では Unix 固有パスを追加せず process.env をそのまま渡す', async () => {
