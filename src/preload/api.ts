@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron'
-import type { FileTreeNode, GitStatusResult, Prompt, Task } from '@shared/types'
+import type { CLIOnlyToolId, FileTreeNode, GitStatusResult, Prompt, Task } from '@shared/types'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -17,5 +17,7 @@ export const api = {
     ipcRenderer.invoke('prompts:export', prompts),
   importPrompts: (): Promise<Prompt[] | null> => ipcRenderer.invoke('prompts:import'),
   loadTasks: (): Promise<Task[]> => ipcRenderer.invoke('progress:load'),
-  saveTasks: (tasks: Task[]): Promise<void> => ipcRenderer.invoke('progress:save', tasks)
+  saveTasks: (tasks: Task[]): Promise<void> => ipcRenderer.invoke('progress:save', tasks),
+  runCLIPrompt: (toolId: CLIOnlyToolId, promptContent: string): Promise<string> =>
+    ipcRenderer.invoke('cli:runPrompt', { toolId, promptContent })
 }

@@ -1,5 +1,5 @@
 'use client'
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -14,20 +14,22 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
-import type { Prompt } from '../../types'
+import type { PromptToolId, Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
+import ExecutionToolSelector from './ExecutionToolSelector'
 import PromptsTagFilter from './PromptsTagFilter'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
+import { useSelectedTool } from '../../hooks/useSelectedTool'
 import { sortByPinned } from '../../lib/promptUtils'
 
 interface Props {
   prompts: Prompt[]
   onAdd: (title: string, content: string) => void
   onDelete: (id: string) => void
-  onRun: (content: string) => void
+  onRun: (content: string, toolId: PromptToolId) => void
   onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onReorder: (activeId: string, overId: string) => void
   onTogglePin: (id: string) => void
@@ -50,6 +52,7 @@ export default function PromptsPanel({
   isRunDisabled = false,
   isActive
 }: Props) {
+  const { selectedTool, selectTool } = useSelectedTool()
   const { filteredPrompts, query, setQuery, selectedTags, toggleTag, isFiltered } = usePromptFilter(
     prompts,
     { isActive }
@@ -68,10 +71,21 @@ export default function PromptsPanel({
   // テキスト検索中またはタグ絞り込み中は並び替えを無効化
   const isSortable = !isFiltered
 
+  const handleRunWithTool = useCallback(
+    (content: string) => onRun(content, selectedTool),
+    [onRun, selectedTool]
+  )
+
   function handleDragEnd({ active, over }: DragEndEvent) {
-    if (over && active.id !== over.id) {
-      onReorder(String(active.id), String(over.id))
-    }
+    if (!over || active.id === over.id) return
+    const activePrompt = displayed.find((p) => p.id === String(active.id))
+    const overPrompt = displayed.find((p) => p.id === String(over.id))
+    // displayed に存在しない ID（フィルタ変化等でリストから消えた要素）はスキップする
+    if (!activePrompt || !overPrompt) return
+    // ピン済み/非ピン済みの境界をまたぐドラッグは sortByPinned で元の表示順に戻るため
+    // サイレント no-op にならないようにスキップする
+    if (!!activePrompt.pinned !== !!overPrompt.pinned) return
+    onReorder(String(active.id), String(over.id))
   }
 
   return (
@@ -81,6 +95,7 @@ export default function PromptsPanel({
         onExport={onExport}
         isExportDisabled={prompts.length === 0}
       />
+      <ExecutionToolSelector selectedTool={selectedTool} onSelectTool={selectTool} />
       <div className="prompts-panel__search">
         <input
           className="prompts-panel__search-input"
@@ -111,7 +126,7 @@ export default function PromptsPanel({
                   prompt={prompt}
                   isSortable={isSortable}
                   onDelete={onDelete}
-                  onRun={onRun}
+                  onRun={handleRunWithTool}
                   onEdit={onEdit}
                   onTogglePin={onTogglePin}
                   isRunDisabled={isRunDisabled}

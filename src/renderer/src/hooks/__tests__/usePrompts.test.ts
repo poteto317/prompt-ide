@@ -440,6 +440,35 @@ describe('reorderPrompts', () => {
     expect(mockSave).not.toHaveBeenCalled()
   })
 
+  it('ピン済み/非ピン済みの境界をまたぐ並び替えは配列が変わらない', async () => {
+    const mixed: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    ]
+    mockLoad.mockResolvedValue(mixed)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+
+    act(() => result.current.reorderPrompts('p2', 'p1'))
+
+    expect(result.current.prompts.map((p) => p.id)).toEqual(['p1', 'p2'])
+  })
+
+  it('ピン済み/非ピン済みの境界をまたぐ並び替えは save が呼ばれない', async () => {
+    const mixed: Prompt[] = [
+      { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+    ]
+    mockLoad.mockResolvedValue(mixed)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2))
+    vi.clearAllMocks()
+
+    act(() => result.current.reorderPrompts('p2', 'p1'))
+
+    expect(mockSave).not.toHaveBeenCalled()
+  })
+
   it('reorderPrompts 後に save が呼ばれる', async () => {
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
@@ -631,6 +660,20 @@ describe('reorderPrompts × ピン留めの合成挙動', () => {
     act(() => result.current.reorderPrompts('p2', 'p1'))
 
     // ピン2件の順が入れ替わり、未ピンは末尾のまま
+    expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
+  })
+
+  it('非ピン項目をピン項目の位置へ reorder するとデータ層でスキップされ永続化配列も表示順も変わらない', async () => {
+    // ピン境界をまたぐ並び替えは reorderPrompts 内部で早期リターンするため、
+    // 永続化配列・表示順ともに変化しない。
+    mockLoad.mockResolvedValue(stored)
+    const { result } = renderHook(() => usePrompts())
+    await waitFor(() => expect(result.current.prompts).toHaveLength(3))
+
+    // 非ピンの C をピン済みの B の位置へ（表示上 [B, A, C] → C を B の上へ）
+    act(() => result.current.reorderPrompts('p3', 'p2'))
+
+    // sortByPinned で B が再び先頭に戻り、表示順は変わらない
     expect(sortByPinned(result.current.prompts).map((p) => p.id)).toEqual(['p2', 'p1', 'p3'])
   })
 })
