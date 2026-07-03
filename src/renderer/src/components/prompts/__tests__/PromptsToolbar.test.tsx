@@ -40,3 +40,4 @@ describe('PromptsToolbar', () => {
     expect(screen.getByRole('button', { name: 'プロンプトをインポート' })).toBeEnabled()
   })
 })
+

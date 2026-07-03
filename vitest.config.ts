@@ -9,12 +9,15 @@ export default defineConfig({
     environmentMatchGlobs: [['src/main/**', 'node']],
     globals: true,
     setupFiles: ['./src/renderer/src/__tests__/setup.ts'],
-    include: ['src/renderer/src/**/*.test.{ts,tsx}', 'src/main/**/*.test.ts'],
+    include: ['src/renderer/src/**/*.test.{ts,tsx}', 'src/main/**/*.test.ts', 'src/shared/**/*.test.ts'],
     alias: {
       '@monaco-editor/react': resolve(
         __dirname,
         'src/renderer/src/__tests__/__mocks__/@monaco-editor/react.tsx'
       ),
+    },
+    forks: {
+      maxForks: 5,
     },
   },
   resolve: {

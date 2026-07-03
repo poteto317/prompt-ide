@@ -143,11 +143,33 @@ describe('PromptsPanel', () => {
     expect(onDelete).toHaveBeenCalledWith('p1')
   })
 
-  it('実行ボタンクリックで onRun がプロンプト内容とともに呼ばれる', async () => {
+  it('実行ボタンクリックで onRun がプロンプト内容と selectedTool とともに呼ばれる', async () => {
     const onRun = vi.fn()
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
+  })
+
+  it('ツールセレクタで copilot に変更してから実行すると toolId が copilot で onRun に渡る', async () => {
+    const onRun = vi.fn()
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '実行ツールを選択' }),
+      'copilot'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'copilot')
+  })
+
+  it('ツールセレクタで api に変更してから実行すると toolId が api で onRun に渡る', async () => {
+    const onRun = vi.fn()
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: '実行ツールを選択' }),
+      'api'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
   })
 
   it('isRunDisabled=true のとき実行ボタンが disabled になる', () => {
@@ -249,9 +271,53 @@ describe('PromptsPanel', () => {
 
     it('数値 ID でも String 化して onReorder に渡される', () => {
       const onReorder = vi.fn()
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      // DnD の id: 1, 2 が String() で '1', '2' に変換されるため、プロンプト ID も合わせる
+      const numId1 = { id: '1', title: 'A', content: 'A内容', createdAt: 1000000 }
+      const numId2 = { id: '2', title: 'B', content: 'B内容', createdAt: 2000000 }
+      render(<PromptsPanel {...defaultProps} prompts={[numId1, numId2]} onReorder={onReorder} />)
       act(() => dndState.onDragEnd?.({ active: { id: 1 }, over: { id: 2 } }))
       expect(onReorder).toHaveBeenCalledWith('1', '2')
+    })
+
+    it('ピン済み→非ピンの境界をまたぐドラッグは onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      const pinnedPrompt = { ...anotherPrompt, pinned: true }
+      // 表示順は [pinnedPrompt(p2), samplePrompt(p1)]
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, pinnedPrompt]} onReorder={onReorder} />)
+      // 非ピン p1 → ピン済み p2 の位置へドラッグ（境界をまたぐ）
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('active.id が displayed に存在しないとき onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'nonexistent' }, over: { id: 'p1' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('over.id が displayed に存在しないとき onReorder を呼ばない', () => {
+      const onReorder = vi.fn()
+      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onReorder={onReorder} />)
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'nonexistent' } }))
+      expect(onReorder).not.toHaveBeenCalled()
+    })
+
+    it('同じグループ内（未ピン同士）のドラッグは onReorder が呼ばれる', () => {
+      const onReorder = vi.fn()
+      const pinnedPrompt = { ...anotherPrompt, pinned: true }
+      const thirdPrompt = { id: 'p3', title: 'C', content: 'C内容', createdAt: 3000000 }
+      // 表示順は [pinnedPrompt(p2), samplePrompt(p1), thirdPrompt(p3)]
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, pinnedPrompt, thirdPrompt]}
+          onReorder={onReorder}
+        />
+      )
+      // 未ピン同士（p1 → p3）のドラッグは通常通り
+      act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p3' } }))
+      expect(onReorder).toHaveBeenCalledWith('p1', 'p3')
     })
   })
 

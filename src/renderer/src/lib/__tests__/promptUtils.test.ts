@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { truncatePreview, sortByPinned } from '../promptUtils'
+import { truncatePreview, sortByPinned, crossesPinBoundary } from '../promptUtils'
 import { PREVIEW_MAX } from '../../config/promptConfig'
 import type { Prompt } from '../../types'
 
@@ -102,6 +102,33 @@ describe('sortByPinned', () => {
     const snapshot = input.map((p) => p.id)
     sortByPinned(input)
     expect(input.map((p) => p.id)).toEqual(snapshot)
+  })
+})
+
+describe('crossesPinBoundary', () => {
+  const make = (id: string, pinned?: boolean): Prompt => ({
+    id,
+    title: id,
+    content: id,
+    createdAt: 1,
+    ...(pinned === undefined ? {} : { pinned })
+  })
+
+  it('両方ピン済みなら false', () => {
+    expect(crossesPinBoundary(make('a', true), make('b', true))).toBe(false)
+  })
+
+  it('両方未ピンなら false', () => {
+    expect(crossesPinBoundary(make('a'), make('b'))).toBe(false)
+  })
+
+  it('片方のみピン済みなら true', () => {
+    expect(crossesPinBoundary(make('a', true), make('b'))).toBe(true)
+    expect(crossesPinBoundary(make('a'), make('b', true))).toBe(true)
+  })
+
+  it('pinned: false と pinned 未指定は同じ扱い（false）', () => {
+    expect(crossesPinBoundary(make('a', false), make('b'))).toBe(false)
   })
 })
 

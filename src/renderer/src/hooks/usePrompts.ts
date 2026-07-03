@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { arrayMove } from '@dnd-kit/sortable'
 import type { Prompt } from '../types'
 import { createPrompt } from '../lib/promptFactory'
+import { crossesPinBoundary } from '../lib/promptUtils'
 import { usePromptsPersistence } from './usePromptsPersistence'
 import { useBufferedPersistence } from './useBufferedPersistence'
 import { usePromptTransfer } from './usePromptTransfer'
@@ -73,6 +74,10 @@ export function usePrompts(): PromptsState {
         const activeIndex = currentPrompts.findIndex((p) => p.id === activeId)
         const overIndex = currentPrompts.findIndex((p) => p.id === overId)
         if (activeIndex === -1 || overIndex === -1 || activeIndex === overIndex) {
+          return currentPrompts
+        }
+        // ピン済み/非ピン済みの境界をまたぐ並び替えは永続化データを壊すためスキップする
+        if (crossesPinBoundary(currentPrompts[activeIndex], currentPrompts[overIndex])) {
           return currentPrompts
         }
         return arrayMove(currentPrompts, activeIndex, overIndex)
