@@ -4,14 +4,17 @@ import type { CLIOnlyToolId } from '@shared/types'
 interface ToolConfig {
   command: string
   buildArgs: (content: string) => string[]
-  // false の場合、プロンプト内容は引数として渡すため stdin には書き込まない
+  // useStdin は buildArgs が content を引数に含めるかどうかと対で管理する。
+  // true なら buildArgs は content を無視し、stdin 書き込みのみでプロンプトを渡すこと
+  // （両方に content を渡すと二重送信になり、どちらにも渡さないと空プロンプトになる）
   useStdin: boolean
 }
 
 const TOOL_COMMANDS: Record<CLIOnlyToolId, ToolConfig> = {
   claude: { command: 'claude', buildArgs: () => ['--print'], useStdin: true },
   // gh copilot はプロンプトを -p フラグの引数として受け取る（gh models run とは別コマンド。
-  // stdin 経由のプロンプト入力はサポートされない）
+  // stdin 経由のプロンプト入力はサポートされない。また -p は argv 経由のため、
+  // OS のコマンドライン引数長上限（ARG_MAX 等）を超える巨大な添付ファイル内容は送信できない）
   copilot: {
     command: 'gh',
     buildArgs: (content) => ['copilot', '-p', content],
@@ -57,7 +60,9 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
     const child = spawn(config.command, config.buildArgs(content), { env: buildEnv() })
 
     // close イベントの発火有無で「実際にプロセスが終了したか」を追跡する
-    // （テスト用モックには exitCode/signalCode が無いため、実プロセスの状態に依存しない）
+    // （テスト用モックには exitCode/signalCode が無いため、実プロセスの状態に依存しない）。
+    // settled は「Promise が確定したか」を表し settle() 内で true になるため、
+    // killWithEscalation はその後に呼ばれる → settled では代用できず exited が必要
     let exited = false
 
     // SIGTERM を無視するプロセスがバックグラウンドに残り続けないよう、
