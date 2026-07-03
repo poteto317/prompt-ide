@@ -111,4 +111,11 @@ describe('usePromptExecution', () => {
     await act(async () => { await result.current.executePrompt('プロンプト', 'ファイル内容', 'copilot') })
     expect(mockInvokePrompt).toHaveBeenCalledWith('copilot', 'プロンプト', 'ファイル内容')
   })
+
+  it('toolId が api（デフォルトツール）のときも fileContent が invokePrompt に渡される', async () => {
+    mockInvokePrompt.mockResolvedValue('result')
+    const { result } = renderHook(() => usePromptExecution())
+    await act(async () => { await result.current.executePrompt('プロンプト', 'ファイル内容', 'api') })
+    expect(mockInvokePrompt).toHaveBeenCalledWith('api', 'プロンプト', 'ファイル内容')
+  })
 })

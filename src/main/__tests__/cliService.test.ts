@@ -96,15 +96,31 @@ describe('runCLIPrompt', () => {
     expect(mockSpawn).toHaveBeenCalledWith('claude', ['--print'], expect.any(Object))
   })
 
-  it('copilot: spawn を gh models run copilot で呼ぶ', async () => {
+  it('copilot: spawn を gh copilot -p <プロンプト> で呼ぶ', async () => {
     const child = makeChild()
     mockSpawn.mockReturnValue(child)
 
-    const promise = runCLIPrompt('copilot', 'テスト')
+    const promise = runCLIPrompt('copilot', 'テストプロンプト')
     child.emit('close', 0, null)
     await promise
 
-    expect(mockSpawn).toHaveBeenCalledWith('gh', ['models', 'run', 'copilot'], expect.any(Object))
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'gh',
+      ['copilot', '-p', 'テストプロンプト'],
+      expect.any(Object)
+    )
+  })
+
+  it('copilot: プロンプトは引数で渡すため stdin には書き込まず end() のみ呼ぶ', async () => {
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('copilot', 'テストプロンプト')
+    child.emit('close', 0, null)
+    await promise
+
+    expect(child.stdin.write).not.toHaveBeenCalled()
+    expect(child.stdin.end).toHaveBeenCalledOnce()
   })
 
   it('非ゼロ終了コードのとき stderr を含むエラーで reject する', async () => {
@@ -168,6 +184,37 @@ describe('runCLIPrompt', () => {
     vi.advanceTimersByTime(30_000)
 
     await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
+    expect(child.kill).toHaveBeenCalledOnce()
+  })
+
+  it('タイムアウト後、猶予時間内に終了しないプロセスには SIGKILL を送る', async () => {
+    vi.useFakeTimers()
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    vi.advanceTimersByTime(30_000)
+    await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
+
+    // SIGTERM (デフォルトシグナル) は既に呼ばれている。ここでは猶予時間経過後の SIGKILL を検証する
+    expect(child.kill).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(5_000)
+    expect(child.kill).toHaveBeenCalledTimes(2)
+    expect(child.kill).toHaveBeenNthCalledWith(2, 'SIGKILL')
+  })
+
+  it('SIGKILL の猶予時間内にプロセスが終了すれば SIGKILL は送らない', async () => {
+    vi.useFakeTimers()
+    const child = makeChild()
+    mockSpawn.mockReturnValue(child)
+
+    const promise = runCLIPrompt('claude', 'テスト')
+    vi.advanceTimersByTime(30_000)
+    await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
+
+    // 猶予時間内に SIGTERM を受けてプロセスが実際に終了したケース
+    child.emit('close', null, 'SIGTERM')
+    vi.advanceTimersByTime(5_000)
     expect(child.kill).toHaveBeenCalledOnce()
   })
 

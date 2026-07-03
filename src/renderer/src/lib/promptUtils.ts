@@ -17,6 +17,15 @@ export function sortByPinned(prompts: Prompt[]): Prompt[] {
   return [...pinned, ...unpinned]
 }
 
+/**
+ * ピン済み/未ピン済みの境界をまたぐ並び替えかどうかを判定する。
+ * 境界をまたぐ並び替えは表示順（sortByPinned）と永続化順が食い違うため、
+ * データ層・UI層のどちらでもこの関数でスキップ判定を統一する。
+ */
+export function crossesPinBoundary(a: Prompt, b: Prompt): boolean {
+  return !!a.pinned !== !!b.pinned
+}
+
 export function truncatePreview(content: string): string {
   const graphemes: string[] = []
   for (const { segment } of segmenter.segment(content)) {

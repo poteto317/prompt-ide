@@ -23,7 +23,7 @@ import PromptsTagFilter from './PromptsTagFilter'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
 import { useSelectedTool } from '../../hooks/useSelectedTool'
-import { sortByPinned } from '../../lib/promptUtils'
+import { sortByPinned, crossesPinBoundary } from '../../lib/promptUtils'
 
 interface Props {
   prompts: Prompt[]
@@ -84,7 +84,7 @@ export default function PromptsPanel({
     if (!activePrompt || !overPrompt) return
     // ピン済み/非ピン済みの境界をまたぐドラッグは sortByPinned で元の表示順に戻るため
     // サイレント no-op にならないようにスキップする
-    if (!!activePrompt.pinned !== !!overPrompt.pinned) return
+    if (crossesPinBoundary(activePrompt, overPrompt)) return
     onReorder(String(active.id), String(over.id))
   }
 
