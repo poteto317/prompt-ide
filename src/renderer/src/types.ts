@@ -22,5 +22,6 @@ export type OpenFile = {
   path: string
   name: string
   content: string
+  savedContent: string
   language: string
 }

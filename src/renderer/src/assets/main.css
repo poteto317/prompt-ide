@@ -722,6 +722,7 @@ body {
 
 .editor-tabs {
   display: flex;
+  justify-content: space-between;
   background: #2d2d2d;
   border-bottom: 1px solid #252526;
   height: 35px;
@@ -744,6 +745,46 @@ body {
   background: #1e1e1e;
   color: #cccccc;
   border-top: 1px solid #007acc;
+}
+
+.editor-tab__dirty-dot {
+  color: #cccccc;
+  margin-left: 2px;
+}
+
+.editor-tabs__error {
+  flex: 1;
+  margin: 0;
+  padding: 0 8px;
+  align-self: center;
+  color: #f48771;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tabs__save-btn {
+  margin: 0 8px;
+  padding: 2px 10px;
+  align-self: center;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid #454545;
+  color: #cccccc;
+  border-radius: 3px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.editor-tabs__save-btn:hover:not(:disabled) {
+  background: #37373d;
+}
+
+.editor-tabs__save-btn:disabled {
+  color: #6e6e6e;
+  cursor: default;
+  border-color: #3a3a3a;
 }
 
 .editor-body {

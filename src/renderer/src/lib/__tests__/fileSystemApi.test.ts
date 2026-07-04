@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FileTreeNode } from '../../types'
-import { openFolder, readDirectory, readFileContent } from '../fileSystemApi'
+import { openFolder, readDirectory, readFileContent, writeFileContent } from '../fileSystemApi'
 
 const mockApi = {
   openFolder: vi.fn(),
   readDirectory: vi.fn(),
   readFile: vi.fn(),
+  writeFile: vi.fn()
 }
 
 beforeEach(() => {
@@ -13,9 +14,7 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-const mockTree: FileTreeNode[] = [
-  { name: 'src', path: '/p/src', type: 'directory', children: [] },
-]
+const mockTree: FileTreeNode[] = [{ name: 'src', path: '/p/src', type: 'directory', children: [] }]
 
 describe('openFolder', () => {
   it('window.api.openFolder を呼び出す', async () => {
@@ -47,5 +46,13 @@ describe('readFileContent', () => {
     const result = await readFileContent('/project/src/index.ts')
     expect(mockApi.readFile).toHaveBeenCalledWith('/project/src/index.ts')
     expect(result).toBe('const x = 1')
+  })
+})
+
+describe('writeFileContent', () => {
+  it('window.api.writeFile をパスと内容を引数に呼び出す', async () => {
+    mockApi.writeFile.mockResolvedValue(undefined)
+    await writeFileContent('/project/src/index.ts', 'const x = 2')
+    expect(mockApi.writeFile).toHaveBeenCalledWith('/project/src/index.ts', 'const x = 2')
   })
 })

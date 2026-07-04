@@ -8,6 +8,7 @@ Object.defineProperty(window, 'api', {
     openFolder: () => Promise.resolve(null),
     readDirectory: () => Promise.resolve([]),
     readFile: () => Promise.resolve(''),
+    writeFile: () => Promise.resolve(),
     getGitStatus: () =>
       Promise.resolve({ isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }),
     hasApiKey: () => Promise.resolve(false),

@@ -27,6 +27,7 @@ const openFile: OpenFile = {
   path: '/current/file.md',
   name: 'file.md',
   content: '現在開いているファイル内容',
+  savedContent: '現在開いているファイル内容',
   language: 'markdown'
 }
 

@@ -12,9 +12,14 @@ export default function App(): React.JSX.Element {
     folderPath,
     fileTree,
     openFile,
+    isDirty,
+    isSaving,
     error,
+    saveError,
     openFolder,
     selectFile,
+    updateFileContent,
+    saveFile,
     prompts,
     addPrompt,
     deletePrompt,
@@ -102,6 +107,11 @@ export default function App(): React.JSX.Element {
           )}
           <EditorPanel
             openFile={openFile}
+            isDirty={isDirty}
+            isSaving={isSaving}
+            error={saveError}
+            onChangeContent={updateFileContent}
+            onSave={saveFile}
             isExecuting={isExecuting}
             result={result}
             executionError={executionError}
