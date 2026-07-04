@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import type { HistoryEntry } from '../../types'
@@ -80,5 +81,24 @@ describe('useSelectedHistoryEntry', () => {
     // 先頭の 'a' が削除され、既存の 'b' が繰り上がって先頭になる（新規追加ではない）
     rerender({ history: [makeEntry('b'), makeEntry('c')] })
     expect(result.current.selectedEntry?.id).toBe('c')
+  })
+
+  it('StrictMode 下でも二重実行によって選択が不安定にならない（新規追加への追従が1回だけ反映される）', () => {
+    const history = [makeEntry('a'), makeEntry('b')]
+    const { result, rerender } = renderHook(({ history }) => useSelectedHistoryEntry(history), {
+      initialProps: { history },
+      wrapper: StrictMode
+    })
+    expect(result.current.selectedEntry?.id).toBe('a')
+
+    act(() => result.current.selectEntry('b'))
+    expect(result.current.selectedEntry?.id).toBe('b')
+
+    rerender({ history: [makeEntry('z'), ...history] })
+    expect(result.current.selectedEntry?.id).toBe('z')
+
+    // 内容が変わらない再レンダーでは選択が巻き戻らない（無限ループや余計な追従が起きない）
+    rerender({ history: [makeEntry('z'), ...history] })
+    expect(result.current.selectedEntry?.id).toBe('z')
   })
 })
