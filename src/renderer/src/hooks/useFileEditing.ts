@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useLatestRef } from './useLatestRef'
@@ -29,13 +29,15 @@ export function useFileEditing(
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
 
   // ファイルが切り替わったら、直前のファイルに対する保存エラーは意味を持たなくなるため
-  // クリアする（レンダー中に直接 setState する React 推奨パターン。useEffect 経由だと
-  // カスケードするレンダーが発生するため避ける）。これが無いと、保存に失敗したファイルから
-  // 別のファイルへ切り替えたときに、無関係な古いエラーが新しいファイルのエディタ上に
-  // 表示され続けてしまう。
-  const [lastFilePath, setLastFilePath] = useState(openFile?.path ?? null)
-  if ((openFile?.path ?? null) !== lastFilePath) {
-    setLastFilePath(openFile?.path ?? null)
+  // クリアする。比較用の直前パスは再レンダーを伴わない useRef で追跡し、実際に状態を
+  // 変える必要がある saveError のみレンダー中に直接 setState する
+  // （React 公式が「props からの状態リセット」に推奨するパターン。useEffect 経由だと
+  // 1テンポ遅れて反映されるうえ、カスケードするレンダーが発生するため避ける）。
+  // これが無いと、保存に失敗したファイルから別のファイルへ切り替えたときに、
+  // 無関係な古いエラーが新しいファイルのエディタ上に表示され続けてしまう。
+  const lastFilePathRef = useRef(openFile?.path ?? null)
+  if (lastFilePathRef.current !== (openFile?.path ?? null)) {
+    lastFilePathRef.current = openFile?.path ?? null
     setSaveError(null)
   }
 

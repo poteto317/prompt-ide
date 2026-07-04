@@ -237,6 +237,24 @@ describe('ファイル切り替え時の saveError', () => {
 
     expect(result.current.saveError).toBeNull()
   })
+
+  it('同じファイルのまま再レンダーされても saveError はクリアされない（path が変化しない限り消えない）', async () => {
+    mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
+      initialProps: { file: dirtyFile as OpenFile | null }
+    })
+
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(result.current.saveError?.message).toBe('EACCES')
+
+    // path は同じまま content だけ変わった再レンダー（ユーザーが編集を続けているケース）
+    const furtherEditedSameFile: OpenFile = { ...dirtyFile, content: 'const x = 3' }
+    rerender({ file: furtherEditedSameFile })
+
+    expect(result.current.saveError?.message).toBe('EACCES')
+  })
 })
 
 describe('confirmDiscardIfDirty', () => {
