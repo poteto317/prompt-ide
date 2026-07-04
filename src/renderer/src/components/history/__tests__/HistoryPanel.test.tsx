@@ -158,4 +158,21 @@ describe('HistoryPanel', () => {
     expect(within(getDetail(container)).getByText('結果2')).toBeInTheDocument()
     expect(radios[1]).toHaveFocus()
   })
+
+  it('id に CSS セレクタの特殊文字（" や ]）が含まれていても矢印キー移動でクラッシュしない', async () => {
+    // history.json は手動編集・破損等で任意の文字列が id に入り得るため、
+    // CSS.escape でエスケープせずに querySelector を組み立てると SyntaxError になる
+    const entryWithSpecialId: HistoryEntry = { ...entry2, id: 'weird"id]with[chars' }
+    const { container } = render(
+      <HistoryPanel history={[entry1, entryWithSpecialId]} {...handlers} />
+    )
+    const group = screen.getByRole('radiogroup', { name: '履歴一覧' })
+    const radios = within(group).getAllByRole('radio')
+    radios[0].focus()
+
+    await userEvent.keyboard('{ArrowDown}')
+
+    expect(within(getDetail(container)).getByText('結果2')).toBeInTheDocument()
+    expect(radios[1]).toHaveFocus()
+  })
 })

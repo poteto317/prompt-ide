@@ -30,7 +30,12 @@ export default function HistoryPanel({
     const pendingId = pendingFocusIdRef.current
     if (pendingId === null) return
     pendingFocusIdRef.current = null
-    listRef.current?.querySelector<HTMLButtonElement>(`[data-entry-id="${pendingId}"]`)?.focus()
+    // id は history.json（手動編集や破損の可能性がある永続データ）由来のため、
+    // CSS.escape でエスケープしてから属性セレクタを組み立てる（未エスケープだと
+    // " や ] を含む id で querySelector が SyntaxError を投げうる）
+    listRef.current
+      ?.querySelector<HTMLButtonElement>(`[data-entry-id="${CSS.escape(pendingId)}"]`)
+      ?.focus()
   }, [selectedEntry?.id])
 
   const handleDelete = (id: string): void => {
