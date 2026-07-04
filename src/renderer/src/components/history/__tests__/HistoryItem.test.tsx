@@ -43,13 +43,18 @@ describe('HistoryItem', () => {
   it('クリックで onSelect が呼ばれる', async () => {
     const onSelect = vi.fn()
     render(<HistoryItem entry={successEntry} isSelected={false} onSelect={onSelect} />)
-    await userEvent.click(screen.getByRole('button'))
+    await userEvent.click(screen.getByRole('radio'))
     expect(onSelect).toHaveBeenCalledOnce()
   })
 
-  it('isSelected のとき aria-pressed が true になる', () => {
+  it('isSelected のとき role=radio・aria-checked=true になる（履歴一覧の選択状態を支援技術に伝える）', () => {
     render(<HistoryItem entry={successEntry} isSelected={true} onSelect={vi.fn()} />)
-    expect(screen.getByRole('button')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('radio')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('isSelected が false のとき aria-checked=false になる', () => {
+    render(<HistoryItem entry={successEntry} isSelected={false} onSelect={vi.fn()} />)
+    expect(screen.getByRole('radio')).toHaveAttribute('aria-checked', 'false')
   })
 
   it('未知の toolId のとき生の toolId をそのまま表示する', () => {
@@ -60,14 +65,14 @@ describe('HistoryItem', () => {
 
   it('実行日時が整形されて表示される', () => {
     render(<HistoryItem entry={successEntry} isSelected={false} onSelect={vi.fn()} />)
-    expect(
-      screen.getByText(new Date(successEntry.executedAt).toLocaleString())
-    ).toBeInTheDocument()
+    expect(screen.getByText(new Date(successEntry.executedAt).toLocaleString())).toBeInTheDocument()
   })
 
   it('resultText・errorMessage が両方 null のときプレビューは空になる', () => {
     const entry: HistoryEntry = { ...successEntry, resultText: null, errorMessage: null }
-    const { container } = render(<HistoryItem entry={entry} isSelected={false} onSelect={vi.fn()} />)
+    const { container } = render(
+      <HistoryItem entry={entry} isSelected={false} onSelect={vi.fn()} />
+    )
     expect(container.querySelector('.history-item__preview')).toHaveTextContent('')
   })
 })

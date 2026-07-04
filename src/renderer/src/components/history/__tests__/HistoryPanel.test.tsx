@@ -53,6 +53,16 @@ describe('HistoryPanel', () => {
     expect(within(list).getByText('タイトル2')).toBeInTheDocument()
   })
 
+  it('履歴一覧が radiogroup として支援技術に選択状態を伝える', () => {
+    render(<HistoryPanel history={[entry1, entry2]} {...handlers} />)
+    const group = screen.getByRole('radiogroup', { name: '履歴一覧' })
+    const radios = within(group).getAllByRole('radio')
+    expect(radios).toHaveLength(2)
+    // 先頭（entry1）が初期選択されている
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true')
+    expect(radios[1]).toHaveAttribute('aria-checked', 'false')
+  })
+
   it('先頭の履歴が初期選択され詳細が表示される', () => {
     const { container } = render(<HistoryPanel history={[entry1, entry2]} {...handlers} />)
     expect(within(getDetail(container)).getByText('結果1')).toBeInTheDocument()

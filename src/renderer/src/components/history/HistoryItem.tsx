@@ -19,7 +19,8 @@ export default function HistoryItem({ entry, isSelected, onSelect }: Props) {
       type="button"
       className={`history-item${isSelected ? ' history-item--selected' : ''}`}
       onClick={onSelect}
-      aria-pressed={isSelected}
+      role="radio"
+      aria-checked={isSelected}
     >
       <div className="history-item__header">
         <span className="history-item__title">{entry.promptTitle}</span>

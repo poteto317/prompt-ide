@@ -43,7 +43,7 @@ export default function HistoryPanel({
           <p className="history-panel__empty">履歴がありません</p>
         ) : (
           <>
-            <div className="history-panel__list">
+            <div className="history-panel__list" role="radiogroup" aria-label="履歴一覧">
               {history.map((entry) => (
                 <HistoryItem
                   key={entry.id}
