@@ -25,6 +25,16 @@ describe('App', () => {
     expect(screen.getByText(sidebarTitles['source-control'])).toBeInTheDocument()
   })
 
+  it('履歴パネルに切り替えると実行履歴パネルが表示される', async () => {
+    render(<App />)
+    const historyPanelConfig = activityBarPanels.find((p) => p.panel === 'history')
+    if (!historyPanelConfig) throw new Error('history panel config not found')
+    const historyBtn = screen.getByTitle(historyPanelConfig.title)
+    await userEvent.click(historyBtn)
+    expect(screen.getByText(sidebarTitles.history)).toBeInTheDocument()
+    expect(screen.getByText('履歴がありません')).toBeInTheDocument()
+  })
+
   it('サイドバーを閉じて再度開いてもプロンプトが保持される', async () => {
     render(<App />)
 

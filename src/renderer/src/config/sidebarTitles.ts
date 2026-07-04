@@ -5,5 +5,6 @@ export const sidebarTitles: Record<Panel, string> = {
   'source-control': 'ソース管理',
   prompts: 'プロンプト',
   progress: '進捗管理',
+  history: '実行履歴',
   settings: '設定'
 }

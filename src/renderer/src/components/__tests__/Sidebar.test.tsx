@@ -28,6 +28,10 @@ const defaultProps = {
   onReopenStage: vi.fn(),
   onSkipStage: vi.fn(),
   onAdvanceStage: vi.fn(),
+  history: [],
+  onDeleteHistoryEntry: vi.fn(),
+  onClearHistory: vi.fn(),
+  onRerunHistoryEntry: vi.fn(),
   gitStatus: null,
   gitLoading: false,
   gitError: null,
@@ -71,12 +75,12 @@ describe('Sidebar', () => {
     expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
   })
 
-  it('source-control: explorer/prompts/progress/settings パネルは非表示で SourceControlPanel が表示される', () => {
+  it('source-control: explorer/prompts/progress/history/settings パネルは非表示で SourceControlPanel が表示される', () => {
     const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
     const panels = Array.from(container.querySelectorAll('.sidebar__panel'))
     const hiddenPanels = panels.filter((p) => p.classList.contains('sidebar__panel--hidden'))
     const activePanels = panels.filter((p) => !p.classList.contains('sidebar__panel--hidden'))
-    expect(hiddenPanels).toHaveLength(4)
+    expect(hiddenPanels).toHaveLength(5)
     expect(activePanels).toHaveLength(1)
     expect(screen.getByText('フォルダを開いてください')).toBeInTheDocument()
   })
@@ -86,6 +90,12 @@ describe('Sidebar', () => {
     expect(screen.getByText(sidebarTitles.progress)).toBeInTheDocument()
     // tasks=[] なので ProgressPanel の空メッセージが表示される
     expect(screen.getByText('タスクがありません')).toBeInTheDocument()
+  })
+
+  it('history: 正しいヘッダーが表示され HistoryPanel が描画される', () => {
+    render(<Sidebar activePanel="history" {...defaultProps} />)
+    expect(screen.getByText(sidebarTitles.history)).toBeInTheDocument()
+    expect(screen.getByText('履歴がありません')).toBeInTheDocument()
   })
 
   it('settings: 正しいヘッダーが表示され SettingsPanel が描画される', () => {

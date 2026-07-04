@@ -5,6 +5,8 @@ import { useProgressTasks } from './useProgressTasks'
 import { useGitStatus } from './useGitStatus'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
+import { useHistory } from './useHistory'
+import { usePromptRunner } from './usePromptRunner'
 
 export function useAppState() {
   const panel = usePanelState()
@@ -14,5 +16,21 @@ export function useAppState() {
   const git = useGitStatus(fileSystem.folderPath)
   const settings = useSettings()
   const execution = usePromptExecution()
-  return { ...panel, ...fileSystem, ...prompts, ...progress, ...git, ...settings, ...execution }
+  const history = useHistory()
+  const promptRunner = usePromptRunner({
+    openFile: fileSystem.openFile,
+    executePrompt: execution.executePrompt,
+    addHistoryEntry: history.addHistoryEntry
+  })
+  return {
+    ...panel,
+    ...fileSystem,
+    ...prompts,
+    ...progress,
+    ...git,
+    ...settings,
+    ...execution,
+    ...history,
+    ...promptRunner
+  }
 }

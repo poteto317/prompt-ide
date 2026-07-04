@@ -1,5 +1,12 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { CLIOnlyToolId, FileTreeNode, GitStatusResult, Prompt, Task } from '@shared/types'
+import type {
+  CLIOnlyToolId,
+  FileTreeNode,
+  GitStatusResult,
+  HistoryEntry,
+  Prompt,
+  Task
+} from '@shared/types'
 
 declare global {
   interface Window {
@@ -19,6 +26,8 @@ declare global {
       loadTasks(): Promise<Task[]>
       saveTasks(tasks: Task[]): Promise<void>
       runCLIPrompt(toolId: CLIOnlyToolId, promptContent: string): Promise<string>
+      loadHistory(): Promise<HistoryEntry[]>
+      saveHistory(entries: HistoryEntry[]): Promise<void>
     }
   }
 }

@@ -3,6 +3,7 @@ import ExplorerIcon from '../components/icons/ExplorerIcon'
 import GitIcon from '../components/icons/GitIcon'
 import PromptIcon from '../components/icons/PromptIcon'
 import ProgressIcon from '../components/icons/ProgressIcon'
+import HistoryIcon from '../components/icons/HistoryIcon'
 import SettingsIcon from '../components/icons/SettingsIcon'
 import type { Panel } from '../types'
 
@@ -17,5 +18,6 @@ export const activityBarPanels: ActivityBarPanel[] = [
   { panel: 'source-control', Icon: GitIcon, title: 'ソース管理' },
   { panel: 'prompts', Icon: PromptIcon, title: 'プロンプト' },
   { panel: 'progress', Icon: ProgressIcon, title: '進捗管理' },
+  { panel: 'history', Icon: HistoryIcon, title: '実行履歴' },
   { panel: 'settings', Icon: SettingsIcon, title: '設定' }
 ]

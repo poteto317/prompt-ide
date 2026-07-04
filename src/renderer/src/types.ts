@@ -9,12 +9,14 @@ export type {
   StageEvent,
   StageId,
   StageKind,
-  StageStatus
+  StageStatus,
+  HistoryEntry,
+  HistoryStatus
 } from '@shared/types'
 
 export type FileNode = FileTreeNode & { type: 'file' }
 
-export type Panel = 'explorer' | 'source-control' | 'prompts' | 'progress' | 'settings'
+export type Panel = 'explorer' | 'source-control' | 'prompts' | 'progress' | 'history' | 'settings'
 
 export type OpenFile = {
   path: string

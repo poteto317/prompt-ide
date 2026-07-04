@@ -29,7 +29,7 @@ interface Props {
   prompts: Prompt[]
   onAdd: (title: string, content: string) => void
   onDelete: (id: string) => void
-  onRun: (content: string, toolId: PromptToolId) => void
+  onRun: (content: string, toolId: PromptToolId, prompt: Prompt) => void
   onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onReorder: (activeId: string, overId: string) => void
   onTogglePin: (id: string) => void
@@ -72,7 +72,7 @@ export default function PromptsPanel({
   const isSortable = !isFiltered
 
   const handleRunWithTool = useCallback(
-    (content: string) => onRun(content, selectedTool),
+    (content: string, prompt: Prompt) => onRun(content, selectedTool, prompt),
     [onRun, selectedTool]
   )
 

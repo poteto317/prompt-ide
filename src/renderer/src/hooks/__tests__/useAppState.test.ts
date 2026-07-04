@@ -56,12 +56,31 @@ const mockUsePromptExecution = vi.hoisted(() =>
   }))
 )
 
+const mockUseHistory = vi.hoisted(() =>
+  vi.fn(() => ({
+    history: [],
+    historyLoaded: false,
+    addHistoryEntry: vi.fn(),
+    deleteHistoryEntry: vi.fn(),
+    clearHistory: vi.fn(),
+  }))
+)
+
+const mockUsePromptRunner = vi.hoisted(() =>
+  vi.fn((_deps?: unknown) => ({
+    runPrompt: vi.fn(),
+    rerunHistoryEntry: vi.fn(),
+  }))
+)
+
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
 vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
 vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
 vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
+vi.mock('../useHistory', () => ({ useHistory: mockUseHistory }))
+vi.mock('../usePromptRunner', () => ({ usePromptRunner: mockUsePromptRunner }))
 
 import { useAppState } from '../useAppState'
 
@@ -108,7 +127,7 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('selectFile')
   })
 
-  it('6フックの返り値にキーの重複がない（各フックのキー集合が互いに素）', () => {
+  it('8フックの返り値にキーの重複がない（各フックのキー集合が互いに素）', () => {
     const keysets = [
       Object.keys(mockUsePanelState()),
       Object.keys(mockUseFileSystem()),
@@ -116,6 +135,8 @@ describe('useAppState', () => {
       Object.keys(mockUseGitStatus()),
       Object.keys(mockUseSettings()),
       Object.keys(mockUsePromptExecution()),
+      Object.keys(mockUseHistory()),
+      Object.keys(mockUsePromptRunner()),
     ]
     for (let i = 0; i < keysets.length; i++) {
       for (let j = i + 1; j < keysets.length; j++) {
@@ -165,5 +186,34 @@ describe('useAppState', () => {
     expect(result.current).toHaveProperty('gitLoading', false)
     expect(result.current).toHaveProperty('gitError', null)
     expect(result.current).toHaveProperty('refreshGitStatus')
+  })
+
+  it('useHistory を呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUseHistory).toHaveBeenCalledOnce()
+  })
+
+  it('history の値が含まれる（history, historyLoaded, addHistoryEntry, deleteHistoryEntry, clearHistory）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('history', [])
+    expect(result.current).toHaveProperty('historyLoaded', false)
+    expect(result.current).toHaveProperty('addHistoryEntry')
+    expect(result.current).toHaveProperty('deleteHistoryEntry')
+    expect(result.current).toHaveProperty('clearHistory')
+  })
+
+  it('usePromptRunner を openFile・executePrompt・addHistoryEntry とともに呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUsePromptRunner).toHaveBeenCalledOnce()
+    const args = mockUsePromptRunner.mock.calls[0][0]
+    expect(args).toHaveProperty('openFile', null)
+    expect(args).toHaveProperty('executePrompt')
+    expect(args).toHaveProperty('addHistoryEntry')
+  })
+
+  it('promptRunner の値が含まれる（runPrompt, rerunHistoryEntry）', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current).toHaveProperty('runPrompt')
+    expect(result.current).toHaveProperty('rerunHistoryEntry')
   })
 })
