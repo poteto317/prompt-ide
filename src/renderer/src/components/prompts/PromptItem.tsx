@@ -11,7 +11,7 @@ import PromptVariablesForm from './PromptVariablesForm'
 interface Props {
   prompt: Prompt
   onDelete: (id: string) => void
-  onRun: (content: string) => void
+  onRun: (content: string, prompt: Prompt) => void
   onEdit: (id: string, title: string, content: string, tags: string[]) => void
   onTogglePin: (id: string) => void
   isRunDisabled?: boolean
@@ -46,14 +46,14 @@ export default function PromptItem({
   const handleRunClick = (): void => {
     // 変数を含まないプロンプトは従来どおり即実行。含む場合は値入力モードへ。
     if (variables.length === 0) {
-      onRun(prompt.content)
+      onRun(prompt.content, prompt)
       return
     }
     setIsFillingVariables(true)
   }
 
   const handleVariablesSubmit = (values: Record<string, string>): void => {
-    onRun(interpolatePrompt(prompt.content, values))
+    onRun(interpolatePrompt(prompt.content, values), prompt)
     setIsFillingVariables(false)
   }
 

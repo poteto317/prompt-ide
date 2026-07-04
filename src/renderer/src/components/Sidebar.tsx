@@ -1,11 +1,20 @@
 import PromptsPanel from './prompts/PromptsPanel'
 import ProgressPanel from './progress/ProgressPanel'
+import HistoryPanel from './history/HistoryPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
 import SourceControlPanel from './source-control/SourceControlPanel'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
-import type { PromptToolId, Panel, FileTreeNode, Prompt, Task, StageId } from '../types'
+import type {
+  PromptToolId,
+  Panel,
+  FileTreeNode,
+  Prompt,
+  Task,
+  StageId,
+  HistoryEntry
+} from '../types'
 import type { GitStatusResult } from '@shared/types'
 
 interface Props {
@@ -24,7 +33,7 @@ interface Props {
   onTogglePromptPin: (id: string) => void
   onExportPrompts: () => void
   onImportPrompts: () => void
-  onRunPrompt: (content: string, toolId: PromptToolId) => void
+  onRunPrompt: (content: string, toolId: PromptToolId, prompt: Prompt) => void
   isExecuting: boolean
   tasks: Task[]
   onAddTask: (title: string) => void
@@ -34,6 +43,10 @@ interface Props {
   onReopenStage: (taskId: string, stageId: StageId) => void
   onSkipStage: (taskId: string, stageId: StageId) => void
   onAdvanceStage: (taskId: string) => void
+  history: HistoryEntry[]
+  onDeleteHistoryEntry: (id: string) => void
+  onClearHistory: () => void
+  onRerunHistoryEntry: (entry: HistoryEntry) => void
   gitStatus: GitStatusResult | null
   gitLoading: boolean
   gitError: Error | null
@@ -70,6 +83,10 @@ export default function Sidebar({
   onReopenStage,
   onSkipStage,
   onAdvanceStage,
+  history,
+  onDeleteHistoryEntry,
+  onClearHistory,
+  onRerunHistoryEntry,
   gitStatus,
   gitLoading,
   gitError,
@@ -117,6 +134,15 @@ export default function Sidebar({
           onReopenStage={onReopenStage}
           onSkipStage={onSkipStage}
           onAdvanceStage={onAdvanceStage}
+        />
+      </PanelContainer>
+      <PanelContainer isActive={activePanel === 'history'}>
+        <HistoryPanel
+          history={history}
+          onDelete={onDeleteHistoryEntry}
+          onClear={onClearHistory}
+          onRerun={onRerunHistoryEntry}
+          isRerunDisabled={isExecuting}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>

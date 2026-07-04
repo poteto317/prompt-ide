@@ -1,5 +1,3 @@
-import { useCallback } from 'react'
-import type { PromptToolId } from './types'
 import { useAppState } from './hooks/useAppState'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
@@ -44,14 +42,13 @@ export default function App(): React.JSX.Element {
     isExecuting,
     result,
     executionError,
-    executePrompt,
-    clearResult
+    clearResult,
+    history,
+    deleteHistoryEntry,
+    clearHistory,
+    runPrompt,
+    rerunHistoryEntry
   } = useAppState()
-
-  const handleRunPrompt = useCallback(
-    (content: string, toolId: PromptToolId) => executePrompt(content, openFile?.content ?? null, toolId),
-    [executePrompt, openFile]
-  )
 
   return (
     <>
@@ -79,7 +76,7 @@ export default function App(): React.JSX.Element {
               onTogglePromptPin={togglePromptPin}
               onExportPrompts={exportPrompts}
               onImportPrompts={importPrompts}
-              onRunPrompt={handleRunPrompt}
+              onRunPrompt={runPrompt}
               isExecuting={isExecuting}
               tasks={tasks}
               onAddTask={addTask}
@@ -89,6 +86,10 @@ export default function App(): React.JSX.Element {
               onReopenStage={reopenStage}
               onSkipStage={skipStage}
               onAdvanceStage={advanceStage}
+              history={history}
+              onDeleteHistoryEntry={deleteHistoryEntry}
+              onClearHistory={clearHistory}
+              onRerunHistoryEntry={rerunHistoryEntry}
               gitStatus={gitStatus}
               gitLoading={gitLoading}
               gitError={gitError}

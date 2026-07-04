@@ -17,6 +17,8 @@ Object.defineProperty(window, 'api', {
     savePrompts: () => Promise.resolve(),
     loadTasks: () => Promise.resolve([]),
     saveTasks: () => Promise.resolve(),
-    runCLIPrompt: () => Promise.resolve('')
+    runCLIPrompt: () => Promise.resolve(''),
+    loadHistory: () => Promise.resolve([]),
+    saveHistory: () => Promise.resolve()
   }
 })

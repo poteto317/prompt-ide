@@ -76,7 +76,7 @@ describe('PromptItem', () => {
     const onRun = vi.fn()
     render(<PromptItem {...defaultProps} onRun={onRun} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テストコンテンツ')
+    expect(onRun).toHaveBeenCalledWith('テストコンテンツ', basePrompt)
   })
 
   it('isRunDisabled=true のとき実行ボタンが disabled になる', () => {
@@ -264,7 +264,7 @@ describe('PromptItem', () => {
       const onRun = vi.fn()
       render(<PromptItem {...defaultProps} onRun={onRun} />)
       await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-      expect(onRun).toHaveBeenCalledWith('テストコンテンツ')
+      expect(onRun).toHaveBeenCalledWith('テストコンテンツ', basePrompt)
     })
 
     it('変数を含むプロンプトは実行クリックで変数入力モードに遷移する', async () => {
@@ -284,7 +284,7 @@ describe('PromptItem', () => {
       await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
       await userEvent.type(screen.getByRole('textbox', { name: '変数 topic の値' }), 'React')
       await userEvent.click(screen.getByRole('button', { name: '変数を差し込んで実行' }))
-      expect(onRun).toHaveBeenCalledWith('田中 さんへ、React について教えて')
+      expect(onRun).toHaveBeenCalledWith('田中 さんへ、React について教えて', varPrompt)
     })
 
     it('変数が未入力のとき実行ボタンが disabled', async () => {

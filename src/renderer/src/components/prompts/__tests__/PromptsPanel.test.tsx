@@ -147,7 +147,7 @@ describe('PromptsPanel', () => {
     const onRun = vi.fn()
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api', samplePrompt)
   })
 
   it('ツールセレクタで copilot に変更してから実行すると toolId が copilot で onRun に渡る', async () => {
@@ -158,7 +158,7 @@ describe('PromptsPanel', () => {
       'copilot'
     )
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容', 'copilot')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'copilot', samplePrompt)
   })
 
   it('ツールセレクタで api に変更してから実行すると toolId が api で onRun に渡る', async () => {
@@ -169,7 +169,7 @@ describe('PromptsPanel', () => {
       'api'
     )
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
-    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api')
+    expect(onRun).toHaveBeenCalledWith('テスト内容', 'api', samplePrompt)
   })
 
   it('isRunDisabled=true のとき実行ボタンが disabled になる', () => {
