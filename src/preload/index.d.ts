@@ -15,6 +15,7 @@ declare global {
       openFolder(): Promise<string | null>
       readDirectory(path: string): Promise<FileTreeNode[]>
       readFile(path: string): Promise<string>
+      writeFile(path: string, content: string): Promise<void>
       getGitStatus(): Promise<GitStatusResult>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

@@ -6,16 +6,18 @@ const mockHandle = vi.hoisted(() => vi.fn())
 const mockOpenFolderDialog = vi.hoisted(() => vi.fn())
 const mockReadDirRecursive = vi.hoisted(() => vi.fn())
 const mockReadFileContent = vi.hoisted(() => vi.fn())
+const mockWriteFileContent = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
 vi.mock('../../dialogService', () => ({ openFolderDialog: mockOpenFolderDialog }))
 vi.mock('../../fileSystem', () => ({
   readDirRecursive: mockReadDirRecursive,
   readFileContent: mockReadFileContent,
+  writeFileContent: mockWriteFileContent
 }))
 vi.mock('node:fs/promises', () => ({
   default: { realpath: mockRealpath },
-  realpath: mockRealpath,
+  realpath: mockRealpath
 }))
 
 import { registerFileSystemHandlers } from '../../handlers/fileSystemHandlers'
@@ -28,7 +30,7 @@ function makeFolderAccess(overrides?: Partial<FolderAccessManager>): FolderAcces
     get: vi.fn(),
     delete: vi.fn(),
     assertWithinFolder: vi.fn(),
-    ...overrides,
+    ...overrides
   } as unknown as FolderAccessManager
 }
 
@@ -40,6 +42,12 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
 
 function makeEvent(senderId: number) {
   return { sender: { id: senderId } }
+}
+
+function makeEnoentError(path: string): NodeJS.ErrnoException {
+  const err = new Error(`ENOENT: no such file or directory, realpath '${path}'`) as NodeJS.ErrnoException
+  err.code = 'ENOENT'
+  return err
 }
 
 beforeEach(() => {
@@ -114,7 +122,7 @@ describe('registerFileSystemHandlers', () => {
     it('folderAccess.assertWithinFolder に委譲する', async () => {
       const folderAccess = makeFolderAccess({
         get: vi.fn().mockReturnValue('/project'),
-        assertWithinFolder: vi.fn().mockResolvedValue(undefined),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
       registerFileSystemHandlers(mockIpcMain, folderAccess)
       mockReadFileContent.mockResolvedValue('content')
@@ -125,7 +133,7 @@ describe('registerFileSystemHandlers', () => {
     it('assertWithinFolder が通った後に readFileContent を呼ぶ', async () => {
       const folderAccess = makeFolderAccess({
         get: vi.fn().mockReturnValue('/project'),
-        assertWithinFolder: vi.fn().mockResolvedValue(undefined),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
       registerFileSystemHandlers(mockIpcMain, folderAccess)
       mockReadFileContent.mockResolvedValue('const x = 1')
@@ -136,13 +144,103 @@ describe('registerFileSystemHandlers', () => {
     it('assertWithinFolder がエラーをスローしたとき readFileContent を呼ばない', async () => {
       const folderAccess = makeFolderAccess({
         get: vi.fn().mockReturnValue('/project'),
-        assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd')),
+        assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd'))
       })
       registerFileSystemHandlers(mockIpcMain, folderAccess)
       await expect(
         getRegisteredHandler('fs:readFile')(makeEvent(1), '/etc/passwd')
       ).rejects.toThrow('Access denied')
       expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+
+    it('選択したファイルが外部で削除され assertWithinFolder が ENOENT をスローしたとき、分かりやすいメッセージに変換する', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockRejectedValue(makeEnoentError('/project/index.ts'))
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:readFile')(makeEvent(1), '/project/index.ts')
+      ).rejects.toThrow('ファイルが見つかりません: /project/index.ts')
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('fs:writeFile', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('folderAccess.assertWithinFolder に委譲する', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
+      expect(folderAccess.assertWithinFolder).toHaveBeenCalledWith('/project', '/project/index.ts')
+    })
+
+    it('assertWithinFolder が通った後に writeFileContent を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
+      expect(mockWriteFileContent).toHaveBeenCalledWith('/project/index.ts', 'new content')
+    })
+
+    it('assertWithinFolder がエラーをスローしたとき writeFileContent を呼ばない', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd'))
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:writeFile')(makeEvent(1), '/etc/passwd', 'x')
+      ).rejects.toThrow('Access denied')
+      expect(mockWriteFileContent).not.toHaveBeenCalled()
+    })
+
+    it('保存対象ファイルが外部で削除され assertWithinFolder が ENOENT をスローしたとき、分かりやすいメッセージに変換する', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockRejectedValue(makeEnoentError('/project/index.ts'))
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
+      ).rejects.toThrow('ファイルが見つかりません: /project/index.ts')
+      expect(mockWriteFileContent).not.toHaveBeenCalled()
+    })
+
+    it('writeFileContent 自体が ENOENT をスローしたときも分かりやすいメッセージに変換する', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockWriteFileContent.mockRejectedValue(makeEnoentError('/project/index.ts'))
+      await expect(
+        getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
+      ).rejects.toThrow('ファイルが見つかりません: /project/index.ts')
+    })
+
+    it('ENOENT 以外のエラーはそのままスローする', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      await expect(
+        getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
+      ).rejects.toThrow('EACCES')
     })
   })
 })
