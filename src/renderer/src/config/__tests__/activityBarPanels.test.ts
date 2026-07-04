@@ -2,7 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { activityBarPanels } from '../activityBarPanels'
 import type { Panel } from '../../types'
 
-const ALL_PANELS: Panel[] = ['explorer', 'source-control', 'prompts', 'progress', 'settings']
+const ALL_PANELS: Panel[] = [
+  'explorer',
+  'source-control',
+  'prompts',
+  'progress',
+  'history',
+  'settings'
+]
 
 describe('activityBarPanels', () => {
   it('Panel 型の全値がエントリーとして存在する', () => {
