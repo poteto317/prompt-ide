@@ -57,6 +57,16 @@ describe('HistoryItem', () => {
     expect(screen.getByRole('radio')).toHaveAttribute('aria-checked', 'false')
   })
 
+  it('isSelected のとき tabIndex=0、そうでないとき tabIndex=-1 になる（roving tabindex）', () => {
+    const { rerender } = render(
+      <HistoryItem entry={successEntry} isSelected={true} onSelect={vi.fn()} />
+    )
+    expect(screen.getByRole('radio')).toHaveAttribute('tabIndex', '0')
+
+    rerender(<HistoryItem entry={successEntry} isSelected={false} onSelect={vi.fn()} />)
+    expect(screen.getByRole('radio')).toHaveAttribute('tabIndex', '-1')
+  })
+
   it('未知の toolId のとき生の toolId をそのまま表示する', () => {
     const entry: HistoryEntry = { ...successEntry, toolId: 'unknown-tool' as never }
     render(<HistoryItem entry={entry} isSelected={false} onSelect={vi.fn()} />)

@@ -132,4 +132,30 @@ describe('HistoryPanel', () => {
     rerender(<HistoryPanel history={[newEntry, entry1, entry2]} {...handlers} />)
     expect(within(getDetail(container)).getByText('結果3')).toBeInTheDocument()
   })
+
+  it('ArrowDown で次の履歴に選択とフォーカスが移動する（roving tabindex）', async () => {
+    const { container } = render(<HistoryPanel history={[entry1, entry2]} {...handlers} />)
+    const group = screen.getByRole('radiogroup', { name: '履歴一覧' })
+    const radios = within(group).getAllByRole('radio')
+    radios[0].focus()
+
+    await userEvent.keyboard('{ArrowDown}')
+
+    expect(within(getDetail(container)).getByText('結果2')).toBeInTheDocument()
+    expect(radios[1]).toHaveFocus()
+    expect(radios[1]).toHaveAttribute('tabIndex', '0')
+    expect(radios[0]).toHaveAttribute('tabIndex', '-1')
+  })
+
+  it('ArrowUp で先頭にいる場合は末尾の履歴に循環する', async () => {
+    const { container } = render(<HistoryPanel history={[entry1, entry2]} {...handlers} />)
+    const group = screen.getByRole('radiogroup', { name: '履歴一覧' })
+    const radios = within(group).getAllByRole('radio')
+    radios[0].focus()
+
+    await userEvent.keyboard('{ArrowUp}')
+
+    expect(within(getDetail(container)).getByText('結果2')).toBeInTheDocument()
+    expect(radios[1]).toHaveFocus()
+  })
 })

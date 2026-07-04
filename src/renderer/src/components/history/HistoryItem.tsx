@@ -21,6 +21,8 @@ export default function HistoryItem({ entry, isSelected, onSelect }: Props) {
       onClick={onSelect}
       role="radio"
       aria-checked={isSelected}
+      tabIndex={isSelected ? 0 : -1}
+      data-entry-id={entry.id}
     >
       <div className="history-item__header">
         <span className="history-item__title">{entry.promptTitle}</span>
