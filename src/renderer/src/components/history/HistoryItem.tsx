@@ -7,22 +7,23 @@ interface Props {
   entry: HistoryEntry
   isSelected: boolean
   onSelect: () => void
+  itemRef?: (el: HTMLButtonElement | null) => void
 }
 
-export default function HistoryItem({ entry, isSelected, onSelect }: Props) {
+export default function HistoryItem({ entry, isSelected, onSelect, itemRef }: Props) {
   const toolLabel = getToolLabel(entry.toolId)
   const statusLabel = getStatusLabel(entry.status)
   const preview = truncatePreview(entry.resultText ?? entry.errorMessage ?? '')
 
   return (
     <button
+      ref={itemRef}
       type="button"
       className={`history-item${isSelected ? ' history-item--selected' : ''}`}
       onClick={onSelect}
       role="radio"
       aria-checked={isSelected}
       tabIndex={isSelected ? 0 : -1}
-      data-entry-id={entry.id}
     >
       <div className="history-item__header">
         <span className="history-item__title">{entry.promptTitle}</span>

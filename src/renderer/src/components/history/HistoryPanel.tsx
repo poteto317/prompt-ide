@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import type { HistoryEntry } from '../../types'
 import { useSelectedHistoryEntry } from '../../hooks/useSelectedHistoryEntry'
 import HistoryItem from './HistoryItem'
@@ -21,29 +21,24 @@ export default function HistoryPanel({
   isRerunDisabled = false
 }: Props) {
   const { selectedEntry, selectEntry, deselectIfMatches } = useSelectedHistoryEntry(history)
-  const listRef = useRef<HTMLDivElement>(null)
-  // 矢印キーでの移動時のみフォーカスを追従させる（キーボード操作以外での選択変更で
-  // フォーカスを奪わないよう、キーダウンハンドラ内で明示的にセットしたときだけ発火する）
-  const pendingFocusIdRef = useRef<string | null>(null)
+  // id → ボタン要素の参照を保持する。DOM文字列セレクタでの検索を避けるため
+  // （id は history.json 由来の永続データで任意の文字列になりうる）、
+  // 各 HistoryItem がマウント時に自身の参照をここへ登録する。
+  const itemRefs = useRef(new Map<string, HTMLButtonElement>())
 
-  useEffect(() => {
-    const pendingId = pendingFocusIdRef.current
-    if (pendingId === null) return
-    pendingFocusIdRef.current = null
-    // id は history.json（手動編集や破損の可能性がある永続データ）由来のため、
-    // CSS.escape でエスケープしてから属性セレクタを組み立てる（未エスケープだと
-    // " や ] を含む id で querySelector が SyntaxError を投げうる）
-    listRef.current
-      ?.querySelector<HTMLButtonElement>(`[data-entry-id="${CSS.escape(pendingId)}"]`)
-      ?.focus()
-  }, [selectedEntry?.id])
+  const registerItemRef = (id: string, el: HTMLButtonElement | null): void => {
+    if (el) itemRefs.current.set(id, el)
+    else itemRefs.current.delete(id)
+  }
 
   const handleDelete = (id: string): void => {
     deselectIfMatches(id)
     onDelete(id)
   }
 
-  // radiogroup の慣例に沿い、矢印キーで前後の履歴へ選択とフォーカスを移動する（roving tabindex）
+  // radiogroup の慣例に沿い、矢印キーで前後の履歴へ選択とフォーカスを移動する（roving tabindex）。
+  // 対象のボタン要素は選択に関わらず常にマウントされているため、ハンドラ内で同期的に
+  // focus() を呼べる（再レンダー後の副作用を挟まないため、フォーカス対象の取りこぼしが起きない）。
   const handleListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
@@ -51,8 +46,8 @@ export default function HistoryPanel({
     if (currentIndex === -1) return
     const delta = e.key === 'ArrowDown' ? 1 : -1
     const nextEntry = history[(currentIndex + delta + history.length) % history.length]
-    pendingFocusIdRef.current = nextEntry.id
     selectEntry(nextEntry.id)
+    itemRefs.current.get(nextEntry.id)?.focus()
   }
 
   return (
@@ -73,7 +68,6 @@ export default function HistoryPanel({
         ) : (
           <>
             <div
-              ref={listRef}
               className="history-panel__list"
               role="radiogroup"
               aria-label="履歴一覧"
@@ -85,6 +79,7 @@ export default function HistoryPanel({
                   entry={entry}
                   isSelected={entry.id === selectedEntry?.id}
                   onSelect={() => selectEntry(entry.id)}
+                  itemRef={(el) => registerItemRef(entry.id, el)}
                 />
               ))}
             </div>

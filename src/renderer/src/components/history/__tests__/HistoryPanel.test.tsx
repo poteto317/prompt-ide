@@ -160,8 +160,9 @@ describe('HistoryPanel', () => {
   })
 
   it('id に CSS セレクタの特殊文字（" や ]）が含まれていても矢印キー移動でクラッシュしない', async () => {
-    // history.json は手動編集・破損等で任意の文字列が id に入り得るため、
-    // CSS.escape でエスケープせずに querySelector を組み立てると SyntaxError になる
+    // history.json は手動編集・破損等で任意の文字列が id に入り得る。
+    // フォーカス対象の解決は ref の Map（文字列キー）で行うため、CSS セレクタへの
+    // 変換が発生せず、この種の文字が id に含まれていても問題なく動作する。
     const entryWithSpecialId: HistoryEntry = { ...entry2, id: 'weird"id]with[chars' }
     const { container } = render(
       <HistoryPanel history={[entry1, entryWithSpecialId]} {...handlers} />
@@ -174,5 +175,20 @@ describe('HistoryPanel', () => {
 
     expect(within(getDetail(container)).getByText('結果2')).toBeInTheDocument()
     expect(radios[1]).toHaveFocus()
+  })
+
+  it('履歴が1件のときに矢印キーを押しても同じ項目に留まる（クラッシュや不正な状態にならない）', async () => {
+    render(<HistoryPanel history={[entry1]} {...handlers} />)
+    const group = screen.getByRole('radiogroup', { name: '履歴一覧' })
+    const radios = within(group).getAllByRole('radio')
+    radios[0].focus()
+
+    await userEvent.keyboard('{ArrowDown}')
+    expect(radios[0]).toHaveFocus()
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.keyboard('{ArrowUp}')
+    expect(radios[0]).toHaveFocus()
+    expect(radios[0]).toHaveAttribute('aria-checked', 'true')
   })
 })
