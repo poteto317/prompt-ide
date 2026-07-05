@@ -330,6 +330,83 @@ describe('useFileSystem', () => {
       expect(result.current.saveError).toBeNull()
     })
 
+    it('保存失敗後に同じファイルを開き直しても saveError がクリアされる（reselect同一パス）', async () => {
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      mockReadFileContent.mockResolvedValue('const x = 1')
+      const sameNode: FileTreeNode = {
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      }
+      await act(async () => {
+        await result.current.selectFile(sameNode)
+      })
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('別ファイルの保存中でも、切り替え先のファイルは isSaving でブロックされずに保存できる', async () => {
+      let resolveWrite: () => void = () => {}
+      mockWriteFileContent.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      let firstSave: Promise<void> = Promise.resolve()
+      act(() => {
+        firstSave = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      mockReadFileContent.mockResolvedValue('package content')
+      const otherNode: FileTreeNode = {
+        name: 'package.json',
+        path: '/project/package.json',
+        type: 'file'
+      }
+      await act(async () => {
+        await result.current.selectFile(otherNode)
+      })
+      expect(result.current.isSaving).toBe(false)
+
+      mockWriteFileContent.mockResolvedValueOnce(undefined)
+      act(() => {
+        result.current.updateFileContent('package content 2')
+      })
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(mockWriteFileContent).toHaveBeenCalledWith(
+        '/project/package.json',
+        'package content 2'
+      )
+
+      await act(async () => {
+        resolveWrite()
+        await firstSave
+      })
+    })
+
     it('isSaving が戻り値から利用でき、保存完了後は false に戻る', async () => {
       let resolveWrite: () => void = () => {}
       mockWriteFileContent.mockImplementation(

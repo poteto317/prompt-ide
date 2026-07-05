@@ -140,41 +140,33 @@ describe('saveFile', () => {
     const updater = setOpenFile.mock.calls[0][0]
     expect(updater(otherFile)).toBe(otherFile)
   })
-})
 
-describe('isSaving', () => {
-  it('保存開始で true になり、完了で false に戻る', async () => {
-    let resolveWrite: () => void = () => {}
-    mockWriteFileContent.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveWrite = resolve
-        })
-    )
+  it('同一レンダー内で連続して呼ばれても writeFileContent は一度しか呼ばれない（同期的な多重保存ガード）', async () => {
+    mockWriteFileContent.mockResolvedValue(undefined)
     const { result } = renderHook(() => useFileEditing(dirtyFile, vi.fn()))
-
-    let savePromise: Promise<void> = Promise.resolve()
-    act(() => {
-      savePromise = result.current.saveFile()
-    })
-    expect(result.current.isSaving).toBe(true)
 
     await act(async () => {
-      resolveWrite()
-      await savePromise
+      const p1 = result.current.saveFile()
+      const p2 = result.current.saveFile()
+      await Promise.all([p1, p2])
     })
-    expect(result.current.isSaving).toBe(false)
-  })
 
-  it('保存中に再度 saveFile を呼んでも writeFileContent は多重に呼ばれない（多重保存ガード）', async () => {
-    let resolveWrite: () => void = () => {}
-    mockWriteFileContent.mockImplementation(
+    expect(mockWriteFileContent).toHaveBeenCalledOnce()
+  })
+})
+
+describe('isSaving は path 単位でスコープされる', () => {
+  it('別ファイルの保存中でも、今表示しているファイルの isSaving はブロックされず保存できる', async () => {
+    let resolveFirstWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
-          resolveWrite = resolve
+          resolveFirstWrite = resolve
         })
     )
-    const { result } = renderHook(() => useFileEditing(dirtyFile, vi.fn()))
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
+      initialProps: { file: dirtyFile as OpenFile | null }
+    })
 
     let firstSave: Promise<void> = Promise.resolve()
     act(() => {
@@ -182,33 +174,53 @@ describe('isSaving', () => {
     })
     expect(result.current.isSaving).toBe(true)
 
+    // dirtyFile の保存がまだ pending のまま、別ファイルへ切り替える
+    rerender({ file: otherFile })
+    expect(result.current.isSaving).toBe(false)
+
+    mockWriteFileContent.mockResolvedValueOnce(undefined)
     await act(async () => {
       await result.current.saveFile()
     })
-    expect(mockWriteFileContent).toHaveBeenCalledOnce()
+
+    expect(mockWriteFileContent).toHaveBeenCalledWith(otherFile.path, otherFile.content)
+    expect(result.current.saveError).toBeNull()
 
     await act(async () => {
-      resolveWrite()
+      resolveFirstWrite()
       await firstSave
     })
-    expect(result.current.isSaving).toBe(false)
   })
 })
 
-describe('ファイル切り替え時の saveError', () => {
-  it('保存失敗後に別ファイルへ切り替わると saveError がクリアされる', async () => {
+describe('resetForFileChange', () => {
+  it('呼ぶと saveError がクリアされる', async () => {
     mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
-    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
-      initialProps: { file: dirtyFile as OpenFile | null }
-    })
+    const { result } = renderHook(() => useFileEditing(dirtyFile, vi.fn()))
 
     await act(async () => {
       await result.current.saveFile()
     })
     expect(result.current.saveError?.message).toBe('EACCES')
 
-    rerender({ file: otherFile })
+    act(() => {
+      result.current.resetForFileChange()
+    })
     expect(result.current.saveError).toBeNull()
+  })
+
+  it('呼ばずに openFile が別ファイルへ変わっただけでは saveError は自動でクリアされない（呼び出し側が明示的に呼ぶ責務）', async () => {
+    mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
+      initialProps: { file: dirtyFile as OpenFile | null }
+    })
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(result.current.saveError?.message).toBe('EACCES')
+
+    rerender({ file: otherFile })
+    expect(result.current.saveError?.message).toBe('EACCES')
   })
 
   it('保存中に別ファイルへ切り替わっていた場合、後から保存が失敗しても saveError はセットされない', async () => {
@@ -238,22 +250,39 @@ describe('ファイル切り替え時の saveError', () => {
     expect(result.current.saveError).toBeNull()
   })
 
-  it('同じファイルのまま再レンダーされても saveError はクリアされない（path が変化しない限り消えない）', async () => {
-    mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
-    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
+  it('保存中に同じファイルを開き直した(resetForFileChangeで世代が変わった)場合、遅れて届いた古い保存成功は反映されない', async () => {
+    let resolveWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveWrite = resolve
+        })
+    )
+    const setOpenFile = vi.fn()
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, setOpenFile), {
       initialProps: { file: dirtyFile as OpenFile | null }
     })
 
-    await act(async () => {
-      await result.current.saveFile()
+    let savePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      savePromise = result.current.saveFile()
     })
-    expect(result.current.saveError?.message).toBe('EACCES')
 
-    // path は同じまま content だけ変わった再レンダー（ユーザーが編集を続けているケース）
-    const furtherEditedSameFile: OpenFile = { ...dirtyFile, content: 'const x = 3' }
-    rerender({ file: furtherEditedSameFile })
+    // ユーザーが破棄確認の上で同じ path のファイルを開き直した想定
+    // （selectFile が新しい OpenFile オブジェクトを生成し resetForFileChange を呼ぶ）
+    const reloadedSameFile: OpenFile = { ...dirtyFile, content: dirtyFile.savedContent }
+    rerender({ file: reloadedSameFile })
+    act(() => {
+      result.current.resetForFileChange()
+    })
 
-    expect(result.current.saveError?.message).toBe('EACCES')
+    await act(async () => {
+      resolveWrite()
+      await savePromise
+    })
+
+    const updater = setOpenFile.mock.calls[0][0]
+    expect(updater(reloadedSameFile)).toBe(reloadedSameFile)
   })
 })
 

@@ -27,8 +27,15 @@ export function useFileSystem(options?: Options): FileSystemState {
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
   // 同一の error を Sidebar/EditorPanel 双方に渡すと、フォルダ読み込み失敗が
   // エディタ側に「保存失敗」として表示されるなど無関係なエラーが混線するため。
-  const { isDirty, isSaving, saveError, updateFileContent, saveFile, confirmDiscardIfDirty } =
-    useFileEditing(openFile, setOpenFile, options)
+  const {
+    isDirty,
+    isSaving,
+    saveError,
+    updateFileContent,
+    saveFile,
+    resetForFileChange,
+    confirmDiscardIfDirty
+  } = useFileEditing(openFile, setOpenFile, options)
 
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
@@ -40,6 +47,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       setFolderPath(path)
       setFileTree(tree)
       setOpenFile(null)
+      resetForFileChange()
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
     }
@@ -54,6 +62,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     try {
       const content = await fileSystemApi.readFileContent(fileNode.path)
       setOpenFile(createOpenFile(fileNode, content))
+      resetForFileChange()
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
     }
