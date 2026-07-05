@@ -1,7 +1,6 @@
 import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { useLatestRef } from './useLatestRef'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
@@ -25,7 +24,6 @@ export function useFileEditing(
 ): FileEditingState {
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<Error | null>(null)
-  const openFileRef = useLatestRef(openFile)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
 
   // ファイルが切り替わったら、直前のファイルに対する保存エラーは意味を持たなくなるため
@@ -62,7 +60,9 @@ export function useFileEditing(
     } catch (err) {
       // 保存中に別ファイルへ切り替わっていた場合、この保存失敗はもう画面上の
       // ファイルとは無関係なので、無関係なファイルにエラーを表示しない。
-      if (openFileRef.current?.path === path) {
+      // lastFilePathRef は render 中に同期更新されるため、この時点で既に
+      // 最新の openFile.path を反映している（専用の ref を別途持つ必要はない）。
+      if (lastFilePathRef.current === path) {
         setSaveError(err instanceof Error ? err : new Error(String(err)))
       }
     } finally {
