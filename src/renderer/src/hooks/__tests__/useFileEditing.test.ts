@@ -191,6 +191,56 @@ describe('isSaving は path 単位でスコープされる', () => {
       await firstSave
     })
   })
+
+  it('file A 保存中に file B の保存が始まっても、A へ戻ったときの多重保存防止は失われない', async () => {
+    let resolveA: () => void = () => {}
+    let resolveB: () => void = () => {}
+    mockWriteFileContent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveA = resolve
+        })
+    )
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, vi.fn()), {
+      initialProps: { file: dirtyFile as OpenFile | null }
+    })
+
+    // file A (dirtyFile) の保存を開始（pending のまま）
+    let saveA: Promise<void> = Promise.resolve()
+    act(() => {
+      saveA = result.current.saveFile()
+    })
+
+    // file B (otherFile) へ切り替えて保存を開始（こちらも pending のまま）
+    rerender({ file: otherFile })
+    mockWriteFileContent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveB = resolve
+        })
+    )
+    let saveB: Promise<void> = Promise.resolve()
+    act(() => {
+      saveB = result.current.saveFile()
+    })
+
+    // file A へ戻る。A の最初の保存はまだ pending のままのはず。
+    rerender({ file: dirtyFile })
+    expect(result.current.isSaving).toBe(true)
+
+    // この状態で再度 saveFile を呼んでも、A への writeFileContent は追加で発火しない
+    // （最初の保存が既に in-flight であるため多重保存としてブロックされる）。
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(mockWriteFileContent).toHaveBeenCalledTimes(2) // A の最初の1回 + B の1回のみ
+
+    await act(async () => {
+      resolveA()
+      resolveB()
+      await Promise.all([saveA, saveB])
+    })
+  })
 })
 
 describe('resetForFileChange', () => {

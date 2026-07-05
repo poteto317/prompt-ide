@@ -23,14 +23,18 @@ export function useFileEditing(
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>,
   { onConfirm = confirm }: Options = {}
 ): FileEditingState {
-  // 保存中のファイルの path を保持する。isSaving は単一の boolean ではなく
-  // path で比較することで、「file A の保存中に file B を保存しようとしたら
-  // ブロックされる」という無関係なファイル間の干渉を防ぐ（多重保存防止は
-  // 同一 path への再入のみをガードすれば十分なため）。
-  const [savingPath, setSavingPath] = useState<string | null>(null)
+  // 保存中のファイルの path 集合を保持する。isSaving は単一の boolean ではなく
+  // path の集合で判定することで、「file A の保存中に file B を保存しようとしたら
+  // ブロックされる」という無関係なファイル間の干渉を防ぐ。単一スロット(直近の
+  // 1件のみ)ではなく Set にしているのは、file A 保存中に file B の保存が始まり、
+  // さらに file A へ戻って再度保存しようとするような複数ファイルにまたがる
+  // 保存の重なりでも、各 path が独立して多重保存防止されるようにするため
+  // （単一スロットだと直近の file B の情報で file A の追跡が上書きされ、
+  // file A への同時書き込みを防げなくなってしまう）。
+  const [savingPaths, setSavingPaths] = useState<ReadonlySet<string>>(() => new Set())
   const [saveError, setSaveError] = useState<Error | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
-  const isSaving = openFile !== null && savingPath === openFile.path
+  const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
   // 現在表示中のファイルの path を、保存完了時に「表示中のファイルと保存対象が
   // 一致するか」を判定するために追跡する。値が変わったときだけ render 中に
@@ -49,10 +53,11 @@ export function useFileEditing(
   const generationRef = useRef(0)
 
   // 同一ファイルへの多重保存（連打・Cmd+Sの連続入力）を同期的に防ぐ。React
-  // state の savingPath だけに頼ると、同一レンダー内で saveFile() が連続で
-  // 呼ばれた場合に setState のバッチングにより両方とも古い値を見てガードを
-  // すり抜けてしまうため、即座に反映される ref で判定する。
-  const savingRef = useRef<{ path: string; generation: number } | null>(null)
+  // state だけに頼ると、同一レンダー内で saveFile() が連続で呼ばれた場合に
+  // setState のバッチングにより両方とも古い値を見てガードをすり抜けてしまう
+  // ため、即座に反映される ref（savingPaths state と同じ内容を持つ path の
+  // 集合）で判定する。同一 path が既に含まれていれば再入とみなしブロックする。
+  const savingPathsRef = useRef<Set<string>>(new Set())
 
   const updateFileContent = (content: string): void => {
     setOpenFile((prev) => (prev === null ? prev : { ...prev, content }))
@@ -72,10 +77,10 @@ export function useFileEditing(
   const saveFile = async (): Promise<void> => {
     if (openFile === null) return
     const { path, content } = openFile
-    if (savingRef.current?.path === path) return
+    if (savingPathsRef.current.has(path)) return
     const generation = generationRef.current
-    savingRef.current = { path, generation }
-    setSavingPath(path)
+    savingPathsRef.current.add(path)
+    setSavingPaths(new Set(savingPathsRef.current))
     setSaveError(null)
     try {
       await fileSystemApi.writeFileContent(path, content)
@@ -97,10 +102,8 @@ export function useFileEditing(
         setSaveError(err instanceof Error ? err : new Error(String(err)))
       }
     } finally {
-      if (savingRef.current?.path === path && savingRef.current.generation === generation) {
-        savingRef.current = null
-      }
-      setSavingPath((prev) => (prev === path ? null : prev))
+      savingPathsRef.current.delete(path)
+      setSavingPaths(new Set(savingPathsRef.current))
     }
   }
 
