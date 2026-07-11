@@ -74,6 +74,11 @@ describe('EditorTabs', () => {
     expect(screen.getByText('保存に失敗しました')).toBeInTheDocument()
   })
 
+  it('saveError があるときエラーメッセージに role="alert" が付き、スクリーンリーダーにアナウンスされる', () => {
+    render(<EditorTabs {...defaultProps} saveError={new Error('保存に失敗しました')} />)
+    expect(screen.getByRole('alert')).toHaveTextContent('保存に失敗しました')
+  })
+
   it('saveError が null のときエラーメッセージは表示されない', () => {
     render(<EditorTabs {...defaultProps} saveError={null} />)
     expect(document.querySelector('.editor-tabs__error')).not.toBeInTheDocument()

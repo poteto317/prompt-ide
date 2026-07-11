@@ -17,7 +17,11 @@ export default function EditorTabs({ fileName, isDirty, isSaving, saveError, onS
           </span>
         )}
       </div>
-      {saveError && <p className="editor-tabs__error">{saveError.message}</p>}
+      {saveError && (
+        <p className="editor-tabs__error" role="alert">
+          {saveError.message}
+        </p>
+      )}
       <button
         type="button"
         className="editor-tabs__save-btn"
