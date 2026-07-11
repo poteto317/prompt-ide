@@ -6,7 +6,7 @@ describe('createOpenFile', () => {
   const node: FileNode = {
     name: 'index.ts',
     path: '/project/src/index.ts',
-    type: 'file',
+    type: 'file'
   }
 
   it('path / name / content が node とコンテンツから正しく設定される', () => {
@@ -14,6 +14,11 @@ describe('createOpenFile', () => {
     expect(result.path).toBe('/project/src/index.ts')
     expect(result.name).toBe('index.ts')
     expect(result.content).toBe('const x = 1')
+  })
+
+  it('savedContent が content と同じ値で初期化される（未保存差分なし）', () => {
+    const result = createOpenFile(node, 'const x = 1')
+    expect(result.savedContent).toBe('const x = 1')
   })
 
   it('language が detectLanguage(node.name) の結果と一致する', () => {

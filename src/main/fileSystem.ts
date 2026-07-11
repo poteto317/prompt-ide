@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { readdir, readFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
 import type { FileTreeNode } from '@shared/types'
 
@@ -7,6 +7,10 @@ export type { FileTreeNode }
 
 export function readFileContent(filePath: string): Promise<string> {
   return readFile(filePath, 'utf-8')
+}
+
+export function writeFileContent(filePath: string, content: string): Promise<void> {
+  return writeFile(filePath, content, 'utf-8')
 }
 
 export async function readDirRecursive(dirPath: string, depth = 0): Promise<FileTreeNode[]> {
@@ -22,7 +26,7 @@ export async function readDirRecursive(dirPath: string, depth = 0): Promise<File
             name: e.name,
             path: fullPath,
             type: 'directory',
-            children: await readDirRecursive(fullPath, depth + 1),
+            children: await readDirRecursive(fullPath, depth + 1)
           }
         }
         return { name: e.name, path: fullPath, type: 'file' }

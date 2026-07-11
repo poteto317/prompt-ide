@@ -1,8 +1,23 @@
 import { realpath } from 'node:fs/promises'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { openFolderDialog } from '../dialogService'
-import { readDirRecursive, readFileContent } from '../fileSystem'
+import { readDirRecursive, readFileContent, writeFileContent } from '../fileSystem'
 import type { FolderAccessManager } from '../folderAccessManager'
+
+function getAllowedFolder(folderAccess: FolderAccessManager, event: IpcMainInvokeEvent): string {
+  const allowedFolder = folderAccess.get(event.sender.id)
+  if (allowedFolder === undefined) throw new Error('No folder open')
+  return allowedFolder
+}
+
+async function assertFileAccess(
+  folderAccess: FolderAccessManager,
+  event: IpcMainInvokeEvent,
+  filePath: string
+): Promise<void> {
+  const allowedFolder = getAllowedFolder(folderAccess, event)
+  await folderAccess.assertWithinFolder(allowedFolder, filePath)
+}
 
 export function registerFileSystemHandlers(
   ipcMain: IpcMain,
@@ -15,8 +30,7 @@ export function registerFileSystemHandlers(
   })
 
   ipcMain.handle('fs:readDirectory', async (event: IpcMainInvokeEvent, folderPath: string) => {
-    const allowedFolder = folderAccess.get(event.sender.id)
-    if (allowedFolder === undefined) throw new Error('No folder open')
+    const allowedFolder = getAllowedFolder(folderAccess, event)
     const resolvedTarget = await realpath(folderPath)
     if (resolvedTarget !== allowedFolder) {
       throw new Error(`Access denied: ${folderPath}`)
@@ -25,9 +39,33 @@ export function registerFileSystemHandlers(
   })
 
   ipcMain.handle('fs:readFile', async (event: IpcMainInvokeEvent, filePath: string) => {
-    const allowedFolder = folderAccess.get(event.sender.id)
-    if (allowedFolder === undefined) throw new Error('No folder open')
-    await folderAccess.assertWithinFolder(allowedFolder, filePath)
-    return readFileContent(filePath)
+    try {
+      await assertFileAccess(folderAccess, event, filePath)
+      return await readFileContent(filePath)
+    } catch (err) {
+      if (isEnoentError(err)) {
+        throw new Error(`ファイルが見つかりません: ${filePath}`)
+      }
+      throw err
+    }
   })
+
+  ipcMain.handle(
+    'fs:writeFile',
+    async (event: IpcMainInvokeEvent, filePath: string, content: string) => {
+      try {
+        await assertFileAccess(folderAccess, event, filePath)
+        return await writeFileContent(filePath, content)
+      } catch (err) {
+        if (isEnoentError(err)) {
+          throw new Error(`ファイルが見つかりません: ${filePath}`)
+        }
+        throw err
+      }
+    }
+  )
+}
+
+function isEnoentError(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT'
 }

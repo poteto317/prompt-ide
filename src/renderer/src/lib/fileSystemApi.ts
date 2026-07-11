@@ -11,3 +11,7 @@ export function readDirectory(path: string): Promise<FileTreeNode[]> {
 export function readFileContent(path: string): Promise<string> {
   return window.api.readFile(path)
 }
+
+export function writeFileContent(path: string, content: string): Promise<void> {
+  return window.api.writeFile(path, content)
+}

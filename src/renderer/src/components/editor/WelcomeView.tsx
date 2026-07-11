@@ -6,7 +6,13 @@ import EditorTabs from './EditorTabs'
 export default function WelcomeView() {
   return (
     <>
-      <EditorTabs fileName="welcome.ts" />
+      <EditorTabs
+        fileName="welcome.ts"
+        isDirty={false}
+        isSaving={false}
+        saveError={null}
+        onSave={() => {}}
+      />
       <div className="editor-body">
         <Editor
           height="100%"

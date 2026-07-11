@@ -13,6 +13,8 @@ export const api = {
   readDirectory: (path: string): Promise<FileTreeNode[]> =>
     ipcRenderer.invoke('fs:readDirectory', path),
   readFile: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
+  writeFile: (path: string, content: string): Promise<void> =>
+    ipcRenderer.invoke('fs:writeFile', path, content),
   getGitStatus: (): Promise<GitStatusResult> => ipcRenderer.invoke('git:getStatus'),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),

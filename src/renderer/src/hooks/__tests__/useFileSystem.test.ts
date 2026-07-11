@@ -10,12 +10,16 @@ import { useFileSystem } from '../useFileSystem'
 const mockOpenFolder = vi.mocked(fileSystemApi.openFolder)
 const mockReadDirectory = vi.mocked(fileSystemApi.readDirectory)
 const mockReadFileContent = vi.mocked(fileSystemApi.readFileContent)
+const mockWriteFileContent = vi.mocked(fileSystemApi.writeFileContent)
 
 const mockTree: FileTreeNode[] = [
-  { name: 'src', path: '/project/src', type: 'directory', children: [
-    { name: 'index.ts', path: '/project/src/index.ts', type: 'file' },
-  ]},
-  { name: 'package.json', path: '/project/package.json', type: 'file' },
+  {
+    name: 'src',
+    path: '/project/src',
+    type: 'directory',
+    children: [{ name: 'index.ts', path: '/project/src/index.ts', type: 'file' }]
+  },
+  { name: 'package.json', path: '/project/package.json', type: 'file' }
 ]
 
 beforeEach(() => {
@@ -36,7 +40,9 @@ describe('useFileSystem', () => {
     mockReadDirectory.mockResolvedValue(mockTree)
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     expect(result.current.folderPath).toBe('/project')
     expect(result.current.fileTree).toEqual(mockTree)
@@ -47,7 +53,9 @@ describe('useFileSystem', () => {
     mockOpenFolder.mockResolvedValue(null)
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     expect(result.current.folderPath).toBeNull()
     expect(result.current.fileTree).toEqual([])
@@ -58,7 +66,9 @@ describe('useFileSystem', () => {
     mockOpenFolder.mockRejectedValue(new Error('dialog error'))
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     expect(result.current.folderPath).toBeNull()
     expect(result.current.fileTree).toEqual([])
@@ -71,7 +81,9 @@ describe('useFileSystem', () => {
     mockReadDirectory.mockRejectedValue(new Error('permission denied'))
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     expect(result.current.folderPath).toBeNull()
     expect(result.current.error?.message).toBe('permission denied')
@@ -83,10 +95,14 @@ describe('useFileSystem', () => {
     mockReadDirectory.mockResolvedValue(mockTree)
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
     expect(result.current.error).not.toBeNull()
 
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
     expect(result.current.error).toBeNull()
     expect(result.current.folderPath).toBe('/project')
   })
@@ -97,16 +113,20 @@ describe('useFileSystem', () => {
     mockReadFileContent.mockResolvedValue('const x = 1')
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-    await act(async () => { await result.current.selectFile(fileNode) })
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
 
     expect(result.current.openFile).toMatchObject({
       path: '/project/src/index.ts',
       name: 'index.ts',
       content: 'const x = 1',
-      language: 'typescript',
+      language: 'typescript'
     })
     expect(result.current.error).toBeNull()
   })
@@ -114,7 +134,9 @@ describe('useFileSystem', () => {
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
-    await act(async () => { await result.current.selectFile(dirNode) })
+    await act(async () => {
+      await result.current.selectFile(dirNode)
+    })
 
     expect(result.current.openFile).toBeNull()
     expect(mockReadFileContent).not.toHaveBeenCalled()
@@ -126,15 +148,21 @@ describe('useFileSystem', () => {
     mockReadFileContent.mockResolvedValue('const x = 1')
 
     const { result } = renderHook(() => useFileSystem())
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
 
     const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-    await act(async () => { await result.current.selectFile(fileNode) })
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
     expect(result.current.openFile).not.toBeNull()
 
     mockOpenFolder.mockResolvedValue('/other')
     mockReadDirectory.mockResolvedValue([])
-    await act(async () => { await result.current.openFolder() })
+    await act(async () => {
+      await result.current.openFolder()
+    })
     expect(result.current.openFile).toBeNull()
   })
 
@@ -143,10 +171,267 @@ describe('useFileSystem', () => {
 
     const { result } = renderHook(() => useFileSystem())
     const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-    await act(async () => { await result.current.selectFile(fileNode) })
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
 
     expect(result.current.openFile).toBeNull()
     expect(result.current.error).toBeInstanceOf(Error)
     expect(result.current.error?.message).toBe('read error')
+  })
+
+  async function openAndSelect(result: { current: ReturnType<typeof useFileSystem> }) {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
+  }
+
+  // isDirty / updateFileContent / saveFile 自体の詳細な挙動は useFileEditing.test.ts で
+  // 単体検証済み。ここでは useFileEditing との合成（openFolder/selectFile からの委譲）が
+  // 正しく機能することのみを軽量に確認する。
+  describe('useFileEditing との合成', () => {
+    it('isDirty / updateFileContent / saveFile が戻り値から利用できる', async () => {
+      mockWriteFileContent.mockResolvedValue(undefined)
+      const { result } = renderHook(() => useFileSystem())
+      await openAndSelect(result)
+      expect(result.current.isDirty).toBe(false)
+
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+      expect(result.current.isDirty).toBe(true)
+
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(mockWriteFileContent).toHaveBeenCalledWith('/project/src/index.ts', 'const x = 2')
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it('未保存変更があるとき openFolder は確認ガードで開くのをブロックできる', async () => {
+      const onConfirm = vi.fn().mockReturnValue(false)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+      mockOpenFolder.mockClear()
+
+      await act(async () => {
+        await result.current.openFolder()
+      })
+
+      expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
+      expect(mockOpenFolder).not.toHaveBeenCalled()
+      expect(result.current.openFile?.content).toBe('const x = 2')
+    })
+
+    it('onConfirm が true を返せば openFolder はブロックされずに続行する', async () => {
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+      mockOpenFolder.mockResolvedValue('/other')
+      mockReadDirectory.mockResolvedValue([])
+
+      await act(async () => {
+        await result.current.openFolder()
+      })
+
+      expect(mockOpenFolder).toHaveBeenCalled()
+      expect(result.current.folderPath).toBe('/other')
+    })
+
+    it('未保存変更があるとき selectFile も確認ガードでファイル切り替えをブロックできる', async () => {
+      const onConfirm = vi.fn().mockReturnValue(false)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+      mockReadFileContent.mockClear()
+      const otherNode: FileTreeNode = {
+        name: 'package.json',
+        path: '/project/package.json',
+        type: 'file'
+      }
+
+      await act(async () => {
+        await result.current.selectFile(otherNode)
+      })
+
+      expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+      expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+      expect(result.current.openFile?.content).toBe('const x = 2')
+    })
+
+    it('saveFile の失敗は error ではなく saveError にセットされる（フォルダ系エラーとの混線防止）', async () => {
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem())
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      await act(async () => {
+        await result.current.saveFile()
+      })
+
+      expect(result.current.saveError?.message).toBe('EACCES')
+      expect(result.current.error).toBeNull()
+    })
+
+    it('openFolder の失敗は saveError ではなく error にセットされる（保存系エラーとの混線防止）', async () => {
+      mockOpenFolder.mockRejectedValue(new Error('dialog error'))
+      const { result } = renderHook(() => useFileSystem())
+
+      await act(async () => {
+        await result.current.openFolder()
+      })
+
+      expect(result.current.error?.message).toBe('dialog error')
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('保存失敗後に別ファイルへ切り替わると saveError がクリアされる', async () => {
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      mockReadFileContent.mockResolvedValue('package content')
+      const otherNode: FileTreeNode = {
+        name: 'package.json',
+        path: '/project/package.json',
+        type: 'file'
+      }
+      await act(async () => {
+        await result.current.selectFile(otherNode)
+      })
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('保存失敗後に同じファイルを開き直しても saveError がクリアされる（reselect同一パス）', async () => {
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      mockReadFileContent.mockResolvedValue('const x = 1')
+      const sameNode: FileTreeNode = {
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      }
+      await act(async () => {
+        await result.current.selectFile(sameNode)
+      })
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('別ファイルの保存中でも、切り替え先のファイルは isSaving でブロックされずに保存できる', async () => {
+      let resolveWrite: () => void = () => {}
+      mockWriteFileContent.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      let firstSave: Promise<void> = Promise.resolve()
+      act(() => {
+        firstSave = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      mockReadFileContent.mockResolvedValue('package content')
+      const otherNode: FileTreeNode = {
+        name: 'package.json',
+        path: '/project/package.json',
+        type: 'file'
+      }
+      await act(async () => {
+        await result.current.selectFile(otherNode)
+      })
+      expect(result.current.isSaving).toBe(false)
+
+      mockWriteFileContent.mockResolvedValueOnce(undefined)
+      act(() => {
+        result.current.updateFileContent('package content 2')
+      })
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(mockWriteFileContent).toHaveBeenCalledWith(
+        '/project/package.json',
+        'package content 2'
+      )
+
+      await act(async () => {
+        resolveWrite()
+        await firstSave
+      })
+    })
+
+    it('isSaving が戻り値から利用でき、保存完了後は false に戻る', async () => {
+      let resolveWrite: () => void = () => {}
+      mockWriteFileContent.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      const { result } = renderHook(() => useFileSystem())
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      let savePromise: Promise<void> = Promise.resolve()
+      act(() => {
+        savePromise = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      await act(async () => {
+        resolveWrite()
+        await savePromise
+      })
+      expect(result.current.isSaving).toBe(false)
+    })
   })
 })

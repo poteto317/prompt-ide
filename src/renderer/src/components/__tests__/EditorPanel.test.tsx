@@ -8,15 +8,21 @@ const mockOpenFile: OpenFile = {
   path: '/project/src/index.ts',
   name: 'index.ts',
   content: 'const x = 1',
-  language: 'typescript',
+  savedContent: 'const x = 1',
+  language: 'typescript'
 }
 
 const defaultProps = {
   openFile: null as OpenFile | null,
+  isDirty: false,
+  isSaving: false,
+  saveError: null as Error | null,
+  onChangeContent: vi.fn(),
+  onSave: vi.fn(),
   isExecuting: false,
   result: null as string | null,
   executionError: null as Error | null,
-  onClearResult: vi.fn(),
+  onClearResult: vi.fn()
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -62,9 +68,63 @@ describe('EditorPanel — openFile あり', () => {
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
 
-  it('エディタは readOnly: true で描画される（ファイルビューア）', () => {
+  it('エディタは読み取り専用ではない（編集可能）', () => {
     render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
-    expect(screen.getByTestId('monaco-editor')).toHaveAttribute('data-readonly', 'true')
+    expect(screen.getByTestId('monaco-editor')).toHaveAttribute('data-readonly', 'false')
+  })
+
+  it('エディタでの入力が onChangeContent を呼ぶ', async () => {
+    const user = userEvent.setup()
+    const onChangeContent = vi.fn()
+    render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} onChangeContent={onChangeContent} />
+    )
+    await user.type(screen.getByTestId('monaco-editor-textarea'), 'x')
+    expect(onChangeContent).toHaveBeenCalled()
+  })
+
+  it('isDirty=true のとき保存ボタンが有効化される', () => {
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
+    expect(screen.getByLabelText('保存')).not.toBeDisabled()
+  })
+
+  it('isDirty=false のとき保存ボタンが無効化される', () => {
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={false} />)
+    expect(screen.getByLabelText('保存')).toBeDisabled()
+  })
+
+  it('保存ボタンクリックで onSave が呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} onSave={onSave} />)
+    await user.click(screen.getByLabelText('保存'))
+    expect(onSave).toHaveBeenCalledOnce()
+  })
+
+  it('isSaving=true のとき、isDirty=true でも保存ボタンが無効化される（多重保存防止）', () => {
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} isSaving={true} />)
+    expect(screen.getByLabelText('保存')).toBeDisabled()
+  })
+
+  it('未保存インジケータは isDirty=true のときのみ表示される', () => {
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={false} />
+    )
+    expect(document.querySelector('.editor-tab__dirty-dot')).not.toBeInTheDocument()
+
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
+    expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
+  })
+
+  it('saveError があるときエディタ上部にエラーメッセージが表示される', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        saveError={new Error('保存に失敗しました')}
+      />
+    )
+    expect(screen.getByText('保存に失敗しました')).toBeInTheDocument()
   })
 })
 
