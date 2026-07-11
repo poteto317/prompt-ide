@@ -2,11 +2,11 @@ interface Props {
   fileName: string
   isDirty: boolean
   isSaving: boolean
-  error: Error | null
+  saveError: Error | null
   onSave: () => void
 }
 
-export default function EditorTabs({ fileName, isDirty, isSaving, error, onSave }: Props) {
+export default function EditorTabs({ fileName, isDirty, isSaving, saveError, onSave }: Props) {
   return (
     <div className="editor-tabs">
       <div className="editor-tab editor-tab--active">
@@ -17,7 +17,7 @@ export default function EditorTabs({ fileName, isDirty, isSaving, error, onSave 
           </span>
         )}
       </div>
-      {error && <p className="editor-tabs__error">{error.message}</p>}
+      {saveError && <p className="editor-tabs__error">{saveError.message}</p>}
       <button
         type="button"
         className="editor-tabs__save-btn"

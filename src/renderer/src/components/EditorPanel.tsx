@@ -11,7 +11,7 @@ interface Props {
   openFile: OpenFile | null
   isDirty: boolean
   isSaving: boolean
-  error: Error | null
+  saveError: Error | null
   onChangeContent: (content: string) => void
   onSave: () => void
   isExecuting: boolean
@@ -24,7 +24,7 @@ export default function EditorPanel({
   openFile,
   isDirty,
   isSaving,
-  error,
+  saveError,
   onChangeContent,
   onSave,
   isExecuting,
@@ -46,7 +46,7 @@ export default function EditorPanel({
             fileName={openFile.name}
             isDirty={isDirty}
             isSaving={isSaving}
-            error={error}
+            saveError={saveError}
             onSave={onSave}
           />
           <div className="editor-body">

@@ -16,7 +16,7 @@ const defaultProps = {
   openFile: null as OpenFile | null,
   isDirty: false,
   isSaving: false,
-  error: null as Error | null,
+  saveError: null as Error | null,
   onChangeContent: vi.fn(),
   onSave: vi.fn(),
   isExecuting: false,
@@ -116,12 +116,12 @@ describe('EditorPanel — openFile あり', () => {
     expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
   })
 
-  it('error があるときエディタ上部にエラーメッセージが表示される', () => {
+  it('saveError があるときエディタ上部にエラーメッセージが表示される', () => {
     render(
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        error={new Error('保存に失敗しました')}
+        saveError={new Error('保存に失敗しました')}
       />
     )
     expect(screen.getByText('保存に失敗しました')).toBeInTheDocument()

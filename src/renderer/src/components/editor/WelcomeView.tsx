@@ -10,7 +10,7 @@ export default function WelcomeView() {
         fileName="welcome.ts"
         isDirty={false}
         isSaving={false}
-        error={null}
+        saveError={null}
         onSave={() => {}}
       />
       <div className="editor-body">

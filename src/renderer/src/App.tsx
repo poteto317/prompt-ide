@@ -109,7 +109,7 @@ export default function App(): React.JSX.Element {
             openFile={openFile}
             isDirty={isDirty}
             isSaving={isSaving}
-            error={saveError}
+            saveError={saveError}
             onChangeContent={updateFileContent}
             onSave={saveFile}
             isExecuting={isExecuting}

@@ -7,7 +7,7 @@ const defaultProps = {
   fileName: 'index.ts',
   isDirty: false,
   isSaving: false,
-  error: null as Error | null,
+  saveError: null as Error | null,
   onSave: vi.fn()
 }
 
@@ -69,13 +69,13 @@ describe('EditorTabs', () => {
     expect(onSave).toHaveBeenCalledOnce()
   })
 
-  it('error があるときエラーメッセージが表示される', () => {
-    render(<EditorTabs {...defaultProps} error={new Error('保存に失敗しました')} />)
+  it('saveError があるときエラーメッセージが表示される', () => {
+    render(<EditorTabs {...defaultProps} saveError={new Error('保存に失敗しました')} />)
     expect(screen.getByText('保存に失敗しました')).toBeInTheDocument()
   })
 
-  it('error が null のときエラーメッセージは表示されない', () => {
-    render(<EditorTabs {...defaultProps} error={null} />)
+  it('saveError が null のときエラーメッセージは表示されない', () => {
+    render(<EditorTabs {...defaultProps} saveError={null} />)
     expect(document.querySelector('.editor-tabs__error')).not.toBeInTheDocument()
   })
 })
