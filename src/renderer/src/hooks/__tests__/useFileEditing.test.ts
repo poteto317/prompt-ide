@@ -290,7 +290,12 @@ describe('resetForFileChange', () => {
       savePromise = result.current.saveFile()
     })
 
+    // useFileSystem.ts の selectFile/openFolder は setOpenFile 成功後に必ず
+    // resetForFileChange() も呼ぶため、その実際の呼び出しパターンを再現する。
     rerender({ file: otherFile })
+    act(() => {
+      result.current.resetForFileChange()
+    })
 
     await act(async () => {
       rejectWrite(new Error('EACCES'))

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { useFileEditing, type Options } from './useFileEditing'
+import { useFileEditing } from './useFileEditing'
+import type { Options } from './useFileEditing'
 
 interface FileSystemState {
   folderPath: string | null

@@ -1,4 +1,5 @@
-import { useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
@@ -36,20 +37,17 @@ export function useFileEditing(
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
-  // 現在表示中のファイルの path を、保存完了時に「表示中のファイルと保存対象が
-  // 一致するか」を判定するために追跡する。値が変わったときだけ render 中に
-  // 直接代入することで、useEffect 経由よりも早く（コミット前の時点で）最新値を
-  // 反映できる。
-  const currentPathRef = useRef(openFile?.path ?? null)
-  if (currentPathRef.current !== (openFile?.path ?? null)) {
-    currentPathRef.current = openFile?.path ?? null
-  }
-
   // 「編集セッション」の世代カウンタ。ファイルを開き直す（selectFile/openFolder
   // で新しく読み込む）たびに呼び出し側から resetForFileChange() を呼んで
   // インクリメントしてもらう。同じ path のファイルを一度閉じて（保存中に破棄
   // 確認を経て）再度開き直した場合でも世代が変わるため、path 文字列だけを
-  // 見て「同じ編集セッション」だと誤判定しない。
+  // 見て「同じ編集セッション」だと誤判定しない。openFile.path が変化する経路は
+  // useFileSystem.ts の selectFile/openFolder のみで、そのどちらも成功時に
+  // 必ず resetForFileChange() を呼ぶため、「表示中のファイルが変わったか」の
+  // 判定は generation の一致だけで完結する（別途 path を追跡する ref は不要）。
+  // これを render 中に条件付きで直接代入する形で実装していたこともあったが、
+  // 並行レンダリング下でコミットされないレンダーの値が残る可能性を指摘され、
+  // generation への一本化でその懸念自体を無くした。
   const generationRef = useRef(0)
 
   // 同一ファイルへの多重保存（連打・Cmd+Sの連続入力）を同期的に防ぐ。React
@@ -98,7 +96,7 @@ export function useFileEditing(
       // 保存中に別ファイルへ切り替わっていた、または同じファイルを開き直して
       // いた場合、この保存失敗はもう画面上の編集セッションとは無関係なので
       // エラーを表示しない。
-      if (currentPathRef.current === path && generation === generationRef.current) {
+      if (generation === generationRef.current) {
         setSaveError(err instanceof Error ? err : new Error(String(err)))
       }
     } finally {
