@@ -27,6 +27,10 @@ const otherFile: OpenFile = {
   language: 'typescript'
 }
 
+// otherFile は content === savedContent（未変更）のため、saveFile() を呼んでも
+// 実際に writeFileContent が発火することを期待するテストではこちらを使う。
+const dirtyOtherFile: OpenFile = { ...otherFile, content: 'edited other content' }
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -78,6 +82,18 @@ describe('saveFile', () => {
       await result.current.saveFile()
     })
     expect(mockWriteFileContent).not.toHaveBeenCalled()
+  })
+
+  it('未変更(content === savedContent)のとき、Cmd/Ctrl+S 経由で呼ばれても writeFileContent は呼ばれない', async () => {
+    const setOpenFile = vi.fn()
+    const { result } = renderHook(() => useFileEditing(cleanFile, setOpenFile))
+
+    await act(async () => {
+      await result.current.saveFile()
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+    expect(setOpenFile).not.toHaveBeenCalled()
   })
 
   it('成功時: writeFileContent を呼び、savedContent を content に更新する updater を setOpenFile に渡す', async () => {
@@ -174,8 +190,8 @@ describe('isSaving は path 単位でスコープされる', () => {
     })
     expect(result.current.isSaving).toBe(true)
 
-    // dirtyFile の保存がまだ pending のまま、別ファイルへ切り替える
-    rerender({ file: otherFile })
+    // dirtyFile の保存がまだ pending のまま、別ファイル（未保存の変更あり）へ切り替える
+    rerender({ file: dirtyOtherFile })
     expect(result.current.isSaving).toBe(false)
 
     mockWriteFileContent.mockResolvedValueOnce(undefined)
@@ -183,7 +199,7 @@ describe('isSaving は path 単位でスコープされる', () => {
       await result.current.saveFile()
     })
 
-    expect(mockWriteFileContent).toHaveBeenCalledWith(otherFile.path, otherFile.content)
+    expect(mockWriteFileContent).toHaveBeenCalledWith(dirtyOtherFile.path, dirtyOtherFile.content)
     expect(result.current.saveError).toBeNull()
 
     await act(async () => {
@@ -211,8 +227,8 @@ describe('isSaving は path 単位でスコープされる', () => {
       saveA = result.current.saveFile()
     })
 
-    // file B (otherFile) へ切り替えて保存を開始（こちらも pending のまま）
-    rerender({ file: otherFile })
+    // file B (dirtyOtherFile) へ切り替えて保存を開始（こちらも pending のまま）
+    rerender({ file: dirtyOtherFile })
     mockWriteFileContent.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {

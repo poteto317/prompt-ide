@@ -12,7 +12,7 @@ export default function EditorTabs({ fileName, isDirty, isSaving, saveError, onS
       <div className="editor-tab editor-tab--active">
         {fileName}
         {isDirty && (
-          <span className="editor-tab__dirty-dot" aria-hidden="true">
+          <span className="editor-tab__dirty-dot" role="img" aria-label="未保存の変更があります">
             ●
           </span>
         )}

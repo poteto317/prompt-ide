@@ -74,6 +74,12 @@ export function useFileEditing(
 
   const saveFile = async (): Promise<void> => {
     if (openFile === null) return
+    // 保存ボタンは isDirty=false のとき disabled になるが、Cmd/Ctrl+S の
+    // キーボードショートカットはボタンの disabled 状態を経由せず直接 saveFile
+    // を呼ぶため、未変更のファイルに対しても不要な writeFileContent(同一内容の
+    // 書き込みによる mtime 更新・無駄なディスクI/O)が発生し得る。ここでも
+    // ガードしておく。
+    if (openFile.content === openFile.savedContent) return
     const { path, content } = openFile
     if (savingPathsRef.current.has(path)) return
     const generation = generationRef.current

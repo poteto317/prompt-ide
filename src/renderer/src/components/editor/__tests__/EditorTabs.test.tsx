@@ -46,6 +46,11 @@ describe('EditorTabs', () => {
     expect(document.querySelector('.editor-tab__dirty-dot')).not.toBeInTheDocument()
   })
 
+  it('未保存インジケータは role="img" と aria-label でスクリーンリーダーに状態が伝わる', () => {
+    render(<EditorTabs {...defaultProps} isDirty={true} />)
+    expect(screen.getByRole('img', { name: '未保存の変更があります' })).toBeInTheDocument()
+  })
+
   it('isDirty=true のとき保存ボタンが有効化される', () => {
     render(<EditorTabs {...defaultProps} isDirty={true} />)
     expect(screen.getByLabelText('保存')).not.toBeDisabled()
