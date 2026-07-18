@@ -16,8 +16,10 @@ interface Props {
   onSave: () => void
   isExecuting: boolean
   result: string | null
+  streamingText: string
   executionError: Error | null
   onClearResult: () => void
+  onCancelExecution: () => void
 }
 
 export default function EditorPanel({
@@ -29,8 +31,10 @@ export default function EditorPanel({
   onSave,
   isExecuting,
   result,
+  streamingText,
   executionError,
-  onClearResult
+  onClearResult,
+  onCancelExecution
 }: Props) {
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
   // Ctrl/Cmd+S が常に最新の onSave を呼べるよう ref 経由で参照する。
@@ -68,8 +72,10 @@ export default function EditorPanel({
       <OutputPanel
         isExecuting={isExecuting}
         result={result}
+        streamingText={streamingText}
         executionError={executionError}
         onClear={onClearResult}
+        onCancel={onCancelExecution}
       />
     </div>
   )

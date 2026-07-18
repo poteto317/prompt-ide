@@ -18,8 +18,8 @@ const TOOL_COMMANDS: Record<CLIOnlyToolId, ToolConfig> = {
   copilot: {
     command: 'gh',
     buildArgs: (content) => ['copilot', '-p', content],
-    useStdin: false,
-  },
+    useStdin: false
+  }
 }
 
 const CLI_TIMEOUT_MS = 30_000
@@ -35,14 +35,25 @@ function buildEnv(): NodeJS.ProcessEnv {
     '/opt/homebrew/bin',
     '/snap/bin',
     process.env.HOME && `${process.env.HOME}/.local/bin`,
-    process.env.HOME && `${process.env.HOME}/.cargo/bin`,
+    process.env.HOME && `${process.env.HOME}/.cargo/bin`
   ].filter(Boolean) as string[]
   const extraStr = extra.join(':')
   const basePath = process.env.PATH ? `${process.env.PATH}:${extraStr}` : extraStr
   return { ...process.env, PATH: basePath }
 }
 
-export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<string> {
+export interface RunCLIPromptOptions {
+  /** stdout のチャンクを受信するたびに呼ばれる(逐次表示用) */
+  onChunk?: (chunk: string) => void
+  /** キャンセル関数を受け取るコールバック。呼び出し側はこれをレジストリ等に登録する */
+  registerCancel?: (cancel: () => void) => void
+}
+
+export function runCLIPrompt(
+  toolId: CLIOnlyToolId,
+  content: string,
+  options?: RunCLIPromptOptions
+): Promise<string> {
   // TypeScript が CLIOnlyToolId を保証するが、型バイパス（as any 等）への防御として維持する
   const config = TOOL_COMMANDS[toolId]
   if (!config) return Promise.reject(new Error(`不明な CLI ツール: ${toolId}`))
@@ -75,16 +86,49 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
       escalationTimer.unref()
     }
 
+    // ユーザー起因のキャンセルとタイムアウト等のシグナル終了を区別するためのフラグ
+    let cancelled = false
+    options?.registerCancel?.(() => {
+      cancelled = true
+      killWithEscalation()
+    })
+
     let output = ''
     let errorOutput = ''
+
+    // タイムアウトは「無出力が CLI_TIMEOUT_MS 続いたら」のアイドル方式。
+    // 逐次出力が続いている限りはリセットされ、長い応答でも途中で切られない
+    const startTimeout = (): void => {
+      timer = setTimeout(() => {
+        settle(() => {
+          killWithEscalation()
+          reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`))
+        })
+      }, CLI_TIMEOUT_MS)
+    }
+    const resetTimeout = (): void => {
+      if (settled) return
+      if (timer !== null) clearTimeout(timer)
+      startTimeout()
+    }
 
     // setEncoding で StringDecoder に委ねることでチャンク境界でのマルチバイト文字化けを防ぐ
     child.stdout.setEncoding('utf8')
     child.stderr.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => { output += chunk })
-    child.stderr.on('data', (chunk: string) => { errorOutput += chunk })
+    child.stdout.on('data', (chunk: string) => {
+      output += chunk
+      options?.onChunk?.(chunk)
+      resetTimeout()
+    })
+    child.stderr.on('data', (chunk: string) => {
+      errorOutput += chunk
+      resetTimeout()
+    })
     child.stdin.on('error', (err: NodeJS.ErrnoException) => {
-      settle(() => { killWithEscalation(); reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`)) })
+      settle(() => {
+        killWithEscalation()
+        reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`))
+      })
     })
 
     // stdin 操作より先に close/error を登録して起動失敗時の早期イベントを確実に捕捉する
@@ -92,10 +136,14 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
       exited = true
       if (code === 0) {
         settle(() => resolve(output))
+      } else if (cancelled) {
+        settle(() => reject(new Error('キャンセルされました')))
       } else if (signal) {
         settle(() => reject(new Error(`CLI ツールがシグナル ${signal} で終了しました`)))
       } else {
-        settle(() => reject(new Error(errorOutput.trim() || `プロセスが終了コード ${code} で終了しました`)))
+        settle(() =>
+          reject(new Error(errorOutput.trim() || `プロセスが終了コード ${code} で終了しました`))
+        )
       }
     })
 
@@ -104,12 +152,7 @@ export function runCLIPrompt(toolId: CLIOnlyToolId, content: string): Promise<st
     })
 
     // リスナー登録後にタイマーと stdin 書き込みを開始する
-    timer = setTimeout(() => {
-      settle(() => {
-        killWithEscalation()
-        reject(new Error(`CLI ツールがタイムアウトしました（${CLI_TIMEOUT_MS / 1000}秒）`))
-      })
-    }, CLI_TIMEOUT_MS)
+    startTimeout()
 
     // useStdin が false のツールはプロンプトを引数として渡し済みのため、stdin には何も書かず閉じるだけにする
     if (config.useStdin) {

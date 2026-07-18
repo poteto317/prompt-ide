@@ -5,7 +5,7 @@ const mockSpawn = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({
   default: { spawn: mockSpawn },
-  spawn: mockSpawn,
+  spawn: mockSpawn
 }))
 
 import { runCLIPrompt } from '../cliService'
@@ -16,6 +16,14 @@ function makeChild() {
   const stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() }
   const child = Object.assign(new EventEmitter(), { stdout, stderr, stdin, kill: vi.fn() })
   return child
+}
+
+function emitStdinError(child: ReturnType<typeof makeChild>, err: Error): void {
+  for (const call of child.stdin.on.mock.calls) {
+    if (call[0] === 'error') {
+      ;(call[1] as (err: Error) => void)(err)
+    }
+  }
 }
 
 let savedPath: string | undefined
@@ -46,7 +54,9 @@ afterEach(() => {
 describe('runCLIPrompt', () => {
   it('不明な toolId のとき即座に reject する（型バイパス時の防御）', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await expect(runCLIPrompt('unknown' as any, 'test')).rejects.toThrow('不明な CLI ツール: unknown')
+    await expect(runCLIPrompt('unknown' as any, 'test')).rejects.toThrow(
+      '不明な CLI ツール: unknown'
+    )
   })
 
   it('spawn 後に stdout/stderr の setEncoding("utf8") を呼ぶ', async () => {
@@ -235,8 +245,8 @@ describe('runCLIPrompt', () => {
 
     const promise = runCLIPrompt('claude', 'テスト')
     child.stdout.emit('data', Buffer.from('正常出力'))
-    child.emit('close', 0, null)  // タイムアウト前に正常終了
-    vi.advanceTimersByTime(30_000)  // タイムアウト時間を経過させる
+    child.emit('close', 0, null) // タイムアウト前に正常終了
+    vi.advanceTimersByTime(30_000) // タイムアウト時間を経過させる
 
     await expect(promise).resolves.toBe('正常出力')
     expect(child.kill).not.toHaveBeenCalled()
@@ -261,9 +271,7 @@ describe('runCLIPrompt', () => {
 
     const promise = runCLIPrompt('claude', 'テスト')
     const stdinError = new Error('EPIPE: broken pipe')
-    child.stdin.on.mock.calls
-      .filter(([event]: [string]) => event === 'error')
-      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+    emitStdinError(child, stdinError)
 
     await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました: EPIPE: broken pipe')
   })
@@ -274,9 +282,7 @@ describe('runCLIPrompt', () => {
 
     const promise = runCLIPrompt('claude', 'テスト')
     const stdinError = new Error('EPIPE: broken pipe')
-    child.stdin.on.mock.calls
-      .filter(([event]: [string]) => event === 'error')
-      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+    emitStdinError(child, stdinError)
 
     await expect(promise).rejects.toThrow('stdin への書き込みに失敗しました')
     expect(child.kill).toHaveBeenCalledOnce()
@@ -288,9 +294,7 @@ describe('runCLIPrompt', () => {
 
     const promise = runCLIPrompt('claude', 'テスト')
     const stdinError = new Error('EPIPE: broken pipe')
-    child.stdin.on.mock.calls
-      .filter(([event]: [string]) => event === 'error')
-      .forEach(([, handler]: [string, (err: Error) => void]) => handler(stdinError))
+    emitStdinError(child, stdinError)
     child.stdout.emit('data', '出力')
     child.emit('close', 0, null)
 
@@ -373,5 +377,125 @@ describe('runCLIPrompt', () => {
     const spawnEnv = mockSpawn.mock.calls[0][2].env as NodeJS.ProcessEnv
     expect(spawnEnv.PATH).not.toMatch(/^:/)
     expect(spawnEnv.PATH).toContain('/usr/local/bin')
+  })
+
+  describe('ストリーミング（onChunk）', () => {
+    it('stdout のチャンクごとに onChunk が順番に呼ばれる', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      const onChunk = vi.fn()
+
+      const promise = runCLIPrompt('claude', 'テスト', { onChunk })
+      child.stdout.emit('data', '1行目')
+      child.stdout.emit('data', '2行目')
+      child.emit('close', 0, null)
+      await promise
+
+      expect(onChunk).toHaveBeenNthCalledWith(1, '1行目')
+      expect(onChunk).toHaveBeenNthCalledWith(2, '2行目')
+    })
+
+    it('onChunk 未指定でも従来どおり動作する', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+
+      const promise = runCLIPrompt('claude', 'テスト', {})
+      child.stdout.emit('data', '出力')
+      child.emit('close', 0, null)
+
+      await expect(promise).resolves.toBe('出力')
+    })
+  })
+
+  describe('キャンセル（registerCancel）', () => {
+    it('registerCancel にキャンセル関数が渡される', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      const registerCancel = vi.fn()
+
+      const promise = runCLIPrompt('claude', 'テスト', { registerCancel })
+      expect(registerCancel).toHaveBeenCalledOnce()
+      expect(registerCancel).toHaveBeenCalledWith(expect.any(Function))
+
+      child.emit('close', 0, null)
+      await promise
+    })
+
+    it('キャンセル関数を呼ぶと kill され、シグナル終了は「キャンセルされました」で reject する', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      cancel!()
+      expect(child.kill).toHaveBeenCalledOnce()
+      child.emit('close', null, 'SIGTERM')
+
+      await expect(promise).rejects.toThrow('キャンセルされました')
+    })
+
+    it('キャンセル後、猶予時間内に終了しないプロセスには SIGKILL を送る', async () => {
+      vi.useFakeTimers()
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      cancel!()
+      vi.advanceTimersByTime(5_000)
+      expect(child.kill).toHaveBeenCalledTimes(2)
+      expect(child.kill).toHaveBeenNthCalledWith(2, 'SIGKILL')
+
+      child.emit('close', null, 'SIGKILL')
+      await expect(promise).rejects.toThrow('キャンセルされました')
+    })
+
+    it('キャンセルなしのシグナル終了は従来のメッセージのまま', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+
+      const promise = runCLIPrompt('claude', 'テスト', { registerCancel: vi.fn() })
+      child.emit('close', null, 'SIGTERM')
+
+      await expect(promise).rejects.toThrow('CLI ツールがシグナル SIGTERM で終了しました')
+    })
+  })
+
+  describe('アイドルタイムアウト', () => {
+    it('出力が続いている間はタイムアウトしない', async () => {
+      vi.useFakeTimers()
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+
+      const promise = runCLIPrompt('claude', 'テスト')
+      vi.advanceTimersByTime(20_000)
+      child.stdout.emit('data', '途中出力') // タイマーリセット
+      vi.advanceTimersByTime(20_000) // 起動から40秒だが最終出力から20秒
+      expect(child.kill).not.toHaveBeenCalled()
+
+      child.emit('close', 0, null)
+      await expect(promise).resolves.toBe('途中出力')
+    })
+
+    it('最後の出力から30秒無出力が続くとタイムアウトする', async () => {
+      vi.useFakeTimers()
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+
+      const promise = runCLIPrompt('claude', 'テスト')
+      child.stdout.emit('data', '途中出力')
+      vi.advanceTimersByTime(30_000)
+
+      await expect(promise).rejects.toThrow('CLI ツールがタイムアウトしました（30秒）')
+      expect(child.kill).toHaveBeenCalledOnce()
+    })
   })
 })

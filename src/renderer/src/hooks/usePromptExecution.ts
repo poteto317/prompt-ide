@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from 'react'
 import type { PromptToolId } from '@shared/types'
 import { invokePrompt } from '../lib/promptInvoker'
+import * as promptStreamApi from '../lib/promptStreamApi'
+import { useStreamingText } from './useStreamingText'
 
 // usePromptExecution は履歴機能から疎結合であるべきため、HistoryEntry 等の型には依存しない。
 // 実行完了時の記録は onExecuted コールバック経由で呼び出し側に委譲する。
@@ -22,6 +24,7 @@ export interface ExecutionOutcome extends ExecutionContext {
 export interface PromptExecutionState {
   isExecuting: boolean
   result: string | null
+  streamingText: string
   executionError: Error | null
   executePrompt: (
     promptContent: string,
@@ -30,6 +33,7 @@ export interface PromptExecutionState {
     context?: ExecutionContext,
     onExecuted?: (outcome: ExecutionOutcome) => void
   ) => Promise<void>
+  cancelExecution: () => void
   clearResult: () => void
 }
 
@@ -48,6 +52,11 @@ export function usePromptExecution(): PromptExecutionState {
   const [result, setResult] = useState<string | null>(null)
   const [executionError, setExecutionError] = useState<Error | null>(null)
   const requestIdRef = useRef(0)
+  // キャンセル対象を特定するための現在アクティブな requestId(uuid)。
+  // ストリーミング購読のフィルタキーは useStreamingText 側で独立して管理しており、
+  // こちらはキャンセル(cancelExecution)専用の追跡。
+  const activeUuidRef = useRef<string | null>(null)
+  const { streamingText, startStreaming, stopStreaming } = useStreamingText()
 
   const executePrompt = useCallback(
     async (
@@ -58,11 +67,14 @@ export function usePromptExecution(): PromptExecutionState {
       onExecuted?: (outcome: ExecutionOutcome) => void
     ): Promise<void> => {
       const currentId = ++requestIdRef.current
+      const uuid = crypto.randomUUID()
+      activeUuidRef.current = uuid
+      startStreaming(uuid)
       setIsExecuting(true)
       setResult(null)
       setExecutionError(null)
       try {
-        const text = await invokePrompt(toolId, promptContent, fileContent)
+        const text = await invokePrompt(toolId, promptContent, fileContent, uuid)
         if (currentId !== requestIdRef.current) return
         setResult(text)
         onExecuted?.(
@@ -84,16 +96,38 @@ export function usePromptExecution(): PromptExecutionState {
           })
         )
       } finally {
-        if (currentId === requestIdRef.current) setIsExecuting(false)
+        if (currentId === requestIdRef.current) {
+          setIsExecuting(false)
+          activeUuidRef.current = null
+          stopStreaming()
+        }
       }
     },
-    []
+    [startStreaming, stopStreaming]
   )
+
+  // キャンセル結果は invoke の reject('キャンセルされました')として既存エラーパスに合流するため、
+  // ここは fire-and-forget でよい
+  const cancelExecution = useCallback((): void => {
+    const uuid = activeUuidRef.current
+    if (uuid === null) return
+    promptStreamApi.cancelPrompt(uuid).catch((err) => {
+      console.error('[usePromptExecution] cancelPrompt failed:', err)
+    })
+  }, [])
 
   const clearResult = useCallback((): void => {
     setResult(null)
     setExecutionError(null)
   }, [])
 
-  return { isExecuting, result, executionError, executePrompt, clearResult }
+  return {
+    isExecuting,
+    result,
+    streamingText,
+    executionError,
+    executePrompt,
+    cancelExecution,
+    clearResult
+  }
 }
