@@ -1,6 +1,7 @@
 import { join } from 'path'
 import { readdir, readFile, writeFile, mkdir, rename, rm, stat } from 'node:fs/promises'
 import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
+import { isEnoentError } from './fsErrors'
 import type { FileTreeNode } from '@shared/types'
 
 export type { FileTreeNode }
@@ -35,8 +36,11 @@ export async function renameEntry(oldPath: string, newPath: string): Promise<voi
     const newStat = await stat(newPath)
     const oldStat = await stat(oldPath)
     exists = !(newStat.dev === oldStat.dev && newStat.ino === oldStat.ino)
-  } catch {
-    // newPath が存在しない = リネーム可能(oldPath 不在なら後続の rename が ENOENT を投げる)
+  } catch (err) {
+    // ENOENT(newPath または oldPath が存在しない)以外は握り潰さず伝播する。
+    // EACCES 等で存在確認自体ができない場合まで「存在しない」と誤判定すると、
+    // POSIX の rename が既存ファイルを黙って上書きしてしまう
+    if (!isEnoentError(err)) throw err
   }
   if (exists) {
     const err: NodeJS.ErrnoException = new Error(

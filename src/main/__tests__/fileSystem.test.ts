@@ -194,6 +194,30 @@ describe('renameEntry', () => {
       code: 'ENOENT'
     })
   })
+
+  it('存在チェックが EACCES 等 ENOENT 以外で失敗したとき、存在しないと誤判定せず伝播し rename を呼ばない', async () => {
+    // newPath の存在有無を確認できないため、暗黙上書き防止のガードが機能しない状態で
+    // rename() に進むのは危険 — ENOENT 以外は握り潰さず伝播すべき
+    mockStat.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
+    await expect(renameEntry('/project/old.ts', '/project/new.ts')).rejects.toMatchObject({
+      code: 'EACCES'
+    })
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('newPath は存在するが oldPath の存在確認が ENOENT 以外で失敗したときも伝播し rename を呼ばない', async () => {
+    // newPath の stat は成功(既存の別エンティティ)、その後の oldPath の stat が権限エラーになるケース
+    mockStat.mockImplementation((path: string) => {
+      if (path === '/project/new.ts') {
+        return Promise.resolve({ dev: 1, ino: 999 })
+      }
+      return Promise.reject(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
+    })
+    await expect(renameEntry('/project/old.ts', '/project/new.ts')).rejects.toMatchObject({
+      code: 'EACCES'
+    })
+    expect(mockRename).not.toHaveBeenCalled()
+  })
 })
 
 describe('deleteEntry', () => {
