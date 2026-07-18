@@ -3,10 +3,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockGetApiKey = vi.hoisted(() => vi.fn())
 const mockSetApiKey = vi.hoisted(() => vi.fn())
+const mockGetModelSettings = vi.hoisted(() => vi.fn())
+const mockSetModelSettings = vi.hoisted(() => vi.fn())
 
-vi.mock('../../settingsStore', () => ({
+vi.mock('../../apiKeyStore', () => ({
   getApiKey: mockGetApiKey,
-  setApiKey: mockSetApiKey,
+  setApiKey: mockSetApiKey
+}))
+vi.mock('../../modelSettingsStore', () => ({
+  getModelSettings: mockGetModelSettings,
+  setModelSettings: mockSetModelSettings
 }))
 
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
@@ -69,17 +75,50 @@ describe('registerSettingsHandlers', () => {
     })
 
     it('空文字のとき "API キーが空です" エラーをスロー', async () => {
-      await expect(
-        getRegisteredHandler('settings:setApiKey')(makeEvent(1), '')
-      ).rejects.toThrow('API キーが空です')
+      await expect(getRegisteredHandler('settings:setApiKey')(makeEvent(1), '')).rejects.toThrow(
+        'API キーが空です'
+      )
       expect(mockSetApiKey).not.toHaveBeenCalled()
     })
 
     it('空白のみのとき "API キーが空です" エラーをスロー', async () => {
-      await expect(
-        getRegisteredHandler('settings:setApiKey')(makeEvent(1), '   ')
-      ).rejects.toThrow('API キーが空です')
+      await expect(getRegisteredHandler('settings:setApiKey')(makeEvent(1), '   ')).rejects.toThrow(
+        'API キーが空です'
+      )
       expect(mockSetApiKey).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('settings:getModelSettings', () => {
+    it('getModelSettings の結果を返す', async () => {
+      const settings = { modelId: 'claude-opus-4-8', maxTokens: 8000 }
+      mockGetModelSettings.mockResolvedValue(settings)
+      const result = await getRegisteredHandler('settings:getModelSettings')(makeEvent(1))
+      expect(result).toEqual(settings)
+    })
+  })
+
+  describe('settings:setModelSettings', () => {
+    it('妥当な payload を setModelSettings に渡す', async () => {
+      mockSetModelSettings.mockResolvedValue(undefined)
+      await getRegisteredHandler('settings:setModelSettings')(makeEvent(1), {
+        modelId: 'claude-sonnet-5',
+        maxTokens: 8192
+      })
+      expect(mockSetModelSettings).toHaveBeenCalledWith({
+        modelId: 'claude-sonnet-5',
+        maxTokens: 8192
+      })
+    })
+
+    it('不正な payload のとき例外をスローし setModelSettings を呼ばない', async () => {
+      await expect(
+        getRegisteredHandler('settings:setModelSettings')(makeEvent(1), {
+          modelId: 'unknown',
+          maxTokens: 100
+        })
+      ).rejects.toThrow('modelId は')
+      expect(mockSetModelSettings).not.toHaveBeenCalled()
     })
   })
 })

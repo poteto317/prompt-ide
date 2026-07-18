@@ -10,8 +10,8 @@ vi.mock('electron', () => ({
   safeStorage: {
     isEncryptionAvailable: vi.fn(() => true),
     encryptString: vi.fn((str: string) => Buffer.from(str)),
-    decryptString: vi.fn((buf: Buffer) => buf.toString('utf-8')),
-  },
+    decryptString: vi.fn((buf: Buffer) => buf.toString('utf-8'))
+  }
 }))
 
 vi.mock('node:fs/promises', () => ({
@@ -19,10 +19,10 @@ vi.mock('node:fs/promises', () => ({
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
-  chmod: mockChmod,
+  chmod: mockChmod
 }))
 
-import { getApiKey, setApiKey } from '../settingsStore'
+import { getApiKey, setApiKey } from '../apiKeyStore'
 import { safeStorage } from 'electron'
 
 const mockIsEncryptionAvailable = vi.mocked(safeStorage.isEncryptionAvailable)
@@ -35,6 +35,8 @@ beforeEach(() => {
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
   mockChmod.mockResolvedValue(undefined)
+  // merge 書き込みのため書き込み系も readFile を呼ぶ。デフォルトは「ファイルなし」
+  mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
 })
 
 describe('getApiKey', () => {
@@ -86,6 +88,29 @@ describe('getApiKey', () => {
     expect(mockWriteFile).toHaveBeenCalledOnce()
   })
 
+  it('マイグレーション後のファイルに平文 apiKey フィールドが残らない', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'sk-ant-legacy' }))
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-legacy'))
+    await getApiKey()
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+    expect(written).not.toHaveProperty('apiKey')
+    expect(written).toHaveProperty('encryptedApiKey')
+  })
+
+  it('復号に失敗した場合は壊れたキーを削除して再設定を促すエラーを投げる', async () => {
+    const base64 = Buffer.from('broken').toString('base64')
+    mockReadFile.mockResolvedValue(JSON.stringify({ encryptedApiKey: base64 }))
+    mockDecrypt.mockImplementation(() => {
+      throw new Error('decryption failed')
+    })
+    await expect(getApiKey()).rejects.toThrow(
+      '保存済みの API キーを復号できませんでした。API キーを再設定してください。'
+    )
+    expect(mockWriteFile).toHaveBeenCalledOnce()
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+    expect(written).not.toHaveProperty('encryptedApiKey')
+  })
+
   it('レガシー平文 apiKey に前後スペースがある場合は trim して保存・返却する', async () => {
     mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: '  sk-ant-legacy  ' }))
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-legacy'))
@@ -130,6 +155,15 @@ describe('setApiKey', () => {
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
     expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-abc')
+  })
+
+  it('settings.json の既存フィールドを保持したまま merge 書き込みする', async () => {
+    mockReadFile.mockResolvedValue(JSON.stringify({ modelId: 'claude-haiku-4-5' }))
+    mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
+    await setApiKey('sk-ant-abc')
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+    expect(written.modelId).toBe('claude-haiku-4-5')
+    expect(written.encryptedApiKey).toBe(Buffer.from('sk-ant-abc').toString('base64'))
   })
 
   it('writeFile 後に chmod(0o600) を呼んで既存ファイルの権限も確実に設定する', async () => {
