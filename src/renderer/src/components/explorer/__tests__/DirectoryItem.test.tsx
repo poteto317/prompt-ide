@@ -10,38 +10,70 @@ const dirNode: FileTreeNode = {
   type: 'directory',
   children: [
     { name: 'index.ts', path: '/p/src/index.ts', type: 'file' },
-    { name: 'App.tsx', path: '/p/src/App.tsx', type: 'file' },
-  ],
+    { name: 'App.tsx', path: '/p/src/App.tsx', type: 'file' }
+  ]
 }
 
 const emptyDirNode: FileTreeNode = {
   name: 'empty',
   path: '/p/empty',
   type: 'directory',
-  children: [],
+  children: []
 }
 
 describe('DirectoryItem', () => {
   it('ディレクトリ名が表示される', () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     expect(screen.getByText('src')).toBeInTheDocument()
   })
 
   it('初期状態で子ノードが展開されている', () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     expect(screen.getByText('index.ts')).toBeInTheDocument()
     expect(screen.getByText('App.tsx')).toBeInTheDocument()
   })
 
   it('クリックで子ノードが折りたたまれる', async () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     await userEvent.click(screen.getByText('src'))
     expect(screen.queryByText('index.ts')).not.toBeInTheDocument()
     expect(screen.queryByText('App.tsx')).not.toBeInTheDocument()
   })
 
   it('折りたたみ後に再クリックで展開される', async () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     await userEvent.click(screen.getByText('src'))
     await userEvent.click(screen.getByText('src'))
     expect(screen.getByText('index.ts')).toBeInTheDocument()
@@ -49,7 +81,13 @@ describe('DirectoryItem', () => {
 
   it('展開時に aria-expanded が true になる', () => {
     const { container } = render(
-      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
     )
     const dirItem = container.querySelector('[aria-expanded]')
     expect(dirItem).toHaveAttribute('aria-expanded', 'true')
@@ -57,7 +95,13 @@ describe('DirectoryItem', () => {
 
   it('折りたたみ時に aria-expanded が false になる', async () => {
     const { container } = render(
-      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
     )
     await userEvent.click(screen.getByText('src'))
     const dirItem = container.querySelector('[aria-expanded]')
@@ -65,25 +109,55 @@ describe('DirectoryItem', () => {
   })
 
   it('children が空でもクラッシュしない', () => {
-    render(<DirectoryItem node={emptyDirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={emptyDirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     expect(screen.getByText('empty')).toBeInTheDocument()
   })
 
   it('tabIndex={0} が設定されている', () => {
     const { container } = render(
-      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
     )
     const dirItem = container.querySelector('[aria-expanded]')
     expect(dirItem).toHaveAttribute('tabindex', '0')
   })
 
   it('展開時に子ノードが role="group" のラッパーに含まれる', () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     expect(screen.getByRole('group')).toBeInTheDocument()
   })
 
   it('折りたたみ時に role="group" が表示されない', async () => {
-    render(<DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />)
+    render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
     await userEvent.click(screen.getByText('src'))
     expect(screen.queryByRole('group')).not.toBeInTheDocument()
   })
@@ -91,7 +165,13 @@ describe('DirectoryItem', () => {
   it('Enter キーで子ノードが折りたたまれる', async () => {
     const user = userEvent.setup()
     const { container } = render(
-      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
     )
     const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
     dirItem.focus()
@@ -102,7 +182,13 @@ describe('DirectoryItem', () => {
   it('Space キーで子ノードが折りたたまれる', async () => {
     const user = userEvent.setup()
     const { container } = render(
-      <DirectoryItem node={dirNode} openFilePath={null} onSelectFile={vi.fn()} depth={0} />
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
     )
     const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
     dirItem.focus()

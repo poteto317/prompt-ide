@@ -1,23 +1,20 @@
 import { realpath } from 'node:fs/promises'
+import { join, dirname } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { openFolderDialog } from '../dialogService'
-import { readDirRecursive, readFileContent, writeFileContent } from '../fileSystem'
+import {
+  readDirRecursive,
+  readFileContent,
+  writeFileContent,
+  createFile,
+  createDirectory,
+  renameEntry,
+  deleteEntry
+} from '../fileSystem'
 import type { FolderAccessManager } from '../folderAccessManager'
-
-function getAllowedFolder(folderAccess: FolderAccessManager, event: IpcMainInvokeEvent): string {
-  const allowedFolder = folderAccess.get(event.sender.id)
-  if (allowedFolder === undefined) throw new Error('No folder open')
-  return allowedFolder
-}
-
-async function assertFileAccess(
-  folderAccess: FolderAccessManager,
-  event: IpcMainInvokeEvent,
-  filePath: string
-): Promise<void> {
-  const allowedFolder = getAllowedFolder(folderAccess, event)
-  await folderAccess.assertWithinFolder(allowedFolder, filePath)
-}
+import { getAllowedFolder, assertFileAccess } from './fileAccessGuard'
+import { assertValidEntryName } from './entryNameValidator'
+import { convertFsError, convertFsAccessError } from './fsErrorConverter'
 
 export function registerFileSystemHandlers(
   ipcMain: IpcMain,
@@ -43,10 +40,7 @@ export function registerFileSystemHandlers(
       await assertFileAccess(folderAccess, event, filePath)
       return await readFileContent(filePath)
     } catch (err) {
-      if (isEnoentError(err)) {
-        throw new Error(`ファイルが見つかりません: ${filePath}`)
-      }
-      throw err
+      throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
     }
   })
 
@@ -57,15 +51,69 @@ export function registerFileSystemHandlers(
         await assertFileAccess(folderAccess, event, filePath)
         return await writeFileContent(filePath, content)
       } catch (err) {
-        if (isEnoentError(err)) {
-          throw new Error(`ファイルが見つかりません: ${filePath}`)
-        }
-        throw err
+        throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
       }
     }
   )
-}
 
-function isEnoentError(err: unknown): err is NodeJS.ErrnoException {
-  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT'
+  ipcMain.handle(
+    'fs:createFile',
+    async (event: IpcMainInvokeEvent, parentPath: string, name: string) => {
+      assertValidEntryName(name)
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      try {
+        const resolvedParent = await folderAccess.assertParentWithinFolder(
+          allowedFolder,
+          parentPath
+        )
+        await createFile(join(resolvedParent, name))
+      } catch (err) {
+        throw convertFsError(err, name, parentPath)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'fs:createDirectory',
+    async (event: IpcMainInvokeEvent, parentPath: string, name: string) => {
+      assertValidEntryName(name)
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      try {
+        const resolvedParent = await folderAccess.assertParentWithinFolder(
+          allowedFolder,
+          parentPath
+        )
+        await createDirectory(join(resolvedParent, name))
+      } catch (err) {
+        throw convertFsError(err, name, parentPath)
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'fs:renameEntry',
+    async (event: IpcMainInvokeEvent, targetPath: string, newName: string) => {
+      assertValidEntryName(newName)
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      try {
+        // assertWithinFolder は「許可フォルダの内部」のみ許可するため、
+        // ルートフォルダ自体のリネームはここで自動的に拒否される
+        await folderAccess.assertWithinFolder(allowedFolder, targetPath)
+        await renameEntry(targetPath, join(dirname(targetPath), newName))
+      } catch (err) {
+        throw convertFsError(err, newName, targetPath)
+      }
+    }
+  )
+
+  ipcMain.handle('fs:deleteEntry', async (event: IpcMainInvokeEvent, targetPath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    try {
+      // assertWithinFolder により、ルートフォルダ自体の削除は自動的に拒否される
+      await folderAccess.assertWithinFolder(allowedFolder, targetPath)
+      await deleteEntry(targetPath)
+    } catch (err) {
+      throw convertFsAccessError(err, `対象が見つかりません: ${targetPath}`, targetPath)
+    }
+  })
 }

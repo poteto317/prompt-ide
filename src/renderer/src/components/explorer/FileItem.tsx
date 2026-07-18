@@ -4,13 +4,20 @@ interface Props {
   node: FileTreeNode
   openFilePath: string | null
   onSelectFile: (node: FileTreeNode) => void
+  onContextMenu: (e: React.MouseEvent, node: FileTreeNode) => void
   depth: number
 }
 
 const INDENT_PX = 12
 const ICON_OFFSET_PX = 16
 
-export default function FileItem({ node, openFilePath, onSelectFile, depth }: Props) {
+export default function FileItem({
+  node,
+  openFilePath,
+  onSelectFile,
+  onContextMenu,
+  depth
+}: Props) {
   const isActive = node.path === openFilePath
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -29,6 +36,7 @@ export default function FileItem({ node, openFilePath, onSelectFile, depth }: Pr
       style={{ paddingLeft: depth * INDENT_PX + ICON_OFFSET_PX }}
       onClick={() => onSelectFile(node)}
       onKeyDown={handleKeyDown}
+      onContextMenu={(e) => onContextMenu(e, node)}
     >
       {node.name}
     </div>

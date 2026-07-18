@@ -6,12 +6,19 @@ interface Props {
   node: FileTreeNode
   openFilePath: string | null
   onSelectFile: (node: FileTreeNode) => void
+  onContextMenu: (e: React.MouseEvent, node: FileTreeNode) => void
   depth: number
 }
 
 const INDENT_PX = 12
 
-export default function DirectoryItem({ node, openFilePath, onSelectFile, depth }: Props) {
+export default function DirectoryItem({
+  node,
+  openFilePath,
+  onSelectFile,
+  onContextMenu,
+  depth
+}: Props) {
   const [expanded, setExpanded] = useState(true)
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -31,6 +38,7 @@ export default function DirectoryItem({ node, openFilePath, onSelectFile, depth 
         style={{ paddingLeft: depth * INDENT_PX }}
         onClick={() => setExpanded((prev) => !prev)}
         onKeyDown={handleKeyDown}
+        onContextMenu={(e) => onContextMenu(e, node)}
       >
         <span className="file-tree__item-icon">{expanded ? '▾' : '▸'}</span>
         {node.name}
@@ -43,6 +51,7 @@ export default function DirectoryItem({ node, openFilePath, onSelectFile, depth 
               node={child}
               openFilePath={openFilePath}
               onSelectFile={onSelectFile}
+              onContextMenu={onContextMenu}
               depth={depth + 1}
             />
           ))}
