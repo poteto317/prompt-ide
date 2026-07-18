@@ -4,6 +4,7 @@ import type {
   FileTreeNode,
   GitStatusResult,
   HistoryEntry,
+  ModelSettings,
   Prompt,
   Task
 } from '@shared/types'
@@ -15,11 +16,25 @@ export const api = {
   readFile: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
   writeFile: (path: string, content: string): Promise<void> =>
     ipcRenderer.invoke('fs:writeFile', path, content),
+  createFile: (parentPath: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('fs:createFile', parentPath, name),
+  createDirectory: (parentPath: string, name: string): Promise<void> =>
+    ipcRenderer.invoke('fs:createDirectory', parentPath, name),
+  renameEntry: (path: string, newName: string): Promise<void> =>
+    ipcRenderer.invoke('fs:renameEntry', path, newName),
+  deleteEntry: (path: string): Promise<void> => ipcRenderer.invoke('fs:deleteEntry', path),
   getGitStatus: (): Promise<GitStatusResult> => ipcRenderer.invoke('git:getStatus'),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),
-  runPrompt: (promptContent: string, fileContent: string | null): Promise<string> =>
-    ipcRenderer.invoke('claude:runPrompt', { promptContent, fileContent }),
+  getModelSettings: (): Promise<ModelSettings> => ipcRenderer.invoke('settings:getModelSettings'),
+  setModelSettings: (settings: ModelSettings): Promise<void> =>
+    ipcRenderer.invoke('settings:setModelSettings', settings),
+  runPromptStream: (
+    requestId: string,
+    promptContent: string,
+    fileContent: string | null
+  ): Promise<string> =>
+    ipcRenderer.invoke('claude:runPromptStream', { requestId, promptContent, fileContent }),
   loadPrompts: (): Promise<Prompt[]> => ipcRenderer.invoke('prompts:load'),
   savePrompts: (prompts: Prompt[]): Promise<void> => ipcRenderer.invoke('prompts:save', prompts),
   exportPrompts: (prompts: Prompt[]): Promise<boolean> =>
@@ -27,8 +42,28 @@ export const api = {
   importPrompts: (): Promise<Prompt[] | null> => ipcRenderer.invoke('prompts:import'),
   loadTasks: (): Promise<Task[]> => ipcRenderer.invoke('progress:load'),
   saveTasks: (tasks: Task[]): Promise<void> => ipcRenderer.invoke('progress:save', tasks),
-  runCLIPrompt: (toolId: CLIOnlyToolId, promptContent: string): Promise<string> =>
-    ipcRenderer.invoke('cli:runPrompt', { toolId, promptContent }),
+  runCLIPromptStream: (
+    requestId: string,
+    toolId: CLIOnlyToolId,
+    promptContent: string
+  ): Promise<string> =>
+    ipcRenderer.invoke('cli:runPromptStream', { requestId, toolId, promptContent }),
+  cancelPrompt: (requestId: string): Promise<boolean> =>
+    ipcRenderer.invoke('prompt:cancel', { requestId }),
+  // ipcRenderer を直接 renderer に渡さず preload 内で wrap し、解除関数を返す
+  // (contextBridge 越しでは removeListener が正しく機能しないリスナーリークを防ぐ)
+  onPromptStreamChunk: (listener: (requestId: string, chunk: string) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (typeof payload !== 'object' || payload === null) return
+      const { requestId, chunk } = payload as Record<string, unknown>
+      if (typeof requestId !== 'string' || typeof chunk !== 'string') return
+      listener(requestId, chunk)
+    }
+    ipcRenderer.on('prompt:streamChunk', wrapped)
+    return () => {
+      ipcRenderer.removeListener('prompt:streamChunk', wrapped)
+    }
+  },
   loadHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:load'),
   saveHistory: (entries: HistoryEntry[]): Promise<void> =>
     ipcRenderer.invoke('history:save', entries)

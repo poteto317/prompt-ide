@@ -662,6 +662,120 @@ body {
   color: #f48771;
 }
 
+/* ---- Explorer Context Menu ---- */
+
+.explorer-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #2d2d2d;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.explorer-context-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-context-menu__item:hover {
+  background: #094771;
+  color: #ffffff;
+}
+
+/* ---- Name Input Dialog ---- */
+
+.name-input-dialog__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.name-input-dialog {
+  width: 320px;
+  padding: 16px;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.name-input-dialog__title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.name-input-dialog__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  color: #cccccc;
+  font-size: 13px;
+}
+
+.name-input-dialog__input:focus {
+  border-color: #007acc;
+  outline: none;
+}
+
+.name-input-dialog__error {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #f48771;
+}
+
+.name-input-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.name-input-dialog__ok {
+  background: #0e639c;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.name-input-dialog__ok:hover {
+  background: #1177bb;
+}
+
+.name-input-dialog__cancel {
+  background: none;
+  color: #cccccc;
+  border: 1px solid #555555;
+  font-size: 12px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.name-input-dialog__cancel:hover {
+  border-color: #888888;
+}
+
 /* ---- File Tree ---- */
 
 .file-tree {
@@ -995,6 +1109,20 @@ body {
   border-color: #888888;
 }
 
+.output-panel__cancel-btn {
+  background: none;
+  color: #f48771;
+  border: 1px solid #a1533f;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.output-panel__cancel-btn:hover {
+  color: #ffffff;
+  border-color: #f48771;
+}
+
 .output-panel__content {
   flex: 1;
   overflow-y: auto;
@@ -1004,6 +1132,16 @@ body {
 .output-panel__loading {
   font-size: 13px;
   color: #6c6c6c;
+  margin: 0;
+}
+
+.output-panel__streaming {
+  font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #cccccc;
+  white-space: pre-wrap;
+  word-break: break-word;
   margin: 0;
 }
 

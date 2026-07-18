@@ -9,6 +9,7 @@ import { registerPromptsHandlers } from './handlers/promptsHandlers'
 import { registerProgressHandlers } from './handlers/progressHandlers'
 import { registerClaudeHandlers } from './handlers/claudeHandlers'
 import { registerCLIHandlers } from './handlers/cliHandlers'
+import { registerPromptCancelHandlers } from './handlers/promptCancelHandlers'
 import { registerHistoryHandlers } from './handlers/historyHandlers'
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
@@ -23,5 +24,6 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   registerProgressHandlers(ipcMain)
   registerClaudeHandlers(ipcMain)
   registerCLIHandlers(ipcMain)
+  registerPromptCancelHandlers(ipcMain)
   registerHistoryHandlers(ipcMain)
 }
