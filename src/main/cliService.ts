@@ -93,6 +93,15 @@ export function runCLIPrompt(
       killWithEscalation()
     })
 
+    // キャンセル要求後に発生したエラー(stdin書き込み失敗・プロセス起動失敗等)は、
+    // 本来の原因がキャンセルによる kill 由来である可能性が高いため、close ハンドラと
+    // 同様に「キャンセルされました」に合流させる。close だけを対象にすると、
+    // stdin/spawn の error イベントが close より先に発火した場合にキャンセル操作が
+    // 反映されない(元のエラーメッセージのまま reject される)抜け道が残ってしまう。
+    const rejectUnlessCancelled = (message: string): void => {
+      reject(new Error(cancelled ? 'キャンセルされました' : message))
+    }
+
     let output = ''
     let errorOutput = ''
 
@@ -127,7 +136,7 @@ export function runCLIPrompt(
     child.stdin.on('error', (err: NodeJS.ErrnoException) => {
       settle(() => {
         killWithEscalation()
-        reject(new Error(`stdin への書き込みに失敗しました: ${err.message}`))
+        rejectUnlessCancelled(`stdin への書き込みに失敗しました: ${err.message}`)
       })
     })
 
@@ -152,7 +161,7 @@ export function runCLIPrompt(
     })
 
     child.on('error', (err) => {
-      settle(() => reject(new Error(`CLI ツールの起動に失敗しました: ${err.message}`)))
+      settle(() => rejectUnlessCancelled(`CLI ツールの起動に失敗しました: ${err.message}`))
     })
 
     // リスナー登録後にタイマーと stdin 書き込みを開始する

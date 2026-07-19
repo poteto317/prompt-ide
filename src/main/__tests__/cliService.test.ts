@@ -478,6 +478,22 @@ describe('runCLIPrompt', () => {
       await expect(promise).rejects.toThrow('キャンセルされました')
     })
 
+    it('キャンセル後にプロセスが非ゼロ・非nullの終了コードで閉じても「キャンセルされました」で reject する', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      cancel!()
+      child.emit('close', 1, null)
+
+      await expect(promise).rejects.toThrow('キャンセルされました')
+    })
+
     it('キャンセルなしのシグナル終了は従来のメッセージのまま', async () => {
       const child = makeChild()
       mockSpawn.mockReturnValue(child)
@@ -486,6 +502,42 @@ describe('runCLIPrompt', () => {
       child.emit('close', null, 'SIGTERM')
 
       await expect(promise).rejects.toThrow('CLI ツールがシグナル SIGTERM で終了しました')
+    })
+
+    it('キャンセル後に stdin error イベントが発火しても「キャンセルされました」で reject する', async () => {
+      // killWithEscalation による kill で stdin が閉じられ、書き込み中だった場合に
+      // stdin の error イベントが close より先に発火することがある。close ハンドラだけ
+      // cancelled を優先しても、stdin error 経路が先に settle すると元のエラーメッセージの
+      // ままになってしまうため、こちらも cancelled を優先する
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      cancel!()
+      emitStdinError(child, Object.assign(new Error('EPIPE'), { code: 'EPIPE' }))
+
+      await expect(promise).rejects.toThrow('キャンセルされました')
+    })
+
+    it('キャンセル後に spawn の error イベントが発火しても「キャンセルされました」で reject する', async () => {
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      cancel!()
+      child.emit('error', new Error('ENOENT'))
+
+      await expect(promise).rejects.toThrow('キャンセルされました')
     })
   })
 
