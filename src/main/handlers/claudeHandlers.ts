@@ -15,10 +15,11 @@ export function registerClaudeHandlers(ipcMain: IpcMain): void {
     const controller = new AbortController()
     registerCancellation(requestId, () => controller.abort())
     return withCancellationCleanup(requestId, async () => {
-      const apiKey = await getApiKey()
+      // getApiKey/getModelSettings は互いに依存しない独立したI/O(いずれも
+      // settingsFileStore.readSettingsFile を個別に呼ぶ)なので並行実行する
+      const [apiKey, modelSettings] = await Promise.all([getApiKey(), getModelSettings()])
       const trimmedKey = apiKey.trim()
       if (trimmedKey.length === 0) throw new Error('API キーが設定されていません')
-      const modelSettings = await getModelSettings()
       // 設定読み込み中にキャンセルされていたら API 呼び出し自体を行わない
       if (controller.signal.aborted) throw new Error('キャンセルされました')
       return runPromptStream(trimmedKey, promptContent, fileContent, {

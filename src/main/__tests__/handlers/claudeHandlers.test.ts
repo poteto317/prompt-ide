@@ -187,6 +187,25 @@ describe('registerClaudeHandlers', () => {
       expect(mockUnregisterCancellation).toHaveBeenCalledWith('req-uuid-1')
     })
 
+    it('getApiKey と getModelSettings を並行実行する(片方の完了を待たずもう片方を呼び始める)', async () => {
+      let resolveApiKey: (key: string) => void = () => {}
+      let resolveModelSettings: (s: { modelId: string; maxTokens: number }) => void = () => {}
+      mockGetApiKey.mockReturnValue(new Promise<string>((r) => (resolveApiKey = r)))
+      mockGetModelSettings.mockReturnValue(new Promise((r) => (resolveModelSettings = r)))
+      mockRunPromptStream.mockResolvedValue('回答')
+
+      const pending = getRegisteredHandler('claude:runPromptStream')(makeEvent(), validPayload)
+
+      // 直列実行なら getModelSettings は getApiKey が解決するまで呼ばれないはずだが、
+      // 並行実行であれば両方ともこの時点で既に呼び出し済み
+      expect(mockGetApiKey).toHaveBeenCalledOnce()
+      expect(mockGetModelSettings).toHaveBeenCalledOnce()
+
+      resolveModelSettings({ modelId: 'claude-opus-4-8', maxTokens: 8000 })
+      resolveApiKey('sk-ant-key')
+      await pending
+    })
+
     it('payload が null のとき "引数はオブジェクトである必要があります" エラーをスロー', async () => {
       await expect(
         getRegisteredHandler('claude:runPromptStream')(makeEvent(), null)
