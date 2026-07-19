@@ -105,4 +105,38 @@ describe('writeSettingsFile', () => {
     const chmodOrder = mockChmod.mock.invocationCallOrder[0]
     expect(chmodOrder).toBeGreaterThan(writeOrder)
   })
+
+  it('並行して呼ばれても書き込みが直列化され、後勝ちが先勝ちの変更を消さない(lost update防止)', async () => {
+    // read-modify-write を模した簡易フェイクストア。writeFile が呼ばれるたびに
+    // 状態を更新し、以降の readFile はその最新状態を返す
+    let fakeStore: Record<string, unknown> | null = null
+    mockReadFile.mockImplementation(() =>
+      fakeStore === null
+        ? Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+        : Promise.resolve(JSON.stringify(fakeStore))
+    )
+    mockWriteFile.mockImplementation((_path: string, content: string) => {
+      fakeStore = JSON.parse(content)
+      return Promise.resolve(undefined)
+    })
+
+    // 直列化されていなければ、両方が書き込み前の古い状態を読み込み、
+    // 後勝ちの writeFile が先勝ちの変更フィールドを消してしまう
+    await Promise.all([
+      writeSettingsFile({ encryptedApiKey: 'enc-key' }),
+      writeSettingsFile({ modelId: 'claude-opus-4-8' })
+    ])
+
+    expect(fakeStore).toEqual({ encryptedApiKey: 'enc-key', modelId: 'claude-opus-4-8' })
+  })
+
+  it('先行する write が失敗しても後続の write はブロックされない', async () => {
+    mockReadFile.mockRejectedValueOnce(new Error('unexpected read error'))
+    mockReadFile.mockResolvedValue(JSON.stringify({}))
+
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow(
+      'unexpected read error'
+    )
+    await expect(writeSettingsFile({ maxTokens: 4096 })).resolves.toBeUndefined()
+  })
 })
