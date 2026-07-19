@@ -16,18 +16,24 @@ export class FolderAccessManager {
     this.folders.delete(webContentsId)
   }
 
+  // allowedPath がドライブルート('C:\\')やファイルシステムルート('/')など既に
+  // 区切り文字で終わっている場合、prefix は allowedPath と同一になってしまう
+  // (末尾に区切りを重ねて付けない)。assertWithinFolder/assertParentWithinFolder の
+  // 両方で使うため一箇所にまとめる。
+  private toPrefix(allowedPath: string): string {
+    return allowedPath.endsWith(sep) ? allowedPath : allowedPath + sep
+  }
+
   async assertWithinFolder(allowedPath: string, targetPath: string): Promise<void> {
     const resolvedTarget = await realpath(targetPath)
-    // allowedPath がドライブルート('C:\\')やファイルシステムルート('/')など既に
-    // 区切り文字で終わっている場合、prefix は allowedPath と同一になり、
+    // prefix が allowedPath と同一になるケース(上記参照)では、
     // 「resolvedTarget === allowedPath(= 開いているフォルダそのもの)」も
     // startsWith(prefix) を満たしてしまう(文字列は自分自身で始まるため)。
     // 等値は許可フォルダ末尾の区切り有無に関わらず常に拒否することを明示する。
     if (resolvedTarget === allowedPath) {
       throw new Error(`Access denied: ${targetPath}`)
     }
-    const prefix = allowedPath.endsWith(sep) ? allowedPath : allowedPath + sep
-    if (!resolvedTarget.startsWith(prefix)) {
+    if (!resolvedTarget.startsWith(this.toPrefix(allowedPath))) {
       throw new Error(`Access denied: ${targetPath}`)
     }
   }
@@ -40,8 +46,7 @@ export class FolderAccessManager {
    */
   async assertParentWithinFolder(allowedPath: string, parentPath: string): Promise<string> {
     const resolvedParent = await realpath(parentPath)
-    const prefix = allowedPath.endsWith(sep) ? allowedPath : allowedPath + sep
-    if (resolvedParent !== allowedPath && !resolvedParent.startsWith(prefix)) {
+    if (resolvedParent !== allowedPath && !resolvedParent.startsWith(this.toPrefix(allowedPath))) {
       throw new Error(`Access denied: ${parentPath}`)
     }
     return resolvedParent
