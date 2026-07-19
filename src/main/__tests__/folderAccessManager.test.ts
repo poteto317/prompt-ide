@@ -107,6 +107,15 @@ describe('FolderAccessManager', () => {
         'Access denied'
       )
     })
+
+    it('許可フォルダがファイルシステムルート "/" 自体でも、そのルート自身は「内部」ではないため拒否される', async () => {
+      // allowedPath が既に区切り文字('/')で終わっている場合、prefix が allowedPath と
+      // 同一になり、resolvedTarget === allowedPath も startsWith(prefix) を満たして
+      // しまう(文字列は自分自身で始まるため)。等値の明示チェックが無いと、開いている
+      // フォルダそのもの(この場合はルート "/")へのリネーム・削除が誤って許可される。
+      const manager = new FolderAccessManager()
+      await expect(manager.assertWithinFolder('/', '/')).rejects.toThrow('Access denied')
+    })
   })
 
   describe('assertParentWithinFolder', () => {

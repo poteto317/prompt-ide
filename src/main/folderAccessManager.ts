@@ -18,6 +18,14 @@ export class FolderAccessManager {
 
   async assertWithinFolder(allowedPath: string, targetPath: string): Promise<void> {
     const resolvedTarget = await realpath(targetPath)
+    // allowedPath がドライブルート('C:\\')やファイルシステムルート('/')など既に
+    // 区切り文字で終わっている場合、prefix は allowedPath と同一になり、
+    // 「resolvedTarget === allowedPath(= 開いているフォルダそのもの)」も
+    // startsWith(prefix) を満たしてしまう(文字列は自分自身で始まるため)。
+    // 等値は許可フォルダ末尾の区切り有無に関わらず常に拒否することを明示する。
+    if (resolvedTarget === allowedPath) {
+      throw new Error(`Access denied: ${targetPath}`)
+    }
     const prefix = allowedPath.endsWith(sep) ? allowedPath : allowedPath + sep
     if (!resolvedTarget.startsWith(prefix)) {
       throw new Error(`Access denied: ${targetPath}`)
