@@ -7,7 +7,7 @@ interface Props {
   isSaving: boolean
   saved: boolean
   saveError: string | null
-  onSave: (settings: ModelSettings) => void
+  onSave: (settings: ModelSettings) => Promise<void>
 }
 
 // initialSettings は読み込み完了直後の値を初期値として使うだけなので、
@@ -70,7 +70,7 @@ export default function ModelSettingsSection({
           disabled={
             isSaving || !Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > maxTokensCap
           }
-          onClick={() => onSave({ modelId, maxTokens })}
+          onClick={() => void onSave({ modelId, maxTokens })}
         >
           保存
         </button>

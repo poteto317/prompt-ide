@@ -8,7 +8,7 @@ const defaultProps = {
   isSaving: false,
   saved: false,
   saveError: null as string | null,
-  onSave: vi.fn()
+  onSave: vi.fn().mockResolvedValue(undefined)
 }
 
 describe('ModelSettingsSection', () => {
@@ -31,7 +31,7 @@ describe('ModelSettingsSection', () => {
 
   it('保存ボタンをクリックすると現在の入力値で onSave が呼ばれる', async () => {
     const user = userEvent.setup()
-    const onSave = vi.fn()
+    const onSave = vi.fn().mockResolvedValue(undefined)
     render(<ModelSettingsSection {...defaultProps} onSave={onSave} />)
     await user.click(screen.getByRole('button', { name: '保存' }))
     expect(onSave).toHaveBeenCalledWith({ modelId: 'claude-haiku-4-5', maxTokens: 4096 })
