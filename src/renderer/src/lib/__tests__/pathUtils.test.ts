@@ -37,4 +37,20 @@ describe('isPathInside', () => {
   it('親子で区切り文字が混在していても内部にあるパスを true と判定する', () => {
     expect(isPathInside('C:/project/src/index.ts', 'C:\\project\\src')).toBe(true)
   })
+
+  it('childPath の末尾に区切りが付いていて親と実質同一パスのとき false を返す(内部ではなく同一パス)', () => {
+    expect(isPathInside('/project/src/', '/project/src')).toBe(false)
+  })
+
+  it('parentPath がファイルシステムルート "/" のとき、ルート自身は内部ではないため false を返す', () => {
+    expect(isPathInside('/', '/')).toBe(false)
+  })
+
+  it('parentPath がファイルシステムルート "/" のとき、退化してあらゆる絶対パスを内部と誤判定しない', () => {
+    expect(isPathInside('/etc/passwd', '/')).toBe(false)
+  })
+
+  it('parentPath が空文字列のとき、退化してあらゆる絶対パスを内部と誤判定しない', () => {
+    expect(isPathInside('/project/src/index.ts', '')).toBe(false)
+  })
 })
