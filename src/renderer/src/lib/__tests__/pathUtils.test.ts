@@ -25,4 +25,16 @@ describe('isPathInside', () => {
   it('兄弟パスのとき false を返す', () => {
     expect(isPathInside('/project/lib/index.ts', '/project/src')).toBe(false)
   })
+
+  it('parentPath の末尾に区切りが付いていても内部にあるパスを true と判定する', () => {
+    expect(isPathInside('/project/src/index.ts', '/project/src/')).toBe(true)
+  })
+
+  it('parentPath の末尾が \\ でも内部にあるパスを true と判定する', () => {
+    expect(isPathInside('C:\\project\\src\\index.ts', 'C:\\project\\src\\')).toBe(true)
+  })
+
+  it('親子で区切り文字が混在していても内部にあるパスを true と判定する', () => {
+    expect(isPathInside('C:/project/src/index.ts', 'C:\\project\\src')).toBe(true)
+  })
 })
