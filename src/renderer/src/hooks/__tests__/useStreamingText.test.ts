@@ -109,6 +109,54 @@ describe('useStreamingText', () => {
     expect(result.current.streamingText).toBe('')
   })
 
+  it('stopStreaming は保留中の flush タイマーをクリアする(次の実行への表示遅延の持ち越しを防ぐ)', async () => {
+    const { result } = renderHook(() => useStreamingText())
+    const listener = mockOnPromptStreamChunk.mock.calls[0][0]
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+
+    act(() => {
+      result.current.startStreaming('req-1')
+    })
+    act(() => {
+      // このチャンクで flush タイマー(50ms後)が保留中になる
+      listener('req-1', 'チャンク')
+    })
+
+    act(() => {
+      result.current.stopStreaming()
+    })
+
+    expect(clearTimeoutSpy).toHaveBeenCalled()
+    clearTimeoutSpy.mockRestore()
+  })
+
+  it('startStreaming は前回の実行の保留中の flush タイマーをクリアする', async () => {
+    const { result } = renderHook(() => useStreamingText())
+    const listener = mockOnPromptStreamChunk.mock.calls[0][0]
+
+    act(() => {
+      result.current.startStreaming('req-1')
+    })
+    act(() => {
+      // flush タイマーが保留中になる(stopStreaming を経由せず次の実行が始まるケース)
+      listener('req-1', 'A')
+    })
+
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+    act(() => {
+      result.current.startStreaming('req-2')
+    })
+    expect(clearTimeoutSpy).toHaveBeenCalled()
+    clearTimeoutSpy.mockRestore()
+
+    await act(async () => {
+      listener('req-2', 'B')
+      await flushDebounce()
+    })
+    // 前の実行(req-1)のテキストが残らず、req-2 のチャンクのみが反映される
+    expect(result.current.streamingText).toBe('B')
+  })
+
   it('startStreaming を再度呼ぶと前回のバッファがリセットされる', async () => {
     const { result } = renderHook(() => useStreamingText())
     const listener = mockOnPromptStreamChunk.mock.calls[0][0]

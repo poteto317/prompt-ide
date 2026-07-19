@@ -40,13 +40,26 @@ export function useStreamingText(): UseStreamingTextResult {
     }
   }, [])
 
+  // 前の実行の flush タイマーが保留中のまま次の実行が始まると、チャンク受信時の
+  // 「タイマーが無ければ張る」判定がすり抜けて新しいタイマーが張られず、
+  // 次の実行の表示更新が古いタイマーの発火(最大50ms後)まで遅延しうるため、
+  // 実行の開始・終了のどちらでも保留中のタイマーを確実にクリアする。
+  const clearPendingFlush = (): void => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+  }
+
   const startStreaming = useCallback((requestId: string): void => {
+    clearPendingFlush()
     activeRequestIdRef.current = requestId
     fullTextRef.current = ''
     setStreamingText('')
   }, [])
 
   const stopStreaming = useCallback((): void => {
+    clearPendingFlush()
     activeRequestIdRef.current = null
     fullTextRef.current = ''
     setStreamingText('')
