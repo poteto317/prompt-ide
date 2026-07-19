@@ -16,6 +16,26 @@ import { getAllowedFolder, assertFileAccess } from './fileAccessGuard'
 import { assertValidEntryName } from './entryNameValidator'
 import { convertFsError, convertFsAccessError } from './fsErrorConverter'
 
+// fs:createFile と fs:createDirectory は、実際に呼び出す fs 操作以外は
+// 名前検証・アクセス境界チェック・エラー変換まで全く同じ流れのため共通化する
+function registerCreateEntryHandler(
+  ipcMain: IpcMain,
+  folderAccess: FolderAccessManager,
+  channel: 'fs:createFile' | 'fs:createDirectory',
+  createEntry: (path: string) => Promise<void>
+): void {
+  ipcMain.handle(channel, async (event: IpcMainInvokeEvent, parentPath: string, name: string) => {
+    assertValidEntryName(name)
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    try {
+      const resolvedParent = await folderAccess.assertParentWithinFolder(allowedFolder, parentPath)
+      await createEntry(join(resolvedParent, name))
+    } catch (err) {
+      throw convertFsError(err, name, parentPath)
+    }
+  })
+}
+
 export function registerFileSystemHandlers(
   ipcMain: IpcMain,
   folderAccess: FolderAccessManager
@@ -56,39 +76,8 @@ export function registerFileSystemHandlers(
     }
   )
 
-  ipcMain.handle(
-    'fs:createFile',
-    async (event: IpcMainInvokeEvent, parentPath: string, name: string) => {
-      assertValidEntryName(name)
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      try {
-        const resolvedParent = await folderAccess.assertParentWithinFolder(
-          allowedFolder,
-          parentPath
-        )
-        await createFile(join(resolvedParent, name))
-      } catch (err) {
-        throw convertFsError(err, name, parentPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'fs:createDirectory',
-    async (event: IpcMainInvokeEvent, parentPath: string, name: string) => {
-      assertValidEntryName(name)
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      try {
-        const resolvedParent = await folderAccess.assertParentWithinFolder(
-          allowedFolder,
-          parentPath
-        )
-        await createDirectory(join(resolvedParent, name))
-      } catch (err) {
-        throw convertFsError(err, name, parentPath)
-      }
-    }
-  )
+  registerCreateEntryHandler(ipcMain, folderAccess, 'fs:createFile', createFile)
+  registerCreateEntryHandler(ipcMain, folderAccess, 'fs:createDirectory', createDirectory)
 
   ipcMain.handle(
     'fs:renameEntry',
