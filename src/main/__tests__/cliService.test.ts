@@ -458,6 +458,26 @@ describe('runCLIPrompt', () => {
       await expect(promise).rejects.toThrow('キャンセルされました')
     })
 
+    it('キャンセル後にプロセスが終了コード0で閉じても「キャンセルされました」で reject する', async () => {
+      // SIGTERM を受けたプロセスがシグナルではなく正常終了コード(0)で
+      // close することがある。code===0 を優先すると成功扱いになってしまうため、
+      // キャンセル済みなら終了コードに関わらずキャンセル扱いにする
+      const child = makeChild()
+      mockSpawn.mockReturnValue(child)
+      let cancel: (() => void) | null = null
+
+      const promise = runCLIPrompt('claude', 'テスト', {
+        registerCancel: (fn) => {
+          cancel = fn
+        }
+      })
+      child.stdout.emit('data', '途中まで出力')
+      cancel!()
+      child.emit('close', 0, null)
+
+      await expect(promise).rejects.toThrow('キャンセルされました')
+    })
+
     it('キャンセルなしのシグナル終了は従来のメッセージのまま', async () => {
       const child = makeChild()
       mockSpawn.mockReturnValue(child)

@@ -134,10 +134,14 @@ export function runCLIPrompt(
     // stdin 操作より先に close/error を登録して起動失敗時の早期イベントを確実に捕捉する
     child.on('close', (code, signal) => {
       exited = true
-      if (code === 0) {
-        settle(() => resolve(output))
-      } else if (cancelled) {
+      // キャンセル要求後は終了コードに関わらず「キャンセルされました」に合流させる。
+      // SIGTERM を受けたプロセスが正常終了扱いの 0 で終了することがあり、
+      // code === 0 を先にチェックすると意図しない成功 resolve になってしまう
+      // (Claude API 側の AbortController によるキャンセルと挙動を揃える)。
+      if (cancelled) {
         settle(() => reject(new Error('キャンセルされました')))
+      } else if (code === 0) {
+        settle(() => resolve(output))
       } else if (signal) {
         settle(() => reject(new Error(`CLI ツールがシグナル ${signal} で終了しました`)))
       } else {
