@@ -19,6 +19,11 @@ export function useModelSettingsForm({
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // React state(isSaving)だけに頼ると、同一レンダー内で handleSave が連続で
+  // 呼ばれた場合に setState のバッチングにより両方とも古い値を見てガードを
+  // すり抜けてしまう(useFileEditing.ts の savingPathsRef と同じ理由)。
+  // 即座に反映される ref で多重実行を防ぐ。
+  const isSavingRef = useRef(false)
 
   useEffect(() => {
     return () => {
@@ -28,7 +33,8 @@ export function useModelSettingsForm({
 
   const handleSave = useCallback(
     async (settings: ModelSettings) => {
-      if (isSaving) return
+      if (isSavingRef.current) return
+      isSavingRef.current = true
       setIsSaving(true)
       setSaved(false)
       setSaveError(null)
@@ -40,10 +46,11 @@ export function useModelSettingsForm({
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : '保存に失敗しました')
       } finally {
+        isSavingRef.current = false
         setIsSaving(false)
       }
     },
-    [isSaving, onSave]
+    [onSave]
   )
 
   return { isSaving, saved, saveError, handleSave }

@@ -80,6 +80,48 @@ describe('useModelSettingsForm', () => {
     })
   })
 
+  describe('多重実行防止', () => {
+    it('保存処理中に再度 handleSave を呼んでも onSave は1回しか呼ばれない(連打防止)', async () => {
+      // isSaving state のコミット前(同一同期実行内)に2回呼ばれても、
+      // ref による即時反映のガードで2回目は無視されることを検証する
+      let resolveOnSave: () => void = () => {}
+      const onSave = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveOnSave = resolve
+          })
+      )
+      const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
+      const settings: ModelSettings = { modelId: 'claude-haiku-4-5', maxTokens: 4096 }
+
+      let firstCall!: Promise<void>
+      let secondCall!: Promise<void>
+      act(() => {
+        firstCall = result.current.handleSave(settings)
+        secondCall = result.current.handleSave(settings)
+      })
+
+      expect(onSave).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        resolveOnSave()
+        await firstCall
+        await secondCall
+      })
+    })
+
+    it('保存完了後は再度 handleSave を呼べる', async () => {
+      const onSave = vi.fn().mockResolvedValue(undefined)
+      const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
+      const settings: ModelSettings = { modelId: 'claude-haiku-4-5', maxTokens: 4096 }
+
+      await act(() => result.current.handleSave(settings))
+      await act(() => result.current.handleSave(settings))
+
+      expect(onSave).toHaveBeenCalledTimes(2)
+    })
+  })
+
   describe('クリーンアップ', () => {
     it('アンマウント後にタイマーがクリアされる（メモリリークなし）', async () => {
       const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
