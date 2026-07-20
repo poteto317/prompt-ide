@@ -4,6 +4,7 @@ import { createOpenFile } from '../lib/fileUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
+import { useFileTreeOperations } from './useFileTreeOperations'
 
 interface FileSystemState {
   folderPath: string | null
@@ -17,13 +18,16 @@ interface FileSystemState {
   selectFile: (node: FileTreeNode) => Promise<void>
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
+  createFile: (parentPath: string, name: string) => Promise<void>
+  createDirectory: (parentPath: string, name: string) => Promise<void>
+  renameEntry: (node: FileTreeNode, newName: string) => Promise<void>
+  deleteEntry: (node: FileTreeNode) => Promise<void>
 }
 
 export function useFileSystem(options?: Options): FileSystemState {
   const [folderPath, setFolderPath] = useState<string | null>(null)
-  const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [openFile, setOpenFile] = useState<OpenFile | null>(null)
-  const [error, setError] = useState<Error | null>(null)
+  const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
   // 同一の error を Sidebar/EditorPanel 双方に渡すと、フォルダ読み込み失敗が
@@ -37,6 +41,19 @@ export function useFileSystem(options?: Options): FileSystemState {
     resetForFileChange,
     confirmDiscardIfDirty
   } = useFileEditing(openFile, setOpenFile, options)
+
+  // ファイル操作CRUD(作成/リネーム/削除)と、開いているファイルへの追随ロジックは
+  // useFileTreeOperations に委譲する。fileTree/error の状態もそちらが保持する。
+  const {
+    fileTree,
+    setFileTree,
+    error,
+    setError,
+    createFile,
+    createDirectory,
+    renameEntry,
+    deleteEntry
+  } = useFileTreeOperations({ folderPath, openFile, setOpenFile, resetForFileChange, onConfirm })
 
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
@@ -80,6 +97,10 @@ export function useFileSystem(options?: Options): FileSystemState {
     openFolder,
     selectFile,
     updateFileContent,
-    saveFile
+    saveFile,
+    createFile,
+    createDirectory,
+    renameEntry,
+    deleteEntry
   }
 }

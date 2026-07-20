@@ -6,10 +6,15 @@ import { buildPromptContent } from '@shared/promptUtils'
 export async function invokePrompt(
   toolId: PromptToolId,
   promptContent: string,
-  fileContent: string | null
+  fileContent: string | null,
+  requestId: string
 ): Promise<string> {
   if (toolId === 'api') {
-    return claudeApi.runPrompt(promptContent, fileContent)
+    return claudeApi.runPromptStream(requestId, promptContent, fileContent)
   }
-  return cliApi.runCLIPrompt(toolId, buildPromptContent(promptContent, fileContent))
+  return cliApi.runCLIPromptStream(
+    requestId,
+    toolId,
+    buildPromptContent(promptContent, fileContent)
+  )
 }

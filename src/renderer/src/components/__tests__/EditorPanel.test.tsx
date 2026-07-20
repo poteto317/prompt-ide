@@ -21,8 +21,10 @@ const defaultProps = {
   onSave: vi.fn(),
   isExecuting: false,
   result: null as string | null,
+  streamingText: '',
   executionError: null as Error | null,
-  onClearResult: vi.fn()
+  onClearResult: vi.fn(),
+  onCancelExecution: vi.fn()
 }
 
 describe('EditorPanel — openFile なし', () => {

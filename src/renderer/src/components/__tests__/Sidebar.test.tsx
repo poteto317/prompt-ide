@@ -9,6 +9,10 @@ const defaultProps = {
   openFilePath: null as string | null,
   onOpenFolder: vi.fn(),
   onSelectFile: vi.fn(),
+  onCreateFile: vi.fn(),
+  onCreateDirectory: vi.fn(),
+  onRenameEntry: vi.fn(),
+  onDeleteEntry: vi.fn(),
   error: null as Error | null,
   prompts: [],
   onAddPrompt: vi.fn(),
@@ -39,7 +43,10 @@ const defaultProps = {
   hasKey: false,
   apiKeyLoaded: true,
   keyStoreError: null as string | null,
-  onSaveApiKey: vi.fn()
+  onSaveApiKey: vi.fn(),
+  modelSettings: { modelId: 'claude-haiku-4-5' as const, maxTokens: 4096 },
+  modelSettingsLoaded: true,
+  onSaveModelSettings: vi.fn()
 }
 
 describe('Sidebar', () => {
@@ -101,7 +108,7 @@ describe('Sidebar', () => {
   it('settings: 正しいヘッダーが表示され SettingsPanel が描画される', () => {
     render(<Sidebar activePanel="settings" {...defaultProps} />)
     expect(screen.getByText(sidebarTitles.settings)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '保存' })[0]).toBeInTheDocument()
   })
 
   it('explorer に切り替えても PromptsPanel は DOM に残る（常時マウント）', () => {

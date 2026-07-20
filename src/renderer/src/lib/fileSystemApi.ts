@@ -15,3 +15,19 @@ export function readFileContent(path: string): Promise<string> {
 export function writeFileContent(path: string, content: string): Promise<void> {
   return window.api.writeFile(path, content)
 }
+
+export function createFile(parentPath: string, name: string): Promise<void> {
+  return window.api.createFile(parentPath, name)
+}
+
+export function createDirectory(parentPath: string, name: string): Promise<void> {
+  return window.api.createDirectory(parentPath, name)
+}
+
+export function renameEntry(path: string, newName: string): Promise<void> {
+  return window.api.renameEntry(path, newName)
+}
+
+export function deleteEntry(path: string): Promise<void> {
+  return window.api.deleteEntry(path)
+}

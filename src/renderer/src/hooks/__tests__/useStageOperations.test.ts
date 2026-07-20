@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Mock } from 'vitest'
 import type { Task } from '../../types'
 import { useStageOperations } from '../useStageOperations'
 
@@ -26,11 +27,11 @@ function makeTask(overrides: Partial<Task> = {}): Task {
 
 describe('useStageOperations', () => {
   let task: Task
-  let updateTask: ReturnType<typeof vi.fn>
+  let updateTask: Mock<(taskId: string, fn: (t: Task) => Task) => void>
 
   beforeEach(() => {
     task = makeTask()
-    updateTask = vi.fn((taskId: string, fn: (t: Task) => Task) => {
+    updateTask = vi.fn((_taskId: string, fn: (t: Task) => Task) => {
       task = fn(task)
     })
   })

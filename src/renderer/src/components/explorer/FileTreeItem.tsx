@@ -6,13 +6,10 @@ interface Props {
   node: FileTreeNode
   openFilePath: string | null
   onSelectFile: (node: FileTreeNode) => void
+  onContextMenu: (e: React.MouseEvent, node: FileTreeNode) => void
   depth: number
 }
 
 export default function FileTreeItem(props: Props) {
-  return props.node.type === 'directory' ? (
-    <DirectoryItem {...props} />
-  ) : (
-    <FileItem {...props} />
-  )
+  return props.node.type === 'directory' ? <DirectoryItem {...props} /> : <FileItem {...props} />
 }

@@ -15,7 +15,7 @@ import type {
   StageId,
   HistoryEntry
 } from '../types'
-import type { GitStatusResult } from '@shared/types'
+import type { GitStatusResult, ModelSettings } from '@shared/types'
 
 interface Props {
   activePanel: Panel
@@ -25,6 +25,10 @@ interface Props {
   onOpenFolder: () => void
   onSelectFile: (node: FileTreeNode) => void
   error: Error | null
+  onCreateFile: (parentPath: string, name: string) => void
+  onCreateDirectory: (parentPath: string, name: string) => void
+  onRenameEntry: (node: FileTreeNode, newName: string) => void
+  onDeleteEntry: (node: FileTreeNode) => void
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
@@ -55,6 +59,9 @@ interface Props {
   apiKeyLoaded: boolean
   keyStoreError: string | null
   onSaveApiKey: (key: string) => Promise<void>
+  modelSettings: ModelSettings
+  modelSettingsLoaded: boolean
+  onSaveModelSettings: (settings: ModelSettings) => Promise<void>
 }
 
 export default function Sidebar({
@@ -65,6 +72,10 @@ export default function Sidebar({
   onOpenFolder,
   onSelectFile,
   error,
+  onCreateFile,
+  onCreateDirectory,
+  onRenameEntry,
+  onDeleteEntry,
   prompts,
   onAddPrompt,
   onDeletePrompt,
@@ -94,7 +105,10 @@ export default function Sidebar({
   hasKey,
   apiKeyLoaded,
   keyStoreError,
-  onSaveApiKey
+  onSaveApiKey,
+  modelSettings,
+  modelSettingsLoaded,
+  onSaveModelSettings
 }: Props) {
   return (
     <div className="sidebar">
@@ -107,6 +121,10 @@ export default function Sidebar({
           onOpenFolder={onOpenFolder}
           onSelectFile={onSelectFile}
           error={error}
+          onCreateFile={onCreateFile}
+          onCreateDirectory={onCreateDirectory}
+          onRenameEntry={onRenameEntry}
+          onDeleteEntry={onDeleteEntry}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'prompts'}>
@@ -159,6 +177,9 @@ export default function Sidebar({
           apiKeyLoaded={apiKeyLoaded}
           keyStoreError={keyStoreError}
           onSave={onSaveApiKey}
+          modelSettings={modelSettings}
+          modelSettingsLoaded={modelSettingsLoaded}
+          onSaveModelSettings={onSaveModelSettings}
         />
       </PanelContainer>
     </div>

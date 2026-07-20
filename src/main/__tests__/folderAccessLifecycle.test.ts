@@ -24,7 +24,7 @@ describe('setupFolderAccessLifecycle', () => {
     setupFolderAccessLifecycle(app, folderAccess)
 
     const webContentsCreatedCb = (app.on as ReturnType<typeof vi.fn>).mock.calls.find(
-      ([event]: [string]) => event === 'web-contents-created'
+      (call) => call[0] === 'web-contents-created'
     )![1]
 
     let destroyedCb: (() => void) | undefined

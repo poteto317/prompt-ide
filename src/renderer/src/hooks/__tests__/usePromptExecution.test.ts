@@ -2,16 +2,25 @@ import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../lib/promptInvoker')
+vi.mock('../../lib/promptStreamApi')
 
 import * as promptInvoker from '../../lib/promptInvoker'
+import * as promptStreamApi from '../../lib/promptStreamApi'
 import { usePromptExecution } from '../usePromptExecution'
 
 const mockInvokePrompt = vi.mocked(promptInvoker.invokePrompt)
+const mockOnPromptStreamChunk = vi.mocked(promptStreamApi.onPromptStreamChunk)
+const mockCancelPrompt = vi.mocked(promptStreamApi.cancelPrompt)
 
 const context = { promptId: 'p1', promptTitle: 'タイトル' }
 
+// setTimeout(50ms) で間引かれた streamingText の反映を待つ
+const flushRaf = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 100))
+
 beforeEach(() => {
   vi.clearAllMocks()
+  mockOnPromptStreamChunk.mockReturnValue(() => {})
+  mockCancelPrompt.mockResolvedValue(true)
 })
 
 describe('usePromptExecution', () => {
@@ -152,7 +161,12 @@ describe('usePromptExecution', () => {
     await act(async () => {
       await result.current.executePrompt('プロンプト', 'ファイル内容', 'copilot')
     })
-    expect(mockInvokePrompt).toHaveBeenCalledWith('copilot', 'プロンプト', 'ファイル内容')
+    expect(mockInvokePrompt).toHaveBeenCalledWith(
+      'copilot',
+      'プロンプト',
+      'ファイル内容',
+      expect.any(String)
+    )
   })
 
   it('toolId が api（デフォルトツール）のときも fileContent が invokePrompt に渡される', async () => {
@@ -161,7 +175,106 @@ describe('usePromptExecution', () => {
     await act(async () => {
       await result.current.executePrompt('プロンプト', 'ファイル内容', 'api')
     })
-    expect(mockInvokePrompt).toHaveBeenCalledWith('api', 'プロンプト', 'ファイル内容')
+    expect(mockInvokePrompt).toHaveBeenCalledWith(
+      'api',
+      'プロンプト',
+      'ファイル内容',
+      expect.any(String)
+    )
+  })
+
+  it('実行ごとに異なる requestId を invokePrompt に渡す', async () => {
+    mockInvokePrompt.mockResolvedValue('result')
+    const { result } = renderHook(() => usePromptExecution())
+    await act(async () => {
+      await result.current.executePrompt('p1', null, 'api')
+    })
+    await act(async () => {
+      await result.current.executePrompt('p2', null, 'api')
+    })
+    const firstId = mockInvokePrompt.mock.calls[0][3]
+    const secondId = mockInvokePrompt.mock.calls[1][3]
+    expect(firstId).not.toBe(secondId)
+  })
+
+  // 購読・間引きタイミングの詳細な検証は useStreamingText.test.ts で個別にテスト済み。
+  // ここでは executePrompt が useStreamingText を正しく起動・停止できているかの
+  // 統合確認のみ行う。
+  describe('ストリーミング(useStreamingText との統合)', () => {
+    it('実行中に届いたチャンクが streamingText に反映され、完了後にクリアされる', async () => {
+      let resolvePrompt!: (v: string) => void
+      mockInvokePrompt.mockImplementation(
+        () =>
+          new Promise<string>((resolve) => {
+            resolvePrompt = resolve
+          })
+      )
+      const { result } = renderHook(() => usePromptExecution())
+      act(() => {
+        result.current.executePrompt('p', null, 'api')
+      })
+      const requestId = mockInvokePrompt.mock.calls[0][3] as string
+      const listener = mockOnPromptStreamChunk.mock.calls[0][0]
+
+      await act(async () => {
+        listener(requestId, 'チャンク1')
+        await flushRaf()
+      })
+      expect(result.current.streamingText).toBe('チャンク1')
+
+      await act(async () => {
+        resolvePrompt('全文')
+      })
+      expect(result.current.streamingText).toBe('')
+      expect(result.current.result).toBe('全文')
+    })
+  })
+
+  describe('cancelExecution', () => {
+    it('実行中に呼ぶと現在の requestId で cancelPrompt が呼ばれる', async () => {
+      let resolvePrompt!: (v: string) => void
+      mockInvokePrompt.mockImplementation(
+        () =>
+          new Promise<string>((resolve) => {
+            resolvePrompt = resolve
+          })
+      )
+      const { result } = renderHook(() => usePromptExecution())
+      act(() => {
+        result.current.executePrompt('p', null, 'api')
+      })
+      const requestId = mockInvokePrompt.mock.calls[0][3] as string
+
+      act(() => {
+        result.current.cancelExecution()
+      })
+      expect(mockCancelPrompt).toHaveBeenCalledWith(requestId)
+
+      await act(async () => {
+        resolvePrompt('x')
+      })
+    })
+
+    it('未実行時は cancelPrompt を呼ばない', () => {
+      const { result } = renderHook(() => usePromptExecution())
+      act(() => {
+        result.current.cancelExecution()
+      })
+      expect(mockCancelPrompt).not.toHaveBeenCalled()
+    })
+
+    it('キャンセル起因の reject は既存のエラーパスに合流し履歴にも記録される', async () => {
+      mockInvokePrompt.mockRejectedValue(new Error('キャンセルされました'))
+      const onExecuted = vi.fn()
+      const { result } = renderHook(() => usePromptExecution())
+      await act(async () => {
+        await result.current.executePrompt('プロンプト', null, 'api', context, onExecuted)
+      })
+      expect(result.current.executionError?.message).toBe('キャンセルされました')
+      expect(onExecuted).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'error', errorMessage: 'キャンセルされました' })
+      )
+    })
   })
 
   describe('onExecuted コールバック', () => {

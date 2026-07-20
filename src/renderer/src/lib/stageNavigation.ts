@@ -13,7 +13,10 @@ export function reopenStage(task: Task, stageId: StageId): Task {
 
   const stages = task.stages.map((stage) => {
     if (stage.id === stageId) {
-      return { ...stage, status: stage.events.length > 0 ? 'in_progress' : ('not_started' as const) }
+      return {
+        ...stage,
+        status: stage.events.length > 0 ? ('in_progress' as const) : ('not_started' as const)
+      }
     }
     const index = getStageIndex(stage.id)
     if (index > targetIndex && stage.status === 'done') {

@@ -2,15 +2,40 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockReaddir = vi.hoisted(() => vi.fn())
 const mockReadFile = vi.hoisted(() => vi.fn())
+const mockWriteFile = vi.hoisted(() => vi.fn())
+const mockMkdir = vi.hoisted(() => vi.fn())
+const mockRename = vi.hoisted(() => vi.fn())
+const mockRm = vi.hoisted(() => vi.fn())
+const mockStat = vi.hoisted(() => vi.fn())
 
 vi.mock('node:fs/promises', () => ({
-  default: { readdir: mockReaddir, readFile: mockReadFile },
+  default: {
+    readdir: mockReaddir,
+    readFile: mockReadFile,
+    writeFile: mockWriteFile,
+    mkdir: mockMkdir,
+    rename: mockRename,
+    rm: mockRm,
+    stat: mockStat
+  },
   readdir: mockReaddir,
   readFile: mockReadFile,
+  writeFile: mockWriteFile,
+  mkdir: mockMkdir,
+  rename: mockRename,
+  rm: mockRm,
+  stat: mockStat
 }))
 
 import { SKIP_DIRS } from '../traversalPolicy'
-import { readDirRecursive, readFileContent } from '../fileSystem'
+import {
+  readDirRecursive,
+  readFileContent,
+  createFile,
+  createDirectory,
+  renameEntry,
+  deleteEntry
+} from '../fileSystem'
 
 type MockDirent = {
   name: string
@@ -22,8 +47,7 @@ function makeDirent(name: string, isDir: boolean): MockDirent {
 }
 
 beforeEach(() => {
-  mockReaddir.mockReset()
-  mockReadFile.mockReset()
+  vi.clearAllMocks()
 })
 
 describe('readDirRecursive', () => {
@@ -31,7 +55,7 @@ describe('readDirRecursive', () => {
     mockReaddir.mockResolvedValue([
       makeDirent('index.ts', false),
       makeDirent('src', true),
-      makeDirent('README.md', false),
+      makeDirent('README.md', false)
     ])
 
     const result = await readDirRecursive('/project')
@@ -46,7 +70,7 @@ describe('readDirRecursive', () => {
     mockReaddir.mockResolvedValue([
       makeDirent('z.ts', false),
       makeDirent('a.ts', false),
-      makeDirent('m.ts', false),
+      makeDirent('m.ts', false)
     ])
 
     const result = await readDirRecursive('/project')
@@ -58,7 +82,7 @@ describe('readDirRecursive', () => {
     mockReaddir.mockResolvedValue([
       makeDirent(skipDir, true),
       makeDirent('src', true),
-      makeDirent('index.ts', false),
+      makeDirent('index.ts', false)
     ])
 
     const result = await readDirRecursive('/project')
@@ -111,5 +135,101 @@ describe('readFileContent', () => {
     mockReadFile.mockResolvedValue('')
     await readFileContent('/project/src/index.ts')
     expect(mockReadFile).toHaveBeenCalledWith('/project/src/index.ts', 'utf-8')
+  })
+})
+
+describe('createFile', () => {
+  it('flag wx で空ファイルを作成する(既存を上書きしない)', async () => {
+    mockWriteFile.mockResolvedValue(undefined)
+    await createFile('/project/new.ts')
+    expect(mockWriteFile).toHaveBeenCalledWith('/project/new.ts', '', { flag: 'wx' })
+  })
+
+  it('既存ファイルがあるとき EEXIST が伝播する', async () => {
+    const err = Object.assign(new Error('EEXIST'), { code: 'EEXIST' })
+    mockWriteFile.mockRejectedValue(err)
+    await expect(createFile('/project/new.ts')).rejects.toThrow('EEXIST')
+  })
+})
+
+describe('createDirectory', () => {
+  it('recursive なしで mkdir を呼ぶ', async () => {
+    mockMkdir.mockResolvedValue(undefined)
+    await createDirectory('/project/newdir')
+    expect(mockMkdir).toHaveBeenCalledWith('/project/newdir')
+  })
+})
+
+describe('renameEntry', () => {
+  it('リネーム先が存在しないとき rename を呼ぶ', async () => {
+    mockStat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    mockRename.mockResolvedValue(undefined)
+    await renameEntry('/project/old.ts', '/project/new.ts')
+    expect(mockRename).toHaveBeenCalledWith('/project/old.ts', '/project/new.ts')
+  })
+
+  it('リネーム先が既に存在するとき EEXIST エラーを投げ rename を呼ばない(暗黙上書き防止)', async () => {
+    // 別エンティティ(inoが異なる)が存在するケース
+    mockStat.mockImplementation((path: string) =>
+      Promise.resolve(path === '/project/existing.ts' ? { dev: 1, ino: 100 } : { dev: 1, ino: 200 })
+    )
+    await expect(renameEntry('/project/old.ts', '/project/existing.ts')).rejects.toMatchObject({
+      code: 'EEXIST'
+    })
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('大文字小文字のみ変更するリネームは EEXIST とせず rename を呼ぶ(大文字小文字非区別FS対応)', async () => {
+    // 大文字小文字を区別しないFSでは newPath の stat が oldPath 自身(同一 dev+ino)にヒットする
+    mockStat.mockResolvedValue({ dev: 1, ino: 100 })
+    mockRename.mockResolvedValue(undefined)
+    await renameEntry('/project/readme.md', '/project/README.md')
+    expect(mockRename).toHaveBeenCalledWith('/project/readme.md', '/project/README.md')
+  })
+
+  it('リネーム元が存在しないとき rename の ENOENT が伝播する', async () => {
+    mockStat.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    mockRename.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    await expect(renameEntry('/project/missing.ts', '/project/new.ts')).rejects.toMatchObject({
+      code: 'ENOENT'
+    })
+  })
+
+  it('存在チェックが EACCES 等 ENOENT 以外で失敗したとき、存在しないと誤判定せず伝播し rename を呼ばない', async () => {
+    // newPath の存在有無を確認できないため、暗黙上書き防止のガードが機能しない状態で
+    // rename() に進むのは危険 — ENOENT 以外は握り潰さず伝播すべき
+    mockStat.mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
+    await expect(renameEntry('/project/old.ts', '/project/new.ts')).rejects.toMatchObject({
+      code: 'EACCES'
+    })
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+
+  it('newPath は存在するが oldPath の存在確認が ENOENT 以外で失敗したときも伝播し rename を呼ばない', async () => {
+    // newPath の stat は成功(既存の別エンティティ)、その後の oldPath の stat が権限エラーになるケース
+    mockStat.mockImplementation((path: string) => {
+      if (path === '/project/new.ts') {
+        return Promise.resolve({ dev: 1, ino: 999 })
+      }
+      return Promise.reject(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
+    })
+    await expect(renameEntry('/project/old.ts', '/project/new.ts')).rejects.toMatchObject({
+      code: 'EACCES'
+    })
+    expect(mockRename).not.toHaveBeenCalled()
+  })
+})
+
+describe('deleteEntry', () => {
+  it('rm を recursive オプション付きで呼ぶ(ディレクトリも削除可能)', async () => {
+    mockRm.mockResolvedValue(undefined)
+    await deleteEntry('/project/dir')
+    expect(mockRm).toHaveBeenCalledWith('/project/dir', { recursive: true })
+  })
+
+  it('対象が存在しないとき ENOENT が伝播する', async () => {
+    const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    mockRm.mockRejectedValue(err)
+    await expect(deleteEntry('/project/gone')).rejects.toThrow('ENOENT')
   })
 })

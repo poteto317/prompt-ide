@@ -1,16 +1,17 @@
 import type { CLIOnlyToolId } from '@shared/types'
 import { CLI_ONLY_TOOL_IDS } from '@shared/types'
+import { assertPlainObject, assertRequestId } from './payloadValidators'
 
 export interface CliPayload {
+  requestId: string
   toolId: CLIOnlyToolId
   promptContent: string
 }
 
 export function parseCliPayload(payload: unknown): CliPayload {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    throw new Error('引数はオブジェクトである必要があります')
-  }
-  const { toolId, promptContent } = payload as Record<string, unknown>
+  assertPlainObject(payload)
+  const { requestId, toolId, promptContent } = payload
+  assertRequestId(requestId)
   if (typeof toolId !== 'string') {
     throw new Error('toolId は文字列である必要があります')
   }
@@ -24,5 +25,5 @@ export function parseCliPayload(payload: unknown): CliPayload {
   if (promptContent.trim().length === 0) {
     throw new Error('promptContent は空文字列にできません')
   }
-  return { toolId: toolId as CLIOnlyToolId, promptContent }
+  return { requestId, toolId: toolId as CLIOnlyToolId, promptContent }
 }

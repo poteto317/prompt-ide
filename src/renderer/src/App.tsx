@@ -20,6 +20,10 @@ export default function App(): React.JSX.Element {
     selectFile,
     updateFileContent,
     saveFile,
+    createFile,
+    createDirectory,
+    renameEntry,
+    deleteEntry,
     prompts,
     addPrompt,
     deletePrompt,
@@ -44,10 +48,15 @@ export default function App(): React.JSX.Element {
     apiKeyLoaded,
     keyStoreError,
     saveApiKey,
+    modelSettings,
+    modelSettingsLoaded,
+    saveModelSettings,
     isExecuting,
     result,
+    streamingText,
     executionError,
     clearResult,
+    cancelExecution,
     history,
     deleteHistoryEntry,
     clearHistory,
@@ -73,6 +82,10 @@ export default function App(): React.JSX.Element {
               onOpenFolder={openFolder}
               onSelectFile={selectFile}
               error={error}
+              onCreateFile={createFile}
+              onCreateDirectory={createDirectory}
+              onRenameEntry={renameEntry}
+              onDeleteEntry={deleteEntry}
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}
@@ -103,6 +116,9 @@ export default function App(): React.JSX.Element {
               apiKeyLoaded={apiKeyLoaded}
               keyStoreError={keyStoreError}
               onSaveApiKey={saveApiKey}
+              modelSettings={modelSettings}
+              modelSettingsLoaded={modelSettingsLoaded}
+              onSaveModelSettings={saveModelSettings}
             />
           )}
           <EditorPanel
@@ -114,8 +130,10 @@ export default function App(): React.JSX.Element {
             onSave={saveFile}
             isExecuting={isExecuting}
             result={result}
+            streamingText={streamingText}
             executionError={executionError}
             onClearResult={clearResult}
+            onCancelExecution={cancelExecution}
           />
         </div>
       </div>

@@ -1,5 +1,9 @@
 import type { CLIOnlyToolId } from '@shared/types'
 
-export function runCLIPrompt(toolId: CLIOnlyToolId, promptContent: string): Promise<string> {
-  return window.api.runCLIPrompt(toolId, promptContent)
+export function runCLIPromptStream(
+  requestId: string,
+  toolId: CLIOnlyToolId,
+  promptContent: string
+): Promise<string> {
+  return window.api.runCLIPromptStream(requestId, toolId, promptContent)
 }

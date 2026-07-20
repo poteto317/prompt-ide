@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { hasApiKey, setApiKey, runPrompt } from '../claudeApi'
+import { hasApiKey, setApiKey, runPromptStream } from '../claudeApi'
 
 const mockApi = {
   hasApiKey: vi.fn(),
   setApiKey: vi.fn(),
-  runPrompt: vi.fn(),
+  runPromptStream: vi.fn()
 }
 
 beforeEach(() => {
@@ -35,17 +35,17 @@ describe('setApiKey', () => {
   })
 })
 
-describe('runPrompt', () => {
-  it('window.api.runPrompt に promptContent と fileContent を渡して呼び出す', async () => {
-    mockApi.runPrompt.mockResolvedValue('回答テキスト')
-    const result = await runPrompt('プロンプト', 'ファイル内容')
-    expect(mockApi.runPrompt).toHaveBeenCalledWith('プロンプト', 'ファイル内容')
+describe('runPromptStream', () => {
+  it('window.api.runPromptStream に requestId / promptContent / fileContent を渡して呼び出す', async () => {
+    mockApi.runPromptStream.mockResolvedValue('回答テキスト')
+    const result = await runPromptStream('req-1', 'プロンプト', 'ファイル内容')
+    expect(mockApi.runPromptStream).toHaveBeenCalledWith('req-1', 'プロンプト', 'ファイル内容')
     expect(result).toBe('回答テキスト')
   })
 
   it('fileContent が null のとき null を渡す', async () => {
-    mockApi.runPrompt.mockResolvedValue('result')
-    await runPrompt('プロンプト', null)
-    expect(mockApi.runPrompt).toHaveBeenCalledWith('プロンプト', null)
+    mockApi.runPromptStream.mockResolvedValue('result')
+    await runPromptStream('req-1', 'プロンプト', null)
+    expect(mockApi.runPromptStream).toHaveBeenCalledWith('req-1', 'プロンプト', null)
   })
 })

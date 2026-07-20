@@ -6,8 +6,10 @@ import OutputPanel from '../OutputPanel'
 const defaultProps = {
   isExecuting: false,
   result: null,
+  streamingText: '',
   executionError: null,
   onClear: vi.fn(),
+  onCancel: vi.fn()
 }
 
 describe('OutputPanel', () => {
@@ -16,7 +18,7 @@ describe('OutputPanel', () => {
     expect(container.firstChild).toBeNull()
   })
 
-  it('isExecuting=true のとき「実行中...」を表示する', () => {
+  it('isExecuting=true かつストリームテキストが空のとき「実行中...」を表示する', () => {
     render(<OutputPanel {...defaultProps} isExecuting={true} />)
     expect(screen.getByText('実行中...')).toBeInTheDocument()
   })
@@ -66,7 +68,9 @@ describe('OutputPanel', () => {
   })
 
   it('isExecuting=true のとき executionError があってもエラーを表示しない', () => {
-    render(<OutputPanel {...defaultProps} isExecuting={true} executionError={new Error('エラー')} />)
+    render(
+      <OutputPanel {...defaultProps} isExecuting={true} executionError={new Error('エラー')} />
+    )
     expect(screen.queryByText('エラー')).not.toBeInTheDocument()
     expect(screen.getByText('実行中...')).toBeInTheDocument()
   })
@@ -89,5 +93,51 @@ describe('OutputPanel', () => {
     render(<OutputPanel {...defaultProps} executionError={new Error('エラー')} onClear={onClear} />)
     await user.click(screen.getByRole('button', { name: '出力をクリア' }))
     expect(onClear).toHaveBeenCalledOnce()
+  })
+
+  describe('ストリーミング表示', () => {
+    it('isExecuting=true かつ streamingText があるとき逐次テキストを表示する', () => {
+      render(<OutputPanel {...defaultProps} isExecuting={true} streamingText="途中までの出力" />)
+      expect(screen.getByText('途中までの出力')).toBeInTheDocument()
+      expect(screen.queryByText('実行中...')).not.toBeInTheDocument()
+    })
+
+    it('streamingText は pre 要素（等幅・Markdown レンダリングなし）で表示される', () => {
+      render(
+        <OutputPanel
+          {...defaultProps}
+          isExecuting={true}
+          streamingText="# 見出しになるべきでない"
+        />
+      )
+      const pre = screen.getByText('# 見出しになるべきでない')
+      expect(pre.tagName).toBe('PRE')
+    })
+
+    it('isExecuting=false のとき streamingText は表示しない', () => {
+      render(<OutputPanel {...defaultProps} result="最終結果" streamingText="残留テキスト" />)
+      expect(screen.queryByText('残留テキスト')).not.toBeInTheDocument()
+      expect(screen.getByText('最終結果')).toBeInTheDocument()
+    })
+  })
+
+  describe('キャンセルボタン', () => {
+    it('isExecuting=true のときキャンセルボタンを表示する', () => {
+      render(<OutputPanel {...defaultProps} isExecuting={true} />)
+      expect(screen.getByRole('button', { name: '実行をキャンセル' })).toBeInTheDocument()
+    })
+
+    it('isExecuting=false のときキャンセルボタンを表示しない', () => {
+      render(<OutputPanel {...defaultProps} result="結果" />)
+      expect(screen.queryByRole('button', { name: '実行をキャンセル' })).not.toBeInTheDocument()
+    })
+
+    it('キャンセルボタンをクリックすると onCancel が呼ばれる', async () => {
+      const user = userEvent.setup()
+      const onCancel = vi.fn()
+      render(<OutputPanel {...defaultProps} isExecuting={true} onCancel={onCancel} />)
+      await user.click(screen.getByRole('button', { name: '実行をキャンセル' }))
+      expect(onCancel).toHaveBeenCalledOnce()
+    })
   })
 })
