@@ -12,7 +12,7 @@ export function parseModelSettingsPayload(payload: unknown): ModelSettings {
   const modelIds = AVAILABLE_MODELS.map((m) => m.id) as readonly string[]
   if (!modelIds.includes(modelId)) {
     const allowed = AVAILABLE_MODELS.map((m) => `'${m.id}'`).join(' または ')
-    throw new Error(`modelId は ${allowed} である必要があります(受け取った値: ${modelId})`)
+    throw new Error(`modelId は ${allowed} である必要があります（受け取った値: ${modelId}）`)
   }
 
   if (typeof maxTokens !== 'number' || !Number.isInteger(maxTokens)) {

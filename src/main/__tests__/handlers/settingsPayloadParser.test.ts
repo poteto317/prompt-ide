@@ -27,6 +27,12 @@ describe('parseModelSettingsPayload', () => {
     )
   })
 
+  it('modelId が未知の値のときエラーメッセージの括弧は全角で統一されている(半角・全角混在の表記ゆれ防止)', () => {
+    expect(() => parseModelSettingsPayload({ modelId: 'unknown-model', maxTokens: 100 })).toThrow(
+      '（受け取った値: unknown-model）'
+    )
+  })
+
   it('maxTokens が数値でないとき例外をスロー', () => {
     expect(() =>
       parseModelSettingsPayload({ modelId: 'claude-haiku-4-5', maxTokens: '100' })
