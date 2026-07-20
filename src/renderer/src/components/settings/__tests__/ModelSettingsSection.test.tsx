@@ -18,6 +18,11 @@ describe('ModelSettingsSection', () => {
     expect(screen.getByLabelText('max_tokens')).toBeInTheDocument()
   })
 
+  it('max_tokens ラベルの括弧は全角で統一されている(半角・全角混在の表記ゆれ防止)', () => {
+    render(<ModelSettingsSection {...defaultProps} />)
+    expect(screen.getByText('max_tokens（1〜64000）')).toBeInTheDocument()
+  })
+
   it('initialSettings の値が反映される', () => {
     render(
       <ModelSettingsSection

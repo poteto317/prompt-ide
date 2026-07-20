@@ -50,7 +50,7 @@ export default function ModelSettingsSection({
         ))}
       </select>
       <label className="settings-panel__label" htmlFor="settings-panel-max-tokens">
-        max_tokens(1〜{maxTokensCap}）
+        max_tokens（1〜{maxTokensCap}）
       </label>
       <input
         id="settings-panel-max-tokens"
