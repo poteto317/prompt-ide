@@ -8,65 +8,31 @@ const defaultProps = {
   isDirty: false,
   isSaving: false,
   saveError: null as Error | null,
-  onSave: vi.fn()
+  onSave: vi.fn(),
+  onClose: vi.fn()
 }
 
 describe('EditorTabs', () => {
-  it('fileName prop がタブに表示される', () => {
-    render(<EditorTabs {...defaultProps} />)
-    expect(screen.getByText('index.ts')).toBeInTheDocument()
-  })
-
-  it('editor-tab--active クラスがタブに付く', () => {
-    render(<EditorTabs {...defaultProps} />)
-    expect(screen.getByText('index.ts')).toHaveClass('editor-tab--active')
-  })
-
   it('editor-tabs ラッパーが存在する', () => {
     const { container } = render(<EditorTabs {...defaultProps} />)
     expect(container.firstChild).toHaveClass('editor-tabs')
   })
 
-  it('異なる fileName を渡すと表示が変わる', () => {
-    const { rerender } = render(<EditorTabs {...defaultProps} fileName="App.tsx" />)
-    expect(screen.getByText('App.tsx')).toBeInTheDocument()
-
-    rerender(<EditorTabs {...defaultProps} fileName="main.py" />)
-    expect(screen.getByText('main.py')).toBeInTheDocument()
-    expect(screen.queryByText('App.tsx')).not.toBeInTheDocument()
+  it('EditorTab（ファイル名）と EditorSaveControl（保存ボタン）の両方が描画される', () => {
+    render(<EditorTabs {...defaultProps} />)
+    expect(screen.getByText('index.ts')).toBeInTheDocument()
+    expect(screen.getByLabelText('保存')).toBeInTheDocument()
   })
 
-  it('isDirty=true のとき未保存インジケータが表示される', () => {
-    render(<EditorTabs {...defaultProps} isDirty={true} />)
-    expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
+  it('onClose は EditorTab の閉じるボタンに配線される', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EditorTabs {...defaultProps} onClose={onClose} />)
+    await user.click(screen.getByLabelText('タブを閉じる'))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
-  it('isDirty=false のとき未保存インジケータは表示されない', () => {
-    render(<EditorTabs {...defaultProps} isDirty={false} />)
-    expect(document.querySelector('.editor-tab__dirty-dot')).not.toBeInTheDocument()
-  })
-
-  it('未保存インジケータは role="img" と aria-label でスクリーンリーダーに状態が伝わる', () => {
-    render(<EditorTabs {...defaultProps} isDirty={true} />)
-    expect(screen.getByRole('img', { name: '未保存の変更があります' })).toBeInTheDocument()
-  })
-
-  it('isDirty=true のとき保存ボタンが有効化される', () => {
-    render(<EditorTabs {...defaultProps} isDirty={true} />)
-    expect(screen.getByLabelText('保存')).not.toBeDisabled()
-  })
-
-  it('isDirty=false のとき保存ボタンが無効化される', () => {
-    render(<EditorTabs {...defaultProps} isDirty={false} />)
-    expect(screen.getByLabelText('保存')).toBeDisabled()
-  })
-
-  it('isSaving=true のとき、isDirty=true でも保存ボタンが無効化される（多重保存防止）', () => {
-    render(<EditorTabs {...defaultProps} isDirty={true} isSaving={true} />)
-    expect(screen.getByLabelText('保存')).toBeDisabled()
-  })
-
-  it('保存ボタンクリックで onSave が呼ばれる', async () => {
+  it('onSave は EditorSaveControl の保存ボタンに配線される', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
     render(<EditorTabs {...defaultProps} isDirty={true} onSave={onSave} />)
@@ -74,18 +40,27 @@ describe('EditorTabs', () => {
     expect(onSave).toHaveBeenCalledOnce()
   })
 
-  it('saveError があるときエラーメッセージが表示される', () => {
-    render(<EditorTabs {...defaultProps} saveError={new Error('保存に失敗しました')} />)
-    expect(screen.getByText('保存に失敗しました')).toBeInTheDocument()
-  })
-
-  it('saveError があるときエラーメッセージに role="alert" が付き、スクリーンリーダーにアナウンスされる', () => {
+  it('saveError は EditorSaveControl 側に配線される', () => {
     render(<EditorTabs {...defaultProps} saveError={new Error('保存に失敗しました')} />)
     expect(screen.getByRole('alert')).toHaveTextContent('保存に失敗しました')
   })
 
-  it('saveError が null のときエラーメッセージは表示されない', () => {
-    render(<EditorTabs {...defaultProps} saveError={null} />)
-    expect(document.querySelector('.editor-tabs__error')).not.toBeInTheDocument()
+  it('isDirty は EditorTab（未保存インジケータ）と EditorSaveControl（保存ボタン活性）の両方に配線される', () => {
+    render(<EditorTabs {...defaultProps} isDirty={true} />)
+    expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
+    expect(screen.getByLabelText('保存')).not.toBeDisabled()
+  })
+
+  it('onClose が未指定のとき閉じるボタンは表示されない（例: WelcomeView のプレースホルダータブ）', () => {
+    render(
+      <EditorTabs
+        fileName={defaultProps.fileName}
+        isDirty={defaultProps.isDirty}
+        isSaving={defaultProps.isSaving}
+        saveError={defaultProps.saveError}
+        onSave={defaultProps.onSave}
+      />
+    )
+    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
   })
 })

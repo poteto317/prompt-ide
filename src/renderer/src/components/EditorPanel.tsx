@@ -14,6 +14,7 @@ interface Props {
   saveError: Error | null
   onChangeContent: (content: string) => void
   onSave: () => void
+  onCloseFile: () => void
   isExecuting: boolean
   result: string | null
   streamingText: string
@@ -29,6 +30,7 @@ export default function EditorPanel({
   saveError,
   onChangeContent,
   onSave,
+  onCloseFile,
   isExecuting,
   result,
   streamingText,
@@ -52,6 +54,7 @@ export default function EditorPanel({
             isSaving={isSaving}
             saveError={saveError}
             onSave={onSave}
+            onClose={onCloseFile}
           />
           <div className="editor-body">
             <Editor

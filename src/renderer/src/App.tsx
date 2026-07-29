@@ -18,6 +18,7 @@ export default function App(): React.JSX.Element {
     saveError,
     openFolder,
     selectFile,
+    closeFile,
     updateFileContent,
     saveFile,
     createFile,
@@ -128,6 +129,7 @@ export default function App(): React.JSX.Element {
             saveError={saveError}
             onChangeContent={updateFileContent}
             onSave={saveFile}
+            onCloseFile={closeFile}
             isExecuting={isExecuting}
             result={result}
             streamingText={streamingText}
