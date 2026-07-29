@@ -19,6 +19,7 @@ const defaultProps = {
   saveError: null as Error | null,
   onChangeContent: vi.fn(),
   onSave: vi.fn(),
+  onCloseFile: vi.fn(),
   isExecuting: false,
   result: null as string | null,
   streamingText: '',
@@ -47,6 +48,11 @@ describe('EditorPanel — openFile なし', () => {
     render(<EditorPanel {...defaultProps} />)
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
+
+  it('"welcome.ts" タブには閉じるボタンが表示されない（実ファイルが開かれていないため）', () => {
+    render(<EditorPanel {...defaultProps} />)
+    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
+  })
 })
 
 describe('EditorPanel — openFile あり', () => {
@@ -63,6 +69,19 @@ describe('EditorPanel — openFile あり', () => {
   it('"welcome.ts" タブは表示されない', () => {
     render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
     expect(screen.queryByText('welcome.ts')).not.toBeInTheDocument()
+  })
+
+  it('実ファイルが開かれているときは閉じるボタンが表示される', () => {
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    expect(screen.getByLabelText('タブを閉じる')).toBeInTheDocument()
+  })
+
+  it('閉じるボタンクリックで onCloseFile が呼ばれる', async () => {
+    const user = userEvent.setup()
+    const onCloseFile = vi.fn()
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} onCloseFile={onCloseFile} />)
+    await user.click(screen.getByLabelText('タブを閉じる'))
+    expect(onCloseFile).toHaveBeenCalledOnce()
   })
 
   it('Monaco Editor のモックが描画される', () => {

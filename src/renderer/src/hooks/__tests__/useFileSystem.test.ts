@@ -407,6 +407,107 @@ describe('useFileSystem', () => {
       })
     })
 
+    it('closeFile で openFile が null になる', async () => {
+      const { result } = renderHook(() => useFileSystem())
+      await openAndSelect(result)
+      expect(result.current.openFile).not.toBeNull()
+
+      act(() => {
+        result.current.closeFile()
+      })
+
+      expect(result.current.openFile).toBeNull()
+    })
+
+    it('未保存変更があるとき closeFile は確認ガードで閉じるのをブロックできる', async () => {
+      const onConfirm = vi.fn().mockReturnValue(false)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      act(() => {
+        result.current.closeFile()
+      })
+
+      expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
+      expect(result.current.openFile).not.toBeNull()
+    })
+
+    it('onConfirm が true を返せば closeFile はブロックされずに openFile を閉じる', async () => {
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      act(() => {
+        result.current.closeFile()
+      })
+
+      expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
+      expect(result.current.openFile).toBeNull()
+    })
+
+    it('closeFile 後は saveError がクリアされる', async () => {
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      act(() => {
+        result.current.closeFile()
+      })
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('保存中に closeFile しても、保存完了後に古い結果（savedContent/saveError）が反映されない', async () => {
+      let rejectWrite: (err: Error) => void = () => {}
+      mockWriteFileContent.mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectWrite = reject
+          })
+      )
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openAndSelect(result)
+      act(() => {
+        result.current.updateFileContent('const x = 2')
+      })
+
+      let firstSave: Promise<void> = Promise.resolve()
+      act(() => {
+        firstSave = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      act(() => {
+        result.current.closeFile()
+      })
+      expect(result.current.openFile).toBeNull()
+
+      // 保存中に閉じた後、書き込みが失敗して解決しても、既に無関係になった
+      // 編集セッションのエラーとして saveError に反映されてはならない
+      // （generation 不一致によりガードされることを確認する）。
+      await act(async () => {
+        rejectWrite(new Error('EACCES'))
+        await firstSave
+      })
+      expect(result.current.saveError).toBeNull()
+      expect(result.current.openFile).toBeNull()
+    })
+
     it('isSaving が戻り値から利用でき、保存完了後は false に戻る', async () => {
       let resolveWrite: () => void = () => {}
       mockWriteFileContent.mockImplementation(

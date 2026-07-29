@@ -16,6 +16,7 @@ interface FileSystemState {
   saveError: Error | null
   openFolder: () => Promise<void>
   selectFile: (node: FileTreeNode) => Promise<void>
+  closeFile: () => void
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
   createFile: (parentPath: string, name: string) => Promise<void>
@@ -86,6 +87,12 @@ export function useFileSystem(options?: Options): FileSystemState {
     }
   }
 
+  const closeFile = (): void => {
+    if (!confirmDiscardIfDirty()) return
+    setOpenFile(null)
+    resetForFileChange()
+  }
+
   return {
     folderPath,
     fileTree,
@@ -96,6 +103,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     saveError,
     openFolder,
     selectFile,
+    closeFile,
     updateFileContent,
     saveFile,
     createFile,

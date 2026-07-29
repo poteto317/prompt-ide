@@ -866,6 +866,27 @@ body {
   margin-left: 2px;
 }
 
+.editor-tab__close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #cccccc;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.editor-tab__close-btn:hover {
+  background: #454545;
+}
+
 .editor-tabs__error {
   flex: 1;
   margin: 0;
