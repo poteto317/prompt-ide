@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FileTreeNode } from '../../types'
-import { openFolder, readDirectory, readFileContent, writeFileContent } from '../fileSystemApi'
+import {
+  openFolder,
+  readDirectory,
+  readFileContent,
+  writeFileContent,
+  createFile,
+  createDirectory,
+  renameEntry,
+  deleteEntry
+} from '../fileSystemApi'
 
 const mockApi = {
   openFolder: vi.fn(),
   readDirectory: vi.fn(),
   readFile: vi.fn(),
-  writeFile: vi.fn()
+  writeFile: vi.fn(),
+  createFile: vi.fn(),
+  createDirectory: vi.fn(),
+  renameEntry: vi.fn(),
+  deleteEntry: vi.fn()
 }
 
 beforeEach(() => {
@@ -54,5 +67,37 @@ describe('writeFileContent', () => {
     mockApi.writeFile.mockResolvedValue(undefined)
     await writeFileContent('/project/src/index.ts', 'const x = 2')
     expect(mockApi.writeFile).toHaveBeenCalledWith('/project/src/index.ts', 'const x = 2')
+  })
+})
+
+describe('createFile', () => {
+  it('window.api.createFile を parentPath と name を引数に呼び出す', async () => {
+    mockApi.createFile.mockResolvedValue(undefined)
+    await createFile('/project', 'a.txt')
+    expect(mockApi.createFile).toHaveBeenCalledWith('/project', 'a.txt')
+  })
+})
+
+describe('createDirectory', () => {
+  it('window.api.createDirectory を parentPath と name を引数に呼び出す', async () => {
+    mockApi.createDirectory.mockResolvedValue(undefined)
+    await createDirectory('/project', 'sub')
+    expect(mockApi.createDirectory).toHaveBeenCalledWith('/project', 'sub')
+  })
+})
+
+describe('renameEntry', () => {
+  it('window.api.renameEntry を path と newName を引数に呼び出す', async () => {
+    mockApi.renameEntry.mockResolvedValue(undefined)
+    await renameEntry('/project/a.txt', 'b.txt')
+    expect(mockApi.renameEntry).toHaveBeenCalledWith('/project/a.txt', 'b.txt')
+  })
+})
+
+describe('deleteEntry', () => {
+  it('window.api.deleteEntry を path を引数に呼び出す', async () => {
+    mockApi.deleteEntry.mockResolvedValue(undefined)
+    await deleteEntry('/project/a.txt')
+    expect(mockApi.deleteEntry).toHaveBeenCalledWith('/project/a.txt')
   })
 })
