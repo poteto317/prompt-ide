@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
+import { mockAddCommand } from '../../__tests__/__mocks__/@monaco-editor/react'
 import type { OpenFile } from '../../types'
 import EditorPanel from '../EditorPanel'
 
@@ -116,6 +117,26 @@ describe('EditorPanel — openFile あり', () => {
 
     rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
     expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
+  })
+
+  it('Ctrl/Cmd+S コマンドが登録され、実行すると最新の onSave が呼ばれる', () => {
+    const onSave = vi.fn()
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} onSave={onSave} />
+    )
+    // キーバインド値の算出ロジック（OR演算）自体は editorShortcuts.test.ts で検証済みのため、
+    // ここでは EditorPanel が onMount 経由でコマンドを登録することのみを確認する
+    expect(mockAddCommand).toHaveBeenCalledWith(expect.any(Number), expect.any(Function))
+    const registeredCommand = mockAddCommand.mock.calls[0][1] as () => void
+
+    // onMount 後に onSave が差し替わっても、ref 経由で最新の onSave を呼ぶことを確認する
+    const nextOnSave = vi.fn()
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} onSave={nextOnSave} />)
+
+    registeredCommand()
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(nextOnSave).toHaveBeenCalledOnce()
   })
 
   it('saveError があるときエディタ上部にエラーメッセージが表示される', () => {
