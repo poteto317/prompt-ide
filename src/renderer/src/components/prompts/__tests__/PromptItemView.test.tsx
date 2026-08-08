@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { Prompt } from '../../../types'
@@ -46,6 +46,28 @@ describe('PromptItemView', () => {
     expect(screen.queryByRole('button', { name: '並び替え' })).not.toBeInTheDocument()
   })
 
+  it('ドラッグハンドルへの mousedown は祖先へ伝播しない', () => {
+    const onParentMouseDown = vi.fn()
+    render(
+      <div onMouseDown={onParentMouseDown}>
+        <PromptItemView {...defaultProps} isSortable />
+      </div>
+    )
+    fireEvent.mouseDown(screen.getByRole('button', { name: '並び替え' }))
+    expect(onParentMouseDown).not.toHaveBeenCalled()
+  })
+
+  it('ドラッグハンドルへの touchstart は祖先へ伝播しない', () => {
+    const onParentTouchStart = vi.fn()
+    render(
+      <div onTouchStart={onParentTouchStart}>
+        <PromptItemView {...defaultProps} isSortable />
+      </div>
+    )
+    fireEvent.touchStart(screen.getByRole('button', { name: '並び替え' }))
+    expect(onParentTouchStart).not.toHaveBeenCalled()
+  })
+
   it('実行ボタンで onRun が呼ばれる', async () => {
     const onRun = vi.fn()
     render(<PromptItemView {...defaultProps} onRun={onRun} />)
@@ -75,7 +97,10 @@ describe('PromptItemView', () => {
   describe('タグ表示', () => {
     it('tags があるとき各タグが表示される', () => {
       render(
-        <PromptItemView {...defaultProps} prompt={{ ...basePrompt, tags: ['React', 'TypeScript'] }} />
+        <PromptItemView
+          {...defaultProps}
+          prompt={{ ...basePrompt, tags: ['React', 'TypeScript'] }}
+        />
       )
       expect(screen.getByText('React')).toBeInTheDocument()
       expect(screen.getByText('TypeScript')).toBeInTheDocument()
