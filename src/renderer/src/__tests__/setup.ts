@@ -1,5 +1,9 @@
 import '@testing-library/jest-dom'
 
+// jsdom はレイアウトを持たないため scrollIntoView が未実装。
+// 選択項目を可視領域に送る処理を含むコンポーネントのために no-op を用意する。
+Element.prototype.scrollIntoView = (): void => {}
+
 // window.api stub for renderer tests that don't mock it individually
 Object.defineProperty(window, 'api', {
   configurable: true,

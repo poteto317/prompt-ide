@@ -56,4 +56,23 @@ describe('App', () => {
     await userEvent.click(promptsBtn)
     expect(screen.getByText('テストタイトル')).toBeInTheDocument()
   })
+
+  it('Ctrl+P でクイックオープンのダイアログが開く', async () => {
+    render(<App />)
+    await userEvent.keyboard('{Control>}p{/Control}')
+    expect(screen.getByRole('dialog', { name: 'ファイルを開く' })).toBeInTheDocument()
+  })
+
+  it('クイックオープンは Escape で閉じる', async () => {
+    render(<App />)
+    await userEvent.keyboard('{Control>}p{/Control}')
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: 'ファイルを開く' })).not.toBeInTheDocument()
+  })
+
+  it('フォルダ未オープンのときクイックオープンがフォルダを開くよう案内する', async () => {
+    render(<App />)
+    await userEvent.keyboard('{Control>}p{/Control}')
+    expect(screen.getByRole('status')).toHaveTextContent('フォルダが開かれていません')
+  })
 })

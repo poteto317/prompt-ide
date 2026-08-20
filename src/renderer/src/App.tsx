@@ -3,6 +3,7 @@ import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
 import StatusBar from './components/StatusBar'
+import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
 
 export default function App(): React.JSX.Element {
   const {
@@ -62,7 +63,8 @@ export default function App(): React.JSX.Element {
     deleteHistoryEntry,
     clearHistory,
     runPrompt,
-    rerunHistoryEntry
+    rerunHistoryEntry,
+    quickOpen
   } = useAppState()
 
   return (
@@ -140,6 +142,7 @@ export default function App(): React.JSX.Element {
         </div>
       </div>
       <StatusBar />
+      <QuickOpenDialog controller={quickOpen} />
     </>
   )
 }

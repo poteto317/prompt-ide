@@ -7,6 +7,7 @@ import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
 import { usePromptRunner } from './usePromptRunner'
+import { useQuickOpen } from './useQuickOpen'
 
 export function useAppState() {
   const panel = usePanelState()
@@ -22,7 +23,16 @@ export function useAppState() {
     executePrompt: execution.executePrompt,
     addHistoryEntry: history.addHistoryEntry
   })
+  // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
+  // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)
+  const quickOpen = useQuickOpen({
+    fileTree: fileSystem.fileTree,
+    folderPath: fileSystem.folderPath,
+    openFilePath: fileSystem.openFile?.path ?? null,
+    selectFile: fileSystem.selectFile
+  })
   return {
+    quickOpen,
     ...panel,
     ...fileSystem,
     ...prompts,

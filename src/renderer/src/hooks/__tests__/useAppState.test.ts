@@ -73,6 +73,23 @@ const mockUsePromptRunner = vi.hoisted(() =>
   }))
 )
 
+const mockUseQuickOpen = vi.hoisted(() =>
+  vi.fn((_deps?: unknown) => ({
+    isOpen: false,
+    query: '',
+    results: [],
+    activeIndex: 0,
+    hasFolder: false,
+    open: vi.fn(),
+    close: vi.fn(),
+    setQuery: vi.fn(),
+    moveSelection: vi.fn(),
+    setActiveIndex: vi.fn(),
+    confirm: vi.fn(),
+  }))
+)
+
+vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
@@ -215,5 +232,20 @@ describe('useAppState', () => {
     const { result } = renderHook(() => useAppState())
     expect(result.current).toHaveProperty('runPrompt')
     expect(result.current).toHaveProperty('rerunHistoryEntry')
+  })
+
+  it('useQuickOpen を fileTree・folderPath・openFilePath・selectFile とともに呼び出す', () => {
+    renderHook(() => useAppState())
+    expect(mockUseQuickOpen).toHaveBeenCalledOnce()
+    const args = mockUseQuickOpen.mock.calls[0][0]
+    expect(args).toHaveProperty('fileTree')
+    expect(args).toHaveProperty('folderPath', null)
+    expect(args).toHaveProperty('openFilePath', null)
+    expect(args).toHaveProperty('selectFile')
+  })
+
+  it('quickOpen コントローラが返り値に含まれる', () => {
+    const { result } = renderHook(() => useAppState())
+    expect(result.current.quickOpen).toHaveProperty('isOpen', false)
   })
 })

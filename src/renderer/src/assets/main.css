@@ -1763,3 +1763,86 @@ body {
   opacity: 0.4;
   cursor: default;
 }
+
+/* Quick Open (Ctrl/Cmd+P) */
+.quick-open__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  justify-content: center;
+  /* VS Code と同じくウィンドウ上部に寄せる */
+  align-items: flex-start;
+  padding-top: 64px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.quick-open {
+  width: 600px;
+  max-width: calc(100vw - 32px);
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+.quick-open__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  background: #3c3c3c;
+  border: 1px solid #007acc;
+  color: #cccccc;
+  font-size: 13px;
+}
+
+.quick-open__input:focus {
+  outline: none;
+}
+
+.quick-open__list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.quick-open__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 10px;
+  font-size: 13px;
+  color: #cccccc;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quick-open__item--active {
+  background: #04395e;
+}
+
+.quick-open__name {
+  flex: 0 0 auto;
+}
+
+.quick-open__directory {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #8c8c8c;
+}
+
+.quick-open__match {
+  background: none;
+  color: #2aaaff;
+  font-weight: 600;
+}
+
+.quick-open__empty {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
