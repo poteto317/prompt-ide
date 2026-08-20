@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { flattenFileTree, searchFiles } from '../quickOpenSearch'
+import { flattenFileTree, searchFiles, DEFAULT_RESULT_LIMIT } from '../quickOpenSearch'
 import type { FileTreeNode, FileNode } from '../../types'
 
 const file = (name: string, path: string): FileNode => ({ name, path, type: 'file' })
@@ -127,6 +127,48 @@ describe('searchFiles', () => {
       'm',
       'z'
     ])
+  })
+
+  it('limit を省略すると既定の上限件数までに切り詰める', () => {
+    const many = Array.from({ length: DEFAULT_RESULT_LIMIT + 10 }, (_, i) =>
+      file(`a${i}.ts`, `/project/a${i}.ts`)
+    )
+    expect(searchFiles('a', many, ROOT)).toHaveLength(DEFAULT_RESULT_LIMIT)
+    expect(searchFiles('', many, ROOT)).toHaveLength(DEFAULT_RESULT_LIMIT)
+  })
+
+  it('前後に空白のあるクエリでも絞り込める', () => {
+    expect(searchFiles('  app  ', files, ROOT).map((r) => r.node.name)).toEqual(['App.tsx'])
+  })
+
+  it('空白のみのクエリは空クエリとして扱う', () => {
+    expect(searchFiles('   ', files, ROOT)).toHaveLength(4)
+  })
+
+  it('rootPath が null のときフルパスからディレクトリを求める', () => {
+    const results = searchFiles('app', files, null)
+    expect(results[0].directory).toBe('/project/src')
+  })
+
+  it('rootPath 配下にないファイルはフルパスのまま扱う', () => {
+    const outside = [file('other.ts', '/elsewhere/other.ts')]
+    expect(searchFiles('other', outside, ROOT)[0].directory).toBe('/elsewhere')
+  })
+
+  it('末尾に区切りのある rootPath でも相対ディレクトリを正しく求める', () => {
+    expect(searchFiles('app', files, '/project/')[0].directory).toBe('src')
+  })
+
+  it('nameIndices は node.name 上の位置を指す', () => {
+    const hit = searchFiles('app', files, ROOT)[0]
+    const matched = hit.nameIndices.map((i) => hit.node.name[i]).join('')
+    expect(matched.toLowerCase()).toBe('app')
+  })
+
+  it('directoryIndices は directory 上の位置を指す', () => {
+    const hit = searchFiles('hooks', files, ROOT).find((r) => r.node.name === 'useFileSystem.ts')
+    const matched = hit?.directoryIndices.map((i) => hit.directory[i]).join('')
+    expect(matched).toBe('hooks')
   })
 
   it('Windows 形式のパス区切りでも相対ディレクトリを正しく求める', () => {

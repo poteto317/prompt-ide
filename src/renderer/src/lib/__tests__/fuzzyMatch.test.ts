@@ -74,6 +74,35 @@ describe('fuzzyMatch', () => {
     ])
   })
 
+  it('クエリと同じ長さのターゲットに完全一致する', () => {
+    expect(fuzzyMatch('abc', 'abc')?.indices).toEqual([0, 1, 2])
+  })
+
+  it('ターゲットが空文字列のとき null を返す', () => {
+    expect(fuzzyMatch('a', '')).toBeNull()
+  })
+
+  it('日本語のファイル名でも部分列としてマッチする', () => {
+    expect(fuzzyMatch('設計', '設計メモ.md')?.indices).toEqual([0, 1])
+  })
+
+  it('候補の単語境界条件が同じとき連続した並びを選ぶ', () => {
+    // 'xaxaa' の 'a' はいずれも単語境界ではないため、連続ボーナスだけで決まる
+    expect(fuzzyMatch('aa', 'xaxaa')?.indices).toEqual([3, 4])
+  })
+
+  it('連続した並びより先頭の単語境界から始まる一致を優先する', () => {
+    // 'a-b-aa' では先頭の 'a'(index 0)が単語境界のため [0, 4] を選ぶ。
+    // 連続ボーナスだけで末尾の [4, 5] に倒れないことを固定する
+    expect(fuzzyMatch('aa', 'a-b-aa')?.indices).toEqual([0, 4])
+  })
+
+  it('indices は常に昇順で重複しない', () => {
+    const indices = fuzzyMatch('ete', 'quickOpenSearch.test.ts')?.indices ?? []
+    expect(indices).toEqual([...indices].sort((a, b) => a - b))
+    expect(new Set(indices).size).toBe(indices.length)
+  })
+
   it('スコアは常に有限の数値を返す', () => {
     const result = fuzzyMatch('u', 'useFileSystem.ts')
     expect(Number.isFinite(result?.score)).toBe(true)

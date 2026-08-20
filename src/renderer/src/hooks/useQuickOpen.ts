@@ -113,12 +113,15 @@ export function useQuickOpen({
       if (!(event.ctrlKey || event.metaKey)) return
       if (event.shiftKey || event.altKey) return
       if (event.key.toLowerCase() !== 'p') return
+      // ブラウザの印刷は常に抑止する。ただし既に表示中なら open() を呼ばない
+      // (入力途中のクエリと選択位置がリセットされてしまうため)
       event.preventDefault()
+      if (isOpen) return
       open()
     }
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [open])
+  }, [open, isOpen])
 
   return {
     isOpen,

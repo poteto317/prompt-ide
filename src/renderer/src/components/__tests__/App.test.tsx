@@ -70,6 +70,14 @@ describe('App', () => {
     expect(screen.queryByRole('dialog', { name: 'ファイルを開く' })).not.toBeInTheDocument()
   })
 
+  it('クイックオープン表示中に Ctrl+P を押しても入力中のクエリが消えない', async () => {
+    render(<App />)
+    await userEvent.keyboard('{Control>}p{/Control}')
+    await userEvent.type(screen.getByRole('combobox', { name: 'ファイル名で検索' }), 'app')
+    await userEvent.keyboard('{Control>}p{/Control}')
+    expect(screen.getByRole('combobox', { name: 'ファイル名で検索' })).toHaveValue('app')
+  })
+
   it('フォルダ未オープンのときクイックオープンがフォルダを開くよう案内する', async () => {
     render(<App />)
     await userEvent.keyboard('{Control>}p{/Control}')

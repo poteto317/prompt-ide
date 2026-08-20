@@ -1,5 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import type { RenderHookResult } from '@testing-library/react'
+import { StrictMode, createElement } from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { useQuickOpen } from '../useQuickOpen'
 import type { QuickOpenController } from '../useQuickOpen'
@@ -28,26 +29,38 @@ type Overrides = {
   folderPath?: string | null
   openFilePath?: string | null
   selectFile?: (node: FileTreeNode) => void
+  /** StrictMode で包み、レンダーの二重実行下での挙動を確認する */
+  strict?: boolean
 }
 
 type HookProps = { openFilePath: string | null }
 type Setup = RenderHookResult<QuickOpenController, HookProps> & {
   selectFile: (node: FileTreeNode) => void
+  /** フックが評価された回数。レンダーの連鎖が起きていないかの確認に使う */
+  renderCount: () => number
 }
 
 const setup = (overrides: Overrides = {}): Setup => {
   const selectFile = overrides.selectFile ?? vi.fn()
+  let renders = 0
   const view = renderHook(
-    (props: HookProps) =>
-      useQuickOpen({
+    (props: HookProps) => {
+      renders++
+      return useQuickOpen({
         fileTree: overrides.fileTree ?? tree,
         folderPath: overrides.folderPath === undefined ? FOLDER : overrides.folderPath,
         openFilePath: props.openFilePath,
         selectFile
-      }),
-    { initialProps: { openFilePath: overrides.openFilePath ?? null } }
+      })
+    },
+    {
+      initialProps: { openFilePath: overrides.openFilePath ?? null },
+      ...(overrides.strict === true
+        ? { wrapper: ({ children }) => createElement(StrictMode, null, children) }
+        : {})
+    }
   )
-  return { ...view, selectFile }
+  return { ...view, selectFile, renderCount: () => renders }
 }
 
 const pressKey = (init: KeyboardEventInit): KeyboardEvent => {
@@ -108,6 +121,25 @@ describe('useQuickOpen', () => {
     const event = pressKey({ key: 'p', ctrlKey: true })
     expect(event.defaultPrevented).toBe(false)
     expect(result.current.isOpen).toBe(false)
+  })
+
+  it('表示中に Ctrl+P を押してもクエリと選択位置を保持する', () => {
+    const { result } = setup()
+    pressKey({ key: 'p', ctrlKey: true })
+    act(() => result.current.setQuery('app'))
+    act(() => result.current.moveSelection(1))
+    const activeIndex = result.current.activeIndex
+    pressKey({ key: 'p', ctrlKey: true })
+    expect(result.current.isOpen).toBe(true)
+    expect(result.current.query).toBe('app')
+    expect(result.current.activeIndex).toBe(activeIndex)
+  })
+
+  it('表示中の Ctrl+P でも既定動作は抑止する', () => {
+    setup()
+    pressKey({ key: 'p', ctrlKey: true })
+    const event = pressKey({ key: 'p', ctrlKey: true })
+    expect(event.defaultPrevented).toBe(true)
   })
 
   it('close で閉じる', () => {
@@ -241,5 +273,59 @@ describe('useQuickOpen', () => {
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)
+  })
+
+  it('履歴は上限 10 件までしか保持しない', () => {
+    const manyFiles = Array.from({ length: 12 }, (_, i) =>
+      file(`file${i}.ts`, `/project/file${i}.ts`)
+    )
+    const { result, rerender } = setup({ fileTree: manyFiles })
+    for (const node of manyFiles) rerender({ openFilePath: node.path })
+    act(() => result.current.open())
+    expect(result.current.results).toHaveLength(10)
+  })
+
+  it('履歴の途中にあるファイルを開き直すと先頭へ移動する', () => {
+    const { result, rerender } = setup()
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/main.tsx' })
+    rerender({ openFilePath: '/project/README.md' })
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.name)).toEqual([
+      'App.tsx',
+      'README.md',
+      'main.tsx'
+    ])
+  })
+})
+
+describe('useQuickOpen (StrictMode)', () => {
+  it('レンダーが二重実行されても履歴が重複しない', () => {
+    const { result, rerender } = setup({ strict: true })
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/README.md' })
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['README.md', 'App.tsx'])
+  })
+
+  it('同じ openFilePath で再レンダーしても履歴が増えない', () => {
+    const { result, rerender } = setup({ strict: true })
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx'])
+  })
+
+  it('履歴更新がレンダーの連鎖を起こさない', () => {
+    // openFilePath 由来の state 更新はレンダー中に行っているため、条件ガードが
+    // 壊れると更新が収束せず React が "Too many re-renders" を投げる。
+    // 収束することに加えて、1 回の prop 変更で走るレンダー回数が
+    // StrictMode の二重実行の範囲に収まっていることを確認する。
+    const { rerender, renderCount } = setup({ strict: true })
+    const before = renderCount()
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    expect(renderCount() - before).toBeLessThanOrEqual(8)
   })
 })

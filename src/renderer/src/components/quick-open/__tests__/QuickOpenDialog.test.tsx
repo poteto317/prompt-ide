@@ -123,6 +123,52 @@ describe('QuickOpenDialog', () => {
     expect(screen.getByRole('status')).toHaveTextContent('フォルダが開かれていません')
   })
 
+  it('候補があるとき aria-expanded が true になる', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('候補が無いとき aria-expanded が false になる', () => {
+    render(<QuickOpenDialog controller={makeController({ results: [] })} />)
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('combobox の aria-controls が listbox の id を指す', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    const listboxId = screen.getByRole('listbox').getAttribute('id')
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-controls', listboxId)
+  })
+
+  it('入力欄に現在のクエリが表示される', () => {
+    render(<QuickOpenDialog controller={makeController({ query: 'app' })} />)
+    expect(screen.getByRole('combobox')).toHaveValue('app')
+  })
+
+  it('開いた直後は入力欄にフォーカスが当たる', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    expect(screen.getByRole('combobox')).toHaveFocus()
+  })
+
+  it('候補があるとき案内文を表示しない', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('選択中の候補だけ aria-selected が true になる', () => {
+    render(<QuickOpenDialog controller={makeController({ activeIndex: 1 })} />)
+    const selected = screen.getAllByRole('option').map((el) => el.getAttribute('aria-selected'))
+    expect(selected).toEqual(['false', 'true'])
+  })
+
+  it('Tab など未対応のキーでは既定動作を妨げない', async () => {
+    const controller = makeController()
+    render(<QuickOpenDialog controller={controller} />)
+    await userEvent.type(screen.getByRole('combobox'), '{Tab}')
+    expect(controller.close).not.toHaveBeenCalled()
+    expect(controller.confirm).not.toHaveBeenCalled()
+    expect(controller.moveSelection).not.toHaveBeenCalled()
+  })
+
   it('isOpen が false のとき何も描画しない', () => {
     const { container } = render(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
     expect(container).toBeEmptyDOMElement()
