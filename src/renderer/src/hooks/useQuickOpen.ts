@@ -10,7 +10,8 @@ interface Options {
   fileTree: FileTreeNode[]
   folderPath: string | null
   openFilePath: string | null
-  selectFile: (node: FileTreeNode) => void
+  /** ファイルを開けたかどうかを返す。開けなかった場合はダイアログを閉じない */
+  selectFile: (node: FileTreeNode) => Promise<boolean>
 }
 
 export interface QuickOpenController {
@@ -61,13 +62,19 @@ export function useQuickOpen({
 
     // クエリが空のときは絞り込まず、最近開いたファイルを新しい順に見せる。
     // 履歴に残っていてもツリーから消えている(削除・別フォルダ)ものは除外する。
+    // 現在開いているファイルも除外する。履歴の先頭は常に openFilePath のため、
+    // 残すと Ctrl+P → Enter が現在のファイルの開き直しになり、未保存の編集が
+    // ある場合は破棄確認から編集内容を失う経路になってしまう。
     const byPath = new Map(files.map((file) => [file.path, file]))
     const recentFiles = recentPaths
+      .filter((path) => path !== openFilePath)
       .map((path) => byPath.get(path))
       .filter((file): file is NonNullable<typeof file> => file !== undefined)
     // 履歴がまだ無い初回はフォルダ内のファイルをそのまま先頭から見せる
-    return searchFiles('', recentFiles.length > 0 ? recentFiles : files, folderPath)
-  }, [query, files, folderPath, recentPaths])
+    // (こちらの経路でも現在開いているファイルは同じ理由で除外する)
+    const fallbackFiles = files.filter((file) => file.path !== openFilePath)
+    return searchFiles('', recentFiles.length > 0 ? recentFiles : fallbackFiles, folderPath)
+  }, [query, files, folderPath, recentPaths, openFilePath])
 
   const open = useCallback((): void => {
     setQueryState('')
@@ -98,10 +105,12 @@ export function useQuickOpen({
     (index?: number): void => {
       const target = results[index ?? activeIndex]
       if (target === undefined) return
-      // 先に閉じてから開く。selectFile は未保存時に confirm() を出すことがあり、
-      // モーダルが重なったまま確認ダイアログが出るのを避ける
-      setIsOpen(false)
-      selectFile(target.node)
+      // 実際に開けたときだけ閉じる。selectFile は未保存時に破棄確認を出すため、
+      // ここで先に閉じてしまうと、キャンセルされた場合にファイルは切り替わらないのに
+      // ダイアログだけ消えて入力中のクエリを失う
+      void selectFile(target.node).then((opened) => {
+        if (opened) setIsOpen(false)
+      })
     },
     [results, activeIndex, selectFile]
   )
@@ -110,6 +119,15 @@ export function useQuickOpen({
   // イベントを消費する場合があり、bubble フェーズだと届かないことがあるため。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      // Escape も document で受ける。入力欄の onKeyDown だけに任せると、
+      // 何らかの理由でフォーカスがダイアログの外へ移ったときに閉じる手段が
+      // 無くなってしまう。開いていないときはエディタ側の Escape を横取りしない
+      if (event.key === 'Escape') {
+        if (!isOpen) return
+        event.preventDefault()
+        setIsOpen(false)
+        return
+      }
       if (!(event.ctrlKey || event.metaKey)) return
       if (event.shiftKey || event.altKey) return
       if (event.key.toLowerCase() !== 'p') return

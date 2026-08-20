@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import QuickOpenDialog from '../QuickOpenDialog'
@@ -78,13 +78,6 @@ describe('QuickOpenDialog', () => {
     expect(confirm).toHaveBeenCalled()
   })
 
-  it('Escape で close が呼ばれる', async () => {
-    const close = vi.fn()
-    render(<QuickOpenDialog controller={makeController({ close })} />)
-    await userEvent.type(screen.getByRole('combobox'), '{Escape}')
-    expect(close).toHaveBeenCalled()
-  })
-
   it('オーバーレイのクリックで close が呼ばれる', async () => {
     const close = vi.fn()
     render(<QuickOpenDialog controller={makeController({ close })} />)
@@ -160,13 +153,71 @@ describe('QuickOpenDialog', () => {
     expect(selected).toEqual(['false', 'true'])
   })
 
-  it('Tab など未対応のキーでは既定動作を妨げない', async () => {
+  it('Tab ではダイアログの操作コールバックを呼ばない', async () => {
     const controller = makeController()
     render(<QuickOpenDialog controller={controller} />)
     await userEvent.type(screen.getByRole('combobox'), '{Tab}')
     expect(controller.close).not.toHaveBeenCalled()
     expect(controller.confirm).not.toHaveBeenCalled()
     expect(controller.moveSelection).not.toHaveBeenCalled()
+  })
+
+  it('閉じたとき開く前にフォーカスがあった要素へ戻す', () => {
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+
+    const { rerender } = render(<QuickOpenDialog controller={makeController()} />)
+    expect(screen.getByRole('combobox')).toHaveFocus()
+
+    rerender(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
+    expect(outside).toHaveFocus()
+    outside.remove()
+  })
+
+  it('候補一覧の余白を押しても入力欄がフォーカスを失わない', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    const input = screen.getByRole('combobox')
+    // mousedown の既定動作を止めないと、フォーカスが body へ移って
+    // ↑↓ / Enter / Escape がすべて効かなくなる
+    const event = fireEvent.mouseDown(screen.getByRole('listbox'))
+    expect(event).toBe(false)
+    expect(input).toHaveFocus()
+  })
+
+  it('案内文を押しても入力欄がフォーカスを失わない', () => {
+    render(<QuickOpenDialog controller={makeController({ results: [] })} />)
+    const event = fireEvent.mouseDown(screen.getByRole('status'))
+    expect(event).toBe(false)
+    expect(screen.getByRole('combobox')).toHaveFocus()
+  })
+
+  it('入力欄からドラッグしてオーバーレイで離しても閉じない', () => {
+    const close = vi.fn()
+    render(<QuickOpenDialog controller={makeController({ close })} />)
+    const overlay = screen.getByTestId('quick-open-overlay')
+    // テキスト選択のドラッグ: mousedown は入力欄、mouseup はオーバーレイ。
+    // click は共通祖先のオーバーレイへ配送される
+    fireEvent.mouseDown(screen.getByRole('combobox'))
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(close).not.toHaveBeenCalled()
+  })
+
+  it('オーバーレイで押して離したときは閉じる', () => {
+    const close = vi.fn()
+    render(<QuickOpenDialog controller={makeController({ close })} />)
+    const overlay = screen.getByTestId('quick-open-overlay')
+    fireEvent.mouseDown(overlay)
+    fireEvent.click(overlay)
+    expect(close).toHaveBeenCalled()
+  })
+
+  it('Tab でフォーカスがダイアログの外へ抜けない', async () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    const input = screen.getByRole('combobox')
+    await userEvent.tab()
+    expect(input).toHaveFocus()
   })
 
   it('isOpen が false のとき何も描画しない', () => {

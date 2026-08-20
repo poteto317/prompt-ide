@@ -131,6 +131,72 @@ describe('useFileSystem', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('selectFile はファイルを開けたとき true を返す', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+
+    const { result } = renderHook(() => useFileSystem())
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    let opened: boolean | undefined
+    await act(async () => {
+      opened = await result.current.selectFile(fileNode)
+    })
+    expect(opened).toBe(true)
+  })
+
+  it('selectFile はディレクトリを渡されたとき false を返す', async () => {
+    const { result } = renderHook(() => useFileSystem())
+    const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
+    let opened: boolean | undefined
+    await act(async () => {
+      opened = await result.current.selectFile(dirNode)
+    })
+    expect(opened).toBe(false)
+  })
+
+  it('selectFile は読み込みに失敗したとき false を返す', async () => {
+    mockReadFileContent.mockRejectedValue(new Error('読み込み失敗'))
+
+    const { result } = renderHook(() => useFileSystem())
+    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    let opened: boolean | undefined
+    await act(async () => {
+      opened = await result.current.selectFile(fileNode)
+    })
+    expect(opened).toBe(false)
+    expect(result.current.error).not.toBeNull()
+  })
+
+  it('selectFile は未保存変更の破棄がキャンセルされたとき false を返す', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const onConfirm = vi.fn(() => false)
+
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
+    act(() => result.current.updateFileContent('編集済み'))
+
+    const otherNode: FileTreeNode = { name: 'App.tsx', path: '/project/src/App.tsx', type: 'file' }
+    let opened: boolean | undefined
+    await act(async () => {
+      opened = await result.current.selectFile(otherNode)
+    })
+    expect(opened).toBe(false)
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

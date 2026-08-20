@@ -103,6 +103,14 @@ describe('fuzzyMatch', () => {
     expect(new Set(indices).size).toBe(indices.length)
   })
 
+  it('小文字化で長さが変わる文字があっても indices が元の文字列の位置を指す', () => {
+    // 'İ'.toLowerCase() は 2 コードユニットになるため、文字列全体を先に
+    // 小文字化すると以降のインデックスがずれ、ハイライト位置が壊れる
+    const result = fuzzyMatch('is', 'İstanbul.md')
+    expect(result?.indices).toEqual([0, 1])
+    expect(result?.indices.map((i) => 'İstanbul.md'[i]).join('')).toBe('İs')
+  })
+
   it('スコアは常に有限の数値を返す', () => {
     const result = fuzzyMatch('u', 'useFileSystem.ts')
     expect(Number.isFinite(result?.score)).toBe(true)

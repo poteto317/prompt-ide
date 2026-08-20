@@ -33,13 +33,29 @@ const isWordBoundary = (target: string, index: number): boolean => {
 }
 
 /**
+ * 元の文字列と同じ長さを保ったまま小文字化する。
+ * `'İ'.toLowerCase()` のように 1 文字が 2 コードユニットへ展開されるケースがあり、
+ * 文字列全体を `toLowerCase()` すると以降のインデックスがずれる。indices は
+ * 元の target の添字としてハイライト描画に使うため、長さは必ず一致させる。
+ */
+const foldCase = (text: string): string => {
+  let folded = ''
+  for (let i = 0; i < text.length; i++) {
+    const lowered = text[i].toLowerCase()
+    folded += lowered.length === 1 ? lowered : lowered[0]
+  }
+  return folded
+}
+
+/**
  * query が target の部分列として存在するかを O(target.length) で先に判定する。
  * 大半のファイルはここで落ちるため、コストの高い DP を走らせる件数を減らせる。
+ * DP と走査単位を揃えるため、コードポイントではなくコードユニット単位で見る。
  */
 const containsSubsequence = (query: string, target: string): boolean => {
   let searchFrom = 0
-  for (const char of query) {
-    const found = target.indexOf(char, searchFrom)
+  for (let i = 0; i < query.length; i++) {
+    const found = target.indexOf(query[i], searchFrom)
     if (found === -1) return false
     searchFrom = found + 1
   }
@@ -57,8 +73,8 @@ const containsSubsequence = (query: string, target: string): boolean => {
 export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | null => {
   if (query.length === 0 || query.length > target.length) return null
 
-  const loweredQuery = query.toLowerCase()
-  const loweredTarget = target.toLowerCase()
+  const loweredQuery = foldCase(query)
+  const loweredTarget = foldCase(target)
   if (!containsSubsequence(loweredQuery, loweredTarget)) return null
 
   const queryLength = loweredQuery.length

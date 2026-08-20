@@ -15,7 +15,8 @@ interface FileSystemState {
   error: Error | null
   saveError: Error | null
   openFolder: () => Promise<void>
-  selectFile: (node: FileTreeNode) => Promise<void>
+  /** ファイルを開けたら true。ディレクトリ・破棄確認のキャンセル・読み込み失敗では false */
+  selectFile: (node: FileTreeNode) => Promise<boolean>
   closeFile: () => void
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
@@ -72,18 +73,22 @@ export function useFileSystem(options?: Options): FileSystemState {
     }
   }
 
-  const selectFile = async (node: FileTreeNode): Promise<void> => {
-    if (node.type !== 'file') return
+  // 呼び出し側が「実際に開けたか」で分岐できるよう成否を返す。クイックオープンは
+  // 開けなかったとき(破棄確認のキャンセルなど)にダイアログを閉じずに残す。
+  const selectFile = async (node: FileTreeNode): Promise<boolean> => {
+    if (node.type !== 'file') return false
     // TypeScript resets property narrowing after `await`; capture the narrowed type here.
     const fileNode = node as FileNode
-    if (!confirmDiscardIfDirty()) return
+    if (!confirmDiscardIfDirty()) return false
     setError(null)
     try {
       const content = await fileSystemApi.readFileContent(fileNode.path)
       setOpenFile(createOpenFile(fileNode, content))
       resetForFileChange()
+      return true
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
+      return false
     }
   }
 

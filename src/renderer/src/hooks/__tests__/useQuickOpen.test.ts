@@ -28,20 +28,20 @@ type Overrides = {
   fileTree?: FileTreeNode[]
   folderPath?: string | null
   openFilePath?: string | null
-  selectFile?: (node: FileTreeNode) => void
+  selectFile?: (node: FileTreeNode) => Promise<boolean>
   /** StrictMode で包み、レンダーの二重実行下での挙動を確認する */
   strict?: boolean
 }
 
 type HookProps = { openFilePath: string | null }
 type Setup = RenderHookResult<QuickOpenController, HookProps> & {
-  selectFile: (node: FileTreeNode) => void
+  selectFile: (node: FileTreeNode) => Promise<boolean>
   /** フックが評価された回数。レンダーの連鎖が起きていないかの確認に使う */
   renderCount: () => number
 }
 
 const setup = (overrides: Overrides = {}): Setup => {
-  const selectFile = overrides.selectFile ?? vi.fn()
+  const selectFile = overrides.selectFile ?? vi.fn(() => Promise.resolve(true))
   let renders = 0
   const view = renderHook(
     (props: HookProps) => {
@@ -142,6 +142,33 @@ describe('useQuickOpen', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
+  it('Escape で閉じる', () => {
+    const { result } = setup()
+    pressKey({ key: 'p', ctrlKey: true })
+    pressKey({ key: 'Escape' })
+    expect(result.current.isOpen).toBe(false)
+  })
+
+  it('フォーカスがダイアログの外にあっても Escape で閉じられる', () => {
+    // 入力欄の onKeyDown だけで処理すると、何らかの理由でフォーカスが外れた場合に
+    // 閉じる手段が無くなる。document で購読して復帰不能な状態を作らない
+    const outside = document.createElement('textarea')
+    document.body.appendChild(outside)
+    const { result } = setup()
+    pressKey({ key: 'p', ctrlKey: true })
+    outside.focus()
+    pressKey({ key: 'Escape' })
+    expect(result.current.isOpen).toBe(false)
+    outside.remove()
+  })
+
+  it('閉じているときの Escape は既定動作を妨げない', () => {
+    // エディタ側が Escape を使うため、開いていないときに横取りしない
+    setup()
+    const event = pressKey({ key: 'Escape' })
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it('close で閉じる', () => {
     const { result } = setup()
     act(() => result.current.open())
@@ -204,31 +231,43 @@ describe('useQuickOpen', () => {
     expect(result.current.activeIndex).toBe(0)
   })
 
-  it('confirm で選択中のファイルを開き、ダイアログを閉じる', () => {
+  it('confirm で選択中のファイルを開き、ダイアログを閉じる', async () => {
     const { result, selectFile } = setup()
     act(() => result.current.open())
     act(() => result.current.setQuery('app'))
-    act(() => result.current.confirm())
+    await act(async () => result.current.confirm())
     expect(selectFile).toHaveBeenCalledWith(
       expect.objectContaining({ path: '/project/src/App.tsx' })
     )
     expect(result.current.isOpen).toBe(false)
   })
 
-  it('confirm に index を渡すとその候補を開く(クリック選択用)', () => {
+  it('confirm に index を渡すとその候補を開く(クリック選択用)', async () => {
     const { result, selectFile } = setup()
     act(() => result.current.open())
     act(() => result.current.setQuery('tsx'))
     const target = result.current.results[1].node.path
-    act(() => result.current.confirm(1))
+    await act(async () => result.current.confirm(1))
     expect(selectFile).toHaveBeenCalledWith(expect.objectContaining({ path: target }))
   })
 
-  it('候補が空のとき confirm しても何も開かず閉じない', () => {
+  it('ファイルを開けなかったときダイアログを閉じずクエリも保持する', async () => {
+    // 未保存変更の破棄をキャンセルした場合など。閉じてしまうと入力をやり直す羽目になる
+    const selectFile = vi.fn(() => Promise.resolve(false))
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    await act(async () => result.current.confirm())
+    expect(selectFile).toHaveBeenCalled()
+    expect(result.current.isOpen).toBe(true)
+    expect(result.current.query).toBe('app')
+  })
+
+  it('候補が空のとき confirm しても何も開かず閉じない', async () => {
     const { result, selectFile } = setup()
     act(() => result.current.open())
     act(() => result.current.setQuery('zzzz'))
-    act(() => result.current.confirm())
+    await act(async () => result.current.confirm())
     expect(selectFile).not.toHaveBeenCalled()
     expect(result.current.isOpen).toBe(true)
   })
@@ -236,18 +275,42 @@ describe('useQuickOpen', () => {
   it('クエリが空のとき最近開いたファイルを新しい順に並べる', () => {
     const { result, rerender } = setup()
     rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/main.tsx' })
     rerender({ openFilePath: '/project/README.md' })
     act(() => result.current.open())
-    expect(result.current.results.map((r) => r.node.name)).toEqual(['README.md', 'App.tsx'])
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
+  })
+
+  it('クエリが空のとき現在開いているファイルを候補から除外する', () => {
+    // 除外しないと Ctrl+P → Enter が現在のファイルの開き直しになり、
+    // 未保存の編集がある場合は破棄確認から編集内容を失う経路になる
+    const { result, rerender } = setup()
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.path)).not.toContain('/project/src/App.tsx')
+  })
+
+  it('クエリを入力すれば現在開いているファイルも候補に出る', () => {
+    const { result, rerender } = setup()
+    rerender({ openFilePath: '/project/src/App.tsx' })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx'])
   })
 
   it('同じファイルを開き直しても履歴が重複しない', () => {
     const { result, rerender } = setup()
     rerender({ openFilePath: '/project/src/App.tsx' })
     rerender({ openFilePath: '/project/README.md' })
+    rerender({ openFilePath: '/project/src/main.tsx' })
     rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/index.ts' })
     act(() => result.current.open())
-    expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx', 'README.md'])
+    expect(result.current.results.map((r) => r.node.name)).toEqual([
+      'App.tsx',
+      'main.tsx',
+      'README.md'
+    ])
   })
 
   it('ツリーから消えたファイルは履歴に残っていても表示しない', () => {
@@ -275,14 +338,25 @@ describe('useQuickOpen', () => {
     expect(result.current.hasFolder).toBe(true)
   })
 
-  it('履歴は上限 10 件までしか保持しない', () => {
+  it('履歴は上限 10 件までしか保持せず、古いものから捨てる', () => {
     const manyFiles = Array.from({ length: 12 }, (_, i) =>
       file(`file${i}.ts`, `/project/file${i}.ts`)
     )
     const { result, rerender } = setup({ fileTree: manyFiles })
     for (const node of manyFiles) rerender({ openFilePath: node.path })
     act(() => result.current.open())
-    expect(result.current.results).toHaveLength(10)
+    // 履歴 10 件のうち先頭は現在開いている file11 のため、表示は 9 件
+    expect(result.current.results.map((r) => r.node.name)).toEqual([
+      'file10.ts',
+      'file9.ts',
+      'file8.ts',
+      'file7.ts',
+      'file6.ts',
+      'file5.ts',
+      'file4.ts',
+      'file3.ts',
+      'file2.ts'
+    ])
   })
 
   it('履歴の途中にあるファイルを開き直すと先頭へ移動する', () => {
@@ -291,6 +365,7 @@ describe('useQuickOpen', () => {
     rerender({ openFilePath: '/project/src/main.tsx' })
     rerender({ openFilePath: '/project/README.md' })
     rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/index.ts' })
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual([
       'App.tsx',
@@ -304,16 +379,17 @@ describe('useQuickOpen (StrictMode)', () => {
   it('レンダーが二重実行されても履歴が重複しない', () => {
     const { result, rerender } = setup({ strict: true })
     rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/src/main.tsx' })
     rerender({ openFilePath: '/project/README.md' })
     act(() => result.current.open())
-    expect(result.current.results.map((r) => r.node.name)).toEqual(['README.md', 'App.tsx'])
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
   })
 
   it('同じ openFilePath で再レンダーしても履歴が増えない', () => {
     const { result, rerender } = setup({ strict: true })
     rerender({ openFilePath: '/project/src/App.tsx' })
     rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/App.tsx' })
+    rerender({ openFilePath: '/project/README.md' })
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx'])
   })
