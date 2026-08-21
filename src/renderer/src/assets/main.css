@@ -1831,7 +1831,8 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 11px;
-  color: #8c8c8c;
+  /* 選択中の背景 #04395e 上でも 4.5:1 を満たす明るさ(#8c8c8c では 3.56:1) */
+  color: #a0a0a0;
 }
 
 .quick-open__match {
