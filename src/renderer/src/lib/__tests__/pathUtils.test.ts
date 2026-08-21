@@ -151,8 +151,10 @@ describe('POSIX のバックスラッシュ', () => {
     expect(isPathAtOrInside('/project/foo\\bar.ts', '/project/foo')).toBe(false)
   })
 
-  it('比較用キーでも \\ を保つ', () => {
-    expect(toComparablePath('/project/foo\\bar.ts')).toBe('/project/foo\\bar.ts')
+  it('比較用キーでも \\ を含む名前と区切りを区別する', () => {
+    expect(toComparablePath('/project/foo\\bar.ts')).not.toBe(
+      toComparablePath('/project/foo/bar.ts')
+    )
   })
 
   it('同じ名前どうしは一致する', () => {
@@ -164,7 +166,9 @@ describe('POSIX のバックスラッシュ', () => {
     // POSIX の '/\\server\\share' は「ルート直下の \\server\\share という名前」。
     // UNC と誤認して変換すると、この名前が '//server/share' と同一視される
     expect(isSamePath('/\\server\\share', '//server/share')).toBe(false)
-    expect(toComparablePath('/\\server\\share')).toBe('/\\server\\share')
+    // キーとしても UNC の '\\\\server\\share'(正規化すると '//server/share')と別物になる
+    expect(toComparablePath('/\\server\\share')).not.toBe(toComparablePath('\\\\server\\share'))
+    expect(toComparablePath('/\\server\\share')).toContain('/\\server\\share')
   })
 
   it('片方が POSIX の全スラッシュ形なら Windows として畳まない', () => {
@@ -176,6 +180,20 @@ describe('POSIX のバックスラッシュ', () => {
   it('両方が Windows 形式なら表記が違っても一致する', () => {
     expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
     expect(isPathAtOrInside('\\\\Server\\Share\\A.ts', '\\\\server\\share')).toBe(true)
+  })
+
+  it('POSIX の全スラッシュ形と UNC を別のキーにする', () => {
+    // '\\\\server\\share\\foo' は正規化すると '//server/share/foo' になる。
+    // 種別を持たないキーだと POSIX のパスと衝突し、履歴や Map の存在確認で混ざる
+    expect(isSamePath('//server/share/foo', '\\\\server\\share\\foo')).toBe(false)
+    expect(toComparablePath('//server/share/foo')).not.toBe(
+      toComparablePath('\\\\server\\share\\foo')
+    )
+  })
+
+  it('種別が違うパスは配下ともみなさない', () => {
+    expect(isPathInside('\\\\server\\share\\foo\\a.ts', '//server/share/foo')).toBe(false)
+    expect(isPathAtOrInside('\\\\server\\share\\foo', '//server/share')).toBe(false)
   })
 
   it('バックスラッシュだけの文字列をルートとみなさない', () => {

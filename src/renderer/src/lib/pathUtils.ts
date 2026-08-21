@@ -58,18 +58,24 @@ const isRootPath = (path: string): boolean => /^\/+$/.test(normalizePathSeparato
  * Windows の UNC と同一視される。ドライブ文字は '/' 区切りでも判定できるため、
  * 'C:\\project' と 'C:/project' のような表記違いはこの条件でも突き合わせられる。
  */
-const normalizePair = (a: string, b: string): [string, string] => {
+const normalizePair = (a: string, b: string): [string, string] | null => {
   // Windows かどうかは正規化前の文字列で判定する。正規化後の文字列で見ると、
-  // POSIX の '//server/share' のような形まで Windows と誤認してしまう
-  const isWindows = isWindowsPath(a) && isWindowsPath(b)
+  // POSIX の '//server/share' のような形まで Windows と誤認してしまう。
+  // 種別が違えば同じ実体を指すことはないため、突き合わせ自体を成立させない
+  // (UNC の '\\server\share' は正規化すると '//server/share' となり、
+  //  POSIX のパスと文字列としては一致してしまうため)
+  const aIsWindows = isWindowsPath(a)
+  if (aIsWindows !== isWindowsPath(b)) return null
   const normalizedA = stripTrailingSeparators(normalizePathSeparators(a))
   const normalizedB = stripTrailingSeparators(normalizePathSeparators(b))
-  if (!isWindows) return [normalizedA, normalizedB]
+  if (!aIsWindows) return [normalizedA, normalizedB]
   return [normalizedA.toLowerCase(), normalizedB.toLowerCase()]
 }
 
 export const isPathInside = (childPath: string, parentPath: string): boolean => {
-  const [normalizedChild, normalizedParent] = normalizePair(childPath, parentPath)
+  const normalized = normalizePair(childPath, parentPath)
+  if (normalized === null) return false
+  const [normalizedChild, normalizedParent] = normalized
   // parentPath がルート('/')や空文字列など、正規化すると空になる場合は
   // 「親 + '/'」が単なる '/' に退化し、あらゆる絶対パスを内部と誤判定してしまう。
   // 同一パス(等値)も「内部」ではないため、あわせて明示的に false とする。
@@ -88,8 +94,10 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
  */
 export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
   if (isRootPath(targetPath)) return normalizePathSeparators(path).startsWith('/')
-  const [normalizedPath, normalizedTarget] = normalizePair(path, targetPath)
-  return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
+  const normalized = normalizePair(path, targetPath)
+  if (normalized === null) return false
+  const [normalizedPath, normalizedTarget] = normalized
+  return normalizedPath === normalizedTarget || isPathInside(path, targetPath)
 }
 
 /**
@@ -97,7 +105,9 @@ export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
  * (Windows のみ)大文字小文字の違いを無視して比較する。
  */
 export const isSamePath = (a: string, b: string): boolean => {
-  const [normalizedA, normalizedB] = normalizePair(a, b)
+  const normalized = normalizePair(a, b)
+  if (normalized === null) return false
+  const [normalizedA, normalizedB] = normalized
   return normalizedA === normalizedB
 }
 
@@ -105,5 +115,14 @@ export const isSamePath = (a: string, b: string): boolean => {
  * 比較・キーとして使うための正規化済みパス。区切り文字と末尾の区切りを揃え、
  * Windows(ドライブ文字 or UNC)なら大文字小文字も畳む。
  * Map のキーなど、2 つ組で比較できない場面で使う。
+ *
+ * 先頭に種別を付ける。UNC の '\\server\share' は正規化すると
+ * '//server/share' となり、POSIX の同名パスとキーが衝突するため
+ * (履歴の重複排除や Map の存在確認で別のファイルが混ざる)。
  */
-export const toComparablePath = (path: string): string => normalizePair(path, path)[0]
+export const toComparablePath = (path: string): string => {
+  const kind = isWindowsPath(path) ? 'windows' : 'posix'
+  const normalized = normalizePair(path, path)
+  // 同じ文字列どうしなので種別は必ず一致し、null にはならない
+  return `${kind}:${normalized === null ? path : normalized[0]}`
+}
