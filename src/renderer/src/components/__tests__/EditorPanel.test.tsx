@@ -388,6 +388,45 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
+  it('信号を伴わない path 変更でも、対象が変われば要求を破棄する', () => {
+    // リネームは信号を進めずに openFile.path を変える。要求が残ったままだと
+    // 後着の onMount がそれを消費してフォーカスを奪う
+    mockEditorModel.current = null // onMount 時点では消費させない
+    const signal = {
+      events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }]
+    }
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={signal} />
+    )
+    mockEditorModel.current = {}
+    mockFocus.mockClear()
+    // 信号は据え置きで path だけ変わる(リネーム相当)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        openedFileSignal={signal}
+      />
+    )
+    // オーバーレイの開閉で要求が消費されないこと
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        openedFileSignal={signal}
+        isOverlayOpen
+      />
+    )
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        openedFileSignal={signal}
+      />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()

@@ -105,9 +105,11 @@ export default function EditorPanel({
 
   // 「開いた」信号でのみ要求を立てる。openFilePath はリネームでも変わるため、
   // path の変化を使うとエクスプローラーで作業中にフォーカスを奪ってしまう
-  // フォーカス要求は openedFileSignal が進んだときだけ立てる。ファイルの有無の
-  // 変化で立てると、エクスプローラー経由(信号を進めない)で最初のファイルを
-  // 開いたときにも、Monaco の遅延 onMount がツリーからフォーカスを奪う
+  // 信号はどの経路のオープンでも進む(履歴の更新に使うため)。フォーカス要求を
+  // 立てるかは各イベントの moveFocusToEditor で決める。エクスプローラー経由は
+  // false なので要求を立てず、逆に以前の要求が残っていれば取り下げる。
+  // ファイルの有無の変化で立てると、エクスプローラーで最初のファイルを開いた
+  // ときにも Monaco の遅延 onMount がツリーからフォーカスを奪う
   // 依存は最新イベントの id だけにする。オブジェクトの同一性に依存すると、
   // 値が同じでも再レンダーのたびに要求が立ち直り、取り下げた要求が復活する
   const latestOpenedFile = openedFileSignal.events.at(-1) ?? null
@@ -126,11 +128,18 @@ export default function EditorPanel({
   // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
   // 消費してしまい、新しいエディタが入力を受け取れない
   useEffect(() => {
-    if (hasOpenFile) return
-    editorRef.current = null
-    mountedPathRef.current = null
-    pendingFocusPathRef.current = null
-  }, [hasOpenFile])
+    if (!hasOpenFile) {
+      editorRef.current = null
+      mountedPathRef.current = null
+      pendingFocusPathRef.current = null
+      return
+    }
+    // 要求対象と違うファイルが開かれていたら、その要求は捨てる。信号を伴わない
+    // 経路(リネーム)でも path は変わるため、ここでも破棄しておく
+    if (pendingFocusPathRef.current !== null && pendingFocusPathRef.current !== openFilePath) {
+      pendingFocusPathRef.current = null
+    }
+  }, [hasOpenFile, openFilePath])
 
   useEffect(() => {
     focusEditorIfPending()

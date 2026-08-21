@@ -11,7 +11,8 @@ import { useFileTreeOperations } from './useFileTreeOperations'
 
 /**
  * 信号に保持するイベント数。消費側が同じレンダーまで処理できないことがあるため、
- * 消費側(useQuickOpen)が追跡する履歴の上限以上を保持する必要がある
+ * 消費側(useQuickOpen)が追跡する履歴の上限以上を保持する必要がある。
+ * 同一パスは 1 件に畳むので、この数だけ「異なるファイル」を保持できる
  */
 const MAX_OPENED_FILE_EVENTS = 50
 
@@ -322,9 +323,11 @@ export function useFileSystem(options?: Options): FileSystemState {
       // クリックで奪うと、ツリー内のキーボード移動位置が失われるため
       setOpenedFileSignal((prev) => {
         const nextId = (prev.events.at(-1)?.id ?? 0) + 1
+        // 同じパスの古いイベントは畳む。件数だけで切ると、重複を含んだ列が
+        // 枠を埋めて中間の(本来保持すべき別ファイルの)履歴が落ちる
         return {
           events: [
-            ...prev.events,
+            ...prev.events.filter((event) => event.path !== fileNode.path),
             {
               id: nextId,
               path: fileNode.path,

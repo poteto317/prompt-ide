@@ -1549,6 +1549,26 @@ describe('useFileSystem', () => {
     expect(result.current.openedFileSignal.events).toHaveLength(12)
   })
 
+  it('同じファイルを開き直しても信号のイベントは重複させない', async () => {
+    // 件数だけで上限を切ると、重複を含んだ列が枠を埋めて中間の履歴が落ちる
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('x')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const a: FileTreeNode = { name: 'a.ts', path: '/project/a.ts', type: 'file' }
+    const b: FileTreeNode = { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(a)
+      await result.current.selectFile(b)
+      await result.current.selectFile(a)
+    })
+    const events = result.current.openedFileSignal.events
+    expect(events.map((e) => e.path)).toEqual(['/project/b.ts', '/project/a.ts'])
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
