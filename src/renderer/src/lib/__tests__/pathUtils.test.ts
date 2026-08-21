@@ -83,6 +83,18 @@ describe('isPathAtOrInside', () => {
     expect(isPathAtOrInside('C:\\dir\\a.ts', 'C:\\dir')).toBe(true)
   })
 
+  it('Windows のドライブルートも配下判定できる', () => {
+    // 'C:\\' は正規化で 'C:' になり、'C:/a.ts' の接頭辞判定が成立する
+    expect(isPathAtOrInside('C:\\a.ts', 'C:\\')).toBe(true)
+    expect(isPathAtOrInside('C:\\dir\\a.ts', 'C:\\')).toBe(true)
+    expect(isPathAtOrInside('C:/a.ts', 'C:/')).toBe(true)
+    expect(isPathAtOrInside('C:\\', 'C:\\')).toBe(true)
+  })
+
+  it('別のドライブは配下とみなさない', () => {
+    expect(isPathAtOrInside('D:\\a.ts', 'C:\\')).toBe(false)
+  })
+
   it('空文字列を親にしても配下とみなさない', () => {
     expect(isPathAtOrInside('/a.ts', '')).toBe(false)
   })
