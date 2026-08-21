@@ -84,6 +84,16 @@ describe('searchFiles', () => {
     expect(results[0].directory).toBe('src')
   })
 
+  it('POSIX のルートでは UNC のパスをルート相対にしない', () => {
+    // ルート特例が種別の判定を迂回すると、UNC が '/server/share/...' という
+    // 実在しない表示になる
+    const uncFiles: FileNode[] = [
+      { name: 'file.ts', path: '\\\\server\\share\\file.ts', type: 'file' }
+    ]
+    const results = searchFiles('file', uncFiles, '/')
+    expect(results[0].directory).toBe('//server/share')
+  })
+
   it('ルートからの相対ディレクトリを directory として返す', () => {
     const results = searchFiles('usfs', files, ROOT)
     expect(results[0].directory).toBe('src/hooks')
