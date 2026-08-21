@@ -757,6 +757,53 @@ describe('useFileSystem', () => {
     })
   })
 
+  it('フォルダ切替後に始まった古いツリー再読込が新しいフォルダを壊さない', async () => {
+    // クロージャの folderPath を読むと、切替後に始まった再読込が旧フォルダを
+    // 読み込み、その結果で新しいフォルダのツリーを上書きしてしまう
+    const oldTree: FileTreeNode[] = [{ name: 'old.ts', path: '/old/old.ts', type: 'file' }]
+    const newTree: FileTreeNode[] = [{ name: 'new.ts', path: '/new/new.ts', type: 'file' }]
+    mockReadDirectory.mockImplementation((target: string) =>
+      Promise.resolve(target === '/new' ? newTree : oldTree)
+    )
+    mockOpenFolder.mockResolvedValue('/old')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // 削除の FS 操作を保留させ、その間にフォルダを切り替える
+    let finishDelete: () => void = () => {}
+    mockDeleteEntry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve
+        })
+    )
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry({
+        name: 'a.ts',
+        path: '/old/a.ts',
+        type: 'file'
+      })
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.fileTree).toEqual(newTree)
+
+    // ここで初めて古い CRUD の refreshTree が始まる
+    await act(async () => {
+      finishDelete()
+      await deletePromise
+    })
+    expect(result.current.folderPath).toBe('/new')
+    expect(result.current.fileTree).toEqual(newTree)
+    expect(result.current.error).toBeNull()
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

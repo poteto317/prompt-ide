@@ -55,6 +55,9 @@ export function useFileSystem(options?: Options): FileSystemState {
   // openFile の同期ミラー。React の state はコミット後にしか読めないため、
   // 「操作の途中で確定した openFile」を同じ tick 内で参照するために持つ
   const openFileMirrorRef = useRef<OpenFile | null>(null)
+  // folderPath の同期ミラー。ツリー再読込が「今どのフォルダを見ているか」を
+  // 判定するために使う(クロージャの folderPath は切替後も古いままになる)
+  const folderPathMirrorRef = useRef<string | null>(null)
 
   // openFile を更新する唯一の経路。ミラーを必ず同時に更新する。
   // 関数形式も受け付けるのは、useFileEditing が prev を基に更新するため。
@@ -122,7 +125,6 @@ export function useFileSystem(options?: Options): FileSystemState {
     renameEntry,
     deleteEntry
   } = useFileTreeOperations({
-    folderPath,
     getOpenFile,
     setOpenFile: commitOpenFile,
     resetForFileChange,
@@ -130,13 +132,10 @@ export function useFileSystem(options?: Options): FileSystemState {
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
     // (削除済みファイルを表示すると、編集して保存した時点で復活してしまう)
     // 影響範囲外の読み込みまで捨てると、無関係な操作で有効な選択を失う
-    // ツリーの再読込は世代を「進めず」、開始時点の世代と一致するかだけを見る。
-    // 進めてしまうと、旧フォルダの CRUD から遅れて始まった refresh が
-    // 実行中のフォルダ選択を無効化し、フォルダ切替が黙って失われる
-    beginTreeRefresh: () => {
-      const id = latestDirectoryReadRef.current
-      return () => id === latestDirectoryReadRef.current
-    },
+    // ツリー再読込は「今のフォルダ」を同期的に見て判断する。世代カウンタでは、
+    // 切替後に始まった古い CRUD の再読込が新しい世代を取得してしまい、
+    // 旧フォルダのツリーやエラーが新しいフォルダへ反映されてしまう
+    getFolderPath: () => folderPathMirrorRef.current,
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
@@ -165,6 +164,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (directoryReadId !== latestDirectoryReadRef.current) return
       // フォルダ選択そのものは必ず確定させる。ここを中断すると、読み込み中の
       // ファイル操作だけでフォルダ選択が黙って捨てられてしまう
+      folderPathMirrorRef.current = path
       setFolderPath(path)
       setFileTree(tree)
       // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。

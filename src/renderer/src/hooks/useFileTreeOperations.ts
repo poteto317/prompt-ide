@@ -6,7 +6,8 @@ import { isPathInside } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
 interface FileTreeOperationsOptions {
-  folderPath: string | null
+  /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
+  getFolderPath: () => string | null
   /** 呼び出し時点の openFile を同期的に返す(操作中に確定した結果も見えるようにする) */
   getOpenFile: () => OpenFile | null
   setOpenFile: (next: OpenFile | null) => void
@@ -17,8 +18,6 @@ interface FileTreeOperationsOptions {
    * FS 操作が成功したあとに呼ぶ(失敗時に有効な選択を失わないため)
    */
   invalidatePendingReads: (affectedPath: string) => void
-  /** ツリー再読込の開始時点を記録し、「まだ同じフォルダ選択か」を返す関数を得る */
-  beginTreeRefresh: () => () => boolean
 }
 
 interface FileTreeOperationsState {
@@ -36,13 +35,12 @@ interface FileTreeOperationsState {
 // それに伴う「開いているファイルへの追随」(リネームでの path 付け替え、削除時のクローズ)を担う。
 // フォルダ木の初回読み込み(openFolder/selectFile)は useFileSystem 側の責務のまま残す。
 export function useFileTreeOperations({
-  folderPath,
+  getFolderPath,
   getOpenFile,
   setOpenFile,
   resetForFileChange,
   onConfirm,
-  invalidatePendingReads,
-  beginTreeRefresh
+  invalidatePendingReads
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -50,12 +48,20 @@ export function useFileTreeOperations({
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
   const refreshTree = async (): Promise<void> => {
-    if (folderPath === null) return
-    const isLatest = beginTreeRefresh()
-    const tree = await fileSystemApi.readDirectory(folderPath)
-    // 新しいフォルダ選択が始まっていたら、旧フォルダのツリーを反映しない
-    if (!isLatest()) return
-    setFileTree(tree)
+    // クロージャではなく「読み込む時点」のフォルダを見る。CRUD の完了が遅れると
+    // クロージャの folderPath は切替前のものになり、旧フォルダを読んでしまう
+    const target = getFolderPath()
+    if (target === null) return
+    try {
+      const tree = await fileSystemApi.readDirectory(target)
+      // 待っている間にフォルダが切り替わっていたら、その結果は反映しない
+      if (getFolderPath() !== target) return
+      setFileTree(tree)
+    } catch (err) {
+      // 古いフォルダの再読込の失敗を、新しいフォルダの画面に出さない
+      if (getFolderPath() !== target) return
+      throw err
+    }
   }
 
   const runFileOperation = async (operation: () => Promise<void>): Promise<void> => {

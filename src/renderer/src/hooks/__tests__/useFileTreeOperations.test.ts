@@ -29,7 +29,6 @@ function renderOperations(config?: {
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
   invalidatePendingReads?: (affectedPath: string) => void
-  beginTreeRefresh?: () => () => boolean
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
@@ -39,17 +38,31 @@ function renderOperations(config?: {
   const { result } = renderHook(() => {
     const [openFile, setOpenFile] = useState<OpenFile | null>(config?.initialOpenFile ?? null)
     const ops = useFileTreeOperations({
-      folderPath,
+      getFolderPath: () => folderPath,
       getOpenFile: () => openFile,
       setOpenFile,
       resetForFileChange,
       onConfirm,
-      invalidatePendingReads,
-      beginTreeRefresh: config?.beginTreeRefresh ?? (() => () => true)
+      invalidatePendingReads
     })
     return { ...ops, openFile }
   })
   return { result, resetForFileChange, onConfirm, invalidatePendingReads }
+}
+
+function renderOperationsWithFolder(getFolderPath: () => string | null) {
+  const { result } = renderHook(() => {
+    const [openFile, setOpenFile] = useState<OpenFile | null>(null)
+    return useFileTreeOperations({
+      getFolderPath,
+      getOpenFile: () => openFile,
+      setOpenFile,
+      resetForFileChange: vi.fn(),
+      onConfirm: () => true,
+      invalidatePendingReads: vi.fn()
+    })
+  })
+  return { result }
 }
 
 beforeEach(() => {
@@ -349,21 +362,37 @@ describe('保留中の読み込みの無効化', () => {
   })
 })
 
-describe('ツリー再読込の世代管理', () => {
-  it('新しいフォルダ選択が始まっていたら旧フォルダのツリーを反映しない', async () => {
-    // folderPath だけ新しくツリーが旧に戻る状態を防ぐ
+describe('ツリー再読込のフォルダ判定', () => {
+  it('読み込み中にフォルダが切り替わったらツリーを反映しない', async () => {
     mockDeleteEntry.mockResolvedValue(undefined)
-    mockReadDirectory.mockResolvedValue([
-      { name: 'stale.ts', path: '/project/stale.ts', type: 'file' }
-    ])
-    const { result } = renderOperations({ beginTreeRefresh: () => () => false })
+    let current: string | null = '/project'
+    mockReadDirectory.mockImplementation(() => {
+      // 読み込みの解決前にフォルダが切り替わった状況を再現する
+      current = '/other'
+      return Promise.resolve([{ name: 'stale.ts', path: '/project/stale.ts', type: 'file' }])
+    })
+    const { result } = renderOperationsWithFolder(() => current)
     await act(async () => {
       await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
     })
     expect(result.current.fileTree).toEqual([])
   })
 
-  it('最新のままなら再読込したツリーを反映する', async () => {
+  it('読み込み中の失敗も、フォルダが切り替わっていればエラーにしない', async () => {
+    mockDeleteEntry.mockResolvedValue(undefined)
+    let current: string | null = '/project'
+    mockReadDirectory.mockImplementation(() => {
+      current = '/other'
+      return Promise.reject(new Error('Access denied: /project'))
+    })
+    const { result } = renderOperationsWithFolder(() => current)
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('フォルダが同じなら再読込したツリーを反映する', async () => {
     mockDeleteEntry.mockResolvedValue(undefined)
     const tree = [{ name: 'fresh.ts', path: '/project/fresh.ts', type: 'file' as const }]
     mockReadDirectory.mockResolvedValue(tree)

@@ -265,6 +265,26 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
+  it('要求したファイルと別のファイルが開かれたらフォーカス要求を破棄する', () => {
+    // クイックオープンで A を開いた直後、Monaco の onMount 前にエクスプローラーで
+    // B を開くと、A の要求が B のマウントで消費されツリーからフォーカスを奪う
+    mockEditorModel.current = null // onMount 時点ではまだフォーカスさせない
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+    )
+    mockEditorModel.current = {}
+    mockFocus.mockClear()
+    // エクスプローラー経由(信号は進まない)で別ファイルを開く
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={{ ...mockOpenFile, path: '/project/other.ts', name: 'other.ts' }}
+        openedFileSignal={1}
+      />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()

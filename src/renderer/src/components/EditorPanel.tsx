@@ -63,7 +63,10 @@ export default function EditorPanel({
   // ファイルを開いた直後にそのまま入力を始められるようにする。
   // key={openFile.path} により切替のたびに再マウントされるため、ここで取らないと
   // クイックオープン経由ではフォーカスが body に残ってしまう。
-  const pendingFocusRef = useRef(false)
+  // フォーカス要求は「どのファイルに対する要求か」を保持する。持たないと、
+  // クイックオープンで A を開いた直後に別経路で B を開いたとき、A の要求が
+  // B のマウントで消費されて意図しない場所からフォーカスを奪う
+  const pendingFocusPathRef = useRef<string | null>(null)
   // editorRef が保持しているインスタンスがどのファイルのものか。
   // ファイル切替直後は前のファイルのインスタンスが残っているため、これを見ないと
   // 古いインスタンスでフォーカス要求を消費してしまう
@@ -77,11 +80,17 @@ export default function EditorPanel({
   // エディタのマウントとオーバーレイが閉じるのはどちらが先になるか決まらないので、
   // 両方から呼んで先に条件が揃ったほうで受け取る。
   const focusEditorIfPending = useCallback((): void => {
-    if (!pendingFocusRef.current || isOverlayOpenRef.current) return
+    const requestedPath = pendingFocusPathRef.current
+    // 要求したファイルと違うファイルが開かれていたら、その要求は捨てる
+    if (requestedPath === null || requestedPath !== openFilePathRef.current) {
+      pendingFocusPathRef.current = null
+      return
+    }
+    if (isOverlayOpenRef.current) return
     if (isFocusInsideDialog()) {
       // 入力中のダイアログへ譲った時点で要求は取り下げる。残しておくと、
       // 無関係なオーバーレイの開閉であとから消費され、フォーカスが飛ぶ
-      pendingFocusRef.current = false
+      pendingFocusPathRef.current = null
       return
     }
     const editorInstance = editorRef.current
@@ -89,7 +98,7 @@ export default function EditorPanel({
     // 同じ path を閉じて開き直した場合、path の比較だけでは旧インスタンスと
     // 区別できない。破棄済みの Monaco はモデルを失うため、生存確認で弾く
     if (editorInstance.getModel() === null) return
-    pendingFocusRef.current = false
+    pendingFocusPathRef.current = null
     editorInstance.focus()
   }, [isOverlayOpenRef, openFilePathRef])
 
@@ -100,8 +109,8 @@ export default function EditorPanel({
   // 開いたときにも、Monaco の遅延 onMount がツリーからフォーカスを奪う
   useEffect(() => {
     if (openedFileSignal === 0) return
-    pendingFocusRef.current = true
-  }, [openedFileSignal])
+    pendingFocusPathRef.current = openFilePathRef.current
+  }, [openedFileSignal, openFilePathRef])
 
   // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
   // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
@@ -110,7 +119,7 @@ export default function EditorPanel({
     if (hasOpenFile) return
     editorRef.current = null
     mountedPathRef.current = null
-    pendingFocusRef.current = false
+    pendingFocusPathRef.current = null
   }, [hasOpenFile])
 
   useEffect(() => {
