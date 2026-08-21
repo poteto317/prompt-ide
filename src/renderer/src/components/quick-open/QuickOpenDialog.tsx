@@ -67,6 +67,9 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
   useEffect(() => {
     if (!isOpen) return
     const handleTab = (event: KeyboardEvent): void => {
+      // IME の変換中は横取りしない。変換候補の操作に Tab を使う IME があり、
+      // ここで奪うと日本語入力そのものが壊れる(useQuickOpen の方針と揃える)
+      if (event.isComposing) return
       if (event.key !== 'Tab') return
       event.preventDefault()
       if (document.activeElement !== inputRef.current) inputRef.current?.focus()

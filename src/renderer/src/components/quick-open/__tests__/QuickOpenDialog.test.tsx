@@ -354,6 +354,15 @@ describe('QuickOpenDialog', () => {
     }
   })
 
+  it('IME 変換中の Tab は横取りしない', () => {
+    // IME によっては変換候補の操作に Tab を使う。ここで奪うと日本語入力が壊れる
+    render(<QuickOpenDialog controller={makeController()} />)
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'isComposing', { value: true })
+    screen.getByRole('combobox').dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it('isOpen が false のとき何も描画しない', () => {
     const { container } = render(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
     expect(container).toBeEmptyDOMElement()

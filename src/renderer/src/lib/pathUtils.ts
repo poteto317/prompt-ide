@@ -5,7 +5,8 @@
 // - childPath が末尾区切りだと、parentPath と実質同一パスなのに「内部にある」と
 //   誤って true 判定してしまう(例: '/project/src/' は '/project/src' の内部ではなく同一)
 const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
-const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
+/** 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため */
+export const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
 
 export const isPathInside = (childPath: string, parentPath: string): boolean => {
   const normalizedChild = stripTrailingSeparators(toForwardSlashes(childPath))

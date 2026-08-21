@@ -1924,6 +1924,97 @@ describe('useFileSystem', () => {
     expect(idAfter).toBeGreaterThan(idBefore)
   })
 
+  it('リネームの実行中は移行先への作成を待たせる', async () => {
+    // 元の path だけを予約すると、移行先(同じ親の下)への作成と並行して走り、
+    // どちらが先に完了するかで結果が変わる
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    const order: string[] = []
+    let finishRename: () => void = () => {}
+    mockRenameEntry.mockImplementationOnce(() => {
+      order.push('rename:start')
+      return new Promise<void>((resolve) => {
+        finishRename = () => {
+          order.push('rename:end')
+          resolve()
+        }
+      })
+    })
+    mockCreateFile.mockImplementation(() => {
+      order.push('create:start')
+      return Promise.resolve()
+    })
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    let renamePromise: Promise<void> = Promise.resolve()
+    let createPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      renamePromise = result.current.renameEntry(
+        { name: 'src', path: '/project/src', type: 'directory' },
+        'src2'
+      )
+    })
+    await act(async () => {})
+    act(() => {
+      createPromise = result.current.createFile('/project/src2', 'x.ts')
+    })
+    await act(async () => {})
+    expect(order).toEqual(['rename:start'])
+    await act(async () => {
+      finishRename()
+      await renamePromise
+      await createPromise
+    })
+    expect(order).toEqual(['rename:start', 'rename:end', 'create:start'])
+  })
+
+  it('破棄確認をキャンセルしたらツリーを再読込しない', async () => {
+    // 削除していないのに再読込が走ると、その失敗がエラー表示されたり
+    // 不要な更新で別の状態を上書きしたりする
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    let releaseSave: () => void = () => {}
+    mockWriteFileContent.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseSave = resolve
+        })
+    )
+    const confirmResults = [true, false]
+    const onConfirm = vi.fn(() => confirmResults.shift() ?? true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(mockTree[0].children![0])
+    })
+    // 保存を進行中にして削除をロック待ちにする
+    act(() => result.current.updateFileContent('保存前の編集'))
+    act(() => {
+      void result.current.saveFile()
+    })
+    await act(async () => {})
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(mockTree[0].children![0])
+    })
+    await act(async () => {})
+    // ロック待ちの間に編集が入る
+    act(() => {
+      result.current.updateFileContent('編集済み')
+    })
+    const readsBefore = mockReadDirectory.mock.calls.length
+    await act(async () => {
+      releaseSave()
+      await deletePromise
+    })
+    expect(onConfirm).toHaveBeenCalledTimes(2)
+    expect(mockDeleteEntry).not.toHaveBeenCalled()
+    expect(mockReadDirectory.mock.calls.length).toBe(readsBefore)
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathInside } from '../lib/pathUtils'
+import { isPathInside, stripTrailingSeparators } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
 interface FileTreeOperationsOptions {
@@ -104,13 +104,20 @@ export function useFileTreeOperations({
     return onConfirm(DISCARD_ON_DELETE_MESSAGE)
   }
 
-  const runFileOperation = async (operation: () => Promise<void>): Promise<void> => {
+  /**
+   * FS 操作を実行し、成功したらツリーを取り直す。
+   * operation は「実際に実行したか」を返す。破棄確認のキャンセルなどで
+   * 実行しなかった場合に再読込まで走らせると、削除していないのにその失敗が
+   * エラー表示されたり、不要な更新で別の状態を上書きしたりするため。
+   */
+  const runFileOperation = async (operation: () => Promise<boolean>): Promise<void> => {
     setError(null)
     // 操作の開始時点のフォルダを控える。await 中にフォルダが切り替わってから
     // 失敗すると、旧フォルダのエラーが新しいフォルダの画面に表示されてしまう
     const folderAtStart = getFolderPath()
     try {
-      await operation()
+      const executed = await operation()
+      if (!executed) return
       await refreshTree()
     } catch (err) {
       if (getFolderPath() !== folderAtStart) return
@@ -130,18 +137,26 @@ export function useFileTreeOperations({
   }
 
   const createFile = (parentPath: string, name: string): Promise<void> =>
-    runFileOperation(() => runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name)))
+    runFileOperation(() =>
+      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name)).then(() => true)
+    )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name))
+      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name)).then(() => true)
     )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
+      // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
+      const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
+      const newPath = parentPrefix + newName
       // 保存中の書き込みがリネーム後に解決すると、旧パスが再作成される。
-      // 操作の完了まで予約し、その間の新しい保存も開始させない
-      const release = await lockPathForFileOperation(node.path)
+      // 操作の完了まで予約し、その間の新しい保存も開始させない。
+      // 予約するのは元の path ではなく親ディレクトリ。移行先も同じ親の下に
+      // 作られるため、元だけを予約すると移行先への作成・削除と並行に走り、
+      // どちらが先に完了するかで結果が変わってしまう
+      const release = await lockPathForFileOperation(stripTrailingSeparators(parentPrefix))
       try {
         await fileSystemApi.renameEntry(node.path, newName)
       } finally {
@@ -150,9 +165,6 @@ export function useFileTreeOperations({
       // 読み込み中のファイルがリネーム対象なら、旧 path のまま表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
-      // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
-      const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
-      const newPath = parentPrefix + newName
       // 開いているファイル自身、またはその祖先ディレクトリがリネームされた場合は
       // openFile.path が変わる。useFileEditing は「path が変わる経路は必ず
       // resetForFileChange() を伴う」ことを前提に savingPaths/generation を
@@ -174,6 +186,7 @@ export function useFileTreeOperations({
         )
         resetForFileChange()
       }
+      return true
     })
 
   const deleteEntry = async (node: FileTreeNode): Promise<void> => {
@@ -190,7 +203,7 @@ export function useFileTreeOperations({
       // 操作の完了まで予約し、その間の新しい保存も開始させない
       const release = await lockPathForFileOperation(node.path)
       try {
-        if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return
+        if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return false
         await fileSystemApi.deleteEntry(node.path)
       } finally {
         release()
@@ -206,6 +219,7 @@ export function useFileTreeOperations({
         setOpenFile(null)
         resetForFileChange()
       }
+      return true
     })
   }
 
