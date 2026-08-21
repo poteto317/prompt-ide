@@ -191,6 +191,13 @@ describe('POSIX のバックスラッシュ', () => {
     )
   })
 
+  it('POSIX のルートは Windows のパスを配下とみなさない', () => {
+    // ルート特例は normalizePair を通らないため、種別の分離を迂回していた
+    expect(isPathAtOrInside('\\\\server\\share\\file.ts', '/')).toBe(false)
+    expect(isPathAtOrInside('C:\\project\\a.ts', '/')).toBe(false)
+    expect(isPathAtOrInside('/project/a.ts', '/')).toBe(true)
+  })
+
   it('種別が違うパスは配下ともみなさない', () => {
     expect(isPathInside('\\\\server\\share\\foo\\a.ts', '//server/share/foo')).toBe(false)
     expect(isPathAtOrInside('\\\\server\\share\\foo', '//server/share')).toBe(false)

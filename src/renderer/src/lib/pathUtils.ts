@@ -93,7 +93,13 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
  * 「すべての絶対パスの親」として扱うのはこの判定だけに閉じる。
  */
 export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
-  if (isRootPath(targetPath)) return normalizePathSeparators(path).startsWith('/')
+  if (isRootPath(targetPath)) {
+    // ルート特例は normalizePair を通らないため、ここでも種別を確かめる。
+    // POSIX のルートに Windows のパス(UNC は正規化すると '/' 始まりになる)を
+    // 配下として通すと、予約や削除の影響判定で無関係なファイルを巻き込む
+    if (isWindowsPath(path)) return false
+    return normalizePathSeparators(path).startsWith('/')
+  }
   const normalized = normalizePair(path, targetPath)
   if (normalized === null) return false
   const [normalizedPath, normalizedTarget] = normalized
