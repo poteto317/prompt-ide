@@ -76,19 +76,29 @@ lint はリポジトリ全体では既存の警告が多いため、変更した
 
 ### 5. アプリの停止
 
+`pkill -f` はパターンに一致したプロセスをまとめて落とす。停止する前に何が該当するかを
+必ず確認し、想定外のプロセスが含まれていないことを見てから実行する。
+
 ```bash
+# 1. 対象を確認する（このリポジトリ配下の Electron と dev サーバーだけのはず）
+pgrep -fl "prompt-ide/node_modules/electron/dist"
+pgrep -fl "electron-vite dev"
+
+# 2. 確認できたら停止する
 pkill -f "prompt-ide/node_modules/electron/dist"   # Electron 本体
 pkill -f "electron-vite dev"                        # dev サーバー
-```
 
-`electron-vite dev` だけを落としても Electron 本体は生き残る（親が init に付け替わる）。
-停止後は次の 3 つが空であることを確認する。
-
-```bash
+# 3. 残っていないことを確認する
 pgrep -fl "prompt-ide/node_modules/electron"
 pgrep -fl "electron-vite"
 lsof -nP -iTCP:9222 -iTCP:9229 -iTCP:5173 -sTCP:LISTEN
 ```
+
+`electron-vite dev` だけを落としても Electron 本体は生き残る（親が init に付け替わる）。
+手順 3 の 3 つがすべて空になって初めて停止できたと判断する。
+
+パターンにはリポジトリ名を含んだパスを使う。`pkill -f electron` のような広いパターンは
+無関係な Electron アプリまで巻き込むため使わない。
 
 ### 6〜7. コミットとプッシュ
 
@@ -207,7 +217,7 @@ HMR で古いモジュールが残っている場合もある。判断に迷っ�
 
 | 症状                                 | 原因                                       | 対処                                                     |
 | ------------------------------------ | ------------------------------------------ | -------------------------------------------------------- |
-| 新着レビューを検知できない           | `reviews(first:N)` が古い方から埋まる      | `last:` を使う                                           |
+| 新着レビューを検知できない           | `reviews(first:N)` が古い方から埋まる      | `last:` を使い、件数にも余裕を持たせる                   |
 | 依頼直後に「指摘なし」で監視が終わる | Copilot が受け取ると pending から外れる    | 最低待機時間を設ける                                     |
 | 監視が無言のまま動き続ける           | 実行中のスクリプトを in-place で上書きした | 実行用にコピーしてから起動する                           |
 | 打鍵が効かない                       | ウィンドウが OS フォーカスを失っている     | `Emulation.setFocusEmulationEnabled`                     |

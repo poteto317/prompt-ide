@@ -19,6 +19,9 @@
 # 注意（実際に踏んだ落とし穴）:
 #   - GraphQL の reviews / reviewThreads は first ではなく last を使う。レビューを
 #     重ねると first は古い方から埋まり、最新の到着がページの外に出て検知できない。
+#     last の件数にも余裕を持たせる。スレッドへの返信も review として記録されるため、
+#     人間側のレビューが積み上がると Copilot のレビューが窓から押し出される
+#     （実測: 1 つの PR でレビュー 81 件、うち人間側 37 件）。
 #   - Copilot は依頼を受け取ると reviewRequests から外れるため、依頼直後でも
 #     pending が空に見える。その状態を「新着なし」と判断して終了すると、数分後に
 #     届くレビューを取りこぼす。そのため最低待機時間（既定 1500 秒）を設けている。
@@ -42,7 +45,7 @@ STARTED=$(date +%s)
 while true; do
   out=$(gh api graphql -f query="
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
-    reviews(last:10){nodes{author{login} submittedAt body}}
+    reviews(last:50){nodes{author{login} submittedAt body}}
     reviewRequests(first:20){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
     reviewThreads(last:60){nodes{isResolved path line}}
   }}}" 2>/dev/null)
