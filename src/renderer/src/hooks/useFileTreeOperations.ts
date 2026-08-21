@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathInside, stripTrailingSeparators } from '../lib/pathUtils'
+import { isPathInside } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
 interface FileTreeOperationsOptions {
@@ -156,7 +156,7 @@ export function useFileTreeOperations({
       // 予約するのは元の path ではなく親ディレクトリ。移行先も同じ親の下に
       // 作られるため、元だけを予約すると移行先への作成・削除と並行に走り、
       // どちらが先に完了するかで結果が変わってしまう
-      const release = await lockPathForFileOperation(stripTrailingSeparators(parentPrefix))
+      const release = await lockPathForFileOperation(parentPrefix)
       try {
         await fileSystemApi.renameEntry(node.path, newName)
       } finally {

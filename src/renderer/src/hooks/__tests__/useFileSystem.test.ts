@@ -2015,6 +2015,97 @@ describe('useFileSystem', () => {
     expect(mockReadDirectory.mock.calls.length).toBe(readsBefore)
   })
 
+  it('ルート直下のリネーム中も重なる作成を待たせる', async () => {
+    // 親が '/' になるため、正規化して空文字列にすると予約がどのパスとも
+    // 重ならなくなり、ロックが素通りしてしまう
+    mockOpenFolder.mockResolvedValue('/')
+    mockReadDirectory.mockResolvedValue([])
+    const order: string[] = []
+    let finishRename: () => void = () => {}
+    mockRenameEntry.mockImplementationOnce(() => {
+      order.push('rename:start')
+      return new Promise<void>((resolve) => {
+        finishRename = () => {
+          order.push('rename:end')
+          resolve()
+        }
+      })
+    })
+    mockCreateFile.mockImplementation(() => {
+      order.push('create:start')
+      return Promise.resolve()
+    })
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    let renamePromise: Promise<void> = Promise.resolve()
+    let createPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      renamePromise = result.current.renameEntry(
+        { name: 'a.ts', path: '/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+    await act(async () => {})
+    act(() => {
+      createPromise = result.current.createFile('/', 'x.ts')
+    })
+    await act(async () => {})
+    expect(order).toEqual(['rename:start'])
+    await act(async () => {
+      finishRename()
+      await renamePromise
+      await createPromise
+    })
+    expect(order).toEqual(['rename:start', 'rename:end', 'create:start'])
+  })
+
+  it('ルート直下のリネーム中は重なる保存を開始させない', async () => {
+    // 保存中の書き込みがリネーム後に解決すると、旧パスが再作成される
+    mockOpenFolder.mockResolvedValue('/')
+    mockReadDirectory.mockResolvedValue([{ name: 'a.ts', path: '/a.ts', type: 'file' }])
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const order: string[] = []
+    let finishRename: () => void = () => {}
+    mockRenameEntry.mockImplementationOnce(() => {
+      order.push('rename:start')
+      return new Promise<void>((resolve) => {
+        finishRename = () => {
+          order.push('rename:end')
+          resolve()
+        }
+      })
+    })
+    mockWriteFileContent.mockImplementation(() => {
+      order.push('save:start')
+      return Promise.resolve()
+    })
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile({ name: 'a.ts', path: '/a.ts', type: 'file' })
+    })
+    act(() => result.current.updateFileContent('編集済み'))
+    let renamePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      renamePromise = result.current.renameEntry(
+        { name: 'a.ts', path: '/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+    await act(async () => {})
+    act(() => {
+      void result.current.saveFile()
+    })
+    await act(async () => {})
+    expect(order).toEqual(['rename:start'])
+    await act(async () => {
+      finishRename()
+      await renamePromise
+    })
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

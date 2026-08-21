@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPathInside } from '../pathUtils'
+import { isPathAtOrInside, isPathInside } from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -52,5 +52,38 @@ describe('isPathInside', () => {
 
   it('parentPath が空文字列のとき、退化してあらゆる絶対パスを内部と誤判定しない', () => {
     expect(isPathInside('/project/src/index.ts', '')).toBe(false)
+  })
+})
+
+describe('isPathAtOrInside', () => {
+  it('同一パスを配下とみなす', () => {
+    expect(isPathAtOrInside('/a/b', '/a/b')).toBe(true)
+  })
+
+  it('末尾の区切りが違っても同一とみなす', () => {
+    expect(isPathAtOrInside('/a/b', '/a/b/')).toBe(true)
+  })
+
+  it('配下のパスを true にする', () => {
+    expect(isPathAtOrInside('/a/b/c.ts', '/a/b')).toBe(true)
+  })
+
+  it('無関係なパスは false', () => {
+    expect(isPathAtOrInside('/a/bc.ts', '/a/b')).toBe(false)
+  })
+
+  it('ルートはすべての絶対パスの親として扱う', () => {
+    // isPathInside はルート特例で false を返すため、予約の判定はこちらを使う
+    expect(isPathAtOrInside('/a.ts', '/')).toBe(true)
+    expect(isPathAtOrInside('/a/b/c.ts', '/')).toBe(true)
+    expect(isPathAtOrInside('/', '/')).toBe(true)
+  })
+
+  it('Windows の区切りでも判定できる', () => {
+    expect(isPathAtOrInside('C:\\dir\\a.ts', 'C:\\dir')).toBe(true)
+  })
+
+  it('空文字列を親にしても配下とみなさない', () => {
+    expect(isPathAtOrInside('/a.ts', '')).toBe(false)
   })
 })

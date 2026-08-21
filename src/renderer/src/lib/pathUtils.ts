@@ -6,7 +6,10 @@
 //   誤って true 判定してしまう(例: '/project/src/' は '/project/src' の内部ではなく同一)
 const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
 /** 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため */
-export const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
+const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
+
+/** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
+const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
 
 export const isPathInside = (childPath: string, parentPath: string): boolean => {
   const normalizedChild = stripTrailingSeparators(toForwardSlashes(childPath))
@@ -16,4 +19,20 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
   // 同一パス(等値)も「内部」ではないため、あわせて明示的に false とする。
   if (normalizedParent.length === 0 || normalizedChild === normalizedParent) return false
   return normalizedChild.startsWith(`${normalizedParent}/`)
+}
+
+/**
+ * path が targetPath 自身か、その配下にあるか。
+ *
+ * `isPathInside` はルートを親として渡された場合に false を返す(空文字列など
+ * 正規化すると空になる値と区別できず、あらゆる絶対パスを配下と誤判定するため)。
+ * ファイル操作の予約では、ルート直下のリネームが同じルート配下の保存・作成と
+ * 重なることを検出できないと競合対策そのものが無効になる。ルートを明示的に
+ * 「すべての絶対パスの親」として扱うのはこの判定だけに閉じる。
+ */
+export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
+  if (isRootPath(targetPath)) return toForwardSlashes(path).startsWith('/')
+  const normalizedPath = stripTrailingSeparators(toForwardSlashes(path))
+  const normalizedTarget = stripTrailingSeparators(toForwardSlashes(targetPath))
+  return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
 }

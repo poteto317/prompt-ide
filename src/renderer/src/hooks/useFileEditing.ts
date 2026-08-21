@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { isPathInside } from '../lib/pathUtils'
+import { isPathAtOrInside } from '../lib/pathUtils'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
@@ -73,11 +73,13 @@ export function useFileEditing(
   // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
   const locksRef = useRef<{ path: string; done: Promise<void> }[]>([])
 
+  // ルートを親に持つ予約も検出できるよう isPathAtOrInside を使う。
+  // isPathInside はルートを親として渡すと常に false になる
   const overlaps = (a: string, b: string): boolean =>
-    a === b || isPathInside(a, b) || isPathInside(b, a)
+    isPathAtOrInside(a, b) || isPathAtOrInside(b, a)
 
   const isPathLocked = (path: string): boolean =>
-    locksRef.current.some((lock) => path === lock.path || isPathInside(path, lock.path))
+    locksRef.current.some((lock) => isPathAtOrInside(path, lock.path))
 
   const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
@@ -99,7 +101,7 @@ export function useFileEditing(
     // ただし待機の解決順によっては複数回の確認が要るためループする
     for (;;) {
       const pending = [...savingPromisesRef.current.entries()]
-        .filter(([path]) => path === targetPath || isPathInside(path, targetPath))
+        .filter(([path]) => isPathAtOrInside(path, targetPath))
         .map(([, promise]) => promise)
       if (pending.length === 0) break
       await Promise.all(pending)
