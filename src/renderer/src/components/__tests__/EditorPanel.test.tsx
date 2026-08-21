@@ -362,6 +362,29 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
+  it('フォーカス移動を伴わない信号を受けたら保留中の要求を取り下げる', () => {
+    // Quick Open の要求が残っていると、後着の onMount がフォーカスを奪う
+    mockEditorModel.current = null
+    const { rerender } = render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
+    mockEditorModel.current = {}
+    mockFocus.mockClear()
+    // 同じファイルをエクスプローラー経由で開き直す(フォーカス移動を伴わない)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 2, path: mockOpenFile.path, moveFocusToEditor: false }}
+      />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()

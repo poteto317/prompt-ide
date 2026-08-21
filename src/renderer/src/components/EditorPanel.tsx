@@ -115,8 +115,10 @@ export default function EditorPanel({
     // 信号が持つ対象パスを使う。処理時点の openFilePath を見ると、信号の発生後に
     // 別経路で開かれたファイルを要求対象として登録してしまう
     const signal = openedFileSignalRef.current
-    if (signal.id === 0 || !signal.moveFocusToEditor) return
-    pendingFocusPathRef.current = signal.path
+    if (signal.id === 0) return
+    // フォーカス移動を伴わない信号でも、以前の要求は取り下げる。残しておくと
+    // 後着の onMount がその要求を消費し、別の場所からフォーカスを奪う
+    pendingFocusPathRef.current = signal.moveFocusToEditor ? signal.path : null
   }, [openedFileSignal.id, openedFileSignalRef])
 
   // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを

@@ -548,6 +548,25 @@ describe('useQuickOpen', () => {
     expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
   })
 
+  it('ツリーに存在しないパスは履歴の枠を占有しない', () => {
+    // 隠すだけだと枠が埋まり、有効な履歴が上限で押し出される
+    const many = Array.from({ length: 12 }, (_, i) => file(`file${i}.ts`, `/project/file${i}.ts`))
+    const { result, rerender } = setup({ fileTree: many })
+    // ツリーに無いファイルを 5 件開いたことにする
+    for (let i = 0; i < 5; i++) openPath(rerender, `/project/ghost${i}.ts`)
+    // そのあと実在するファイルを 6 件開く
+    for (let i = 0; i < 6; i++) openPath(rerender, `/project/file${i}.ts`)
+    act(() => result.current.open())
+    // 現在開いている file5.ts を除いた 5 件がすべて残る
+    expect(result.current.results.map((r) => r.node.name)).toEqual([
+      'file4.ts',
+      'file3.ts',
+      'file2.ts',
+      'file1.ts',
+      'file0.ts'
+    ])
+  })
+
   it('ツリーから消えたファイルは履歴に残っていても表示しない', () => {
     const { result, rerender } = setup()
     openPath(rerender, '/project/deleted.ts')

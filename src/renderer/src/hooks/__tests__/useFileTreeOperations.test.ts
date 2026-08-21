@@ -392,6 +392,46 @@ describe('ツリー再読込のフォルダ判定', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('先に始まった再読込が後発の結果を上書きしない', async () => {
+    // 同一フォルダで CRUD が重なると解決順が入れ替わり得る
+    mockDeleteEntry.mockResolvedValue(undefined)
+    mockCreateFile.mockResolvedValue(undefined)
+    const firstTree = [{ name: 'first.ts', path: '/project/first.ts', type: 'file' as const }]
+    const secondTree = [{ name: 'second.ts', path: '/project/second.ts', type: 'file' as const }]
+    let resolveFirst: (tree: FileTreeNode[]) => void = () => {}
+    let call = 0
+    mockReadDirectory.mockImplementation(() => {
+      call += 1
+      if (call === 1) {
+        return new Promise<FileTreeNode[]>((resolve) => {
+          resolveFirst = resolve
+        })
+      }
+      return Promise.resolve(secondTree)
+    })
+
+    const { result } = renderOperations()
+    let firstOp: Promise<void> = Promise.resolve()
+    act(() => {
+      firstOp = result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+    // 削除の FS 操作を進め、1 回目の再読込が保留になった状態にする
+    await act(async () => {})
+    // 2 番目の操作が先に完了してツリーを更新する
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    expect(result.current.fileTree).toEqual(secondTree)
+
+    // 先に始まった再読込が遅れて解決しても、後発の結果を壊さない
+    await act(async () => {
+      resolveFirst(firstTree)
+    })
+    await act(async () => {})
+    expect(result.current.fileTree).toEqual(secondTree)
+    await firstOp
+  })
+
   it('フォルダが同じなら再読込したツリーを反映する', async () => {
     mockDeleteEntry.mockResolvedValue(undefined)
     const tree = [{ name: 'fresh.ts', path: '/project/fresh.ts', type: 'file' as const }]

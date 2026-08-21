@@ -54,21 +54,26 @@ export function useQuickOpen({
   })
   const recentPaths = recent.paths
 
+  const files = useMemo(() => flattenFileTree(fileTree), [fileTree])
+
   // useEffect ではなくレンダー中に調整するのは、effect 経由だと履歴の反映が
   // 1 フレーム遅れて再レンダーを重ねるため(React の「props 変化に合わせた state 調整」)。
   // 処理済みの信号 id を控えるので繰り返し実行されず、無限ループにはならない。
   if (openedFileSignal.id !== recent.lastSignalId && openedFileSignal.path !== null) {
     const openedPath = openedFileSignal.path
+    // 上限を適用する前に、ツリーに存在しないパス(リネーム・削除済み)を落とす。
+    // 残したままだと表示時に隠れるだけで枠を占有し、有効な履歴が押し出される。
+    // ツリーが空のとき(フォルダ読み込み前)は判定できないので除去しない
+    const isKnownPath = (path: string): boolean =>
+      files.length === 0 || files.some((file) => file.path === path)
     setRecent({
-      paths: [openedPath, ...recent.paths.filter((path) => path !== openedPath)].slice(
-        0,
-        MAX_RECENT_FILES
-      ),
+      paths: [
+        openedPath,
+        ...recent.paths.filter((path) => path !== openedPath && isKnownPath(path))
+      ].slice(0, MAX_RECENT_FILES),
       lastSignalId: openedFileSignal.id
     })
   }
-
-  const files = useMemo(() => flattenFileTree(fileTree), [fileTree])
 
   const results = useMemo(() => {
     if (query.trim().length > 0) return searchFiles(query, files, folderPath)

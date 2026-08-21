@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
@@ -43,6 +43,9 @@ export function useFileTreeOperations({
   invalidatePendingReads
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
+  // 再読込の順序。同一フォルダで CRUD が重なると解決順が入れ替わり得るため、
+  // 最後に開始した再読込の結果だけを反映する
+  const refreshSeqRef = useRef(0)
   const [error, setError] = useState<Error | null>(null)
 
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
@@ -52,14 +55,17 @@ export function useFileTreeOperations({
     // クロージャの folderPath は切替前のものになり、旧フォルダを読んでしまう
     const target = getFolderPath()
     if (target === null) return
+    const seq = ++refreshSeqRef.current
+    // 後発の再読込が始まっていたら反映しない。フォルダが同じでも、古い
+    // スナップショットで新しい結果を上書きしてしまう
+    const isStale = (): boolean => seq !== refreshSeqRef.current || getFolderPath() !== target
     try {
       const tree = await fileSystemApi.readDirectory(target)
-      // 待っている間にフォルダが切り替わっていたら、その結果は反映しない
-      if (getFolderPath() !== target) return
+      if (isStale()) return
       setFileTree(tree)
     } catch (err) {
-      // 古いフォルダの再読込の失敗を、新しいフォルダの画面に出さない
-      if (getFolderPath() !== target) return
+      // 古い再読込の失敗を、現在の画面に出さない
+      if (isStale()) return
       throw err
     }
   }

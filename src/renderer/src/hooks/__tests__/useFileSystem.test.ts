@@ -906,6 +906,67 @@ describe('useFileSystem', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('走査中に選択が確定していても、未コミットの読み込みは無効化する', async () => {
+    // 早期 return する分岐でも無効化しないと、新しいフォルダに旧フォルダの
+    // ファイルがあとから表示される
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let resolveTree: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveTree = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+
+    // 走査中に A の読み込みが確定する
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      })
+    })
+    // さらに B の読み込みを開始する(未コミット)
+    let resolveSecond: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSecond = resolve
+        })
+    )
+    let secondPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      secondPromise = result.current.selectFile({
+        name: 'App.tsx',
+        path: '/project/src/App.tsx',
+        type: 'file'
+      })
+    })
+
+    await act(async () => {
+      resolveTree(mockTree)
+      await folderPromise
+    })
+    await act(async () => {
+      resolveSecond('const y = 2')
+      await secondPromise
+    })
+    // B は無効化され、A のまま(新しいフォルダに B が現れない)
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

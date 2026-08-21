@@ -5,7 +5,7 @@ const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
     activePanel: 'explorer' as const,
     sidebarOpen: true,
-    handlePanelChange: vi.fn(),
+    handlePanelChange: vi.fn()
   }))
 )
 
@@ -14,9 +14,10 @@ const mockUseFileSystem = vi.hoisted(() =>
     folderPath: null,
     fileTree: [],
     openFile: null,
+    openedFileSignal: { id: 0, path: null, moveFocusToEditor: false },
     error: null,
     openFolder: vi.fn(),
-    selectFile: vi.fn(),
+    selectFile: vi.fn()
   }))
 )
 
@@ -24,7 +25,7 @@ const mockUsePrompts = vi.hoisted(() =>
   vi.fn(() => ({
     prompts: [],
     addPrompt: vi.fn(),
-    deletePrompt: vi.fn(),
+    deletePrompt: vi.fn()
   }))
 )
 
@@ -33,7 +34,7 @@ const mockUseGitStatus = vi.hoisted(() =>
     gitStatus: null,
     gitLoading: false,
     gitError: null,
-    refreshGitStatus: vi.fn(),
+    refreshGitStatus: vi.fn()
   }))
 )
 
@@ -42,7 +43,7 @@ const mockUseSettings = vi.hoisted(() =>
     hasKey: false,
     apiKeyLoaded: false,
     keyStoreError: null as string | null,
-    saveApiKey: vi.fn(),
+    saveApiKey: vi.fn()
   }))
 )
 
@@ -52,7 +53,7 @@ const mockUsePromptExecution = vi.hoisted(() =>
     result: null,
     executionError: null,
     executePrompt: vi.fn(),
-    clearResult: vi.fn(),
+    clearResult: vi.fn()
   }))
 )
 
@@ -62,14 +63,14 @@ const mockUseHistory = vi.hoisted(() =>
     historyLoaded: false,
     addHistoryEntry: vi.fn(),
     deleteHistoryEntry: vi.fn(),
-    clearHistory: vi.fn(),
+    clearHistory: vi.fn()
   }))
 )
 
 const mockUsePromptRunner = vi.hoisted(() =>
   vi.fn((_deps?: unknown) => ({
     runPrompt: vi.fn(),
-    rerunHistoryEntry: vi.fn(),
+    rerunHistoryEntry: vi.fn()
   }))
 )
 
@@ -85,7 +86,7 @@ const mockUseQuickOpen = vi.hoisted(() =>
     setQuery: vi.fn(),
     moveSelection: vi.fn(),
     setActiveIndex: vi.fn(),
-    confirm: vi.fn(),
+    confirm: vi.fn()
   }))
 )
 
@@ -153,7 +154,7 @@ describe('useAppState', () => {
       Object.keys(mockUseSettings()),
       Object.keys(mockUsePromptExecution()),
       Object.keys(mockUseHistory()),
-      Object.keys(mockUsePromptRunner()),
+      Object.keys(mockUsePromptRunner())
     ]
     for (let i = 0; i < keysets.length; i++) {
       for (let j = i + 1; j < keysets.length; j++) {
@@ -242,6 +243,8 @@ describe('useAppState', () => {
     expect(args).toHaveProperty('folderPath', null)
     expect(args).toHaveProperty('openFilePath', null)
     expect(args).toHaveProperty('selectFile')
+    // 信号が渡らないと履歴更新とフォーカス制御が同時に壊れる
+    expect(args).toHaveProperty('openedFileSignal')
   })
 
   it('quickOpen コントローラが返り値に含まれる', () => {
