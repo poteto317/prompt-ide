@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useLatestRef } from './useLatestRef'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
-import { isPathInside } from '../lib/pathUtils'
+import { isPathAtOrInside } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
@@ -210,7 +210,10 @@ export function useFileSystem(options?: Options): FileSystemState {
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
-      if (pending === affectedPath || isPathInside(pending, affectedPath)) {
+      // 正規化後に同一なら isPathInside は false を返すため、完全一致を含む判定を使う。
+      // Windows では大文字小文字だけ違うパスも同じ実体を指し、その読み込みが
+      // 削除・リネーム後に解決すると旧パスのファイルをコミットしてしまう
+      if (isPathAtOrInside(pending, affectedPath)) {
         latestReadRef.current += 1
       }
     }

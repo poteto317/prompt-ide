@@ -175,8 +175,10 @@ export function useQuickOpen({
 
   const open = useCallback((): void => {
     // 閉じた状態から開くときだけ前回の結果を捨てる。読み込み中の開き直しで
-    // 捨てると、先行する試行の成功がフォーカス制御に反映されなくなる
-    if (!isOpenRef.current) openSucceededRef.current = false
+    // 捨てると、先行する試行の成功がフォーカス制御に反映されなくなる。
+    // 未解決の試行が残っている間も捨てない。捨てると、あとから失敗した試行の
+    // 復帰処理が、成功済みの試行が渡したエディタからフォーカスを奪う
+    if (!isOpenRef.current && inFlightOpensRef.current === 0) openSucceededRef.current = false
     setQueryState('')
     setActiveIndex(0)
     setIsOpen(true)

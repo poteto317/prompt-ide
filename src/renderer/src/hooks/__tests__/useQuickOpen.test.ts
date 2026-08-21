@@ -762,6 +762,42 @@ describe('useQuickOpen', () => {
     }
   })
 
+  it('未解決の試行が残っている間は前回の成功を捨てない', async () => {
+    // A が成功・B が未解決のまま閉じて開き直すと、成功済みフラグだけ消える。
+    // その後 B が失敗すると復帰処理が走り、A のエディタからフォーカスを奪う
+    const resolvers: ((opened: boolean) => void)[] = []
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolvers.push(resolve)
+        })
+    )
+    const origin = document.createElement('button')
+    document.body.appendChild(origin)
+    try {
+      const { result } = setup({ selectFile })
+      act(() => result.current.open())
+      act(() => result.current.rememberFocusOrigin(origin))
+      act(() => result.current.confirm())
+      // 2 件目を未解決のまま積む
+      act(() => result.current.open())
+      act(() => result.current.confirm())
+      await act(async () => {
+        resolvers[0](true)
+      })
+      act(() => result.current.close())
+      act(() => result.current.open())
+      act(() => result.current.close())
+      await act(async () => {
+        resolvers[1](false)
+      })
+      expect(result.current.hasHandedOverFocus()).toBe(true)
+      expect(document.activeElement).not.toBe(origin)
+    } finally {
+      origin.remove()
+    }
+  })
+
   it('読み込み中でなければ閉じてもフォーカスは引き渡さない', () => {
     // 単に Escape で閉じた場合は、元の要素へフォーカスを戻す
     const { result } = setup()

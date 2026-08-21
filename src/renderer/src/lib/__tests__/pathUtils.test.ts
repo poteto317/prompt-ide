@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside } from '../pathUtils'
+import { isPathAtOrInside, isPathInside, isSamePath } from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -120,5 +120,24 @@ describe('Windows パスの大文字小文字', () => {
   it('POSIX パスは大文字小文字を区別したままにする', () => {
     expect(isPathInside('/Project/Foo.ts', '/project')).toBe(false)
     expect(isPathAtOrInside('/a/B.ts', '/a/b.ts')).toBe(false)
+  })
+})
+
+describe('isSamePath', () => {
+  it('末尾の区切りや区切り文字の違いを無視する', () => {
+    expect(isSamePath('/a/b', '/a/b/')).toBe(true)
+    expect(isSamePath('C:\\dir\\a.ts', 'C:/dir/a.ts')).toBe(true)
+  })
+
+  it('Windows は大文字小文字を無視する', () => {
+    expect(isSamePath('C:\\Project\\Foo.ts', 'c:\\project\\foo.ts')).toBe(true)
+  })
+
+  it('POSIX は大文字小文字を区別する', () => {
+    expect(isSamePath('/a/Foo.ts', '/a/foo.ts')).toBe(false)
+  })
+
+  it('別のパスは false', () => {
+    expect(isSamePath('/a/b', '/a/c')).toBe(false)
   })
 })

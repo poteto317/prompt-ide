@@ -2259,6 +2259,48 @@ describe('useFileSystem', () => {
     expect(result.current.openFile?.content).toBe('編集済み')
   })
 
+  it('Windows で大文字小文字だけ違うパスの削除でも開いているファイルを閉じる', async () => {
+    // 正規化後に同一だと isPathInside は false を返すため、完全一致を含む
+    // 判定を使わないと削除済みファイルのタブが残り、保存で復活してしまう
+    const winTree: FileTreeNode[] = [{ name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' }]
+    mockOpenFolder.mockResolvedValue('C:\\project')
+    mockReadDirectory.mockResolvedValue(winTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    mockDeleteEntry.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(winTree[0])
+    })
+    expect(result.current.openFile?.path).toBe('C:\\project\\a.ts')
+    await act(async () => {
+      // 表記だけ違う同じファイルを削除する
+      await result.current.deleteEntry({ name: 'A.ts', path: 'C:\\Project\\A.ts', type: 'file' })
+    })
+    expect(result.current.openFile).toBeNull()
+  })
+
+  it('Windows で大文字小文字だけ違うパスのリネームでも開いているファイルが追随する', async () => {
+    const winTree: FileTreeNode[] = [{ name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' }]
+    mockOpenFolder.mockResolvedValue('C:\\project')
+    mockReadDirectory.mockResolvedValue(winTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    mockRenameEntry.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(winTree[0])
+    })
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'A.ts', path: 'C:\\Project\\A.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+    expect(result.current.openFile?.path).toBe('C:\\Project\\b.ts')
+    expect(result.current.openFile?.name).toBe('b.ts')
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

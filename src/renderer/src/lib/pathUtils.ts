@@ -57,3 +57,12 @@ export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
   const [normalizedPath, normalizedTarget] = normalizePair(path, targetPath)
   return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
 }
+
+/**
+ * 2 つのパスが同じ実体を指すか。区切り文字・末尾の区切り・
+ * (Windows のみ)大文字小文字の違いを無視して比較する。
+ */
+export const isSamePath = (a: string, b: string): boolean => {
+  const [normalizedA, normalizedB] = normalizePair(a, b)
+  return normalizedA === normalizedB
+}

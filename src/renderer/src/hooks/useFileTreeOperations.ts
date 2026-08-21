@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathInside } from '../lib/pathUtils'
+import { isPathAtOrInside, isSamePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 
 interface FileTreeOperationsOptions {
@@ -97,7 +97,9 @@ export function useFileTreeOperations({
   ): boolean => {
     const current = getOpenFile()
     if (current === null) return true
-    const affected = current.path === node.path || isPathInside(current.path, node.path)
+    // 正規化後に同一なら isPathInside は false を返すため、完全一致を含む判定を使う。
+    // Windows では大文字小文字だけ違うパスも同じ実体を指す
+    const affected = isPathAtOrInside(current.path, node.path)
     if (!affected) return true
     if (current.content === current.savedContent) return true
     const unchanged =
@@ -182,11 +184,10 @@ export function useFileTreeOperations({
       // 操作の完了時点で判定する。開始時点のクロージャで見ると、操作中に
       // 確定した読み込み結果(その path が対象配下)を取りこぼす
       const current = getOpenFile()
-      const affected =
-        current !== null && (current.path === node.path || isPathInside(current.path, node.path))
+      const affected = current !== null && isPathAtOrInside(current.path, node.path)
       if (affected) {
         setOpenFile(
-          current.path === node.path
+          isSamePath(current.path, node.path)
             ? // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
               { ...current, path: newPath, name: newName, language: detectLanguage(newName) }
             : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
@@ -225,8 +226,7 @@ export function useFileTreeOperations({
       invalidatePendingReads(node.path)
       // 削除の実行中に対象の読み込みが確定することがあるため、完了時点で判定する
       const current = getOpenFile()
-      const affected =
-        current !== null && (current.path === node.path || isPathInside(current.path, node.path))
+      const affected = current !== null && isPathAtOrInside(current.path, node.path)
       if (affected) {
         // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
         // そのまま保存すればファイルを作り直せる
