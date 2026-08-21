@@ -11,8 +11,17 @@
  */
 export const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
 
-/** ドライブ文字 or UNC で始まる Windows のパスか。区切りは '/' '\\' どちらでも見る */
-const isWindowsPath = (path: string): boolean => /^([a-zA-Z]:[\\/]|[\\/]{2}[^\\/]+[\\/])/.test(path)
+/**
+ * Windows のパス(ドライブ文字 or UNC)か。
+ *
+ * UNC は区切りが揃っている形だけを認める。'/\\server\\share' のように先頭の区切りが
+ * 混在する形は、POSIX では「ルート直下の \\server\\share という名前」であり、
+ * UNC と誤認すると保護したいファイル名を壊す。全て '/' の '//server/share' も
+ * POSIX として有効なため UNC とはみなさない(この形に '\\' は含まれないので、
+ * 変換しなくても Windows 側の判定は変わらない)。
+ */
+const isWindowsPath = (path: string): boolean =>
+  /^[a-zA-Z]:[\\/]/.test(path) || /^\\\\[^\\/]+\\/.test(path)
 
 /**
  * パス比較のために区切りを '/' へ揃える。
@@ -31,12 +40,11 @@ export const normalizePathSeparators = (path: string): string =>
  */
 export const stripTrailingSeparators = (path: string): string => path.replace(/\/+$/, '')
 
-/** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
-const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
-
-/** 区切りを揃えたあとの文字列が Windows のパス(ドライブ文字 or UNC)か */
-const isWindowsStyle = (forwardPath: string): boolean =>
-  /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
+/**
+ * ルート('/')そのものか。
+ * POSIX では '\\' はルートではなく、そういう名前のパスなので、区切りを揃えてから見る。
+ */
+const isRootPath = (path: string): boolean => /^\/+$/.test(normalizePathSeparators(path))
 
 /**
  * 2 つのパスを比較用に正規化する。
@@ -49,11 +57,12 @@ const isWindowsStyle = (forwardPath: string): boolean =>
  * 片方だけが Windows 形式でも突き合わせられるよう、判定は 2 つまとめて行う。
  */
 const normalizePair = (a: string, b: string): [string, string] => {
-  const forwardA = normalizePathSeparators(a)
-  const forwardB = normalizePathSeparators(b)
-  const normalizedA = stripTrailingSeparators(forwardA)
-  const normalizedB = stripTrailingSeparators(forwardB)
-  if (!isWindowsStyle(forwardA) && !isWindowsStyle(forwardB)) return [normalizedA, normalizedB]
+  // Windows かどうかは正規化前の文字列で判定する。正規化後の文字列で見ると、
+  // POSIX の '//server/share' のような形まで Windows と誤認してしまう
+  const isWindows = isWindowsPath(a) || isWindowsPath(b)
+  const normalizedA = stripTrailingSeparators(normalizePathSeparators(a))
+  const normalizedB = stripTrailingSeparators(normalizePathSeparators(b))
+  if (!isWindows) return [normalizedA, normalizedB]
   return [normalizedA.toLowerCase(), normalizedB.toLowerCase()]
 }
 

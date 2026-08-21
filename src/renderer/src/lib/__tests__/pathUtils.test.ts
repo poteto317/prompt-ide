@@ -160,6 +160,19 @@ describe('POSIX のバックスラッシュ', () => {
     expect(isPathAtOrInside('/project/foo\\bar.ts', '/project')).toBe(true)
   })
 
+  it('先頭区切りが混在する形を UNC とみなさない', () => {
+    // POSIX の '/\\server\\share' は「ルート直下の \\server\\share という名前」。
+    // UNC と誤認して変換すると、この名前が '//server/share' と同一視される
+    expect(isSamePath('/\\server\\share', '//server/share')).toBe(false)
+    expect(toComparablePath('/\\server\\share')).toBe('/\\server\\share')
+  })
+
+  it('バックスラッシュだけの文字列をルートとみなさない', () => {
+    // POSIX では '\\' はルートではなく、そういう名前の相対パス
+    expect(isPathAtOrInside('/etc/passwd', '\\')).toBe(false)
+    expect(isPathAtOrInside('/etc/passwd', '/')).toBe(true)
+  })
+
   it('Windows のパスでは従来どおり \\ を区切りとして扱う', () => {
     expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
     expect(isPathInside('C:\\project\\a.ts', 'C:\\project')).toBe(true)
