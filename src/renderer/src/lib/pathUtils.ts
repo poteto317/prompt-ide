@@ -53,13 +53,15 @@ const isRootPath = (path: string): boolean => /^\/+$/.test(normalizePathSeparato
  * 同じ実体を指す。区別したまま比較すると、case-only rename の最中に旧表記の
  * 削除が予約の重複判定や「開いているファイルが対象か」の判定をすり抜け、
  * 削除済みのファイルがエディタに残って保存で作り直されてしまう。
- * 一方 POSIX は区別するため、Windows 形式(ドライブ文字 or UNC)のときだけ畳む。
- * 片方だけが Windows 形式でも突き合わせられるよう、判定は 2 つまとめて行う。
+ * 一方 POSIX は区別するため、両方が Windows 形式(ドライブ文字 or UNC)のときだけ畳む。
+ * 片方だけを見て畳むと、POSIX として扱うと定めた '//Server/Share/Foo' のような形が
+ * Windows の UNC と同一視される。ドライブ文字は '/' 区切りでも判定できるため、
+ * 'C:\\project' と 'C:/project' のような表記違いはこの条件でも突き合わせられる。
  */
 const normalizePair = (a: string, b: string): [string, string] => {
   // Windows かどうかは正規化前の文字列で判定する。正規化後の文字列で見ると、
   // POSIX の '//server/share' のような形まで Windows と誤認してしまう
-  const isWindows = isWindowsPath(a) || isWindowsPath(b)
+  const isWindows = isWindowsPath(a) && isWindowsPath(b)
   const normalizedA = stripTrailingSeparators(normalizePathSeparators(a))
   const normalizedB = stripTrailingSeparators(normalizePathSeparators(b))
   if (!isWindows) return [normalizedA, normalizedB]

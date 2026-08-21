@@ -167,6 +167,17 @@ describe('POSIX のバックスラッシュ', () => {
     expect(toComparablePath('/\\server\\share')).toBe('/\\server\\share')
   })
 
+  it('片方が POSIX の全スラッシュ形なら Windows として畳まない', () => {
+    // '//Server/Share/Foo' は POSIX として扱うと定めた形。相手が UNC だからと
+    // いって小文字化すると、別物のパスを同一視してしまう
+    expect(isSamePath('//Server/Share/Foo', '\\\\server\\share\\foo')).toBe(false)
+  })
+
+  it('両方が Windows 形式なら表記が違っても一致する', () => {
+    expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
+    expect(isPathAtOrInside('\\\\Server\\Share\\A.ts', '\\\\server\\share')).toBe(true)
+  })
+
   it('バックスラッシュだけの文字列をルートとみなさない', () => {
     // POSIX では '\\' はルートではなく、そういう名前の相対パス
     expect(isPathAtOrInside('/etc/passwd', '\\')).toBe(false)
