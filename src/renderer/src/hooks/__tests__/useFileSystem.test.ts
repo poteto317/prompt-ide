@@ -2151,6 +2151,77 @@ describe('useFileSystem', () => {
     expect(order).toEqual(['write:start', 'write:end', 'read:start'])
   })
 
+  it('先行ダイアログが遅れて返っても後発のフォルダ選択を上書きしない', async () => {
+    // 古い試行のまま進むと走査の世代を進めてしまい、後発の結果が捨てられて
+    // 古いフォルダが最終表示になる
+    let resolveFirst: (path: string) => void = () => {}
+    mockOpenFolder
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveFirst = resolve
+          })
+      )
+      .mockImplementation(() => Promise.resolve('/new'))
+    const newTree: FileTreeNode[] = [{ name: 'new.ts', path: '/new/new.ts', type: 'file' }]
+    mockReadDirectory.mockImplementation((target: string) =>
+      Promise.resolve(target === '/new' ? newTree : [])
+    )
+    const { result } = renderHook(() => useFileSystem())
+    let firstPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      firstPromise = result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderPath).toBe('/new')
+    await act(async () => {
+      resolveFirst('/old')
+      await firstPromise
+    })
+    expect(result.current.folderPath).toBe('/new')
+    expect(result.current.fileTree).toEqual(newTree)
+    expect(mockReadDirectory).not.toHaveBeenCalledWith('/old')
+  })
+
+  it('操作中にフォルダが切り替わったらツリーを取り直さない', async () => {
+    // 旧フォルダで始まった CRUD が新フォルダのツリーやエラーを更新してしまう
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    let finishDelete: () => void = () => {}
+    mockDeleteEntry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry({
+        name: 'a.ts',
+        path: '/project/a.ts',
+        type: 'file'
+      })
+    })
+    await act(async () => {})
+    // 削除の実行中にフォルダを切り替える
+    mockOpenFolder.mockResolvedValue('/new')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const readsBefore = mockReadDirectory.mock.calls.length
+    await act(async () => {
+      finishDelete()
+      await deletePromise
+    })
+    expect(mockReadDirectory.mock.calls.length).toBe(readsBefore)
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

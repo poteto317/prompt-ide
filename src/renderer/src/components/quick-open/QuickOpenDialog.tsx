@@ -18,6 +18,8 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     hasFolder,
     loadError,
     hasHandedOverFocus,
+    rememberFocusOrigin,
+    restoreFocusOrigin,
     close,
     setQuery,
     moveSelection,
@@ -37,8 +39,11 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
   // 既に入力欄になっており、開く前の要素を控えられない
   useLayoutEffect(() => {
     if (!isOpen) return
-    const previouslyFocused =
+    // 復帰先はコントローラへ預ける。閉じたあとに「開けなかった」と分かる経路が
+    // あり、そのときの復帰はこのクロージャの外から行う必要がある
+    rememberFocusOrigin(
       document.activeElement instanceof HTMLElement ? document.activeElement : null
+    )
     inputRef.current?.focus()
     // 閉じたら元の要素へフォーカスを戻す。戻さないと body に取り残され、
     // Escape のあとエディタへ直接タイプできなくなる。
@@ -49,9 +54,9 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
       // ファイルを開いて閉じた場合はエディタへフォーカスを渡す。ここで戻すと
       // エディタ側が「他が保持している」と判断して受け取れない
       if (hasHandedOverFocus()) return
-      if (previouslyFocused?.isConnected === true) previouslyFocused.focus()
+      restoreFocusOrigin()
     }
-  }, [isOpen, hasHandedOverFocus])
+  }, [isOpen, hasHandedOverFocus, rememberFocusOrigin, restoreFocusOrigin])
 
   // キーボードで選択を動かしたとき、選択中の項目が一覧の外に出たままにならないようにする
   useEffect(() => {

@@ -236,6 +236,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     let snapshot: BufferSnapshot | null = null
     try {
       const path = await fileSystemApi.openFolder()
+      // 先行ダイアログが後発の選択より遅れて返ることがある。古い試行のまま
+      // 進むと、走査の世代を進めて後発の結果を捨て、古いフォルダが最終表示になる
+      if (dialogAttemptId !== dialogAttemptRef.current) return
       if (path === null) return
       // キャンセル時に現在のエラーを消さないよう、パスが返ってからクリアする
       setError(null)

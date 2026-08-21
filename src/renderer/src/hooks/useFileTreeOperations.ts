@@ -118,6 +118,9 @@ export function useFileTreeOperations({
     try {
       const executed = await operation()
       if (!executed) return
+      // 操作中にフォルダが切り替わっていたら取り直さない。旧フォルダで始まった
+      // CRUD が新フォルダのツリーやエラーを更新してしまう
+      if (getFolderPath() !== folderAtStart) return
       await refreshTree()
     } catch (err) {
       if (getFolderPath() !== folderAtStart) return

@@ -639,6 +639,55 @@ describe('useQuickOpen', () => {
     expect(result.current.hasHandedOverFocus()).toBe(true)
   })
 
+  it('読み込み中に開き直しても、成功した操作の引き渡しは保持する', async () => {
+    // 再オープンで世代が進んでも、先行する selectFile はファイルを開き
+    // moveFocusToEditor の信号を出す。ここで引き渡しを落とすと、閉じたときに
+    // ダイアログが元の要素へフォーカスを戻し、エディタが要求を破棄する
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.confirm())
+    // 読み込み中に Ctrl+P で開き直す(世代が進む)
+    act(() => result.current.open())
+    await act(async () => {
+      resolveSelect(true)
+    })
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+  })
+
+  it('閉じたあとに開けなかったと分かったらフォーカスを元へ戻す', async () => {
+    // 破棄確認のキャンセルで開けなかった場合、信号も出ないため
+    // 引き渡したままだとフォーカスが body に取り残される
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const origin = document.createElement('button')
+    document.body.appendChild(origin)
+    try {
+      const { result } = setup({ selectFile })
+      act(() => result.current.open())
+      act(() => result.current.rememberFocusOrigin(origin))
+      act(() => result.current.confirm())
+      act(() => result.current.close())
+      await act(async () => {
+        resolveSelect(false)
+      })
+      expect(document.activeElement).toBe(origin)
+    } finally {
+      origin.remove()
+    }
+  })
+
   it('読み込み中でなければ閉じてもフォーカスは引き渡さない', () => {
     // 単に Escape で閉じた場合は、元の要素へフォーカスを戻す
     const { result } = setup()

@@ -14,22 +14,32 @@ const makeResult = (name: string, directory: string): QuickOpenResult => ({
   directoryIndices: []
 })
 
-const makeController = (overrides: Partial<QuickOpenController> = {}): QuickOpenController => ({
-  isOpen: true,
-  query: '',
-  results: [makeResult('App.tsx', 'src'), makeResult('main.tsx', 'src')],
-  activeIndex: 0,
-  hasFolder: true,
-  loadError: null,
-  hasHandedOverFocus: () => false,
-  open: vi.fn(),
-  close: vi.fn(),
-  setQuery: vi.fn(),
-  moveSelection: vi.fn(),
-  setActiveIndex: vi.fn(),
-  confirm: vi.fn(),
-  ...overrides
-})
+// 復帰先の保持はコントローラ側の責務。テストでも本物と同じ振る舞いを再現する
+const makeController = (overrides: Partial<QuickOpenController> = {}): QuickOpenController => {
+  let focusOrigin: HTMLElement | null = null
+  return {
+    isOpen: true,
+    query: '',
+    results: [makeResult('App.tsx', 'src'), makeResult('main.tsx', 'src')],
+    activeIndex: 0,
+    hasFolder: true,
+    loadError: null,
+    hasHandedOverFocus: () => false,
+    open: vi.fn(),
+    close: vi.fn(),
+    setQuery: vi.fn(),
+    moveSelection: vi.fn(),
+    setActiveIndex: vi.fn(),
+    confirm: vi.fn(),
+    rememberFocusOrigin: (element: HTMLElement | null) => {
+      focusOrigin = element
+    },
+    restoreFocusOrigin: () => {
+      if (focusOrigin?.isConnected === true) focusOrigin.focus()
+    },
+    ...overrides
+  }
+}
 
 describe('QuickOpenDialog', () => {
   it('検索入力が combobox として表示される', () => {

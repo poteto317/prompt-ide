@@ -41,6 +41,10 @@ export interface QuickOpenController {
    * true のときにダイアログが元の要素へフォーカスを戻すと、エディタへ渡らない
    */
   hasHandedOverFocus: () => boolean
+  /** ダイアログを開く直前にフォーカスしていた要素を控える(復帰先) */
+  rememberFocusOrigin: (element: HTMLElement | null) => void
+  /** 控えた復帰先へフォーカスを戻す。既に DOM から外れていれば何もしない */
+  restoreFocusOrigin: () => void
   open: () => void
   close: () => void
   setQuery: (query: string) => void
@@ -124,10 +128,24 @@ export function useQuickOpen({
   // ファイルを開いて閉じた場合、フォーカスはエディタへ渡す。ダイアログが
   // 元の要素へ戻すと、エディタ側が受け取れなくなる
   const handedOverFocusRef = useRef(false)
+  // 閉じたあとに「開けなかった」と分かる経路があるため、復帰先は
+  // ダイアログのクロージャではなくコントローラ側で保持する
+  const focusOriginRef = useRef<HTMLElement | null>(null)
+
+  const isOpenRef = useLatestRef(isOpen)
 
   // 参照を安定させる。毎レンダー新しい関数だと、依存に含める側の effect が
   // 打鍵ごとに再実行され、フォーカスが外れて戻る(IME の変換が中断され得る)
   const hasHandedOverFocus = useCallback((): boolean => handedOverFocusRef.current, [])
+
+  const rememberFocusOrigin = useCallback((element: HTMLElement | null): void => {
+    focusOriginRef.current = element
+  }, [])
+
+  const restoreFocusOrigin = useCallback((): void => {
+    const origin = focusOriginRef.current
+    if (origin?.isConnected === true) origin.focus()
+  }, [])
 
   const startNewGeneration = useCallback((): void => {
     generationRef.current += 1
@@ -182,10 +200,19 @@ export function useQuickOpen({
       // ダイアログは閉じるので、フォーカスはエディタへ移す
       void selectFile(target.node, { moveFocusToEditor: true })
         .then((opened) => {
-          if (generation !== generationRef.current) return
-          if (!opened) return
-          handedOverFocusRef.current = true
-          setIsOpen(false)
+          if (opened) {
+            // 開けた場合は世代が進んでいても引き渡す。再オープンで引き渡しを
+            // 落とすと、閉じたときにダイアログが元の要素へフォーカスを戻し、
+            // EditorPanel が保留中の要求を破棄してしまう
+            handedOverFocusRef.current = true
+            if (generation === generationRef.current) setIsOpen(false)
+            return
+          }
+          // 開けなかった場合、信号は出ない。既に閉じているなら引き渡しを
+          // 取り消して復帰先へ戻す(そのままだとフォーカスが body に残る)
+          if (isOpenRef.current) return
+          handedOverFocusRef.current = false
+          restoreFocusOrigin()
         })
         .finally(() => {
           if (confirmingGenerationRef.current === generation) {
@@ -193,14 +220,13 @@ export function useQuickOpen({
           }
         })
     },
-    [results, activeIndex, selectFile]
+    [results, activeIndex, selectFile, restoreFocusOrigin, isOpenRef]
   )
 
   // 開閉状態は ref 経由で読む。ハンドラのクロージャに isOpen を閉じ込めると、
   // state 更新からリスナー再登録(passive effect)までの窓で古い値が残り、
   // その間に届いた Ctrl+P を誤って握り潰してしまう。useLatestRef は
   // useLayoutEffect で更新されるため、ユーザー操作の処理前に最新化される
-  const isOpenRef = useLatestRef(isOpen)
 
   // capture フェーズで購読する。Monaco エディタが自前の keydown ハンドラで
   // イベントを消費する場合があり、bubble フェーズだと届かないことがあるため。
@@ -253,6 +279,8 @@ export function useQuickOpen({
         ? folderLoadError.message
         : null,
     hasHandedOverFocus,
+    rememberFocusOrigin,
+    restoreFocusOrigin,
     open,
     close,
     setQuery,
