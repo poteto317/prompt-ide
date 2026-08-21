@@ -806,6 +806,40 @@ describe('useQuickOpen', () => {
     expect(result.current.hasHandedOverFocus()).toBe(false)
   })
 
+  it('Windows では大文字小文字だけ違う現在のファイルも候補から除外する', () => {
+    // case-only rename 直後は openFilePath が新しい表記、ツリーが古い表記になる。
+    // 生の比較だと現在のファイルが残り、Ctrl+P → Enter が開き直しになって
+    // 未保存の編集を破棄確認から失う経路ができる
+    const winTree: FileTreeNode[] = [
+      { name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' },
+      { name: 'b.ts', path: 'C:\\project\\b.ts', type: 'file' }
+    ]
+    const { result } = setup({
+      fileTree: winTree,
+      folderPath: 'C:\\project',
+      openFilePath: 'C:\\Project\\A.ts'
+    })
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.path)).toEqual(['C:\\project\\b.ts'])
+  })
+
+  it('Windows では表記が違っても履歴からツリーの実体を引ける', () => {
+    // 3 件用意する。履歴が引けないと「履歴なし」として全件表示に落ちるため、
+    // その差でしか引けたかどうかを判別できない
+    const winTree: FileTreeNode[] = [
+      { name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' },
+      { name: 'b.ts', path: 'C:\\project\\b.ts', type: 'file' },
+      { name: 'c.ts', path: 'C:\\project\\c.ts', type: 'file' }
+    ]
+    const { result, rerender } = setup({ fileTree: winTree, folderPath: 'C:\\project' })
+    // 表記違いで開いた履歴を積み、別ファイルへ移る
+    openPath(rerender, 'C:\\Project\\A.ts')
+    openPath(rerender, 'C:\\project\\c.ts')
+    act(() => result.current.open())
+    // 履歴の a.ts はツリーの実体(小文字表記)として引けること
+    expect(result.current.results.map((r) => r.node.path)).toEqual(['C:\\project\\a.ts'])
+  })
+
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)

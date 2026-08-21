@@ -3,6 +3,7 @@ import type { FileTreeNode } from '../types'
 import type { OpenedFileSignal } from './useFileSystem'
 import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
+import { toComparablePath } from '../lib/pathUtils'
 import { useLatestRef } from './useLatestRef'
 
 /** 空クエリのときに表示する「最近開いたファイル」の最大件数 */
@@ -99,17 +100,20 @@ export function useQuickOpen({
     // 現在開いているファイルも除外する。履歴の先頭は常に openFilePath のため、
     // 残すと Ctrl+P → Enter が現在のファイルの開き直しになり、未保存の編集が
     // ある場合は破棄確認から編集内容を失う経路になってしまう。
-    const byPath = new Map(files.map((file) => [file.path, file]))
+    // 生の path で比較すると、Windows の case-only rename 直後に openFilePath と
+    // ツリー・履歴の表記がずれ、現在のファイルを除外できず履歴も引けなくなる
+    const openKey = openFilePath === null ? null : toComparablePath(openFilePath)
+    const byPath = new Map(files.map((file) => [toComparablePath(file.path), file]))
     // 存在確認と表示上限はここで適用する。保持側で切り詰めないことで、
     // 一時的に無効だったパスに有効な履歴が押し出されない
     const recentFiles = recentPaths
-      .filter((path) => path !== openFilePath)
-      .map((path) => byPath.get(path))
+      .filter((path) => toComparablePath(path) !== openKey)
+      .map((path) => byPath.get(toComparablePath(path)))
       .filter((file): file is NonNullable<typeof file> => file !== undefined)
       .slice(0, MAX_RECENT_FILES)
     // 履歴がまだ無い初回はフォルダ内のファイルをそのまま先頭から見せる
     // (こちらの経路でも現在開いているファイルは同じ理由で除外する)
-    const fallbackFiles = files.filter((file) => file.path !== openFilePath)
+    const fallbackFiles = files.filter((file) => toComparablePath(file.path) !== openKey)
     return searchFiles('', recentFiles.length > 0 ? recentFiles : fallbackFiles, folderPath)
   }, [query, files, folderPath, recentPaths, openFilePath])
 

@@ -66,3 +66,10 @@ export const isSamePath = (a: string, b: string): boolean => {
   const [normalizedA, normalizedB] = normalizePair(a, b)
   return normalizedA === normalizedB
 }
+
+/**
+ * 比較・キーとして使うための正規化済みパス。区切り文字と末尾の区切りを揃え、
+ * Windows(ドライブ文字 or UNC)なら大文字小文字も畳む。
+ * Map のキーなど、2 つ組で比較できない場面で使う。
+ */
+export const toComparablePath = (path: string): string => normalizePair(path, path)[0]
