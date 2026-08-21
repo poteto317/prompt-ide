@@ -30,7 +30,7 @@ type Overrides = {
   folderPath?: string | null
   openFilePath?: string | null
   selectFile?: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
-  error?: Error | null
+  folderLoadError?: Error | null
   /** StrictMode で包み、レンダーの二重実行下での挙動を確認する */
   strict?: boolean
 }
@@ -71,7 +71,7 @@ const setup = (overrides: Overrides = {}): Setup => {
         folderPath: overrides.folderPath === undefined ? FOLDER : overrides.folderPath,
         openFilePath: props.openFilePath,
         openedFileSignal: props.openedFileSignal,
-        error: overrides.error ?? null,
+        folderLoadError: overrides.folderLoadError ?? null,
         selectFile
       })
     },
@@ -591,13 +591,19 @@ describe('useQuickOpen', () => {
     expect(result.current.results).toEqual([])
   })
 
-  it('読み込みエラーでツリーが空のとき loadError を返す', () => {
-    const { result } = setup({ fileTree: [], error: new Error('走査に失敗しました') })
+  it('フォルダ走査の失敗でツリーが空のとき loadError を返す', () => {
+    const { result } = setup({ fileTree: [], folderLoadError: new Error('走査に失敗しました') })
     expect(result.current.loadError).toBe('走査に失敗しました')
   })
 
   it('ツリーが読めていれば loadError は null', () => {
-    const { result } = setup({ error: new Error('別のエラー') })
+    const { result } = setup({ folderLoadError: new Error('別のエラー') })
+    expect(result.current.loadError).toBeNull()
+  })
+
+  it('走査以外の失敗(CRUD など)では loadError にしない', () => {
+    // 空フォルダで CRUD が失敗しただけなのに「読み込めませんでした」と出さない
+    const { result } = setup({ fileTree: [], folderLoadError: null })
     expect(result.current.loadError).toBeNull()
   })
 

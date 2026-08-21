@@ -44,6 +44,8 @@ interface FileSystemState {
   openFile: OpenFile | null
   /** ファイルを開くたびに進む信号。リネームによる path 変更と区別するために使う */
   openedFileSignal: OpenedFileSignal
+  /** フォルダ走査に固有のエラー。ツリーが空の理由を判定するために error と分ける */
+  folderLoadError: Error | null
   isDirty: boolean
   isSaving: boolean
   error: Error | null
@@ -112,6 +114,9 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 持たせるのは、受け手が信号を処理する時点で既に別のファイルへ切り替わって
   // いる可能性があるため
   const [openedFileSignal, setOpenedFileSignal] = useState<OpenedFileSignal>({ events: [] })
+  // フォルダ走査に固有のエラー。error は CRUD やファイル読み込みの失敗でも立つため、
+  // 「ツリーが空なのは走査に失敗したから」を判定するには分けて持つ必要がある
+  const [folderLoadError, setFolderLoadError] = useState<Error | null>(null)
   const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
@@ -197,6 +202,7 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
+    setFolderLoadError(null)
     // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
@@ -237,6 +243,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (treeWriteSeq === treeWriteSeqRef.current) setFileTree(tree)
       // 走査中に立ったエラー(旧フォルダの読み込み失敗など)を新しい画面に残さない
       setError(null)
+      setFolderLoadError(null)
       // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。
       // 読み込みの開始ではなくコミット回数で見るのは、失敗・キャンセルした
       // 読み込みで旧フォルダのファイルが残ってしまうのを防ぐため
@@ -281,7 +288,10 @@ export function useFileSystem(options?: Options): FileSystemState {
           resetForFileChange()
         }
       }
-      setError(err instanceof Error ? err : new Error(String(err)))
+      const failure = err instanceof Error ? err : new Error(String(err))
+      setError(failure)
+      // 走査まで到達していた失敗だけを走査エラーとして扱う
+      if (selectedPath !== null) setFolderLoadError(failure)
     } finally {
       if (scanning) pendingFolderOpenRef.current -= 1
       // 走査中に抑止した再読込を、すべての走査が終わった時点でやり直す。
@@ -359,6 +369,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     fileTree,
     openFile,
     openedFileSignal,
+    folderLoadError,
     isDirty,
     isSaving,
     error,

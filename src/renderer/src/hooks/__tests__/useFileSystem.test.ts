@@ -1569,6 +1569,32 @@ describe('useFileSystem', () => {
     expect(events.map((e) => e.path)).toEqual(['/project/b.ts', '/project/a.ts'])
   })
 
+  it('folderLoadError は走査の失敗でのみ立ち、CRUD の失敗では立たない', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderLoadError).toBeNull()
+
+    // CRUD の失敗では走査エラーにしない
+    mockCreateFile.mockRejectedValueOnce(new Error('作成失敗'))
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    expect(result.current.error).not.toBeNull()
+    expect(result.current.folderLoadError).toBeNull()
+
+    // 走査の失敗では立つ
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockRejectedValue(new Error('走査失敗'))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderLoadError?.message).toBe('走査失敗')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

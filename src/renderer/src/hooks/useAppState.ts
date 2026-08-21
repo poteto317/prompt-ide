@@ -30,7 +30,7 @@ export function useAppState() {
     folderPath: fileSystem.folderPath,
     openFilePath: fileSystem.openFile?.path ?? null,
     openedFileSignal: fileSystem.openedFileSignal,
-    error: fileSystem.error,
+    folderLoadError: fileSystem.folderLoadError,
     selectFile: fileSystem.selectFile
   })
   return {
