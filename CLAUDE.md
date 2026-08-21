@@ -16,15 +16,47 @@
 
 # PR レビューフロー
 
-PR へのコミットをプッシュした後は、以下の手順を必ず実施すること。
+**指摘が 0 件になるまで自走すること。** ユーザーに「レビューが来ているか」を目視で確認させたり、
+1 周ごとに指示を待ったりしない。巡回数が増えたことを理由に打ち切らない。
 
-1. **対応済みスレッドの Resolve**
-   - `gh api graphql` で PR の `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
+具体的なコマンド・スクリプト・落とし穴は [docs/pr-review-loop.md](docs/pr-review-loop.md) にまとめてある。
+セッションをまたぐ場合や別の端末で作業する場合も、この手順書に従えば同じループを再現できる。
+
+PR へのコミットをプッシュした後は、以下を 1 周として繰り返す。
+
+1. **指摘の取得**
+   - `gh api graphql` で `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
+   - **レビュー本文も必ず読む。** suppressed comments はスレッドにならず、本文の `<details>` 内にしか現れない
+   - `reviews` / `reviewThreads` は `first` ではなく **`last`** を使う。件数が増えると `first` は古い方から埋まり、最新の到着を取りこぼす
+
+2. **妥当性の検証**
+   - 指摘の前提を自分で確かめる。「テストが落ちる」と書かれていたら実際に走らせ、数値が書かれていたら自分で計算する
+   - 前提が誤っていれば、根拠（実行結果・計算過程）を添えて対応しない判断を返信し、PR 本文にも残す
+
+3. **TDD で修正**
+   - 失敗するテストを先に書き、実装後に通す
+   - **実装を戻すとそのテストが落ちること**まで確認する（`git stash push <実装ファイル>` → テスト → `git stash pop`）
+   - `act(...).then(...)` 形式で書かない。失敗が unhandled rejection として握り潰され、通ったように見える
+
+4. **検証**
+   - `npm test` / `npm run typecheck` / 変更したファイルへの `npx eslint`
+   - 実機（Electron）でも確認する。**起動したアプリは検証後に必ず自分で停止する**（Electron 本体と dev サーバーの両方）
+
+5. **コミットとプッシュ**
+   - `git add -A` は使わない（無関係な未追跡ファイルを巻き込む）。`git add -u` を使う
+   - コミットメッセージは日本語・Conventional Commit 形式
+
+6. **対応済みスレッドの Resolve**
    - **対応済みの指摘のみ** `resolveReviewThread` ミューテーションで Resolve する（未対応の指摘を機械的に Resolve しないこと）
-   - 対応済みスレッドの Resolve が完了したら次のステップへ
+   - 返信には「何が起きていたか」「どう直したか」「どのテストで固定したか」を書く
 
-2. **コードレビューの依頼**
-   - 対応済みスレッドの Resolve が完了したら `/code-review` スキルを実行してレビューを依頼する
+7. **PR 本文の更新**
+   - コミットごとに「指摘 → 対応」の表を追記する。対応しない判断とその理由もここに残す
+
+8. **再レビューの依頼と監視**
+   - `scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを出力で確認する**
+   - `scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
+   - 監視が「指摘なし」で終了した場合も、GraphQL で `reviews` と `reviewThreads` の最新を直接確認してから収束と判断する
 
 # コーディングルール（汎用）
 
@@ -34,10 +66,10 @@ PR へのコミットをプッシュした後は、以下の手順を必ず実�
 
 ```typescript
 // ✅ 正しい
-import type { Foo } from "@/types/foo";
+import type { Foo } from '@/types/foo'
 
 // ❌ 間違い
-import { Foo } from "@/types/foo";
+import { Foo } from '@/types/foo'
 ```
 
 ## コンポーネント設計
@@ -109,10 +141,14 @@ import { Foo } from "@/types/foo";
 
 ```tsx
 // ❌ 悪い例
-{items.map((item) => <button key={item.label} />)}
+{
+  items.map((item) => <button key={item.label} />)
+}
 
 // ✅ 良い例
-{items.map((item) => <button key={item.value ?? "__default__"} />)}
+{
+  items.map((item) => <button key={item.value ?? '__default__'} />)
+}
 ```
 
 ## テスト
@@ -123,17 +159,17 @@ import { Foo } from "@/types/foo";
 // ❌ 悪い例 — interval ID を捨てているためテスト間をまたいでリークする
 const activateTimer = () => {
   mockStart.mockImplementation((onTick: () => void) => {
-    setInterval(onTick, INTERVAL_MS);
-  });
-};
+    setInterval(onTick, INTERVAL_MS)
+  })
+}
 
 // ✅ 良い例 — ID を保持して afterEach で確実にクリアする
-let activeIntervalId: ReturnType<typeof setInterval> | null = null;
+let activeIntervalId: ReturnType<typeof setInterval> | null = null
 const activateTimer = () => {
   mockStart.mockImplementation((onTick: () => void) => {
-    activeIntervalId = setInterval(onTick, INTERVAL_MS);
-  });
-};
+    activeIntervalId = setInterval(onTick, INTERVAL_MS)
+  })
+}
 // beforeEach: activeIntervalId = null にリセット
 // afterEach:
 //   if (activeIntervalId !== null) clearInterval(activeIntervalId)  ← null チェック必須（型エラー防止）

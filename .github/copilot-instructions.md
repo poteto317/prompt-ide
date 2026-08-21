@@ -28,17 +28,32 @@
 
 PR へのコミットをプッシュした後は、以下の手順を必ず実施してください。
 
-1. **未解決スレッドの確認**
-   - PR の「Conversation」タブで未解決のレビュースレッドがないか確認する
-   - 未解決スレッドがある場合はすべて Resolve してから次のステップへ
+1. **対応済みスレッドの Resolve**
+   - `gh api graphql` で PR の `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
+   - **対応済みの指摘のみ** `resolveReviewThread` ミューテーションで Resolve する（未対応の指摘を機械的に Resolve しないこと）
+   - 未対応の指摘が残っている場合は、先に対応してから Resolve する
+   - 対応済みスレッドの Resolve が完了したら次のステップへ
+
+   ```bash
+   # 未解決スレッドの一覧
+   gh api graphql -f query='
+   {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){
+     reviewThreads(last:60){nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
+   }}}'
+
+   # 対応済みスレッドの Resolve
+   gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' \
+     -f t='<THREAD_ID>'
+   ```
 
 2. **Copilot へのレビュー依頼**
-   - 未解決スレッドが 0 件になったら、以下の PowerShell コマンドをローカルターミナルから実行して Copilot にレビューを依頼してください
+   - 対応済みスレッドの Resolve が完了したら Copilot にレビューを依頼してください
    - `GITHUB_TOKEN`（GitHub Actions）からは Copilot レビューをトリガーできないため、必ずローカルターミナルから実行すること
    - `PR_NUMBER` には対象 PR の番号を設定してください（例: `7`）
    - `REPO` には対象リポジトリの `OWNER/REPO` を設定してください（例: `your-org/your-repo`）
 
    **Windows (PowerShell):**
+
    ```powershell
    $PR_NUMBER = "<対象PR番号>"
    $REPO = "<OWNER/REPO>"
@@ -47,11 +62,23 @@ PR へのコミットをプッシュした後は、以下の手順を必ず実�
    ```
 
    **Mac / Linux (bash / zsh):**
+
    ```bash
    PR_NUMBER="<対象PR番号>"
    REPO="<OWNER/REPO>"
    gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
      -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+   ```
+
+   REST の `requested_reviewers` は bot を返さないため、依頼できたかどうかの確認は
+   GraphQL 側で行ってください。依頼自体を GraphQL で行うこともできます。
+
+   ```bash
+   # PR の node id を取得して Copilot に依頼する
+   PR_ID=$(gh api graphql -f query='{repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){id}}}' \
+     -q .data.repository.pullRequest.id)
+   gh api graphql -f query='mutation($p:ID!){requestReviews(input:{pullRequestId:$p, botIds:["<COPILOT_BOT_NODE_ID>"], union:true}){
+     pullRequest{reviewRequests(first:5){nodes{requestedReviewer{__typename ... on Bot{login}}}}}}}' -f p="$PR_ID"
    ```
 
 # コーディングルール（汎用）
@@ -62,10 +89,10 @@ PR へのコミットをプッシュした後は、以下の手順を必ず実�
 
 ```typescript
 // ✅ 正しい — 型のみ使用する場合
-import type { Foo } from "@/types/foo";
+import type { Foo } from '@/types/foo'
 
 // ❌ 間違い — 型のみ使うのに値 import になっている
-import { Foo } from "@/types/foo";
+import { Foo } from '@/types/foo'
 ```
 
 ## コンポーネント設計
@@ -115,10 +142,14 @@ import { Foo } from "@/types/foo";
 
 ```tsx
 // ❌ 悪い例 — 文言変更や i18n 対応で key が変わり不要な再マウントが起きる
-{items.map((item) => <button key={item.label} />)}
+{
+  items.map((item) => <button key={item.label} />)
+}
 
 // ✅ 良い例 — value は安定した識別子。undefined には固定フォールバックを使う
-{items.map((item) => <button key={item.value ?? "__default__"} />)}
+{
+  items.map((item) => <button key={item.value ?? '__default__'} />)
+}
 ```
 
 ```tsx
@@ -150,17 +181,17 @@ import { Foo } from "@/types/foo";
 // ❌ 悪い例 — interval ID を捨てているためテスト間をまたいでリークする
 const activateTimer = () => {
   mockStart.mockImplementation((onTick: () => void) => {
-    setInterval(onTick, INTERVAL_MS);
-  });
-};
+    setInterval(onTick, INTERVAL_MS)
+  })
+}
 
 // ✅ 良い例 — ID を保持して afterEach で確実にクリアする
-let activeIntervalId: ReturnType<typeof setInterval> | null = null;
+let activeIntervalId: ReturnType<typeof setInterval> | null = null
 const activateTimer = () => {
   mockStart.mockImplementation((onTick: () => void) => {
-    activeIntervalId = setInterval(onTick, INTERVAL_MS);
-  });
-};
+    activeIntervalId = setInterval(onTick, INTERVAL_MS)
+  })
+}
 // beforeEach で activeIntervalId = null にリセット
 // afterEach で clearInterval(activeIntervalId) してから jest.useRealTimers()
 ```
@@ -183,16 +214,16 @@ const activateTimer = () => {
 // ❌ 悪い例 — 毎レンダーで新しい関数インスタンスが生成される
 const useFoo = ({ onConfirm = (msg) => confirm(msg) } = {}) => {
   const handler = useCallback(() => {
-    onConfirm("...");
-  }, [onConfirm]);
-};
+    onConfirm('...')
+  }, [onConfirm])
+}
 
 // ✅ 良い例 — confirm は安定した参照なので useCallback の依存が変化しない
 const useFoo = ({ onConfirm = confirm } = {}) => {
   const handler = useCallback(() => {
-    onConfirm("...");
-  }, [onConfirm]);
-};
+    onConfirm('...')
+  }, [onConfirm])
+}
 ```
 
 ## 禁止事項
