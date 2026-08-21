@@ -70,8 +70,10 @@ const toRelativePath = (fullPath: string, rootPath: string | null): string => {
   // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする
   if (normalizedRoot.length === 0) return normalizedPath.replace(/^\//, '')
   // 前方一致を生の文字列で見ると、Windows で表記だけ違うルート(例: 'C:\\Project' と
-  // 'c:\\project')が別物と判定され、相対ディレクトリに絶対パスが出てしまう
-  if (!isPathAtOrInside(normalizedPath, normalizedRoot)) return normalizedPath
+  // 'c:\\project')が別物と判定され、相対ディレクトリに絶対パスが出てしまう。
+  // 判定には正規化前の値を渡す。正規化後の UNC('//Server/Share')は Windows の
+  // パスと判定できず、大文字小文字の違いを吸収できなくなる
+  if (!isPathAtOrInside(fullPath, rootPath)) return normalizedPath
   // 表記が違っても長さは同じなので、正規化前の文字列から同じ位置で切り出せる
   return normalizedPath.length <= normalizedRoot.length
     ? ''

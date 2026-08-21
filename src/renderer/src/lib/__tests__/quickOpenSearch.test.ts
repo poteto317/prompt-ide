@@ -74,6 +74,16 @@ describe('searchFiles', () => {
     expect(results[0].directory).toBe('src/hooks')
   })
 
+  it('UNC のルートで大文字小文字が違っても相対ディレクトリにする', () => {
+    // 正規化後の '//Server/Share' は UNC と判定できないため、比較は正規化前の
+    // 値で行う必要がある。判定を誤ると directory に絶対パスが出る
+    const uncFiles: FileNode[] = [
+      { name: 'a.ts', path: '\\\\Server\\Share\\src\\a.ts', type: 'file' }
+    ]
+    const results = searchFiles('a', uncFiles, '\\\\server\\share')
+    expect(results[0].directory).toBe('src')
+  })
+
   it('ルートからの相対ディレクトリを directory として返す', () => {
     const results = searchFiles('usfs', files, ROOT)
     expect(results[0].directory).toBe('src/hooks')
