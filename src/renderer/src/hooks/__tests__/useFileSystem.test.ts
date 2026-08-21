@@ -11,6 +11,7 @@ const mockOpenFolder = vi.mocked(fileSystemApi.openFolder)
 const mockReadDirectory = vi.mocked(fileSystemApi.readDirectory)
 const mockReadFileContent = vi.mocked(fileSystemApi.readFileContent)
 const mockWriteFileContent = vi.mocked(fileSystemApi.writeFileContent)
+const mockDeleteEntry = vi.mocked(fileSystemApi.deleteEntry)
 
 const mockTree: FileTreeNode[] = [
   {
@@ -570,6 +571,119 @@ describe('useFileSystem', () => {
       await folderPromise
     })
     expect(onConfirm).toHaveBeenCalled()
+  })
+
+  it('別ファイルに切り替わっていれば内容が同じでも破棄確認する', async () => {
+    // 内容の文字列だけで判定すると、走査中に別ファイルを開いて偶然同じ内容に
+    // なった場合に「変化なし」と誤判定し、未保存の変更を無確認で破棄する
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('same')
+    const onConfirm = vi.fn(() => true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const first: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(first)
+    })
+
+    let resolveTree: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveTree = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 走査中に別ファイルを開き、内容はスナップショットと同じ文字列にする
+    const second: FileTreeNode = { name: 'App.tsx', path: '/project/src/App.tsx', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(second)
+    })
+    act(() => result.current.updateFileContent('same'))
+    onConfirm.mockClear()
+    await act(async () => {
+      resolveTree(mockTree)
+      await folderPromise
+    })
+    // 確定した選択があるので閉じない(消すなら確認が要る)
+    expect(result.current.openFile?.path).toBe('/project/src/App.tsx')
+  })
+
+  it('フォルダ確定でファイルを閉じるとき、保留中の読み込みも無効化する', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem())
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let resolveTree: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveTree = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+
+    // 走査中に始まった読み込みは、まだコミットしていない
+    let resolveRead: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve
+        })
+    )
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    let readPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      readPromise = result.current.selectFile(node)
+    })
+    await act(async () => {
+      resolveTree(mockTree)
+      await folderPromise
+    })
+    expect(result.current.openFile).toBeNull()
+
+    await act(async () => {
+      resolveRead('const x = 1')
+      await readPromise
+    })
+    // 旧フォルダのファイルが新しいフォルダに現れてはいけない
+    expect(result.current.openFile).toBeNull()
+  })
+
+  it('削除完了前に読み込みがコミットしても削除済みファイルを残さない', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const onConfirm = vi.fn(() => true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+
+    // 削除の実行中に、対象ファイルの読み込みが先に確定する
+    mockDeleteEntry.mockImplementationOnce(async () => {
+      await result.current.selectFile(node)
+    })
+    await act(async () => {
+      await result.current.deleteEntry(node)
+    })
+    expect(result.current.openFile).toBeNull()
   })
 
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {

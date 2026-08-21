@@ -255,6 +255,16 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
+  it('エクスプローラー経由で最初のファイルを開いてもフォーカスを奪わない', () => {
+    // openedFileSignal が進まない経路(moveFocusToEditor 未指定)では、
+    // ファイル無し → 有りの変化だけでフォーカス要求を立ててはいけない
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={null} openedFileSignal={0} />
+    )
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={0} />)
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()

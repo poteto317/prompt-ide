@@ -51,6 +51,16 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 進行中のファイル読み込みの対象パス。リネーム・削除の影響範囲だけを
   // 無効化するために使う(無関係な操作で有効な選択まで捨てないため)
   const pendingReadPathRef = useRef<string | null>(null)
+  // openFile の同期ミラー。React の state はコミット後にしか読めないため、
+  // 「操作の途中で確定した openFile」を同じ tick 内で参照するために持つ
+  const openFileMirrorRef = useRef<OpenFile | null>(null)
+
+  // openFile を更新する唯一の経路。ミラーを必ず同時に更新する
+  const commitOpenFile = (next: OpenFile | null): void => {
+    openFileMirrorRef.current = next
+    setOpenFile(next)
+  }
+  const getOpenFile = (): OpenFile | null => openFileMirrorRef.current
   // ファイルを「開いた」ことを EditorPanel へ伝える信号。リネームでも
   // openFile.path は変わるため、path の変化だけでは open と区別できない
   const [openedFileSignal, setOpenedFileSignal] = useState(0)
@@ -75,11 +85,20 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 待っている間に編集が入ったかを判定するため、最新の openFile を参照する
   const openFileRef = useLatestRef(openFile)
 
-  // 待機の前後で内容が変わっていたら、開始時の確認はその編集を見ていない。
-  // 変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)
-  const confirmDiscardIfEditedSince = (contentAtStart: string | null): boolean => {
-    const contentNow = openFileRef.current?.content ?? null
-    if (contentNow === contentAtStart) return true
+  /** 破棄確認の要否を判定するためのスナップショット(ファイルと内容の組) */
+  type BufferSnapshot = { path: string | null; content: string | null }
+  const snapshotBuffer = (): BufferSnapshot => ({
+    path: openFileRef.current?.path ?? null,
+    content: openFileRef.current?.content ?? null
+  })
+
+  // 待機の前後でバッファが変わっていたら、開始時の確認はその状態を見ていない。
+  // 変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)。
+  // 内容だけでなく path も見るのは、別ファイルへ切り替わって偶然同じ内容に
+  // なった場合に「変化なし」と誤判定しないため
+  const confirmDiscardIfChangedSince = (snapshot: BufferSnapshot): boolean => {
+    const now = snapshotBuffer()
+    if (now.path === snapshot.path && now.content === snapshot.content) return true
     return confirmDiscardIfDirtyRef.current()
   }
 
@@ -96,13 +115,19 @@ export function useFileSystem(options?: Options): FileSystemState {
     deleteEntry
   } = useFileTreeOperations({
     folderPath,
-    openFile,
-    setOpenFile,
+    getOpenFile,
+    setOpenFile: commitOpenFile,
     resetForFileChange,
     onConfirm,
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
     // (削除済みファイルを表示すると、編集して保存した時点で復活してしまう)
     // 影響範囲外の読み込みまで捨てると、無関係な操作で有効な選択を失う
+    // ツリーの再読込も同じ世代で管理する。旧フォルダの refresh が新しい
+    // フォルダ選択より後に解決すると、folderPath だけ新しくツリーが旧に戻る
+    beginDirectoryRead: () => {
+      const id = ++latestDirectoryReadRef.current
+      return () => id === latestDirectoryReadRef.current
+    },
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
@@ -125,7 +150,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
       const committedOpenAtStart = committedOpenRef.current
-      const contentAtStart = openFileRef.current?.content ?? null
+      const snapshot = snapshotBuffer()
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
       if (directoryReadId !== latestDirectoryReadRef.current) return
@@ -140,8 +165,11 @@ export function useFileSystem(options?: Options): FileSystemState {
       // ディレクトリ走査は秒単位になり得る。その間に入った編集は開始時の確認が
       // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
       // フォルダとツリーだけ確定し、ファイルは開いたまま残す
-      if (!confirmDiscardIfEditedSince(contentAtStart)) return
-      setOpenFile(null)
+      if (!confirmDiscardIfChangedSince(snapshot)) return
+      // 走査中に始まってまだコミットしていない読み込みを無効化する。
+      // 残すと、フォルダ確定後に解決して旧フォルダのファイルが表示される
+      latestReadRef.current += 1
+      commitOpenFile(null)
       resetForFileChange()
     } catch (err) {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない
@@ -160,13 +188,13 @@ export function useFileSystem(options?: Options): FileSystemState {
     setError(null)
     const readId = ++latestReadRef.current
     pendingReadPathRef.current = fileNode.path
-    const contentAtStart = openFileRef.current?.content ?? null
+    const snapshot = snapshotBuffer()
     try {
       const content = await fileSystemApi.readFileContent(fileNode.path)
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false
-      if (!confirmDiscardIfEditedSince(contentAtStart)) return false
-      setOpenFile(createOpenFile(fileNode, content))
+      if (!confirmDiscardIfChangedSince(snapshot)) return false
+      commitOpenFile(createOpenFile(fileNode, content))
       resetForFileChange()
       committedOpenRef.current += 1
       // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
@@ -186,7 +214,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     if (!confirmDiscardIfDirty()) return
     // 閉じたあとに保留中の読み込みが解決してファイルが再表示されるのを防ぐ
     latestReadRef.current += 1
-    setOpenFile(null)
+    commitOpenFile(null)
     resetForFileChange()
   }
 

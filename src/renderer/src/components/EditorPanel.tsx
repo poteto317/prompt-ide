@@ -95,18 +95,23 @@ export default function EditorPanel({
 
   // 「開いた」信号でのみ要求を立てる。openFilePath はリネームでも変わるため、
   // path の変化を使うとエクスプローラーで作業中にフォーカスを奪ってしまう
+  // フォーカス要求は openedFileSignal が進んだときだけ立てる。ファイルの有無の
+  // 変化で立てると、エクスプローラー経由(信号を進めない)で最初のファイルを
+  // 開いたときにも、Monaco の遅延 onMount がツリーからフォーカスを奪う
   useEffect(() => {
-    if (!hasOpenFile) {
-      // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
-      // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
-      // 消費してしまい、新しいエディタが入力を受け取れない
-      editorRef.current = null
-      mountedPathRef.current = null
-      pendingFocusRef.current = false
-      return
-    }
+    if (openedFileSignal === 0) return
     pendingFocusRef.current = true
-  }, [openedFileSignal, hasOpenFile])
+  }, [openedFileSignal])
+
+  // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
+  // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
+  // 消費してしまい、新しいエディタが入力を受け取れない
+  useEffect(() => {
+    if (hasOpenFile) return
+    editorRef.current = null
+    mountedPathRef.current = null
+    pendingFocusRef.current = false
+  }, [hasOpenFile])
 
   useEffect(() => {
     focusEditorIfPending()

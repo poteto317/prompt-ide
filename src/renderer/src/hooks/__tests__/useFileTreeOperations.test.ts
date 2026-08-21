@@ -29,6 +29,7 @@ function renderOperations(config?: {
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
   invalidatePendingReads?: (affectedPath: string) => void
+  beginDirectoryRead?: () => () => boolean
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
@@ -39,11 +40,12 @@ function renderOperations(config?: {
     const [openFile, setOpenFile] = useState<OpenFile | null>(config?.initialOpenFile ?? null)
     const ops = useFileTreeOperations({
       folderPath,
-      openFile,
+      getOpenFile: () => openFile,
       setOpenFile,
       resetForFileChange,
       onConfirm,
-      invalidatePendingReads
+      invalidatePendingReads,
+      beginDirectoryRead: config?.beginDirectoryRead ?? (() => () => true)
     })
     return { ...ops, openFile }
   })
@@ -344,5 +346,31 @@ describe('保留中の読み込みの無効化', () => {
       )
     })
     expect(invalidatePendingReads).toHaveBeenCalled()
+  })
+})
+
+describe('ツリー再読込の世代管理', () => {
+  it('新しいフォルダ選択が始まっていたら旧フォルダのツリーを反映しない', async () => {
+    // folderPath だけ新しくツリーが旧に戻る状態を防ぐ
+    mockDeleteEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([
+      { name: 'stale.ts', path: '/project/stale.ts', type: 'file' }
+    ])
+    const { result } = renderOperations({ beginDirectoryRead: () => () => false })
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+    expect(result.current.fileTree).toEqual([])
+  })
+
+  it('最新のままなら再読込したツリーを反映する', async () => {
+    mockDeleteEntry.mockResolvedValue(undefined)
+    const tree = [{ name: 'fresh.ts', path: '/project/fresh.ts', type: 'file' as const }]
+    mockReadDirectory.mockResolvedValue(tree)
+    const { result } = renderOperations()
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+    expect(result.current.fileTree).toEqual(tree)
   })
 })

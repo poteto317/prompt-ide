@@ -7,8 +7,9 @@ import * as fileSystemApi from '../lib/fileSystemApi'
 
 interface FileTreeOperationsOptions {
   folderPath: string | null
-  openFile: OpenFile | null
-  setOpenFile: Dispatch<SetStateAction<OpenFile | null>>
+  /** 呼び出し時点の openFile を同期的に返す(操作中に確定した結果も見えるようにする) */
+  getOpenFile: () => OpenFile | null
+  setOpenFile: (next: OpenFile | null) => void
   resetForFileChange: () => void
   onConfirm: (message: string) => boolean
   /**
@@ -16,6 +17,8 @@ interface FileTreeOperationsOptions {
    * FS 操作が成功したあとに呼ぶ(失敗時に有効な選択を失わないため)
    */
   invalidatePendingReads: (affectedPath: string) => void
+  /** ディレクトリ読み込みを開始し、「まだ最新か」を返す関数を得る */
+  beginDirectoryRead: () => () => boolean
 }
 
 interface FileTreeOperationsState {
@@ -34,11 +37,12 @@ interface FileTreeOperationsState {
 // フォルダ木の初回読み込み(openFolder/selectFile)は useFileSystem 側の責務のまま残す。
 export function useFileTreeOperations({
   folderPath,
-  openFile,
+  getOpenFile,
   setOpenFile,
   resetForFileChange,
   onConfirm,
-  invalidatePendingReads
+  invalidatePendingReads,
+  beginDirectoryRead
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -47,7 +51,10 @@ export function useFileTreeOperations({
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
   const refreshTree = async (): Promise<void> => {
     if (folderPath === null) return
+    const isLatest = beginDirectoryRead()
     const tree = await fileSystemApi.readDirectory(folderPath)
+    // 新しいフォルダ選択が始まっていたら、旧フォルダのツリーを反映しない
+    if (!isLatest()) return
     setFileTree(tree)
   }
 
@@ -82,18 +89,19 @@ export function useFileTreeOperations({
       // 管理しているため、ここで呼ばないと保存中インジケータが旧pathのまま
       // 残ったり、保存完了時の savedContent 反映が旧path不一致でスキップされたりする
       // (deleteEntry の affected 判定と同じロジック)。
+      // 操作の完了時点で判定する。開始時点のクロージャで見ると、操作中に
+      // 確定した読み込み結果(その path が対象配下)を取りこぼす
+      const current = getOpenFile()
       const affected =
-        openFile !== null && (openFile.path === node.path || isPathInside(openFile.path, node.path))
+        current !== null && (current.path === node.path || isPathInside(current.path, node.path))
       if (affected) {
-        setOpenFile((prev) => {
-          if (prev === null) return prev
-          if (prev.path === node.path) {
-            // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
-            return { ...prev, path: newPath, name: newName, language: detectLanguage(newName) }
-          }
-          // 開いているファイルの祖先ディレクトリのリネーム: プレフィックスを付け替える
-          return { ...prev, path: newPath + prev.path.slice(node.path.length) }
-        })
+        setOpenFile(
+          current.path === node.path
+            ? // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
+              { ...current, path: newPath, name: newName, language: detectLanguage(newName) }
+            : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
+              { ...current, path: newPath + current.path.slice(node.path.length) }
+        )
         resetForFileChange()
       }
     })
@@ -109,8 +117,10 @@ export function useFileTreeOperations({
       // 読み込み中のファイルが削除対象なら、その結果を表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
+      // 削除の実行中に対象の読み込みが確定することがあるため、完了時点で判定する
+      const current = getOpenFile()
       const affected =
-        openFile !== null && (openFile.path === node.path || isPathInside(openFile.path, node.path))
+        current !== null && (current.path === node.path || isPathInside(current.path, node.path))
       if (affected) {
         setOpenFile(null)
         resetForFileChange()
