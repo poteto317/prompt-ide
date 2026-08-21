@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
@@ -18,6 +18,10 @@ interface FileTreeOperationsOptions {
    * FS 操作が成功したあとに呼ぶ(失敗時に有効な選択を失わないため)
    */
   invalidatePendingReads: (affectedPath: string) => void
+  /** ツリーへの書き込みを開始する。書き込めない場合は null */
+  beginTreeWrite: () => (() => boolean) | null
+  /** FS の変更が完了したことを通知する */
+  onTreeMutated: () => void
 }
 
 interface FileTreeOperationsState {
@@ -29,6 +33,7 @@ interface FileTreeOperationsState {
   createDirectory: (parentPath: string, name: string) => Promise<void>
   renameEntry: (node: FileTreeNode, newName: string) => Promise<void>
   deleteEntry: (node: FileTreeNode) => Promise<void>
+  refreshTree: () => Promise<void>
 }
 
 // ファイル/フォルダの新規作成・リネーム・削除という CRUD 操作一式と、
@@ -40,25 +45,26 @@ export function useFileTreeOperations({
   setOpenFile,
   resetForFileChange,
   onConfirm,
-  invalidatePendingReads
+  invalidatePendingReads,
+  beginTreeWrite,
+  onTreeMutated
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
-  // 再読込の順序。同一フォルダで CRUD が重なると解決順が入れ替わり得るため、
-  // 最後に開始した再読込の結果だけを反映する
-  const refreshSeqRef = useRef(0)
   const [error, setError] = useState<Error | null>(null)
 
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
   const refreshTree = async (): Promise<void> => {
+    // フォルダ走査中は触らない。権威あるツリーはフォルダ読み込み側が書く
+    const isLatestWrite = beginTreeWrite()
+    if (isLatestWrite === null) return
     // クロージャではなく「読み込む時点」のフォルダを見る。CRUD の完了が遅れると
     // クロージャの folderPath は切替前のものになり、旧フォルダを読んでしまう
     const target = getFolderPath()
     if (target === null) return
-    const seq = ++refreshSeqRef.current
-    // 後発の再読込が始まっていたら反映しない。フォルダが同じでも、古い
-    // スナップショットで新しい結果を上書きしてしまう
-    const isStale = (): boolean => seq !== refreshSeqRef.current || getFolderPath() !== target
+    // 後発の読み込み(フォルダ読み込みを含む)が始まっていたら反映しない。
+    // フォルダが同じでも、古いスナップショットで新しい結果を上書きしてしまう
+    const isStale = (): boolean => !isLatestWrite() || getFolderPath() !== target
     try {
       const tree = await fileSystemApi.readDirectory(target)
       if (isStale()) return
@@ -74,6 +80,7 @@ export function useFileTreeOperations({
     setError(null)
     try {
       await operation()
+      onTreeMutated()
       await refreshTree()
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)))
@@ -148,6 +155,7 @@ export function useFileTreeOperations({
     createFile,
     createDirectory,
     renameEntry,
-    deleteEntry
+    deleteEntry,
+    refreshTree
   }
 }

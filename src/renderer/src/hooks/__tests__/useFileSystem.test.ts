@@ -13,6 +13,7 @@ const mockReadFileContent = vi.mocked(fileSystemApi.readFileContent)
 const mockWriteFileContent = vi.mocked(fileSystemApi.writeFileContent)
 const mockDeleteEntry = vi.mocked(fileSystemApi.deleteEntry)
 const mockRenameEntry = vi.mocked(fileSystemApi.renameEntry)
+const mockCreateFile = vi.mocked(fileSystemApi.createFile)
 
 const mockTree: FileTreeNode[] = [
   {
@@ -965,6 +966,93 @@ describe('useFileSystem', () => {
     })
     // B は無効化され、A のまま(新しいフォルダに B が現れない)
     expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
+  it('走査中に完了した CRUD の結果がフォルダ確定後のツリーに反映される', async () => {
+    // 先行する readDirectory のスナップショットには CRUD の結果が入っていない
+    mockOpenFolder.mockResolvedValue('/project')
+    mockCreateFile.mockResolvedValue(undefined)
+    const before: FileTreeNode[] = [{ name: 'a.ts', path: '/project/a.ts', type: 'file' }]
+    const after: FileTreeNode[] = [
+      { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+      { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+    ]
+    let resolveInitial: (tree: FileTreeNode[]) => void = () => {}
+    let calls = 0
+    mockReadDirectory.mockImplementation(() => {
+      calls += 1
+      if (calls === 1) {
+        return new Promise<FileTreeNode[]>((resolve) => {
+          resolveInitial = resolve
+        })
+      }
+      return Promise.resolve(after)
+    })
+
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 走査中にファイルを作成する
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    await act(async () => {
+      resolveInitial(before)
+      await folderPromise
+    })
+    await act(async () => {})
+    expect(result.current.fileTree).toEqual(after)
+  })
+
+  it('保留中の古い再読込がフォルダ確定後のツリーを上書きしない', async () => {
+    // 同じフォルダを開き直した場合、パスが一致するため順序だけでは弾けない
+    mockOpenFolder.mockResolvedValue('/project')
+    mockDeleteEntry.mockResolvedValue(undefined)
+    const staleTree: FileTreeNode[] = [
+      { name: 'stale.ts', path: '/project/stale.ts', type: 'file' }
+    ]
+    const freshTree: FileTreeNode[] = [
+      { name: 'fresh.ts', path: '/project/fresh.ts', type: 'file' }
+    ]
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // 削除に伴う再読込を保留させる
+    let resolveStale: (tree: FileTreeNode[]) => void = () => {}
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveStale = resolve
+        })
+    )
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry({
+        name: 'a.ts',
+        path: '/project/a.ts',
+        type: 'file'
+      })
+    })
+    await act(async () => {})
+
+    // 同じフォルダを開き直して新しいツリーを確定させる
+    mockReadDirectory.mockResolvedValue(freshTree)
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.fileTree).toEqual(freshTree)
+
+    // 遅れて解決した古い再読込が上書きしない
+    await act(async () => {
+      resolveStale(staleTree)
+      await deletePromise
+    })
+    expect(result.current.fileTree).toEqual(freshTree)
   })
 
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {

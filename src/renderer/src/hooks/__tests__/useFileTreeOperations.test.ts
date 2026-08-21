@@ -29,12 +29,14 @@ function renderOperations(config?: {
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
   invalidatePendingReads?: (affectedPath: string) => void
+  beginTreeWrite?: () => (() => boolean) | null
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
   const onConfirm = config?.onConfirm ?? vi.fn<(message: string) => boolean>().mockReturnValue(true)
   // null を明示的に渡すケースを undefined(デフォルト値を使う)と区別する
   const folderPath = config && 'folderPath' in config ? (config.folderPath ?? null) : '/project'
+  const treeWriteGuard = makeTreeWriteGuard()
   const { result } = renderHook(() => {
     const [openFile, setOpenFile] = useState<OpenFile | null>(config?.initialOpenFile ?? null)
     const ops = useFileTreeOperations({
@@ -43,7 +45,9 @@ function renderOperations(config?: {
       setOpenFile,
       resetForFileChange,
       onConfirm,
-      invalidatePendingReads
+      invalidatePendingReads,
+      beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
+      onTreeMutated: vi.fn()
     })
     return { ...ops, openFile }
   })
@@ -59,10 +63,21 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       setOpenFile,
       resetForFileChange: vi.fn(),
       onConfirm: () => true,
-      invalidatePendingReads: vi.fn()
+      invalidatePendingReads: vi.fn(),
+      beginTreeWrite: makeTreeWriteGuard(),
+      onTreeMutated: vi.fn()
     })
   })
   return { result }
+}
+
+// 実装側(useFileSystem)と同じ順序ガードをテスト用に用意する
+function makeTreeWriteGuard(): () => (() => boolean) | null {
+  let seq = 0
+  return () => {
+    const mine = ++seq
+    return () => mine === seq
+  }
 }
 
 beforeEach(() => {

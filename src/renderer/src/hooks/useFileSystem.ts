@@ -55,6 +55,14 @@ export function useFileSystem(options?: Options): FileSystemState {
   // ディレクトリ読み込みの世代。ファイル側と共有すると、読み込み中にタブを閉じたり
   // ファイルをクリックしたりするだけでフォルダ選択が黙って捨てられてしまう
   const latestDirectoryReadRef = useRef(0)
+  // ツリーへの書き込み順序。フォルダ読み込みと CRUD の再読込が同じ列に並ぶことで、
+  // 先に始まった読み込みの古いスナップショットが後発の結果を上書きしない
+  const treeWriteSeqRef = useRef(0)
+  // 実行中の openFolder 数。走査中は再読込にツリーを触らせない(権威ある結果は
+  // フォルダ読み込み側が書く)
+  const pendingFolderOpenRef = useRef(0)
+  // 完了した CRUD の回数。走査中に発生していれば、確定後に取り直す
+  const treeMutationCountRef = useRef(0)
   // 実際に openFile をコミットした回数。「読み込みを開始したか」ではなく
   // 「選択が確定したか」で判定するために使う(失敗・キャンセルでは進まない)
   const committedOpenRef = useRef(0)
@@ -138,7 +146,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     createFile,
     createDirectory,
     renameEntry,
-    deleteEntry
+    deleteEntry,
+    refreshTree
   } = useFileTreeOperations({
     getOpenFile,
     setOpenFile: commitOpenFile,
@@ -151,6 +160,16 @@ export function useFileSystem(options?: Options): FileSystemState {
     // 切替後に始まった古い CRUD の再読込が新しい世代を取得してしまい、
     // 旧フォルダのツリーやエラーが新しいフォルダへ反映されてしまう
     getFolderPath: () => folderPathMirrorRef.current,
+    // ツリーへの書き込みを開始する。フォルダ走査中は書き込ませない(null)。
+    // 返る関数は「自分がまだ最新の書き込みか」を返す
+    beginTreeWrite: () => {
+      if (pendingFolderOpenRef.current > 0) return null
+      const seq = ++treeWriteSeqRef.current
+      return () => seq === treeWriteSeqRef.current && pendingFolderOpenRef.current === 0
+    },
+    onTreeMutated: () => {
+      treeMutationCountRef.current += 1
+    },
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
@@ -163,8 +182,11 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
+    // 走査中に CRUD が完了していた場合に、確定後の取り直しが要るかどうか
+    let pendingRefreshAfterOpen = false
     // 失敗した場合も、その時点で最新のフォルダ読み込みかを見てからエラーを出す
     let directoryReadId: number | null = null
+    pendingFolderOpenRef.current += 1
     try {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
@@ -174,6 +196,8 @@ export function useFileSystem(options?: Options): FileSystemState {
       latestReadRef.current += 1
       const committedOpenAtStart = committedOpenRef.current
       const snapshot = snapshotBuffer()
+      const treeWriteSeq = ++treeWriteSeqRef.current
+      const mutationsAtStart = treeMutationCountRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
       if (directoryReadId !== latestDirectoryReadRef.current) return
@@ -181,9 +205,16 @@ export function useFileSystem(options?: Options): FileSystemState {
       // ファイル操作だけでフォルダ選択が黙って捨てられてしまう
       folderPathMirrorRef.current = path
       setFolderPath(path)
-      setFileTree(tree)
+      // より新しい読み込みが既にツリーを書いていたら、それを古い内容で潰さない
+      if (treeWriteSeq === treeWriteSeqRef.current) setFileTree(tree)
       // 走査中に立ったエラー(旧フォルダの読み込み失敗など)を新しい画面に残さない
       setError(null)
+      // 走査中に CRUD が完了していた場合、このスナップショットには含まれていない。
+      // 再読込は走査中に止めているため、ここで取り直す
+      if (treeMutationCountRef.current !== mutationsAtStart) {
+        pendingFolderOpenRef.current -= 1
+        pendingRefreshAfterOpen = true
+      }
       // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。
       // 読み込みの開始ではなくコミット回数で見るのは、失敗・キャンセルした
       // 読み込みで旧フォルダのファイルが残ってしまうのを防ぐため
@@ -203,7 +234,10 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない
       if (directoryReadId !== null && directoryReadId !== latestDirectoryReadRef.current) return
       setError(err instanceof Error ? err : new Error(String(err)))
+    } finally {
+      if (!pendingRefreshAfterOpen) pendingFolderOpenRef.current -= 1
     }
+    if (pendingRefreshAfterOpen) await refreshTree()
   }
 
   // 呼び出し側が「実際に開けたか」で分岐できるよう成否を返す。クイックオープンは
