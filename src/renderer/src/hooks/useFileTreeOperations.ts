@@ -35,7 +35,8 @@ interface FileTreeOperationsState {
   createDirectory: (parentPath: string, name: string) => Promise<void>
   renameEntry: (node: FileTreeNode, newName: string) => Promise<void>
   deleteEntry: (node: FileTreeNode) => Promise<void>
-  refreshTree: () => Promise<void>
+  /** ツリーを再読込する。実際に現在のツリーへ反映した場合のみ true */
+  refreshTree: () => Promise<boolean>
 }
 
 // ファイル/フォルダの新規作成・リネーム・削除という CRUD 操作一式と、
@@ -57,25 +58,26 @@ export function useFileTreeOperations({
 
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
-  const refreshTree = async (): Promise<void> => {
+  const refreshTree = async (): Promise<boolean> => {
     // フォルダ走査中は触らない。権威あるツリーはフォルダ読み込み側が書く
     const isLatestWrite = beginTreeWrite()
-    if (isLatestWrite === null) return
+    if (isLatestWrite === null) return false
     // クロージャではなく「読み込む時点」のフォルダを見る。CRUD の完了が遅れると
     // クロージャの folderPath は切替前のものになり、旧フォルダを読んでしまう
     const target = getFolderPath()
-    if (target === null) return
+    if (target === null) return false
     // 後発の読み込み(フォルダ読み込みを含む)が始まっていたら反映しない。
     // フォルダが同じでも、古いスナップショットで新しい結果を上書きしてしまう
     const isStale = (): boolean => !isLatestWrite() || getFolderPath() !== target
     try {
       const tree = await fileSystemApi.readDirectory(target)
-      if (isStale()) return
+      if (isStale()) return false
       setFileTree(tree)
       reportTreeLoad(null)
+      return true
     } catch (err) {
       // 古い再読込の失敗を、現在の画面に出さない
-      if (isStale()) return
+      if (isStale()) return false
       reportTreeLoad(err instanceof Error ? err : new Error(String(err)))
       throw err
     }

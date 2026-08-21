@@ -69,14 +69,32 @@ export function useFileEditing(
   // 解決すると、旧パスを再作成してファイルが復活してしまうため
   const savingPromisesRef = useRef<Map<string, Promise<void>>>(new Map())
 
-  // FS 操作中のパス。この配下の保存は開始させない
-  const lockedPathsRef = useRef<string[]>([])
+  // FS 操作中のパスと、その完了を待つための Promise。
+  // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
+  const locksRef = useRef<{ path: string; done: Promise<void> }[]>([])
+
+  const overlaps = (a: string, b: string): boolean =>
+    a === b || isPathInside(a, b) || isPathInside(b, a)
 
   const isPathLocked = (path: string): boolean =>
-    lockedPathsRef.current.some((locked) => path === locked || isPathInside(path, locked))
+    locksRef.current.some((lock) => path === lock.path || isPathInside(path, lock.path))
 
   const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
-    lockedPathsRef.current = [...lockedPathsRef.current, targetPath]
+    // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
+    // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
+    for (;;) {
+      const conflicting = locksRef.current.filter((lock) => overlaps(lock.path, targetPath))
+      if (conflicting.length === 0) break
+      await Promise.all(conflicting.map((lock) => lock.done))
+    }
+    let releaseLock: () => void = () => {}
+    const entry = {
+      path: targetPath,
+      done: new Promise<void>((resolve) => {
+        releaseLock = resolve
+      })
+    }
+    locksRef.current = [...locksRef.current, entry]
     // 予約してから待つ。待機中に新しい保存は始まらないので、0 件になれば以降も 0 件。
     // ただし待機の解決順によっては複数回の確認が要るためループする
     for (;;) {
@@ -87,13 +105,8 @@ export function useFileEditing(
       await Promise.all(pending)
     }
     return () => {
-      const index = lockedPathsRef.current.indexOf(targetPath)
-      if (index !== -1) {
-        lockedPathsRef.current = [
-          ...lockedPathsRef.current.slice(0, index),
-          ...lockedPathsRef.current.slice(index + 1)
-        ]
-      }
+      locksRef.current = locksRef.current.filter((lock) => lock !== entry)
+      releaseLock()
     }
   }
 

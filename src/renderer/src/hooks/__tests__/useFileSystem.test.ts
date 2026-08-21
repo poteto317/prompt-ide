@@ -1805,6 +1805,102 @@ describe('useFileSystem', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('重なるパスの FS 操作を直列化する', async () => {
+    // 親ディレクトリの削除と子ファイルのリネームが並行すると、実行順によって
+    // 誤った対象を操作したり、ツリーと実体が食い違ったりする
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    const order: string[] = []
+    let finishDelete: () => void = () => {}
+    mockDeleteEntry.mockImplementationOnce(() => {
+      order.push('delete:start')
+      return new Promise<void>((resolve) => {
+        finishDelete = () => {
+          order.push('delete:end')
+          resolve()
+        }
+      })
+    })
+    mockRenameEntry.mockImplementation(() => {
+      order.push('rename:start')
+      return Promise.resolve()
+    })
+
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let deletePromise: Promise<void> = Promise.resolve()
+    let renamePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry({
+        name: 'src',
+        path: '/project/src',
+        type: 'directory'
+      })
+    })
+    await act(async () => {})
+    act(() => {
+      renamePromise = result.current.renameEntry(
+        { name: 'a.ts', path: '/project/src/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+    await act(async () => {})
+    // 削除が終わるまでリネームは始まらない
+    expect(order).toEqual(['delete:start'])
+
+    await act(async () => {
+      finishDelete()
+      await deletePromise
+      await renamePromise
+    })
+    expect(order).toEqual(['delete:start', 'delete:end', 'rename:start'])
+  })
+
+  it('反映されなかった取り直しでは、現在のエラーを消さない', async () => {
+    mockCreateFile.mockResolvedValue(undefined)
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // A の走査を保留させ、その間に CRUD を完了させる
+    let resolveA: (t: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/a')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveA = resolve
+        })
+    )
+    let aPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      aPromise = result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.createFile('/old', 'x.ts')
+    })
+
+    // B が失敗して確定し、エラーが立つ
+    mockOpenFolder.mockResolvedValue('/b')
+    mockReadDirectory.mockRejectedValue(new Error('B の走査失敗'))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.error?.message).toBe('B の走査失敗')
+
+    // A の取り直しは stale で反映されない。エラーを消してはいけない
+    await act(async () => {
+      resolveA([])
+      await aPromise
+    })
+    expect(result.current.error?.message).toBe('B の走査失敗')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

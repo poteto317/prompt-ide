@@ -607,6 +607,16 @@ describe('useQuickOpen', () => {
     expect(result.current.loadError).toBeNull()
   })
 
+  it('hasHandedOverFocus の参照はレンダーをまたいで安定している', () => {
+    // 毎レンダー新しい関数だと、依存に含める側の effect が打鍵ごとに再実行され、
+    // フォーカスが外れて戻る(IME の変換が中断され得る)
+    const { result } = setup()
+    const before = result.current.hasHandedOverFocus
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    expect(result.current.hasHandedOverFocus).toBe(before)
+  })
+
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)

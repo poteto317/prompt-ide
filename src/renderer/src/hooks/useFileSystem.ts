@@ -315,9 +315,10 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (pendingFolderOpenRef.current === 0 && refreshSkippedRef.current) {
         refreshSkippedRef.current = false
         try {
-          await refreshTree()
-          // 取り直しに成功したなら、走査失敗のエラーはもう当てはまらない
-          setError(null)
+          // 実際に現在のツリーへ反映した場合だけエラーを消す。stale で何も
+          // 反映しなかった取り直しで、後発のフォルダのエラーを消してしまわない
+          const applied = await refreshTree()
+          if (applied) setError(null)
         } catch (err) {
           const failure = err instanceof Error ? err : new Error(String(err))
           setError(failure)

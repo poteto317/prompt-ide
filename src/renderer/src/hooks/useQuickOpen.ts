@@ -125,6 +125,10 @@ export function useQuickOpen({
   // 元の要素へ戻すと、エディタ側が受け取れなくなる
   const handedOverFocusRef = useRef(false)
 
+  // 参照を安定させる。毎レンダー新しい関数だと、依存に含める側の effect が
+  // 打鍵ごとに再実行され、フォーカスが外れて戻る(IME の変換が中断され得る)
+  const hasHandedOverFocus = useCallback((): boolean => handedOverFocusRef.current, [])
+
   const startNewGeneration = useCallback((): void => {
     generationRef.current += 1
     confirmingGenerationRef.current = null
@@ -242,7 +246,7 @@ export function useQuickOpen({
       folderPath !== null && files.length === 0 && folderLoadError !== null
         ? folderLoadError.message
         : null,
-    hasHandedOverFocus: () => handedOverFocusRef.current,
+    hasHandedOverFocus,
     open,
     close,
     setQuery,
