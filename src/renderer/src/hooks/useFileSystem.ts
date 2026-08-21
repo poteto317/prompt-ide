@@ -66,6 +66,9 @@ export function useFileSystem(options?: Options): FileSystemState {
   // ディレクトリ読み込みの世代。ファイル側と共有すると、読み込み中にタブを閉じたり
   // ファイルをクリックしたりするだけでフォルダ選択が黙って捨てられてしまう
   const latestDirectoryReadRef = useRef(0)
+  // ダイアログ試行の世代。実際の走査とは分けて数える。同じ列にすると、
+  // キャンセルした試行が実行中の走査を無効化してフォルダ選択が失われる
+  const dialogAttemptRef = useRef(0)
   // ツリーへの書き込み順序。フォルダ読み込みと CRUD の再読込が同じ列に並ぶことで、
   // 先に始まった読み込みの古いスナップショットが後発の結果を上書きしない
   const treeWriteSeqRef = useRef(0)
@@ -189,10 +192,12 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
-    // ダイアログの表示前に世代を割り当てる。解決後に割り当てると、ダイアログが
+    // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
-    const directoryReadId = ++latestDirectoryReadRef.current
+    const dialogAttemptId = ++dialogAttemptRef.current
+    // 走査の世代。実際に走査へ入ってから割り当てる
+    let directoryReadId: number | null = null
     // 走査開始時点の CRUD 完了回数。走査中に増えていれば、確定後に取り直す
     let mutationsAtStart: number | null = null
     // ネイティブダイアログは長時間開いたままになり得る。その間まで再読込を
@@ -208,6 +213,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       pendingFolderOpenRef.current += 1
       scanning = true
       selectedPath = path
+      directoryReadId = ++latestDirectoryReadRef.current
       // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
@@ -242,8 +248,13 @@ export function useFileSystem(options?: Options): FileSystemState {
       commitOpenFile(null)
       resetForFileChange()
     } catch (err) {
-      // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない
-      if (directoryReadId !== latestDirectoryReadRef.current) return
+      // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない。
+      // 走査前(ダイアログ段階)の失敗は試行の世代で、走査後は走査の世代で判定する
+      const superseded =
+        directoryReadId === null
+          ? dialogAttemptId !== dialogAttemptRef.current
+          : directoryReadId !== latestDirectoryReadRef.current
+      if (superseded) return
       // 選択済みなら、走査に失敗してもフォルダは確定させる。旧フォルダのツリーを
       // 残すと、アクセス範囲は新しいフォルダなのに表示だけ古いという不一致になり、
       // 以降の保存・再読込・CRUD がすべてアクセス拒否になる
@@ -258,7 +269,13 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 走査中に完了した CRUD の結果は、このスナップショットにも保留された再読込にも
       // 含まれていない。走査が失敗した経路でも同じなので、finally で取り直す。
       // ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
-      if (mutationsAtStart !== null && treeMutationCountRef.current !== mutationsAtStart) {
+      // 取り込みを行うのは最新の走査だけ。stale な走査がここで取り直すと、
+      // その失敗が確定済みの新しいフォルダのエラーとして表示される
+      if (
+        mutationsAtStart !== null &&
+        directoryReadId === latestDirectoryReadRef.current &&
+        treeMutationCountRef.current !== mutationsAtStart
+      ) {
         try {
           await refreshTree()
         } catch (err) {

@@ -14,7 +14,7 @@ const mockUseFileSystem = vi.hoisted(() =>
     folderPath: null,
     fileTree: [],
     openFile: null,
-    openedFileSignal: { id: 0, path: null, moveFocusToEditor: false },
+    openedFileSignal: { events: [] },
     error: null,
     openFolder: vi.fn(),
     selectFile: vi.fn()
