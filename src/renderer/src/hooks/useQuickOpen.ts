@@ -147,6 +147,17 @@ export function useQuickOpen({
   )
 
   const rememberFocusOrigin = useCallback((element: HTMLElement | null): void => {
+    // 閉じて開き直すと、入力欄のアンマウント後は activeElement が body になる。
+    // 未解決の試行がある間にこれで上書きすると、失敗したときに元の要素へ
+    // 戻せずキーボードフォーカスを失う
+    const isUnclaimed = element === null || element === document.body
+    if (
+      isUnclaimed &&
+      inFlightOpensRef.current > 0 &&
+      focusOriginRef.current?.isConnected === true
+    ) {
+      return
+    }
     focusOriginRef.current = element
   }, [])
 

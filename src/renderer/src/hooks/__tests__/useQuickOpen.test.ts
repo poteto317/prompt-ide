@@ -732,6 +732,36 @@ describe('useQuickOpen', () => {
     expect(result.current.hasHandedOverFocus()).toBe(true)
   })
 
+  it('結果待ちの間は body での上書きから復帰先を守る', async () => {
+    // 閉じて開き直すと入力欄のアンマウント後は activeElement が body になる。
+    // これで復帰先を上書きすると、失敗時に元の要素へ戻せなくなる
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const origin = document.createElement('button')
+    document.body.appendChild(origin)
+    try {
+      const { result } = setup({ selectFile })
+      act(() => result.current.open())
+      act(() => result.current.rememberFocusOrigin(origin))
+      act(() => result.current.confirm())
+      act(() => result.current.close())
+      // 開き直しで body を渡しても、未解決の試行がある間は上書きしない
+      act(() => result.current.rememberFocusOrigin(document.body))
+      act(() => result.current.close())
+      await act(async () => {
+        resolveSelect(false)
+      })
+      expect(document.activeElement).toBe(origin)
+    } finally {
+      origin.remove()
+    }
+  })
+
   it('読み込み中でなければ閉じてもフォーカスは引き渡さない', () => {
     // 単に Escape で閉じた場合は、元の要素へフォーカスを戻す
     const { result } = setup()

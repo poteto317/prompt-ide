@@ -84,11 +84,16 @@ export function useFileTreeOperations({
   }
 
   const DISCARD_ON_DELETE_MESSAGE = '保存されていない変更があります。破棄して削除しますか？'
+  // 削除は完了済みなので「削除しますか」ではなく破棄の可否だけを聞く。
+  // 破棄しない場合はバッファを残すため、保存すればファイルを作り直せる
+  const DISCARD_AFTER_DELETE_MESSAGE =
+    'ファイルを削除しましたが、保存されていない変更があります。変更を破棄しますか？'
 
   // 削除の待機中に入った未保存の編集を、確認なしで捨てない
   const confirmDiscardOfNewEdits = (
     node: FileTreeNode,
-    bufferAtConfirm: OpenFile | null
+    bufferAtConfirm: OpenFile | null,
+    message: string = DISCARD_ON_DELETE_MESSAGE
   ): boolean => {
     const current = getOpenFile()
     if (current === null) return true
@@ -101,7 +106,7 @@ export function useFileTreeOperations({
       bufferAtConfirm.content === current.content &&
       bufferAtConfirm.savedContent === current.savedContent
     if (unchanged) return true
-    return onConfirm(DISCARD_ON_DELETE_MESSAGE)
+    return onConfirm(message)
   }
 
   /**
@@ -205,8 +210,12 @@ export function useFileTreeOperations({
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
       const release = await lockPathForFileOperation(node.path)
+      // 再確認から IPC の解決までの間もエディタは操作できる。ここでも
+      // 開始時点の状態を控え、実行中に入った編集を確認なしで捨てない
+      let bufferBeforeDelete: OpenFile | null = null
       try {
         if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return false
+        bufferBeforeDelete = getOpenFile()
         await fileSystemApi.deleteEntry(node.path)
       } finally {
         release()
@@ -219,8 +228,12 @@ export function useFileTreeOperations({
       const affected =
         current !== null && (current.path === node.path || isPathInside(current.path, node.path))
       if (affected) {
-        setOpenFile(null)
-        resetForFileChange()
+        // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
+        // そのまま保存すればファイルを作り直せる
+        if (confirmDiscardOfNewEdits(node, bufferBeforeDelete, DISCARD_AFTER_DELETE_MESSAGE)) {
+          setOpenFile(null)
+          resetForFileChange()
+        }
       }
       return true
     })

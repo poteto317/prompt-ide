@@ -2222,6 +2222,43 @@ describe('useFileSystem', () => {
     expect(mockReadDirectory.mock.calls.length).toBe(readsBefore)
   })
 
+  it('削除の実行中に入った編集も確認なしで破棄しない', async () => {
+    // ロック待ちを抜けたあとも、IPC の解決までエディタは操作できる。
+    // その間の編集を確認なしで捨てると、タブごと消えて変更が失われる
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    let finishDelete: () => void = () => {}
+    mockDeleteEntry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve
+        })
+    )
+    const confirmResults = [true, false]
+    const onConfirm = vi.fn(() => confirmResults.shift() ?? true)
+    const target = mockTree[0].children![0]
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(target)
+    })
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(target)
+    })
+    await act(async () => {})
+    // 削除の実行中(IPC 解決前)に編集が入る
+    act(() => result.current.updateFileContent('編集済み'))
+    await act(async () => {
+      finishDelete()
+      await deletePromise
+    })
+    expect(onConfirm).toHaveBeenCalledTimes(2)
+    // 破棄を断ったので、編集内容は残す(保存すればファイルを作り直せる)
+    expect(result.current.openFile?.content).toBe('編集済み')
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')
