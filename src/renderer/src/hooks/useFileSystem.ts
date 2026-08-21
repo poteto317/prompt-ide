@@ -182,10 +182,10 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
-    // 走査中に CRUD が完了していた場合に、確定後の取り直しが要るかどうか
-    let pendingRefreshAfterOpen = false
     // 失敗した場合も、その時点で最新のフォルダ読み込みかを見てからエラーを出す
     let directoryReadId: number | null = null
+    // 走査開始時点の CRUD 完了回数。走査中に増えていれば、確定後に取り直す
+    let mutationsAtStart: number | null = null
     pendingFolderOpenRef.current += 1
     try {
       const path = await fileSystemApi.openFolder()
@@ -197,7 +197,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       const committedOpenAtStart = committedOpenRef.current
       const snapshot = snapshotBuffer()
       const treeWriteSeq = ++treeWriteSeqRef.current
-      const mutationsAtStart = treeMutationCountRef.current
+      mutationsAtStart = treeMutationCountRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
       if (directoryReadId !== latestDirectoryReadRef.current) return
@@ -209,12 +209,6 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (treeWriteSeq === treeWriteSeqRef.current) setFileTree(tree)
       // 走査中に立ったエラー(旧フォルダの読み込み失敗など)を新しい画面に残さない
       setError(null)
-      // 走査中に CRUD が完了していた場合、このスナップショットには含まれていない。
-      // 再読込は走査中に止めているため、ここで取り直す
-      if (treeMutationCountRef.current !== mutationsAtStart) {
-        pendingFolderOpenRef.current -= 1
-        pendingRefreshAfterOpen = true
-      }
       // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。
       // 読み込みの開始ではなくコミット回数で見るのは、失敗・キャンセルした
       // 読み込みで旧フォルダのファイルが残ってしまうのを防ぐため
@@ -235,9 +229,18 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (directoryReadId !== null && directoryReadId !== latestDirectoryReadRef.current) return
       setError(err instanceof Error ? err : new Error(String(err)))
     } finally {
-      if (!pendingRefreshAfterOpen) pendingFolderOpenRef.current -= 1
+      pendingFolderOpenRef.current -= 1
+      // 走査中に完了した CRUD の結果は、このスナップショットにも保留された再読込にも
+      // 含まれていない。走査が失敗した経路でも同じなので、finally で取り直す。
+      // ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
+      if (mutationsAtStart !== null && treeMutationCountRef.current !== mutationsAtStart) {
+        try {
+          await refreshTree()
+        } catch (err) {
+          setError(err instanceof Error ? err : new Error(String(err)))
+        }
+      }
     }
-    if (pendingRefreshAfterOpen) await refreshTree()
   }
 
   // 呼び出し側が「実際に開けたか」で分岐できるよう成否を返す。クイックオープンは

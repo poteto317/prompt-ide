@@ -1055,6 +1055,87 @@ describe('useFileSystem', () => {
     expect(result.current.fileTree).toEqual(freshTree)
   })
 
+  it('フォルダ走査が失敗しても、走査中に完了した CRUD の結果を取り込む', async () => {
+    // 走査中は再読込を止めているため、失敗時に取り直さないとツリーが古いまま残る
+    mockOpenFolder.mockResolvedValue('/project')
+    mockCreateFile.mockResolvedValue(undefined)
+    const initial: FileTreeNode[] = [{ name: 'a.ts', path: '/project/a.ts', type: 'file' }]
+    const afterCreate: FileTreeNode[] = [
+      ...initial,
+      { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+    ]
+    mockReadDirectory.mockResolvedValue(initial)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // 2 回目のフォルダ走査を失敗させる
+    let rejectScan: (err: Error) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((_resolve, reject) => {
+          rejectScan = reject
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 走査中にファイル作成が成功する(再読込は保留される)
+    mockReadDirectory.mockResolvedValue(afterCreate)
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    expect(result.current.fileTree).toEqual(initial)
+
+    await act(async () => {
+      rejectScan(new Error('走査失敗'))
+      await folderPromise
+    })
+    expect(result.current.error).not.toBeNull()
+    expect(result.current.fileTree).toEqual(afterCreate)
+  })
+
+  it('フォルダ確定後の取り直しが失敗しても openFolder を reject させない', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockCreateFile.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let resolveScan: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveScan = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.createFile('/other', 'b.ts')
+    })
+
+    // 確定後の取り直しを失敗させる
+    mockReadDirectory.mockRejectedValue(new Error('取り直し失敗'))
+    let rejected = false
+    await act(async () => {
+      resolveScan([])
+      await folderPromise.catch(() => {
+        rejected = true
+      })
+    })
+    expect(rejected).toBe(false)
+    expect(result.current.error).not.toBeNull()
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
