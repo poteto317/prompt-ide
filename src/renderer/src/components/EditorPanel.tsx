@@ -30,12 +30,13 @@ interface Props {
   openedFileSignal: OpenedFileSignal
 }
 
-// フォーカスを保持しているのがダイアログの中かどうか。
-// isOverlayOpen が示すクイックオープン以外にも、Explorer のリネームダイアログなど
-// フォーカスを持つモーダルがあるため、実際のフォーカス位置からも判定する
-const isFocusInsideDialog = (): boolean => {
+// 誰もフォーカスを保持していない状態か。ダイアログやツリーなど他の要素が
+// 持っているときに奪うと、入力中や操作中の場所からフォーカスが飛ぶ。
+// クイックオープンから開いた場合はダイアログが消えて body に落ちるため、
+// この条件で受け取れる
+const isFocusUnclaimed = (): boolean => {
   const active = document.activeElement
-  return active instanceof Element && active.closest('[role="dialog"]') !== null
+  return active === null || active === document.body
 }
 
 export default function EditorPanel({
@@ -88,9 +89,9 @@ export default function EditorPanel({
       return
     }
     if (isOverlayOpenRef.current) return
-    if (isFocusInsideDialog()) {
-      // 入力中のダイアログへ譲った時点で要求は取り下げる。残しておくと、
-      // 無関係なオーバーレイの開閉であとから消費され、フォーカスが飛ぶ
+    if (!isFocusUnclaimed()) {
+      // 他へ譲った時点で要求は取り下げる。残しておくと、無関係な
+      // オーバーレイの開閉であとから消費され、フォーカスが飛ぶ
       pendingFocusPathRef.current = null
       return
     }

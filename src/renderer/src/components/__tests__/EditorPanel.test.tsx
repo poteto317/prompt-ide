@@ -427,6 +427,28 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
+  it('他の要素がフォーカスを持っているときは奪わない(ツリー操作中など)', () => {
+    // Quick Open の要求が残ったまま、エクスプローラーのクリックで選択が確定する
+    // 前に遅延 onMount が届くと、treeitem からフォーカスを奪ってしまう
+    const treeItem = document.createElement('div')
+    treeItem.setAttribute('tabindex', '0')
+    document.body.appendChild(treeItem)
+    treeItem.focus()
+
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{
+          events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }]
+        }}
+      />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+    expect(treeItem).toHaveFocus()
+    treeItem.remove()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()

@@ -20,6 +20,8 @@ interface FileTreeOperationsOptions {
   invalidatePendingReads: (affectedPath: string) => void
   /** ツリーへの書き込みを開始する。書き込めない場合は null */
   beginTreeWrite: () => (() => boolean) | null
+  /** 指定パス配下で進行中の保存の完了を待つ */
+  waitForPendingSaves: (targetPath: string) => Promise<void>
 }
 
 interface FileTreeOperationsState {
@@ -44,7 +46,8 @@ export function useFileTreeOperations({
   resetForFileChange,
   onConfirm,
   invalidatePendingReads,
-  beginTreeWrite
+  beginTreeWrite,
+  waitForPendingSaves
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -95,6 +98,8 @@ export function useFileTreeOperations({
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
+      // 保存中の書き込みがリネーム後に解決すると、旧パスが再作成される
+      await waitForPendingSaves(node.path)
       await fileSystemApi.renameEntry(node.path, newName)
       // 読み込み中のファイルがリネーム対象なら、旧 path のまま表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
@@ -132,6 +137,8 @@ export function useFileTreeOperations({
         : `「${node.name}」を削除しますか？`
     if (!onConfirm(message)) return
     await runFileOperation(async () => {
+      // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する
+      await waitForPendingSaves(node.path)
       await fileSystemApi.deleteEntry(node.path)
       // 読み込み中のファイルが削除対象なら、その結果を表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ

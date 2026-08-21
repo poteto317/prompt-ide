@@ -129,20 +129,24 @@ export function useFileSystem(options?: Options): FileSystemState {
     updateFileContent,
     saveFile,
     resetForFileChange,
-    confirmDiscardIfDirty
+    confirmDiscardIfDirty,
+    waitForPendingSaves
   } = useFileEditing(openFile, commitOpenFile, options)
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
   // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う
   const confirmDiscardIfDirtyRef = useLatestRef(confirmDiscardIfDirty)
   /** 破棄確認の要否を判定するためのスナップショット(ファイルと内容の組) */
-  type BufferSnapshot = { path: string | null; content: string | null }
+  // savedContent も含める。content と path だけだと「編集→保存→元に戻す」で
+  // 変化なしと誤判定し、保存後の未保存編集を確認なしに破棄する
+  type BufferSnapshot = { path: string | null; content: string | null; savedContent: string | null }
   // 同期ミラーから取る。layout effect で更新される ref だと、同じ tick に入った
   // 編集(commitOpenFile はミラーを即時更新する)を取りこぼし、未保存の変更を
   // 無確認で上書きしてしまう
   const snapshotBuffer = (): BufferSnapshot => ({
     path: openFileMirrorRef.current?.path ?? null,
-    content: openFileMirrorRef.current?.content ?? null
+    content: openFileMirrorRef.current?.content ?? null,
+    savedContent: openFileMirrorRef.current?.savedContent ?? null
   })
 
   // 待機の前後でバッファが変わっていたら、開始時の確認はその状態を見ていない。
@@ -151,7 +155,12 @@ export function useFileSystem(options?: Options): FileSystemState {
   // なった場合に「変化なし」と誤判定しないため
   const confirmDiscardIfChangedSince = (snapshot: BufferSnapshot): boolean => {
     const now = snapshotBuffer()
-    if (now.path === snapshot.path && now.content === snapshot.content) return true
+    if (
+      now.path === snapshot.path &&
+      now.content === snapshot.content &&
+      now.savedContent === snapshot.savedContent
+    )
+      return true
     return confirmDiscardIfDirtyRef.current()
   }
 
@@ -190,6 +199,9 @@ export function useFileSystem(options?: Options): FileSystemState {
       const seq = ++treeWriteSeqRef.current
       return () => seq === treeWriteSeqRef.current && pendingFolderOpenRef.current === 0
     },
+    // リネーム・削除は、対象の保存が終わってから行う。書き込みが後に解決すると
+    // 旧パスを再作成してしまい、削除したファイルが復活する
+    waitForPendingSaves,
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
@@ -303,7 +315,11 @@ export function useFileSystem(options?: Options): FileSystemState {
         try {
           await refreshTree()
         } catch (err) {
-          setError(err instanceof Error ? err : new Error(String(err)))
+          const failure = err instanceof Error ? err : new Error(String(err))
+          setError(failure)
+          // ツリーが空のままになるため、クイックオープン等が理由を案内できるよう
+          // 走査エラーとしても扱う
+          setFolderLoadError(failure)
         }
       }
     }

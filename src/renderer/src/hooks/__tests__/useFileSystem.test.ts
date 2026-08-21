@@ -1595,6 +1595,132 @@ describe('useFileSystem', () => {
     expect(result.current.folderLoadError?.message).toBe('走査失敗')
   })
 
+  it('保存して元の内容へ戻した場合も破棄確認を行う', async () => {
+    // content と path だけの比較だと「編集→保存→元に戻す」で変化なしと誤判定し、
+    // 保存後の未保存編集を確認なしに破棄する
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('A')
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const onConfirm = vi.fn(() => false)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      })
+    })
+
+    let resolveSecond: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSecond = resolve
+        })
+    )
+    let secondPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      secondPromise = result.current.selectFile({
+        name: 'App.tsx',
+        path: '/project/src/App.tsx',
+        type: 'file'
+      })
+    })
+    // 待っている間に 編集 → 保存 → 元の内容へ戻す
+    act(() => result.current.updateFileContent('B'))
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    act(() => result.current.updateFileContent('A'))
+    expect(result.current.isDirty).toBe(true)
+
+    onConfirm.mockClear()
+    await act(async () => {
+      resolveSecond('const y = 2')
+      await secondPromise
+    })
+    expect(onConfirm).toHaveBeenCalled()
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
+  it('保存中のファイルを削除するとき、書き込みの完了を待ってから削除する', async () => {
+    // 書き込みが削除より後に解決すると、旧パスを再作成してファイルが復活する
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('A')
+    mockDeleteEntry.mockResolvedValue(undefined)
+    let finishWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(node)
+    })
+    act(() => result.current.updateFileContent('B'))
+    act(() => {
+      void result.current.saveFile()
+    })
+
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(node)
+    })
+    await act(async () => {})
+    // 書き込みが終わるまで削除は実行されない
+    expect(mockDeleteEntry).not.toHaveBeenCalled()
+
+    await act(async () => {
+      finishWrite()
+      await deletePromise
+    })
+    expect(mockDeleteEntry).toHaveBeenCalledWith('/project/src/index.ts')
+  })
+
+  it('確定後の取り直しに失敗したら、その内容を走査エラーとして扱う', async () => {
+    mockCreateFile.mockResolvedValue(undefined)
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let resolveScan: (t: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveScan = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.createFile('/other', 'b.ts')
+    })
+
+    mockReadDirectory.mockRejectedValue(new Error('取り直し失敗'))
+    await act(async () => {
+      resolveScan([])
+      await folderPromise
+    })
+    expect(result.current.folderLoadError?.message).toBe('取り直し失敗')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

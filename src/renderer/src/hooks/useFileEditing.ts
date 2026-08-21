@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
+import { isPathInside } from '../lib/pathUtils'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
@@ -17,6 +18,8 @@ interface FileEditingState {
   saveFile: () => Promise<void>
   resetForFileChange: () => void
   confirmDiscardIfDirty: () => boolean
+  /** 指定パス配下で進行中の保存の完了を待つ(リネーム・削除と直列化するため) */
+  waitForPendingSaves: (targetPath: string) => Promise<void>
 }
 
 export function useFileEditing(
@@ -58,6 +61,16 @@ export function useFileEditing(
   // ため、即座に反映される ref（savingPaths state と同じ内容を持つ path の
   // 集合）で判定する。同一 path が既に含まれていれば再入とみなしブロックする。
   const savingPathsRef = useRef<Set<string>>(new Set())
+  // 進行中の保存の完了を待てるようにする。書き込みがリネーム・削除より後に
+  // 解決すると、旧パスを再作成してファイルが復活してしまうため
+  const savingPromisesRef = useRef<Map<string, Promise<void>>>(new Map())
+
+  const waitForPendingSaves = async (targetPath: string): Promise<void> => {
+    const pending = [...savingPromisesRef.current.entries()]
+      .filter(([path]) => path === targetPath || isPathInside(path, targetPath))
+      .map(([, promise]) => promise)
+    if (pending.length > 0) await Promise.all(pending)
+  }
 
   const updateFileContent = (content: string): void => {
     setOpenFile((prev) => (prev === null ? prev : { ...prev, content }))
@@ -87,6 +100,13 @@ export function useFileEditing(
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
+    let settleSave: () => void = () => {}
+    savingPromisesRef.current.set(
+      path,
+      new Promise<void>((resolve) => {
+        settleSave = resolve
+      })
+    )
     setSaveError(null)
     try {
       await fileSystemApi.writeFileContent(path, content)
@@ -110,6 +130,8 @@ export function useFileEditing(
     } finally {
       savingPathsRef.current.delete(path)
       setSavingPaths(new Set(savingPathsRef.current))
+      savingPromisesRef.current.delete(path)
+      settleSave()
     }
   }
 
@@ -122,6 +144,7 @@ export function useFileEditing(
     updateFileContent,
     saveFile,
     resetForFileChange,
-    confirmDiscardIfDirty
+    confirmDiscardIfDirty,
+    waitForPendingSaves
   }
 }
