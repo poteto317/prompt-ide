@@ -21,6 +21,8 @@ interface Options {
   openFilePath: string | null
   /** ファイルを実際に開いたことを示す信号。履歴の更新契機に使う */
   openedFileSignal: OpenedFileSignal
+  /** フォルダ/ファイルの読み込みエラー。ツリーが空の理由を案内するために使う */
+  error: Error | null
   /** ファイルを開けたかどうかを返す。開けなかった場合はダイアログを閉じない */
   selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
 }
@@ -32,6 +34,8 @@ export interface QuickOpenController {
   activeIndex: number
   /** フォルダを開いていないときは検索対象が無い旨を UI 側で案内する */
   hasFolder: boolean
+  /** 読み込み失敗でツリーが空のときのメッセージ。それ以外は null */
+  loadError: string | null
   open: () => void
   close: () => void
   setQuery: (query: string) => void
@@ -47,6 +51,7 @@ export function useQuickOpen({
   folderPath,
   openFilePath,
   openedFileSignal,
+  error,
   selectFile
 }: Options): QuickOpenController {
   const [isOpen, setIsOpen] = useState(false)
@@ -220,6 +225,9 @@ export function useQuickOpen({
     results,
     activeIndex,
     hasFolder: folderPath !== null,
+    // ツリーが空でエラーが立っている場合、空なのは検索結果 0 件だからではなく
+    // 読み込みに失敗しているため。その旨を案内できるようにする
+    loadError: folderPath !== null && files.length === 0 && error !== null ? error.message : null,
     open,
     close,
     setQuery,

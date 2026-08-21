@@ -16,6 +16,7 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     results,
     activeIndex,
     hasFolder,
+    loadError,
     close,
     setQuery,
     moveSelection,
@@ -84,15 +85,36 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     if (e.key === 'Tab') e.preventDefault()
   }
 
-  // 入力欄以外を押したときにフォーカスが body へ移るのを防ぐ。移ってしまうと
-  // 以降 ↑↓ / Enter / Escape が届かず、マウスでしか操作できなくなる
-  const handleDialogMouseDown = (e: React.MouseEvent): void => {
-    if (e.target !== inputRef.current) e.preventDefault()
+  // スクロールバー上の mousedown か。既定動作を止めるとドラッグできなくなる。
+  // jsdom などレイアウトを持たない環境では両方 0 になり false を返す
+  const isScrollbarMouseDown = (e: React.MouseEvent): boolean => {
+    const target = e.target
+    if (!(target instanceof HTMLElement)) return false
+    if (target.scrollHeight <= target.clientHeight) return false
+    // clientWidth はスクロールバーを含まないため、その右側なら操作対象とみなす
+    return e.clientX - target.getBoundingClientRect().left > target.clientWidth
   }
 
-  const emptyMessage = hasFolder
-    ? '一致するファイルがありません'
-    : 'フォルダが開かれていません。エクスプローラーからフォルダを開いてください'
+  // 入力欄以外を押したときにフォーカスが body へ移るのを防ぐ。移ってしまうと
+  // 以降 ↑↓ / Enter / Escape が届かず、マウスでしか操作できなくなる。
+  // ただしスクロールバーの操作は妨げず、離した時点でフォーカスを戻す
+  const handleDialogMouseDown = (e: React.MouseEvent): void => {
+    if (e.target === inputRef.current) return
+    if (isScrollbarMouseDown(e)) return
+    e.preventDefault()
+  }
+
+  const handleDialogMouseUp = (): void => {
+    if (document.activeElement !== inputRef.current) inputRef.current?.focus()
+  }
+
+  // 読み込みに失敗している場合、ツリーが空なのは検索結果 0 件だからではない
+  const emptyMessage =
+    loadError !== null
+      ? `フォルダを読み込めませんでした: ${loadError}`
+      : hasFolder
+        ? '一致するファイルがありません'
+        : 'フォルダが開かれていません。エクスプローラーからフォルダを開いてください'
 
   return (
     <div
@@ -112,6 +134,7 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
         aria-label="ファイルを開く"
         aria-modal="true"
         onMouseDown={handleDialogMouseDown}
+        onMouseUp={handleDialogMouseUp}
         onClick={(e) => e.stopPropagation()}
       >
         <input

@@ -20,6 +20,7 @@ const makeController = (overrides: Partial<QuickOpenController> = {}): QuickOpen
   results: [makeResult('App.tsx', 'src'), makeResult('main.tsx', 'src')],
   activeIndex: 0,
   hasFolder: true,
+  loadError: null,
   open: vi.fn(),
   close: vi.fn(),
   setQuery: vi.fn(),
@@ -110,6 +111,45 @@ describe('QuickOpenDialog', () => {
   it('一致する候補が無いとき案内を表示する', () => {
     render(<QuickOpenDialog controller={makeController({ results: [], query: 'zzz' })} />)
     expect(screen.getByRole('status')).toHaveTextContent('一致するファイルがありません')
+  })
+
+  it('フォルダの読み込みに失敗しているときはその内容を案内する', () => {
+    // 走査失敗時もフォルダは確定されツリーは空になるため、「一致なし」と出すと
+    // 検索結果 0 件と誤認させる
+    render(
+      <QuickOpenDialog
+        controller={makeController({ results: [], query: 'zzz', loadError: '走査に失敗しました' })}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('走査に失敗しました')
+  })
+
+  it('候補があるときは読み込みエラーの案内を出さない', () => {
+    render(<QuickOpenDialog controller={makeController({ loadError: '走査に失敗しました' })} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('一覧のスクロールバーを押したときは既定動作を妨げない', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    const list = screen.getByRole('listbox')
+    // スクロールバーが出ている状態を再現する(jsdom はレイアウトを持たない)
+    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(list, 'clientHeight', { value: 100, configurable: true })
+    Object.defineProperty(list, 'clientWidth', { value: 200, configurable: true })
+    list.getBoundingClientRect = () => ({ left: 0, top: 0, right: 215, bottom: 100 }) as DOMRect
+    const notPrevented = fireEvent.mouseDown(list, { clientX: 210 })
+    expect(notPrevented).toBe(true)
+  })
+
+  it('スクロールバー外の一覧クリックは従来どおり既定動作を抑止する', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    const list = screen.getByRole('listbox')
+    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(list, 'clientHeight', { value: 100, configurable: true })
+    Object.defineProperty(list, 'clientWidth', { value: 200, configurable: true })
+    list.getBoundingClientRect = () => ({ left: 0, top: 0, right: 215, bottom: 100 }) as DOMRect
+    const prevented = fireEvent.mouseDown(list, { clientX: 50 })
+    expect(prevented).toBe(false)
   })
 
   it('フォルダ未オープンのときフォルダを開くよう案内する', () => {
