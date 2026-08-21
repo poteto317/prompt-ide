@@ -5,8 +5,15 @@ import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
 import { useLatestRef } from './useLatestRef'
 
-/** 保持する「最近開いたファイル」の最大件数。アプリを閉じると失われるメモリ上の履歴 */
+/** 空クエリのときに表示する「最近開いたファイル」の最大件数 */
 const MAX_RECENT_FILES = 10
+/**
+ * 履歴として保持するパスの最大件数。表示上限より多く持つ。
+ * 保持の時点で存在確認して切り詰めると、削除・リネーム直後(ツリー更新前)の
+ * 一時的に有効なパスが枠を埋め、あとから無効化されても再評価されないため、
+ * 有効な履歴が欠落する。保持は素のまま行い、存在確認は表示時に行う
+ */
+const MAX_TRACKED_RECENT_PATHS = 50
 
 interface Options {
   fileTree: FileTreeNode[]
@@ -61,19 +68,13 @@ export function useQuickOpen({
   // 処理済みの信号 id を控えるので繰り返し実行されず、無限ループにはならない。
   const latestSignalId = openedFileSignal.events.at(-1)?.id ?? 0
   if (latestSignalId !== recent.lastSignalId) {
-    // 上限を適用する前に、ツリーに存在しないパス(リネーム・削除済み)を落とす。
-    // 残したままだと表示時に隠れるだけで枠を占有し、有効な履歴が押し出される。
-    // ツリーが空のとき(フォルダ読み込み前)は判定できないので除去しない
-    const isKnownPath = (path: string): boolean =>
-      files.length === 0 || files.some((file) => file.path === path)
     // 未処理のイベントを古い順に積む。1 件だけ見ると、同じバッチで複数確定した
     // ときに中間のファイルが履歴から落ちる
-    let paths = recent.paths.filter((path) => isKnownPath(path))
+    let paths = recent.paths
     for (const event of openedFileSignal.events.filter((e) => e.id > recent.lastSignalId)) {
-      if (!isKnownPath(event.path)) continue
       paths = [event.path, ...paths.filter((path) => path !== event.path)]
     }
-    setRecent({ paths: paths.slice(0, MAX_RECENT_FILES), lastSignalId: latestSignalId })
+    setRecent({ paths: paths.slice(0, MAX_TRACKED_RECENT_PATHS), lastSignalId: latestSignalId })
   }
 
   const results = useMemo(() => {
@@ -85,10 +86,13 @@ export function useQuickOpen({
     // 残すと Ctrl+P → Enter が現在のファイルの開き直しになり、未保存の編集が
     // ある場合は破棄確認から編集内容を失う経路になってしまう。
     const byPath = new Map(files.map((file) => [file.path, file]))
+    // 存在確認と表示上限はここで適用する。保持側で切り詰めないことで、
+    // 一時的に無効だったパスに有効な履歴が押し出されない
     const recentFiles = recentPaths
       .filter((path) => path !== openFilePath)
       .map((path) => byPath.get(path))
       .filter((file): file is NonNullable<typeof file> => file !== undefined)
+      .slice(0, MAX_RECENT_FILES)
     // 履歴がまだ無い初回はフォルダ内のファイルをそのまま先頭から見せる
     // (こちらの経路でも現在開いているファイルは同じ理由で除外する)
     const fallbackFiles = files.filter((file) => file.path !== openFilePath)

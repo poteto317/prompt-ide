@@ -1364,9 +1364,9 @@ describe('useFileSystem', () => {
     expect(result.current.fileTree).toEqual(tree)
   })
 
-  it('古い走査の取り込みが、確定済みの新しいフォルダにエラーを出さない', async () => {
-    // stale な走査の finally が現在のフォルダに対して取り直しを行うと、
-    // その失敗が新しい画面のエラーとして表示される
+  it('走査が並行していても、抑止された再読込を最後にやり直す', async () => {
+    // B の finally 時点では A がまだ走査中で再読込が抑止される。A の完了時に
+    // やり直さないと、走査中に完了した CRUD の結果がツリーへ反映されない
     mockCreateFile.mockResolvedValue(undefined)
     mockOpenFolder.mockResolvedValue('/old')
     mockReadDirectory.mockResolvedValue([])
@@ -1388,28 +1388,79 @@ describe('useFileSystem', () => {
     await act(async () => {
       aPromise = result.current.openFolder()
     })
-    // A の走査中に CRUD が完了する
+    // A の走査中に CRUD が完了する(再読込は抑止される)
     await act(async () => {
       await result.current.createFile('/old', 'b.ts')
     })
 
-    // B が先に成功して確定する
-    const bTree: FileTreeNode[] = [{ name: 'b.ts', path: '/b/b.ts', type: 'file' }]
+    // B が先に成功して確定する(この時点でも A が走査中なので再読込は抑止される)
     mockOpenFolder.mockResolvedValue('/b')
-    mockReadDirectory.mockResolvedValue(bTree)
+    mockReadDirectory.mockResolvedValue([])
     await act(async () => {
       await result.current.openFolder()
     })
     expect(result.current.folderPath).toBe('/b')
 
-    // A の取り直しが失敗しても、B の画面にエラーを出さない
-    mockReadDirectory.mockRejectedValue(new Error('取り直し失敗'))
+    // A の完了で走査が 0 本になり、抑止していた再読込をやり直す
+    const refreshed: FileTreeNode[] = [{ name: 'b.ts', path: '/b/b.ts', type: 'file' }]
+    mockReadDirectory.mockResolvedValue(refreshed)
     await act(async () => {
       resolveA([])
       await aPromise
     })
     expect(result.current.folderPath).toBe('/b')
-    expect(result.current.error).toBeNull()
+    expect(result.current.fileTree).toEqual(refreshed)
+  })
+
+  it('走査に失敗して確定したときも、走査中に始まった読み込みを無効化する', async () => {
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let rejectScan: (err: Error) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/new')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((_resolve, reject) => {
+          rejectScan = reject
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+
+    // 走査中に旧ツリーのファイル選択を開始する
+    let resolveRead: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve
+        })
+    )
+    let readPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      readPromise = result.current.selectFile({
+        name: 'index.ts',
+        path: '/old/src/index.ts',
+        type: 'file'
+      })
+    })
+
+    await act(async () => {
+      rejectScan(new Error('走査失敗'))
+      await folderPromise
+    })
+    await act(async () => {
+      resolveRead('const x = 1')
+      await readPromise
+    })
+    // 旧フォルダのファイルが新しいフォルダに現れてはいけない
+    expect(result.current.openFile).toBeNull()
   })
 
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {

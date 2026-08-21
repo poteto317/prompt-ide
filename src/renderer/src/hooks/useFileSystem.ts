@@ -75,8 +75,8 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 実行中の openFolder 数。走査中は再読込にツリーを触らせない(権威ある結果は
   // フォルダ読み込み側が書く)
   const pendingFolderOpenRef = useRef(0)
-  // 完了した CRUD の回数。走査中に発生していれば、確定後に取り直す
-  const treeMutationCountRef = useRef(0)
+  // 走査中に抑止した再読込があるか。最後の走査が終わった時点でやり直す
+  const refreshSkippedRef = useRef(false)
   // 実際に openFile をコミットした回数。「読み込みを開始したか」ではなく
   // 「選択が確定したか」で判定するために使う(失敗・キャンセルでは進まない)
   const committedOpenRef = useRef(0)
@@ -173,12 +173,13 @@ export function useFileSystem(options?: Options): FileSystemState {
     // ツリーへの書き込みを開始する。フォルダ走査中は書き込ませない(null)。
     // 返る関数は「自分がまだ最新の書き込みか」を返す
     beginTreeWrite: () => {
-      if (pendingFolderOpenRef.current > 0) return null
+      if (pendingFolderOpenRef.current > 0) {
+        // 走査中は書かせないが、取りこぼさないよう「抑止した」ことを記録する
+        refreshSkippedRef.current = true
+        return null
+      }
       const seq = ++treeWriteSeqRef.current
       return () => seq === treeWriteSeqRef.current && pendingFolderOpenRef.current === 0
-    },
-    onTreeMutated: () => {
-      treeMutationCountRef.current += 1
     },
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
@@ -198,8 +199,6 @@ export function useFileSystem(options?: Options): FileSystemState {
     const dialogAttemptId = ++dialogAttemptRef.current
     // 走査の世代。実際に走査へ入ってから割り当てる
     let directoryReadId: number | null = null
-    // 走査開始時点の CRUD 完了回数。走査中に増えていれば、確定後に取り直す
-    let mutationsAtStart: number | null = null
     // ネイティブダイアログは長時間開いたままになり得る。その間まで再読込を
     // 止めると、キャンセル時に捨てた再読込が復元されずツリーが古いまま残るため、
     // 実際の走査に入ってから止める
@@ -220,7 +219,6 @@ export function useFileSystem(options?: Options): FileSystemState {
       const committedOpenAtStart = committedOpenRef.current
       const snapshot = snapshotBuffer()
       const treeWriteSeq = ++treeWriteSeqRef.current
-      mutationsAtStart = treeMutationCountRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
       if (directoryReadId !== latestDirectoryReadRef.current) return
@@ -262,20 +260,18 @@ export function useFileSystem(options?: Options): FileSystemState {
         folderPathMirrorRef.current = selectedPath
         setFolderPath(selectedPath)
         setFileTree([])
+        // 成功経路と同様、走査中に始まった読み込みは旧フォルダのものなので捨てる
+        latestReadRef.current += 1
       }
       setError(err instanceof Error ? err : new Error(String(err)))
     } finally {
       if (scanning) pendingFolderOpenRef.current -= 1
-      // 走査中に完了した CRUD の結果は、このスナップショットにも保留された再読込にも
-      // 含まれていない。走査が失敗した経路でも同じなので、finally で取り直す。
+      // 走査中に抑止した再読込を、すべての走査が終わった時点でやり直す。
+      // 走査が失敗・キャンセルした経路でも必要。並行する走査があるうちは
+      // まだ抑止されるため、最後の 1 本が終わったときにだけ実行する。
       // ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
-      // 取り込みを行うのは最新の走査だけ。stale な走査がここで取り直すと、
-      // その失敗が確定済みの新しいフォルダのエラーとして表示される
-      if (
-        mutationsAtStart !== null &&
-        directoryReadId === latestDirectoryReadRef.current &&
-        treeMutationCountRef.current !== mutationsAtStart
-      ) {
+      if (pendingFolderOpenRef.current === 0 && refreshSkippedRef.current) {
+        refreshSkippedRef.current = false
         try {
           await refreshTree()
         } catch (err) {

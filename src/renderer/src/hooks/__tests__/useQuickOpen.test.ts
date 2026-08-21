@@ -34,7 +34,11 @@ type Overrides = {
   strict?: boolean
 }
 
-type HookProps = { openFilePath: string | null; openedFileSignal: OpenedFileSignal }
+type HookProps = {
+  openFilePath: string | null
+  openedFileSignal: OpenedFileSignal
+  fileTree?: FileTreeNode[]
+}
 
 const NO_SIGNAL: OpenedFileSignal = { events: [] }
 
@@ -62,7 +66,7 @@ const setup = (overrides: Overrides = {}): Setup => {
     (props: HookProps) => {
       renders++
       return useQuickOpen({
-        fileTree: overrides.fileTree ?? tree,
+        fileTree: props.fileTree ?? overrides.fileTree ?? tree,
         folderPath: overrides.folderPath === undefined ? FOLDER : overrides.folderPath,
         openFilePath: props.openFilePath,
         openedFileSignal: props.openedFileSignal,
@@ -590,15 +594,17 @@ describe('useQuickOpen', () => {
     expect(result.current.hasFolder).toBe(true)
   })
 
-  it('履歴は上限 10 件までしか保持せず、古いものから捨てる', () => {
-    const manyFiles = Array.from({ length: 12 }, (_, i) =>
+  it('表示する履歴は上限 10 件までで、古いものから落とす', () => {
+    const manyFiles = Array.from({ length: 14 }, (_, i) =>
       file(`file${i}.ts`, `/project/file${i}.ts`)
     )
     const { result, rerender } = setup({ fileTree: manyFiles })
     for (const node of manyFiles) openPath(rerender, node.path)
     act(() => result.current.open())
-    // 履歴 10 件のうち先頭は現在開いている file11 のため、表示は 9 件
+    // 現在開いている file13 を除き、新しい順に 10 件
     expect(result.current.results.map((r) => r.node.name)).toEqual([
+      'file12.ts',
+      'file11.ts',
       'file10.ts',
       'file9.ts',
       'file8.ts',
@@ -606,9 +612,29 @@ describe('useQuickOpen', () => {
       'file6.ts',
       'file5.ts',
       'file4.ts',
-      'file3.ts',
-      'file2.ts'
+      'file3.ts'
     ])
+  })
+
+  it('一時的に存在しなかったパスが有効な履歴を押し出さない', () => {
+    // 削除・リネーム直後はツリー更新まで旧パスが files に残る。保持の時点で
+    // 存在確認して切り詰めると、その一時的に有効なパスが枠を埋めてしまう
+    const base = Array.from({ length: 12 }, (_, i) => file(`file${i}.ts`, `/project/file${i}.ts`))
+    const withTemp = [...base, file('temp.ts', '/project/temp.ts')]
+    const { result, rerender } = setup({ fileTree: withTemp })
+    openPath(rerender, '/project/temp.ts')
+    for (let i = 0; i < 11; i++) openPath(rerender, `/project/file${i}.ts`)
+    // temp.ts がツリーから消える(削除・リネーム後の再読込)
+    rerender({
+      openFilePath: '/project/file10.ts',
+      openedFileSignal: { events: signalEvents },
+      fileTree: base
+    })
+    act(() => result.current.open())
+    const names = result.current.results.map((r) => r.node.name)
+    expect(names).not.toContain('temp.ts')
+    // 表示上限まで有効な履歴で埋まる(temp.ts に枠を奪われない)
+    expect(names).toHaveLength(10)
   })
 
   it('履歴の途中にあるファイルを開き直すと先頭へ移動する', () => {

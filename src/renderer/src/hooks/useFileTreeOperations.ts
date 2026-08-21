@@ -20,8 +20,6 @@ interface FileTreeOperationsOptions {
   invalidatePendingReads: (affectedPath: string) => void
   /** ツリーへの書き込みを開始する。書き込めない場合は null */
   beginTreeWrite: () => (() => boolean) | null
-  /** FS の変更が完了したことを通知する */
-  onTreeMutated: () => void
 }
 
 interface FileTreeOperationsState {
@@ -46,8 +44,7 @@ export function useFileTreeOperations({
   resetForFileChange,
   onConfirm,
   invalidatePendingReads,
-  beginTreeWrite,
-  onTreeMutated
+  beginTreeWrite
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -83,7 +80,6 @@ export function useFileTreeOperations({
     const folderAtStart = getFolderPath()
     try {
       await operation()
-      onTreeMutated()
       await refreshTree()
     } catch (err) {
       if (getFolderPath() !== folderAtStart) return

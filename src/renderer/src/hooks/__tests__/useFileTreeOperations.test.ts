@@ -46,8 +46,7 @@ function renderOperations(config?: {
       resetForFileChange,
       onConfirm,
       invalidatePendingReads,
-      beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
-      onTreeMutated: vi.fn()
+      beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard
     })
     return { ...ops, openFile }
   })
@@ -64,8 +63,7 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       resetForFileChange: vi.fn(),
       onConfirm: () => true,
       invalidatePendingReads: vi.fn(),
-      beginTreeWrite: makeTreeWriteGuard(),
-      onTreeMutated: vi.fn()
+      beginTreeWrite: makeTreeWriteGuard()
     })
   })
   return { result }
