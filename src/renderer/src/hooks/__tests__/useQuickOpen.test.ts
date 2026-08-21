@@ -840,6 +840,21 @@ describe('useQuickOpen', () => {
     expect(result.current.results.map((r) => r.node.path)).toEqual(['C:\\project\\a.ts'])
   })
 
+  it('Windows では表記だけ違う履歴を重複させない', () => {
+    // 生の比較で重複排除すると新旧の表記が両方残り、空クエリの候補に
+    // 同じファイルが 2 件並ぶ(byPath はどちらも同じノードへ解決する)
+    const winTree: FileTreeNode[] = [
+      { name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' },
+      { name: 'c.ts', path: 'C:\\project\\c.ts', type: 'file' }
+    ]
+    const { result, rerender } = setup({ fileTree: winTree, folderPath: 'C:\\project' })
+    openPath(rerender, 'C:\\Project\\A.ts')
+    openPath(rerender, 'C:\\project\\a.ts')
+    openPath(rerender, 'C:\\project\\c.ts')
+    act(() => result.current.open())
+    expect(result.current.results.map((r) => r.node.path)).toEqual(['C:\\project\\a.ts'])
+  })
+
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)

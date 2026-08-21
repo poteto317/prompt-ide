@@ -87,7 +87,10 @@ export function useQuickOpen({
     // ときに中間のファイルが履歴から落ちる
     let paths = recent.paths
     for (const event of openedFileSignal.events.filter((e) => e.id > recent.lastSignalId)) {
-      paths = [event.path, ...paths.filter((path) => path !== event.path)]
+      // 重複排除も正規化して比較する。生の比較だと Windows の case-only rename の
+      // 前後で新旧の表記が両方残り、空クエリの候補に同じファイルが 2 件並ぶ
+      const eventKey = toComparablePath(event.path)
+      paths = [event.path, ...paths.filter((path) => toComparablePath(path) !== eventKey)]
     }
     setRecent({ paths: paths.slice(0, MAX_TRACKED_RECENT_PATHS), lastSignalId: latestSignalId })
   }
