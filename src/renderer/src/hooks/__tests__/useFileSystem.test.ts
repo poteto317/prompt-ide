@@ -2335,6 +2335,32 @@ describe('useFileSystem', () => {
     expect(mockReadDirectory.mock.calls.length).toBe(readsBefore + 1)
   })
 
+  it('Windows で表記だけ違う同じファイルの信号は重複させない', async () => {
+    // 重複が残ると上限 50 件を食い潰し、同一バッチで多数開いたときに
+    // 別ファイルのイベントが処理前に押し出されて履歴が欠落する
+    const winTree: FileTreeNode[] = [
+      { name: 'a.ts', path: 'C:\\project\\a.ts', type: 'file' },
+      { name: 'b.ts', path: 'C:\\project\\b.ts', type: 'file' }
+    ]
+    mockOpenFolder.mockResolvedValue('C:\\project')
+    mockReadDirectory.mockResolvedValue(winTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem())
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(winTree[0])
+      await result.current.selectFile(winTree[1])
+      // 表記だけ違う同じファイルを開き直す
+      await result.current.selectFile({
+        name: 'A.ts',
+        path: 'C:\\Project\\A.ts',
+        type: 'file'
+      })
+    })
+    const paths = result.current.openedFileSignal.events.map((event) => event.path)
+    expect(paths).toEqual(['C:\\project\\b.ts', 'C:\\Project\\A.ts'])
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

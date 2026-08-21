@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useLatestRef } from './useLatestRef'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
-import { isPathAtOrInside } from '../lib/pathUtils'
+import { isPathAtOrInside, toComparablePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
@@ -375,10 +375,12 @@ export function useFileSystem(options?: Options): FileSystemState {
       setOpenedFileSignal((prev) => {
         const nextId = ++openedFileEventSeqRef.current
         // 同じパスの古いイベントは畳む。件数だけで切ると、重複を含んだ列が
-        // 枠を埋めて中間の(本来保持すべき別ファイルの)履歴が落ちる
+        // 枠を埋めて中間の(本来保持すべき別ファイルの)履歴が落ちる。
+        // Windows では表記だけ違うパスも同じファイルなので正規化して比較する
+        const openedKey = toComparablePath(fileNode.path)
         return {
           events: [
-            ...prev.events.filter((event) => event.path !== fileNode.path),
+            ...prev.events.filter((event) => toComparablePath(event.path) !== openedKey),
             {
               id: nextId,
               path: fileNode.path,
