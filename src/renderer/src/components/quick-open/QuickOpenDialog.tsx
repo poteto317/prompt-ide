@@ -17,6 +17,7 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     activeIndex,
     hasFolder,
     loadError,
+    hasHandedOverFocus,
     close,
     setQuery,
     moveSelection,
@@ -45,9 +46,12 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     // 控えていた要素は DOM から切り離されている。その場合の復帰は
     // エディタ側(onMount での focus)が担うため、ここでは何もしない
     return () => {
+      // ファイルを開いて閉じた場合はエディタへフォーカスを渡す。ここで戻すと
+      // エディタ側が「他が保持している」と判断して受け取れない
+      if (hasHandedOverFocus()) return
       if (previouslyFocused?.isConnected === true) previouslyFocused.focus()
     }
-  }, [isOpen])
+  }, [isOpen, hasHandedOverFocus])
 
   // キーボードで選択を動かしたとき、選択中の項目が一覧の外に出たままにならないようにする
   useEffect(() => {

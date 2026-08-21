@@ -36,6 +36,11 @@ export interface QuickOpenController {
   hasFolder: boolean
   /** 読み込み失敗でツリーが空のときのメッセージ。それ以外は null */
   loadError: string | null
+  /**
+   * 直近の閉じる操作が「ファイルを開いたこと」によるものか。
+   * true のときにダイアログが元の要素へフォーカスを戻すと、エディタへ渡らない
+   */
+  hasHandedOverFocus: () => boolean
   open: () => void
   close: () => void
   setQuery: (query: string) => void
@@ -116,10 +121,14 @@ export function useQuickOpen({
   // 閉じることも、解決しない読み込みが以降の confirm を塞ぐこともなくなる
   const generationRef = useRef(0)
   const confirmingGenerationRef = useRef<number | null>(null)
+  // ファイルを開いて閉じた場合、フォーカスはエディタへ渡す。ダイアログが
+  // 元の要素へ戻すと、エディタ側が受け取れなくなる
+  const handedOverFocusRef = useRef(false)
 
   const startNewGeneration = useCallback((): void => {
     generationRef.current += 1
     confirmingGenerationRef.current = null
+    handedOverFocusRef.current = false
   }, [])
 
   const open = useCallback((): void => {
@@ -164,7 +173,9 @@ export function useQuickOpen({
       void selectFile(target.node, { moveFocusToEditor: true })
         .then((opened) => {
           if (generation !== generationRef.current) return
-          if (opened) setIsOpen(false)
+          if (!opened) return
+          handedOverFocusRef.current = true
+          setIsOpen(false)
         })
         .finally(() => {
           if (confirmingGenerationRef.current === generation) {
@@ -231,6 +242,7 @@ export function useQuickOpen({
       folderPath !== null && files.length === 0 && folderLoadError !== null
         ? folderLoadError.message
         : null,
+    hasHandedOverFocus: () => handedOverFocusRef.current,
     open,
     close,
     setQuery,

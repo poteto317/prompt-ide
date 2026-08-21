@@ -21,6 +21,7 @@ const makeController = (overrides: Partial<QuickOpenController> = {}): QuickOpen
   activeIndex: 0,
   hasFolder: true,
   loadError: null,
+  hasHandedOverFocus: () => false,
   open: vi.fn(),
   close: vi.fn(),
   setQuery: vi.fn(),
@@ -250,6 +251,25 @@ describe('QuickOpenDialog', () => {
 
     rerender(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
     expect(focusSpy).not.toHaveBeenCalled()
+  })
+
+  it('ファイルを開いて閉じたときは、元の要素へフォーカスを戻さない', () => {
+    // 戻してしまうと EditorPanel 側がフォーカスを受け取れず、エディタへ移らない
+    const outside = document.createElement('button')
+    document.body.appendChild(outside)
+    outside.focus()
+
+    let handedOver = false
+    const controller = makeController({ hasHandedOverFocus: () => handedOver })
+    const { rerender } = render(<QuickOpenDialog controller={controller} />)
+    handedOver = true
+    rerender(
+      <QuickOpenDialog
+        controller={makeController({ isOpen: false, hasHandedOverFocus: () => handedOver })}
+      />
+    )
+    expect(outside).not.toHaveFocus()
+    outside.remove()
   })
 
   it('閉じたとき開く前にフォーカスがあった要素へ戻す', () => {

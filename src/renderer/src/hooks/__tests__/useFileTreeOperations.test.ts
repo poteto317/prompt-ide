@@ -47,7 +47,8 @@ function renderOperations(config?: {
       onConfirm,
       invalidatePendingReads,
       beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
-      waitForPendingSaves: async () => {}
+      lockPathForFileOperation: async () => () => {},
+      reportTreeLoad: vi.fn()
     })
     return { ...ops, openFile }
   })
@@ -65,7 +66,8 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       onConfirm: () => true,
       invalidatePendingReads: vi.fn(),
       beginTreeWrite: makeTreeWriteGuard(),
-      waitForPendingSaves: async () => {}
+      lockPathForFileOperation: async () => () => {},
+      reportTreeLoad: vi.fn()
     })
   })
   return { result }

@@ -130,7 +130,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     saveFile,
     resetForFileChange,
     confirmDiscardIfDirty,
-    waitForPendingSaves
+    lockPathForFileOperation
   } = useFileEditing(openFile, commitOpenFile, options)
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
@@ -201,7 +201,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     },
     // リネーム・削除は、対象の保存が終わってから行う。書き込みが後に解決すると
     // 旧パスを再作成してしまい、削除したファイルが復活する
-    waitForPendingSaves,
+    lockPathForFileOperation,
+    reportTreeLoad: (loadError) => setFolderLoadError(loadError),
     invalidatePendingReads: (affectedPath: string) => {
       const pending = pendingReadPathRef.current
       if (pending === null) return
@@ -214,7 +215,6 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
-    setFolderLoadError(null)
     // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
@@ -234,6 +234,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     try {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
+      // キャンセル時に現在のエラーを消さないよう、パスが返ってからクリアする
+      setFolderLoadError(null)
       pendingFolderOpenRef.current += 1
       scanning = true
       selectedPath = path
@@ -314,6 +316,8 @@ export function useFileSystem(options?: Options): FileSystemState {
         refreshSkippedRef.current = false
         try {
           await refreshTree()
+          // 取り直しに成功したなら、走査失敗のエラーはもう当てはまらない
+          setError(null)
         } catch (err) {
           const failure = err instanceof Error ? err : new Error(String(err))
           setError(failure)

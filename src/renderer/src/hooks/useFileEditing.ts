@@ -18,8 +18,12 @@ interface FileEditingState {
   saveFile: () => Promise<void>
   resetForFileChange: () => void
   confirmDiscardIfDirty: () => boolean
-  /** 指定パス配下で進行中の保存の完了を待つ(リネーム・削除と直列化するため) */
-  waitForPendingSaves: (targetPath: string) => Promise<void>
+  /**
+   * 指定パス配下を「FS 操作中」として予約し、進行中の保存が無くなるまで待つ。
+   * 戻り値を呼ぶまで、そのパス配下の新しい保存は開始されない。
+   * 待つだけでは、待機後〜操作完了までの間に始まった保存が旧パスを再作成する
+   */
+  lockPathForFileOperation: (targetPath: string) => Promise<() => void>
 }
 
 export function useFileEditing(
@@ -65,11 +69,32 @@ export function useFileEditing(
   // 解決すると、旧パスを再作成してファイルが復活してしまうため
   const savingPromisesRef = useRef<Map<string, Promise<void>>>(new Map())
 
-  const waitForPendingSaves = async (targetPath: string): Promise<void> => {
-    const pending = [...savingPromisesRef.current.entries()]
-      .filter(([path]) => path === targetPath || isPathInside(path, targetPath))
-      .map(([, promise]) => promise)
-    if (pending.length > 0) await Promise.all(pending)
+  // FS 操作中のパス。この配下の保存は開始させない
+  const lockedPathsRef = useRef<string[]>([])
+
+  const isPathLocked = (path: string): boolean =>
+    lockedPathsRef.current.some((locked) => path === locked || isPathInside(path, locked))
+
+  const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
+    lockedPathsRef.current = [...lockedPathsRef.current, targetPath]
+    // 予約してから待つ。待機中に新しい保存は始まらないので、0 件になれば以降も 0 件。
+    // ただし待機の解決順によっては複数回の確認が要るためループする
+    for (;;) {
+      const pending = [...savingPromisesRef.current.entries()]
+        .filter(([path]) => path === targetPath || isPathInside(path, targetPath))
+        .map(([, promise]) => promise)
+      if (pending.length === 0) break
+      await Promise.all(pending)
+    }
+    return () => {
+      const index = lockedPathsRef.current.indexOf(targetPath)
+      if (index !== -1) {
+        lockedPathsRef.current = [
+          ...lockedPathsRef.current.slice(0, index),
+          ...lockedPathsRef.current.slice(index + 1)
+        ]
+      }
+    }
   }
 
   const updateFileContent = (content: string): void => {
@@ -97,6 +122,8 @@ export function useFileEditing(
     if (openFile.content === openFile.savedContent) return
     const { path, content } = openFile
     if (savingPathsRef.current.has(path)) return
+    // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため
+    if (isPathLocked(path)) return
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
@@ -145,6 +172,6 @@ export function useFileEditing(
     saveFile,
     resetForFileChange,
     confirmDiscardIfDirty,
-    waitForPendingSaves
+    lockPathForFileOperation
   }
 }

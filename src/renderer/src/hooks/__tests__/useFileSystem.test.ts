@@ -1097,8 +1097,10 @@ describe('useFileSystem', () => {
       rejectScan(new Error('走査失敗'))
       await folderPromise
     })
-    expect(result.current.error).not.toBeNull()
     expect(result.current.fileTree).toEqual(afterCreate)
+    // 取り直しに成功したので、走査失敗のエラーはもう当てはまらない
+    expect(result.current.error).toBeNull()
+    expect(result.current.folderLoadError).toBeNull()
   })
 
   it('フォルダ確定後の取り直しが失敗しても openFolder を reject させない', async () => {
@@ -1719,6 +1721,88 @@ describe('useFileSystem', () => {
       await folderPromise
     })
     expect(result.current.folderLoadError?.message).toBe('取り直し失敗')
+  })
+
+  it('削除の実行中に始めようとした保存は書き込みを行わない', async () => {
+    // 待機後〜FS 操作完了までの間に保存が始まると、旧パスを再作成してしまう
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('A')
+    mockWriteFileContent.mockResolvedValue(undefined)
+    let finishDelete: () => void = () => {}
+    mockDeleteEntry.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishDelete = resolve
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(node)
+    })
+
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(node)
+    })
+    await act(async () => {})
+
+    // 削除の実行中に編集して保存しようとする
+    act(() => result.current.updateFileContent('B'))
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+
+    await act(async () => {
+      finishDelete()
+      await deletePromise
+    })
+  })
+
+  it('走査失敗後にフォルダ変更をキャンセルしてもエラーを消さない', async () => {
+    // エラーだけ消えると、空のツリーを「一致するファイルがありません」と誤案内する
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockRejectedValue(new Error('走査失敗'))
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderLoadError?.message).toBe('走査失敗')
+
+    mockOpenFolder.mockResolvedValueOnce(null)
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderLoadError?.message).toBe('走査失敗')
+  })
+
+  it('CRUD 後の再読込に失敗したら走査エラーとして扱い、成功したら消す', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    mockCreateFile.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    mockReadDirectory.mockRejectedValueOnce(new Error('再読込失敗'))
+    await act(async () => {
+      await result.current.createFile('/project', 'a.ts')
+    })
+    expect(result.current.folderLoadError?.message).toBe('再読込失敗')
+
+    const tree: FileTreeNode[] = [{ name: 'a.ts', path: '/project/a.ts', type: 'file' }]
+    mockReadDirectory.mockResolvedValue(tree)
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    expect(result.current.folderLoadError).toBeNull()
+    expect(result.current.error).toBeNull()
   })
 
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
