@@ -330,6 +330,30 @@ describe('QuickOpenDialog', () => {
     expect(input).toHaveFocus()
   })
 
+  it('フォーカスがダイアログ外にあっても Tab で背後の画面へ移らない', () => {
+    // 入力欄の onKeyDown だけに任せると、何らかの理由でフォーカスが外れた時点で
+    // aria-modal のフォーカストラップが破れ、背後の要素へ Tab で移動できてしまう
+    const outside = document.createElement('button')
+    document.body.prepend(outside)
+    try {
+      render(<QuickOpenDialog controller={makeController()} />)
+      const input = screen.getByRole('combobox')
+      outside.focus()
+      expect(outside).toHaveFocus()
+      const event = new KeyboardEvent('keydown', {
+        key: 'Tab',
+        bubbles: true,
+        cancelable: true
+      })
+      outside.dispatchEvent(event)
+      // 既定動作を止めないと、ブラウザは背後の要素へフォーカスを移してしまう
+      expect(event.defaultPrevented).toBe(true)
+      expect(input).toHaveFocus()
+    } finally {
+      outside.remove()
+    }
+  })
+
   it('isOpen が false のとき何も描画しない', () => {
     const { container } = render(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
     expect(container).toBeEmptyDOMElement()

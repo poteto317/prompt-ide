@@ -61,6 +61,20 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
     active?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, results])
 
+  // Tab は document の capture で受ける。入力欄の onKeyDown だけに任せると、
+  // フォーカスがダイアログの外へ移った時点で aria-modal のフォーカストラップが
+  // 破れ、背後の画面へ移動できてしまう(Escape を document で受けるのと同じ理由)
+  useEffect(() => {
+    if (!isOpen) return
+    const handleTab = (event: KeyboardEvent): void => {
+      if (event.key !== 'Tab') return
+      event.preventDefault()
+      if (document.activeElement !== inputRef.current) inputRef.current?.focus()
+    }
+    document.addEventListener('keydown', handleTab, true)
+    return () => document.removeEventListener('keydown', handleTab, true)
+  }, [isOpen])
+
   if (!isOpen) return null
 
   // Escape は useQuickOpen が document で購読するためここでは扱わない
@@ -84,9 +98,6 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
       confirm()
       return
     }
-    // aria-modal を宣言している以上、フォーカスはダイアログ内に留める。
-    // フォーカス可能な要素は入力欄だけなので、Tab を止めれば外へ抜けない
-    if (e.key === 'Tab') e.preventDefault()
   }
 
   // スクロールバー上の mousedown か。既定動作を止めるとドラッグできなくなる。
