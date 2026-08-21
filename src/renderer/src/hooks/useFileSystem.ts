@@ -9,8 +9,11 @@ import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
 
-/** 信号に保持するイベント数。履歴の上限を賄えれば十分 */
-const MAX_OPENED_FILE_EVENTS = 10
+/**
+ * 信号に保持するイベント数。消費側が同じレンダーまで処理できないことがあるため、
+ * 消費側(useQuickOpen)が追跡する履歴の上限以上を保持する必要がある
+ */
+const MAX_OPENED_FILE_EVENTS = 50
 
 export interface OpenedFileEvent {
   /** ファイルを開くたびに増える。同じファイルを開き直しても進む */
@@ -206,6 +209,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     // ダイアログで選択されたフォルダ。main は選択直後にアクセス範囲を
     // このフォルダへ切り替えるため、走査に失敗しても表示を合わせる必要がある
     let selectedPath: string | null = null
+    // 失敗経路でも成功経路と同じ判定を行うため、走査開始時点の状態を控える
+    let committedOpenAtStart: number | null = null
+    let snapshot: BufferSnapshot | null = null
     try {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
@@ -216,8 +222,8 @@ export function useFileSystem(options?: Options): FileSystemState {
       // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
-      const committedOpenAtStart = committedOpenRef.current
-      const snapshot = snapshotBuffer()
+      committedOpenAtStart = committedOpenRef.current
+      snapshot = snapshotBuffer()
       const treeWriteSeq = ++treeWriteSeqRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
@@ -262,6 +268,17 @@ export function useFileSystem(options?: Options): FileSystemState {
         setFileTree([])
         // 成功経路と同様、走査中に始まった読み込みは旧フォルダのものなので捨てる
         latestReadRef.current += 1
+        // 旧フォルダのファイルを開いたままにすると、アクセス範囲は選択先なのに
+        // 保存・再読込が不整合になる。成功経路と同じ判定で閉じる
+        if (
+          committedOpenAtStart !== null &&
+          committedOpenRef.current === committedOpenAtStart &&
+          snapshot !== null &&
+          confirmDiscardIfChangedSince(snapshot)
+        ) {
+          commitOpenFile(null)
+          resetForFileChange()
+        }
       }
       setError(err instanceof Error ? err : new Error(String(err)))
     } finally {

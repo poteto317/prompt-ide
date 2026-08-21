@@ -17,6 +17,24 @@ export type QuickOpenResult = {
 /** 一覧に表示する最大件数。増やすほど描画コストが上がるため既定値で打ち切る */
 export const DEFAULT_RESULT_LIMIT = 50
 
+/**
+ * コードポイント順で比較する。'<' は UTF-16 コードユニット順のため、
+ * サロゲートペア(BMP 外の文字)を含むと本来の順序と逆になる
+ */
+const compareByCodePoint = (a: string, b: string): number => {
+  let i = 0
+  let j = 0
+  while (i < a.length && j < b.length) {
+    const codeA = a.codePointAt(i) as number
+    const codeB = b.codePointAt(j) as number
+    if (codeA !== codeB) return codeA < codeB ? -1 : 1
+    i += codeA > 0xffff ? 2 : 1
+    j += codeB > 0xffff ? 2 : 1
+  }
+  if (i >= a.length && j >= b.length) return 0
+  return i >= a.length ? -1 : 1
+}
+
 const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
 const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
 
@@ -145,8 +163,7 @@ export const searchFiles = (
     if (a.matchedName !== b.matchedName) return a.matchedName ? -1 : 1
     if (b.score !== a.score) return b.score - a.score
     if (a.node.name.length !== b.node.name.length) return a.node.name.length - b.node.name.length
-    if (a.node.path === b.node.path) return 0
-    return a.node.path < b.node.path ? -1 : 1
+    return compareByCodePoint(a.node.path, b.node.path)
   })
   return results.slice(0, limit)
 }

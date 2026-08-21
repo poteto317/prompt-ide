@@ -123,6 +123,17 @@ describe('searchFiles', () => {
     expect(searchFiles('x.ts', sameNameFiles, ROOT).map((r) => r.directory)).toEqual(['Z', 'a'])
   })
 
+  it('BMP 外の文字を含むパスもコードポイント順で並べる', () => {
+    // '<' は UTF-16 コードユニット順のため、サロゲートペアで順序が逆転する
+    const emoji = '\u{10000}' // U+10000: コードポイントは U+E000 より大きい
+    const bmp = '\uE000'
+    const sameNameFiles = [
+      file('x.ts', `/project/${emoji}/x.ts`),
+      file('x.ts', `/project/${bmp}/x.ts`)
+    ]
+    expect(searchFiles('x.ts', sameNameFiles, ROOT).map((r) => r.directory)).toEqual([bmp, emoji])
+  })
+
   it('スコア同点のとき相対パス昇順で安定した順序を返す', () => {
     const sameNameFiles = [
       file('a.ts', '/project/z/a.ts'),

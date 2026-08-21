@@ -1463,6 +1463,92 @@ describe('useFileSystem', () => {
     expect(result.current.openFile).toBeNull()
   })
 
+  it('走査に失敗して確定するとき、変更が無ければ開いているファイルも閉じる', async () => {
+    // 旧フォルダのファイルが残ると、アクセス範囲は選択先なのに保存・再読込が不整合になる
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/old/src/index.ts',
+        type: 'file'
+      })
+    })
+    expect(result.current.openFile).not.toBeNull()
+
+    mockOpenFolder.mockResolvedValue('/new')
+    mockReadDirectory.mockRejectedValue(new Error('走査失敗'))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderPath).toBe('/new')
+    expect(result.current.openFile).toBeNull()
+  })
+
+  it('走査に失敗しても、破棄がキャンセルされればファイルを閉じない', async () => {
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const onConfirm = vi.fn(() => true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/old/src/index.ts',
+        type: 'file'
+      })
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    let rejectScan: (err: Error) => void = () => {}
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((_resolve, reject) => {
+          rejectScan = reject
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 走査中に編集し、破棄をキャンセルする
+    act(() => result.current.updateFileContent('編集済み'))
+    onConfirm.mockReturnValue(false)
+    await act(async () => {
+      rejectScan(new Error('走査失敗'))
+      await folderPromise
+    })
+    expect(result.current.openFile?.content).toBe('編集済み')
+  })
+
+  it('同じバッチで多数のファイルが確定しても、履歴の追跡上限まで信号に残る', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('x')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      for (let i = 0; i < 12; i++) {
+        await result.current.selectFile({
+          name: `f${i}.ts`,
+          path: `/project/f${i}.ts`,
+          type: 'file'
+        })
+      }
+    })
+    expect(result.current.openedFileSignal.events).toHaveLength(12)
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
