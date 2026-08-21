@@ -6,6 +6,8 @@ export type QuickOpenResult = {
   /** ルートフォルダからの相対ディレクトリ。ルート直下のファイルは空文字列 */
   directory: string
   score: number
+  /** ファイル名にマッチしたか。false ならパス全体でのマッチ */
+  matchedName: boolean
   /** node.name 上のハイライト位置 */
   nameIndices: number[]
   /** directory 上のハイライト位置 */
@@ -14,14 +16,6 @@ export type QuickOpenResult = {
 
 /** 一覧に表示する最大件数。増やすほど描画コストが上がるため既定値で打ち切る */
 export const DEFAULT_RESULT_LIMIT = 50
-
-/**
- * ファイル名にマッチしたときの加点。
- * VS Code と同様に「パスの途中に紛れ込んだ一致」より「ファイル名の一致」を上位に出す。
- * fuzzyMatch の 1 文字あたりの配点(最大 34)を十分に上回る値にして、
- * パス一致がファイル名一致を追い越さないようにする。
- */
-const NAME_MATCH_BONUS = 1000
 
 const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
 const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
@@ -49,7 +43,9 @@ const toRelativePath = (fullPath: string, rootPath: string | null): string => {
   const normalizedPath = toForwardSlashes(fullPath)
   if (rootPath === null) return normalizedPath
   const normalizedRoot = stripTrailingSeparators(toForwardSlashes(rootPath))
-  if (normalizedRoot.length === 0) return normalizedPath
+  // rootPath が POSIX のルート('/')だと末尾区切りの除去で空文字になる。
+  // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする
+  if (normalizedRoot.length === 0) return normalizedPath.replace(/^\//, '')
   const prefix = `${normalizedRoot}/`
   return normalizedPath.startsWith(prefix) ? normalizedPath.slice(prefix.length) : normalizedPath
 }
@@ -61,6 +57,7 @@ const directoryOf = (relativePath: string): string => {
 
 type MatchParts = {
   score: number
+  matchedName: boolean
   nameIndices: number[]
   directoryIndices: number[]
 }
@@ -74,7 +71,8 @@ const matchFile = (query: string, name: string, relativePath: string): MatchPart
   const nameMatch = fuzzyMatch(query, name)
   if (nameMatch !== null) {
     return {
-      score: nameMatch.score + NAME_MATCH_BONUS,
+      score: nameMatch.score,
+      matchedName: true,
       nameIndices: nameMatch.indices,
       directoryIndices: []
     }
@@ -93,7 +91,7 @@ const matchFile = (query: string, name: string, relativePath: string): MatchPart
       directoryIndices.push(index)
     }
   }
-  return { score: pathMatch.score, nameIndices, directoryIndices }
+  return { score: pathMatch.score, matchedName: false, nameIndices, directoryIndices }
 }
 
 /**
@@ -113,6 +111,7 @@ export const searchFiles = (
       node,
       directory: directoryOf(toRelativePath(node.path, rootPath)),
       score: 0,
+      matchedName: false,
       nameIndices: [],
       directoryIndices: []
     }))
@@ -127,16 +126,21 @@ export const searchFiles = (
       node,
       directory: directoryOf(relativePath),
       score: match.score,
+      matchedName: match.matchedName,
       nameIndices: match.nameIndices,
       directoryIndices: match.directoryIndices
     })
   }
 
-  // 同点時はまずファイル名の短い順(クエリが占める割合が高いほど目的に近い)、
+  // VS Code と同様に「パスの途中に紛れ込んだ一致」より「ファイル名の一致」を優先する。
+  // スコアへの固定加点ではなく比較キーの順序で表すのは、スコアがクエリ長に比例して
+  // 伸びるため、どんな固定値でも十分に長いクエリでは追い越されてしまうため。
+  // 同スコアならファイル名の短い順(クエリが占める割合が高いほど目的に近い)、
   // それも同じならパス昇順に固定して、入力のたびに並びが揺れないようにする。
   // 比較に localeCompare を使うと既定ロケール依存('a' < 'Z' になる環境がある)に
   // なるため、環境をまたいで再現するようコードポイント順で決める
   results.sort((a, b) => {
+    if (a.matchedName !== b.matchedName) return a.matchedName ? -1 : 1
     if (b.score !== a.score) return b.score - a.score
     if (a.node.name.length !== b.node.name.length) return a.node.name.length - b.node.name.length
     if (a.node.path === b.node.path) return 0

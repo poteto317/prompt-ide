@@ -120,7 +120,9 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
           className="quick-open__input"
           role="combobox"
           aria-label="ファイル名で検索"
-          aria-expanded={results.length > 0}
+          // popup(listbox)はダイアログ表示中つねに DOM にあるため、
+          // 候補 0 件でも aria-expanded は true。件数ではなく開閉状態を表す属性
+          aria-expanded
           aria-controls={LISTBOX_ID}
           aria-autocomplete="list"
           {...(results.length > 0 ? { 'aria-activedescendant': optionId(activeIndex) } : {})}

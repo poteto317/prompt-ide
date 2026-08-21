@@ -39,7 +39,7 @@ export function useQuickOpen({
 }: Options): QuickOpenController {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQueryState] = useState('')
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [rawActiveIndex, setActiveIndex] = useState(0)
   const [recentPaths, setRecentPaths] = useState<string[]>([])
 
   // 開いたファイルが変わるたびに履歴の先頭へ積み直す。同一パスは先に取り除いて重複を防ぐ。
@@ -76,15 +76,35 @@ export function useQuickOpen({
     return searchFiles('', recentFiles.length > 0 ? recentFiles : fallbackFiles, folderPath)
   }, [query, files, folderPath, recentPaths, openFilePath])
 
+  // 候補の増減に追随して選択位置を有効な範囲に収める。state を書き換えるのではなく
+  // 参照時に補正することで、results と activeIndex が食い違う瞬間を作らない
+  const activeIndex = results.length === 0 ? 0 : Math.min(rawActiveIndex, results.length - 1)
+
+  // selectFile の解決を待つ間ダイアログは開いたままで入力欄もフォーカスを保持する。
+  // Enter のキーリピートで多重に走らせると、破棄確認が何度も出たうえ、
+  // 後から解決した読み込みが表示中のファイルを上書きしてしまう。
+  // 開閉のたびに世代を進め、解決した読み込みが「今の」試行のものか判定する。
+  // これにより、読み込み中に閉じて開き直した場合に古い結果が新しいダイアログを
+  // 閉じることも、解決しない読み込みが以降の confirm を塞ぐこともなくなる
+  const generationRef = useRef(0)
+  const confirmingGenerationRef = useRef<number | null>(null)
+
+  const startNewGeneration = useCallback((): void => {
+    generationRef.current += 1
+    confirmingGenerationRef.current = null
+  }, [])
+
   const open = useCallback((): void => {
     setQueryState('')
     setActiveIndex(0)
     setIsOpen(true)
-  }, [])
+    startNewGeneration()
+  }, [startNewGeneration])
 
   const close = useCallback((): void => {
     setIsOpen(false)
-  }, [])
+    startNewGeneration()
+  }, [startNewGeneration])
 
   const setQuery = useCallback((next: string): void => {
     setQueryState(next)
@@ -101,26 +121,25 @@ export function useQuickOpen({
     [results.length]
   )
 
-  // selectFile の解決を待つ間ダイアログは開いたままで入力欄もフォーカスを保持する。
-  // Enter のキーリピートで多重に走らせると、破棄確認が何度も出たうえ、
-  // 後から解決した読み込みが表示中のファイルを上書きしてしまう
-  const confirmingRef = useRef(false)
-
   const confirm = useCallback(
     (index?: number): void => {
-      if (confirmingRef.current) return
+      if (confirmingGenerationRef.current === generationRef.current) return
       const target = results[index ?? activeIndex]
       if (target === undefined) return
-      confirmingRef.current = true
+      const generation = generationRef.current
+      confirmingGenerationRef.current = generation
       // 実際に開けたときだけ閉じる。selectFile は未保存時に破棄確認を出すため、
       // ここで先に閉じてしまうと、キャンセルされた場合にファイルは切り替わらないのに
       // ダイアログだけ消えて入力中のクエリを失う
       void selectFile(target.node)
         .then((opened) => {
+          if (generation !== generationRef.current) return
           if (opened) setIsOpen(false)
         })
         .finally(() => {
-          confirmingRef.current = false
+          if (confirmingGenerationRef.current === generation) {
+            confirmingGenerationRef.current = null
+          }
         })
     },
     [results, activeIndex, selectFile]

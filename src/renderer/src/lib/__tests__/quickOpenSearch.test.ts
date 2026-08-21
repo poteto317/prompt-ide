@@ -178,6 +178,39 @@ describe('searchFiles', () => {
     expect(matched).toBe('hooks')
   })
 
+  it('rootPath がルート(/)でもルートからの相対ディレクトリを返す', () => {
+    // 末尾区切りを落とすと空文字になるため、素朴に実装するとフルパスのままになる
+    const rootFiles = [file('App.tsx', '/project/src/App.tsx')]
+    expect(searchFiles('app', rootFiles, '/')[0].directory).toBe('project/src')
+  })
+
+  it('クエリが長くてもファイル名一致をパス一致より必ず上位に並べる', () => {
+    // スコアへの固定加点で優先度を表すと、クエリが長いほどスコア差が広がり、
+    // 加点を超えた時点でパスだけ一致した候補がファイル名一致を追い越す。
+    // 下記は 90 文字のクエリでスコア差が 1000 を超える構成
+    const query = Array.from({ length: 90 }, (_, i) => String.fromCharCode(97 + (i % 26))).join('')
+    const spreadName = `${query.split('').join('00000')}.ts`
+    const boundaryPath = query.split('').join('/')
+    const candidates = [
+      // パス側は各文字が区切り直後(単語境界)で高スコア。ファイル名には一致しない
+      file('zzz.ts', `/project/${boundaryPath}/zzz.ts`),
+      // ファイル名側は読み飛ばしが多く低スコア
+      file(spreadName, `/project/x/${spreadName}`)
+    ]
+    const results = searchFiles(query, candidates, ROOT)
+    expect(results[0].node.name).toBe(spreadName)
+    expect(results[0].matchedName).toBe(true)
+  })
+
+  it('ファイル名一致かどうかを matchedName で示す', () => {
+    const nameHit = searchFiles('app', files, ROOT)[0]
+    expect(nameHit.matchedName).toBe(true)
+    const pathHit = searchFiles('hooks', files, ROOT).find(
+      (r) => r.node.name === 'useFileSystem.ts'
+    )
+    expect(pathHit?.matchedName).toBe(false)
+  })
+
   it('Windows 形式のパス区切りでも相対ディレクトリを正しく求める', () => {
     const windowsFiles = [file('App.tsx', 'C:\\project\\src\\App.tsx')]
     const results = searchFiles('app', windowsFiles, 'C:\\project')

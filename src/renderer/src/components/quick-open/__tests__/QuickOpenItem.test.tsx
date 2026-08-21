@@ -8,6 +8,7 @@ const result: QuickOpenResult = {
   node: { name: 'useFileSystem.ts', path: '/project/src/hooks/useFileSystem.ts', type: 'file' },
   directory: 'src/hooks',
   score: 100,
+  matchedName: true,
   nameIndices: [0, 1, 3, 7],
   directoryIndices: []
 }

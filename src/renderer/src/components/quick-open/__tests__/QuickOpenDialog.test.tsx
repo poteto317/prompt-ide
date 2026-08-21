@@ -9,6 +9,7 @@ const makeResult = (name: string, directory: string): QuickOpenResult => ({
   node: { name, path: `/project/${directory}/${name}`, type: 'file' },
   directory,
   score: 100,
+  matchedName: true,
   nameIndices: [],
   directoryIndices: []
 })
@@ -121,9 +122,17 @@ describe('QuickOpenDialog', () => {
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('候補が無いとき aria-expanded が false になる', () => {
+  it('候補が無くても popup を表示している間は aria-expanded が true のまま', () => {
+    // aria-expanded は候補件数ではなく popup の開閉を表す。0 件でも listbox は
+    // DOM にあるため、false にすると支援技術に検索 UI が閉じたと伝わってしまう
     render(<QuickOpenDialog controller={makeController({ results: [] })} />)
-    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('候補が無くても aria-controls の参照先が DOM に存在する', () => {
+    render(<QuickOpenDialog controller={makeController({ results: [] })} />)
+    const controls = screen.getByRole('combobox').getAttribute('aria-controls')
+    expect(document.getElementById(controls ?? '')).not.toBeNull()
   })
 
   it('combobox の aria-controls が listbox の id を指す', () => {

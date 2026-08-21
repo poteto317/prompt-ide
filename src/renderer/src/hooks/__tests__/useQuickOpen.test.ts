@@ -309,6 +309,60 @@ describe('useQuickOpen', () => {
     expect(selectFile).toHaveBeenCalledTimes(2)
   })
 
+  it('読み込み中に閉じて開き直した場合、古い結果で新しいダイアログを閉じない', async () => {
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    act(() => result.current.confirm())
+    // 読み込みの解決を待たずに閉じ、別の検索を始める
+    act(() => result.current.close())
+    act(() => result.current.open())
+    act(() => result.current.setQuery('main'))
+    await act(async () => resolveSelect(true))
+    expect(result.current.isOpen).toBe(true)
+    expect(result.current.query).toBe('main')
+  })
+
+  it('読み込みが解決しないまま閉じても次の confirm がブロックされない', async () => {
+    // IPC が長時間保留したまま実行中フラグが残ると、以降ファイルを開けなくなる
+    const selectFile = vi.fn(() => new Promise<boolean>(() => {}))
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    act(() => result.current.confirm())
+    act(() => result.current.close())
+    act(() => result.current.open())
+    act(() => result.current.setQuery('main'))
+    act(() => result.current.confirm())
+    expect(selectFile).toHaveBeenCalledTimes(2)
+  })
+
+  it('候補が減ったとき選択位置を有効な範囲に収める', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(3))
+    expect(result.current.activeIndex).toBe(3)
+    // 現在開いているファイルが除外され候補が 4 件から 3 件に減る
+    rerender({ openFilePath: '/project/README.md' })
+    expect(result.current.results).toHaveLength(3)
+    expect(result.current.activeIndex).toBe(2)
+  })
+
+  it('候補が空になったとき選択位置は 0 になる', () => {
+    const { result } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(3))
+    act(() => result.current.setQuery('zzzz'))
+    expect(result.current.activeIndex).toBe(0)
+  })
+
   it('候補が空のとき confirm しても何も開かず閉じない', async () => {
     const { result, selectFile } = setup()
     act(() => result.current.open())
