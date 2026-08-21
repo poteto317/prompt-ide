@@ -36,16 +36,16 @@ type Overrides = {
 
 type HookProps = { openFilePath: string | null; openedFileSignal: OpenedFileSignal }
 
-const NO_SIGNAL: OpenedFileSignal = { id: 0, path: null, moveFocusToEditor: false }
+const NO_SIGNAL: OpenedFileSignal = { events: [] }
 
-// 「ファイルを実際に開いた」ことを模す。path の変更と信号の前進を同時に行う
+// 「ファイルを実際に開いた」ことを模す。path の変更と信号の前進を同時に行う。
+// 実装と同様、直近のイベントだけを積んだ列を渡す
 let signalSeq = 0
+let signalEvents: OpenedFileSignal['events'] = []
 const openPath = (rerender: (props: HookProps) => void, path: string): void => {
   signalSeq += 1
-  rerender({
-    openFilePath: path,
-    openedFileSignal: { id: signalSeq, path, moveFocusToEditor: false }
-  })
+  signalEvents = [...signalEvents, { id: signalSeq, path, moveFocusToEditor: false }].slice(-10)
+  rerender({ openFilePath: path, openedFileSignal: { events: signalEvents } })
 }
 type Setup = RenderHookResult<QuickOpenController, HookProps> & {
   selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
@@ -54,6 +54,8 @@ type Setup = RenderHookResult<QuickOpenController, HookProps> & {
 }
 
 const setup = (overrides: Overrides = {}): Setup => {
+  // テスト間で信号の列が漏れないようリセットする
+  signalEvents = []
   const selectFile = overrides.selectFile ?? vi.fn(() => Promise.resolve(true))
   let renders = 0
   const view = renderHook(
@@ -537,11 +539,7 @@ describe('useQuickOpen', () => {
     // リネーム相当: openFilePath だけが変わり、信号は進まない
     rerender({
       openFilePath: '/project/src/renamed.tsx',
-      openedFileSignal: {
-        id: signalSeq,
-        path: '/project/src/main.tsx',
-        moveFocusToEditor: false
-      }
+      openedFileSignal: { events: signalEvents }
     })
     act(() => result.current.open())
     // 履歴は App.tsx と main.tsx のまま。renamed.tsx は積まれない

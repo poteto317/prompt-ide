@@ -78,11 +78,15 @@ export function useFileTreeOperations({
 
   const runFileOperation = async (operation: () => Promise<void>): Promise<void> => {
     setError(null)
+    // 操作の開始時点のフォルダを控える。await 中にフォルダが切り替わってから
+    // 失敗すると、旧フォルダのエラーが新しいフォルダの画面に表示されてしまう
+    const folderAtStart = getFolderPath()
     try {
       await operation()
       onTreeMutated()
       await refreshTree()
     } catch (err) {
+      if (getFolderPath() !== folderAtStart) return
       setError(err instanceof Error ? err : new Error(String(err)))
     }
   }

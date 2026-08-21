@@ -108,18 +108,19 @@ export default function EditorPanel({
   // フォーカス要求は openedFileSignal が進んだときだけ立てる。ファイルの有無の
   // 変化で立てると、エクスプローラー経由(信号を進めない)で最初のファイルを
   // 開いたときにも、Monaco の遅延 onMount がツリーからフォーカスを奪う
-  // 依存は id だけにする。オブジェクトの同一性に依存すると、値が同じでも
-  // 再レンダーのたびに要求が立ち直り、いったん取り下げた要求が復活する
-  const openedFileSignalRef = useLatestRef(openedFileSignal)
+  // 依存は最新イベントの id だけにする。オブジェクトの同一性に依存すると、
+  // 値が同じでも再レンダーのたびに要求が立ち直り、取り下げた要求が復活する
+  const latestOpenedFile = openedFileSignal.events.at(-1) ?? null
+  const latestOpenedFileRef = useLatestRef(latestOpenedFile)
   useEffect(() => {
-    // 信号が持つ対象パスを使う。処理時点の openFilePath を見ると、信号の発生後に
+    // イベントが持つ対象パスを使う。処理時点の openFilePath を見ると、発生後に
     // 別経路で開かれたファイルを要求対象として登録してしまう
-    const signal = openedFileSignalRef.current
-    if (signal.id === 0) return
-    // フォーカス移動を伴わない信号でも、以前の要求は取り下げる。残しておくと
+    const latest = latestOpenedFileRef.current
+    if (latest === null) return
+    // フォーカス移動を伴わないイベントでも、以前の要求は取り下げる。残しておくと
     // 後着の onMount がその要求を消費し、別の場所からフォーカスを奪う
-    pendingFocusPathRef.current = signal.moveFocusToEditor ? signal.path : null
-  }, [openedFileSignal.id, openedFileSignalRef])
+    pendingFocusPathRef.current = latest.moveFocusToEditor ? latest.path : null
+  }, [latestOpenedFile?.id, latestOpenedFileRef])
 
   // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
   // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を

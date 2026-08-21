@@ -9,13 +9,24 @@ import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
 
-export interface OpenedFileSignal {
+/** 信号に保持するイベント数。履歴の上限を賄えれば十分 */
+const MAX_OPENED_FILE_EVENTS = 10
+
+export interface OpenedFileEvent {
   /** ファイルを開くたびに増える。同じファイルを開き直しても進む */
   id: number
   /** 開いたファイルのパス */
-  path: string | null
+  path: string
   /** この操作でエディタへフォーカスを移すか */
   moveFocusToEditor: boolean
+}
+
+export interface OpenedFileSignal {
+  /**
+   * 直近に開いたファイルの列(id 昇順)。1 件だけ保持すると、同じ React バッチで
+   * 複数の読み込みが確定したときに中間のファイルを取りこぼす
+   */
+  events: OpenedFileEvent[]
 }
 
 export interface SelectFileOptions {
@@ -93,11 +104,7 @@ export function useFileSystem(options?: Options): FileSystemState {
   // ため、path の変化だけでは open と区別できない。カウンタだけでなく対象パスも
   // 持たせるのは、受け手が信号を処理する時点で既に別のファイルへ切り替わって
   // いる可能性があるため
-  const [openedFileSignal, setOpenedFileSignal] = useState<OpenedFileSignal>({
-    id: 0,
-    path: null,
-    moveFocusToEditor: false
-  })
+  const [openedFileSignal, setOpenedFileSignal] = useState<OpenedFileSignal>({ events: [] })
   const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
@@ -116,14 +123,14 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
   // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う
   const confirmDiscardIfDirtyRef = useLatestRef(confirmDiscardIfDirty)
-  // 待っている間に編集が入ったかを判定するため、最新の openFile を参照する
-  const openFileRef = useLatestRef(openFile)
-
   /** 破棄確認の要否を判定するためのスナップショット(ファイルと内容の組) */
   type BufferSnapshot = { path: string | null; content: string | null }
+  // 同期ミラーから取る。layout effect で更新される ref だと、同じ tick に入った
+  // 編集(commitOpenFile はミラーを即時更新する)を取りこぼし、未保存の変更を
+  // 無確認で上書きしてしまう
   const snapshotBuffer = (): BufferSnapshot => ({
-    path: openFileRef.current?.path ?? null,
-    content: openFileRef.current?.content ?? null
+    path: openFileMirrorRef.current?.path ?? null,
+    content: openFileMirrorRef.current?.content ?? null
   })
 
   // 待機の前後でバッファが変わっていたら、開始時の確認はその状態を見ていない。
@@ -182,16 +189,26 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
     setError(null)
-    // 失敗した場合も、その時点で最新のフォルダ読み込みかを見てからエラーを出す
-    let directoryReadId: number | null = null
+    // ダイアログの表示前に世代を割り当てる。解決後に割り当てると、ダイアログが
+    // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
+    // 確定したあとに先行操作のエラーで上書きしてしまう
+    const directoryReadId = ++latestDirectoryReadRef.current
     // 走査開始時点の CRUD 完了回数。走査中に増えていれば、確定後に取り直す
     let mutationsAtStart: number | null = null
-    pendingFolderOpenRef.current += 1
+    // ネイティブダイアログは長時間開いたままになり得る。その間まで再読込を
+    // 止めると、キャンセル時に捨てた再読込が復元されずツリーが古いまま残るため、
+    // 実際の走査に入ってから止める
+    let scanning = false
+    // ダイアログで選択されたフォルダ。main は選択直後にアクセス範囲を
+    // このフォルダへ切り替えるため、走査に失敗しても表示を合わせる必要がある
+    let selectedPath: string | null = null
     try {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
+      pendingFolderOpenRef.current += 1
+      scanning = true
+      selectedPath = path
       // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
-      directoryReadId = ++latestDirectoryReadRef.current
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
       const committedOpenAtStart = committedOpenRef.current
@@ -226,10 +243,18 @@ export function useFileSystem(options?: Options): FileSystemState {
       resetForFileChange()
     } catch (err) {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない
-      if (directoryReadId !== null && directoryReadId !== latestDirectoryReadRef.current) return
+      if (directoryReadId !== latestDirectoryReadRef.current) return
+      // 選択済みなら、走査に失敗してもフォルダは確定させる。旧フォルダのツリーを
+      // 残すと、アクセス範囲は新しいフォルダなのに表示だけ古いという不一致になり、
+      // 以降の保存・再読込・CRUD がすべてアクセス拒否になる
+      if (selectedPath !== null) {
+        folderPathMirrorRef.current = selectedPath
+        setFolderPath(selectedPath)
+        setFileTree([])
+      }
       setError(err instanceof Error ? err : new Error(String(err)))
     } finally {
-      pendingFolderOpenRef.current -= 1
+      if (scanning) pendingFolderOpenRef.current -= 1
       // 走査中に完了した CRUD の結果は、このスナップショットにも保留された再読込にも
       // 含まれていない。走査が失敗した経路でも同じなので、finally で取り直す。
       // ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
@@ -265,11 +290,19 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 信号はどの経路でも進める(最近開いたファイルの履歴に使うため)。
       // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
       // クリックで奪うと、ツリー内のキーボード移動位置が失われるため
-      setOpenedFileSignal((prev) => ({
-        id: prev.id + 1,
-        path: fileNode.path,
-        moveFocusToEditor: options?.moveFocusToEditor === true
-      }))
+      setOpenedFileSignal((prev) => {
+        const nextId = (prev.events.at(-1)?.id ?? 0) + 1
+        return {
+          events: [
+            ...prev.events,
+            {
+              id: nextId,
+              path: fileNode.path,
+              moveFocusToEditor: options?.moveFocusToEditor === true
+            }
+          ].slice(-MAX_OPENED_FILE_EVENTS)
+        }
+      })
       return true
     } catch (err) {
       if (readId !== latestReadRef.current) return false

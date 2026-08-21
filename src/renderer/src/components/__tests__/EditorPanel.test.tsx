@@ -6,6 +6,7 @@ import {
   mockFocus,
   mockEditorModel
 } from '../../__tests__/__mocks__/@monaco-editor/react'
+import type { OpenedFileEvent } from '../../hooks/useFileSystem'
 import type { OpenFile } from '../../types'
 import EditorPanel from '../EditorPanel'
 
@@ -32,7 +33,7 @@ const defaultProps = {
   onClearResult: vi.fn(),
   onCancelExecution: vi.fn(),
   isOverlayOpen: false,
-  openedFileSignal: { id: 0, path: null as string | null, moveFocusToEditor: false }
+  openedFileSignal: { events: [] as OpenedFileEvent[] }
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -152,7 +153,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).toHaveBeenCalled()
@@ -166,7 +167,7 @@ describe('EditorPanel — openFile あり', () => {
         {...defaultProps}
         openFile={mockOpenFile}
         isOverlayOpen
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -178,7 +179,7 @@ describe('EditorPanel — openFile あり', () => {
         {...defaultProps}
         openFile={mockOpenFile}
         isOverlayOpen
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -187,7 +188,7 @@ describe('EditorPanel — openFile あり', () => {
         {...defaultProps}
         openFile={mockOpenFile}
         isOverlayOpen={false}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).toHaveBeenCalled()
@@ -200,7 +201,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).toHaveBeenCalledTimes(1)
@@ -208,7 +209,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={null}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     mockFocus.mockClear()
@@ -216,7 +217,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 2, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 2, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).toHaveBeenCalled()
@@ -236,7 +237,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -251,7 +252,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     mockFocus.mockClear()
@@ -259,7 +260,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -279,7 +280,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -290,7 +291,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
         isOverlayOpen
       />
     )
@@ -298,7 +299,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -312,7 +313,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -325,14 +326,14 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={null}
-        openedFileSignal={{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     rerender(
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -346,7 +347,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     mockEditorModel.current = {}
@@ -356,7 +357,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={{ ...mockOpenFile, path: '/project/other.ts', name: 'other.ts' }}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -369,7 +370,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     mockEditorModel.current = {}
@@ -379,7 +380,9 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={mockOpenFile}
-        openedFileSignal={{ id: 2, path: mockOpenFile.path, moveFocusToEditor: false }}
+        openedFileSignal={{
+          events: [{ id: 2, path: mockOpenFile.path, moveFocusToEditor: false }]
+        }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()

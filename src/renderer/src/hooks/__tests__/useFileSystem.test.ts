@@ -79,7 +79,9 @@ describe('useFileSystem', () => {
     expect(result.current.error?.message).toBe('dialog error')
   })
 
-  it('readDirectory が throw した場合: error にセットされ folderPath は変化しない', async () => {
+  it('readDirectory が throw した場合: error にセットされ、選択したフォルダは確定する', async () => {
+    // main は選択直後にアクセス範囲を切り替えるため、表示側も選択したフォルダに
+    // 合わせる(旧フォルダを表示したままだと以降の操作が全てアクセス拒否になる)
     mockOpenFolder.mockResolvedValue('/project')
     mockReadDirectory.mockRejectedValue(new Error('permission denied'))
 
@@ -88,7 +90,8 @@ describe('useFileSystem', () => {
       await result.current.openFolder()
     })
 
-    expect(result.current.folderPath).toBeNull()
+    expect(result.current.folderPath).toBe('/project')
+    expect(result.current.fileTree).toEqual([])
     expect(result.current.error?.message).toBe('permission denied')
   })
 
@@ -1133,6 +1136,199 @@ describe('useFileSystem', () => {
       })
     })
     expect(rejected).toBe(false)
+    expect(result.current.error).not.toBeNull()
+  })
+
+  it('同じ tick で入った編集も破棄確認の対象にする', async () => {
+    // スナップショットが layout effect 更新の ref を見ていると、同期ミラーだけが
+    // 更新された編集を取りこぼし、未保存の変更を無確認で上書きする
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const onConfirm = vi.fn(() => false)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      })
+    })
+
+    let resolveSecond: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSecond = resolve
+        })
+    )
+    let secondPromise: Promise<boolean> = Promise.resolve(false)
+    // 読み込み開始と編集を同じ tick でまとめて行う
+    act(() => {
+      secondPromise = result.current.selectFile({
+        name: 'App.tsx',
+        path: '/project/src/App.tsx',
+        type: 'file'
+      })
+      result.current.updateFileContent('編集済み')
+    })
+    await act(async () => {
+      resolveSecond('const y = 2')
+      await secondPromise
+    })
+    expect(onConfirm).toHaveBeenCalled()
+    expect(result.current.openFile?.content).toBe('編集済み')
+  })
+
+  it('フォルダ選択をキャンセルしても、その間の CRUD の結果を反映する', async () => {
+    // ネイティブダイアログ表示中も再読込を止めていると、キャンセル時に
+    // 捨てられた再読込が復元されずツリーが古いまま残る
+    mockCreateFile.mockResolvedValue(undefined)
+    const initial: FileTreeNode[] = [{ name: 'a.ts', path: '/project/a.ts', type: 'file' }]
+    const afterCreate: FileTreeNode[] = [
+      ...initial,
+      { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+    ]
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(initial)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // ダイアログをキャンセルする(その間にファイル作成が完了する)
+    let cancelDialog: (value: string | null) => void = () => {}
+    mockOpenFolder.mockImplementationOnce(
+      () =>
+        new Promise<string | null>((resolve) => {
+          cancelDialog = resolve
+        })
+    )
+    let folderPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      folderPromise = result.current.openFolder()
+    })
+    mockReadDirectory.mockResolvedValue(afterCreate)
+    await act(async () => {
+      await result.current.createFile('/project', 'b.ts')
+    })
+    await act(async () => {
+      cancelDialog(null)
+      await folderPromise
+    })
+    expect(result.current.fileTree).toEqual(afterCreate)
+  })
+
+  it('先行するフォルダ選択の失敗が新しいフォルダのエラーを上書きしない', async () => {
+    // ダイアログ解決前は世代が未割当だと、reject 時に「最新か」を判定できない
+    mockReadDirectory.mockResolvedValue([])
+    let rejectFirstDialog: (err: Error) => void = () => {}
+    mockOpenFolder.mockImplementationOnce(
+      () =>
+        new Promise<string | null>((_resolve, reject) => {
+          rejectFirstDialog = reject
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    let firstPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      firstPromise = result.current.openFolder()
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderPath).toBe('/new')
+
+    await act(async () => {
+      rejectFirstDialog(new Error('ダイアログ失敗'))
+      await firstPromise
+    })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('フォルダ切替後に届いた CRUD の失敗を新しいフォルダに表示しない', async () => {
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue([])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    let rejectCreate: (err: Error) => void = () => {}
+    mockCreateFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectCreate = reject
+        })
+    )
+    let createPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      createPromise = result.current.createFile('/old', 'b.ts')
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    await act(async () => {
+      rejectCreate(new Error('作成失敗'))
+      await createPromise
+    })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('同じバッチで複数のファイルが確定しても、開いた順に信号へ残る', async () => {
+    // 直近 1 件しか持たないと、消費側(最近開いたファイルの履歴)が
+    // 中間のファイルを取りこぼす
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    // 同じタスク内で連続して開く(React は両方の更新を 1 回のレンダーへまとめる)
+    await act(async () => {
+      await result.current.selectFile({
+        name: 'index.ts',
+        path: '/project/src/index.ts',
+        type: 'file'
+      })
+      await result.current.selectFile({
+        name: 'App.tsx',
+        path: '/project/src/App.tsx',
+        type: 'file'
+      })
+    })
+    const paths = result.current.openedFileSignal.events.map((e) => e.path)
+    expect(paths).toContain('/project/src/index.ts')
+    expect(paths).toContain('/project/src/App.tsx')
+  })
+
+  it('走査に失敗しても選択したフォルダを確定する(アクセス範囲と表示を一致させる)', async () => {
+    // main は選択直後にアクセス範囲を新しいフォルダへ切り替えるため、旧フォルダの
+    // ツリーを表示したままにすると、以降の操作がすべてアクセス拒否になる
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockResolvedValue([{ name: 'a.ts', path: '/old/a.ts', type: 'file' }])
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    mockReadDirectory.mockRejectedValue(new Error('走査失敗'))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderPath).toBe('/new')
+    expect(result.current.fileTree).toEqual([])
     expect(result.current.error).not.toBeNull()
   })
 

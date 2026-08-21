@@ -59,20 +59,21 @@ export function useQuickOpen({
   // useEffect ではなくレンダー中に調整するのは、effect 経由だと履歴の反映が
   // 1 フレーム遅れて再レンダーを重ねるため(React の「props 変化に合わせた state 調整」)。
   // 処理済みの信号 id を控えるので繰り返し実行されず、無限ループにはならない。
-  if (openedFileSignal.id !== recent.lastSignalId && openedFileSignal.path !== null) {
-    const openedPath = openedFileSignal.path
+  const latestSignalId = openedFileSignal.events.at(-1)?.id ?? 0
+  if (latestSignalId !== recent.lastSignalId) {
     // 上限を適用する前に、ツリーに存在しないパス(リネーム・削除済み)を落とす。
     // 残したままだと表示時に隠れるだけで枠を占有し、有効な履歴が押し出される。
     // ツリーが空のとき(フォルダ読み込み前)は判定できないので除去しない
     const isKnownPath = (path: string): boolean =>
       files.length === 0 || files.some((file) => file.path === path)
-    setRecent({
-      paths: [
-        openedPath,
-        ...recent.paths.filter((path) => path !== openedPath && isKnownPath(path))
-      ].slice(0, MAX_RECENT_FILES),
-      lastSignalId: openedFileSignal.id
-    })
+    // 未処理のイベントを古い順に積む。1 件だけ見ると、同じバッチで複数確定した
+    // ときに中間のファイルが履歴から落ちる
+    let paths = recent.paths.filter((path) => isKnownPath(path))
+    for (const event of openedFileSignal.events.filter((e) => e.id > recent.lastSignalId)) {
+      if (!isKnownPath(event.path)) continue
+      paths = [event.path, ...paths.filter((path) => path !== event.path)]
+    }
+    setRecent({ paths: paths.slice(0, MAX_RECENT_FILES), lastSignalId: latestSignalId })
   }
 
   const results = useMemo(() => {
