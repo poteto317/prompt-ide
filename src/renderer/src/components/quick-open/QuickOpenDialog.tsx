@@ -109,13 +109,19 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
   }
 
   // スクロールバー上の mousedown か。既定動作を止めるとドラッグできなくなる。
-  // jsdom などレイアウトを持たない環境では両方 0 になり false を返す
+  // jsdom などレイアウトを持たない環境では各値が 0 になり false を返す。
+  // overflow-y: auto は横方向も auto として計算されるため、長いファイル名では
+  // 下側に横スクロールバーが出る。縦横どちらも見る
   const isScrollbarMouseDown = (e: React.MouseEvent): boolean => {
     const target = e.target
     if (!(target instanceof HTMLElement)) return false
-    if (target.scrollHeight <= target.clientHeight) return false
-    // clientWidth はスクロールバーを含まないため、その右側なら操作対象とみなす
-    return e.clientX - target.getBoundingClientRect().left > target.clientWidth
+    const rect = target.getBoundingClientRect()
+    // clientWidth/clientHeight はスクロールバーを含まないため、その外側なら操作対象
+    const onVerticalBar =
+      target.scrollHeight > target.clientHeight && e.clientX - rect.left > target.clientWidth
+    const onHorizontalBar =
+      target.scrollWidth > target.clientWidth && e.clientY - rect.top > target.clientHeight
+    return onVerticalBar || onHorizontalBar
   }
 
   // 入力欄以外を押したときにフォーカスが body へ移るのを防ぐ。移ってしまうと
@@ -147,6 +153,9 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
       onMouseDown={(e) => {
         pressedOnOverlayRef.current = e.target === e.currentTarget
       }}
+      // スクロールバーのドラッグをダイアログ外で離した場合、ダイアログの
+      // mouseup は発火しない。オーバーレイでも受けてフォーカスを戻す
+      onMouseUp={handleDialogMouseUp}
       onClick={(e) => {
         if (pressedOnOverlayRef.current && e.target === e.currentTarget) close()
       }}

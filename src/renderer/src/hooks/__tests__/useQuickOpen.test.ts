@@ -855,6 +855,23 @@ describe('useQuickOpen', () => {
     expect(result.current.results.map((r) => r.node.path)).toEqual(['C:\\project\\a.ts'])
   })
 
+  it('他のモーダルが開いている間は Ctrl+P で重ねて開かない', () => {
+    // 重ねると、候補を確定したときに元のダイアログが残ったままエディタへ
+    // フォーカスが移り、見えているモーダルとキーボードフォーカスが分離する
+    const otherDialog = document.createElement('div')
+    otherDialog.setAttribute('role', 'dialog')
+    document.body.appendChild(otherDialog)
+    try {
+      const { result } = setup()
+      const event = pressKey({ key: 'p', ctrlKey: true })
+      expect(result.current.isOpen).toBe(false)
+      // ブラウザの印刷ショートカットは消費する
+      expect(event.defaultPrevented).toBe(true)
+    } finally {
+      otherDialog.remove()
+    }
+  })
+
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)

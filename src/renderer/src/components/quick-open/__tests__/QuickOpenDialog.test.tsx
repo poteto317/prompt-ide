@@ -152,6 +152,20 @@ describe('QuickOpenDialog', () => {
     expect(notPrevented).toBe(true)
   })
 
+  it('横スクロールバーを押したときも既定動作を妨げない', () => {
+    // overflow-y: auto は横方向も auto として計算されるため、長いファイル名では
+    // 下側に横スクロールバーが出る。抑止するとドラッグできない
+    render(<QuickOpenDialog controller={makeController()} />)
+    const list = screen.getByRole('listbox')
+    Object.defineProperty(list, 'scrollHeight', { value: 100, configurable: true })
+    Object.defineProperty(list, 'clientHeight', { value: 100, configurable: true })
+    Object.defineProperty(list, 'scrollWidth', { value: 500, configurable: true })
+    Object.defineProperty(list, 'clientWidth', { value: 200, configurable: true })
+    list.getBoundingClientRect = () => ({ left: 0, top: 0, right: 200, bottom: 115 }) as DOMRect
+    const notPrevented = fireEvent.mouseDown(list, { clientX: 50, clientY: 110 })
+    expect(notPrevented).toBe(true)
+  })
+
   it('スクロールバー外の一覧クリックは従来どおり既定動作を抑止する', () => {
     render(<QuickOpenDialog controller={makeController()} />)
     const list = screen.getByRole('listbox')
@@ -371,6 +385,24 @@ describe('QuickOpenDialog', () => {
     Object.defineProperty(event, 'isComposing', { value: true })
     screen.getByRole('combobox').dispatchEvent(event)
     expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('スクロールバーのドラッグをオーバーレイ上で離してもフォーカスを戻す', () => {
+    // ドラッグの終点がダイアログ外だとダイアログの mouseup は発火せず、
+    // 入力欄のフォーカスが戻らないまま ↑/↓/Enter が届かなくなる
+    render(<QuickOpenDialog controller={makeController()} />)
+    const input = screen.getByRole('combobox')
+    const list = screen.getByRole('listbox')
+    Object.defineProperty(list, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(list, 'clientHeight', { value: 100, configurable: true })
+    Object.defineProperty(list, 'clientWidth', { value: 200, configurable: true })
+    list.getBoundingClientRect = () => ({ left: 0, top: 0, right: 215, bottom: 100 }) as DOMRect
+    fireEvent.mouseDown(list, { clientX: 210 })
+    // スクロール操作でフォーカスが外れた状態を作る
+    input.blur()
+    expect(input).not.toHaveFocus()
+    fireEvent.mouseUp(screen.getByTestId('quick-open-overlay'))
+    expect(input).toHaveFocus()
   })
 
   it('isOpen が false のとき何も描画しない', () => {

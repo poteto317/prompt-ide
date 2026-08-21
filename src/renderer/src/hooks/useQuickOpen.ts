@@ -292,6 +292,11 @@ export function useQuickOpen({
       event.preventDefault()
       const confirmInFlight = confirmingGenerationRef.current === generationRef.current
       if (isOpenRef.current && !confirmInFlight) return
+      // 他のモーダル(リネームの名前入力など)が開いている間は重ねて表示しない。
+      // 重ねると、候補を確定したときに元のダイアログが残ったままエディタへ
+      // フォーカスが移り、見えているモーダルとキーボードフォーカスが分離する。
+      // ショートカット自体は上で消費済み(印刷ダイアログを出さない)
+      if (!isOpenRef.current && document.querySelector('[role="dialog"]') !== null) return
       open()
     }
     document.addEventListener('keydown', handleKeyDown, true)
