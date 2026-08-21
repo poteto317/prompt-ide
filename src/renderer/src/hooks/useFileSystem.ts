@@ -68,8 +68,11 @@ export function useFileSystem(options?: Options): FileSystemState {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
       // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
-      latestReadRef.current += 1
+      const operationId = ++latestReadRef.current
       const tree = await fileSystemApi.readDirectory(path)
+      // ディレクトリ読み込みを待つ間に別の操作(ファイル選択など)が確定していたら、
+      // ここで setOpenFile(null) して後発の操作を消さないよう中断する
+      if (operationId !== latestReadRef.current) return
       setFolderPath(path)
       setFileTree(tree)
       setOpenFile(null)
@@ -104,6 +107,8 @@ export function useFileSystem(options?: Options): FileSystemState {
 
   const closeFile = (): void => {
     if (!confirmDiscardIfDirty()) return
+    // 閉じたあとに保留中の読み込みが解決してファイルが再表示されるのを防ぐ
+    latestReadRef.current += 1
     setOpenFile(null)
     resetForFileChange()
   }

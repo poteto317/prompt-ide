@@ -288,6 +288,61 @@ describe('useFileSystem', () => {
     expect(result.current.openFile).toBeNull()
   })
 
+  it('closeFile は保留中の読み込みを無効化する', async () => {
+    // 読み込み待ちのままタブを閉じたのに、あとから解決してファイルが再表示されるのを防ぐ
+    let resolveSlow: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSlow = resolve
+        })
+    )
+    const slowNode: FileTreeNode = { name: 'slow.ts', path: '/project/slow.ts', type: 'file' }
+    const { result } = renderHook(() => useFileSystem())
+    let slowPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      slowPromise = result.current.selectFile(slowNode)
+    })
+    act(() => result.current.closeFile())
+    await act(async () => {
+      resolveSlow('slow content')
+      await slowPromise
+    })
+    expect(result.current.openFile).toBeNull()
+  })
+
+  it('ディレクトリ読み込み中に開いたファイルを openFolder が消さない', async () => {
+    // openFolder はネイティブダイアログのあと readDirectory を待つ。
+    // その間に始まった選択が先に確定した場合、あとから openFile を null にしない
+    let resolveTree: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveTree = resolve
+        })
+    )
+    mockReadFileContent.mockResolvedValue('const x = 1')
+
+    const { result } = renderHook(() => useFileSystem())
+    let folderPromise: Promise<void> = Promise.resolve()
+    // ネイティブダイアログの解決まで進め、readDirectory 待ちの状態にする
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(fileNode)
+    })
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+
+    await act(async () => {
+      resolveTree(mockTree)
+      await folderPromise
+    })
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }

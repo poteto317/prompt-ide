@@ -72,7 +72,15 @@ export default function EditorPanel({
   }, [isOverlayOpenRef, openFilePathRef])
 
   useEffect(() => {
-    if (openFilePath === null) return
+    if (openFilePath === null) {
+      // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
+      // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
+      // 消費してしまい、新しいエディタが入力を受け取れない
+      editorRef.current = null
+      mountedPathRef.current = null
+      pendingFocusRef.current = false
+      return
+    }
     pendingFocusRef.current = true
   }, [openFilePath])
 

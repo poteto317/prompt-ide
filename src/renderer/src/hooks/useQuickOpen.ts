@@ -117,9 +117,10 @@ export function useQuickOpen({
     (delta: number): void => {
       const count = results.length
       if (count === 0) return
-      setActiveIndex((prev) => (prev + delta + count) % count)
+      // 補正前の値から動かすと、候補が減った直後に表示上の位置と移動先がずれる
+      setActiveIndex((activeIndex + delta + count) % count)
     },
-    [results.length]
+    [results.length, activeIndex]
   )
 
   const confirm = useCallback(
@@ -165,6 +166,9 @@ export function useQuickOpen({
       if (event.key === 'Escape') {
         if (!isOpenRef.current) return
         event.preventDefault()
+        // モーダルの Escape はここで消費する。伝播させると背後に残っている
+        // コンテキストメニュー等の document ハンドラまで同時に反応してしまう
+        event.stopPropagation()
         setIsOpen(false)
         return
       }

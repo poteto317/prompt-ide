@@ -71,6 +71,16 @@ const pressKey = (init: KeyboardEventInit): KeyboardEvent => {
   return event
 }
 
+// document 自身を target にすると capture と bubble が同じ AT_TARGET 段階になり、
+// stopPropagation の効果を確認できない。実際の操作と同じく子要素から発生させる
+const pressKeyOnElement = (element: Element, init: KeyboardEventInit): KeyboardEvent => {
+  const event = new KeyboardEvent('keydown', { cancelable: true, bubbles: true, ...init })
+  act(() => {
+    element.dispatchEvent(event)
+  })
+  return event
+}
+
 describe('useQuickOpen', () => {
   it('初期状態は閉じていてクエリが空、選択位置は先頭', () => {
     const { result } = setup()
@@ -390,6 +400,54 @@ describe('useQuickOpen', () => {
     rerender({ openFilePath: '/project/README.md' })
     expect(result.current.results).toHaveLength(3)
     expect(result.current.activeIndex).toBe(2)
+  })
+
+  it('候補が減ったあとの moveSelection は補正後の位置から動く', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(3))
+    rerender({ openFilePath: '/project/README.md' })
+    // 表示上は末尾(index 2)。ここから ArrowDown は先頭へラップする
+    expect(result.current.activeIndex).toBe(2)
+    act(() => result.current.moveSelection(1))
+    expect(result.current.activeIndex).toBe(0)
+  })
+
+  it('候補が減ったあとの moveSelection(-1) は補正後の位置から戻る', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(3))
+    rerender({ openFilePath: '/project/README.md' })
+    act(() => result.current.moveSelection(-1))
+    expect(result.current.activeIndex).toBe(1)
+  })
+
+  it('表示中の Escape は他の document ハンドラへ伝播させない', () => {
+    // 背後に残っているコンテキストメニュー等が同時に閉じないよう、
+    // モーダルの Escape はクイックオープンだけが消費する
+    const other = vi.fn()
+    document.addEventListener('keydown', other)
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const { result } = setup()
+    act(() => result.current.open())
+    pressKeyOnElement(target, { key: 'Escape' })
+    expect(result.current.isOpen).toBe(false)
+    expect(other).not.toHaveBeenCalled()
+    document.removeEventListener('keydown', other)
+    target.remove()
+  })
+
+  it('閉じているときの Escape は他のハンドラへ伝播する', () => {
+    const other = vi.fn()
+    document.addEventListener('keydown', other)
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    setup()
+    pressKeyOnElement(target, { key: 'Escape' })
+    expect(other).toHaveBeenCalled()
+    document.removeEventListener('keydown', other)
+    target.remove()
   })
 
   it('候補が空になったとき選択位置は 0 になる', () => {

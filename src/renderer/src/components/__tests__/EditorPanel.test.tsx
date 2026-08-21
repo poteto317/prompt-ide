@@ -163,6 +163,17 @@ describe('EditorPanel — openFile あり', () => {
     expect(mockFocus).toHaveBeenCalled()
   })
 
+  it('同じファイルを閉じて開き直してもフォーカスする', () => {
+    // 閉じると Monaco はアンマウントされる。破棄済みインスタンスの参照が残ると
+    // 同じパスを開き直したときに古い側でフォーカス要求が消費されてしまう
+    const { rerender } = render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    expect(mockFocus).toHaveBeenCalledTimes(1)
+    rerender(<EditorPanel {...defaultProps} openFile={null} />)
+    mockFocus.mockClear()
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    expect(mockFocus).toHaveBeenCalled()
+  })
+
   it('ファイルを開いていないときはフォーカスしない', () => {
     render(<EditorPanel {...defaultProps} openFile={null} />)
     expect(mockFocus).not.toHaveBeenCalled()
