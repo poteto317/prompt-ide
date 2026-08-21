@@ -12,16 +12,32 @@
 # 必ずローカルターミナルから実行すること。
 set -eu
 
-if [ "$#" -lt 3 ]; then
+usage() {
   echo "usage: $0 <owner> <repo> <pr-number>" >&2
   exit 2
+}
+
+if [ "$#" -lt 3 ]; then
+  usage
 fi
 
 OWNER="$1"
 REPO="$2"
 PR="$3"
+
+# 数値以外を渡されると GraphQL エラーになり、原因が分かりにくい
+case "$PR" in
+  '' | *[!0-9]*)
+    echo "pr-number は数値で指定してください（受け取った値: ${PR}）" >&2
+    usage
+    ;;
+esac
+
 # copilot-pull-request-reviewer[bot] の node id（アカウント固有ではなくアプリ固有）
 DEFAULT_BOT_ID="BOT_kgDOCnlnWA"
+# login の末尾で見ると dependency-reviewer のような別の reviewer 系 Bot まで
+# 拾ってしまうため、厳密一致で判定する
+COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer}"
 
 info=$(gh api graphql -f query="
 {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
@@ -33,17 +49,18 @@ info=$(gh api graphql -f query="
 }}}")
 
 pr_id=$(printf '%s' "$info" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["repository"]["pullRequest"]["id"])')
-bot_id=$(printf '%s' "$info" | python3 -c '
-import sys, json
+bot_id=$(printf '%s' "$info" | COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
+import sys, json, os
+copilot_login = os.environ["COPILOT_LOGIN"]
 pr = json.load(sys.stdin)["data"]["repository"]["pullRequest"]
 candidates = []
 for node in pr["reviews"]["nodes"]:
     author = node.get("author") or {}
-    if author.get("__typename") == "Bot" and author.get("login", "").endswith("reviewer"):
+    if author.get("__typename") == "Bot" and author.get("login") == copilot_login:
         candidates.append(author["id"])
 for node in pr["timelineItems"]["nodes"]:
     reviewer = node.get("requestedReviewer") or {}
-    if reviewer.get("__typename") == "Bot" and reviewer.get("login", "").endswith("reviewer"):
+    if reviewer.get("__typename") == "Bot" and reviewer.get("login") == copilot_login:
         candidates.append(reviewer["id"])
 print(candidates[-1] if candidates else "")
 ')
@@ -60,12 +77,13 @@ gh api graphql -f query='mutation($p:ID!,$b:ID!){
     pullRequest{reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
   }
 }' -f p="$pr_id" -f b="$bot_id" |
-  python3 -c '
-import sys, json
+  COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
+import sys, json, os
+copilot_login = os.environ["COPILOT_LOGIN"]
 nodes = json.load(sys.stdin)["data"]["requestReviews"]["pullRequest"]["reviewRequests"]["nodes"]
 logins = [(n.get("requestedReviewer") or {}).get("login") for n in nodes]
 print("依頼済み:", logins)
-if not any((login or "").endswith("reviewer") for login in logins):
+if copilot_login not in logins:
     # Copilot は依頼を受け取った直後に reviewRequests から外れることがあるため、
     # 空でも失敗とは限らない。監視側で新着レビューを待つこと
     print("注意: 依頼直後は pending に現れないことがある。監視で新着を待つこと")

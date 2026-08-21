@@ -35,9 +35,13 @@
 #     JSON として解釈したうえで、トップレベルの errors と pullRequest を見る。
 set -u
 
-if [ "$#" -lt 4 ]; then
+usage() {
   echo "usage: $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]" >&2
   exit 2
+}
+
+if [ "$#" -lt 4 ]; then
+  usage
 fi
 
 OWNER="$1"
@@ -46,6 +50,25 @@ PR="$3"
 BASELINE="$4"
 MIN_WAIT="${5:-1500}"
 INTERVAL="${6:-120}"
+
+# 数値以外を渡されると GraphQL エラーや Python の例外になり、原因が分かりにくい。
+# 起動時に弾いて usage を出す
+for value in "$PR" "$MIN_WAIT" "$INTERVAL"; do
+  case "$value" in
+    '' | *[!0-9]*)
+      echo "数値で指定してください: pr-number / min-wait-sec / interval-sec（受け取った値: ${value}）" >&2
+      usage
+      ;;
+  esac
+done
+if [ "$INTERVAL" -lt 1 ]; then
+  echo "interval-sec は 1 以上で指定してください" >&2
+  usage
+fi
+
+# Copilot のレビュアー。login の末尾で見ると dependency-reviewer のような
+# 別の reviewer 系 Bot まで拾ってしまうため、厳密一致で判定する
+COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer}"
 STARTED=$(date +%s)
 # API 呼び出しが連続で失敗したら終了する回数。認証切れやネットワーク不調を
 # 握り潰したまま無言で回り続けると、待っているのか壊れているのか分からなくなる
@@ -85,10 +108,11 @@ while true; do
 
   # 応答の解釈もここで行う。失敗（errors を含む・pullRequest が無い・壊れた JSON）は
   # 終了コードで伝わるため、シェル側は同じ経路で失敗として数えられる
-  if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
+  if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os, re
 
 baseline = os.environ["BASELINE"]
+copilot_login = os.environ["COPILOT_LOGIN"]
 
 try:
     payload = json.load(sys.stdin)
@@ -107,11 +131,11 @@ if pr is None:
     print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
     sys.exit(3)
 
-# Copilot は Bot アカウント。login の末尾だけで見ると、人間の
-# "foo-reviewer" のようなアカウントのレビューまで拾ってしまう
+# Copilot は Bot アカウント。login の末尾だけで見ると、人間の "foo-reviewer" や
+# dependency-reviewer のような別の Bot まで拾ってしまうため、厳密一致で判定する
 def is_review_bot(actor):
     actor = actor or {}
-    return actor.get("__typename") == "Bot" and actor.get("login", "").endswith("reviewer")
+    return actor.get("__typename") == "Bot" and actor.get("login") == copilot_login
 
 reviews = [r for r in pr["reviews"]["nodes"] if is_review_bot(r.get("author"))]
 new = [r for r in reviews if r["submittedAt"] > baseline]
