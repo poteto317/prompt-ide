@@ -74,7 +74,9 @@ STARTED=$(date +%s)
 # 握り潰したまま無言で回り続けると、待っているのか壊れているのか分からなくなる
 MAX_FAILURES=5
 failures=0
-err_file=$(mktemp)
+# テンプレートを明示する。macOS の mktemp は引数なしでも動くが、usage 上は
+# template が必須で、環境によっては失敗する
+err_file=$(mktemp "${TMPDIR:-/tmp}/watch-pr-review.XXXXXX")
 trap 'rm -f "$err_file"' EXIT
 
 # 失敗を数え、上限に達したら終了する。第 2 引数以降は原因の詳細
