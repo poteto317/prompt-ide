@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import { useLatestRef } from './useLatestRef'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
@@ -55,10 +56,17 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 「操作の途中で確定した openFile」を同じ tick 内で参照するために持つ
   const openFileMirrorRef = useRef<OpenFile | null>(null)
 
-  // openFile を更新する唯一の経路。ミラーを必ず同時に更新する
-  const commitOpenFile = (next: OpenFile | null): void => {
-    openFileMirrorRef.current = next
-    setOpenFile(next)
+  // openFile を更新する唯一の経路。ミラーを必ず同時に更新する。
+  // 関数形式も受け付けるのは、useFileEditing が prev を基に更新するため。
+  // 生の setOpenFile を渡すとミラーへ編集内容が届かず、リネーム時に古い状態を
+  // 書き戻して未保存の編集を失う
+  // openFile の更新はすべてここを通るため、ミラーが常に最新の確定値になる。
+  // 関数形式の prev もミラーから解決することで、React のコミットを待たずに
+  // 同じ tick 内で最新値を参照できる状態を保つ
+  const commitOpenFile: Dispatch<SetStateAction<OpenFile | null>> = (next) => {
+    const value = typeof next === 'function' ? next(openFileMirrorRef.current) : next
+    openFileMirrorRef.current = value
+    setOpenFile(value)
   }
   const getOpenFile = (): OpenFile | null => openFileMirrorRef.current
   // ファイルを「開いた」ことを EditorPanel へ伝える信号。リネームでも
@@ -77,7 +85,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     saveFile,
     resetForFileChange,
     confirmDiscardIfDirty
-  } = useFileEditing(openFile, setOpenFile, options)
+  } = useFileEditing(openFile, commitOpenFile, options)
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
   // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う
@@ -122,10 +130,11 @@ export function useFileSystem(options?: Options): FileSystemState {
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
     // (削除済みファイルを表示すると、編集して保存した時点で復活してしまう)
     // 影響範囲外の読み込みまで捨てると、無関係な操作で有効な選択を失う
-    // ツリーの再読込も同じ世代で管理する。旧フォルダの refresh が新しい
-    // フォルダ選択より後に解決すると、folderPath だけ新しくツリーが旧に戻る
-    beginDirectoryRead: () => {
-      const id = ++latestDirectoryReadRef.current
+    // ツリーの再読込は世代を「進めず」、開始時点の世代と一致するかだけを見る。
+    // 進めてしまうと、旧フォルダの CRUD から遅れて始まった refresh が
+    // 実行中のフォルダ選択を無効化し、フォルダ切替が黙って失われる
+    beginTreeRefresh: () => {
+      const id = latestDirectoryReadRef.current
       return () => id === latestDirectoryReadRef.current
     },
     invalidatePendingReads: (affectedPath: string) => {

@@ -17,8 +17,8 @@ interface FileTreeOperationsOptions {
    * FS 操作が成功したあとに呼ぶ(失敗時に有効な選択を失わないため)
    */
   invalidatePendingReads: (affectedPath: string) => void
-  /** ディレクトリ読み込みを開始し、「まだ最新か」を返す関数を得る */
-  beginDirectoryRead: () => () => boolean
+  /** ツリー再読込の開始時点を記録し、「まだ同じフォルダ選択か」を返す関数を得る */
+  beginTreeRefresh: () => () => boolean
 }
 
 interface FileTreeOperationsState {
@@ -42,7 +42,7 @@ export function useFileTreeOperations({
   resetForFileChange,
   onConfirm,
   invalidatePendingReads,
-  beginDirectoryRead
+  beginTreeRefresh
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -51,7 +51,7 @@ export function useFileTreeOperations({
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
   const refreshTree = async (): Promise<void> => {
     if (folderPath === null) return
-    const isLatest = beginDirectoryRead()
+    const isLatest = beginTreeRefresh()
     const tree = await fileSystemApi.readDirectory(folderPath)
     // 新しいフォルダ選択が始まっていたら、旧フォルダのツリーを反映しない
     if (!isLatest()) return

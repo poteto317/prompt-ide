@@ -29,7 +29,7 @@ function renderOperations(config?: {
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
   invalidatePendingReads?: (affectedPath: string) => void
-  beginDirectoryRead?: () => () => boolean
+  beginTreeRefresh?: () => () => boolean
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
@@ -45,7 +45,7 @@ function renderOperations(config?: {
       resetForFileChange,
       onConfirm,
       invalidatePendingReads,
-      beginDirectoryRead: config?.beginDirectoryRead ?? (() => () => true)
+      beginTreeRefresh: config?.beginTreeRefresh ?? (() => () => true)
     })
     return { ...ops, openFile }
   })
@@ -356,7 +356,7 @@ describe('ツリー再読込の世代管理', () => {
     mockReadDirectory.mockResolvedValue([
       { name: 'stale.ts', path: '/project/stale.ts', type: 'file' }
     ])
-    const { result } = renderOperations({ beginDirectoryRead: () => () => false })
+    const { result } = renderOperations({ beginTreeRefresh: () => () => false })
     await act(async () => {
       await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
     })
