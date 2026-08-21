@@ -24,6 +24,7 @@ interface FileEditingState {
    * 待つだけでは、待機後〜操作完了までの間に始まった保存が旧パスを再作成する
    */
   lockPathForFileOperation: (targetPath: string) => Promise<() => void>
+  pendingSaveFor: (targetPath: string) => Promise<void> | null
 }
 
 export function useFileEditing(
@@ -80,6 +81,21 @@ export function useFileEditing(
 
   const isPathLocked = (path: string): boolean =>
     locksRef.current.some((lock) => isPathAtOrInside(path, lock.path))
+
+  /**
+   * targetPath 配下で進行中の保存があればその完了 promise を返す。無ければ null。
+   * 読み込みのように「進行中の保存だけ待てばよい」経路で使う。null を返す形に
+   * しているのは、保存が無いときに await を挟まず同期的に先へ進めるため
+   * (常に await すると、読み込みの開始が 1 マイクロタスク遅れて呼び出し側の
+   * 順序前提が変わる)。
+   */
+  const pendingSaveFor = (targetPath: string): Promise<void> | null => {
+    const pending = [...savingPromisesRef.current.entries()]
+      .filter(([path]) => isPathAtOrInside(path, targetPath))
+      .map(([, promise]) => promise)
+    if (pending.length === 0) return null
+    return Promise.all(pending).then(() => undefined)
+  }
 
   const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
@@ -187,6 +203,7 @@ export function useFileEditing(
     saveFile,
     resetForFileChange,
     confirmDiscardIfDirty,
-    lockPathForFileOperation
+    lockPathForFileOperation,
+    pendingSaveFor
   }
 }

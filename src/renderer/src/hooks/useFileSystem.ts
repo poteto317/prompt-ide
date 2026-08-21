@@ -133,7 +133,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     saveFile,
     resetForFileChange,
     confirmDiscardIfDirty,
-    lockPathForFileOperation
+    lockPathForFileOperation,
+    pendingSaveFor
   } = useFileEditing(openFile, commitOpenFile, options)
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
@@ -345,6 +346,16 @@ export function useFileSystem(options?: Options): FileSystemState {
     pendingReadPathRef.current = fileNode.path
     const snapshot = snapshotBuffer()
     try {
+      // 同じ path の保存が進行中なら、その完了を待ってから読む。待たないと
+      // write 完了前の旧内容を読み取り、しかも再オープンで世代が進むため
+      // 保存側は savedContent を更新せず、ディスクとエディタが食い違う
+      for (
+        let pendingSave = pendingSaveFor(fileNode.path);
+        pendingSave !== null;
+        pendingSave = pendingSaveFor(fileNode.path)
+      ) {
+        await pendingSave
+      }
       const content = await fileSystemApi.readFileContent(fileNode.path)
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false

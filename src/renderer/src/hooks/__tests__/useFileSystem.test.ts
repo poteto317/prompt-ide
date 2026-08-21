@@ -2106,6 +2106,51 @@ describe('useFileSystem', () => {
     })
   })
 
+  it('保存中のファイルの読み込みは保存の完了を待つ', async () => {
+    // 待たずに読むと、write 完了前の旧内容を読み取り、しかも再オープンで
+    // 世代が進むため保存側は savedContent を更新せず、ディスクとエディタが食い違う
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('保存前の内容')
+    const order: string[] = []
+    let finishWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementation(() => {
+      order.push('write:start')
+      return new Promise<void>((resolve) => {
+        finishWrite = () => {
+          order.push('write:end')
+          resolve()
+        }
+      })
+    })
+    const target = mockTree[0].children![0]
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(target)
+    })
+    act(() => result.current.updateFileContent('編集済み'))
+    act(() => {
+      void result.current.saveFile()
+    })
+    await act(async () => {})
+    mockReadFileContent.mockImplementation(() => {
+      order.push('read:start')
+      return Promise.resolve('保存後の内容')
+    })
+    let reopenPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      reopenPromise = result.current.selectFile(target)
+    })
+    await act(async () => {})
+    expect(order).toEqual(['write:start'])
+    await act(async () => {
+      finishWrite()
+      await reopenPromise
+    })
+    expect(order).toEqual(['write:start', 'write:end', 'read:start'])
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

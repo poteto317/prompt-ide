@@ -143,8 +143,14 @@ export function useQuickOpen({
   }, [startNewGeneration])
 
   const close = useCallback((): void => {
+    // selectFile はキャンセルできないため、読み込み中に閉じてもファイルは開く。
+    // ここで元の要素へフォーカスを戻すと、EditorPanel は「他要素がフォーカス中」
+    // として要求を捨て、開いたファイルにフォーカスが移らない。
+    // startNewGeneration がフラグを倒すため、その後に立て直す
+    const isConfirming = confirmingGenerationRef.current === generationRef.current
     setIsOpen(false)
     startNewGeneration()
+    if (isConfirming) handedOverFocusRef.current = true
   }, [startNewGeneration])
 
   const setQuery = useCallback((next: string): void => {

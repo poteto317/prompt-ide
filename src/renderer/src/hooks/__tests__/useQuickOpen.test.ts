@@ -617,6 +617,36 @@ describe('useQuickOpen', () => {
     expect(result.current.hasHandedOverFocus).toBe(before)
   })
 
+  it('読み込み中に閉じてもフォーカスの引き渡しは保持する', async () => {
+    // selectFile はキャンセルできないため、Escape で閉じてもファイルは開く。
+    // ここで元の要素へフォーカスを戻すと、EditorPanel は「他要素がフォーカス中」
+    // として要求を捨て、開いたファイルにフォーカスが移らない
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.confirm())
+    act(() => result.current.close())
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+    await act(async () => {
+      resolveSelect(true)
+    })
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+  })
+
+  it('読み込み中でなければ閉じてもフォーカスは引き渡さない', () => {
+    // 単に Escape で閉じた場合は、元の要素へフォーカスを戻す
+    const { result } = setup()
+    act(() => result.current.open())
+    act(() => result.current.close())
+    expect(result.current.hasHandedOverFocus()).toBe(false)
+  })
+
   it('フォルダを開いていれば hasFolder が true になる', () => {
     const { result } = setup()
     expect(result.current.hasFolder).toBe(true)
