@@ -47,7 +47,10 @@ fi
 OWNER="$1"
 REPO="$2"
 PR="$3"
-BASELINE="$4"
+# request-copilot-review.sh の出力は "baseline: 2026-..." の形。行ごと貼られても
+# 動くよう前置きと空白を落とす。落とさないと比較が常に偽になり、新着を検知できない
+BASELINE="${4#baseline:}"
+BASELINE="$(printf '%s' "$BASELINE" | tr -d '[:space:]')"
 MIN_WAIT="${5:-1500}"
 INTERVAL="${6:-120}"
 
@@ -61,6 +64,15 @@ for value in "$PR" "$MIN_WAIT" "$INTERVAL"; do
       ;;
   esac
 done
+# 形式が違うと比較が黙って狂うため、ここで弾く
+case "$BASELINE" in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z) ;;
+  *)
+    echo "baseline は 2026-08-21T18:00:00Z の形式で指定してください（受け取った値: ${BASELINE}）" >&2
+    usage
+    ;;
+esac
+
 if [ "$INTERVAL" -lt 1 ]; then
   echo "interval-sec は 1 以上で指定してください" >&2
   usage

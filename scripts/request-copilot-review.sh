@@ -39,20 +39,40 @@ DEFAULT_BOT_ID="BOT_kgDOCnlnWA"
 # 拾ってしまうため、厳密一致で判定する
 COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer}"
 
-info=$(gh api graphql -f query="
+if ! info=$(gh api graphql -f query="
 {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
   id
   reviews(last:20){nodes{author{__typename login ... on Bot{id}}}}
   timelineItems(last:50, itemTypes:[REVIEW_REQUESTED_EVENT]){nodes{
     ... on ReviewRequestedEvent{requestedReviewer{__typename ... on Bot{id login}}}
   }}
-}}}")
+}}}"); then
+  echo "PR の情報取得に失敗した（owner / repo / pr-number と gh の認証を確認）" >&2
+  exit 1
+fi
 
-pr_id=$(printf '%s' "$info" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["repository"]["pullRequest"]["id"])')
-bot_id=$(printf '%s' "$info" | COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
+# 応答の解釈は 1 回にまとめ、失敗は理由を出して終了する。直接添字でたどると
+# errors を返すケースや pullRequest が null のケースで例外のスタックトレースになる
+if ! ids=$(printf '%s' "$info" | COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os
 copilot_login = os.environ["COPILOT_LOGIN"]
-pr = json.load(sys.stdin)["data"]["repository"]["pullRequest"]
+
+try:
+    payload = json.load(sys.stdin)
+except Exception as error:
+    print("応答が JSON として読めない: %s" % error, file=sys.stderr)
+    sys.exit(3)
+
+if payload.get("errors"):
+    print("GraphQL がエラーを返した: %s" % json.dumps(payload["errors"], ensure_ascii=False)[:300],
+          file=sys.stderr)
+    sys.exit(3)
+
+pr = ((payload.get("data") or {}).get("repository") or {}).get("pullRequest")
+if pr is None:
+    print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
+    sys.exit(3)
+
 candidates = []
 for node in pr["reviews"]["nodes"]:
     author = node.get("author") or {}
@@ -62,8 +82,16 @@ for node in pr["timelineItems"]["nodes"]:
     reviewer = node.get("requestedReviewer") or {}
     if reviewer.get("__typename") == "Bot" and reviewer.get("login") == copilot_login:
         candidates.append(reviewer["id"])
+# 1 行目に PR の node id、2 行目に bot id（見つからなければ空行）
+print(pr["id"])
 print(candidates[-1] if candidates else "")
-')
+'); then
+  echo "PR の情報を取得できなかったため中止する" >&2
+  exit 1
+fi
+
+pr_id=$(printf '%s' "$ids" | sed -n '1p')
+bot_id=$(printf '%s' "$ids" | sed -n '2p')
 
 if [ -z "$bot_id" ]; then
   bot_id="$DEFAULT_BOT_ID"
