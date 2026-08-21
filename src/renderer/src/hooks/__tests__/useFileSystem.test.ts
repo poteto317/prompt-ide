@@ -2401,6 +2401,91 @@ describe('useFileSystem', () => {
     expect(result.current.isDirty).toBe(false)
   })
 
+  it('読み込みの解決時点で保存が進行中ならその完了後に読み直す', async () => {
+    // 完了回数の比較だけだと、まだ進行中の保存は検出できず
+    // 保存前の内容を clean としてコミットしてしまう
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    const target = mockTree[0].children![0]
+    mockReadFileContent.mockResolvedValue('最初の内容')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(target)
+    })
+    let resolveRead: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve
+        })
+    )
+    let finishWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve
+        })
+    )
+    let reopenPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      reopenPromise = result.current.selectFile(target)
+    })
+    await act(async () => {})
+    // 読み込み中に保存を始め、完了させないまま読み込みを解決させる
+    act(() => result.current.updateFileContent('保存された内容'))
+    act(() => {
+      void result.current.saveFile()
+    })
+    await act(async () => {})
+    mockReadFileContent.mockResolvedValue('保存された内容')
+    await act(async () => {
+      resolveRead('最初の内容')
+      finishWrite()
+      await reopenPromise
+    })
+    expect(result.current.openFile?.content).toBe('保存された内容')
+    expect(result.current.isDirty).toBe(false)
+  })
+
+  it('競合が続いて上限に達したら古い内容をコミットせず失敗にする', async () => {
+    // 古いと分かっている内容を clean として表示すると、ディスクとの
+    // 食い違いに気付けなくなる
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    const target = mockTree[0].children![0]
+    mockReadFileContent.mockResolvedValue('最初の内容')
+    // 保存は「読み込みの解決時点ではまだ進行中」になるよう、次のタスクで完了させる
+    mockWriteFileContent.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0)
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(target)
+    })
+    // 先に編集しておく。保存はこの状態を書き出す
+    act(() => result.current.updateFileContent('編集済み'))
+    const openedBefore = result.current.openFile
+    const saveFile = result.current.saveFile
+    // 読み込みのたびに保存を挟み、競合し続ける状況を作る
+    mockReadFileContent.mockImplementation(() => {
+      void saveFile()
+      return Promise.resolve('古い内容')
+    })
+    let reopened: boolean | undefined
+    await act(async () => {
+      reopened = await result.current.selectFile(target)
+    })
+    expect(reopened).toBe(false)
+    expect(result.current.error?.message).toContain('保存と競合したため')
+    expect(result.current.openFile?.content).not.toBe('古い内容')
+    expect(result.current.openFile?.path).toBe(openedBefore?.path)
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

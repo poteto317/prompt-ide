@@ -362,8 +362,8 @@ export function useFileSystem(options?: Options): FileSystemState {
       // pendingSaveFor から消えるため、完了回数を読み込みの前後で比べて
       // 変化していれば読み直す。保存は利用者の操作なので通常は 1 回で収束するが、
       // 連打された場合に回り続けないよう試行回数に上限を設ける
-      let content = ''
-      for (let attempt = 0; ; attempt++) {
+      let content: string | null = null
+      for (let attempt = 0; attempt <= MAX_READ_RETRIES; attempt++) {
         for (
           let pendingSave = pendingSaveFor(fileNode.path);
           pendingSave !== null;
@@ -372,10 +372,24 @@ export function useFileSystem(options?: Options): FileSystemState {
           await pendingSave
         }
         const completionsBeforeRead = saveCompletionsFor(fileNode.path)
-        content = await fileSystemApi.readFileContent(fileNode.path)
+        const readContent = await fileSystemApi.readFileContent(fileNode.path)
         if (readId !== latestReadRef.current) return false
-        if (saveCompletionsFor(fileNode.path) === completionsBeforeRead) break
-        if (attempt >= MAX_READ_RETRIES) break
+        // 読み込み中に保存が完了した場合(完了回数の変化)に加え、解決時点でまだ
+        // 進行中の保存が残っている場合も読み直す。どちらも読み取った内容が
+        // 保存前のものになり得る
+        if (
+          saveCompletionsFor(fileNode.path) === completionsBeforeRead &&
+          pendingSaveFor(fileNode.path) === null
+        ) {
+          content = readContent
+          break
+        }
+      }
+      // 上限まで競合が続いた場合、古いと分かっている内容はコミットしない。
+      // clean として表示するとディスクとの食い違いに気付けなくなる
+      if (content === null) {
+        setError(new Error('保存と競合したため読み込めませんでした。もう一度開いてください。'))
+        return false
       }
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false
