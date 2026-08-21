@@ -14,9 +14,7 @@ const mockCreateDirectory = vi.mocked(fileSystemApi.createDirectory)
 const mockRenameEntry = vi.mocked(fileSystemApi.renameEntry)
 const mockDeleteEntry = vi.mocked(fileSystemApi.deleteEntry)
 
-const mockTree: FileTreeNode[] = [
-  { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-]
+const mockTree: FileTreeNode[] = [{ name: 'index.ts', path: '/project/src/index.ts', type: 'file' }]
 
 const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
 const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory', children: [] }
@@ -30,8 +28,10 @@ function renderOperations(config?: {
   initialOpenFile?: OpenFile | null
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
+  invalidatePendingReads?: () => void
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
+  const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
   const onConfirm = config?.onConfirm ?? vi.fn<(message: string) => boolean>().mockReturnValue(true)
   // null を明示的に渡すケースを undefined(デフォルト値を使う)と区別する
   const folderPath = config && 'folderPath' in config ? (config.folderPath ?? null) : '/project'
@@ -42,11 +42,12 @@ function renderOperations(config?: {
       openFile,
       setOpenFile,
       resetForFileChange,
-      onConfirm
+      onConfirm,
+      invalidatePendingReads
     })
     return { ...ops, openFile }
   })
-  return { result, resetForFileChange, onConfirm }
+  return { result, resetForFileChange, onConfirm, invalidatePendingReads }
 }
 
 beforeEach(() => {
@@ -125,7 +126,11 @@ describe('useFileTreeOperations', () => {
         resetForFileChange
       })
 
-      const otherNode: FileTreeNode = { name: 'other.ts', path: '/project/src/other.ts', type: 'file' }
+      const otherNode: FileTreeNode = {
+        name: 'other.ts',
+        path: '/project/src/other.ts',
+        type: 'file'
+      }
       await act(async () => {
         await result.current.renameEntry(otherNode, 'renamed.ts')
       })
@@ -138,7 +143,9 @@ describe('useFileTreeOperations', () => {
     it('開いているファイル自体のリネームで path/name/language が追随する', async () => {
       mockRenameEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue(mockTree)
-      const { result } = renderOperations({ initialOpenFile: makeOpenFile(fileNode.path, fileNode.name) })
+      const { result } = renderOperations({
+        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+      })
 
       await act(async () => {
         await result.current.renameEntry(fileNode, 'index.md')
@@ -168,7 +175,9 @@ describe('useFileTreeOperations', () => {
     it('開いているファイルの祖先ディレクトリのリネームでパスのプレフィックスが付け替わる', async () => {
       mockRenameEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue(mockTree)
-      const { result } = renderOperations({ initialOpenFile: makeOpenFile(fileNode.path, fileNode.name) })
+      const { result } = renderOperations({
+        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+      })
 
       await act(async () => {
         await result.current.renameEntry(dirNode, 'lib')
@@ -304,5 +313,33 @@ describe('useFileTreeOperations', () => {
 
       expect(result.current.error?.message).toBe('Access denied: /project/src/index.ts')
     })
+  })
+})
+
+describe('保留中の読み込みの無効化', () => {
+  it('deleteEntry で invalidatePendingReads を呼ぶ', async () => {
+    // 削除対象を読み込み中だと、あとから解決して削除済みファイルを表示してしまう
+    const invalidatePendingReads = vi.fn()
+    const { result } = renderOperations({ invalidatePendingReads })
+    await act(async () => {
+      await result.current.deleteEntry({
+        name: 'a.ts',
+        path: '/project/a.ts',
+        type: 'file'
+      })
+    })
+    expect(invalidatePendingReads).toHaveBeenCalled()
+  })
+
+  it('renameEntry で invalidatePendingReads を呼ぶ', async () => {
+    const invalidatePendingReads = vi.fn()
+    const { result } = renderOperations({ invalidatePendingReads })
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+    expect(invalidatePendingReads).toHaveBeenCalled()
   })
 })

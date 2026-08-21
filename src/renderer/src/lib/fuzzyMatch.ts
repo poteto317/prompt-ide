@@ -48,18 +48,46 @@ const foldCase = (text: string): string => {
 }
 
 /**
- * query が target の部分列として存在するかを O(target.length) で先に判定する。
- * 大半のファイルはここで落ちるため、コストの高い DP を走らせる件数を減らせる。
+ * DP を走らせるセル数(クエリ長 × ターゲット長)の上限。
+ * これを超える組み合わせでは貪欲法の結果をそのまま使う。長いクエリが多数の
+ * 長いパスの部分列になり得る場合に、1 打鍵あたりの計算量が跳ね上がるのを防ぐ。
+ */
+const MAX_DP_CELLS = 8192
+
+/**
+ * query を target の部分列として前から詰めた位置を O(target.length) で求める。
+ * 部分列として存在しなければ null。大半のファイルはここで落ちるため、
+ * コストの高い DP を走らせる件数を減らせる。
  * DP と走査単位を揃えるため、コードポイントではなくコードユニット単位で見る。
  */
-const containsSubsequence = (query: string, target: string): boolean => {
+const greedySubsequence = (query: string, target: string): number[] | null => {
+  const indices: number[] = []
   let searchFrom = 0
   for (let i = 0; i < query.length; i++) {
     const found = target.indexOf(query[i], searchFrom)
-    if (found === -1) return false
+    if (found === -1) return null
+    indices.push(found)
     searchFrom = found + 1
   }
-  return true
+  return indices
+}
+
+/** 与えられたマッチ位置のスコアを DP と同じ配点で求める(貪欲法の結果用) */
+const scoreOfIndices = (query: string, target: string, indices: number[]): number => {
+  let score = 0
+  for (let k = 0; k < indices.length; k++) {
+    const j = indices[k]
+    let cellScore = MATCH_SCORE
+    if (isWordBoundary(target, j)) cellScore += BONUS_BOUNDARY
+    if (target[j] === query[k]) cellScore += BONUS_CASE_EXACT
+    if (k === 0) {
+      score += cellScore - j * PENALTY_GAP
+      continue
+    }
+    const gap = j - indices[k - 1] - 1
+    score += cellScore - gap * PENALTY_GAP + (gap === 0 ? BONUS_CONSECUTIVE : 0)
+  }
+  return score
 }
 
 /**
@@ -75,10 +103,17 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
 
   const loweredQuery = foldCase(query)
   const loweredTarget = foldCase(target)
-  if (!containsSubsequence(loweredQuery, loweredTarget)) return null
+  const greedyIndices = greedySubsequence(loweredQuery, loweredTarget)
+  if (greedyIndices === null) return null
 
   const queryLength = loweredQuery.length
   const targetLength = loweredTarget.length
+
+  // 計算量の上限を超える組み合わせでは DP を諦め、貪欲法の位置をそのまま使う。
+  // 最適な位置ではなくなり得るが、一致判定と indices の整合は保たれる
+  if (queryLength * targetLength > MAX_DP_CELLS) {
+    return { score: scoreOfIndices(query, target, greedyIndices), indices: greedyIndices }
+  }
 
   // scores[i][j]: query[0..i] を「query[i] が target[j] にマッチする形」で
   // 消費したときの最大スコア。到達不能な組み合わせは null で表す。

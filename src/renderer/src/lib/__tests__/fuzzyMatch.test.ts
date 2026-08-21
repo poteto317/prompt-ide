@@ -111,6 +111,25 @@ describe('fuzzyMatch', () => {
     expect(result?.indices.map((i) => 'İstanbul.md'[i]).join('')).toBe('İs')
   })
 
+  it('DP を打ち切る長さのクエリでも一致位置を返す', () => {
+    // 計算量の上限を超えると貪欲法へ切り替える。最適な位置ではなくなり得るが、
+    // 一致判定と indices の整合(昇順・クエリの各文字に対応)は保つ
+    const target = `${'src/renderer/src/components/quick-open/'.repeat(3)}QuickOpenDialog.tsx`
+    const query = target
+    const result = fuzzyMatch(query, target)
+    expect(result).not.toBeNull()
+    const indices = result?.indices ?? []
+    expect(indices).toHaveLength(query.length)
+    expect(indices).toEqual([...indices].sort((a, b) => a - b))
+    expect(indices.map((i) => target[i]).join('')).toBe(query)
+    expect(Number.isFinite(result?.score)).toBe(true)
+  })
+
+  it('DP を打ち切る長さでも一致しないものは null を返す', () => {
+    const target = 'a'.repeat(200)
+    expect(fuzzyMatch(`${'a'.repeat(150)}z`, target)).toBeNull()
+  })
+
   it('スコアは常に有限の数値を返す', () => {
     const result = fuzzyMatch('u', 'useFileSystem.ts')
     expect(Number.isFinite(result?.score)).toBe(true)

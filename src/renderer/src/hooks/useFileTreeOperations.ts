@@ -11,6 +11,8 @@ interface FileTreeOperationsOptions {
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>
   resetForFileChange: () => void
   onConfirm: (message: string) => boolean
+  /** 保留中のファイル読み込みを無効化する(リネーム・削除で対象が変わるため) */
+  invalidatePendingReads: () => void
 }
 
 interface FileTreeOperationsState {
@@ -32,7 +34,8 @@ export function useFileTreeOperations({
   openFile,
   setOpenFile,
   resetForFileChange,
-  onConfirm
+  onConfirm,
+  invalidatePendingReads
 }: FileTreeOperationsOptions): FileTreeOperationsState {
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
@@ -63,6 +66,8 @@ export function useFileTreeOperations({
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
+      // 読み込み中のファイルがリネーム対象でも、旧 path のまま表示しないようにする
+      invalidatePendingReads()
       await fileSystemApi.renameEntry(node.path, newName)
       // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
       const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
@@ -96,6 +101,8 @@ export function useFileTreeOperations({
         : `「${node.name}」を削除しますか？`
     if (!onConfirm(message)) return
     await runFileOperation(async () => {
+      // 読み込み中のファイルが削除対象でも、その結果を表示しないようにする
+      invalidatePendingReads()
       await fileSystemApi.deleteEntry(node.path)
       const affected =
         openFile !== null && (openFile.path === node.path || isPathInside(openFile.path, node.path))
@@ -106,5 +113,14 @@ export function useFileTreeOperations({
     })
   }
 
-  return { fileTree, setFileTree, error, setError, createFile, createDirectory, renameEntry, deleteEntry }
+  return {
+    fileTree,
+    setFileTree,
+    error,
+    setError,
+    createFile,
+    createDirectory,
+    renameEntry,
+    deleteEntry
+  }
 }

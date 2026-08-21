@@ -27,7 +27,8 @@ const defaultProps = {
   executionError: null as Error | null,
   onClearResult: vi.fn(),
   onCancelExecution: vi.fn(),
-  isOverlayOpen: false
+  isOverlayOpen: false,
+  openedFileSignal: 0
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -143,35 +144,103 @@ describe('EditorPanel — openFile あり', () => {
     // クイックオープンから Enter でファイルを開くと、ダイアログの復帰先だった
     // 旧エディタは key 変更で再マウントされて DOM から消えている。
     // 新しいエディタが自分でフォーカスを取らないと body に取り残される
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
     expect(mockFocus).toHaveBeenCalled()
   })
 
   it('オーバーレイが開いている間はフォーカスを奪わない', () => {
     // 読み込み中にクイックオープンを開き直した場合、エディタの再マウントで
     // フォーカスを奪うと、続けて打った文字がファイルへ入ってしまう
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen />)
+    render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen openedFileSignal={1} />
+    )
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
   it('オーバーレイが閉じた時点でエディタにフォーカスする', () => {
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen />
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen openedFileSignal={1} />
     )
     expect(mockFocus).not.toHaveBeenCalled()
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen={false} />)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        isOverlayOpen={false}
+        openedFileSignal={1}
+      />
+    )
     expect(mockFocus).toHaveBeenCalled()
   })
 
   it('同じファイルを閉じて開き直してもフォーカスする', () => {
     // 閉じると Monaco はアンマウントされる。破棄済みインスタンスの参照が残ると
     // 同じパスを開き直したときに古い側でフォーカス要求が消費されてしまう
-    const { rerender } = render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+    )
     expect(mockFocus).toHaveBeenCalledTimes(1)
-    rerender(<EditorPanel {...defaultProps} openFile={null} />)
+    rerender(<EditorPanel {...defaultProps} openFile={null} openedFileSignal={1} />)
     mockFocus.mockClear()
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={2} />)
     expect(mockFocus).toHaveBeenCalled()
+  })
+
+  it('他のダイアログがフォーカスを持っているときは奪わない', () => {
+    // Explorer のリネームダイアログ等が開いている間に読み込みが完了しても、
+    // 入力中のダイアログからフォーカスを奪わない
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    const input = document.createElement('input')
+    dialog.appendChild(input)
+    document.body.appendChild(dialog)
+    input.focus()
+
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    expect(mockFocus).not.toHaveBeenCalled()
+    expect(input).toHaveFocus()
+    dialog.remove()
+  })
+
+  it('リネームでパスが変わっただけではフォーカスを奪わない', () => {
+    // 開いているファイル(や祖先ディレクトリ)のリネームでも openFile.path は変わる。
+    // エクスプローラーで作業中のユーザーからフォーカスを持っていかない
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+    )
+    mockFocus.mockClear()
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        openedFileSignal={1}
+      />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
+  it('ダイアログにフォーカスを譲ったあと、無関係な操作でフォーカスを奪い返さない', () => {
+    // 譲った時点で要求を取り下げないと、あとからオーバーレイの開閉などで
+    // 消費され、別のところへフォーカスが飛ぶ
+    const dialog = document.createElement('div')
+    dialog.setAttribute('role', 'dialog')
+    const input = document.createElement('input')
+    dialog.appendChild(input)
+    document.body.appendChild(dialog)
+    input.focus()
+
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+    dialog.remove()
+
+    // 無関係なオーバーレイの開閉(クイックオープンを開いて閉じただけ)
+    rerender(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} isOverlayOpen />
+    )
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    expect(mockFocus).not.toHaveBeenCalled()
   })
 
   it('ファイルを開いていないときはフォーカスしない', () => {

@@ -169,7 +169,9 @@ export function useQuickOpen({
         // モーダルの Escape はここで消費する。伝播させると背後に残っている
         // コンテキストメニュー等の document ハンドラまで同時に反応してしまう
         event.stopPropagation()
-        setIsOpen(false)
+        // setIsOpen(false) を直接呼ばず close() を通す。閉じる経路で必ず世代が
+        // 進むようにしておき、進行中の読み込みの扱いを一箇所に揃える
+        close()
         return
       }
       if (!(event.ctrlKey || event.metaKey)) return
@@ -187,7 +189,7 @@ export function useQuickOpen({
     }
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [open, isOpenRef])
+  }, [open, close, isOpenRef])
 
   return {
     isOpen,

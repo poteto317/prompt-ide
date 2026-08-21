@@ -25,6 +25,16 @@ interface Props {
   onCancelExecution: () => void
   /** フォーカスを持つモーダル(クイックオープン等)が開いているか */
   isOverlayOpen: boolean
+  /** ファイルを開くたびに増える信号。リネームによる path 変更と区別するために使う */
+  openedFileSignal: number
+}
+
+// フォーカスを保持しているのがダイアログの中かどうか。
+// isOverlayOpen が示すクイックオープン以外にも、Explorer のリネームダイアログなど
+// フォーカスを持つモーダルがあるため、実際のフォーカス位置からも判定する
+const isFocusInsideDialog = (): boolean => {
+  const active = document.activeElement
+  return active instanceof Element && active.closest('[role="dialog"]') !== null
 }
 
 export default function EditorPanel({
@@ -41,13 +51,15 @@ export default function EditorPanel({
   executionError,
   onClearResult,
   onCancelExecution,
-  isOverlayOpen
+  isOverlayOpen,
+  openedFileSignal
 }: Props) {
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
   // Ctrl/Cmd+S が常に最新の onSave を呼べるよう ref 経由で参照する。
   const onSaveRef = useLatestRef(onSave)
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const openFilePath = openFile?.path ?? null
+  const hasOpenFile = openFilePath !== null
   // ファイルを開いた直後にそのまま入力を始められるようにする。
   // key={openFile.path} により切替のたびに再マウントされるため、ここで取らないと
   // クイックオープン経由ではフォーカスが body に残ってしまう。
@@ -66,13 +78,21 @@ export default function EditorPanel({
   // 両方から呼んで先に条件が揃ったほうで受け取る。
   const focusEditorIfPending = useCallback((): void => {
     if (!pendingFocusRef.current || isOverlayOpenRef.current) return
+    if (isFocusInsideDialog()) {
+      // 入力中のダイアログへ譲った時点で要求は取り下げる。残しておくと、
+      // 無関係なオーバーレイの開閉であとから消費され、フォーカスが飛ぶ
+      pendingFocusRef.current = false
+      return
+    }
     if (editorRef.current === null || mountedPathRef.current !== openFilePathRef.current) return
     pendingFocusRef.current = false
     editorRef.current.focus()
   }, [isOverlayOpenRef, openFilePathRef])
 
+  // 「開いた」信号でのみ要求を立てる。openFilePath はリネームでも変わるため、
+  // path の変化を使うとエクスプローラーで作業中にフォーカスを奪ってしまう
   useEffect(() => {
-    if (openFilePath === null) {
+    if (!hasOpenFile) {
       // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
       // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
       // 消費してしまい、新しいエディタが入力を受け取れない
@@ -82,11 +102,11 @@ export default function EditorPanel({
       return
     }
     pendingFocusRef.current = true
-  }, [openFilePath])
+  }, [openedFileSignal, hasOpenFile])
 
   useEffect(() => {
     focusEditorIfPending()
-  }, [openFilePath, isOverlayOpen, focusEditorIfPending])
+  }, [openedFileSignal, isOverlayOpen, focusEditorIfPending])
 
   return (
     <div className="editor-panel">
@@ -112,6 +132,10 @@ export default function EditorPanel({
               options={editorOptions}
               onChange={(value) => onChangeContent(value ?? '')}
               onMount={(editorInstance, monaco) => {
+                // onMount は非同期に発火するため、素早く切り替えたときに
+                // 破棄済みの古いファイルの callback が後から届くことがある。
+                // 現在のファイルのものだけを保持する
+                if (openFilePathRef.current !== openFile.path) return
                 editorRef.current = editorInstance
                 mountedPathRef.current = openFile.path
                 registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())

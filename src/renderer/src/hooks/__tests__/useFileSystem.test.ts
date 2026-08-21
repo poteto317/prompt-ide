@@ -311,6 +311,32 @@ describe('useFileSystem', () => {
     expect(result.current.openFile).toBeNull()
   })
 
+  it('ディレクトリ読み込み中のファイル操作で openFolder が中断されない', async () => {
+    // ファイル読み込みと同じカウンタで中断判定すると、読み込み中にタブを閉じる/
+    // ファイルをクリックするだけでフォルダ選択が黙って捨てられる
+    let resolveTree: (tree: FileTreeNode[]) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/newfolder')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((resolve) => {
+          resolveTree = resolve
+        })
+    )
+    const { result } = renderHook(() => useFileSystem())
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 読み込み中にタブを閉じる(ファイル側のカウンタが進む)
+    act(() => result.current.closeFile())
+    await act(async () => {
+      resolveTree(mockTree)
+      await folderPromise
+    })
+    expect(result.current.folderPath).toBe('/newfolder')
+    expect(result.current.fileTree).toEqual(mockTree)
+  })
+
   it('ディレクトリ読み込み中に開いたファイルを openFolder が消さない', async () => {
     // openFolder はネイティブダイアログのあと readDirectory を待つ。
     // その間に始まった選択が先に確定した場合、あとから openFile を null にしない
@@ -341,6 +367,111 @@ describe('useFileSystem', () => {
       await folderPromise
     })
     expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+  })
+
+  it('古い openFolder の失敗が新しいフォルダの状態を上書きしない', async () => {
+    // フォルダ読み込みの失敗は、より新しい「フォルダ選択」があったときだけ抑止する。
+    // ファイル選択で抑止すると、実際に起きたフォルダ読み込み失敗が握り潰される
+    let rejectFirst: (err: Error) => void = () => {}
+    mockOpenFolder.mockResolvedValue('/old')
+    mockReadDirectory.mockImplementationOnce(
+      () =>
+        new Promise<FileTreeNode[]>((_resolve, reject) => {
+          rejectFirst = reject
+        })
+    )
+    const { result } = renderHook(() => useFileSystem())
+    let firstPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      firstPromise = result.current.openFolder()
+    })
+
+    mockOpenFolder.mockResolvedValue('/new')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.folderPath).toBe('/new')
+
+    await act(async () => {
+      rejectFirst(new Error('遅延したフォルダ読み込み失敗'))
+      await firstPromise
+    })
+    expect(result.current.error).toBeNull()
+    expect(result.current.folderPath).toBe('/new')
+  })
+
+  it('読み込み中に入った未保存の編集を確認なしで破棄しない', async () => {
+    // Enter 後に閉じて旧ファイルを編集すると、あとから届いた読み込み結果が
+    // 確認なしにバッファを置き換えて編集内容を失う
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('const x = 1')
+    const onConfirm = vi.fn(() => false)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const first: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(first)
+    })
+
+    let resolveSecond: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSecond = resolve
+        })
+    )
+    const second: FileTreeNode = { name: 'App.tsx', path: '/project/src/App.tsx', type: 'file' }
+    let secondPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      secondPromise = result.current.selectFile(second)
+    })
+    // 読み込み待ちの間に編集が入る(開始時点の確認では拾えない)
+    act(() => result.current.updateFileContent('編集済み'))
+
+    let opened: boolean | undefined
+    await act(async () => {
+      resolveSecond('const y = 2')
+      opened = await secondPromise
+    })
+    expect(onConfirm).toHaveBeenCalled()
+    expect(opened).toBe(false)
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+    expect(result.current.openFile?.content).toBe('編集済み')
+  })
+
+  it('読み込み中のファイルを削除したらその結果を表示しない', async () => {
+    // 削除済みのファイルを表示してしまうと、編集して保存した時点で復活する
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    let resolveRead: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve
+        })
+    )
+    const onConfirm = vi.fn(() => true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    let readPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      readPromise = result.current.selectFile(node)
+    })
+    await act(async () => {
+      await result.current.deleteEntry(node)
+    })
+    await act(async () => {
+      resolveRead('const x = 1')
+      await readPromise
+    })
+    expect(result.current.openFile).toBeNull()
   })
 
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {

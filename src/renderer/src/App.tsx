@@ -13,6 +13,7 @@ export default function App(): React.JSX.Element {
     folderPath,
     fileTree,
     openFile,
+    openedFileSignal,
     isDirty,
     isSaving,
     error,
@@ -139,6 +140,7 @@ export default function App(): React.JSX.Element {
             onClearResult={clearResult}
             onCancelExecution={cancelExecution}
             isOverlayOpen={quickOpen.isOpen}
+            openedFileSignal={openedFileSignal}
           />
         </div>
       </div>
