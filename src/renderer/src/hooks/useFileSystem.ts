@@ -117,6 +117,9 @@ export function useFileSystem(options?: Options): FileSystemState {
   // フォルダ走査に固有のエラー。error は CRUD やファイル読み込みの失敗でも立つため、
   // 「ツリーが空なのは走査に失敗したから」を判定するには分けて持つ必要がある
   const [folderLoadError, setFolderLoadError] = useState<Error | null>(null)
+  // 開いたファイルのイベント ID。重複除去で末尾が入れ替わっても再利用しないよう、
+  // 配列の中身ではなく専用のカウンタで採番する
+  const openedFileEventSeqRef = useRef(0)
   const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
@@ -214,7 +217,6 @@ export function useFileSystem(options?: Options): FileSystemState {
 
   const openFolder = async (): Promise<void> => {
     if (!confirmDiscardIfDirty()) return
-    setError(null)
     // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
@@ -235,6 +237,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
       // キャンセル時に現在のエラーを消さないよう、パスが返ってからクリアする
+      setError(null)
       setFolderLoadError(null)
       pendingFolderOpenRef.current += 1
       scanning = true
@@ -353,7 +356,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
       // クリックで奪うと、ツリー内のキーボード移動位置が失われるため
       setOpenedFileSignal((prev) => {
-        const nextId = (prev.events.at(-1)?.id ?? 0) + 1
+        const nextId = ++openedFileEventSeqRef.current
         // 同じパスの古いイベントは畳む。件数だけで切ると、重複を含んだ列が
         // 枠を埋めて中間の(本来保持すべき別ファイルの)履歴が落ちる
         return {

@@ -83,6 +83,27 @@ export function useFileTreeOperations({
     }
   }
 
+  const DISCARD_ON_DELETE_MESSAGE = '保存されていない変更があります。破棄して削除しますか？'
+
+  // 削除の待機中に入った未保存の編集を、確認なしで捨てない
+  const confirmDiscardOfNewEdits = (
+    node: FileTreeNode,
+    bufferAtConfirm: OpenFile | null
+  ): boolean => {
+    const current = getOpenFile()
+    if (current === null) return true
+    const affected = current.path === node.path || isPathInside(current.path, node.path)
+    if (!affected) return true
+    if (current.content === current.savedContent) return true
+    const unchanged =
+      bufferAtConfirm !== null &&
+      bufferAtConfirm.path === current.path &&
+      bufferAtConfirm.content === current.content &&
+      bufferAtConfirm.savedContent === current.savedContent
+    if (unchanged) return true
+    return onConfirm(DISCARD_ON_DELETE_MESSAGE)
+  }
+
   const runFileOperation = async (operation: () => Promise<void>): Promise<void> => {
     setError(null)
     // 操作の開始時点のフォルダを控える。await 中にフォルダが切り替わってから
@@ -97,11 +118,24 @@ export function useFileTreeOperations({
     }
   }
 
+  // 作成も同じ mutex を通す。通さないと、作成先の祖先のリネーム・削除と
+  // 並行して走り、FS の結果が実行順に依存する
+  const runLocked = async (targetPath: string, operation: () => Promise<void>): Promise<void> => {
+    const release = await lockPathForFileOperation(targetPath)
+    try {
+      await operation()
+    } finally {
+      release()
+    }
+  }
+
   const createFile = (parentPath: string, name: string): Promise<void> =>
-    runFileOperation(() => fileSystemApi.createFile(parentPath, name))
+    runFileOperation(() => runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name)))
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
-    runFileOperation(() => fileSystemApi.createDirectory(parentPath, name))
+    runFileOperation(() =>
+      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name))
+    )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
@@ -148,11 +182,15 @@ export function useFileTreeOperations({
         ? `「${node.name}」を削除しますか？中身もすべて削除されます。`
         : `「${node.name}」を削除しますか？`
     if (!onConfirm(message)) return
+    // 確認からロック取得までの間にも編集できる。待機中に入った変更を
+    // 確認なしで捨てないよう、開始時点の状態を控えておく
+    const bufferAtConfirm = getOpenFile()
     await runFileOperation(async () => {
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
       const release = await lockPathForFileOperation(node.path)
       try {
+        if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return
         await fileSystemApi.deleteEntry(node.path)
       } finally {
         release()

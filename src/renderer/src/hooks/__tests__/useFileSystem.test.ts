@@ -717,48 +717,50 @@ describe('useFileSystem', () => {
     expect(result.current.isDirty).toBe(true)
   })
 
-  it('新しいフォルダの走査中に始まった古いツリー再読込がそれを無効化しない', () => {
+  it('新しいフォルダの走査中に始まった古いツリー再読込がそれを無効化しない', async () => {
     // 旧フォルダ A の CRUD から呼ばれた refreshTree が、B の走査中に世代を
     // 進めてしまうと、B の結果が捨てられフォルダ選択が黙って失われる
     mockOpenFolder.mockResolvedValue('/old')
     mockDeleteEntry.mockResolvedValue(undefined)
     const oldTree: FileTreeNode[] = [{ name: 'old.ts', path: '/old/old.ts', type: 'file' }]
     const newTree: FileTreeNode[] = [{ name: 'new.ts', path: '/new/new.ts', type: 'file' }]
+    // /new の走査は 1 本の保留 promise を全呼び出しで共有する。呼び出しごとに
+    // 作り直すと resolveNew が上書きされ、最初の走査が永久に解決しない
     let resolveNew: (tree: FileTreeNode[]) => void = () => {}
-    mockReadDirectory.mockImplementation((target: string) => {
-      if (target === '/new') {
-        return new Promise<FileTreeNode[]>((resolve) => {
-          resolveNew = resolve
-        })
-      }
-      return Promise.resolve(oldTree)
+    const pendingNew = new Promise<FileTreeNode[]>((resolve) => {
+      resolveNew = resolve
     })
+    mockReadDirectory.mockImplementation((target: string) =>
+      target === '/new' ? pendingNew : Promise.resolve(oldTree)
+    )
 
-    const { result } = renderHook(() => useFileSystem())
-    return act(async () => {
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
       await result.current.openFolder()
-    }).then(async () => {
-      // 新しいフォルダの走査を保留状態にする
-      mockOpenFolder.mockResolvedValue('/new')
-      let folderPromise: Promise<void> = Promise.resolve()
-      await act(async () => {
-        folderPromise = result.current.openFolder()
-      })
-      // 走査中に旧フォルダの削除 → refreshTree が走る
-      await act(async () => {
-        await result.current.deleteEntry({
-          name: 'a.ts',
-          path: '/old/a.ts',
-          type: 'file'
-        })
-      })
-      await act(async () => {
-        resolveNew(newTree)
-        await folderPromise
-      })
-      expect(result.current.folderPath).toBe('/new')
-      expect(result.current.fileTree).toEqual(newTree)
     })
+    // 新しいフォルダの走査を保留状態にする
+    mockOpenFolder.mockResolvedValue('/new')
+    let folderPromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      folderPromise = result.current.openFolder()
+    })
+    // 走査中に旧フォルダの削除 → refreshTree が走る。
+    // 再読込は保留中の走査と同じ readDirectory を待つため、ここでは完了を待たない
+    let deletePromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      deletePromise = result.current.deleteEntry({
+        name: 'a.ts',
+        path: '/old/a.ts',
+        type: 'file'
+      })
+    })
+    await act(async () => {
+      resolveNew(newTree)
+      await folderPromise
+      await deletePromise
+    })
+    expect(result.current.folderPath).toBe('/new')
+    expect(result.current.fileTree).toEqual(newTree)
   })
 
   it('フォルダ切替後に始まった古いツリー再読込が新しいフォルダを壊さない', async () => {
@@ -1901,6 +1903,131 @@ describe('useFileSystem', () => {
     expect(result.current.error?.message).toBe('B の走査失敗')
   })
 
+  it('末尾のファイルを開き直しても信号の ID は前進する', async () => {
+    // ID が再利用されると、消費側がイベント発生を検知できない
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('x')
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    const a: FileTreeNode = { name: 'a.ts', path: '/project/a.ts', type: 'file' }
+    const b: FileTreeNode = { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(a)
+      await result.current.selectFile(b)
+    })
+    const idBefore = result.current.openedFileSignal.events.at(-1)?.id as number
+    await act(async () => {
+      await result.current.selectFile(b)
+    })
+    const idAfter = result.current.openedFileSignal.events.at(-1)?.id as number
+    expect(idAfter).toBeGreaterThan(idBefore)
+  })
+
+  it('作成の実行中は重なる削除を待たせる', async () => {
+    // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue([])
+    const order: string[] = []
+    let finishCreate: () => void = () => {}
+    mockCreateFile.mockImplementationOnce(() => {
+      order.push('create:start')
+      return new Promise<void>((resolve) => {
+        finishCreate = () => {
+          order.push('create:end')
+          resolve()
+        }
+      })
+    })
+    mockDeleteEntry.mockImplementation(() => {
+      order.push('delete:start')
+      return Promise.resolve()
+    })
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    let createPromise: Promise<void> = Promise.resolve()
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      createPromise = result.current.createFile('/project/src', 'x.ts')
+    })
+    await act(async () => {})
+    act(() => {
+      deletePromise = result.current.deleteEntry({
+        name: 'src',
+        path: '/project/src',
+        type: 'directory'
+      })
+    })
+    await act(async () => {})
+    expect(order).toEqual(['create:start'])
+    await act(async () => {
+      finishCreate()
+      await createPromise
+      await deletePromise
+    })
+    expect(order).toEqual(['create:start', 'create:end', 'delete:start'])
+  })
+
+  it('フォルダ選択をキャンセルしても、走査失敗のエラー表示を消さない', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockRejectedValue(new Error('走査失敗'))
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.error?.message).toBe('走査失敗')
+
+    mockOpenFolder.mockResolvedValueOnce(null)
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    expect(result.current.error?.message).toBe('走査失敗')
+  })
+
+  it('削除の待機中に入った未保存の編集を確認なしで破棄しない', async () => {
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    mockReadFileContent.mockResolvedValue('A')
+    mockDeleteEntry.mockResolvedValue(undefined)
+    let finishWrite: () => void = () => {}
+    mockWriteFileContent.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishWrite = resolve
+        })
+    )
+    const onConfirm = vi.fn(() => true)
+    const { result } = renderHook(() => useFileSystem({ onConfirm }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+    await act(async () => {
+      await result.current.selectFile(node)
+    })
+    // 保存を開始させ、削除がその完了を待つ状態にする
+    act(() => result.current.updateFileContent('B'))
+    act(() => {
+      void result.current.saveFile()
+    })
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(node)
+    })
+    await act(async () => {})
+    onConfirm.mockClear()
+    // 待機中にさらに編集する
+    act(() => result.current.updateFileContent('C'))
+    await act(async () => {
+      finishWrite()
+      await deletePromise
+    })
+    // 追加の編集について確認している
+    expect(onConfirm).toHaveBeenCalled()
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
@@ -1950,7 +2077,9 @@ describe('useFileSystem', () => {
     expect(result.current.error?.message).toBe('read error')
   })
 
-  async function openAndSelect(result: { current: ReturnType<typeof useFileSystem> }) {
+  async function openAndSelect(result: {
+    current: ReturnType<typeof useFileSystem>
+  }): Promise<void> {
     mockOpenFolder.mockResolvedValue('/project')
     mockReadDirectory.mockResolvedValue(mockTree)
     mockReadFileContent.mockResolvedValue('const x = 1')
