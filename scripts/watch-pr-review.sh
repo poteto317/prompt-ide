@@ -119,15 +119,34 @@ pending = [n for n in pr["reviewRequests"]["nodes"] if is_review_bot(n.get("requ
 threads = pr["reviewThreads"]["nodes"]
 unresolved = [t for t in threads if not t["isResolved"]]
 
+# 本文が Copilot のレビューとして解釈できる形か。解釈できない形なら
+# 「Suppressed comments 節が無い＝0 件」と決めつけられない
+KNOWN_BODY_MARKERS = (
+    "Suppressed comments",
+    "<details>",
+    "Review details",
+    "Copilot reviewed",
+    "Comments generated",
+    "Pull request overview",
+)
+
 if new:
     r = new[-1]
     body = r["body"] or ""
     m = re.search(r"Suppressed comments \((\d+)\)", body)
-    suppressed = int(m.group(1)) if m else 0
+    if m:
+        suppressed = int(m.group(1))
+    elif any(marker in body for marker in KNOWN_BODY_MARKERS):
+        # 見慣れた形式で節が無いなら 0 件
+        suppressed = 0
+    else:
+        suppressed = None
     print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], r["submittedAt"]))
-    print("unresolved threads: %d / suppressed: %d" % (len(unresolved), suppressed))
+    print("unresolved threads: %d / suppressed: %s"
+          % (len(unresolved), "不明（本文の形式を判定できない）" if suppressed is None else suppressed))
     for t in unresolved:
         print("  - %s:%s" % (t["path"], t["line"]))
+    # 件数を確認できたときだけ「指摘なし」と言い切る
     if len(unresolved) == 0 and suppressed == 0:
         print("NO FINDINGS")
     print("__EXIT__")

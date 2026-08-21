@@ -170,6 +170,10 @@ scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 
 新着が届いたら内容を出力して終了する。レビュー中は待ち続ける。
 
+`suppressed: 不明（本文の形式を判定できない）` と出た場合は、件数を機械的に
+読めなかったということ。`NO FINDINGS` は出ないので、レビュー本文を自分で開いて
+`<details>` の中を確認する。
+
 ## 実機確認
 
 Electron を CDP 付きで起動し、レンダラーとメインプロセスの両方に接続して操作する。
