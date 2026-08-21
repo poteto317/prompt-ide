@@ -84,14 +84,20 @@ while true; do
   fi
 
   if [ -n "$out" ]; then
-    verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
+    if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
 import sys, json, os, re
 
 baseline = os.environ["BASELINE"]
+# 応答の形が想定と違う場合（pullRequest が null、data が欠けている等）は
+# 失敗として扱う。黙って握り潰すと、監視が無言で回り続けて原因が分からない
 try:
     pr = json.load(sys.stdin)["data"]["repository"]["pullRequest"]
-except Exception:
-    sys.exit(0)
+except Exception as error:
+    print("応答の解釈に失敗: %s" % error, file=sys.stderr)
+    sys.exit(3)
+if pr is None:
+    print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
+    sys.exit(3)
 
 # Copilot のレビュアー名は "copilot-pull-request-reviewer"。人間のレビューと
 # 区別するため、末尾が "reviewer" のアカウントだけを対象にする
@@ -119,7 +125,17 @@ elif pending:
 else:
     print("NO PENDING REVIEW / NO NEW REVIEW")
     print("__EXIT__")
-')
+'); then
+      failures=$((failures + 1))
+      echo "応答の解釈に失敗（${failures}/${MAX_FAILURES}）" >&2
+      if [ "$failures" -ge "$MAX_FAILURES" ]; then
+        echo "API 応答の解釈が ${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
+        exit 1
+      fi
+      sleep "$INTERVAL"
+      continue
+    fi
+
     # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
     # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
     if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&

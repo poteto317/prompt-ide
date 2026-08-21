@@ -53,8 +53,10 @@ if [ -z "$bot_id" ]; then
   echo "PR の履歴から bot id を特定できなかったため既定値を使う: $bot_id"
 fi
 
-gh api graphql -f query='mutation($p:ID!,$b:[ID!]!){
-  requestReviews(input:{pullRequestId:$p, botIds:$b, union:true}){
+# 変数は単一 ID で受け、クエリ側で配列に包む。[ID!]! として宣言すると
+# gh の -f が渡す単一文字列と型が食い違う
+gh api graphql -f query='mutation($p:ID!,$b:ID!){
+  requestReviews(input:{pullRequestId:$p, botIds:[$b], union:true}){
     pullRequest{reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
   }
 }' -f p="$pr_id" -f b="$bot_id" |

@@ -139,6 +139,17 @@ gh pr view <PR> --json body -q .body > /tmp/pr-body.md
 gh pr edit <PR> --body-file /tmp/pr-body.md
 ```
 
+Windows (PowerShell) では、日本語を含む本文を扱う前に毎回 UTF-8 に固定する。
+固定せずに実行すると本文が文字化けする。文字化けした本文は再利用せず、
+正常なテキストで上書きすること。
+
+```powershell
+chcp 65001
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [Console]::OutputEncoding
+```
+
 ### 10. 再レビュー依頼
 
 ```bash
