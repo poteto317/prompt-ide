@@ -27,6 +27,9 @@
 #     届くレビューを取りこぼす。そのため最低待機時間（既定 1500 秒）を設けている。
 #   - 実行中にこのファイルを上書きしないこと。bash は実行中もファイルを読み進めるため、
 #     動作が壊れる。編集する場合は別名にコピーしたものを実行する。
+#   - API の失敗は握り潰さない。レビュー待ちは静かでよいが、認証切れ・ネットワーク
+#     不調・rate limit を黙って無視すると、待っているのか壊れているのか分からない。
+#     失敗は stderr に出し、連続で続いたら終了する。
 set -u
 
 if [ "$#" -lt 4 ]; then
@@ -41,14 +44,34 @@ BASELINE="$4"
 MIN_WAIT="${5:-1500}"
 INTERVAL="${6:-120}"
 STARTED=$(date +%s)
+# API 呼び出しが連続で失敗したら終了する回数。認証切れやネットワーク不調を
+# 握り潰したまま無言で回り続けると、待っているのか壊れているのか分からなくなる
+MAX_FAILURES=5
+failures=0
+err_file=$(mktemp)
+trap 'rm -f "$err_file"' EXIT
 
 while true; do
-  out=$(gh api graphql -f query="
+  if out=$(gh api graphql -f query="
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
     reviews(last:50){nodes{author{login} submittedAt body}}
     reviewRequests(first:20){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
     reviewThreads(last:60){nodes{isResolved path line}}
-  }}}" 2>/dev/null)
+  }}}" 2>"$err_file") && printf '%s' "$out" | grep -q '"data"'; then
+    failures=0
+  else
+    failures=$((failures + 1))
+    {
+      echo "gh api graphql に失敗（${failures}/${MAX_FAILURES}）"
+      head -3 "$err_file"
+    } >&2
+    if [ "$failures" -ge "$MAX_FAILURES" ]; then
+      echo "API 呼び出しが ${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
+      exit 1
+    fi
+    sleep "$INTERVAL"
+    continue
+  fi
 
   if [ -n "$out" ]; then
     verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
