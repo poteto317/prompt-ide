@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileTreeNode } from '../types'
 import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
@@ -101,16 +101,27 @@ export function useQuickOpen({
     [results.length]
   )
 
+  // selectFile の解決を待つ間ダイアログは開いたままで入力欄もフォーカスを保持する。
+  // Enter のキーリピートで多重に走らせると、破棄確認が何度も出たうえ、
+  // 後から解決した読み込みが表示中のファイルを上書きしてしまう
+  const confirmingRef = useRef(false)
+
   const confirm = useCallback(
     (index?: number): void => {
+      if (confirmingRef.current) return
       const target = results[index ?? activeIndex]
       if (target === undefined) return
+      confirmingRef.current = true
       // 実際に開けたときだけ閉じる。selectFile は未保存時に破棄確認を出すため、
       // ここで先に閉じてしまうと、キャンセルされた場合にファイルは切り替わらないのに
       // ダイアログだけ消えて入力中のクエリを失う
-      void selectFile(target.node).then((opened) => {
-        if (opened) setIsOpen(false)
-      })
+      void selectFile(target.node)
+        .then((opened) => {
+          if (opened) setIsOpen(false)
+        })
+        .finally(() => {
+          confirmingRef.current = false
+        })
     },
     [results, activeIndex, selectFile]
   )
@@ -119,6 +130,9 @@ export function useQuickOpen({
   // イベントを消費する場合があり、bubble フェーズだと届かないことがあるため。
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
+      // IME の変換中は一切横取りしない。変換確定の Enter や候補移動の ↑↓、
+      // 変換キャンセルの Escape を奪うと、日本語入力そのものが壊れる
+      if (event.isComposing) return
       // Escape も document で受ける。入力欄の onKeyDown だけに任せると、
       // 何らかの理由でフォーカスがダイアログの外へ移ったときに閉じる手段が
       // 無くなってしまう。開いていないときはエディタ側の Escape を横取りしない

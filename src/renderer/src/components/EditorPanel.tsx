@@ -65,9 +65,13 @@ export default function EditorPanel({
               value={openFile.content}
               options={editorOptions}
               onChange={(value) => onChangeContent(value ?? '')}
-              onMount={(editorInstance, monaco) =>
+              onMount={(editorInstance, monaco) => {
                 registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
-              }
+                // ファイルを開いた直後にそのまま入力を始められるようにする。
+                // key={openFile.path} により切替のたびに再マウントされるため、
+                // ここで取らないとクイックオープン経由ではフォーカスが body に残る
+                editorInstance.focus()
+              }}
             />
           </div>
         </>

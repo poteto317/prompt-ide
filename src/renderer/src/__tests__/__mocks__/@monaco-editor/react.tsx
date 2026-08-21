@@ -3,9 +3,12 @@ import { afterEach, vi } from 'vitest'
 
 // eslint-disable-next-line react-refresh/only-export-components -- テスト専用モック。HMR 対象外
 export const mockAddCommand = vi.fn()
+// eslint-disable-next-line react-refresh/only-export-components -- テスト専用モック。HMR 対象外
+export const mockFocus = vi.fn()
 
 afterEach(() => {
   mockAddCommand.mockClear()
+  mockFocus.mockClear()
 })
 
 interface EditorProps {
@@ -22,7 +25,10 @@ export default function Editor({ options, value, onChange, onMount }: EditorProp
   useEffect(() => {
     if (mountedRef.current) return
     mountedRef.current = true
-    onMount?.({ addCommand: mockAddCommand }, { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } })
+    onMount?.(
+      { addCommand: mockAddCommand, focus: mockFocus },
+      { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } }
+    )
   }, [onMount])
 
   return (

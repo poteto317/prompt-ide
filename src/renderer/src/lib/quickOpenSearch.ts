@@ -133,11 +133,14 @@ export const searchFiles = (
   }
 
   // 同点時はまずファイル名の短い順(クエリが占める割合が高いほど目的に近い)、
-  // それも同じならパス昇順に固定して、入力のたびに並びが揺れないようにする
+  // それも同じならパス昇順に固定して、入力のたびに並びが揺れないようにする。
+  // 比較に localeCompare を使うと既定ロケール依存('a' < 'Z' になる環境がある)に
+  // なるため、環境をまたいで再現するようコードポイント順で決める
   results.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score
     if (a.node.name.length !== b.node.name.length) return a.node.name.length - b.node.name.length
-    return a.node.path.localeCompare(b.node.path)
+    if (a.node.path === b.node.path) return 0
+    return a.node.path < b.node.path ? -1 : 1
   })
   return results.slice(0, limit)
 }

@@ -116,6 +116,13 @@ describe('searchFiles', () => {
     expect(searchFiles('usfs', candidates, ROOT)[0].node.name).toBe('useFileSystem.ts')
   })
 
+  it('スコア同点の並びが実行環境のロケールに依存しない', () => {
+    // localeCompare は既定ロケール依存で 'a' < 'Z' と判定する環境がある。
+    // 表示順を環境間で再現可能にするため、コードポイント順で決める
+    const sameNameFiles = [file('x.ts', '/project/a/x.ts'), file('x.ts', '/project/Z/x.ts')]
+    expect(searchFiles('x.ts', sameNameFiles, ROOT).map((r) => r.directory)).toEqual(['Z', 'a'])
+  })
+
   it('スコア同点のとき相対パス昇順で安定した順序を返す', () => {
     const sameNameFiles = [
       file('a.ts', '/project/z/a.ts'),

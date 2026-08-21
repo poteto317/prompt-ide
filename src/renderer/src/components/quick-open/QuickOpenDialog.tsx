@@ -39,8 +39,13 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
       document.activeElement instanceof HTMLElement ? document.activeElement : null
     inputRef.current?.focus()
     // 閉じたら元の要素へフォーカスを戻す。戻さないと body に取り残され、
-    // Escape のあとエディタへ直接タイプできなくなる
-    return () => previouslyFocused?.focus()
+    // Escape のあとエディタへ直接タイプできなくなる。
+    // ファイルを開いた場合は EditorPanel の key 変更で Monaco が再マウントされ、
+    // 控えていた要素は DOM から切り離されている。その場合の復帰は
+    // エディタ側(onMount での focus)が担うため、ここでは何もしない
+    return () => {
+      if (previouslyFocused?.isConnected === true) previouslyFocused.focus()
+    }
   }, [isOpen])
 
   // キーボードで選択を動かしたとき、選択中の項目が一覧の外に出たままにならないようにする
@@ -56,6 +61,9 @@ export default function QuickOpenDialog({ controller }: Props): React.JSX.Elemen
   // Escape は useQuickOpen が document で購読するためここでは扱わない
   // (フォーカスがダイアログ外にあっても閉じられるようにするため)
   const handleKeyDown = (e: React.KeyboardEvent): void => {
+    // IME の変換中はキーを横取りしない。変換確定の Enter を候補決定として扱うと
+    // 意図しないファイルが開き、↑↓ を奪うと変換候補を選べなくなる
+    if (e.nativeEvent.isComposing) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
       moveSelection(1)

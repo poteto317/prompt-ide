@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { mockAddCommand } from '../../__tests__/__mocks__/@monaco-editor/react'
+import { mockAddCommand, mockFocus } from '../../__tests__/__mocks__/@monaco-editor/react'
 import type { OpenFile } from '../../types'
 import EditorPanel from '../EditorPanel'
 
@@ -136,6 +136,14 @@ describe('EditorPanel — openFile あり', () => {
 
     rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
     expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
+  })
+
+  it('ファイルを開いたときエディタにフォーカスする', () => {
+    // クイックオープンから Enter でファイルを開くと、ダイアログの復帰先だった
+    // 旧エディタは key 変更で再マウントされて DOM から消えている。
+    // 新しいエディタが自分でフォーカスを取らないと body に取り残される
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    expect(mockFocus).toHaveBeenCalled()
   })
 
   it('Ctrl/Cmd+S コマンドが登録され、実行すると最新の onSave が呼ばれる', () => {

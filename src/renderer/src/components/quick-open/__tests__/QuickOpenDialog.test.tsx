@@ -162,6 +162,47 @@ describe('QuickOpenDialog', () => {
     expect(controller.moveSelection).not.toHaveBeenCalled()
   })
 
+  it('IME 変換中の Enter では confirm を呼ばない', () => {
+    const confirm = vi.fn()
+    render(<QuickOpenDialog controller={makeController({ confirm })} />)
+    // 変換確定の Enter を候補決定として扱うと、意図しないファイルが開いてしまう
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', isComposing: true })
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('IME 変換中の ArrowDown では選択を動かさない', () => {
+    const moveSelection = vi.fn()
+    render(<QuickOpenDialog controller={makeController({ moveSelection })} />)
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'ArrowDown', isComposing: true })
+    expect(moveSelection).not.toHaveBeenCalled()
+  })
+
+  it('IME 変換中の ArrowDown の既定動作を妨げない', () => {
+    render(<QuickOpenDialog controller={makeController()} />)
+    // 変換候補の移動を潰さないよう preventDefault しない
+    const notPrevented = fireEvent.keyDown(screen.getByRole('combobox'), {
+      key: 'ArrowDown',
+      isComposing: true
+    })
+    expect(notPrevented).toBe(true)
+  })
+
+  it('復帰先が DOM から取り除かれているときはフォーカスを移さない', () => {
+    // ファイルを開くと EditorPanel の key 変更で Monaco が再マウントされ、
+    // 控えていた要素は DOM から切り離される
+    const detached = document.createElement('button')
+    document.body.appendChild(detached)
+    detached.focus()
+    const focusSpy = vi.spyOn(detached, 'focus')
+
+    const { rerender } = render(<QuickOpenDialog controller={makeController()} />)
+    focusSpy.mockClear()
+    detached.remove()
+
+    rerender(<QuickOpenDialog controller={makeController({ isOpen: false })} />)
+    expect(focusSpy).not.toHaveBeenCalled()
+  })
+
   it('閉じたとき開く前にフォーカスがあった要素へ戻す', () => {
     const outside = document.createElement('button')
     document.body.appendChild(outside)

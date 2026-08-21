@@ -162,6 +162,21 @@ describe('useQuickOpen', () => {
     outside.remove()
   })
 
+  it('IME 変換中の Escape では閉じない', () => {
+    // 変換のキャンセルを意図した Escape でダイアログごと消さない
+    const { result } = setup()
+    pressKey({ key: 'p', ctrlKey: true })
+    const event = pressKey({ key: 'Escape', isComposing: true })
+    expect(result.current.isOpen).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
+  it('IME 変換中の Ctrl+P では開かない', () => {
+    const { result } = setup()
+    pressKey({ key: 'p', ctrlKey: true, isComposing: true })
+    expect(result.current.isOpen).toBe(false)
+  })
+
   it('閉じているときの Escape は既定動作を妨げない', () => {
     // エディタ側が Escape を使うため、開いていないときに横取りしない
     setup()
@@ -261,6 +276,37 @@ describe('useQuickOpen', () => {
     expect(selectFile).toHaveBeenCalled()
     expect(result.current.isOpen).toBe(true)
     expect(result.current.query).toBe('app')
+  })
+
+  it('解決前に confirm を連打しても selectFile は 1 回しか呼ばれない', async () => {
+    // Enter のキーリピート対策。selectFile の解決までダイアログは開いたままのため、
+    // ガードが無いと破棄確認が複数回出て、後着の読み込みが表示を上書きし得る
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    act(() => result.current.confirm())
+    act(() => result.current.confirm())
+    act(() => result.current.confirm())
+    expect(selectFile).toHaveBeenCalledTimes(1)
+    await act(async () => resolveSelect(true))
+    expect(result.current.isOpen).toBe(false)
+  })
+
+  it('開けずに終わったあとは再度 confirm できる', async () => {
+    const selectFile = vi.fn(() => Promise.resolve(false))
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    await act(async () => result.current.confirm())
+    await act(async () => result.current.confirm())
+    expect(selectFile).toHaveBeenCalledTimes(2)
   })
 
   it('候補が空のとき confirm しても何も開かず閉じない', async () => {
