@@ -688,6 +688,50 @@ describe('useQuickOpen', () => {
     }
   })
 
+  it('開き直したダイアログを閉じても、成功済みの引き渡しを取り消さない', async () => {
+    // 再オープンで世代が進むと startNewGeneration が引き渡しを倒すため、
+    // close() のたびに成功済みの状態が消えてツリーへ復帰してしまう
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.confirm())
+    // 読み込み中に開き直す
+    act(() => result.current.open())
+    await act(async () => {
+      resolveSelect(true)
+    })
+    // 再表示中のダイアログを閉じる
+    act(() => result.current.close())
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+  })
+
+  it('結果待ちのまま閉じた場合は復帰を保留する', async () => {
+    // 先に元の要素へ戻すと、あとから成功しても EditorPanel が要求を破棄する
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.confirm())
+    act(() => result.current.open())
+    act(() => result.current.close())
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+    await act(async () => {
+      resolveSelect(true)
+    })
+    expect(result.current.hasHandedOverFocus()).toBe(true)
+  })
+
   it('読み込み中でなければ閉じてもフォーカスは引き渡さない', () => {
     // 単に Escape で閉じた場合は、元の要素へフォーカスを戻す
     const { result } = setup()

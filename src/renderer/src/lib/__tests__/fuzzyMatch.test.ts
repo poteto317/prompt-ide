@@ -82,6 +82,19 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('a', '')).toBeNull()
   })
 
+  it('BMP 外の文字も大文字小文字を無視して一致する', () => {
+    // Deseret の 𐐨(小文字) と 𐐀(大文字)。コードユニット単位で小文字化すると
+    // サロゲート単体は変換されず、一致しなくなる
+    expect(fuzzyMatch('\u{10428}', '\u{10400}')?.indices).toEqual([0, 1])
+  })
+
+  it('BMP 外の文字を含んでも indices は元の文字列の添字と対応する', () => {
+    const target = 'a\u{10400}b'
+    const result = fuzzyMatch('b', target)
+    expect(result?.indices).toEqual([3])
+    expect(target[3]).toBe('b')
+  })
+
   it('日本語のファイル名でも部分列としてマッチする', () => {
     expect(fuzzyMatch('設計', '設計メモ.md')?.indices).toEqual([0, 1])
   })

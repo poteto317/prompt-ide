@@ -125,9 +125,12 @@ export function useQuickOpen({
   // 閉じることも、解決しない読み込みが以降の confirm を塞ぐこともなくなる
   const generationRef = useRef(0)
   const confirmingGenerationRef = useRef<number | null>(null)
-  // ファイルを開いて閉じた場合、フォーカスはエディタへ渡す。ダイアログが
-  // 元の要素へ戻すと、エディタ側が受け取れなくなる
-  const handedOverFocusRef = useRef(false)
+  // 未解決の open 試行の数。ダイアログの世代とは別に数える。読み込み中に
+  // 開き直すと世代は進むが、先行する selectFile は生きたままファイルを開く
+  const inFlightOpensRef = useRef(0)
+  // 決着した試行のうち 1 つでも成功したか。成功していればフォーカスは
+  // エディタへ渡す。ダイアログが元の要素へ戻すと、エディタ側が受け取れなくなる
+  const openSucceededRef = useRef(false)
   // 閉じたあとに「開けなかった」と分かる経路があるため、復帰先は
   // ダイアログのクロージャではなくコントローラ側で保持する
   const focusOriginRef = useRef<HTMLElement | null>(null)
@@ -135,8 +138,13 @@ export function useQuickOpen({
   const isOpenRef = useLatestRef(isOpen)
 
   // 参照を安定させる。毎レンダー新しい関数だと、依存に含める側の effect が
-  // 打鍵ごとに再実行され、フォーカスが外れて戻る(IME の変換が中断され得る)
-  const hasHandedOverFocus = useCallback((): boolean => handedOverFocusRef.current, [])
+  // 打鍵ごとに再実行され、フォーカスが外れて戻る(IME の変換が中断され得る)。
+  // 結果待ちの間も復帰を抑止する。先に元の要素へ戻すと、あとから成功しても
+  // EditorPanel が「他要素がフォーカス中」として要求を破棄してしまう
+  const hasHandedOverFocus = useCallback(
+    (): boolean => openSucceededRef.current || inFlightOpensRef.current > 0,
+    []
+  )
 
   const rememberFocusOrigin = useCallback((element: HTMLElement | null): void => {
     focusOriginRef.current = element
@@ -147,28 +155,29 @@ export function useQuickOpen({
     if (origin?.isConnected === true) origin.focus()
   }, [])
 
+  // 世代はダイアログの表示単位。開いたままの再オープンでも進むため、
+  // 未解決・成功済みの試行の状態はここでは触らない
   const startNewGeneration = useCallback((): void => {
     generationRef.current += 1
     confirmingGenerationRef.current = null
-    handedOverFocusRef.current = false
   }, [])
 
   const open = useCallback((): void => {
+    // 閉じた状態から開くときだけ前回の結果を捨てる。読み込み中の開き直しで
+    // 捨てると、先行する試行の成功がフォーカス制御に反映されなくなる
+    if (!isOpenRef.current) openSucceededRef.current = false
     setQueryState('')
     setActiveIndex(0)
     setIsOpen(true)
     startNewGeneration()
-  }, [startNewGeneration])
+  }, [startNewGeneration, isOpenRef])
 
   const close = useCallback((): void => {
-    // selectFile はキャンセルできないため、読み込み中に閉じてもファイルは開く。
-    // ここで元の要素へフォーカスを戻すと、EditorPanel は「他要素がフォーカス中」
-    // として要求を捨て、開いたファイルにフォーカスが移らない。
-    // startNewGeneration がフラグを倒すため、その後に立て直す
-    const isConfirming = confirmingGenerationRef.current === generationRef.current
+    // 復帰するかどうかは hasHandedOverFocus が未解決・成功済みの試行から
+    // 判断する。selectFile はキャンセルできないため、読み込み中に閉じても
+    // ファイルは開き、その場合はフォーカスをエディタへ渡す必要がある
     setIsOpen(false)
     startNewGeneration()
-    if (isConfirming) handedOverFocusRef.current = true
   }, [startNewGeneration])
 
   const setQuery = useCallback((next: string): void => {
@@ -198,20 +207,23 @@ export function useQuickOpen({
       // ここで先に閉じてしまうと、キャンセルされた場合にファイルは切り替わらないのに
       // ダイアログだけ消えて入力中のクエリを失う
       // ダイアログは閉じるので、フォーカスはエディタへ移す
+      inFlightOpensRef.current += 1
       void selectFile(target.node, { moveFocusToEditor: true })
         .then((opened) => {
+          inFlightOpensRef.current -= 1
           if (opened) {
             // 開けた場合は世代が進んでいても引き渡す。再オープンで引き渡しを
             // 落とすと、閉じたときにダイアログが元の要素へフォーカスを戻し、
             // EditorPanel が保留中の要求を破棄してしまう
-            handedOverFocusRef.current = true
+            openSucceededRef.current = true
             if (generation === generationRef.current) setIsOpen(false)
             return
           }
-          // 開けなかった場合、信号は出ない。既に閉じているなら引き渡しを
-          // 取り消して復帰先へ戻す(そのままだとフォーカスが body に残る)
+          // すべての試行が失敗し、かつ既に閉じている場合だけ復帰させる。
+          // 信号は出ないため、放置するとフォーカスが body に残る
+          if (inFlightOpensRef.current > 0) return
+          if (openSucceededRef.current) return
           if (isOpenRef.current) return
-          handedOverFocusRef.current = false
           restoreFocusOrigin()
         })
         .finally(() => {

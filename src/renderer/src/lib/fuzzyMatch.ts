@@ -40,9 +40,13 @@ const isWordBoundary = (target: string, index: number): boolean => {
  */
 const foldCase = (text: string): string => {
   let folded = ''
-  for (let i = 0; i < text.length; i++) {
-    const lowered = text[i].toLowerCase()
-    folded += lowered.length === 1 ? lowered : lowered[0]
+  // コードポイント単位で回す。コードユニット単位だとサロゲート単体は
+  // 小文字化されず、BMP 外の文字(例: Deseret の 𐐀/𐐨)を大小無視で照合できない
+  for (const char of text) {
+    const lowered = char.toLowerCase()
+    // 元の UTF-16 幅を保つ。長くなる場合(例: 'İ' → 2 コードユニット)は切り詰め、
+    // 短くなる場合は元の文字をそのまま使う
+    folded += lowered.length >= char.length ? lowered.slice(0, char.length) : char
   }
   return folded
 }
