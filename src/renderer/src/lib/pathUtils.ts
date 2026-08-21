@@ -11,9 +11,31 @@ const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/
 /** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
 const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
 
+/** '/' 正規化後の文字列が Windows のパス(ドライブ文字 or UNC)か */
+const isWindowsStyle = (forwardPath: string): boolean =>
+  /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
+
+/**
+ * 2 つのパスを比較用に正規化する。
+ *
+ * Windows は大文字小文字を区別しないため、'C:\\Project' と 'c:\\project' は
+ * 同じ実体を指す。区別したまま比較すると、case-only rename の最中に旧表記の
+ * 削除が予約の重複判定や「開いているファイルが対象か」の判定をすり抜け、
+ * 削除済みのファイルがエディタに残って保存で作り直されてしまう。
+ * 一方 POSIX は区別するため、Windows 形式(ドライブ文字 or UNC)のときだけ畳む。
+ * 片方だけが Windows 形式でも突き合わせられるよう、判定は 2 つまとめて行う。
+ */
+const normalizePair = (a: string, b: string): [string, string] => {
+  const forwardA = toForwardSlashes(a)
+  const forwardB = toForwardSlashes(b)
+  const normalizedA = stripTrailingSeparators(forwardA)
+  const normalizedB = stripTrailingSeparators(forwardB)
+  if (!isWindowsStyle(forwardA) && !isWindowsStyle(forwardB)) return [normalizedA, normalizedB]
+  return [normalizedA.toLowerCase(), normalizedB.toLowerCase()]
+}
+
 export const isPathInside = (childPath: string, parentPath: string): boolean => {
-  const normalizedChild = stripTrailingSeparators(toForwardSlashes(childPath))
-  const normalizedParent = stripTrailingSeparators(toForwardSlashes(parentPath))
+  const [normalizedChild, normalizedParent] = normalizePair(childPath, parentPath)
   // parentPath がルート('/')や空文字列など、正規化すると空になる場合は
   // 「親 + '/'」が単なる '/' に退化し、あらゆる絶対パスを内部と誤判定してしまう。
   // 同一パス(等値)も「内部」ではないため、あわせて明示的に false とする。
@@ -32,7 +54,6 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
  */
 export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
   if (isRootPath(targetPath)) return toForwardSlashes(path).startsWith('/')
-  const normalizedPath = stripTrailingSeparators(toForwardSlashes(path))
-  const normalizedTarget = stripTrailingSeparators(toForwardSlashes(targetPath))
+  const [normalizedPath, normalizedTarget] = normalizePair(path, targetPath)
   return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
 }

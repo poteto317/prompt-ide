@@ -99,3 +99,26 @@ describe('isPathAtOrInside', () => {
     expect(isPathAtOrInside('/a.ts', '')).toBe(false)
   })
 })
+
+describe('Windows パスの大文字小文字', () => {
+  it('ドライブ文字が違う表記でも同じパスとみなす', () => {
+    // Windows は大文字小文字を区別しない。区別すると case-only rename 中に
+    // 旧表記の削除が mutex の重複判定をすり抜ける
+    expect(isPathAtOrInside('C:\\Project\\Foo.ts', 'c:\\project\\foo.ts')).toBe(true)
+    expect(isPathInside('C:\\Project\\Foo.ts', 'c:\\project')).toBe(true)
+    expect(isPathAtOrInside('c:\\project\\sub\\a.ts', 'C:\\Project')).toBe(true)
+  })
+
+  it('UNC パスでも大文字小文字を無視する', () => {
+    expect(isPathAtOrInside('\\\\Server\\Share\\A.ts', '\\\\server\\share')).toBe(true)
+  })
+
+  it('別ドライブは表記を揃えても配下とみなさない', () => {
+    expect(isPathAtOrInside('D:\\project\\a.ts', 'c:\\project')).toBe(false)
+  })
+
+  it('POSIX パスは大文字小文字を区別したままにする', () => {
+    expect(isPathInside('/Project/Foo.ts', '/project')).toBe(false)
+    expect(isPathAtOrInside('/a/B.ts', '/a/b.ts')).toBe(false)
+  })
+})
