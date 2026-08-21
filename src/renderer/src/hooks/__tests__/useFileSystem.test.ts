@@ -2361,6 +2361,46 @@ describe('useFileSystem', () => {
     expect(paths).toEqual(['C:\\project\\b.ts', 'C:\\Project\\A.ts'])
   })
 
+  it('読み込み中に完了した保存があれば読み直す', async () => {
+    // 保存を待つのが read の開始前だけだと、read 中に始まって完了した保存を
+    // 取りこぼし、ディスクは新内容なのに旧内容を clean としてコミットする
+    mockOpenFolder.mockResolvedValue('/project')
+    mockReadDirectory.mockResolvedValue(mockTree)
+    const target = mockTree[0].children![0]
+    mockReadFileContent.mockResolvedValue('最初の内容')
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+      await result.current.selectFile(target)
+    })
+    // 再オープンの read を保留させ、その最中に編集と保存を完了させる
+    let resolveRead: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveRead = resolve
+        })
+    )
+    let reopenPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      reopenPromise = result.current.selectFile(target)
+    })
+    await act(async () => {})
+    act(() => result.current.updateFileContent('保存された内容'))
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    // read 中に保存が完了した。読み直さないと旧内容が clean としてコミットされる
+    mockReadFileContent.mockResolvedValue('保存された内容')
+    await act(async () => {
+      resolveRead('最初の内容')
+      await reopenPromise
+    })
+    expect(result.current.openFile?.content).toBe('保存された内容')
+    expect(result.current.isDirty).toBe(false)
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

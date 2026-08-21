@@ -15,6 +15,8 @@ import { useFileTreeOperations } from './useFileTreeOperations'
  * 同一パスは 1 件に畳むので、この数だけ「異なるファイル」を保持できる
  */
 const MAX_OPENED_FILE_EVENTS = 50
+/** 読み込み中に保存が完了したときに読み直す回数の上限 */
+const MAX_READ_RETRIES = 5
 
 export interface OpenedFileEvent {
   /** ファイルを開くたびに増える。同じファイルを開き直しても進む */
@@ -134,7 +136,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     resetForFileChange,
     confirmDiscardIfDirty,
     lockPathForFileOperation,
-    pendingSaveFor
+    pendingSaveFor,
+    saveCompletionsFor
   } = useFileEditing(openFile, commitOpenFile, options)
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
@@ -355,14 +358,25 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 同じ path の保存が進行中なら、その完了を待ってから読む。待たないと
       // write 完了前の旧内容を読み取り、しかも再オープンで世代が進むため
       // 保存側は savedContent を更新せず、ディスクとエディタが食い違う
-      for (
-        let pendingSave = pendingSaveFor(fileNode.path);
-        pendingSave !== null;
-        pendingSave = pendingSaveFor(fileNode.path)
-      ) {
-        await pendingSave
+      // 読み込み中に始まって完了した保存も取りこぼさない。完了した保存は
+      // pendingSaveFor から消えるため、完了回数を読み込みの前後で比べて
+      // 変化していれば読み直す。保存は利用者の操作なので通常は 1 回で収束するが、
+      // 連打された場合に回り続けないよう試行回数に上限を設ける
+      let content = ''
+      for (let attempt = 0; ; attempt++) {
+        for (
+          let pendingSave = pendingSaveFor(fileNode.path);
+          pendingSave !== null;
+          pendingSave = pendingSaveFor(fileNode.path)
+        ) {
+          await pendingSave
+        }
+        const completionsBeforeRead = saveCompletionsFor(fileNode.path)
+        content = await fileSystemApi.readFileContent(fileNode.path)
+        if (readId !== latestReadRef.current) return false
+        if (saveCompletionsFor(fileNode.path) === completionsBeforeRead) break
+        if (attempt >= MAX_READ_RETRIES) break
       }
-      const content = await fileSystemApi.readFileContent(fileNode.path)
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false
       if (!confirmDiscardIfChangedSince(snapshot)) return false

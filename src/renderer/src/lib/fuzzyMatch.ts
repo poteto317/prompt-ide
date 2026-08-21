@@ -24,31 +24,42 @@ const isLowerAlpha = (char: string): boolean =>
  * 単語の先頭とみなせる位置か判定する。
  * 先頭 / 区切り文字の直後 / camelCase の大文字の 3 種を境界として扱う。
  */
-const isWordBoundary = (target: string, index: number): boolean => {
+const isWordBoundary = (points: CodePoint[], index: number): boolean => {
   if (index === 0) return true
-  const prev = target[index - 1]
-  const current = target[index]
+  const prev = points[index - 1].char
+  const current = points[index].char
   if (SEPARATOR_PATTERN.test(prev)) return true
   return isLowerAlpha(prev) && isUpperAlpha(current)
 }
 
+/** コードポイント 1 文字と、元の文字列における UTF-16 上の開始位置 */
+type CodePoint = { char: string; offset: number }
+
 /**
- * 元の文字列と同じ長さを保ったまま小文字化する。
- * `'İ'.toLowerCase()` のように 1 文字が 2 コードユニットへ展開されるケースがあり、
- * 文字列全体を `toLowerCase()` すると以降のインデックスがずれる。indices は
- * 元の target の添字としてハイライト描画に使うため、長さは必ず一致させる。
+ * 文字列をコードポイント単位に分解する。
+ *
+ * コードユニット単位で照合すると、異なるサロゲートペアの片側同士を
+ * 1 文字として拾ってしまう(例: 😀 が 😁 の前半と 🨀 の後半から成立する)。
+ * 元の添字は offset として保持し、ハイライト用の indices へ戻すときに使う。
  */
-const foldCase = (text: string): string => {
-  let folded = ''
-  // コードポイント単位で回す。コードユニット単位だとサロゲート単体は
-  // 小文字化されず、BMP 外の文字(例: Deseret の 𐐀/𐐨)を大小無視で照合できない
+const toCodePoints = (text: string): CodePoint[] => {
+  const points: CodePoint[] = []
+  let offset = 0
   for (const char of text) {
-    const lowered = char.toLowerCase()
-    // 元の UTF-16 幅を保つ。長くなる場合(例: 'İ' → 2 コードユニット)は切り詰め、
-    // 短くなる場合は元の文字をそのまま使う
-    folded += lowered.length >= char.length ? lowered.slice(0, char.length) : char
+    points.push({ char, offset })
+    offset += char.length
   }
-  return folded
+  return points
+}
+
+/**
+ * 1 文字を比較用に小文字化する。
+ * `'İ'.toLowerCase()` のように 1 文字が複数の文字へ展開されるケースがあるため、
+ * 先頭の 1 文字だけを使って 1 対 1 の対応を保つ。
+ */
+const foldChar = (char: string): string => {
+  const lowered = char.toLowerCase()
+  return [...lowered][0] ?? lowered
 }
 
 /**
@@ -62,9 +73,9 @@ const MAX_DP_CELLS = 8192
  * query を target の部分列として前から詰めた位置を O(target.length) で求める。
  * 部分列として存在しなければ null。大半のファイルはここで落ちるため、
  * コストの高い DP を走らせる件数を減らせる。
- * DP と走査単位を揃えるため、コードポイントではなくコードユニット単位で見る。
+ * 添字は DP と揃えてコードポイント単位で返す。
  */
-const greedySubsequence = (query: string, target: string): number[] | null => {
+const greedySubsequence = (query: string[], target: string[]): number[] | null => {
   const indices: number[] = []
   let searchFrom = 0
   for (let i = 0; i < query.length; i++) {
@@ -77,13 +88,13 @@ const greedySubsequence = (query: string, target: string): number[] | null => {
 }
 
 /** 与えられたマッチ位置のスコアを DP と同じ配点で求める(貪欲法の結果用) */
-const scoreOfIndices = (query: string, target: string, indices: number[]): number => {
+const scoreOfIndices = (query: CodePoint[], target: CodePoint[], indices: number[]): number => {
   let score = 0
   for (let k = 0; k < indices.length; k++) {
     const j = indices[k]
     let cellScore = MATCH_SCORE
     if (isWordBoundary(target, j)) cellScore += BONUS_BOUNDARY
-    if (target[j] === query[k]) cellScore += BONUS_CASE_EXACT
+    if (target[j].char === query[k].char) cellScore += BONUS_CASE_EXACT
     if (k === 0) {
       score += cellScore - j * PENALTY_GAP
       continue
@@ -95,6 +106,19 @@ const scoreOfIndices = (query: string, target: string, indices: number[]): numbe
 }
 
 /**
+ * コードポイント単位の添字を、元の文字列の UTF-16 添字へ展開する。
+ * サロゲートペアは 2 つの添字に開き、ハイライトが文字を分断しないようにする。
+ */
+const toUtf16Indices = (target: CodePoint[], indices: number[]): number[] => {
+  const expanded: number[] = []
+  for (const index of indices) {
+    const { char, offset } = target[index]
+    for (let unit = 0; unit < char.length; unit++) expanded.push(offset + unit)
+  }
+  return expanded
+}
+
+/**
  * query を target の部分列としてあいまい一致させ、最良のマッチ位置とスコアを返す。
  * マッチしない場合は null。
  *
@@ -103,10 +127,12 @@ const scoreOfIndices = (query: string, target: string, indices: number[]): numbe
  * 単語境界の 'S'(index 7) を取り逃がすため。
  */
 export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | null => {
-  if (query.length === 0 || query.length > target.length) return null
+  const queryPoints = toCodePoints(query)
+  const targetPoints = toCodePoints(target)
+  if (queryPoints.length === 0 || queryPoints.length > targetPoints.length) return null
 
-  const loweredQuery = foldCase(query)
-  const loweredTarget = foldCase(target)
+  const loweredQuery = queryPoints.map((point) => foldChar(point.char))
+  const loweredTarget = targetPoints.map((point) => foldChar(point.char))
   const greedyIndices = greedySubsequence(loweredQuery, loweredTarget)
   if (greedyIndices === null) return null
 
@@ -116,7 +142,10 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
   // 計算量の上限を超える組み合わせでは DP を諦め、貪欲法の位置をそのまま使う。
   // 最適な位置ではなくなり得るが、一致判定と indices の整合は保たれる
   if (queryLength * targetLength > MAX_DP_CELLS) {
-    return { score: scoreOfIndices(query, target, greedyIndices), indices: greedyIndices }
+    return {
+      score: scoreOfIndices(queryPoints, targetPoints, greedyIndices),
+      indices: toUtf16Indices(targetPoints, greedyIndices)
+    }
   }
 
   // scores[i][j]: query[0..i] を「query[i] が target[j] にマッチする形」で
@@ -156,8 +185,8 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
       if (loweredTarget[j] !== loweredQuery[i]) continue
 
       let cellScore = MATCH_SCORE
-      if (isWordBoundary(target, j)) cellScore += BONUS_BOUNDARY
-      if (target[j] === query[i]) cellScore += BONUS_CASE_EXACT
+      if (isWordBoundary(targetPoints, j)) cellScore += BONUS_BOUNDARY
+      if (targetPoints[j].char === queryPoints[i].char) cellScore += BONUS_CASE_EXACT
 
       if (i === 0) {
         // 先頭文字は target の先頭から離れているほど減点し、前方のマッチを優先する
@@ -199,5 +228,5 @@ export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | nu
     cursor = previousIndex[i][cursor]
   }
 
-  return { score: bestScore, indices }
+  return { score: bestScore, indices: toUtf16Indices(targetPoints, indices) }
 }

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { isPathAtOrInside } from '../lib/pathUtils'
+import { isPathAtOrInside, toComparablePath } from '../lib/pathUtils'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
@@ -25,6 +25,7 @@ interface FileEditingState {
    */
   lockPathForFileOperation: (targetPath: string) => Promise<() => void>
   pendingSaveFor: (targetPath: string) => Promise<void> | null
+  saveCompletionsFor: (targetPath: string) => number
 }
 
 export function useFileEditing(
@@ -69,6 +70,10 @@ export function useFileEditing(
   // 進行中の保存の完了を待てるようにする。書き込みがリネーム・削除より後に
   // 解決すると、旧パスを再作成してファイルが復活してしまうため
   const savingPromisesRef = useRef<Map<string, Promise<void>>>(new Map())
+  // path ごとの保存の完了回数。読み込みの前後で比べると、読み込み中に
+  // 始まって完了した保存(完了時点で savingPromisesRef からは消えている)を
+  // 検出できる
+  const saveCompletionsRef = useRef<Map<string, number>>(new Map())
 
   // FS 操作中のパスと、その完了を待つための Promise。
   // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
@@ -96,6 +101,10 @@ export function useFileEditing(
     if (pending.length === 0) return null
     return Promise.all(pending).then(() => undefined)
   }
+
+  /** targetPath に対する保存の完了回数。読み込みの前後で比較して使う */
+  const saveCompletionsFor = (targetPath: string): number =>
+    saveCompletionsRef.current.get(toComparablePath(targetPath)) ?? 0
 
   const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
@@ -189,6 +198,8 @@ export function useFileEditing(
       savingPathsRef.current.delete(path)
       setSavingPaths(new Set(savingPathsRef.current))
       savingPromisesRef.current.delete(path)
+      const key = toComparablePath(path)
+      saveCompletionsRef.current.set(key, (saveCompletionsRef.current.get(key) ?? 0) + 1)
       settleSave()
     }
   }
@@ -204,6 +215,7 @@ export function useFileEditing(
     resetForFileChange,
     confirmDiscardIfDirty,
     lockPathForFileOperation,
-    pendingSaveFor
+    pendingSaveFor,
+    saveCompletionsFor
   }
 }

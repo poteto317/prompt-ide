@@ -88,6 +88,12 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('\u{10428}', '\u{10400}')?.indices).toEqual([0, 1])
   })
 
+  it('異なるサロゲートペアの片側同士を一致とみなさない', () => {
+    // コードユニット単位で見ると、😀(D83D DE00) が 😁(D83D DE01) の前半と
+    // 🨀(D83E DE00) の後半から拾えてしまい、ハイライトも文字を分断する
+    expect(fuzzyMatch('\u{1F600}', '\u{1F601}\u{1FA00}')).toBeNull()
+  })
+
   it('BMP 外の文字を含んでも indices は元の文字列の添字と対応する', () => {
     const target = 'a\u{10400}b'
     const result = fuzzyMatch('b', target)
