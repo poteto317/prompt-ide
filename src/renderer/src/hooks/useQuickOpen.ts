@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileTreeNode } from '../types'
+import type { OpenedFileSignal } from './useFileSystem'
 import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
 import { useLatestRef } from './useLatestRef'
@@ -11,6 +12,8 @@ interface Options {
   fileTree: FileTreeNode[]
   folderPath: string | null
   openFilePath: string | null
+  /** ファイルを実際に開いたことを示す信号。履歴の更新契機に使う */
+  openedFileSignal: OpenedFileSignal
   /** ファイルを開けたかどうかを返す。開けなかった場合はダイアログを閉じない */
   selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
 }
@@ -36,24 +39,33 @@ export function useQuickOpen({
   fileTree,
   folderPath,
   openFilePath,
+  openedFileSignal,
   selectFile
 }: Options): QuickOpenController {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQueryState] = useState('')
   const [rawActiveIndex, setActiveIndex] = useState(0)
-  const [recentPaths, setRecentPaths] = useState<string[]>([])
+  // 履歴と「どこまで処理したか」をまとめて持つ。openFilePath の変化ではなく
+  // 「実際に開いた」信号で積むのは、リネームでも path が変わるため。path の変化で
+  // 積むと、リネームのたびに存在しないパスが履歴の枠を埋めてしまう
+  const [recent, setRecent] = useState<{ paths: string[]; lastSignalId: number }>({
+    paths: [],
+    lastSignalId: 0
+  })
+  const recentPaths = recent.paths
 
-  // 開いたファイルが変わるたびに履歴の先頭へ積み直す。同一パスは先に取り除いて重複を防ぐ。
   // useEffect ではなくレンダー中に調整するのは、effect 経由だと履歴の反映が
   // 1 フレーム遅れて再レンダーを重ねるため(React の「props 変化に合わせた state 調整」)。
-  // 先頭が既に openFilePath なら何も起きないので無限ループにはならない。
-  if (openFilePath !== null && recentPaths[0] !== openFilePath) {
-    setRecentPaths(
-      [openFilePath, ...recentPaths.filter((path) => path !== openFilePath)].slice(
+  // 処理済みの信号 id を控えるので繰り返し実行されず、無限ループにはならない。
+  if (openedFileSignal.id !== recent.lastSignalId && openedFileSignal.path !== null) {
+    const openedPath = openedFileSignal.path
+    setRecent({
+      paths: [openedPath, ...recent.paths.filter((path) => path !== openedPath)].slice(
         0,
         MAX_RECENT_FILES
-      )
-    )
+      ),
+      lastSignalId: openedFileSignal.id
+    })
   }
 
   const files = useMemo(() => flattenFileTree(fileTree), [fileTree])

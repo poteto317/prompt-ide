@@ -29,6 +29,7 @@ export function useAppState() {
     fileTree: fileSystem.fileTree,
     folderPath: fileSystem.folderPath,
     openFilePath: fileSystem.openFile?.path ?? null,
+    openedFileSignal: fileSystem.openedFileSignal,
     selectFile: fileSystem.selectFile
   })
   return {

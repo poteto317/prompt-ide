@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+import type { OpenedFileSignal } from '../hooks/useFileSystem'
 import { editorOptions } from '../lib/editorOptions'
 import { registerSaveCommand } from '../lib/editorShortcuts'
 import { useLatestRef } from '../hooks/useLatestRef'
@@ -25,8 +26,8 @@ interface Props {
   onCancelExecution: () => void
   /** フォーカスを持つモーダル(クイックオープン等)が開いているか */
   isOverlayOpen: boolean
-  /** ファイルを開くたびに増える信号。リネームによる path 変更と区別するために使う */
-  openedFileSignal: number
+  /** ファイルを開くたびに進む信号。リネームによる path 変更と区別するために使う */
+  openedFileSignal: OpenedFileSignal
 }
 
 // フォーカスを保持しているのがダイアログの中かどうか。
@@ -107,10 +108,16 @@ export default function EditorPanel({
   // フォーカス要求は openedFileSignal が進んだときだけ立てる。ファイルの有無の
   // 変化で立てると、エクスプローラー経由(信号を進めない)で最初のファイルを
   // 開いたときにも、Monaco の遅延 onMount がツリーからフォーカスを奪う
+  // 依存は id だけにする。オブジェクトの同一性に依存すると、値が同じでも
+  // 再レンダーのたびに要求が立ち直り、いったん取り下げた要求が復活する
+  const openedFileSignalRef = useLatestRef(openedFileSignal)
   useEffect(() => {
-    if (openedFileSignal === 0) return
-    pendingFocusPathRef.current = openFilePathRef.current
-  }, [openedFileSignal, openFilePathRef])
+    // 信号が持つ対象パスを使う。処理時点の openFilePath を見ると、信号の発生後に
+    // 別経路で開かれたファイルを要求対象として登録してしまう
+    const signal = openedFileSignalRef.current
+    if (signal.id === 0 || !signal.moveFocusToEditor) return
+    pendingFocusPathRef.current = signal.path
+  }, [openedFileSignal.id, openedFileSignalRef])
 
   // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
   // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を

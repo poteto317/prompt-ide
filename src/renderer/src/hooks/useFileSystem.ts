@@ -9,6 +9,15 @@ import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
 
+export interface OpenedFileSignal {
+  /** ファイルを開くたびに増える。同じファイルを開き直しても進む */
+  id: number
+  /** 開いたファイルのパス */
+  path: string | null
+  /** この操作でエディタへフォーカスを移すか */
+  moveFocusToEditor: boolean
+}
+
 export interface SelectFileOptions {
   /** 開いたあとエディタへフォーカスを移すか(クイックオープン経由の場合のみ true) */
   moveFocusToEditor?: boolean
@@ -18,8 +27,8 @@ interface FileSystemState {
   folderPath: string | null
   fileTree: FileTreeNode[]
   openFile: OpenFile | null
-  /** ファイルを開くたびに増える。リネームによる path 変更と区別するために使う */
-  openedFileSignal: number
+  /** ファイルを開くたびに進む信号。リネームによる path 変更と区別するために使う */
+  openedFileSignal: OpenedFileSignal
   isDirty: boolean
   isSaving: boolean
   error: Error | null
@@ -72,9 +81,15 @@ export function useFileSystem(options?: Options): FileSystemState {
     setOpenFile(value)
   }
   const getOpenFile = (): OpenFile | null => openFileMirrorRef.current
-  // ファイルを「開いた」ことを EditorPanel へ伝える信号。リネームでも
-  // openFile.path は変わるため、path の変化だけでは open と区別できない
-  const [openedFileSignal, setOpenedFileSignal] = useState(0)
+  // ファイルを「開いた」ことを伝える信号。リネームでも openFile.path は変わる
+  // ため、path の変化だけでは open と区別できない。カウンタだけでなく対象パスも
+  // 持たせるのは、受け手が信号を処理する時点で既に別のファイルへ切り替わって
+  // いる可能性があるため
+  const [openedFileSignal, setOpenedFileSignal] = useState<OpenedFileSignal>({
+    id: 0,
+    path: null,
+    moveFocusToEditor: false
+  })
   const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
@@ -167,17 +182,21 @@ export function useFileSystem(options?: Options): FileSystemState {
       folderPathMirrorRef.current = path
       setFolderPath(path)
       setFileTree(tree)
+      // 走査中に立ったエラー(旧フォルダの読み込み失敗など)を新しい画面に残さない
+      setError(null)
       // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。
       // 読み込みの開始ではなくコミット回数で見るのは、失敗・キャンセルした
       // 読み込みで旧フォルダのファイルが残ってしまうのを防ぐため
       if (committedOpenRef.current !== committedOpenAtStart) return
+      // 走査中に始まってまだコミットしていない読み込みを無効化する。旧フォルダの
+      // ファイルなので、この後の確認結果にかかわらず捨てる。確認の後に置くと、
+      // キャンセル時に無効化へ到達せず、その読み込みが再確認なしにバッファを
+      // 置き換えて編集内容を失う
+      latestReadRef.current += 1
       // ディレクトリ走査は秒単位になり得る。その間に入った編集は開始時の確認が
       // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
       // フォルダとツリーだけ確定し、ファイルは開いたまま残す
       if (!confirmDiscardIfChangedSince(snapshot)) return
-      // 走査中に始まってまだコミットしていない読み込みを無効化する。
-      // 残すと、フォルダ確定後に解決して旧フォルダのファイルが表示される
-      latestReadRef.current += 1
       commitOpenFile(null)
       resetForFileChange()
     } catch (err) {
@@ -206,9 +225,14 @@ export function useFileSystem(options?: Options): FileSystemState {
       commitOpenFile(createOpenFile(fileNode, content))
       resetForFileChange()
       committedOpenRef.current += 1
+      // 信号はどの経路でも進める(最近開いたファイルの履歴に使うため)。
       // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
       // クリックで奪うと、ツリー内のキーボード移動位置が失われるため
-      if (options?.moveFocusToEditor === true) setOpenedFileSignal((prev) => prev + 1)
+      setOpenedFileSignal((prev) => ({
+        id: prev.id + 1,
+        path: fileNode.path,
+        moveFocusToEditor: options?.moveFocusToEditor === true
+      }))
       return true
     } catch (err) {
       if (readId !== latestReadRef.current) return false

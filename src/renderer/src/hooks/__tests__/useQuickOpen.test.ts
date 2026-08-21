@@ -5,6 +5,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { useQuickOpen } from '../useQuickOpen'
 import type { QuickOpenController } from '../useQuickOpen'
 import type { FileTreeNode } from '../../types'
+import type { OpenedFileSignal } from '../useFileSystem'
 
 const file = (name: string, path: string): FileTreeNode => ({ name, path, type: 'file' })
 
@@ -33,7 +34,19 @@ type Overrides = {
   strict?: boolean
 }
 
-type HookProps = { openFilePath: string | null }
+type HookProps = { openFilePath: string | null; openedFileSignal: OpenedFileSignal }
+
+const NO_SIGNAL: OpenedFileSignal = { id: 0, path: null, moveFocusToEditor: false }
+
+// 「ファイルを実際に開いた」ことを模す。path の変更と信号の前進を同時に行う
+let signalSeq = 0
+const openPath = (rerender: (props: HookProps) => void, path: string): void => {
+  signalSeq += 1
+  rerender({
+    openFilePath: path,
+    openedFileSignal: { id: signalSeq, path, moveFocusToEditor: false }
+  })
+}
 type Setup = RenderHookResult<QuickOpenController, HookProps> & {
   selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
   /** フックが評価された回数。レンダーの連鎖が起きていないかの確認に使う */
@@ -50,11 +63,15 @@ const setup = (overrides: Overrides = {}): Setup => {
         fileTree: overrides.fileTree ?? tree,
         folderPath: overrides.folderPath === undefined ? FOLDER : overrides.folderPath,
         openFilePath: props.openFilePath,
+        openedFileSignal: props.openedFileSignal,
         selectFile
       })
     },
     {
-      initialProps: { openFilePath: overrides.openFilePath ?? null },
+      initialProps: {
+        openFilePath: overrides.openFilePath ?? null,
+        openedFileSignal: NO_SIGNAL
+      },
       ...(overrides.strict === true
         ? { wrapper: ({ children }) => createElement(StrictMode, null, children) }
         : {})
@@ -400,7 +417,7 @@ describe('useQuickOpen', () => {
     act(() => result.current.setActiveIndex(3))
     expect(result.current.activeIndex).toBe(3)
     // 現在開いているファイルが除外され候補が 4 件から 3 件に減る
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/README.md')
     expect(result.current.results).toHaveLength(3)
     expect(result.current.activeIndex).toBe(2)
   })
@@ -409,7 +426,7 @@ describe('useQuickOpen', () => {
     const { result, rerender } = setup()
     act(() => result.current.open())
     act(() => result.current.setActiveIndex(3))
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/README.md')
     // 表示上は末尾(index 2)。ここから ArrowDown は先頭へラップする
     expect(result.current.activeIndex).toBe(2)
     act(() => result.current.moveSelection(1))
@@ -420,7 +437,7 @@ describe('useQuickOpen', () => {
     const { result, rerender } = setup()
     act(() => result.current.open())
     act(() => result.current.setActiveIndex(3))
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/README.md')
     act(() => result.current.moveSelection(-1))
     expect(result.current.activeIndex).toBe(1)
   })
@@ -472,9 +489,9 @@ describe('useQuickOpen', () => {
 
   it('クエリが空のとき最近開いたファイルを新しい順に並べる', () => {
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/main.tsx' })
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/main.tsx')
+    openPath(rerender, '/project/README.md')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
   })
@@ -483,14 +500,14 @@ describe('useQuickOpen', () => {
     // 除外しないと Ctrl+P → Enter が現在のファイルの開き直しになり、
     // 未保存の編集がある場合は破棄確認から編集内容を失う経路になる
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/src/App.tsx' })
+    openPath(rerender, '/project/src/App.tsx')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.path)).not.toContain('/project/src/App.tsx')
   })
 
   it('クエリを入力すれば現在開いているファイルも候補に出る', () => {
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/src/App.tsx' })
+    openPath(rerender, '/project/src/App.tsx')
     act(() => result.current.open())
     act(() => result.current.setQuery('app'))
     expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx'])
@@ -498,11 +515,11 @@ describe('useQuickOpen', () => {
 
   it('同じファイルを開き直しても履歴が重複しない', () => {
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/README.md' })
-    rerender({ openFilePath: '/project/src/main.tsx' })
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/index.ts' })
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/README.md')
+    openPath(rerender, '/project/src/main.tsx')
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/index.ts')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual([
       'App.tsx',
@@ -511,9 +528,29 @@ describe('useQuickOpen', () => {
     ])
   })
 
+  it('リネームによる path 変更では履歴を消費しない', () => {
+    // path の変化で積むと、リネームのたびに存在しないパスが履歴の枠を埋め、
+    // 実際に開いた別ファイルが空クエリの候補から押し出される
+    const { result, rerender } = setup()
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/main.tsx')
+    // リネーム相当: openFilePath だけが変わり、信号は進まない
+    rerender({
+      openFilePath: '/project/src/renamed.tsx',
+      openedFileSignal: {
+        id: signalSeq,
+        path: '/project/src/main.tsx',
+        moveFocusToEditor: false
+      }
+    })
+    act(() => result.current.open())
+    // 履歴は App.tsx と main.tsx のまま。renamed.tsx は積まれない
+    expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
+  })
+
   it('ツリーから消えたファイルは履歴に残っていても表示しない', () => {
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/deleted.ts' })
+    openPath(rerender, '/project/deleted.ts')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.path)).not.toContain('/project/deleted.ts')
   })
@@ -541,7 +578,7 @@ describe('useQuickOpen', () => {
       file(`file${i}.ts`, `/project/file${i}.ts`)
     )
     const { result, rerender } = setup({ fileTree: manyFiles })
-    for (const node of manyFiles) rerender({ openFilePath: node.path })
+    for (const node of manyFiles) openPath(rerender, node.path)
     act(() => result.current.open())
     // 履歴 10 件のうち先頭は現在開いている file11 のため、表示は 9 件
     expect(result.current.results.map((r) => r.node.name)).toEqual([
@@ -559,11 +596,11 @@ describe('useQuickOpen', () => {
 
   it('履歴の途中にあるファイルを開き直すと先頭へ移動する', () => {
     const { result, rerender } = setup()
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/main.tsx' })
-    rerender({ openFilePath: '/project/README.md' })
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/index.ts' })
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/main.tsx')
+    openPath(rerender, '/project/README.md')
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/index.ts')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual([
       'App.tsx',
@@ -576,18 +613,18 @@ describe('useQuickOpen', () => {
 describe('useQuickOpen (StrictMode)', () => {
   it('レンダーが二重実行されても履歴が重複しない', () => {
     const { result, rerender } = setup({ strict: true })
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/main.tsx' })
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/main.tsx')
+    openPath(rerender, '/project/README.md')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual(['main.tsx', 'App.tsx'])
   })
 
   it('同じ openFilePath で再レンダーしても履歴が増えない', () => {
     const { result, rerender } = setup({ strict: true })
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/src/App.tsx' })
-    rerender({ openFilePath: '/project/README.md' })
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/src/App.tsx')
+    openPath(rerender, '/project/README.md')
     act(() => result.current.open())
     expect(result.current.results.map((r) => r.node.name)).toEqual(['App.tsx'])
   })
@@ -599,7 +636,7 @@ describe('useQuickOpen (StrictMode)', () => {
     // StrictMode の二重実行の範囲に収まっていることを確認する。
     const { rerender, renderCount } = setup({ strict: true })
     const before = renderCount()
-    rerender({ openFilePath: '/project/src/App.tsx' })
+    openPath(rerender, '/project/src/App.tsx')
     expect(renderCount() - before).toBeLessThanOrEqual(8)
   })
 })

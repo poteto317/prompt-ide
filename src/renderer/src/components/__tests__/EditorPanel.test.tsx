@@ -32,7 +32,7 @@ const defaultProps = {
   onClearResult: vi.fn(),
   onCancelExecution: vi.fn(),
   isOverlayOpen: false,
-  openedFileSignal: 0
+  openedFileSignal: { id: 0, path: null as string | null, moveFocusToEditor: false }
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -148,7 +148,13 @@ describe('EditorPanel — openFile あり', () => {
     // クイックオープンから Enter でファイルを開くと、ダイアログの復帰先だった
     // 旧エディタは key 変更で再マウントされて DOM から消えている。
     // 新しいエディタが自分でフォーカスを取らないと body に取り残される
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).toHaveBeenCalled()
   })
 
@@ -156,14 +162,24 @@ describe('EditorPanel — openFile あり', () => {
     // 読み込み中にクイックオープンを開き直した場合、エディタの再マウントで
     // フォーカスを奪うと、続けて打った文字がファイルへ入ってしまう
     render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        isOverlayOpen
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
   it('オーバーレイが閉じた時点でエディタにフォーカスする', () => {
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        isOverlayOpen
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     expect(mockFocus).not.toHaveBeenCalled()
     rerender(
@@ -171,7 +187,7 @@ describe('EditorPanel — openFile あり', () => {
         {...defaultProps}
         openFile={mockOpenFile}
         isOverlayOpen={false}
-        openedFileSignal={1}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
       />
     )
     expect(mockFocus).toHaveBeenCalled()
@@ -181,12 +197,28 @@ describe('EditorPanel — openFile あり', () => {
     // 閉じると Monaco はアンマウントされる。破棄済みインスタンスの参照が残ると
     // 同じパスを開き直したときに古い側でフォーカス要求が消費されてしまう
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     expect(mockFocus).toHaveBeenCalledTimes(1)
-    rerender(<EditorPanel {...defaultProps} openFile={null} openedFileSignal={1} />)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={null}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     mockFocus.mockClear()
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={2} />)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 2, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).toHaveBeenCalled()
   })
 
@@ -200,7 +232,13 @@ describe('EditorPanel — openFile あり', () => {
     document.body.appendChild(dialog)
     input.focus()
 
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).not.toHaveBeenCalled()
     expect(input).toHaveFocus()
     dialog.remove()
@@ -210,14 +248,18 @@ describe('EditorPanel — openFile あり', () => {
     // 開いているファイル(や祖先ディレクトリ)のリネームでも openFile.path は変わる。
     // エクスプローラーで作業中のユーザーからフォーカスを持っていかない
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     mockFocus.mockClear()
     rerender(
       <EditorPanel
         {...defaultProps}
         openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
-        openedFileSignal={1}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
@@ -234,16 +276,31 @@ describe('EditorPanel — openFile あり', () => {
     input.focus()
 
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     expect(mockFocus).not.toHaveBeenCalled()
     dialog.remove()
 
     // 無関係なオーバーレイの開閉(クイックオープンを開いて閉じただけ)
     rerender(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} isOverlayOpen />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+        isOverlayOpen
+      />
     )
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
@@ -251,7 +308,13 @@ describe('EditorPanel — openFile あり', () => {
     // 同じ path を閉じて開き直した場合、path の比較だけでは旧インスタンスと
     // 区別できない。破棄済みの Monaco はモデルを失うため、それで弾く
     mockEditorModel.current = null
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
@@ -259,9 +322,19 @@ describe('EditorPanel — openFile あり', () => {
     // openedFileSignal が進まない経路(moveFocusToEditor 未指定)では、
     // ファイル無し → 有りの変化だけでフォーカス要求を立ててはいけない
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={null} openedFileSignal={0} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={null}
+        openedFileSignal={{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={0} />)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
+    )
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
@@ -270,7 +343,11 @@ describe('EditorPanel — openFile あり', () => {
     // B を開くと、A の要求が B のマウントで消費されツリーからフォーカスを奪う
     mockEditorModel.current = null // onMount 時点ではまだフォーカスさせない
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />
+      <EditorPanel
+        {...defaultProps}
+        openFile={mockOpenFile}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
+      />
     )
     mockEditorModel.current = {}
     mockFocus.mockClear()
@@ -279,7 +356,7 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel
         {...defaultProps}
         openFile={{ ...mockOpenFile, path: '/project/other.ts', name: 'other.ts' }}
-        openedFileSignal={1}
+        openedFileSignal={{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }}
       />
     )
     expect(mockFocus).not.toHaveBeenCalled()
