@@ -2,10 +2,16 @@ import { useRef, useState } from 'react'
 import { useLatestRef } from './useLatestRef'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
+import { isPathInside } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
+
+export interface SelectFileOptions {
+  /** 開いたあとエディタへフォーカスを移すか(クイックオープン経由の場合のみ true) */
+  moveFocusToEditor?: boolean
+}
 
 interface FileSystemState {
   folderPath: string | null
@@ -19,7 +25,7 @@ interface FileSystemState {
   saveError: Error | null
   openFolder: () => Promise<void>
   /** ファイルを開けたら true。ディレクトリ・破棄確認のキャンセル・読み込み失敗では false */
-  selectFile: (node: FileTreeNode) => Promise<boolean>
+  selectFile: (node: FileTreeNode, options?: SelectFileOptions) => Promise<boolean>
   closeFile: () => void
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
@@ -39,6 +45,12 @@ export function useFileSystem(options?: Options): FileSystemState {
   // ディレクトリ読み込みの世代。ファイル側と共有すると、読み込み中にタブを閉じたり
   // ファイルをクリックしたりするだけでフォルダ選択が黙って捨てられてしまう
   const latestDirectoryReadRef = useRef(0)
+  // 実際に openFile をコミットした回数。「読み込みを開始したか」ではなく
+  // 「選択が確定したか」で判定するために使う(失敗・キャンセルでは進まない)
+  const committedOpenRef = useRef(0)
+  // 進行中のファイル読み込みの対象パス。リネーム・削除の影響範囲だけを
+  // 無効化するために使う(無関係な操作で有効な選択まで捨てないため)
+  const pendingReadPathRef = useRef<string | null>(null)
   // ファイルを「開いた」ことを EditorPanel へ伝える信号。リネームでも
   // openFile.path は変わるため、path の変化だけでは open と区別できない
   const [openedFileSignal, setOpenedFileSignal] = useState(0)
@@ -60,6 +72,16 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
   // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う
   const confirmDiscardIfDirtyRef = useLatestRef(confirmDiscardIfDirty)
+  // 待っている間に編集が入ったかを判定するため、最新の openFile を参照する
+  const openFileRef = useLatestRef(openFile)
+
+  // 待機の前後で内容が変わっていたら、開始時の確認はその編集を見ていない。
+  // 変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)
+  const confirmDiscardIfEditedSince = (contentAtStart: string | null): boolean => {
+    const contentNow = openFileRef.current?.content ?? null
+    if (contentNow === contentAtStart) return true
+    return confirmDiscardIfDirtyRef.current()
+  }
 
   // ファイル操作CRUD(作成/リネーム/削除)と、開いているファイルへの追随ロジックは
   // useFileTreeOperations に委譲する。fileTree/error の状態もそちらが保持する。
@@ -78,10 +100,15 @@ export function useFileSystem(options?: Options): FileSystemState {
     setOpenFile,
     resetForFileChange,
     onConfirm,
-    // リネーム・削除の対象が読み込み中のファイルでも、その結果を表示しないようにする。
+    // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
     // (削除済みファイルを表示すると、編集して保存した時点で復活してしまう)
-    invalidatePendingReads: () => {
-      latestReadRef.current += 1
+    // 影響範囲外の読み込みまで捨てると、無関係な操作で有効な選択を失う
+    invalidatePendingReads: (affectedPath: string) => {
+      const pending = pendingReadPathRef.current
+      if (pending === null) return
+      if (pending === affectedPath || isPathInside(pending, affectedPath)) {
+        latestReadRef.current += 1
+      }
     }
   })
 
@@ -96,18 +123,26 @@ export function useFileSystem(options?: Options): FileSystemState {
       // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
       directoryReadId = ++latestDirectoryReadRef.current
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
-      const fileReadIdAtStart = ++latestReadRef.current
+      latestReadRef.current += 1
+      const committedOpenAtStart = committedOpenRef.current
+      const contentAtStart = openFileRef.current?.content ?? null
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
       if (directoryReadId !== latestDirectoryReadRef.current) return
+      // フォルダ選択そのものは必ず確定させる。ここを中断すると、読み込み中の
+      // ファイル操作だけでフォルダ選択が黙って捨てられてしまう
       setFolderPath(path)
       setFileTree(tree)
-      // 待つ間に確定したファイル操作があれば、その結果を setOpenFile(null) で消さない。
-      // フォルダ選択そのものは上で確定させるため、ここだけを条件付きにする
-      if (fileReadIdAtStart === latestReadRef.current) {
-        setOpenFile(null)
-        resetForFileChange()
-      }
+      // 待つ間に「確定した」ファイル選択があれば、その結果を消さない。
+      // 読み込みの開始ではなくコミット回数で見るのは、失敗・キャンセルした
+      // 読み込みで旧フォルダのファイルが残ってしまうのを防ぐため
+      if (committedOpenRef.current !== committedOpenAtStart) return
+      // ディレクトリ走査は秒単位になり得る。その間に入った編集は開始時の確認が
+      // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
+      // フォルダとツリーだけ確定し、ファイルは開いたまま残す
+      if (!confirmDiscardIfEditedSince(contentAtStart)) return
+      setOpenFile(null)
+      resetForFileChange()
     } catch (err) {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない
       if (directoryReadId !== null && directoryReadId !== latestDirectoryReadRef.current) return
@@ -117,29 +152,33 @@ export function useFileSystem(options?: Options): FileSystemState {
 
   // 呼び出し側が「実際に開けたか」で分岐できるよう成否を返す。クイックオープンは
   // 開けなかったとき(破棄確認のキャンセルなど)にダイアログを閉じずに残す。
-  const selectFile = async (node: FileTreeNode): Promise<boolean> => {
+  const selectFile = async (node: FileTreeNode, options?: SelectFileOptions): Promise<boolean> => {
     if (node.type !== 'file') return false
     // TypeScript resets property narrowing after `await`; capture the narrowed type here.
     const fileNode = node as FileNode
     if (!confirmDiscardIfDirty()) return false
     setError(null)
     const readId = ++latestReadRef.current
+    pendingReadPathRef.current = fileNode.path
+    const contentAtStart = openFileRef.current?.content ?? null
     try {
       const content = await fileSystemApi.readFileContent(fileNode.path)
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false
-      // 待っている間に編集が入っていた場合、開始時の確認はその編集を見ていない。
-      // ここで置き換えると未保存の変更を確認なしに失うため、あらためて確認する
-      if (!confirmDiscardIfDirtyRef.current()) return false
+      if (!confirmDiscardIfEditedSince(contentAtStart)) return false
       setOpenFile(createOpenFile(fileNode, content))
       resetForFileChange()
-      // リネームによる path 変更と区別できるよう、開いたときだけ信号を進める
-      setOpenedFileSignal((prev) => prev + 1)
+      committedOpenRef.current += 1
+      // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
+      // クリックで奪うと、ツリー内のキーボード移動位置が失われるため
+      if (options?.moveFocusToEditor === true) setOpenedFileSignal((prev) => prev + 1)
       return true
     } catch (err) {
       if (readId !== latestReadRef.current) return false
       setError(err instanceof Error ? err : new Error(String(err)))
       return false
+    } finally {
+      if (readId === latestReadRef.current) pendingReadPathRef.current = null
     }
   }
 

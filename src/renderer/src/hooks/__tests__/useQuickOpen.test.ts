@@ -28,14 +28,14 @@ type Overrides = {
   fileTree?: FileTreeNode[]
   folderPath?: string | null
   openFilePath?: string | null
-  selectFile?: (node: FileTreeNode) => Promise<boolean>
+  selectFile?: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
   /** StrictMode で包み、レンダーの二重実行下での挙動を確認する */
   strict?: boolean
 }
 
 type HookProps = { openFilePath: string | null }
 type Setup = RenderHookResult<QuickOpenController, HookProps> & {
-  selectFile: (node: FileTreeNode) => Promise<boolean>
+  selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
   /** フックが評価された回数。レンダーの連鎖が起きていないかの確認に使う */
   renderCount: () => number
 }
@@ -299,7 +299,8 @@ describe('useQuickOpen', () => {
     act(() => result.current.setQuery('app'))
     await act(async () => result.current.confirm())
     expect(selectFile).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/project/src/App.tsx' })
+      expect.objectContaining({ path: '/project/src/App.tsx' }),
+      { moveFocusToEditor: true }
     )
     expect(result.current.isOpen).toBe(false)
   })
@@ -310,7 +311,9 @@ describe('useQuickOpen', () => {
     act(() => result.current.setQuery('tsx'))
     const target = result.current.results[1].node.path
     await act(async () => result.current.confirm(1))
-    expect(selectFile).toHaveBeenCalledWith(expect.objectContaining({ path: target }))
+    expect(selectFile).toHaveBeenCalledWith(expect.objectContaining({ path: target }), {
+      moveFocusToEditor: true
+    })
   })
 
   it('ファイルを開けなかったときダイアログを閉じずクエリも保持する', async () => {

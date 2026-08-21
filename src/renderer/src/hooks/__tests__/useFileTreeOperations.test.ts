@@ -28,7 +28,7 @@ function renderOperations(config?: {
   initialOpenFile?: OpenFile | null
   onConfirm?: (message: string) => boolean
   resetForFileChange?: () => void
-  invalidatePendingReads?: () => void
+  invalidatePendingReads?: (affectedPath: string) => void
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
@@ -320,6 +320,8 @@ describe('保留中の読み込みの無効化', () => {
   it('deleteEntry で invalidatePendingReads を呼ぶ', async () => {
     // 削除対象を読み込み中だと、あとから解決して削除済みファイルを表示してしまう
     const invalidatePendingReads = vi.fn()
+    // clearAllMocks は実装(mockRejectedValue 等)を消さないため、明示的に成功させる
+    mockDeleteEntry.mockResolvedValue(undefined)
     const { result } = renderOperations({ invalidatePendingReads })
     await act(async () => {
       await result.current.deleteEntry({
@@ -328,11 +330,12 @@ describe('保留中の読み込みの無効化', () => {
         type: 'file'
       })
     })
-    expect(invalidatePendingReads).toHaveBeenCalled()
+    expect(invalidatePendingReads).toHaveBeenCalledWith('/project/a.ts')
   })
 
   it('renameEntry で invalidatePendingReads を呼ぶ', async () => {
     const invalidatePendingReads = vi.fn()
+    mockRenameEntry.mockResolvedValue(undefined)
     const { result } = renderOperations({ invalidatePendingReads })
     await act(async () => {
       await result.current.renameEntry(

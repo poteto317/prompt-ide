@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import { mockAddCommand, mockFocus } from '../../__tests__/__mocks__/@monaco-editor/react'
+import {
+  mockAddCommand,
+  mockFocus,
+  mockEditorModel
+} from '../../__tests__/__mocks__/@monaco-editor/react'
 import type { OpenFile } from '../../types'
 import EditorPanel from '../EditorPanel'
 
@@ -240,6 +244,14 @@ describe('EditorPanel — openFile あり', () => {
       <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} isOverlayOpen />
     )
     rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
+  it('破棄済みのエディタにはフォーカスしない', () => {
+    // 同じ path を閉じて開き直した場合、path の比較だけでは旧インスタンスと
+    // 区別できない。破棄済みの Monaco はモデルを失うため、それで弾く
+    mockEditorModel.current = null
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={1} />)
     expect(mockFocus).not.toHaveBeenCalled()
   })
 

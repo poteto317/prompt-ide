@@ -5,10 +5,14 @@ import { afterEach, vi } from 'vitest'
 export const mockAddCommand = vi.fn()
 // eslint-disable-next-line react-refresh/only-export-components -- テスト専用モック。HMR 対象外
 export const mockFocus = vi.fn()
+// 破棄済みインスタンスは Monaco がモデルを失う。テストから状態を差し替えられるようにする
+// eslint-disable-next-line react-refresh/only-export-components -- テスト専用モック。HMR 対象外
+export const mockEditorModel = { current: {} as object | null }
 
 afterEach(() => {
   mockAddCommand.mockClear()
   mockFocus.mockClear()
+  mockEditorModel.current = {}
 })
 
 interface EditorProps {
@@ -26,7 +30,7 @@ export default function Editor({ options, value, onChange, onMount }: EditorProp
     if (mountedRef.current) return
     mountedRef.current = true
     onMount?.(
-      { addCommand: mockAddCommand, focus: mockFocus },
+      { addCommand: mockAddCommand, focus: mockFocus, getModel: () => mockEditorModel.current },
       { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } }
     )
   }, [onMount])

@@ -64,9 +64,9 @@ export default function EditorPanel({
   // key={openFile.path} により切替のたびに再マウントされるため、ここで取らないと
   // クイックオープン経由ではフォーカスが body に残ってしまう。
   const pendingFocusRef = useRef(false)
-  // 現在 editorRef が保持しているインスタンスがどのファイルのものか。
-  // ファイル切替直後は前のファイルの(破棄済みの)インスタンスが残っているため、
-  // これを見ないと古いインスタンスでフォーカス要求を消費してしまう
+  // editorRef が保持しているインスタンスがどのファイルのものか。
+  // ファイル切替直後は前のファイルのインスタンスが残っているため、これを見ないと
+  // 古いインスタンスでフォーカス要求を消費してしまう
   const mountedPathRef = useRef<string | null>(null)
   // Monaco の onMount は非同期に発火するため、ハンドラ側から最新の値を読む
   const isOverlayOpenRef = useLatestRef(isOverlayOpen)
@@ -84,9 +84,13 @@ export default function EditorPanel({
       pendingFocusRef.current = false
       return
     }
-    if (editorRef.current === null || mountedPathRef.current !== openFilePathRef.current) return
+    const editorInstance = editorRef.current
+    if (editorInstance === null || mountedPathRef.current !== openFilePathRef.current) return
+    // 同じ path を閉じて開き直した場合、path の比較だけでは旧インスタンスと
+    // 区別できない。破棄済みの Monaco はモデルを失うため、生存確認で弾く
+    if (editorInstance.getModel() === null) return
     pendingFocusRef.current = false
-    editorRef.current.focus()
+    editorInstance.focus()
   }, [isOverlayOpenRef, openFilePathRef])
 
   // 「開いた」信号でのみ要求を立てる。openFilePath はリネームでも変わるため、
@@ -136,6 +140,8 @@ export default function EditorPanel({
                 // 破棄済みの古いファイルの callback が後から届くことがある。
                 // 現在のファイルのものだけを保持する
                 if (openFilePathRef.current !== openFile.path) return
+                // 破棄済みインスタンスの遅延 callback で現在の参照を壊さない
+                if (editorInstance.getModel() === null) return
                 editorRef.current = editorInstance
                 mountedPathRef.current = openFile.path
                 registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())

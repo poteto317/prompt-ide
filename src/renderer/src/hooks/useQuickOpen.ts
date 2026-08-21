@@ -12,7 +12,7 @@ interface Options {
   folderPath: string | null
   openFilePath: string | null
   /** ファイルを開けたかどうかを返す。開けなかった場合はダイアログを閉じない */
-  selectFile: (node: FileTreeNode) => Promise<boolean>
+  selectFile: (node: FileTreeNode, options?: { moveFocusToEditor?: boolean }) => Promise<boolean>
 }
 
 export interface QuickOpenController {
@@ -133,7 +133,8 @@ export function useQuickOpen({
       // 実際に開けたときだけ閉じる。selectFile は未保存時に破棄確認を出すため、
       // ここで先に閉じてしまうと、キャンセルされた場合にファイルは切り替わらないのに
       // ダイアログだけ消えて入力中のクエリを失う
-      void selectFile(target.node)
+      // ダイアログは閉じるので、フォーカスはエディタへ移す
+      void selectFile(target.node, { moveFocusToEditor: true })
         .then((opened) => {
           if (generation !== generationRef.current) return
           if (opened) setIsOpen(false)

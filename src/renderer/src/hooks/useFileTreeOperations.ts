@@ -11,8 +11,11 @@ interface FileTreeOperationsOptions {
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>
   resetForFileChange: () => void
   onConfirm: (message: string) => boolean
-  /** 保留中のファイル読み込みを無効化する(リネーム・削除で対象が変わるため) */
-  invalidatePendingReads: () => void
+  /**
+   * 指定パス配下を対象とする保留中のファイル読み込みを無効化する。
+   * FS 操作が成功したあとに呼ぶ(失敗時に有効な選択を失わないため)
+   */
+  invalidatePendingReads: (affectedPath: string) => void
 }
 
 interface FileTreeOperationsState {
@@ -66,9 +69,10 @@ export function useFileTreeOperations({
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
-      // 読み込み中のファイルがリネーム対象でも、旧 path のまま表示しないようにする
-      invalidatePendingReads()
       await fileSystemApi.renameEntry(node.path, newName)
+      // 読み込み中のファイルがリネーム対象なら、旧 path のまま表示しないようにする。
+      // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
+      invalidatePendingReads(node.path)
       // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
       const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
       const newPath = parentPrefix + newName
@@ -101,9 +105,10 @@ export function useFileTreeOperations({
         : `「${node.name}」を削除しますか？`
     if (!onConfirm(message)) return
     await runFileOperation(async () => {
-      // 読み込み中のファイルが削除対象でも、その結果を表示しないようにする
-      invalidatePendingReads()
       await fileSystemApi.deleteEntry(node.path)
+      // 読み込み中のファイルが削除対象なら、その結果を表示しないようにする。
+      // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
+      invalidatePendingReads(node.path)
       const affected =
         openFile !== null && (openFile.path === node.path || isPathInside(openFile.path, node.path))
       if (affected) {
