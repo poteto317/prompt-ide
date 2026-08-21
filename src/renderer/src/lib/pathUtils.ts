@@ -4,15 +4,37 @@
 //   二重区切りになり、本来内部にあるパスを誤って false 判定する
 // - childPath が末尾区切りだと、parentPath と実質同一パスなのに「内部にある」と
 //   誤って true 判定してしまう(例: '/project/src/' は '/project/src' の内部ではなく同一)
-/** パス区切りを '/' に揃える */
+/**
+ * 利用者が入力した文字列のパス区切りを '/' に揃える。
+ * 検索クエリのように「'\\' は区切りのつもりで打たれている」場面で使う。
+ * ファイルパスの比較には使わない(POSIX の '\\' はファイル名の一部になり得る)。
+ */
 export const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
-/** 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため */
-export const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
+
+/** ドライブ文字 or UNC で始まる Windows のパスか。区切りは '/' '\\' どちらでも見る */
+const isWindowsPath = (path: string): boolean => /^([a-zA-Z]:[\\/]|[\\/]{2}[^\\/]+[\\/])/.test(path)
+
+/**
+ * パス比較のために区切りを '/' へ揃える。
+ *
+ * POSIX では '\\' はファイル名に使える文字なので変換しない。変換すると
+ * '/project/foo\\bar.ts' と '/project/foo/bar.ts' が同一視され、履歴やロックが
+ * 衝突したり、削除の影響判定で別のファイルのタブを閉じたりする。
+ */
+export const normalizePathSeparators = (path: string): string =>
+  isWindowsPath(path) ? path.replace(/\\/g, '/') : path
+
+/**
+ * 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため。
+ * 区切りを揃えたあとに使う前提で、落とすのは '/' だけにする
+ * (POSIX では末尾の '\\' もファイル名の一部)。
+ */
+export const stripTrailingSeparators = (path: string): string => path.replace(/\/+$/, '')
 
 /** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
 const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
 
-/** '/' 正規化後の文字列が Windows のパス(ドライブ文字 or UNC)か */
+/** 区切りを揃えたあとの文字列が Windows のパス(ドライブ文字 or UNC)か */
 const isWindowsStyle = (forwardPath: string): boolean =>
   /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
 
@@ -27,8 +49,8 @@ const isWindowsStyle = (forwardPath: string): boolean =>
  * 片方だけが Windows 形式でも突き合わせられるよう、判定は 2 つまとめて行う。
  */
 const normalizePair = (a: string, b: string): [string, string] => {
-  const forwardA = toForwardSlashes(a)
-  const forwardB = toForwardSlashes(b)
+  const forwardA = normalizePathSeparators(a)
+  const forwardB = normalizePathSeparators(b)
   const normalizedA = stripTrailingSeparators(forwardA)
   const normalizedB = stripTrailingSeparators(forwardB)
   if (!isWindowsStyle(forwardA) && !isWindowsStyle(forwardB)) return [normalizedA, normalizedB]
@@ -54,7 +76,7 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
  * 「すべての絶対パスの親」として扱うのはこの判定だけに閉じる。
  */
 export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
-  if (isRootPath(targetPath)) return toForwardSlashes(path).startsWith('/')
+  if (isRootPath(targetPath)) return normalizePathSeparators(path).startsWith('/')
   const [normalizedPath, normalizedTarget] = normalizePair(path, targetPath)
   return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
 }

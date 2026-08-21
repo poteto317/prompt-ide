@@ -123,8 +123,10 @@ const toUtf16Indices = (target: CodePoint[], indices: number[]): number[] => {
  * マッチしない場合は null。
  *
  * 貪欲に前から詰めるのではなく DP で全候補の最大スコアを求める。貪欲だと
- * 'fs' × 'useFileSystem.ts' で最初に見つかる 's'(index 9) を選んでしまい、
- * 単語境界の 'S'(index 7) を取り逃がすため。
+ * 'st' × 'useFileSystem.ts' で最初に見つかる 's'(index 1) と 't'(index 10) を
+ * 選んでしまい、単語境界の 'S'(index 7) と '.' の直後の 't'(index 14) を
+ * 取り逃がすため。大小無視の照合なので、大文字だから見落とすのではなく
+ * 「前にある通常位置」を先に取ってしまうのが理由。
  */
 export const fuzzyMatch = (query: string, target: string): FuzzyMatchResult | null => {
   const queryPoints = toCodePoints(query)

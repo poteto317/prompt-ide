@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside, isSamePath } from '../pathUtils'
+import { isPathAtOrInside, isPathInside, isSamePath, toComparablePath } from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -139,5 +139,30 @@ describe('isSamePath', () => {
 
   it('別のパスは false', () => {
     expect(isSamePath('/a/b', '/a/c')).toBe(false)
+  })
+})
+
+describe('POSIX のバックスラッシュ', () => {
+  // POSIX では '\\' はファイル名に使える文字。区切りへ変換すると別ファイルが
+  // 同一視され、履歴やロックが衝突したり、削除の影響判定で別のタブを閉じたりする
+  it('ファイル名に含まれる \\ を区切りとして扱わない', () => {
+    expect(isSamePath('/project/foo\\bar.ts', '/project/foo/bar.ts')).toBe(false)
+    expect(isPathInside('/project/foo\\bar.ts', '/project/foo')).toBe(false)
+    expect(isPathAtOrInside('/project/foo\\bar.ts', '/project/foo')).toBe(false)
+  })
+
+  it('比較用キーでも \\ を保つ', () => {
+    expect(toComparablePath('/project/foo\\bar.ts')).toBe('/project/foo\\bar.ts')
+  })
+
+  it('同じ名前どうしは一致する', () => {
+    expect(isSamePath('/project/foo\\bar.ts', '/project/foo\\bar.ts')).toBe(true)
+    expect(isPathAtOrInside('/project/foo\\bar.ts', '/project')).toBe(true)
+  })
+
+  it('Windows のパスでは従来どおり \\ を区切りとして扱う', () => {
+    expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
+    expect(isPathInside('C:\\project\\a.ts', 'C:\\project')).toBe(true)
+    expect(isPathAtOrInside('\\\\server\\share\\a.ts', '\\\\server\\share')).toBe(true)
   })
 })

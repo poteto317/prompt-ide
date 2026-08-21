@@ -1,6 +1,11 @@
 import type { FileTreeNode, FileNode } from '../types'
 import { fuzzyMatch } from './fuzzyMatch'
-import { isPathAtOrInside, stripTrailingSeparators, toForwardSlashes } from './pathUtils'
+import {
+  isPathAtOrInside,
+  normalizePathSeparators,
+  stripTrailingSeparators,
+  toForwardSlashes
+} from './pathUtils'
 
 export type QuickOpenResult = {
   node: FileNode
@@ -56,9 +61,11 @@ export const flattenFileTree = (nodes: FileTreeNode[]): FileNode[] => {
 
 /** rootPath 配下のパスを '/' 区切りの相対パスに正規化する */
 const toRelativePath = (fullPath: string, rootPath: string | null): string => {
-  const normalizedPath = toForwardSlashes(fullPath)
+  // ファイルパスの区切り正規化は Windows のパスにだけ効かせる。POSIX の '\\' は
+  // ファイル名の一部になり得るため、変換すると別ファイルを同じ扱いにしてしまう
+  const normalizedPath = normalizePathSeparators(fullPath)
   if (rootPath === null) return normalizedPath
-  const normalizedRoot = stripTrailingSeparators(toForwardSlashes(rootPath))
+  const normalizedRoot = stripTrailingSeparators(normalizePathSeparators(rootPath))
   // rootPath が POSIX のルート('/')だと末尾区切りの除去で空文字になる。
   // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする
   if (normalizedRoot.length === 0) return normalizedPath.replace(/^\//, '')
