@@ -29,8 +29,10 @@
 #     動作が壊れる。編集する場合は別名にコピーしたものを実行する。
 #   - API の失敗は握り潰さない。レビュー待ちは静かでよいが、認証切れ・ネットワーク
 #     不調・rate limit を黙って無視すると、待っているのか壊れているのか分からない。
-#     失敗は stderr に出し、連続で続いたら終了する。GraphQL は HTTP 200 のまま
-#     errors を返すことがあるため、errors を含む応答も失敗として扱う。
+#     失敗は stderr に出し、連続で続いたら終了する。
+#   - 応答の判定を grep で行わない。GraphQL は HTTP 200 のまま errors を返すことが
+#     あり、一方でレビュー本文に "errors" のような文字列が含まれることもある。
+#     JSON として解釈したうえで、トップレベルの errors と pullRequest を見る。
 set -u
 
 if [ "$#" -lt 4 ]; then
@@ -52,59 +54,68 @@ failures=0
 err_file=$(mktemp)
 trap 'rm -f "$err_file"' EXIT
 
+# 失敗を数え、上限に達したら終了する。第 2 引数以降は原因の詳細
+record_failure() {
+  headline="$1"
+  shift
+  failures=$((failures + 1))
+  {
+    echo "${headline}（${failures}/${MAX_FAILURES}）"
+    if [ "$#" -gt 0 ] && [ -n "$1" ]; then
+      printf '%s\n' "$@"
+    fi
+  } >&2
+  if [ "$failures" -ge "$MAX_FAILURES" ]; then
+    echo "${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
+    exit 1
+  fi
+}
+
 while true; do
-  if out=$(gh api graphql -f query="
+  if ! out=$(gh api graphql -f query="
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
-    reviews(last:50){nodes{author{login} submittedAt body}}
+    reviews(last:50){nodes{author{__typename login} submittedAt body}}
     reviewRequests(first:20){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
     reviewThreads(last:60){nodes{isResolved path line}}
-  }}}" 2>"$err_file") &&
-    printf '%s' "$out" | grep -q '"data"' &&
-    ! printf '%s' "$out" | grep -q '"errors"'; then
-    failures=0
-  else
-    failures=$((failures + 1))
-    {
-      echo "gh api graphql に失敗（${failures}/${MAX_FAILURES}）"
-      # GraphQL は HTTP 200 で errors を返すことがある。その場合 stderr は空なので
-      # 応答側の先頭も出さないと原因が分からない
-      if [ -s "$err_file" ]; then
-        head -3 "$err_file"
-      else
-        printf '%s' "$out" | head -c 500
-        echo
-      fi
-    } >&2
-    if [ "$failures" -ge "$MAX_FAILURES" ]; then
-      echo "API 呼び出しが ${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
-      exit 1
-    fi
+  }}}" 2>"$err_file"); then
+    record_failure "gh api graphql に失敗" "$(head -3 "$err_file")"
     sleep "$INTERVAL"
     continue
   fi
 
-  if [ -n "$out" ]; then
-    if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
+  # 応答の解釈もここで行う。失敗（errors を含む・pullRequest が無い・壊れた JSON）は
+  # 終了コードで伝わるため、シェル側は同じ経路で失敗として数えられる
+  if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" python3 -c '
 import sys, json, os, re
 
 baseline = os.environ["BASELINE"]
-# 応答の形が想定と違う場合（pullRequest が null、data が欠けている等）は
-# 失敗として扱う。黙って握り潰すと、監視が無言で回り続けて原因が分からない
+
 try:
-    pr = json.load(sys.stdin)["data"]["repository"]["pullRequest"]
+    payload = json.load(sys.stdin)
 except Exception as error:
-    print("応答の解釈に失敗: %s" % error, file=sys.stderr)
+    print("応答が JSON として読めない: %s" % error, file=sys.stderr)
     sys.exit(3)
+
+# GraphQL は HTTP 200 のまま errors を返すことがある
+if payload.get("errors"):
+    print("GraphQL がエラーを返した: %s" % json.dumps(payload["errors"], ensure_ascii=False)[:300],
+          file=sys.stderr)
+    sys.exit(3)
+
+pr = ((payload.get("data") or {}).get("repository") or {}).get("pullRequest")
 if pr is None:
     print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
     sys.exit(3)
 
-# Copilot のレビュアー名は "copilot-pull-request-reviewer"。人間のレビューと
-# 区別するため、末尾が "reviewer" のアカウントだけを対象にする
-reviews = [r for r in pr["reviews"]["nodes"] if r["author"]["login"].endswith("reviewer")]
+# Copilot は Bot アカウント。login の末尾だけで見ると、人間の
+# "foo-reviewer" のようなアカウントのレビューまで拾ってしまう
+def is_review_bot(actor):
+    actor = actor or {}
+    return actor.get("__typename") == "Bot" and actor.get("login", "").endswith("reviewer")
+
+reviews = [r for r in pr["reviews"]["nodes"] if is_review_bot(r.get("author"))]
 new = [r for r in reviews if r["submittedAt"] > baseline]
-pending = [n for n in pr["reviewRequests"]["nodes"]
-           if (n.get("requestedReviewer") or {}).get("login", "").endswith("reviewer")]
+pending = [n for n in pr["reviewRequests"]["nodes"] if is_review_bot(n.get("requestedReviewer"))]
 threads = pr["reviewThreads"]["nodes"]
 unresolved = [t for t in threads if not t["isResolved"]]
 
@@ -126,26 +137,23 @@ else:
     print("NO PENDING REVIEW / NO NEW REVIEW")
     print("__EXIT__")
 '); then
-      failures=$((failures + 1))
-      echo "応答の解釈に失敗（${failures}/${MAX_FAILURES}）" >&2
-      if [ "$failures" -ge "$MAX_FAILURES" ]; then
-        echo "API 応答の解釈が ${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
-        exit 1
-      fi
-      sleep "$INTERVAL"
-      continue
-    fi
-
-    # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
-    # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
-    if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&
-       [ $(( $(date +%s) - STARTED )) -lt "$MIN_WAIT" ]; then
-      verdict=""
-    fi
-    if [ -n "$verdict" ]; then
-      printf '%s\n' "$verdict" | grep -v '^__EXIT__'
-      printf '%s' "$verdict" | grep -q '^__EXIT__' && exit 0
-    fi
+    record_failure "API 応答の解釈に失敗"
+    sleep "$INTERVAL"
+    continue
   fi
+
+  failures=0
+
+  # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
+  # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
+  if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&
+    [ $(($(date +%s) - STARTED)) -lt "$MIN_WAIT" ]; then
+    verdict=""
+  fi
+  if [ -n "$verdict" ]; then
+    printf '%s\n' "$verdict" | grep -v '^__EXIT__'
+    printf '%s' "$verdict" | grep -q '^__EXIT__' && exit 0
+  fi
+
   sleep "$INTERVAL"
 done
