@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
@@ -29,6 +29,10 @@ interface FileSystemState {
 export function useFileSystem(options?: Options): FileSystemState {
   const [folderPath, setFolderPath] = useState<string | null>(null)
   const [openFile, setOpenFile] = useState<OpenFile | null>(null)
+  // 読み込みの世代。ファイル切替が読み込み完了より先に起きても、
+  // 遅れて解決した古い読み込みが表示中のファイルやエラーを上書きしないようにする。
+  // (エクスプローラーの連続クリックや、クイックオープンを閉じて開き直した場合に起きる)
+  const latestReadRef = useRef(0)
   const onConfirm = options?.onConfirm ?? confirm
 
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
@@ -63,6 +67,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     try {
       const path = await fileSystemApi.openFolder()
       if (path === null) return
+      // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
+      latestReadRef.current += 1
       const tree = await fileSystemApi.readDirectory(path)
       setFolderPath(path)
       setFileTree(tree)
@@ -81,12 +87,16 @@ export function useFileSystem(options?: Options): FileSystemState {
     const fileNode = node as FileNode
     if (!confirmDiscardIfDirty()) return false
     setError(null)
+    const readId = ++latestReadRef.current
     try {
       const content = await fileSystemApi.readFileContent(fileNode.path)
+      // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
+      if (readId !== latestReadRef.current) return false
       setOpenFile(createOpenFile(fileNode, content))
       resetForFileChange()
       return true
     } catch (err) {
+      if (readId !== latestReadRef.current) return false
       setError(err instanceof Error ? err : new Error(String(err)))
       return false
     }

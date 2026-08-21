@@ -26,7 +26,8 @@ const defaultProps = {
   streamingText: '',
   executionError: null as Error | null,
   onClearResult: vi.fn(),
-  onCancelExecution: vi.fn()
+  onCancelExecution: vi.fn(),
+  isOverlayOpen: false
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -144,6 +145,27 @@ describe('EditorPanel — openFile あり', () => {
     // 新しいエディタが自分でフォーカスを取らないと body に取り残される
     render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
     expect(mockFocus).toHaveBeenCalled()
+  })
+
+  it('オーバーレイが開いている間はフォーカスを奪わない', () => {
+    // 読み込み中にクイックオープンを開き直した場合、エディタの再マウントで
+    // フォーカスを奪うと、続けて打った文字がファイルへ入ってしまう
+    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen />)
+    expect(mockFocus).not.toHaveBeenCalled()
+  })
+
+  it('オーバーレイが閉じた時点でエディタにフォーカスする', () => {
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen />
+    )
+    expect(mockFocus).not.toHaveBeenCalled()
+    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isOverlayOpen={false} />)
+    expect(mockFocus).toHaveBeenCalled()
+  })
+
+  it('ファイルを開いていないときはフォーカスしない', () => {
+    render(<EditorPanel {...defaultProps} openFile={null} />)
+    expect(mockFocus).not.toHaveBeenCalled()
   })
 
   it('Ctrl/Cmd+S コマンドが登録され、実行すると最新の onSave が呼ばれる', () => {

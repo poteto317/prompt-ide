@@ -104,7 +104,9 @@ export const searchFiles = (
   rootPath: string | null,
   limit: number = DEFAULT_RESULT_LIMIT
 ): QuickOpenResult[] => {
-  const trimmedQuery = query.trim()
+  // 照合対象の相対パスは '/' に正規化済みのため、クエリ側も揃える。
+  // 揃えないと Windows で 'src\\hooks' のように入力したときに一致しない
+  const trimmedQuery = toForwardSlashes(query.trim())
 
   if (trimmedQuery.length === 0) {
     return files.slice(0, limit).map((node) => ({

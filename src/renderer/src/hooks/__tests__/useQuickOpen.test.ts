@@ -142,6 +142,43 @@ describe('useQuickOpen', () => {
     expect(event.defaultPrevented).toBe(true)
   })
 
+  it('開閉のたびに keydown リスナーを登録し直さない', () => {
+    // リスナーが isOpen に依存して張り替わると、state 更新から
+    // 再登録(passive effect)までの間に古いクロージャが残り、
+    // その窓に届いた Ctrl+P が古い isOpen で握り潰される
+    const addSpy = vi.spyOn(document, 'addEventListener')
+    const countKeydown = (): number =>
+      addSpy.mock.calls.filter((call) => call[0] === 'keydown').length
+    const { result } = setup()
+    const before = countKeydown()
+    act(() => result.current.open())
+    act(() => result.current.close())
+    expect(countKeydown()).toBe(before)
+    addSpy.mockRestore()
+  })
+
+  it('読み込み中の Ctrl+P は握り潰さず開き直す', () => {
+    // Enter 直後は読み込み待ちでまだ isOpen が true。ここで Ctrl+P を無視すると
+    // 直後に閉じてエディタへフォーカスが移り、続けて打った文字がファイルに入る
+    let resolveSelect: (opened: boolean) => void = () => {}
+    const selectFile = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSelect = resolve
+        })
+    )
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    act(() => result.current.confirm())
+    pressKey({ key: 'p', ctrlKey: true })
+    expect(result.current.isOpen).toBe(true)
+    expect(result.current.query).toBe('')
+    // 先行する読み込みが解決しても開き直したダイアログは閉じない
+    act(() => resolveSelect(true))
+    expect(result.current.isOpen).toBe(true)
+  })
+
   it('Escape で閉じる', () => {
     const { result } = setup()
     pressKey({ key: 'p', ctrlKey: true })

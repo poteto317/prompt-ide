@@ -211,6 +211,17 @@ describe('searchFiles', () => {
     expect(pathHit?.matchedName).toBe(false)
   })
 
+  it('クエリの区切り文字が \\ でもパス検索にヒットする', () => {
+    // 照合対象の相対パスは / に正規化されているため、クエリ側も揃えないと
+    // Windows で src\\hooks のように入力したときに 0 件になる
+    const hit = searchFiles('hooks\\use', files, ROOT).find(
+      (r) => r.node.name === 'useFileSystem.ts'
+    )
+    expect(hit).toBeDefined()
+    expect(hit?.directoryIndices).toEqual([4, 5, 6, 7, 8])
+    expect(hit?.nameIndices).toEqual([0, 1, 2])
+  })
+
   it('Windows 形式のパス区切りでも相対ディレクトリを正しく求める', () => {
     const windowsFiles = [file('App.tsx', 'C:\\project\\src\\App.tsx')]
     const results = searchFiles('app', windowsFiles, 'C:\\project')

@@ -138,6 +138,7 @@ export default function App(): React.JSX.Element {
             executionError={executionError}
             onClearResult={clearResult}
             onCancelExecution={cancelExecution}
+            isOverlayOpen={quickOpen.isOpen}
           />
         </div>
       </div>

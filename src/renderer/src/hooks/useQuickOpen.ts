@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FileTreeNode } from '../types'
 import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
+import { useLatestRef } from './useLatestRef'
 
 /** 保持する「最近開いたファイル」の最大件数。アプリを閉じると失われるメモリ上の履歴 */
 const MAX_RECENT_FILES = 10
@@ -145,6 +146,12 @@ export function useQuickOpen({
     [results, activeIndex, selectFile]
   )
 
+  // 開閉状態は ref 経由で読む。ハンドラのクロージャに isOpen を閉じ込めると、
+  // state 更新からリスナー再登録(passive effect)までの窓で古い値が残り、
+  // その間に届いた Ctrl+P を誤って握り潰してしまう。useLatestRef は
+  // useLayoutEffect で更新されるため、ユーザー操作の処理前に最新化される
+  const isOpenRef = useLatestRef(isOpen)
+
   // capture フェーズで購読する。Monaco エディタが自前の keydown ハンドラで
   // イベントを消費する場合があり、bubble フェーズだと届かないことがあるため。
   useEffect(() => {
@@ -156,7 +163,7 @@ export function useQuickOpen({
       // 何らかの理由でフォーカスがダイアログの外へ移ったときに閉じる手段が
       // 無くなってしまう。開いていないときはエディタ側の Escape を横取りしない
       if (event.key === 'Escape') {
-        if (!isOpen) return
+        if (!isOpenRef.current) return
         event.preventDefault()
         setIsOpen(false)
         return
@@ -165,14 +172,18 @@ export function useQuickOpen({
       if (event.shiftKey || event.altKey) return
       if (event.key.toLowerCase() !== 'p') return
       // ブラウザの印刷は常に抑止する。ただし既に表示中なら open() を呼ばない
-      // (入力途中のクエリと選択位置がリセットされてしまうため)
+      // (入力途中のクエリと選択位置がリセットされてしまうため)。
+      // 読み込み待ちの間は例外で、ユーザーは既に選択を確定しているため開き直す。
+      // ここで握り潰すと、直後にダイアログが閉じてエディタへフォーカスが移り、
+      // 続けて打った文字がファイルへ入ってしまう
       event.preventDefault()
-      if (isOpen) return
+      const confirmInFlight = confirmingGenerationRef.current === generationRef.current
+      if (isOpenRef.current && !confirmInFlight) return
       open()
     }
     document.addEventListener('keydown', handleKeyDown, true)
     return () => document.removeEventListener('keydown', handleKeyDown, true)
-  }, [open, isOpen])
+  }, [open, isOpenRef])
 
   return {
     isOpen,

@@ -197,6 +197,97 @@ describe('useFileSystem', () => {
     expect(result.current.openFile?.path).toBe('/project/src/index.ts')
   })
 
+  it('先行する遅い読み込みが後から開いたファイルの表示を上書きしない', async () => {
+    // クイックオープンで A を選んだまま閉じ、開き直して B を選ぶと 2 本の読み込みが
+    // 同時に走る。A のほうが遅いと、解決順のせいで A が B を上書きしてしまう
+    let resolveSlow: (content: string) => void = () => {}
+    mockReadFileContent
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSlow = resolve
+          })
+      )
+      .mockResolvedValueOnce('fast content')
+
+    const slowNode: FileTreeNode = { name: 'slow.ts', path: '/project/slow.ts', type: 'file' }
+    const fastNode: FileTreeNode = { name: 'fast.ts', path: '/project/fast.ts', type: 'file' }
+
+    const { result } = renderHook(() => useFileSystem())
+    let slowPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      slowPromise = result.current.selectFile(slowNode)
+    })
+    await act(async () => {
+      await result.current.selectFile(fastNode)
+    })
+    expect(result.current.openFile?.path).toBe('/project/fast.ts')
+
+    let slowOpened: boolean | undefined
+    await act(async () => {
+      resolveSlow('slow content')
+      slowOpened = await slowPromise
+    })
+    expect(slowOpened).toBe(false)
+    expect(result.current.openFile?.path).toBe('/project/fast.ts')
+    expect(result.current.openFile?.content).toBe('fast content')
+  })
+
+  it('先行する読み込みの失敗が後から開いたファイルの表示を壊さない', async () => {
+    let rejectSlow: (err: Error) => void = () => {}
+    mockReadFileContent
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((_resolve, reject) => {
+            rejectSlow = reject
+          })
+      )
+      .mockResolvedValueOnce('fast content')
+
+    const slowNode: FileTreeNode = { name: 'slow.ts', path: '/project/slow.ts', type: 'file' }
+    const fastNode: FileTreeNode = { name: 'fast.ts', path: '/project/fast.ts', type: 'file' }
+
+    const { result } = renderHook(() => useFileSystem())
+    let slowPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      slowPromise = result.current.selectFile(slowNode)
+    })
+    await act(async () => {
+      await result.current.selectFile(fastNode)
+    })
+    await act(async () => {
+      rejectSlow(new Error('遅延した失敗'))
+      await slowPromise
+    })
+    expect(result.current.error).toBeNull()
+    expect(result.current.openFile?.path).toBe('/project/fast.ts')
+  })
+
+  it('openFolder は保留中の読み込みを無効化する', async () => {
+    let resolveSlow: (content: string) => void = () => {}
+    mockReadFileContent.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveSlow = resolve
+        })
+    )
+    mockOpenFolder.mockResolvedValue('/other')
+    mockReadDirectory.mockResolvedValue([])
+
+    const slowNode: FileTreeNode = { name: 'slow.ts', path: '/project/slow.ts', type: 'file' }
+    const { result } = renderHook(() => useFileSystem())
+    act(() => {
+      void result.current.selectFile(slowNode)
+    })
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    await act(async () => {
+      resolveSlow('slow content')
+    })
+    expect(result.current.openFile).toBeNull()
+  })
+
   it('selectFile でディレクトリを渡しても openFile は変化しない', async () => {
     const { result } = renderHook(() => useFileSystem())
     const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory' }
