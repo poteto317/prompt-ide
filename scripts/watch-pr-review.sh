@@ -29,7 +29,8 @@
 #     動作が壊れる。編集する場合は別名にコピーしたものを実行する。
 #   - API の失敗は握り潰さない。レビュー待ちは静かでよいが、認証切れ・ネットワーク
 #     不調・rate limit を黙って無視すると、待っているのか壊れているのか分からない。
-#     失敗は stderr に出し、連続で続いたら終了する。
+#     失敗は stderr に出し、連続で続いたら終了する。GraphQL は HTTP 200 のまま
+#     errors を返すことがあるため、errors を含む応答も失敗として扱う。
 set -u
 
 if [ "$#" -lt 4 ]; then
@@ -57,13 +58,22 @@ while true; do
     reviews(last:50){nodes{author{login} submittedAt body}}
     reviewRequests(first:20){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
     reviewThreads(last:60){nodes{isResolved path line}}
-  }}}" 2>"$err_file") && printf '%s' "$out" | grep -q '"data"'; then
+  }}}" 2>"$err_file") &&
+    printf '%s' "$out" | grep -q '"data"' &&
+    ! printf '%s' "$out" | grep -q '"errors"'; then
     failures=0
   else
     failures=$((failures + 1))
     {
       echo "gh api graphql に失敗（${failures}/${MAX_FAILURES}）"
-      head -3 "$err_file"
+      # GraphQL は HTTP 200 で errors を返すことがある。その場合 stderr は空なので
+      # 応答側の先頭も出さないと原因が分からない
+      if [ -s "$err_file" ]; then
+        head -3 "$err_file"
+      else
+        printf '%s' "$out" | head -c 500
+        echo
+      fi
     } >&2
     if [ "$failures" -ge "$MAX_FAILURES" ]; then
       echo "API 呼び出しが ${MAX_FAILURES} 回連続で失敗したため監視を終了する" >&2
