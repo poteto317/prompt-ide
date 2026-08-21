@@ -4,9 +4,10 @@
 //   二重区切りになり、本来内部にあるパスを誤って false 判定する
 // - childPath が末尾区切りだと、parentPath と実質同一パスなのに「内部にある」と
 //   誤って true 判定してしまう(例: '/project/src/' は '/project/src' の内部ではなく同一)
-const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
+/** パス区切りを '/' に揃える */
+export const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
 /** 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため */
-const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
+export const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
 
 /** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
 const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)

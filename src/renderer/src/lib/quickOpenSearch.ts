@@ -1,5 +1,6 @@
 import type { FileTreeNode, FileNode } from '../types'
 import { fuzzyMatch } from './fuzzyMatch'
+import { isPathAtOrInside, stripTrailingSeparators, toForwardSlashes } from './pathUtils'
 
 export type QuickOpenResult = {
   node: FileNode
@@ -35,9 +36,6 @@ const compareByCodePoint = (a: string, b: string): number => {
   return i >= a.length ? -1 : 1
 }
 
-const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
-const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
-
 /** ファイルツリーを深さ優先で走査し、ファイルノードだけを表示順のまま平坦化する */
 export const flattenFileTree = (nodes: FileTreeNode[]): FileNode[] => {
   const files: FileNode[] = []
@@ -64,8 +62,13 @@ const toRelativePath = (fullPath: string, rootPath: string | null): string => {
   // rootPath が POSIX のルート('/')だと末尾区切りの除去で空文字になる。
   // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする
   if (normalizedRoot.length === 0) return normalizedPath.replace(/^\//, '')
-  const prefix = `${normalizedRoot}/`
-  return normalizedPath.startsWith(prefix) ? normalizedPath.slice(prefix.length) : normalizedPath
+  // 前方一致を生の文字列で見ると、Windows で表記だけ違うルート(例: 'C:\\Project' と
+  // 'c:\\project')が別物と判定され、相対ディレクトリに絶対パスが出てしまう
+  if (!isPathAtOrInside(normalizedPath, normalizedRoot)) return normalizedPath
+  // 表記が違っても長さは同じなので、正規化前の文字列から同じ位置で切り出せる
+  return normalizedPath.length <= normalizedRoot.length
+    ? ''
+    : normalizedPath.slice(normalizedRoot.length + 1)
 }
 
 const directoryOf = (relativePath: string): string => {

@@ -2301,6 +2301,40 @@ describe('useFileSystem', () => {
     expect(result.current.openFile?.name).toBe('b.ts')
   })
 
+  it('Windows で表記だけ違うフォルダへ開き直してもツリーを取り直す', async () => {
+    // 生の比較だと別フォルダとみなして再読込がスキップされ、先行走査の
+    // 古いツリーが残ってしまう
+    mockOpenFolder.mockResolvedValue('C:\\Project')
+    mockReadDirectory.mockResolvedValue([])
+    let finishCreate: () => void = () => {}
+    mockCreateFile.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishCreate = resolve
+        })
+    )
+    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    let createPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      createPromise = result.current.createFile('C:\\Project', 'x.ts')
+    })
+    await act(async () => {})
+    // 同じ実体を表記違いで開き直す
+    mockOpenFolder.mockResolvedValue('c:\\project')
+    await act(async () => {
+      await result.current.openFolder()
+    })
+    const readsBefore = mockReadDirectory.mock.calls.length
+    await act(async () => {
+      finishCreate()
+      await createPromise
+    })
+    expect(mockReadDirectory.mock.calls.length).toBe(readsBefore + 1)
+  })
+
   it('作成の実行中は重なる削除を待たせる', async () => {
     // 作成が mutex を通らないと、作成先の祖先の削除と並行して実行順依存になる
     mockOpenFolder.mockResolvedValue('/project')

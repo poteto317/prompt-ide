@@ -64,6 +64,16 @@ describe('searchFiles', () => {
     expect(results[0].directoryIndices).toEqual([])
   })
 
+  it('Windows でルートの表記が違っても相対ディレクトリにする', () => {
+    // 大文字小文字の違いでルート外と判定すると、相対ディレクトリ欄に
+    // ドライブからの絶対パスが出てしまい、パス検索の対象も変わる
+    const winFiles: FileNode[] = [
+      { name: 'a.ts', path: 'c:\\project\\src\\hooks\\a.ts', type: 'file' }
+    ]
+    const results = searchFiles('a', winFiles, 'C:\\Project')
+    expect(results[0].directory).toBe('src/hooks')
+  })
+
   it('ルートからの相対ディレクトリを directory として返す', () => {
     const results = searchFiles('usfs', files, ROOT)
     expect(results[0].directory).toBe('src/hooks')

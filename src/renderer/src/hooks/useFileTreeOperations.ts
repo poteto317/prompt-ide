@@ -117,6 +117,11 @@ export function useFileTreeOperations({
    * 実行しなかった場合に再読込まで走らせると、削除していないのにその失敗が
    * エラー表示されたり、不要な更新で別の状態を上書きしたりするため。
    */
+  // フォルダは未選択(null)になり得る。Windows では表記だけ違う同じフォルダも
+  // あるため、生の比較だと開き直しただけで別フォルダと判定してしまう
+  const isSameFolder = (a: string | null, b: string | null): boolean =>
+    a === null || b === null ? a === b : isSamePath(a, b)
+
   const runFileOperation = async (operation: () => Promise<boolean>): Promise<void> => {
     setError(null)
     // 操作の開始時点のフォルダを控える。await 中にフォルダが切り替わってから
@@ -127,10 +132,10 @@ export function useFileTreeOperations({
       if (!executed) return
       // 操作中にフォルダが切り替わっていたら取り直さない。旧フォルダで始まった
       // CRUD が新フォルダのツリーやエラーを更新してしまう
-      if (getFolderPath() !== folderAtStart) return
+      if (!isSameFolder(getFolderPath(), folderAtStart)) return
       await refreshTree()
     } catch (err) {
-      if (getFolderPath() !== folderAtStart) return
+      if (!isSameFolder(getFolderPath(), folderAtStart)) return
       setError(err instanceof Error ? err : new Error(String(err)))
     }
   }
