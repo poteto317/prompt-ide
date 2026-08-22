@@ -113,37 +113,84 @@ while true; do
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
     reviews(last:100){nodes{author{__typename login} submittedAt body}}
     reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
-    reviewThreads(last:100){totalCount nodes{isResolved path line}}
   }}}" 2>"$err_file"); then
     record_failure "gh api graphql に失敗" "$(head -3 "$err_file")"
     sleep "$INTERVAL"
     continue
   fi
 
+  # スレッドは 1 ページに収まらないことがある。last:100 で窓を切ると古い未解決
+  # スレッドが見えなくなり、「指摘なし」の判断を誤るため、ページングして全件取る
+  if ! threads_out=$(gh api graphql --paginate -f query='
+  query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){
+    repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+      reviewThreads(first:100, after:$endCursor){
+        pageInfo{hasNextPage endCursor}
+        nodes{isResolved path line}
+      }
+    }}
+  }' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR" 2>"$err_file"); then
+    record_failure "レビュースレッドの取得に失敗" "$(head -3 "$err_file")"
+    sleep "$INTERVAL"
+    continue
+  fi
+
   # 応答の解釈もここで行う。失敗（errors を含む・pullRequest が無い・壊れた JSON）は
   # 終了コードで伝わるため、シェル側は同じ経路で失敗として数えられる
-  if ! verdict=$(printf '%s' "$out" | BASELINE="$BASELINE" COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
+  if ! verdict=$(printf "%s\n%s" "$out" "$threads_out" | BASELINE="$BASELINE" COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os, re
 
 baseline = os.environ["BASELINE"]
 copilot_login = os.environ["COPILOT_LOGIN"]
 
+
+# --paginate はページごとの JSON をそのまま連結して出すため、まとめて読む
+def load_payloads(raw):
+    decoder = json.JSONDecoder()
+    payloads = []
+    index = 0
+    while True:
+        while index < len(raw) and raw[index].isspace():
+            index += 1
+        if index >= len(raw):
+            return payloads
+        payload, index = decoder.raw_decode(raw, index)
+        payloads.append(payload)
+
+
 try:
-    payload = json.load(sys.stdin)
+    payloads = load_payloads(sys.stdin.read())
 except Exception as error:
     print("応答が JSON として読めない: %s" % error, file=sys.stderr)
     sys.exit(3)
 
-# GraphQL は HTTP 200 のまま errors を返すことがある
-if payload.get("errors"):
-    print("GraphQL がエラーを返した: %s" % json.dumps(payload["errors"], ensure_ascii=False)[:300],
-          file=sys.stderr)
+pull_requests = []
+for payload in payloads:
+    # GraphQL は HTTP 200 のまま errors を返すことがある
+    if payload.get("errors"):
+        print("GraphQL がエラーを返した: %s" % json.dumps(payload["errors"], ensure_ascii=False)[:300],
+              file=sys.stderr)
+        sys.exit(3)
+    pr = ((payload.get("data") or {}).get("repository") or {}).get("pullRequest")
+    if pr is None:
+        print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
+        sys.exit(3)
+    pull_requests.append(pr)
+
+review_source = None
+threads = []
+has_threads = False
+for pr in pull_requests:
+    if "reviews" in pr:
+        review_source = pr
+    if "reviewThreads" in pr:
+        has_threads = True
+        threads.extend(pr["reviewThreads"]["nodes"])
+
+if review_source is None or not has_threads:
+    print("応答にレビューまたはレビュースレッドが含まれていない", file=sys.stderr)
     sys.exit(3)
 
-pr = ((payload.get("data") or {}).get("repository") or {}).get("pullRequest")
-if pr is None:
-    print("応答に pullRequest が含まれていない（PR 番号や権限を確認）", file=sys.stderr)
-    sys.exit(3)
 
 # Copilot は Bot アカウント。login の末尾だけで見ると、人間の "foo-reviewer" や
 # dependency-reviewer のような別の Bot まで拾ってしまうため、厳密一致で判定する
@@ -151,21 +198,17 @@ def is_review_bot(actor):
     actor = actor or {}
     return actor.get("__typename") == "Bot" and actor.get("login") == copilot_login
 
+
 # submittedAt は PENDING のレビューで null になる。そのまま比較すると TypeError で
 # 落ち、シェル側は「解釈に失敗」として数え、5 回で監視自体が終わってしまう
 def submitted_at(review):
     return review.get("submittedAt") or ""
 
 
-reviews = [r for r in pr["reviews"]["nodes"] if is_review_bot(r.get("author"))]
+reviews = [r for r in review_source["reviews"]["nodes"] if is_review_bot(r.get("author"))]
 new = [r for r in reviews if submitted_at(r) > baseline]
-pending = [n for n in pr["reviewRequests"]["nodes"] if is_review_bot(n.get("requestedReviewer"))]
-thread_data = pr["reviewThreads"]
-threads = thread_data["nodes"]
-thread_total = thread_data.get("totalCount")
-# last:100 は「新しい方から 100 件」。総数がそれを超えるなら、古い未解決スレッドが
-# 窓の外にある可能性があり、0 件でも「指摘なし」と言い切れない
-threads_truncated = thread_total is not None and thread_total > len(threads)
+pending = [n for n in review_source["reviewRequests"]["nodes"]
+           if is_review_bot(n.get("requestedReviewer"))]
 unresolved = [t for t in threads if not t["isResolved"]]
 
 # 本文が Copilot のレビューとして解釈できる形か。解釈できない形なら
@@ -180,27 +223,36 @@ KNOWN_BODY_MARKERS = (
 )
 
 # Copilot がレビューを実行できなかった場合も review として記録される。
-# 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する
+# 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
+# 文面は callout に包まれたり大文字小文字が変わったりするため、小文字化して探す
 JOB_NOT_RUN_MARKERS = (
-    "The job was not started",
+    "job was not started",
+    "wasn t able to review",
     "payments have failed",
-    "spending limit",
 )
-
-
-def is_job_not_run(review):
-    # 本文全体を部分一致で見ると、"spending limit" のような普通の語を含むレビューまで
-    # 未実行と誤判定する。この通知は 1 文だけなので先頭行に限って判定する
-    body = (review["body"] or "").strip()
-    if not body:
-        return False
-    first_line = body.splitlines()[0]
-    return any(marker in first_line for marker in JOB_NOT_RUN_MARKERS)
 
 
 def is_review_body(review):
     body = review["body"] or ""
     return any(marker in body for marker in KNOWN_BODY_MARKERS)
+
+
+def is_job_not_run(review):
+    # レビュー本文がこの文面を引用することがあるため、本文として読める場合は
+    # レビューとして扱う。未実行の通知にレビュー本文の見出しは現れない
+    if is_review_body(review):
+        return False
+    body = re.sub(r"[^a-z0-9]+", " ", (review["body"] or "").lower())
+    return any(marker in body for marker in JOB_NOT_RUN_MARKERS)
+
+
+def first_line(review):
+    # callout に包まれることがあるため、引用記号と [!NOTE] のような行は飛ばす
+    for line in (review["body"] or "").splitlines():
+        line = re.sub(r"^\s*>\s?", "", line).strip()
+        if line and not line.startswith("[!"):
+            return line[:120]
+    return "(本文なし)"
 
 
 # スレッドへの返信も review として記録されるため、新着すべてがレビュー本文とは限らない。
@@ -214,32 +266,35 @@ if interpretable:
     if is_job_not_run(r):
         print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], submitted_at(r)))
         print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
-        print("  %s" % body.strip().splitlines()[0][:200])
+        print("  %s" % first_line(r))
         print("__EXIT__")
         sys.exit(0)
     m = re.search(r"Suppressed comments \((\d+)\)", body)
     if m:
         suppressed = int(m.group(1))
+    elif "Suppressed comments" in body:
+        # 節はあるのに件数を読めない。0 件と決めつけない
+        suppressed = None
     else:
-        # 見慣れた形式で節が無いなら 0 件
         suppressed = 0
     print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], submitted_at(r)))
-    print("unresolved threads: %d%s / suppressed: %s"
-          % (len(unresolved),
-             "（取得上限で切れている可能性あり: 総数 %s）" % thread_total if threads_truncated else "",
-             suppressed))
+    print("unresolved threads: %d / suppressed: %s"
+          % (len(unresolved), "不明（件数を読めない）" if suppressed is None else suppressed))
     for t in unresolved:
-        print("  - %s:%s" % (t["path"], t["line"]))
+        # line は file 単位のコメントや古くなったスレッドで null になる
+        print("  - %s:%s" % (t["path"], "(file)" if t["line"] is None else t["line"]))
     # 件数を確認できたときだけ「指摘なし」と言い切る
-    if len(unresolved) == 0 and suppressed == 0 and not threads_truncated:
+    if len(unresolved) == 0 and suppressed == 0:
         print("NO FINDINGS")
     print("__EXIT__")
 elif pending:
     pass  # レビュー中。静かに待つ
 elif new:
-    # 返信だけが届いた状態。レビュー本文が来るまで待つが、最低待機時間を過ぎても
-    # 来ないなら「新着なし」と同じ扱いで終了する（無限に待たない）
-    print("NO PENDING REVIEW / NO NEW REVIEW（レビュー本文以外の新着のみ）")
+    # 返信だけの可能性が高いが、レビュー本文の形式が変わった可能性もある。
+    # 「新着なし」と混ぜず、何が届いたのかを出して人が判断できるようにする
+    print("NO REVIEW BODY: 解釈できない新着のみ（返信、または本文の形式が変わった可能性）")
+    for r in new[-3:]:
+        print("  - %s %s" % (submitted_at(r), first_line(r)))
     print("__EXIT__")
 else:
     print("NO PENDING REVIEW / NO NEW REVIEW")
@@ -254,7 +309,7 @@ else:
 
   # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
   # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
-  if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&
+  if printf '%s' "$verdict" | grep -qE 'NO PENDING REVIEW|NO REVIEW BODY' &&
     [ $(($(date +%s) - STARTED)) -lt "$MIN_WAIT" ]; then
     verdict=""
   fi

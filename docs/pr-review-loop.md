@@ -38,6 +38,10 @@ gh api graphql -f query='
 }}}'
 ```
 
+`totalCount` が取得件数より多いときは、古いスレッドが窓の外にある。手で見るときは
+`first:100, after:<endCursor>` で続きを辿る（`scripts/watch-pr-review.sh` は
+`gh api graphql --paginate` で全件取っている）。
+
 suppressed comments はスレッドにならず、レビュー本文の `<details>` 内にのみ現れる。
 本文も必ず読むこと。
 
@@ -177,9 +181,13 @@ bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 
 新着が届いたら内容を出力して終了する。レビュー中は待ち続ける。
 
-`suppressed: 不明（本文の形式を判定できない）` と出た場合は、件数を機械的に
-読めなかったということ。`NO FINDINGS` は出ないので、レビュー本文を自分で開いて
-`<details>` の中を確認する。
+`suppressed: 不明（件数を読めない）` と出た場合は、`Suppressed comments` の節はあるのに
+件数を数値で読めなかったということ。`NO FINDINGS` は出ないので、レビュー本文を自分で
+開いて `<details>` の中を確認する。
+
+`NO REVIEW BODY` と出た場合は、baseline より後に Bot の新着はあるが、どれもレビュー本文
+として解釈できなかったということ。スレッドへの返信だけが届いた状態がほとんどだが、
+レビュー本文の形式が変わった可能性もあるため、出力された先頭行を見て判断する。
 
 `REVIEW NOT RUN` と出た場合は、Copilot がレビュー自体を実行できていない。
 GitHub Actions の支払いが失敗しているか、使用量の上限に達している可能性がある。

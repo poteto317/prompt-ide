@@ -115,13 +115,16 @@ fi
 # 解釈側の「JSON として読めない」に化けて、原因が API 側だと分からなくなる
 if ! result=$(gh api graphql -f query='mutation($p:ID!,$b:ID!){
   requestReviews(input:{pullRequestId:$p, botIds:[$b], union:true}){
-    pullRequest{reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
+    pullRequest{reviewRequests(last:100){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
   }
 }' -f p="$pr_id" -f b="$bot_id"); then
   echo "レビュー依頼の API 呼び出しに失敗した（bot id / 権限 / ネットワークを確認）" >&2
   exit 1
 fi
 
+# 依頼はもう飛んでいる。解釈に失敗しても baseline を出さないと監視を張れず、
+# やり直すと二重に依頼することになるため、終了前に必ず出す
+verify_status=0
 printf '%s' "$result" |
   COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os
@@ -152,6 +155,7 @@ if copilot_login not in logins:
     # Copilot は依頼を受け取った直後に reviewRequests から外れることがあるため、
     # 空でも失敗とは限らない。監視側で新着レビューを待つこと
     print("注意: 依頼直後は pending に現れないことがある。監視で新着を待つこと")
-'
+' || verify_status=$?
 
 date -u +'baseline: %Y-%m-%dT%H:%M:%SZ'
+exit "$verify_status"
