@@ -6,7 +6,7 @@
 #   - レビュー依頼が保留中（レビュー中）の間は静かに待ち続ける
 #   - 依頼も保留も無く新着も無ければ NO PENDING REVIEW を出力して終了する
 #     ただし最低待機時間を過ぎるまでは終了しない（理由は下記）
-#   - 最大待機時間を過ぎたら WATCH TIMEOUT を出して終了コード 1 で終わる
+#   - 最大待機時間を過ぎたら WATCH TIMEOUT を出して終了コード 3 で終わる
 #
 # 出力の意味:
 #   REVIEW ARRIVED   新着レビューを解釈できた（NO FINDINGS が続けば指摘 0 件）
@@ -261,8 +261,10 @@ JOB_NOT_RUN_MARKERS = (
 
 
 def is_review_body(review):
-    body = review["body"] or ""
-    return any(marker in body for marker in KNOWN_BODY_MARKERS)
+    # 見出しの大文字小文字は揺れる（実データに Suppressed comments と
+    # suppressed comments の両方がある）。揃えてから照合する
+    body = (review["body"] or "").lower()
+    return any(marker.lower() in body for marker in KNOWN_BODY_MARKERS)
 
 
 def is_job_not_run(review):
@@ -298,10 +300,11 @@ if review_bodies:
     r = max(review_bodies, key=submitted_at)
     body = r["body"] or ""
     later_not_runs = [n for n in not_runs if submitted_at(n) > submitted_at(r)]
-    m = re.search(r"Suppressed comments \((\d+)\)", body)
+    # 見出しの大文字小文字は揺れるため、件数の抽出でも区別しない
+    m = re.search(r"suppressed comments \((\d+)\)", body, re.IGNORECASE)
     if m:
         suppressed = int(m.group(1))
-    elif "Suppressed comments" in body:
+    elif "suppressed comments" in body.lower():
         # 節はあるのに件数を読めない。0 件と決めつけない
         suppressed = None
     else:
@@ -316,9 +319,13 @@ if review_bodies:
     for t in unresolved:
         # line は file 単位のコメントや古くなったスレッドで null になる
         print("  - %s:%s" % (t["path"], "(file)" if t["line"] is None else t["line"]))
-    # 件数を確認できたときだけ「指摘なし」と言い切る
-    if len(unresolved) == 0 and suppressed == 0:
+    # 件数を確認できたときだけ「指摘なし」と言い切る。ただしこのレビューより後に
+    # ジョブ未実行の通知があるなら、最新の依頼は一度も実行されていない。
+    # ここで NO FINDINGS を出すと、呼び出し元が収束と誤判定する
+    if len(unresolved) == 0 and suppressed == 0 and not later_not_runs:
         print("NO FINDINGS")
+    if later_not_runs:
+        print("__NOT_RUN__")
     print("__EXIT__")
 elif not_runs:
     r = max(not_runs, key=submitted_at)
@@ -354,9 +361,11 @@ else:
 
   failures=0
 
-  # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
-  # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
-  if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&
+  # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の内側では
+  # 「レビュー本文が得られていない」判定を無効化する。依頼直後に別の Bot 投稿が
+  # 1 件あるだけで監視を終えると、数分後に届く本物のレビューを取りこぼす。
+  # レビュー本文やジョブ未実行の通知は、最低待機時間の内側でも即座に扱う
+  if printf '%s' "$verdict" | grep -qE 'NO PENDING REVIEW|NO REVIEW BODY' &&
     [ $(($(date +%s) - STARTED)) -lt "$MIN_WAIT" ]; then
     verdict=""
   fi
