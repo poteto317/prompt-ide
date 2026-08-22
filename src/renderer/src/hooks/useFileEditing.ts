@@ -224,7 +224,6 @@ export function useFileEditing(
     setSavingPaths(new Set(savingPathsRef.current))
     let settleSave: () => void = () => {}
     let attemptedWrite = false
-    setSaveError(null)
     try {
       // 無効化を伴わないロック（同じフォルダでの作成、兄弟のリネームなど）は
       // 解放を待ってから書き込む。黙って捨てると保存されたように見えて内容が失われる
@@ -239,6 +238,10 @@ export function useFileEditing(
         if (invalidatingLocks(path).length > 0) return
       }
       attemptedWrite = true
+      // 書き込まずに戻る経路（ロック待ちの間にファイルが入れ替わった等）が
+      // あるため、エラー表示を消すのはここまで来てから。手前で消すと、
+      // 何も書いていないのに前回の失敗の表示だけが消える
+      setSaveError(null)
       // 進行中の保存として登録するのはロックが無くなってから。待っている間に
       // 登録すると、ロック取得側（進行中の保存の完了を待つ）と待ち合って
       // デッドロックする
