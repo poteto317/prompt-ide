@@ -243,22 +243,27 @@ unresolved = [t for t in threads if not t["isResolved"]]
 
 # 本文が Copilot のレビューとして解釈できる形か。解釈できない形なら
 # 「Suppressed comments 節が無い＝0 件」と決めつけられない
-# Copilot のレビュー本文にしか現れない見出し。"Copilot reviewed ..." は未実行の
-# 通知も名乗ることがあるため、本文の判定材料にはしない
+# Copilot のレビュー本文に現れる見出し・定型句（実データで確認したもの）。
+# 未実行の通知との切り分けは、本文の先頭のかたまりを見る is_job_not_run が行う
 KNOWN_BODY_MARKERS = (
     "Suppressed comments",
     "Review details",
     "Comments generated",
     "Pull request overview",
+    "Reviewed changes",
+    "Copilot reviewed",
     "Files reviewed",
 )
 
 # Copilot がレビューを実行できなかった場合も review として記録される。
 # 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
 # 文面は callout に包まれたり大文字小文字が変わったりするため、小文字化して探す
+# "wasn t able to review" だけだと、一部のファイルだけ見られなかった通常のレビュー
+# （wasn t able to review N of M changed files）まで拾ってしまう。
+# この Python はシェルのシングルクォート内にあるため、コメントにも アポストロフィ を書けない
 JOB_NOT_RUN_MARKERS = (
     "job was not started",
-    "wasn t able to review",
+    "wasn t able to review any",
     "payments have failed",
 )
 
