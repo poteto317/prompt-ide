@@ -250,7 +250,7 @@ KNOWN_BODY_MARKERS = (
     "Review details",
     "Comments generated",
     "Pull request overview",
-    "Reviewed Changes",
+    "Files reviewed",
 )
 
 # Copilot がレビューを実行できなかった場合も review として記録される。
@@ -270,14 +270,29 @@ def is_review_body(review):
     return any(marker.lower() in body for marker in KNOWN_BODY_MARKERS)
 
 
+def leading_paragraph(body):
+    # callout（"> [!NOTE]" など）に包まれることがあるため、引用記号と注記行を
+    # 落としたうえで、最初の空行までをひとまとまりとして返す
+    lines = []
+    for raw_line in body.splitlines():
+        line = re.sub(r"^\s*>\s?", "", raw_line).strip()
+        if line.startswith("[!"):
+            continue
+        if not line:
+            if lines:
+                break
+            continue
+        lines.append(line)
+    return " ".join(lines)
+
+
 def is_job_not_run(review):
-    # レビュー本文がこの文面を引用することがある（このリポジトリのレビュー自身が
-    # そうだった）ため、本文として読める場合はレビューとして扱う。長さで区別する
-    # 形も試したが、短いレビューを未実行と誤判定し、長い通知は分類できなくなる
-    if is_review_body(review):
-        return False
-    normalized = re.sub(r"[^a-z0-9]+", " ", (review["body"] or "").lower())
-    return any(marker in normalized for marker in JOB_NOT_RUN_MARKERS)
+    # 判定は本文の先頭のかたまりだけで行う。本文全体を見ると、この文面を引用した
+    # レビュー（このリポジトリのレビュー自身がそうだった）を未実行と誤判定する。
+    # 逆に「レビュー本文として読めないこと」を条件にすると、見出しの語をたまたま
+    # 含む通知がレビュー本文に化けて、指摘 0 件＝収束と誤って判断してしまう
+    head = re.sub(r"[^a-z0-9]+", " ", leading_paragraph(review["body"] or "").lower())
+    return any(marker in head for marker in JOB_NOT_RUN_MARKERS)
 
 
 def first_line(review):
@@ -305,7 +320,9 @@ review_bodies = [r for r in new if r not in not_runs and is_review_body(r)]
 if review_bodies:
     r = max(review_bodies, key=submitted_at)
     body = r["body"] or ""
-    later_not_runs = [n for n in not_runs if submitted_at(n) > submitted_at(r)]
+    # submittedAt は秒精度。厳密比較だと、同じ秒に載った通知を取りこぼして
+    # 「後続の未実行通知なし」＝収束と読めてしまう
+    later_not_runs = [n for n in not_runs if submitted_at(n) >= submitted_at(r)]
     # 見出しの大文字小文字は揺れるため、件数の抽出でも区別しない
     m = re.search(r"suppressed comments \((\d+)\)", body, re.IGNORECASE)
     if m:
