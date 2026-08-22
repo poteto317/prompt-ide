@@ -34,9 +34,10 @@ interface FileEditingState {
 /**
  * FS 操作のロックの指定。
  *
- * `invalidatesPath` は「その操作によって消える・付け替わるパス」。この配下の保存は
- * 書き込まない（待って書くと旧パスを再作成してしまう）。`null` を渡すと、直列化は
- * するが保存は捨てず、解放を待ってから書き込む。
+ * `invalidatesPaths` は「その操作によって消える・付け替わるパス」。この配下の保存は
+ * 書き込まない（待って書くと旧パスを再作成したり、移行先を上書きしたりする）。
+ * `null` を渡すと、直列化はするが保存は捨てず、解放を待ってから書き込む。
+ * リネームのように元と先の 2 つが無効になる操作があるため配列で受ける。
  *
  * ロックの範囲（`targetPath`）と無効化の範囲を分けているのは、リネームが親
  * ディレクトリをロックするため。移行先も同じ親の下に作られるので直列化は親単位で
@@ -44,7 +45,7 @@ interface FileEditingState {
  * まで捨ててはいけない。
  */
 export type FileOperationLockOptions = {
-  invalidatesPath?: string | null
+  invalidatesPaths?: readonly string[] | null
 }
 
 export function useFileEditing(
@@ -96,7 +97,11 @@ export function useFileEditing(
 
   // FS 操作中のパスと、その完了を待つための Promise。
   // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
-  type FileOperationLock = { path: string; invalidatesPath: string | null; done: Promise<void> }
+  type FileOperationLock = {
+    path: string
+    invalidatesPaths: readonly string[] | null
+    done: Promise<void>
+  }
   const locksRef = useRef<FileOperationLock[]>([])
 
   // ルートを親に持つ予約も検出できるよう isPathAtOrInside を使う。
@@ -107,7 +112,9 @@ export function useFileEditing(
   // その保存を無効にするロック（リネーム・削除など、対象が消える操作）
   const invalidatingLocks = (path: string): FileOperationLock[] =>
     locksRef.current.filter(
-      (lock) => lock.invalidatesPath !== null && isPathAtOrInside(path, lock.invalidatesPath)
+      (lock) =>
+        lock.invalidatesPaths !== null &&
+        lock.invalidatesPaths.some((invalidated) => isPathAtOrInside(path, invalidated))
     )
 
   // 無効化はしないが、完了まで書き込みを待つべきロック。同じ親の下での作成や、
@@ -117,7 +124,10 @@ export function useFileEditing(
     locksRef.current.filter(
       (lock) =>
         isPathAtOrInside(path, lock.path) &&
-        !(lock.invalidatesPath !== null && isPathAtOrInside(path, lock.invalidatesPath))
+        !(
+          lock.invalidatesPaths !== null &&
+          lock.invalidatesPaths.some((invalidated) => isPathAtOrInside(path, invalidated))
+        )
     )
 
   /**
@@ -142,7 +152,7 @@ export function useFileEditing(
   const lockPathForFileOperation = async (
     targetPath: string,
     // 既定は安全側。指定が無ければ targetPath 配下の保存を無効にする
-    { invalidatesPath = targetPath }: FileOperationLockOptions = {}
+    { invalidatesPaths = [targetPath] }: FileOperationLockOptions = {}
   ): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
     // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
@@ -154,7 +164,7 @@ export function useFileEditing(
     let releaseLock: () => void = () => {}
     const entry = {
       path: targetPath,
-      invalidatesPath,
+      invalidatesPaths,
       done: new Promise<void>((resolve) => {
         releaseLock = resolve
       })

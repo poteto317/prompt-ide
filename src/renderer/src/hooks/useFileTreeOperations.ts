@@ -163,14 +163,14 @@ export function useFileTreeOperations({
     runFileOperation(() =>
       runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), {
         // 作成は既存のファイルを壊さない。この間の保存は待ってから書き込む
-        invalidatesPath: null
+        invalidatesPaths: null
       }).then(() => true)
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
       runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), {
-        invalidatesPath: null
+        invalidatesPaths: null
       }).then(() => true)
     )
 
@@ -185,10 +185,12 @@ export function useFileTreeOperations({
       // 作られるため、元だけを予約すると移行先への作成・削除と並行に走り、
       // どちらが先に完了するかで結果が変わってしまう
       // 直列化は親ディレクトリ単位（移行先も同じ親の下に作られる）だが、
-      // 無効になるのはリネーム対象自身だけ。同じフォルダの別ファイルの保存を
-      // 捨てると、Cmd+S が無反応に見えて内容が失われる
+      // 無効になるのは元と先の 2 つだけ。同じフォルダの別ファイルの保存まで
+      // 捨てると、Cmd+S が無反応に見えて内容が失われる。移行先を外すと、
+      // 削除してバッファだけ残したファイルと同じ名前へリネームしてきた場合に、
+      // 古いバッファでその内容を上書きしてしまう
       const release = await lockPathForFileOperation(parentPrefix, {
-        invalidatesPath: node.path
+        invalidatesPaths: [node.path, newPath]
       })
       try {
         await fileSystemApi.renameEntry(node.path, newName)

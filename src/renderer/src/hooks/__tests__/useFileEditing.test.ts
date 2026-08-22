@@ -392,7 +392,9 @@ describe('FS 操作のロックと saveFile', () => {
     // 親ディレクトリをロックする
     let release: () => void = () => {}
     await act(async () => {
-      release = await result.current.lockPathForFileOperation('/project', { invalidatesPath: null })
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: null
+      })
     })
 
     let savePromise: Promise<void> = Promise.resolve()
@@ -448,7 +450,7 @@ describe('FS 操作のロックと saveFile', () => {
     let release: () => void = () => {}
     await act(async () => {
       release = await result.current.lockPathForFileOperation('/project/', {
-        invalidatesPath: '/project/other.ts'
+        invalidatesPaths: ['/project/other.ts', '/project/renamed.ts']
       })
     })
 
@@ -477,7 +479,7 @@ describe('FS 操作のロックと saveFile', () => {
 
     await act(async () => {
       await result.current.lockPathForFileOperation('/project/', {
-        invalidatesPath: dirtyFile.path
+        invalidatesPaths: [dirtyFile.path]
       })
     })
 
@@ -490,6 +492,33 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveCompletionsFor(dirtyFile.path)).toBe(before)
   })
 
+  it('リネームの移行先を開いているバッファの保存は書き込まない', async () => {
+    // 削除したがバッファを残したファイルと同じ名前へ別のファイルをリネームすると、
+    // 待ってから書き込む扱いでは、リネームしてきた内容をバッファで上書きしてしまう
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project/', {
+        // /project/other.ts を dirtyFile.path（/project/index.ts）へリネームする
+        invalidatesPaths: ['/project/other.ts', dirtyFile.path]
+      })
+    })
+
+    await act(async () => {
+      await result.current.saveFile()
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+
+    await act(async () => {
+      release()
+    })
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+  })
+
   it('ロックを待っている間にファイルが切り替わったら書き込まない', async () => {
     const setOpenFile = vi.fn()
     mockWriteFileContent.mockResolvedValue(undefined)
@@ -497,7 +526,9 @@ describe('FS 操作のロックと saveFile', () => {
 
     let release: () => void = () => {}
     await act(async () => {
-      release = await result.current.lockPathForFileOperation('/project', { invalidatesPath: null })
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: null
+      })
     })
 
     let savePromise: Promise<void> = Promise.resolve()
