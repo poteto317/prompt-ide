@@ -168,9 +168,23 @@ KNOWN_BODY_MARKERS = (
     "Pull request overview",
 )
 
+# Copilot がレビューを実行できなかった場合も review として記録される。
+# 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する
+JOB_NOT_RUN_MARKERS = (
+    "The job was not started",
+    "payments have failed",
+    "spending limit",
+)
+
 if new:
     r = new[-1]
     body = r["body"] or ""
+    if any(marker in body for marker in JOB_NOT_RUN_MARKERS):
+        print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], r["submittedAt"]))
+        print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
+        print("  %s" % body.strip().splitlines()[0][:200])
+        print("__EXIT__")
+        sys.exit(0)
     m = re.search(r"Suppressed comments \((\d+)\)", body)
     if m:
         suppressed = int(m.group(1))
