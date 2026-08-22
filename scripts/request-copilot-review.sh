@@ -43,7 +43,9 @@ COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-$DEFAULT_BOT_LOGIN}"
 if ! info=$(gh api graphql -f query="
 {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
   id
-  reviews(last:20){nodes{author{__typename login ... on Bot{id}}}}
+  # スレッドへの返信も review として記録され、長いループでは直近が人間側の返信で
+  # 埋まる。取りこぼすと bot id を特定できないため GraphQL の上限まで取る
+  reviews(last:100){nodes{author{__typename login ... on Bot{id}}}}
   timelineItems(last:50, itemTypes:[REVIEW_REQUESTED_EVENT]){nodes{
     ... on ReviewRequestedEvent{requestedReviewer{__typename ... on Bot{id login}}}
   }}

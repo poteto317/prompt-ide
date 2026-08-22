@@ -176,15 +176,30 @@ JOB_NOT_RUN_MARKERS = (
     "spending limit",
 )
 
+def has_marker(review, markers):
+    body = review["body"] or ""
+    return any(marker in body for marker in markers)
+
+
+def newest(reviews):
+    # reviews は submittedAt の昇順で並ぶため、末尾が最新
+    return reviews[-1] if reviews else None
+
+
 if new:
-    r = new[-1]
-    body = r["body"] or ""
-    if any(marker in body for marker in JOB_NOT_RUN_MARKERS):
-        print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], r["submittedAt"]))
+    # スレッドへの返信も review として記録されるため、新着の末尾がレビュー本文とは
+    # 限らない。末尾だけを見ると、同じ周に届いたジョブ未実行の通知やレビュー本文を
+    # 取りこぼして「本文の形式を判定できない」に倒れる
+    not_run = newest([r for r in new if has_marker(r, JOB_NOT_RUN_MARKERS)])
+    if not_run is not None:
+        body = not_run["body"] or ""
+        print("REVIEW NOT RUN: %s %s" % (not_run["author"]["login"], not_run["submittedAt"]))
         print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
         print("  %s" % body.strip().splitlines()[0][:200])
         print("__EXIT__")
         sys.exit(0)
+    r = newest([r for r in new if has_marker(r, KNOWN_BODY_MARKERS)]) or new[-1]
+    body = r["body"] or ""
     m = re.search(r"Suppressed comments \((\d+)\)", body)
     if m:
         suppressed = int(m.group(1))
