@@ -381,3 +381,86 @@ describe('confirmDiscardIfDirty', () => {
     expect(result.current.confirmDiscardIfDirty()).toBe(false)
   })
 })
+
+describe('FS 操作のロックと saveFile', () => {
+  it('親ディレクトリがロックされている間は書き込まず、解放後に書き込む', async () => {
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    // 同じフォルダにファイルを作る、兄弟をリネームするといった操作は
+    // 親ディレクトリをロックする
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', 'create')
+    })
+
+    let savePromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      savePromise = result.current.saveFile()
+      await Promise.resolve()
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+    // 保存が捨てられたのではなく待っていることが、画面からも分かる
+    expect(result.current.isSaving).toBe(true)
+
+    await act(async () => {
+      release()
+      await savePromise
+    })
+
+    expect(mockWriteFileContent).toHaveBeenCalledWith(dirtyFile.path, dirtyFile.content)
+    expect(result.current.isSaving).toBe(false)
+  })
+
+  it('リネーム・削除のロック中は待たずに書き込まない', async () => {
+    // 待って書き込むと、消えた/付け替わった旧パスを再作成してしまう
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', 'mutate')
+    })
+
+    await act(async () => {
+      await result.current.saveFile()
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+    expect(result.current.isSaving).toBe(false)
+
+    await act(async () => {
+      release()
+    })
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+  })
+
+  it('ロックを待っている間にファイルが切り替わったら書き込まない', async () => {
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', 'create')
+    })
+
+    let savePromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      savePromise = result.current.saveFile()
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      // 別のファイルを開いた（開き直した）
+      result.current.resetForFileChange()
+      release()
+      await savePromise
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+  })
+})

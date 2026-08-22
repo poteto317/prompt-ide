@@ -966,3 +966,35 @@ describe('useQuickOpen (StrictMode)', () => {
     expect(renderCount() - before).toBeLessThanOrEqual(8)
   })
 })
+
+describe('selectFile が失敗したとき', () => {
+  it('開けなかったときと同じ扱いになり、フォーカスの引き渡しが残り続けない', async () => {
+    // 破棄確認のコールバックが投げた場合など。減算を飛ばすと hasHandedOverFocus が
+    // 以後ずっと true になり、Escape で閉じてもフォーカスが body に残る
+    const selectFile = vi.fn(() => Promise.reject(new Error('boom')))
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    await act(async () => result.current.confirm())
+
+    expect(selectFile).toHaveBeenCalled()
+    expect(result.current.hasHandedOverFocus()).toBe(false)
+    // 開けていないのでダイアログは閉じない
+    expect(result.current.isOpen).toBe(true)
+  })
+
+  it('失敗した後でも confirm をやり直せる', async () => {
+    // confirmingGenerationRef が解放されないと、以後 Enter が効かなくなる
+    const selectFile = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.reject(new Error('boom')))
+      .mockImplementationOnce(() => Promise.resolve(true))
+    const { result } = setup({ selectFile })
+    act(() => result.current.open())
+    act(() => result.current.setQuery('app'))
+    await act(async () => result.current.confirm())
+    await act(async () => result.current.confirm())
+
+    expect(selectFile).toHaveBeenCalledTimes(2)
+  })
+})

@@ -23,10 +23,22 @@ interface FileEditingState {
    * 戻り値を呼ぶまで、そのパス配下の新しい保存は開始されない。
    * 待つだけでは、待機後〜操作完了までの間に始まった保存が旧パスを再作成する
    */
-  lockPathForFileOperation: (targetPath: string) => Promise<() => void>
+  lockPathForFileOperation: (
+    targetPath: string,
+    kind?: FileOperationLockKind
+  ) => Promise<() => void>
   pendingSaveFor: (targetPath: string) => Promise<void> | null
   saveCompletionsFor: (targetPath: string) => number
 }
+
+/**
+ * FS 操作のロックの種類。
+ * - `mutate`: リネーム・削除など、対象のパスが消える・付け替わる操作。
+ *   この間の保存は書き込まない（待って書くと旧パスを再作成してしまう）
+ * - `create`: 同じ親の下に別のファイル・ディレクトリを作る操作。
+ *   開いているファイル自体は壊れないため、保存は待ってから書き込む
+ */
+export type FileOperationLockKind = 'create' | 'mutate'
 
 export function useFileEditing(
   openFile: OpenFile | null,
@@ -77,15 +89,18 @@ export function useFileEditing(
 
   // FS 操作中のパスと、その完了を待つための Promise。
   // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
-  const locksRef = useRef<{ path: string; done: Promise<void> }[]>([])
+  const locksRef = useRef<{ path: string; kind: FileOperationLockKind; done: Promise<void> }[]>([])
 
   // ルートを親に持つ予約も検出できるよう isPathAtOrInside を使う。
   // isPathInside はルートを親として渡すと常に false になる
   const overlaps = (a: string, b: string): boolean =>
     isPathAtOrInside(a, b) || isPathAtOrInside(b, a)
 
-  const isPathLocked = (path: string): boolean =>
-    locksRef.current.some((lock) => isPathAtOrInside(path, lock.path))
+  const locksCovering = (
+    path: string,
+    kind: FileOperationLockKind
+  ): { path: string; kind: FileOperationLockKind; done: Promise<void> }[] =>
+    locksRef.current.filter((lock) => lock.kind === kind && isPathAtOrInside(path, lock.path))
 
   /**
    * targetPath 配下で進行中の保存があればその完了 promise を返す。無ければ null。
@@ -106,7 +121,11 @@ export function useFileEditing(
   const saveCompletionsFor = (targetPath: string): number =>
     saveCompletionsRef.current.get(toComparablePath(targetPath)) ?? 0
 
-  const lockPathForFileOperation = async (targetPath: string): Promise<() => void> => {
+  const lockPathForFileOperation = async (
+    targetPath: string,
+    // 既定は安全側。種類を指定しない呼び出しでは、その間の保存を行わない
+    kind: FileOperationLockKind = 'mutate'
+  ): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
     // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
     for (;;) {
@@ -117,6 +136,7 @@ export function useFileEditing(
     let releaseLock: () => void = () => {}
     const entry = {
       path: targetPath,
+      kind,
       done: new Promise<void>((resolve) => {
         releaseLock = resolve
       })
@@ -162,20 +182,39 @@ export function useFileEditing(
     if (openFile.content === openFile.savedContent) return
     const { path, content } = openFile
     if (savingPathsRef.current.has(path)) return
-    // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため
-    if (isPathLocked(path)) return
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
     let settleSave: () => void = () => {}
-    savingPromisesRef.current.set(
-      path,
-      new Promise<void>((resolve) => {
-        settleSave = resolve
-      })
-    )
     setSaveError(null)
     try {
+      // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため
+      if (locksCovering(path, 'mutate').length > 0) return
+      // 作成のロックは親ディレクトリに対して取られる。同じフォルダに別のファイルを
+      // 作っているだけで開いているファイルの保存を捨てると、保存されたように見えて
+      // 内容が失われるため、解放を待ってから書き込む
+      for (;;) {
+        const waiting = locksCovering(path, 'create')
+        if (waiting.length === 0) break
+        await Promise.all(waiting.map((lock) => lock.done))
+        // 待っている間にファイルが切り替わった・開き直された場合は、この保存は
+        // もう画面上の編集セッションとは無関係なので書き込まない
+        if (generation !== generationRef.current) return
+        // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
+        // 現状の lockPathForFileOperation は重なるロックの解放を待ってから
+        // 予約するためここには来ないが、待ち合わせの仕様が変わったときに
+        // 旧パスを再作成しないための保険
+        if (locksCovering(path, 'mutate').length > 0) return
+      }
+      // 進行中の保存として登録するのはロックが無くなってから。待っている間に
+      // 登録すると、ロック取得側（進行中の保存の完了を待つ）と待ち合って
+      // デッドロックする
+      savingPromisesRef.current.set(
+        path,
+        new Promise<void>((resolve) => {
+          settleSave = resolve
+        })
+      )
       await fileSystemApi.writeFileContent(path, content)
       // 書き込みに使った時点の path/content/generation を捕捉しているため、
       // await 中にユーザーがさらに編集したり、別ファイルへ切り替えたり、

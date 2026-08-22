@@ -4,6 +4,7 @@ import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
 import { isPathAtOrInside, isSamePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
+import type { FileOperationLockKind } from './useFileEditing'
 
 interface FileTreeOperationsOptions {
   /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
@@ -21,7 +22,10 @@ interface FileTreeOperationsOptions {
   /** ツリーへの書き込みを開始する。書き込めない場合は null */
   beginTreeWrite: () => (() => boolean) | null
   /** 指定パス配下を FS 操作中として予約する。解除関数を返す */
-  lockPathForFileOperation: (targetPath: string) => Promise<() => void>
+  lockPathForFileOperation: (
+    targetPath: string,
+    kind?: FileOperationLockKind
+  ) => Promise<() => void>
   /** ツリー読み込みの結果を通知する(失敗の案内に使う) */
   reportTreeLoad: (error: Error | null) => void
 }
@@ -142,8 +146,12 @@ export function useFileTreeOperations({
 
   // 作成も同じ mutex を通す。通さないと、作成先の祖先のリネーム・削除と
   // 並行して走り、FS の結果が実行順に依存する
-  const runLocked = async (targetPath: string, operation: () => Promise<void>): Promise<void> => {
-    const release = await lockPathForFileOperation(targetPath)
+  const runLocked = async (
+    targetPath: string,
+    operation: () => Promise<void>,
+    kind: FileOperationLockKind = 'mutate'
+  ): Promise<void> => {
+    const release = await lockPathForFileOperation(targetPath, kind)
     try {
       await operation()
     } finally {
@@ -153,12 +161,16 @@ export function useFileTreeOperations({
 
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name)).then(() => true)
+      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), 'create').then(
+        () => true
+      )
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name)).then(() => true)
+      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), 'create').then(
+        () => true
+      )
     )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
