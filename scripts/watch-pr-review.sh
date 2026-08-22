@@ -19,8 +19,8 @@
 # 注意（実際に踏んだ落とし穴）:
 #   - GraphQL の reviews / reviewThreads は first ではなく last を使う。レビューを
 #     重ねると first は古い方から埋まり、最新の到着がページの外に出て検知できない。
-#     last の件数にも余裕を持たせる。スレッドへの返信も review として記録されるため、
-#     人間側のレビューが積み上がると Copilot のレビューが窓から押し出される
+#     件数は GraphQL の上限(100)まで取る。スレッドへの返信も review として記録される
+#     ため、人間側のレビューが積み上がると Copilot のレビューが窓から押し出される
 #     （実測: 1 つの PR でレビュー 81 件、うち人間側 37 件）。
 #   - Copilot は依頼を受け取ると reviewRequests から外れるため、依頼直後でも
 #     pending が空に見える。その状態を「新着なし」と判断して終了すると、数分後に
@@ -111,9 +111,9 @@ record_failure() {
 while true; do
   if ! out=$(gh api graphql -f query="
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
-    reviews(last:50){nodes{author{__typename login} submittedAt body}}
-    reviewRequests(first:20){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
-    reviewThreads(last:60){nodes{isResolved path line}}
+    reviews(last:100){nodes{author{__typename login} submittedAt body}}
+    reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
+    reviewThreads(last:100){nodes{isResolved path line}}
   }}}" 2>"$err_file"); then
     record_failure "gh api graphql に失敗" "$(head -3 "$err_file")"
     sleep "$INTERVAL"
