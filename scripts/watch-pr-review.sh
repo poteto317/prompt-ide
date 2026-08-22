@@ -243,12 +243,14 @@ unresolved = [t for t in threads if not t["isResolved"]]
 
 # 本文が Copilot のレビューとして解釈できる形か。解釈できない形なら
 # 「Suppressed comments 節が無い＝0 件」と決めつけられない
+# Copilot のレビュー本文にしか現れない見出し。"Copilot reviewed ..." は未実行の
+# 通知も名乗ることがあるため、本文の判定材料にはしない
 KNOWN_BODY_MARKERS = (
     "Suppressed comments",
     "Review details",
-    "Copilot reviewed",
     "Comments generated",
     "Pull request overview",
+    "Reviewed Changes",
 )
 
 # Copilot がレビューを実行できなかった場合も review として記録される。
@@ -268,16 +270,13 @@ def is_review_body(review):
     return any(marker.lower() in body for marker in KNOWN_BODY_MARKERS)
 
 
-# ジョブ未実行の通知は 1 文だけの短い本文で届く。レビュー本文はこの文面を引用する
-# ことがある（このリポジトリのレビュー自身がそうだった）ため、長さで区別する
-JOB_NOT_RUN_MAX_LENGTH = 500
-
-
 def is_job_not_run(review):
-    body = review["body"] or ""
-    if len(body) > JOB_NOT_RUN_MAX_LENGTH:
+    # レビュー本文がこの文面を引用することがある（このリポジトリのレビュー自身が
+    # そうだった）ため、本文として読める場合はレビューとして扱う。長さで区別する
+    # 形も試したが、短いレビューを未実行と誤判定し、長い通知は分類できなくなる
+    if is_review_body(review):
         return False
-    normalized = re.sub(r"[^a-z0-9]+", " ", body.lower())
+    normalized = re.sub(r"[^a-z0-9]+", " ", (review["body"] or "").lower())
     return any(marker in normalized for marker in JOB_NOT_RUN_MARKERS)
 
 
