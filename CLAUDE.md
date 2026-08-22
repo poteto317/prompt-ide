@@ -57,7 +57,8 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
 8. **再レビューの依頼と監視**
    - `bash scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを出力で確認する**
    - `bash scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
-   - 監視が「指摘なし」で終了した場合も、GraphQL で `reviews` と `reviewThreads` の最新を直接確認してから収束と判断する
+   - 収束の判断は監視が出す `NO FINDINGS` で行う。`NO PENDING REVIEW` や `WATCH TIMEOUT` は「指摘なし」ではない
+   - `NO FINDINGS` が出た場合も、GraphQL で `reviews` と `reviewThreads` の最新を直接確認してから収束と判断する
 
 # コーディングルール（汎用）
 

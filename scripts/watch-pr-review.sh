@@ -4,11 +4,20 @@
 #   - 新しいレビューが届いたら内容（未解決スレッドと suppressed comments の件数）を
 #     出力して終了する
 #   - レビュー依頼が保留中（レビュー中）の間は静かに待ち続ける
-#   - 依頼も保留も無く新着も無ければ「指摘なし」を出力して終了する
+#   - 依頼も保留も無く新着も無ければ NO PENDING REVIEW を出力して終了する
 #     ただし最低待機時間を過ぎるまでは終了しない（理由は下記）
+#   - 最大待機時間を過ぎたら WATCH TIMEOUT を出して終了コード 1 で終わる
+#
+# 出力の意味:
+#   REVIEW ARRIVED   新着レビューを解釈できた（NO FINDINGS が続けば指摘 0 件）
+#   NO FINDINGS      未解決スレッドも suppressed comments も 0 件。収束の判断はこれで行う
+#   REVIEW NOT RUN   レビュージョブが実行されていない（課金・上限を確認する）
+#   NO REVIEW BODY   新着はあるがレビュー本文として解釈できない（返信だけの可能性）
+#   NO PENDING REVIEW / NO NEW REVIEW  依頼も保留も新着も無い
+#   WATCH TIMEOUT    最大待機時間まで何も起きなかった
 #
 # usage:
-#   bash scripts/watch-pr-review.sh <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]
+#   bash scripts/watch-pr-review.sh <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec] [max-wait-sec]
 #
 # 例:
 #   bash scripts/watch-pr-review.sh poteto317 prompt-ide 28 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -36,7 +45,7 @@
 set -u
 
 usage() {
-  echo "usage: bash $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]" >&2
+  echo "usage: bash $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec] [max-wait-sec]" >&2
   exit 2
 }
 
@@ -53,13 +62,16 @@ BASELINE="${4#baseline:}"
 BASELINE="$(printf '%s' "$BASELINE" | tr -d '[:space:]')"
 MIN_WAIT="${5:-1500}"
 INTERVAL="${6:-120}"
+# レビュー依頼が保留のまま返ってこないことがある。上限を設けないと無言で回り続け、
+# 呼び出し元（自走ループ）がそこで止まる
+MAX_WAIT="${7:-5400}"
 
 # 数値以外を渡されると GraphQL エラーや Python の例外になり、原因が分かりにくい。
 # 起動時に弾いて usage を出す
-for value in "$PR" "$MIN_WAIT" "$INTERVAL"; do
+for value in "$PR" "$MIN_WAIT" "$INTERVAL" "$MAX_WAIT"; do
   case "$value" in
     '' | *[!0-9]*)
-      echo "数値で指定してください: pr-number / min-wait-sec / interval-sec（受け取った値: ${value}）" >&2
+      echo "数値で指定してください: pr-number / min-wait-sec / interval-sec / max-wait-sec（受け取った値: ${value}）" >&2
       usage
       ;;
   esac
@@ -75,6 +87,10 @@ esac
 
 if [ "$INTERVAL" -lt 1 ]; then
   echo "interval-sec は 1 以上で指定してください" >&2
+  usage
+fi
+if [ "$MAX_WAIT" -lt "$MIN_WAIT" ]; then
+  echo "max-wait-sec は min-wait-sec 以上で指定してください" >&2
   usage
 fi
 
@@ -109,11 +125,15 @@ record_failure() {
 }
 
 while true; do
-  if ! out=$(gh api graphql -f query="
-  {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
-    reviews(last:100){nodes{author{__typename login} submittedAt body}}
-    reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
-  }}}" 2>"$err_file"); then
+  # owner / repo は変数で渡す。クエリ文字列に直接埋めると、引用符やバックスラッシュを
+  # 含む名前でクエリ自体が壊れ、原因が GraphQL の構文エラーに化ける
+  if ! out=$(gh api graphql -f query='
+  query($owner:String!,$repo:String!,$pr:Int!){
+    repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+      reviews(last:100){nodes{author{__typename login} submittedAt body}}
+      reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
+    }}
+  }' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR" 2>"$err_file"); then
     record_failure "gh api graphql に失敗" "$(head -3 "$err_file")"
     sleep "$INTERVAL"
     continue
@@ -215,7 +235,6 @@ unresolved = [t for t in threads if not t["isResolved"]]
 # 「Suppressed comments 節が無い＝0 件」と決めつけられない
 KNOWN_BODY_MARKERS = (
     "Suppressed comments",
-    "<details>",
     "Review details",
     "Copilot reviewed",
     "Comments generated",
@@ -316,6 +335,13 @@ else:
   if [ -n "$verdict" ]; then
     printf '%s\n' "$verdict" | grep -v '^__EXIT__'
     printf '%s' "$verdict" | grep -q '^__EXIT__' && exit 0
+  fi
+
+  # 依頼が保留のまま返ってこない場合、ここで打ち切らないと無言で回り続ける
+  if [ $(($(date +%s) - STARTED)) -ge "$MAX_WAIT" ]; then
+    echo "WATCH TIMEOUT: ${MAX_WAIT} 秒待ってもレビューが届かなかった"
+    echo "依頼が登録されているか、ジョブが実行できる状態かを確認すること"
+    exit 1
   fi
 
   sleep "$INTERVAL"

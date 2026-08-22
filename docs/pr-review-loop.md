@@ -34,13 +34,17 @@ CLAUDE.md の「PR レビューフロー」がルールの本体で、この文�
 ```bash
 gh api graphql -f query='
 {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR>){
-  reviewThreads(last:100){totalCount nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
+  reviewThreads(first:100){totalCount pageInfo{hasNextPage endCursor}
+    nodes{id isResolved path line comments(last:2){nodes{author{login} body}}}}
 }}}'
 ```
 
-`totalCount` が取得件数より多いときは、古いスレッドが窓の外にある。手で見るときは
-`first:100, after:<endCursor>` で続きを辿る（`scripts/watch-pr-review.sh` は
-`gh api graphql --paginate` で全件取っている）。
+`hasNextPage` が `true` なら `first:100, after:"<endCursor>"` で続きを辿る。
+`last:` と `after:` は噛み合わないため、辿るときは `first:` を使うこと
+（`scripts/watch-pr-review.sh` は `gh api graphql --paginate` で全件取っている）。
+
+スレッドの `comments` は `last` で取る。対応済みかどうかは最後の返信で決まるので、
+`first` だと最初の指摘と最初の返信しか見えず、往復のあるスレッドで現状が分からない。
 
 suppressed comments はスレッドにならず、レビュー本文の `<details>` 内にのみ現れる。
 本文も必ず読むこと。
@@ -179,7 +183,12 @@ bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 `baseline` には再レビューを依頼した時刻（UTC, ISO8601）を渡す。
 `request-copilot-review.sh` は最後に `baseline:` として出力する。
 
-新着が届いたら内容を出力して終了する。レビュー中は待ち続ける。
+新着が届いたら内容を出力して終了する。レビュー中は待ち続けるが、最大待機時間
+（既定 5400 秒。第 7 引数で変更できる）を過ぎると `WATCH TIMEOUT` を出して
+終了コード 1 で終わる。依頼が保留のまま返ってこないケースで無言のまま止まらないため。
+
+収束の判断は `NO FINDINGS` で行う。`NO PENDING REVIEW` や `WATCH TIMEOUT` は
+「指摘が 0 件」という意味ではない。
 
 `suppressed: 不明（件数を読めない）` と出た場合は、`Suppressed comments` の節はあるのに
 件数を数値で読めなかったということ。`NO FINDINGS` は出ないので、レビュー本文を自分で

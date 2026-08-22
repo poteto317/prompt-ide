@@ -40,16 +40,20 @@ DEFAULT_BOT_ID="BOT_kgDOCnlnWA"
 # 拾ってしまうため、厳密一致で判定する
 COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-$DEFAULT_BOT_LOGIN}"
 
-if ! info=$(gh api graphql -f query="
-{repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
-  id
-  # スレッドへの返信も review として記録され、長いループでは直近が人間側の返信で
-  # 埋まる。取りこぼすと bot id を特定できないため GraphQL の上限まで取る
-  reviews(last:100){nodes{author{__typename login ... on Bot{id}}}}
-  timelineItems(last:50, itemTypes:[REVIEW_REQUESTED_EVENT]){nodes{
-    ... on ReviewRequestedEvent{requestedReviewer{__typename ... on Bot{id login}}}
+# owner / repo は変数で渡す。クエリ文字列に直接埋めると、引用符やバックスラッシュを
+# 含む名前でクエリ自体が壊れ、原因が GraphQL の構文エラーに化ける
+if ! info=$(gh api graphql -f query='
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){pullRequest(number:$pr){
+    id
+    # スレッドへの返信も review として記録され、長いループでは直近が人間側の返信で
+    # 埋まる。取りこぼすと bot id を特定できないため GraphQL の上限まで取る
+    reviews(last:100){nodes{author{__typename login ... on Bot{id}}}}
+    timelineItems(last:50, itemTypes:[REVIEW_REQUESTED_EVENT]){nodes{
+      ... on ReviewRequestedEvent{requestedReviewer{__typename ... on Bot{id login}}}
+    }}
   }}
-}}}"); then
+}' -f owner="$OWNER" -f repo="$REPO" -F pr="$PR"); then
   echo "PR の情報取得に失敗した（owner / repo / pr-number と gh の認証を確認）" >&2
   exit 1
 fi
@@ -122,8 +126,9 @@ if ! result=$(gh api graphql -f query='mutation($p:ID!,$b:ID!){
   exit 1
 fi
 
-# 依頼はもう飛んでいる。解釈に失敗しても baseline を出さないと監視を張れず、
-# やり直すと二重に依頼することになるため、終了前に必ず出す
+# 依頼はもう飛んでいる。確認に失敗しても baseline を出さないと監視を張れず、
+# やり直すと二重に依頼することになるため、終了前に必ず出す。
+# 同じ理由で終了コードも 0 にする（request && watch の連結を止めない）
 verify_status=0
 printf '%s' "$result" |
   COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
@@ -157,5 +162,8 @@ if copilot_login not in logins:
     print("注意: 依頼直後は pending に現れないことがある。監視で新着を待つこと")
 ' || verify_status=$?
 
+if [ "$verify_status" -ne 0 ]; then
+  echo "注意: 依頼結果を確認できなかった（依頼そのものは送信済み）。監視側で新着を待つこと" >&2
+fi
+
 date -u +'baseline: %Y-%m-%dT%H:%M:%SZ'
-exit "$verify_status"
