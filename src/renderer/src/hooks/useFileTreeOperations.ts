@@ -4,7 +4,7 @@ import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
 import { isPathAtOrInside, isSamePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import type { FileOperationLockKind } from './useFileEditing'
+import type { FileOperationLockOptions } from './useFileEditing'
 
 interface FileTreeOperationsOptions {
   /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
@@ -24,7 +24,7 @@ interface FileTreeOperationsOptions {
   /** 指定パス配下を FS 操作中として予約する。解除関数を返す */
   lockPathForFileOperation: (
     targetPath: string,
-    kind?: FileOperationLockKind
+    options?: FileOperationLockOptions
   ) => Promise<() => void>
   /** ツリー読み込みの結果を通知する(失敗の案内に使う) */
   reportTreeLoad: (error: Error | null) => void
@@ -149,9 +149,9 @@ export function useFileTreeOperations({
   const runLocked = async (
     targetPath: string,
     operation: () => Promise<void>,
-    kind: FileOperationLockKind = 'mutate'
+    options?: FileOperationLockOptions
   ): Promise<void> => {
-    const release = await lockPathForFileOperation(targetPath, kind)
+    const release = await lockPathForFileOperation(targetPath, options)
     try {
       await operation()
     } finally {
@@ -161,16 +161,17 @@ export function useFileTreeOperations({
 
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), 'create').then(
-        () => true
-      )
+      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), {
+        // 作成は既存のファイルを壊さない。この間の保存は待ってから書き込む
+        invalidatesPath: null
+      }).then(() => true)
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), 'create').then(
-        () => true
-      )
+      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), {
+        invalidatesPath: null
+      }).then(() => true)
     )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
@@ -183,7 +184,12 @@ export function useFileTreeOperations({
       // 予約するのは元の path ではなく親ディレクトリ。移行先も同じ親の下に
       // 作られるため、元だけを予約すると移行先への作成・削除と並行に走り、
       // どちらが先に完了するかで結果が変わってしまう
-      const release = await lockPathForFileOperation(parentPrefix)
+      // 直列化は親ディレクトリ単位（移行先も同じ親の下に作られる）だが、
+      // 無効になるのはリネーム対象自身だけ。同じフォルダの別ファイルの保存を
+      // 捨てると、Cmd+S が無反応に見えて内容が失われる
+      const release = await lockPathForFileOperation(parentPrefix, {
+        invalidatesPath: node.path
+      })
       try {
         await fileSystemApi.renameEntry(node.path, newName)
       } finally {

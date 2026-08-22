@@ -25,20 +25,27 @@ interface FileEditingState {
    */
   lockPathForFileOperation: (
     targetPath: string,
-    kind?: FileOperationLockKind
+    options?: FileOperationLockOptions
   ) => Promise<() => void>
   pendingSaveFor: (targetPath: string) => Promise<void> | null
   saveCompletionsFor: (targetPath: string) => number
 }
 
 /**
- * FS 操作のロックの種類。
- * - `mutate`: リネーム・削除など、対象のパスが消える・付け替わる操作。
- *   この間の保存は書き込まない（待って書くと旧パスを再作成してしまう）
- * - `create`: 同じ親の下に別のファイル・ディレクトリを作る操作。
- *   開いているファイル自体は壊れないため、保存は待ってから書き込む
+ * FS 操作のロックの指定。
+ *
+ * `invalidatesPath` は「その操作によって消える・付け替わるパス」。この配下の保存は
+ * 書き込まない（待って書くと旧パスを再作成してしまう）。`null` を渡すと、直列化は
+ * するが保存は捨てず、解放を待ってから書き込む。
+ *
+ * ロックの範囲（`targetPath`）と無効化の範囲を分けているのは、リネームが親
+ * ディレクトリをロックするため。移行先も同じ親の下に作られるので直列化は親単位で
+ * 必要だが、無効になるのはリネーム対象自身だけで、同じフォルダの別ファイルの保存
+ * まで捨ててはいけない。
  */
-export type FileOperationLockKind = 'create' | 'mutate'
+export type FileOperationLockOptions = {
+  invalidatesPath?: string | null
+}
 
 export function useFileEditing(
   openFile: OpenFile | null,
@@ -89,18 +96,29 @@ export function useFileEditing(
 
   // FS 操作中のパスと、その完了を待つための Promise。
   // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
-  const locksRef = useRef<{ path: string; kind: FileOperationLockKind; done: Promise<void> }[]>([])
+  type FileOperationLock = { path: string; invalidatesPath: string | null; done: Promise<void> }
+  const locksRef = useRef<FileOperationLock[]>([])
 
   // ルートを親に持つ予約も検出できるよう isPathAtOrInside を使う。
   // isPathInside はルートを親として渡すと常に false になる
   const overlaps = (a: string, b: string): boolean =>
     isPathAtOrInside(a, b) || isPathAtOrInside(b, a)
 
-  const locksCovering = (
-    path: string,
-    kind: FileOperationLockKind
-  ): { path: string; kind: FileOperationLockKind; done: Promise<void> }[] =>
-    locksRef.current.filter((lock) => lock.kind === kind && isPathAtOrInside(path, lock.path))
+  // その保存を無効にするロック（リネーム・削除など、対象が消える操作）
+  const invalidatingLocks = (path: string): FileOperationLock[] =>
+    locksRef.current.filter(
+      (lock) => lock.invalidatesPath !== null && isPathAtOrInside(path, lock.invalidatesPath)
+    )
+
+  // 無効化はしないが、完了まで書き込みを待つべきロック。同じ親の下での作成や、
+  // 同じフォルダにある別ファイルのリネームなど。FS 操作と書き込みが同時に走らない
+  // よう、重なるロックはすべて待つ
+  const blockingLocks = (path: string): FileOperationLock[] =>
+    locksRef.current.filter(
+      (lock) =>
+        isPathAtOrInside(path, lock.path) &&
+        !(lock.invalidatesPath !== null && isPathAtOrInside(path, lock.invalidatesPath))
+    )
 
   /**
    * targetPath 配下で進行中の保存があればその完了 promise を返す。無ければ null。
@@ -123,8 +141,8 @@ export function useFileEditing(
 
   const lockPathForFileOperation = async (
     targetPath: string,
-    // 既定は安全側。種類を指定しない呼び出しでは、その間の保存を行わない
-    kind: FileOperationLockKind = 'mutate'
+    // 既定は安全側。指定が無ければ targetPath 配下の保存を無効にする
+    { invalidatesPath = targetPath }: FileOperationLockOptions = {}
   ): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
     // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
@@ -136,7 +154,7 @@ export function useFileEditing(
     let releaseLock: () => void = () => {}
     const entry = {
       path: targetPath,
-      kind,
+      invalidatesPath,
       done: new Promise<void>((resolve) => {
         releaseLock = resolve
       })
@@ -182,30 +200,30 @@ export function useFileEditing(
     if (openFile.content === openFile.savedContent) return
     const { path, content } = openFile
     if (savingPathsRef.current.has(path)) return
+    // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため。
+    // 保存を始める前に判定する。始めてから抜けると、書き込んでいないのに
+    // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する
+    if (invalidatingLocks(path).length > 0) return
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
     let settleSave: () => void = () => {}
+    let attemptedWrite = false
     setSaveError(null)
     try {
-      // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため
-      if (locksCovering(path, 'mutate').length > 0) return
-      // 作成のロックは親ディレクトリに対して取られる。同じフォルダに別のファイルを
-      // 作っているだけで開いているファイルの保存を捨てると、保存されたように見えて
-      // 内容が失われるため、解放を待ってから書き込む
+      // 無効化を伴わないロック（同じフォルダでの作成、兄弟のリネームなど）は
+      // 解放を待ってから書き込む。黙って捨てると保存されたように見えて内容が失われる
       for (;;) {
-        const waiting = locksCovering(path, 'create')
+        const waiting = blockingLocks(path)
         if (waiting.length === 0) break
         await Promise.all(waiting.map((lock) => lock.done))
         // 待っている間にファイルが切り替わった・開き直された場合は、この保存は
         // もう画面上の編集セッションとは無関係なので書き込まない
         if (generation !== generationRef.current) return
-        // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
-        // 現状の lockPathForFileOperation は重なるロックの解放を待ってから
-        // 予約するためここには来ないが、待ち合わせの仕様が変わったときに
-        // 旧パスを再作成しないための保険
-        if (locksCovering(path, 'mutate').length > 0) return
+        // 待っている間にリネーム・削除が予約されていた場合も書き込まない
+        if (invalidatingLocks(path).length > 0) return
       }
+      attemptedWrite = true
       // 進行中の保存として登録するのはロックが無くなってから。待っている間に
       // 登録すると、ロック取得側（進行中の保存の完了を待つ）と待ち合って
       // デッドロックする
@@ -237,8 +255,10 @@ export function useFileEditing(
       savingPathsRef.current.delete(path)
       setSavingPaths(new Set(savingPathsRef.current))
       savingPromisesRef.current.delete(path)
-      const key = toComparablePath(path)
-      saveCompletionsRef.current.set(key, (saveCompletionsRef.current.get(key) ?? 0) + 1)
+      if (attemptedWrite) {
+        const key = toComparablePath(path)
+        saveCompletionsRef.current.set(key, (saveCompletionsRef.current.get(key) ?? 0) + 1)
+      }
       settleSave()
     }
   }
