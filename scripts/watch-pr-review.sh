@@ -21,6 +21,7 @@
 #   1   API 呼び出しが連続で失敗した
 #   2   レビュージョブが実行されていない（REVIEW NOT RUN）
 #   3   最大待機時間に達した（WATCH TIMEOUT）
+#   4   レビューは届いたが、その後にジョブ未実行の通知がある（指摘は出力済み）
 #   64  引数の指定が誤っている（usage）
 #
 # usage:
@@ -325,7 +326,8 @@ if review_bodies:
     if len(unresolved) == 0 and suppressed == 0 and not later_not_runs:
         print("NO FINDINGS")
     if later_not_runs:
-        print("__NOT_RUN__")
+        # レビュー自体は届いている。指摘は出力済みなので REVIEW NOT RUN とは分ける
+        print("__STALE_REVIEW__")
     print("__EXIT__")
 elif not_runs:
     r = max(not_runs, key=submitted_at)
@@ -338,7 +340,9 @@ elif pending:
     pass  # レビュー中。静かに待つ
 elif new:
     # スレッドへの返信は本文が空の review として記録される。本文があるのに解釈
-    # できない場合はレビューの形式が変わった可能性があるため、待たずに知らせる
+    # できない場合はレビューの形式が変わった可能性があるため、返信のみの状態とは
+    # 区別して知らせる（依頼直後の取りこぼしを避けるため、シェル側は最低待機時間の
+    # 内側ではこの判定を保留する）
     uninterpreted = [r for r in new if (r["body"] or "").strip()]
     if uninterpreted:
         print("NO REVIEW BODY: 本文を解釈できない新着がある（レビューの形式が変わった可能性）")
@@ -370,11 +374,16 @@ else:
     verdict=""
   fi
   if [ -n "$verdict" ]; then
-    printf '%s\n' "$verdict" | grep -vE '^__EXIT__|^__NOT_RUN__'
+    printf '%s\n' "$verdict" | grep -vE '^__EXIT__|^__NOT_RUN__|^__STALE_REVIEW__'
     # ジョブ未実行は「レビューが届いた」とは別物。同じ 0 で終わると、
     # 呼び出し元が成功と見なして課金が直るまで再依頼を繰り返す
     if printf '%s' "$verdict" | grep -q '^__NOT_RUN__'; then
       exit 2
+    fi
+    # レビューは届いたが、その後の依頼が実行されていない。指摘は出力済みなので
+    # REVIEW NOT RUN と混ぜず、呼び出し元が読み飛ばさないよう別のコードで返す
+    if printf '%s' "$verdict" | grep -q '^__STALE_REVIEW__'; then
+      exit 4
     fi
     printf '%s' "$verdict" | grep -q '^__EXIT__' && exit 0
   fi

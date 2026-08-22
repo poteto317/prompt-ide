@@ -207,6 +207,7 @@ bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 | 1 | API 呼び出しが連続で失敗した |
 | 2 | レビュージョブが実行されていない（`REVIEW NOT RUN`） |
 | 3 | 最大待機時間に達した（`WATCH TIMEOUT`） |
+| 4 | レビューは届いたが、その後にジョブ未実行の通知がある（指摘は出力済み） |
 | 64 | 引数の指定が誤っている（usage） |
 
 `suppressed: 不明（件数を読めない）` と出た場合は、`Suppressed comments` の節はあるのに
