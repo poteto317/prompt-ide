@@ -108,7 +108,26 @@ gh api graphql -f query='mutation($p:ID!,$b:ID!){
   COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os
 copilot_login = os.environ["COPILOT_LOGIN"]
-nodes = json.load(sys.stdin)["data"]["requestReviews"]["pullRequest"]["reviewRequests"]["nodes"]
+
+# 取得フェーズと同じ扱いに揃える。直接添字でたどると、errors を返すケースや
+# 想定外の形で例外のスタックトレースになり、原因が分からない
+try:
+    payload = json.load(sys.stdin)
+except Exception as error:
+    print("依頼結果が JSON として読めない: %s" % error, file=sys.stderr)
+    sys.exit(3)
+
+if payload.get("errors"):
+    print("GraphQL がエラーを返した: %s" % json.dumps(payload["errors"], ensure_ascii=False)[:300],
+          file=sys.stderr)
+    sys.exit(3)
+
+requested = ((payload.get("data") or {}).get("requestReviews") or {}).get("pullRequest")
+if requested is None:
+    print("依頼結果に pullRequest が含まれていない", file=sys.stderr)
+    sys.exit(3)
+
+nodes = (requested.get("reviewRequests") or {}).get("nodes") or []
 logins = [(n.get("requestedReviewer") or {}).get("login") for n in nodes]
 print("依頼済み:", logins)
 if copilot_login not in logins:
