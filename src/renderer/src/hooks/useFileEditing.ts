@@ -21,7 +21,9 @@ interface FileEditingState {
   confirmDiscardIfDirty: () => boolean
   /**
    * 指定パス配下を「FS 操作中」として予約し、進行中の保存が無くなるまで待つ。
-   * 戻り値を呼ぶまで、そのパス配下の新しい保存は開始されない。
+   * 戻り値を呼ぶまで、無効化の対象になったパス配下の新しい保存は書き込みを行わない。
+   * 無効化の対象でない保存（作成中の同じフォルダにある別ファイルなど）は開始され、
+   * isSaving は true になるが、書き込みは解放を待ってから行う。
    * 待つだけでは、待機後〜操作完了までの間に始まった保存が旧パスを再作成する
    */
   lockPathForFileOperation: (
@@ -101,7 +103,8 @@ export function useFileEditing(
   const saveCompletionsRef = useRef<Map<string, number>>(new Map())
 
   // FS 操作中のパスと、その完了を待つための Promise。
-  // この配下の保存は開始させず、重なるパスの FS 操作同士も直列化する
+  // 無効化の対象になった配下の保存は書き込まない。対象外の保存は解放を待ってから
+  // 書き込む。重なるパスの FS 操作同士も直列化する
   type FileOperationLock = {
     path: string
     invalidatesPaths: readonly string[] | null
