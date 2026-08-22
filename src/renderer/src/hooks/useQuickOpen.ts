@@ -255,6 +255,9 @@ export function useQuickOpen({
           if (openSucceededRef.current) return
           if (isOpenRef.current) return
           restoreFocusOrigin()
+        } catch {
+          // 開けた後の処理（フォーカスの引き渡しや復帰）が投げても、握り潰さずに
+          // ここで止める。void した IIFE から漏れると unhandled rejection になる
         } finally {
           if (confirmingGenerationRef.current === generation) {
             confirmingGenerationRef.current = null

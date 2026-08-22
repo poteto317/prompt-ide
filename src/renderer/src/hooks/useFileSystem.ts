@@ -138,7 +138,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     lockPathForFileOperation,
     pendingSaveFor,
     saveCompletionsFor
-  } = useFileEditing(openFile, commitOpenFile, options)
+    // getOpenFile を渡す。layout effect で更新される ref では、同じ tick に入った
+    // 編集（commitOpenFile はミラーを即時更新する）を取りこぼす
+  } = useFileEditing(openFile, commitOpenFile, { ...options, getOpenFile })
 
   // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
   // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う

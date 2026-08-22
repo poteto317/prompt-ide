@@ -5,10 +5,18 @@ import * as fileSystemApi from '../lib/fileSystemApi'
 import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
 import { useLatestRef } from './useLatestRef'
 
+const SAVE_ABORTED_BY_FILE_OPERATION =
+  'ファイル操作と重なったため保存を中止しました。もう一度保存してください。'
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
 export interface Options {
   onConfirm?: (message: string) => boolean
+  /**
+   * 同じ tick 内で確定した openFile を読むためのアクセサ。省略時は引数の openFile を
+   * layout effect で追う ref を使うが、それでは同じ tick に入った編集を取りこぼす。
+   * 同期ミラーを持つ呼び出し側（useFileSystem）はそれを渡すこと
+   */
+  getOpenFile?: () => OpenFile | null
 }
 
 interface FileEditingState {
@@ -54,7 +62,7 @@ export type FileOperationLockOptions = {
 export function useFileEditing(
   openFile: OpenFile | null,
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>,
-  { onConfirm = confirm }: Options = {}
+  { onConfirm = confirm, getOpenFile }: Options = {}
 ): FileEditingState {
   // 保存中のファイルの path 集合を保持する。isSaving は単一の boolean ではなく
   // path の集合で判定することで、「file A の保存中に file B を保存しようとしたら
@@ -69,6 +77,10 @@ export function useFileEditing(
   // 待機中の 2 回目の Cmd/Ctrl+S は多重保存ガードで no-op になるため、待つ前に
   // 捕まえた内容をそのまま書くと、その間の編集が保存されない
   const openFileRef = useLatestRef(openFile)
+  // useLatestRef は layout effect で更新されるため、同じ tick に入った編集を
+  // 取りこぼす。同期ミラーを渡されていればそちらを読む
+  const readOpenFile = (): OpenFile | null =>
+    getOpenFile !== undefined ? getOpenFile() : openFileRef.current
   const [saveError, setSaveError] = useState<Error | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
@@ -220,8 +232,12 @@ export function useFileEditing(
     if (savingPathsRef.current.has(path)) return
     // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため。
     // 保存を始める前に判定する。始めてから抜けると、書き込んでいないのに
-    // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する
-    if (invalidatingLocks(path).length > 0) return
+    // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する。
+    // 黙って捨てるとユーザーには dirty マークしか見えないため、理由を伝える
+    if (invalidatingLocks(path).length > 0) {
+      setSaveError(new Error(SAVE_ABORTED_BY_FILE_OPERATION))
+      return
+    }
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
@@ -237,8 +253,12 @@ export function useFileEditing(
         // 待っている間にファイルが切り替わった・開き直された場合は、この保存は
         // もう画面上の編集セッションとは無関係なので書き込まない
         if (generation !== generationRef.current) return
-        // 待っている間にリネーム・削除が予約されていた場合も書き込まない
-        if (invalidatingLocks(path).length > 0) return
+        // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
+        // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
+        if (invalidatingLocks(path).length > 0) {
+          setSaveError(new Error(SAVE_ABORTED_BY_FILE_OPERATION))
+          return
+        }
       }
       attemptedWrite = true
       // 書き込まずに戻る経路（ロック待ちの間にファイルが入れ替わった等）が
@@ -256,7 +276,7 @@ export function useFileEditing(
       )
       // 待っている間に編集されていれば、その内容を書く。待たずに書けた場合は
       // openFile は同じなので、通常経路の挙動は変わらない
-      const latest = openFileRef.current
+      const latest = readOpenFile()
       const contentToWrite =
         latest !== null && isSamePath(latest.path, path) ? latest.content : content
       await fileSystemApi.writeFileContent(path, contentToWrite)
