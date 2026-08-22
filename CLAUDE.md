@@ -55,8 +55,8 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
    - コミットごとに「指摘 → 対応」の表を追記する。対応しない判断とその理由もここに残す
 
 8. **再レビューの依頼と監視**
-   - `scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを出力で確認する**
-   - `scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
+   - `bash scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを出力で確認する**
+   - `bash scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
    - 監視が「指摘なし」で終了した場合も、GraphQL で `reviews` と `reviewThreads` の最新を直接確認してから収束と判断する
 
 # コーディングルール（汎用）

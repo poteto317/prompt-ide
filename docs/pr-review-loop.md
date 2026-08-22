@@ -7,6 +7,7 @@ CLAUDE.md の「PR レビューフロー」がルールの本体で、この文�
 
 ## 前提
 
+- `bash` と `python3` が使えること（スクリプトは両方に依存する）
 - `gh` が認証済みであること（`gh auth status`）
 - Copilot のレビュー依頼はローカルターミナルから行うこと。`GITHUB_TOKEN`（GitHub Actions）からはトリガーできない
 - コミット・プッシュはユーザーの明示的な指示がある場合のみ行う
@@ -153,7 +154,7 @@ $OutputEncoding = [Console]::OutputEncoding
 ### 10. 再レビュー依頼
 
 ```bash
-scripts/request-copilot-review.sh <OWNER> <REPO> <PR>
+bash scripts/request-copilot-review.sh <OWNER> <REPO> <PR>
 ```
 
 依頼が登録されたことを出力で確認する。依頼直後は `reviewRequests` から外れて
@@ -162,7 +163,7 @@ scripts/request-copilot-review.sh <OWNER> <REPO> <PR>
 ### 11. 監視
 
 ```bash
-scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
+bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 ```
 
 `baseline` には再レビューを依頼した時刻（UTC, ISO8601）を渡す。

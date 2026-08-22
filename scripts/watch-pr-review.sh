@@ -8,10 +8,10 @@
 #     ただし最低待機時間を過ぎるまでは終了しない（理由は下記）
 #
 # usage:
-#   scripts/watch-pr-review.sh <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]
+#   bash scripts/watch-pr-review.sh <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]
 #
 # 例:
-#   scripts/watch-pr-review.sh poteto317 prompt-ide 28 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+#   bash scripts/watch-pr-review.sh poteto317 prompt-ide 28 "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 #
 # baseline より後に投稿されたレビューだけを「新着」とみなす。レビューを依頼した
 # 直後の時刻を渡すこと。
@@ -36,7 +36,7 @@
 set -u
 
 usage() {
-  echo "usage: $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]" >&2
+  echo "usage: bash $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec]" >&2
   exit 2
 }
 

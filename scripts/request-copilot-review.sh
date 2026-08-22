@@ -2,7 +2,7 @@
 # Copilot にレビューを依頼し、依頼が登録されたことまで確認する。
 #
 # usage:
-#   scripts/request-copilot-review.sh <owner> <repo> <pr-number>
+#   bash scripts/request-copilot-review.sh <owner> <repo> <pr-number>
 #
 # REST の `pulls/:number/requested_reviewers` は bot を返さないため、依頼も確認も
 # GraphQL で行う。bot の node id は PR の履歴（過去のレビュー投稿者・依頼イベント）から
@@ -13,7 +13,7 @@
 set -eu
 
 usage() {
-  echo "usage: $0 <owner> <repo> <pr-number>" >&2
+  echo "usage: bash $0 <owner> <repo> <pr-number>" >&2
   exit 2
 }
 
