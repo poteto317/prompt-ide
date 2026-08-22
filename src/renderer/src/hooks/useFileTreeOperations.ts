@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathAtOrInside, isSamePath } from '../lib/pathUtils'
+import { isPathAtOrInside, isSamePath, joinPath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import type { FileOperationLockOptions } from './useFileEditing'
 
@@ -162,15 +162,17 @@ export function useFileTreeOperations({
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
       runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), {
-        // 作成は既存のファイルを壊さない。この間の保存は待ってから書き込む
-        invalidatesPaths: null
+        // 既存のファイルは壊さないので、無関係な保存は待ってから書き込む。
+        // ただし作られるパス自体は無効にする。削除してバッファだけ残した
+        // ファイルと同じ名前で作り直すと、古いバッファで上書きしてしまうため
+        invalidatesPaths: [joinPath(parentPath, name)]
       }).then(() => true)
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
       runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), {
-        invalidatesPaths: null
+        invalidatesPaths: [joinPath(parentPath, name)]
       }).then(() => true)
     )
 

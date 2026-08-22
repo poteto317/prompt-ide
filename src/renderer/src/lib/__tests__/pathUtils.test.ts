@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside, isSamePath } from '../pathUtils'
+import { isPathAtOrInside, isPathInside, isSamePath, joinPath } from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -139,5 +139,24 @@ describe('isSamePath', () => {
 
   it('別のパスは false', () => {
     expect(isSamePath('/a/b', '/a/c')).toBe(false)
+  })
+})
+
+describe('joinPath', () => {
+  it('親のパスと名前をつなぐ', () => {
+    expect(joinPath('/project', 'a.ts')).toBe('/project/a.ts')
+  })
+
+  it('親が末尾に区切りを持っていても二重にしない', () => {
+    expect(joinPath('/project/', 'a.ts')).toBe('/project/a.ts')
+  })
+
+  it('POSIX のルート直下でも二重区切りにならない', () => {
+    expect(joinPath('/', 'a.ts')).toBe('/a.ts')
+  })
+
+  it('Windows のパスでは区切りを引き継ぐ', () => {
+    expect(joinPath('C:\\project', 'a.ts')).toBe('C:\\project\\a.ts')
+    expect(joinPath('C:\\', 'a.ts')).toBe('C:\\a.ts')
   })
 })

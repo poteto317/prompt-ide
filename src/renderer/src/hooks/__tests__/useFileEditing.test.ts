@@ -519,6 +519,61 @@ describe('FS 操作のロックと saveFile', () => {
     expect(mockWriteFileContent).not.toHaveBeenCalled()
   })
 
+  it('ロックを待っている間に編集された内容を書き込む', async () => {
+    // 待機中の 2 回目の Cmd+S は多重保存ガードで no-op になる。待つ前に捕まえた
+    // 内容をそのまま書くと、ユーザーの 2 回目の保存要求が捨てられる
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result, rerender } = renderHook(({ file }) => useFileEditing(file, setOpenFile), {
+      initialProps: { file: dirtyFile }
+    })
+
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: null
+      })
+    })
+
+    let savePromise: Promise<void> = Promise.resolve()
+    await act(async () => {
+      savePromise = result.current.saveFile()
+      await Promise.resolve()
+    })
+
+    // 待っている間にさらに編集した
+    rerender({ file: { ...dirtyFile, content: 'const x = 3' } })
+
+    await act(async () => {
+      release()
+      await savePromise
+    })
+
+    expect(mockWriteFileContent).toHaveBeenCalledWith(dirtyFile.path, 'const x = 3')
+  })
+
+  it('作成のロックでも、作られるパスを開いているバッファの保存は書き込まない', async () => {
+    // 削除してバッファだけ残したファイルと同じ名前で作り直すと、待って書き込む
+    // 扱いでは、作られたばかりのファイルを古いバッファで上書きしてしまう
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: () => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: [dirtyFile.path]
+      })
+    })
+
+    await act(async () => {
+      await result.current.saveFile()
+      release()
+    })
+
+    expect(mockWriteFileContent).not.toHaveBeenCalled()
+  })
+
   it('ロックを待っている間にファイルが切り替わったら書き込まない', async () => {
     const setOpenFile = vi.fn()
     mockWriteFileContent.mockResolvedValue(undefined)

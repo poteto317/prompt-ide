@@ -74,3 +74,15 @@ export const isSamePath = (a: string, b: string): boolean => {
  * Map のキーなど、2 つ組で比較できない場面で使う。
  */
 export const toComparablePath = (path: string): string => normalizePair(path, path)[0]
+
+/**
+ * 親ディレクトリのパスと名前をつないで子のパスを作る。
+ * 区切り文字は親のパスから推定する（main 側の OS に依存するため）。
+ * ルート直下（親が '/' や 'C:\' のような区切りだけ・ドライブだけの形）でも
+ * 二重区切りにならないよう、末尾の区切りを落としてからつなぐ。
+ */
+export const joinPath = (parentPath: string, name: string): string => {
+  const base = stripTrailingSeparators(parentPath)
+  const separator = parentPath.includes('\\') ? '\\' : '/'
+  return `${base}${separator}${name}`
+}

@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { isPathAtOrInside, toComparablePath } from '../lib/pathUtils'
+import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
+import { useLatestRef } from './useLatestRef'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
@@ -62,6 +63,10 @@ export function useFileEditing(
   // （単一スロットだと直近の file B の情報で file A の追跡が上書きされ、
   // file A への同時書き込みを防げなくなってしまう）。
   const [savingPaths, setSavingPaths] = useState<ReadonlySet<string>>(() => new Set())
+  // ロックの解放を待っている間の編集を取りこぼさないために、最新の openFile を追う。
+  // 待機中の 2 回目の Cmd/Ctrl+S は多重保存ガードで no-op になるため、待つ前に
+  // 捕まえた内容をそのまま書くと、その間の編集が保存されない
+  const openFileRef = useLatestRef(openFile)
   const [saveError, setSaveError] = useState<Error | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
@@ -243,7 +248,12 @@ export function useFileEditing(
           settleSave = resolve
         })
       )
-      await fileSystemApi.writeFileContent(path, content)
+      // 待っている間に編集されていれば、その内容を書く。待たずに書けた場合は
+      // openFile は同じなので、通常経路の挙動は変わらない
+      const latest = openFileRef.current
+      const contentToWrite =
+        latest !== null && isSamePath(latest.path, path) ? latest.content : content
+      await fileSystemApi.writeFileContent(path, contentToWrite)
       // 書き込みに使った時点の path/content/generation を捕捉しているため、
       // await 中にユーザーがさらに編集したり、別ファイルへ切り替えたり、
       // 同じファイルを開き直したりしても、savedContent には実際にディスクへ
@@ -251,7 +261,7 @@ export function useFileEditing(
       // 限定して反映される。
       setOpenFile((prev) =>
         prev !== null && prev.path === path && generation === generationRef.current
-          ? { ...prev, savedContent: content }
+          ? { ...prev, savedContent: contentToWrite }
           : prev
       )
     } catch (err) {
