@@ -268,13 +268,17 @@ def is_review_body(review):
     return any(marker.lower() in body for marker in KNOWN_BODY_MARKERS)
 
 
+# ジョブ未実行の通知は 1 文だけの短い本文で届く。レビュー本文はこの文面を引用する
+# ことがある（このリポジトリのレビュー自身がそうだった）ため、長さで区別する
+JOB_NOT_RUN_MAX_LENGTH = 500
+
+
 def is_job_not_run(review):
-    # レビュー本文がこの文面を引用することがあるため、本文として読める場合は
-    # レビューとして扱う。未実行の通知にレビュー本文の見出しは現れない
-    if is_review_body(review):
+    body = review["body"] or ""
+    if len(body) > JOB_NOT_RUN_MAX_LENGTH:
         return False
-    body = re.sub(r"[^a-z0-9]+", " ", (review["body"] or "").lower())
-    return any(marker in body for marker in JOB_NOT_RUN_MARKERS)
+    normalized = re.sub(r"[^a-z0-9]+", " ", body.lower())
+    return any(marker in normalized for marker in JOB_NOT_RUN_MARKERS)
 
 
 def first_line(review):
@@ -291,8 +295,10 @@ def first_line(review):
 # 解釈できるものだけを残し、その中で最新のものを採用する（reviews は昇順）
 # reviews の並びは作成順で、投稿順とは限らない。実行中の依頼にもう一度依頼すると、
 # 先に作られたレビューが後から投稿され、直後の未実行通知が後ろに来る
-review_bodies = [r for r in new if is_review_body(r)]
+# 未実行の通知を先に判定する。通知が見出しを引用していると、本文として扱われて
+# 「suppressed 0 件」＝収束と誤って判断してしまう
 not_runs = [r for r in new if is_job_not_run(r)]
+review_bodies = [r for r in new if r not in not_runs and is_review_body(r)]
 
 # レビュー本文と未実行通知を同じ集合で扱い、最新 1 件だけを採るのは危険。
 # 課金が止まっている間は未実行通知が連続で投稿されるため、その直前に届いた

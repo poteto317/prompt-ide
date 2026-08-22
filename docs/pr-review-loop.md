@@ -220,7 +220,10 @@ bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 投稿が 1 件あるだけで監視を終えると、後から届く本物のレビューを取りこぼすため）。
 
 スレッドへの返信は本文が空の review として記録される。返信だけが届いた状態では
-`NO PENDING REVIEW / NO NEW REVIEW（返信のみ）` を出し、レビュー本文が来るまで待つ。
+最低待機時間の内側は待ち、それを過ぎると
+`NO PENDING REVIEW / NO NEW REVIEW（返信のみ）` を出して終了コード 0 で終わる
+（最大待機時間まで待つわけではない）。レビューがまだ来ていないと判断したら、
+baseline はそのままで監視を張り直す。
 
 `REVIEW NOT RUN` と出た場合は、Copilot がレビュー自体を実行できていない。
 GitHub Actions の支払いが失敗しているか、使用量の上限に達している可能性がある。
