@@ -11,10 +11,17 @@
 # 出力の意味:
 #   REVIEW ARRIVED   新着レビューを解釈できた（NO FINDINGS が続けば指摘 0 件）
 #   NO FINDINGS      未解決スレッドも suppressed comments も 0 件。収束の判断はこれで行う
-#   REVIEW NOT RUN   レビュージョブが実行されていない（課金・上限を確認する。終了コード 2）
-#   NO REVIEW BODY   新着はあるがレビュー本文として解釈できない（返信だけの可能性）
+#   REVIEW NOT RUN   レビュージョブが実行されていない（課金・上限を確認する）
+#   NO REVIEW BODY   新着はあるがレビュー本文として解釈できない（形式が変わった可能性）
 #   NO PENDING REVIEW / NO NEW REVIEW  依頼も保留も新着も無い
 #   WATCH TIMEOUT    最大待機時間まで何も起きなかった
+#
+# 終了コード（呼び出し元が分岐できるよう、原因ごとに分ける）:
+#   0   レビューが届いた / 新着なしで終了した
+#   1   API 呼び出しが連続で失敗した
+#   2   レビュージョブが実行されていない（REVIEW NOT RUN）
+#   3   最大待機時間に達した（WATCH TIMEOUT）
+#   64  引数の指定が誤っている（usage）
 #
 # usage:
 #   bash scripts/watch-pr-review.sh <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec] [max-wait-sec]
@@ -46,7 +53,9 @@ set -u
 
 usage() {
   echo "usage: bash $0 <owner> <repo> <pr-number> <baseline-iso8601> [min-wait-sec] [interval-sec] [max-wait-sec]" >&2
-  exit 2
+  # 引数の誤りを REVIEW NOT RUN（2）や WATCH TIMEOUT（3）と同じコードで返すと、
+  # 呼び出し元が「課金が壊れている」と誤って判断する
+  exit 64
 }
 
 if [ "$#" -lt 4 ]; then
@@ -279,18 +288,16 @@ def first_line(review):
 # 解釈できるものだけを残し、その中で最新のものを採用する（reviews は昇順）
 # reviews の並びは作成順で、投稿順とは限らない。実行中の依頼にもう一度依頼すると、
 # 先に作られたレビューが後から投稿され、直後の未実行通知が後ろに来る
-interpretable = [r for r in new if is_job_not_run(r) or is_review_body(r)]
+review_bodies = [r for r in new if is_review_body(r)]
+not_runs = [r for r in new if is_job_not_run(r)]
 
-if interpretable:
-    r = max(interpretable, key=submitted_at)
+# レビュー本文と未実行通知を同じ集合で扱い、最新 1 件だけを採るのは危険。
+# 課金が止まっている間は未実行通知が連続で投稿されるため、その直前に届いた
+# 本物のレビューが丸ごと捨てられ、指摘を見落とす
+if review_bodies:
+    r = max(review_bodies, key=submitted_at)
     body = r["body"] or ""
-    if is_job_not_run(r):
-        print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], submitted_at(r)))
-        print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
-        print("  %s" % first_line(r))
-        print("__NOT_RUN__")
-        print("__EXIT__")
-        sys.exit(0)
+    later_not_runs = [n for n in not_runs if submitted_at(n) > submitted_at(r)]
     m = re.search(r"Suppressed comments \((\d+)\)", body)
     if m:
         suppressed = int(m.group(1))
@@ -300,6 +307,10 @@ if interpretable:
     else:
         suppressed = 0
     print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], submitted_at(r)))
+    if later_not_runs:
+        # レビューは届いている。指摘への対応が先で、課金の確認はその後でよい
+        print("注意: このレビューより後に、ジョブ未実行の通知が %d 件届いている（最新 %s）"
+              % (len(later_not_runs), submitted_at(max(later_not_runs, key=submitted_at))))
     print("unresolved threads: %d / suppressed: %s"
           % (len(unresolved), "不明（件数を読めない）" if suppressed is None else suppressed))
     for t in unresolved:
@@ -309,15 +320,29 @@ if interpretable:
     if len(unresolved) == 0 and suppressed == 0:
         print("NO FINDINGS")
     print("__EXIT__")
+elif not_runs:
+    r = max(not_runs, key=submitted_at)
+    print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], submitted_at(r)))
+    print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
+    print("  %s" % first_line(r))
+    print("__NOT_RUN__")
+    print("__EXIT__")
 elif pending:
     pass  # レビュー中。静かに待つ
 elif new:
-    # 返信だけの可能性が高いが、レビュー本文の形式が変わった可能性もある。
-    # 「新着なし」と混ぜず、何が届いたのかを出して人が判断できるようにする
-    print("NO REVIEW BODY: 解釈できない新着のみ（返信、または本文の形式が変わった可能性）")
-    for r in sorted(new, key=submitted_at)[-3:]:
-        print("  - %s %s" % (submitted_at(r), first_line(r)))
-    print("__EXIT__")
+    # スレッドへの返信は本文が空の review として記録される。本文があるのに解釈
+    # できない場合はレビューの形式が変わった可能性があるため、待たずに知らせる
+    uninterpreted = [r for r in new if (r["body"] or "").strip()]
+    if uninterpreted:
+        print("NO REVIEW BODY: 本文を解釈できない新着がある（レビューの形式が変わった可能性）")
+        for r in sorted(uninterpreted, key=submitted_at)[-3:]:
+            print("  - %s %s" % (submitted_at(r), first_line(r)))
+        print("__EXIT__")
+    else:
+        # 返信だけが届いた状態。レビュー本文が来るまで待つが、最低待機時間を
+        # 過ぎても来ないなら「新着なし」と同じ扱いで終了する（無限に待たない）
+        print("NO PENDING REVIEW / NO NEW REVIEW（返信のみ）")
+        print("__EXIT__")
 else:
     print("NO PENDING REVIEW / NO NEW REVIEW")
     print("__EXIT__")
@@ -331,7 +356,7 @@ else:
 
   # 依頼が pending に載る前の静かな状態で終了しないよう、最低待機時間の
   # 内側では「新着なし」の判定だけ無効化する（新着そのものは即座に扱う）
-  if printf '%s' "$verdict" | grep -qE 'NO PENDING REVIEW|NO REVIEW BODY' &&
+  if printf '%s' "$verdict" | grep -q 'NO PENDING REVIEW' &&
     [ $(($(date +%s) - STARTED)) -lt "$MIN_WAIT" ]; then
     verdict=""
   fi
@@ -349,7 +374,7 @@ else:
   if [ $(($(date +%s) - STARTED)) -ge "$MAX_WAIT" ]; then
     echo "WATCH TIMEOUT: ${MAX_WAIT} 秒待ってもレビューが届かなかった"
     echo "依頼が登録されているか、ジョブが実行できる状態かを確認すること"
-    exit 1
+    exit 3
   fi
 
   sleep "$INTERVAL"
