@@ -117,6 +117,10 @@ fi
 # gh の -f が渡す単一文字列と型が食い違う
 # 応答を一度受けてから解釈する。パイプで直接つなぐと、依頼そのものが失敗しても
 # 解釈側の「JSON として読めない」に化けて、原因が API 側だと分からなくなる
+# baseline は依頼の直前に取る。依頼と確認の往復が終わってから取ると、その間に
+# 投稿されたレビューが baseline より古くなり、監視側から見えなくなる
+baseline=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
 if ! result=$(gh api graphql -f query='mutation($p:ID!,$b:ID!){
   requestReviews(input:{pullRequestId:$p, botIds:[$b], union:true}){
     pullRequest{reviewRequests(last:100){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
@@ -166,4 +170,4 @@ if [ "$verify_status" -ne 0 ]; then
   echo "注意: 依頼結果を確認できなかった（依頼そのものは送信済み）。監視側で新着を待つこと" >&2
 fi
 
-date -u +'baseline: %Y-%m-%dT%H:%M:%SZ'
+printf 'baseline: %s\n' "$baseline"

@@ -97,23 +97,28 @@ lint はリポジトリ全体では既存の警告が多いため、変更した
 ```bash
 # 1. 対象を確認する（このリポジトリ配下の Electron と dev サーバーだけのはず）
 pgrep -fl "prompt-ide/node_modules/electron/dist"
-pgrep -fl "electron-vite dev"
+pgrep -fl "prompt-ide.*electron-vite dev"
 
-# 2. 確認できたら停止する
+# 2. 確認できたら停止する（手順 1 と同じパターンを使う）
 pkill -f "prompt-ide/node_modules/electron/dist"   # Electron 本体
-pkill -f "electron-vite dev"                        # dev サーバー
+pkill -f "prompt-ide.*electron-vite dev"           # dev サーバー
 
-# 3. 残っていないことを確認する
-pgrep -fl "prompt-ide/node_modules/electron"
-pgrep -fl "electron-vite"
+# 3. 残っていないことを確認する（手順 2 と同じパターンで見る）
+pgrep -fl "prompt-ide/node_modules/electron/dist"
+pgrep -fl "prompt-ide.*electron-vite dev"
 lsof -nP -iTCP:9222 -iTCP:9229 -iTCP:5173 -sTCP:LISTEN
 ```
 
 `electron-vite dev` だけを落としても Electron 本体は生き残る（親が init に付け替わる）。
 手順 3 の 3 つがすべて空になって初めて停止できたと判断する。
 
-パターンにはリポジトリ名を含んだパスを使う。`pkill -f electron` のような広いパターンは
-無関係な Electron アプリまで巻き込むため使わない。
+確認と停止には同じパターンを使う。確認の方だけ広いパターンにすると、停止できない
+プロセスが確認に引っかかり続け、いつまでも「停止できた」と判断できなくなる。
+
+パターンにはリポジトリ名を含んだパスを使う。`pkill -f electron` や
+`pkill -f "electron-vite dev"` のような広いパターンは、別のプロジェクトの Electron や
+dev サーバーまで巻き込むため使わない（`electron-vite` の実際のコマンドラインは
+`node /path/to/prompt-ide/node_modules/.bin/electron-vite dev` なので、リポジトリ名で絞れる）。
 
 ### 6〜7. コミットとプッシュ
 

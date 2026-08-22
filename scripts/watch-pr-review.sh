@@ -11,7 +11,7 @@
 # 出力の意味:
 #   REVIEW ARRIVED   新着レビューを解釈できた（NO FINDINGS が続けば指摘 0 件）
 #   NO FINDINGS      未解決スレッドも suppressed comments も 0 件。収束の判断はこれで行う
-#   REVIEW NOT RUN   レビュージョブが実行されていない（課金・上限を確認する）
+#   REVIEW NOT RUN   レビュージョブが実行されていない（課金・上限を確認する。終了コード 2）
 #   NO REVIEW BODY   新着はあるがレビュー本文として解釈できない（返信だけの可能性）
 #   NO PENDING REVIEW / NO NEW REVIEW  依頼も保留も新着も無い
 #   WATCH TIMEOUT    最大待機時間まで何も起きなかった
@@ -277,15 +277,18 @@ def first_line(review):
 # スレッドへの返信も review として記録されるため、新着すべてがレビュー本文とは限らない。
 # 末尾だけを見ると取りこぼし、逆に古い通知を優先すると新しいレビューを捨てる。
 # 解釈できるものだけを残し、その中で最新のものを採用する（reviews は昇順）
+# reviews の並びは作成順で、投稿順とは限らない。実行中の依頼にもう一度依頼すると、
+# 先に作られたレビューが後から投稿され、直後の未実行通知が後ろに来る
 interpretable = [r for r in new if is_job_not_run(r) or is_review_body(r)]
 
 if interpretable:
-    r = interpretable[-1]
+    r = max(interpretable, key=submitted_at)
     body = r["body"] or ""
     if is_job_not_run(r):
         print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], submitted_at(r)))
         print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
         print("  %s" % first_line(r))
+        print("__NOT_RUN__")
         print("__EXIT__")
         sys.exit(0)
     m = re.search(r"Suppressed comments \((\d+)\)", body)
@@ -312,7 +315,7 @@ elif new:
     # 返信だけの可能性が高いが、レビュー本文の形式が変わった可能性もある。
     # 「新着なし」と混ぜず、何が届いたのかを出して人が判断できるようにする
     print("NO REVIEW BODY: 解釈できない新着のみ（返信、または本文の形式が変わった可能性）")
-    for r in new[-3:]:
+    for r in sorted(new, key=submitted_at)[-3:]:
         print("  - %s %s" % (submitted_at(r), first_line(r)))
     print("__EXIT__")
 else:
@@ -333,7 +336,12 @@ else:
     verdict=""
   fi
   if [ -n "$verdict" ]; then
-    printf '%s\n' "$verdict" | grep -v '^__EXIT__'
+    printf '%s\n' "$verdict" | grep -vE '^__EXIT__|^__NOT_RUN__'
+    # ジョブ未実行は「レビューが届いた」とは別物。同じ 0 で終わると、
+    # 呼び出し元が成功と見なして課金が直るまで再依頼を繰り返す
+    if printf '%s' "$verdict" | grep -q '^__NOT_RUN__'; then
+      exit 2
+    fi
     printf '%s' "$verdict" | grep -q '^__EXIT__' && exit 0
   fi
 

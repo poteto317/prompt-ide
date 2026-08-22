@@ -27,7 +27,8 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
 1. **指摘の取得**
    - `gh api graphql` で `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
    - **レビュー本文も必ず読む。** suppressed comments はスレッドにならず、本文の `<details>` 内にしか現れない
-   - `reviews` / `reviewThreads` は `first` ではなく **`last`** を使う。件数が増えると `first` は古い方から埋まり、最新の到着を取りこぼす
+   - `reviews` は `first` ではなく **`last`** を使う。件数が増えると `first` は古い方から埋まり、最新の到着を取りこぼす
+   - `reviewThreads` は逆に **`first` + `pageInfo` でページングして全件取る**。`last` と `after` は噛み合わず、途中で打ち切ると古い未解決スレッドを見落とす
 
 2. **妥当性の検証**
    - 指摘の前提を自分で確かめる。「テストが落ちる」と書かれていたら実際に走らせ、数値が書かれていたら自分で計算する
