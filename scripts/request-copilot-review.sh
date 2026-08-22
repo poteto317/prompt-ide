@@ -34,10 +34,11 @@ case "$PR" in
 esac
 
 # copilot-pull-request-reviewer[bot] の node id（アカウント固有ではなくアプリ固有）
+DEFAULT_BOT_LOGIN="copilot-pull-request-reviewer"
 DEFAULT_BOT_ID="BOT_kgDOCnlnWA"
 # login の末尾で見ると dependency-reviewer のような別の reviewer 系 Bot まで
 # 拾ってしまうため、厳密一致で判定する
-COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-copilot-pull-request-reviewer}"
+COPILOT_LOGIN="${COPILOT_REVIEWER_LOGIN:-$DEFAULT_BOT_LOGIN}"
 
 if ! info=$(gh api graphql -f query="
 {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
@@ -93,7 +94,15 @@ fi
 pr_id=$(printf '%s' "$ids" | sed -n '1p')
 bot_id=$(printf '%s' "$ids" | sed -n '2p')
 
+# 既定値は DEFAULT_BOT_LOGIN の id なので、login を差し替えているときに使うと
+# login と id が食い違ったまま別の Bot へ依頼してしまう。その場合は中止する
 if [ -z "$bot_id" ]; then
+  if [ "$COPILOT_LOGIN" != "$DEFAULT_BOT_LOGIN" ]; then
+    echo "PR の履歴から $COPILOT_LOGIN の bot id を特定できなかった。" >&2
+    echo "既定値 $DEFAULT_BOT_ID は $DEFAULT_BOT_LOGIN のものなので流用できない。" >&2
+    echo "対象の Bot が一度でもレビュー依頼されている PR で実行するか、login を見直すこと。" >&2
+    exit 1
+  fi
   bot_id="$DEFAULT_BOT_ID"
   echo "PR の履歴から bot id を特定できなかったため既定値を使う: $bot_id"
 fi
