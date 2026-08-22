@@ -217,7 +217,12 @@ export function useFileEditing(
   // 古いエラーがエディタ上に表示され続けてしまう。
   const resetForFileChange = (): void => {
     generationRef.current += 1
-    setSaveError(null)
+    // 書き込みの失敗は、別のファイルに移った時点で無関係になるので消す。
+    // ファイル操作と重なって中止した通知は残す。中止させた当のリネームが完了すると
+    // ここが呼ばれるため、一緒に消すと「保存されなかった」ことが伝わらない
+    setSaveError((prev) =>
+      prev !== null && prev.message === SAVE_ABORTED_BY_FILE_OPERATION ? prev : null
+    )
   }
 
   const saveFile = async (): Promise<void> => {

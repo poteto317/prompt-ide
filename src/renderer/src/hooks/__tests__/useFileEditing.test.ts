@@ -470,6 +470,43 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveError).toBeInstanceOf(Error)
   })
 
+  it('中止の通知は、原因になった操作の完了では消さない', async () => {
+    // リネーム対象自身の保存を中止した場合、リネーム完了で resetForFileChange が
+    // 走る。ここで消すと、保存されなかったことがユーザーに伝わらない
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await act(async () => {
+      await result.current.lockPathForFileOperation('/project/', {
+        invalidatesPaths: [dirtyFile.path]
+      })
+    })
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(result.current.saveError).toBeInstanceOf(Error)
+
+    act(() => result.current.resetForFileChange())
+
+    expect(result.current.saveError).toBeInstanceOf(Error)
+  })
+
+  it('書き込みの失敗は、ファイルが変わったら消す', async () => {
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockRejectedValueOnce(new Error('EACCES'))
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(result.current.saveError?.message).toBe('EACCES')
+
+    act(() => result.current.resetForFileChange())
+
+    expect(result.current.saveError).toBeNull()
+  })
+
   it('リネーム・削除のロック中は待たずに書き込まない', async () => {
     // 待って書き込むと、消えた/付け替わった旧パスを再作成してしまう
     const setOpenFile = vi.fn()
