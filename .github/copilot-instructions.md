@@ -38,7 +38,7 @@ PR へのコミットをプッシュした後は、以下の手順を必ず実�
    # 未解決スレッドの一覧
    gh api graphql -f query='
    {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){
-     reviewThreads(last:60){nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
+     reviewThreads(last:100){totalCount nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
    }}}'
 
    # 対応済みスレッドの Resolve

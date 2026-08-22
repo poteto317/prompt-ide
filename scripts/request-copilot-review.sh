@@ -111,11 +111,18 @@ fi
 
 # 変数は単一 ID で受け、クエリ側で配列に包む。[ID!]! として宣言すると
 # gh の -f が渡す単一文字列と型が食い違う
-gh api graphql -f query='mutation($p:ID!,$b:ID!){
+# 応答を一度受けてから解釈する。パイプで直接つなぐと、依頼そのものが失敗しても
+# 解釈側の「JSON として読めない」に化けて、原因が API 側だと分からなくなる
+if ! result=$(gh api graphql -f query='mutation($p:ID!,$b:ID!){
   requestReviews(input:{pullRequestId:$p, botIds:[$b], union:true}){
     pullRequest{reviewRequests(first:10){nodes{requestedReviewer{__typename ... on Bot{login}}}}}
   }
-}' -f p="$pr_id" -f b="$bot_id" |
+}' -f p="$pr_id" -f b="$bot_id"); then
+  echo "レビュー依頼の API 呼び出しに失敗した（bot id / 権限 / ネットワークを確認）" >&2
+  exit 1
+fi
+
+printf '%s' "$result" |
   COPILOT_LOGIN="$COPILOT_LOGIN" python3 -c '
 import sys, json, os
 copilot_login = os.environ["COPILOT_LOGIN"]

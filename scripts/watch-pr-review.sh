@@ -113,7 +113,7 @@ while true; do
   {repository(owner:\"$OWNER\",name:\"$REPO\"){pullRequest(number:$PR){
     reviews(last:100){nodes{author{__typename login} submittedAt body}}
     reviewRequests(first:100){nodes{requestedReviewer{__typename ... on Bot {login} ... on User {login}}}}
-    reviewThreads(last:100){nodes{isResolved path line}}
+    reviewThreads(last:100){totalCount nodes{isResolved path line}}
   }}}" 2>"$err_file"); then
     record_failure "gh api graphql に失敗" "$(head -3 "$err_file")"
     sleep "$INTERVAL"
@@ -151,10 +151,21 @@ def is_review_bot(actor):
     actor = actor or {}
     return actor.get("__typename") == "Bot" and actor.get("login") == copilot_login
 
+# submittedAt は PENDING のレビューで null になる。そのまま比較すると TypeError で
+# 落ち、シェル側は「解釈に失敗」として数え、5 回で監視自体が終わってしまう
+def submitted_at(review):
+    return review.get("submittedAt") or ""
+
+
 reviews = [r for r in pr["reviews"]["nodes"] if is_review_bot(r.get("author"))]
-new = [r for r in reviews if r["submittedAt"] > baseline]
+new = [r for r in reviews if submitted_at(r) > baseline]
 pending = [n for n in pr["reviewRequests"]["nodes"] if is_review_bot(n.get("requestedReviewer"))]
-threads = pr["reviewThreads"]["nodes"]
+thread_data = pr["reviewThreads"]
+threads = thread_data["nodes"]
+thread_total = thread_data.get("totalCount")
+# last:100 は「新しい方から 100 件」。総数がそれを超えるなら、古い未解決スレッドが
+# 窓の外にある可能性があり、0 件でも「指摘なし」と言い切れない
+threads_truncated = thread_total is not None and thread_total > len(threads)
 unresolved = [t for t in threads if not t["isResolved"]]
 
 # 本文が Copilot のレビューとして解釈できる形か。解釈できない形なら
@@ -176,49 +187,60 @@ JOB_NOT_RUN_MARKERS = (
     "spending limit",
 )
 
-def has_marker(review, markers):
+
+def is_job_not_run(review):
+    # 本文全体を部分一致で見ると、"spending limit" のような普通の語を含むレビューまで
+    # 未実行と誤判定する。この通知は 1 文だけなので先頭行に限って判定する
+    body = (review["body"] or "").strip()
+    if not body:
+        return False
+    first_line = body.splitlines()[0]
+    return any(marker in first_line for marker in JOB_NOT_RUN_MARKERS)
+
+
+def is_review_body(review):
     body = review["body"] or ""
-    return any(marker in body for marker in markers)
+    return any(marker in body for marker in KNOWN_BODY_MARKERS)
 
 
-def newest(reviews):
-    # reviews は submittedAt の昇順で並ぶため、末尾が最新
-    return reviews[-1] if reviews else None
+# スレッドへの返信も review として記録されるため、新着すべてがレビュー本文とは限らない。
+# 末尾だけを見ると取りこぼし、逆に古い通知を優先すると新しいレビューを捨てる。
+# 解釈できるものだけを残し、その中で最新のものを採用する（reviews は昇順）
+interpretable = [r for r in new if is_job_not_run(r) or is_review_body(r)]
 
-
-if new:
-    # スレッドへの返信も review として記録されるため、新着の末尾がレビュー本文とは
-    # 限らない。末尾だけを見ると、同じ周に届いたジョブ未実行の通知やレビュー本文を
-    # 取りこぼして「本文の形式を判定できない」に倒れる
-    not_run = newest([r for r in new if has_marker(r, JOB_NOT_RUN_MARKERS)])
-    if not_run is not None:
-        body = not_run["body"] or ""
-        print("REVIEW NOT RUN: %s %s" % (not_run["author"]["login"], not_run["submittedAt"]))
+if interpretable:
+    r = interpretable[-1]
+    body = r["body"] or ""
+    if is_job_not_run(r):
+        print("REVIEW NOT RUN: %s %s" % (r["author"]["login"], submitted_at(r)))
         print("レビュージョブが実行されていない。GitHub Actions の支払い・上限を確認すること")
         print("  %s" % body.strip().splitlines()[0][:200])
         print("__EXIT__")
         sys.exit(0)
-    r = newest([r for r in new if has_marker(r, KNOWN_BODY_MARKERS)]) or new[-1]
-    body = r["body"] or ""
     m = re.search(r"Suppressed comments \((\d+)\)", body)
     if m:
         suppressed = int(m.group(1))
-    elif any(marker in body for marker in KNOWN_BODY_MARKERS):
+    else:
         # 見慣れた形式で節が無いなら 0 件
         suppressed = 0
-    else:
-        suppressed = None
-    print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], r["submittedAt"]))
-    print("unresolved threads: %d / suppressed: %s"
-          % (len(unresolved), "不明（本文の形式を判定できない）" if suppressed is None else suppressed))
+    print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], submitted_at(r)))
+    print("unresolved threads: %d%s / suppressed: %s"
+          % (len(unresolved),
+             "（取得上限で切れている可能性あり: 総数 %s）" % thread_total if threads_truncated else "",
+             suppressed))
     for t in unresolved:
         print("  - %s:%s" % (t["path"], t["line"]))
     # 件数を確認できたときだけ「指摘なし」と言い切る
-    if len(unresolved) == 0 and suppressed == 0:
+    if len(unresolved) == 0 and suppressed == 0 and not threads_truncated:
         print("NO FINDINGS")
     print("__EXIT__")
 elif pending:
     pass  # レビュー中。静かに待つ
+elif new:
+    # 返信だけが届いた状態。レビュー本文が来るまで待つが、最低待機時間を過ぎても
+    # 来ないなら「新着なし」と同じ扱いで終了する（無限に待たない）
+    print("NO PENDING REVIEW / NO NEW REVIEW（レビュー本文以外の新着のみ）")
+    print("__EXIT__")
 else:
     print("NO PENDING REVIEW / NO NEW REVIEW")
     print("__EXIT__")

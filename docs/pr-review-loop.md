@@ -34,7 +34,7 @@ CLAUDE.md の「PR レビューフロー」がルールの本体で、この文�
 ```bash
 gh api graphql -f query='
 {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR>){
-  reviewThreads(last:60){nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
+  reviewThreads(last:100){totalCount nodes{id isResolved path line comments(first:2){nodes{author{login} body}}}}
 }}}'
 ```
 
@@ -44,9 +44,15 @@ suppressed comments はスレッドにならず、レビュー本文の `<detail
 ```bash
 gh api graphql -f query='
 {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR>){
-  reviews(last:1){nodes{author{login} submittedAt body}}
+  reviews(last:100){nodes{author{__typename login} submittedAt body}}
 }}}'
 ```
+
+**`last:1` で済ませない。** スレッドへの返信も review として記録されるため、直近 1 件は
+たいてい返信であり、レビュー本文ではない。`<details>` が見当たらないことを「suppressed
+comments なし」と読み替えてしまう。複数件を取り、Bot（`__typename` が `Bot`）が書いた
+もののうち、本文がレビューの形をしている最新のものを読むこと（`scripts/watch-pr-review.sh`
+が行っているのと同じ選び方）。
 
 > **`first` ではなく `last` を使う。** レビューやスレッドが増えると `first` は古い方から
 > 埋まり、最新の到着がページの外に出て検知できなくなる。実際にレビュー総数が 50 件を
