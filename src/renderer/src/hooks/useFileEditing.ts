@@ -13,13 +13,7 @@ export const SAVE_ABORTED_BY_CREATE =
   '同じ名前のファイルが作成されました。このまま保存すると、作成されたファイルを上書きします。'
 export const SAVE_ABORTED_BY_RENAME_DESTINATION =
   '同じ名前へ別のファイルがリネームされました。このまま保存すると、その内容を上書きします。'
-const SAVE_ABORT_MESSAGES = new Set([
-  SAVE_ABORTED_BY_FILE_OPERATION,
-  SAVE_ABORTED_BY_CREATE,
-  SAVE_ABORTED_BY_RENAME_DESTINATION
-])
-const isSaveAbortNotice = (error: Error | null): boolean =>
-  error !== null && SAVE_ABORT_MESSAGES.has(error.message)
+
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
 export type ResetForFileChangeOptions = {
@@ -123,7 +117,9 @@ export function useFileEditing(
   const [saveError, setSaveError] = useState<Error | null>(null)
   // 中止の通知が「どのパスの保存を中止したものか」。リネームの追随でだけ残すため、
   // メッセージの文字列ではなく対象で判定する
-  const saveAbortNoticeRef = useRef<{ path: string; lock: object } | null>(null)
+  // lock は「どの FS 操作による中止か」。操作が失敗したときに取り下げる判定に使う。
+  // 取り下げ後も「保存されなかった」ことは伝え続けるため、通知自体は残す
+  const saveAbortNoticeRef = useRef<{ path: string; lock: object | null } | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
@@ -151,6 +147,12 @@ export function useFileEditing(
   // 進行中の保存の完了を待てるようにする。書き込みがリネーム・削除より後に
   // 解決すると、旧パスを再作成してファイルが復活してしまうため
   const savingPromisesRef = useRef<Map<string, Promise<void>>>(new Map())
+  // ロックの解放を待っている保存。savingPromisesRef とは分けて持つ。
+  // ロック取得側（lockPathForFileOperation）が待つのは savingPromisesRef だけで、
+  // ここを見せると「保存がロックを待ち、ロックが保存を待つ」で止まってしまう。
+  // 一方、読み込み側（pendingSaveFor）からは見えないと、待っている保存を
+  // 無視して保存前の内容を読み直し、その編集が失われる
+  const parkedSavesRef = useRef<Map<string, Promise<void>>>(new Map())
   // path ごとの保存の完了回数。読み込みの前後で比べると、読み込み中に
   // 始まって完了した保存(完了時点で savingPromisesRef からは消えている)を
   // 検出できる
@@ -208,7 +210,7 @@ export function useFileEditing(
    * 順序前提が変わる)。
    */
   const pendingSaveFor = (targetPath: string): Promise<void> | null => {
-    const pending = [...savingPromisesRef.current.entries()]
+    const pending = [...savingPromisesRef.current.entries(), ...parkedSavesRef.current.entries()]
       .filter(([path]) => isPathAtOrInside(path, targetPath))
       .map(([, promise]) => promise)
     if (pending.length === 0) return null
@@ -262,10 +264,13 @@ export function useFileEditing(
     }
     return ({ succeeded = true }: FileOperationResult = {}) => {
       locksRef.current = locksRef.current.filter((lock) => lock !== entry)
-      // 失敗したなら何も起きていない。この操作を理由に中止した保存の通知は取り下げる
-      if (!succeeded && saveAbortNoticeRef.current?.lock === entry) {
-        saveAbortNoticeRef.current = null
-        setSaveError((prev) => (isSaveAbortNotice(prev) ? null : prev))
+      // 失敗したなら何も起きていない。この操作を理由にした文言は取り下げるが、
+      // 「保存されなかった」こと自体は伝え続ける。消してしまうと、書き込みが
+      // 落ちたことを示すものが dirty マークだけになる
+      const notice = saveAbortNoticeRef.current
+      if (!succeeded && notice !== null && notice.lock === entry) {
+        saveAbortNoticeRef.current = { path: notice.path, lock: null }
+        setSaveError(new Error(SAVE_ABORTED_BY_FILE_OPERATION))
       }
       releaseLock()
     }
@@ -296,18 +301,22 @@ export function useFileEditing(
     } else {
       saveAbortNoticeRef.current = null
     }
-    setSaveError((prev) => (follows && isSaveAbortNotice(prev) ? prev : null))
+    setSaveError((prev) => (follows ? prev : null))
   }
 
   const saveFile = async (): Promise<void> => {
-    if (openFile === null) return
+    // 入口の判定も同期ミラーから読む。render 時の openFile を見ると、
+    // updateFileContent の直後に saveFile を呼んだ場合（同じ tick の編集）に
+    // 「未変更」と誤判定して、その編集を黙って捨てる
+    const target = readOpenFile()
+    if (target === null) return
     // 保存ボタンは isDirty=false のとき disabled になるが、Cmd/Ctrl+S の
     // キーボードショートカットはボタンの disabled 状態を経由せず直接 saveFile
     // を呼ぶため、未変更のファイルに対しても不要な writeFileContent(同一内容の
     // 書き込みによる mtime 更新・無駄なディスクI/O)が発生し得る。ここでも
     // ガードしておく。
-    if (openFile.content === openFile.savedContent) return
-    const { path, content } = openFile
+    if (target.content === target.savedContent) return
+    const { path, content } = target
     if (savingPathsRef.current.has(path)) return
     // リネーム・削除の実行中は書き込まない。旧パスを再作成してしまうため。
     // 保存を始める前に判定する。始めてから抜けると、書き込んでいないのに
@@ -323,6 +332,12 @@ export function useFileEditing(
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
     let settleSave: () => void = () => {}
+    // 保存全体の完了を表す promise。待っている間は parkedSavesRef に置き、
+    // 書き込みに進む時点で savingPromisesRef へ移す
+    const savePromise = new Promise<void>((resolve) => {
+      settleSave = resolve
+    })
+    parkedSavesRef.current.set(path, savePromise)
     let attemptedWrite = false
     try {
       // 無効化を伴わないロック（同じフォルダでの作成、兄弟のリネームなど）は
@@ -352,12 +367,8 @@ export function useFileEditing(
       // 進行中の保存として登録するのはロックが無くなってから。待っている間に
       // 登録すると、ロック取得側（進行中の保存の完了を待つ）と待ち合って
       // デッドロックする
-      savingPromisesRef.current.set(
-        path,
-        new Promise<void>((resolve) => {
-          settleSave = resolve
-        })
-      )
+      parkedSavesRef.current.delete(path)
+      savingPromisesRef.current.set(path, savePromise)
       // 待っている間に編集されていれば、その内容を書く。待たずに書けた場合は
       // openFile は同じなので、通常経路の挙動は変わらない
       const latest = readOpenFile()
@@ -384,6 +395,7 @@ export function useFileEditing(
     } finally {
       savingPathsRef.current.delete(path)
       setSavingPaths(new Set(savingPathsRef.current))
+      parkedSavesRef.current.delete(path)
       savingPromisesRef.current.delete(path)
       if (attemptedWrite) {
         const key = toComparablePath(path)

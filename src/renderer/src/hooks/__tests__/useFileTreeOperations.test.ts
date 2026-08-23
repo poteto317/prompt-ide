@@ -525,6 +525,23 @@ describe('保存ロックの張り方', () => {
     )
   })
 
+  it('リネーム先の名前が不正なら、移行先を無効化しない', async () => {
+    // '' や 'sub/x.ts' だと、親ディレクトリ自身や別の階層を指してしまう
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' }, '')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({ invalidatesPaths: [{ path: '/project/a.ts' }] })
+    )
+  })
+
   it('作成の名前が空なら、親ディレクトリ配下を巻き込まない', async () => {
     // joinPath('/project', '') は '/project/' になり、その配下すべてが対象になる
     const lockPathForFileOperation = vi

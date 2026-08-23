@@ -222,8 +222,12 @@ export function useFileTreeOperations({
           // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう
           { path: node.path },
           // 先: 待って書くと、リネームしてきた内容を古いバッファで上書きする。
-          // ロックは完了で解放されるため、そのまま保存し直しても同じことが起きる
-          { path: newPath, abortMessage: SAVE_ABORTED_BY_RENAME_DESTINATION }
+          // ロックは完了で解放されるため、そのまま保存し直しても同じことが起きる。
+          // 区切りを含む名前や空の名前だと、親ディレクトリ自身や別の階層を指して
+          // 無関係な保存まで巻き込むため、その場合は元だけを無効にする
+          ...(isSafeEntryName(newName)
+            ? [{ path: newPath, abortMessage: SAVE_ABORTED_BY_RENAME_DESTINATION }]
+            : [])
         ]
       })
       let renamed = false
