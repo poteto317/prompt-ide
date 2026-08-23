@@ -86,3 +86,20 @@ export const joinPath = (parentPath: string, name: string): string => {
   const separator = parentPath.includes('\\') ? '\\' : '/'
   return `${base}${separator}${name}`
 }
+
+/**
+ * 新規作成・リネームの名前として安全か。
+ * 検証そのものは main 側（handlers/entryNameValidator）が行うが、renderer 側でも
+ * 同じ条件を持つ。区切りを含む名前を joinPath でつなぐと親ディレクトリ自身や
+ * 別の階層を指してしまい、保存の無効化範囲を誤るため。
+ */
+export const isSafeEntryName = (name: string): boolean => {
+  const trimmed = name.trim()
+  return (
+    trimmed.length > 0 &&
+    trimmed !== '.' &&
+    trimmed !== '..' &&
+    !/[/\\]/.test(trimmed) &&
+    trimmed === name
+  )
+}

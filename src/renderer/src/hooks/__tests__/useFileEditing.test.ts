@@ -521,6 +521,49 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveError?.message).toBe('専用の文言')
   })
 
+  it('操作が失敗したら、その中止の通知は取り下げる', async () => {
+    // 作成が EEXIST で失敗した場合、何も作られていないのに
+    // 「作成されたファイルを上書きします」と案内すると誘導が逆になる
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: (result?: { succeeded?: boolean }) => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: [dirtyFile.path]
+      })
+    })
+    await act(async () => {
+      await result.current.saveFile()
+    })
+    expect(result.current.saveError).toBeInstanceOf(Error)
+
+    act(() => release({ succeeded: false }))
+
+    expect(result.current.saveError).toBeNull()
+  })
+
+  it('操作が成功したなら、中止の通知は残す', async () => {
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    let release: (result?: { succeeded?: boolean }) => void = () => {}
+    await act(async () => {
+      release = await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: [dirtyFile.path]
+      })
+    })
+    await act(async () => {
+      await result.current.saveFile()
+    })
+
+    act(() => release())
+
+    expect(result.current.saveError).toBeInstanceOf(Error)
+  })
+
   it('中止の通知は、無関係なリネームの追随では残さない', async () => {
     // 別の操作で立った通知が、後から起きたリネームに便乗して残ると、
     // そのバッファでは起きていないことを説明する文言が出続ける

@@ -60,7 +60,7 @@ interface FileEditingState {
   lockPathForFileOperation: (
     targetPath: string,
     options?: FileOperationLockOptions
-  ) => Promise<() => void>
+  ) => Promise<(result?: FileOperationResult) => void>
   pendingSaveFor: (targetPath: string) => Promise<void> | null
   saveCompletionsFor: (targetPath: string) => number
 }
@@ -78,6 +78,13 @@ interface FileEditingState {
  * 必要だが、無効になるのはリネーム対象自身だけで、同じフォルダの別ファイルの保存
  * まで捨ててはいけない。
  */
+/**
+ * ロックを解放するときに、その FS 操作が成功したかを伝える。
+ * 失敗した場合、その操作を理由に中止した保存の通知は取り下げる。
+ * 何も起きていないのに「上書きします」と案内すると、誘導が逆になるため
+ */
+export type FileOperationResult = { succeeded?: boolean }
+
 /** 無効化するパスと、その保存を中止したときに伝える文言 */
 export type InvalidatedPath = { path: string; abortMessage?: string }
 
@@ -116,7 +123,7 @@ export function useFileEditing(
   const [saveError, setSaveError] = useState<Error | null>(null)
   // 中止の通知が「どのパスの保存を中止したものか」。リネームの追随でだけ残すため、
   // メッセージの文字列ではなく対象で判定する
-  const saveAbortNoticeRef = useRef<{ path: string } | null>(null)
+  const saveAbortNoticeRef = useRef<{ path: string; lock: object } | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
@@ -157,6 +164,7 @@ export function useFileEditing(
     invalidatesPaths: readonly Required<InvalidatedPath>[] | null
     done: Promise<void>
   }
+  // 中止の通知が「どのロックによるものか」。操作が失敗したら取り下げるために持つ
   const locksRef = useRef<FileOperationLock[]>([])
 
   // ルートを親に持つ予約も検出できるよう isPathAtOrInside を使う。
@@ -165,14 +173,16 @@ export function useFileEditing(
     isPathAtOrInside(a, b) || isPathAtOrInside(b, a)
 
   // その保存を無効にするロック（リネーム・削除など、対象が消える操作）
-  /** その保存を無効にしている指定（最初に見つかったもの）。無ければ null */
-  const invalidationFor = (path: string): Required<InvalidatedPath> | null => {
+  /** その保存を無効にしている指定とロック（最初に見つかったもの）。無ければ null */
+  const invalidationFor = (
+    path: string
+  ): { invalidated: Required<InvalidatedPath>; lock: FileOperationLock } | null => {
     for (const lock of locksRef.current) {
       if (lock.invalidatesPaths === null) continue
       const hit = lock.invalidatesPaths.find((invalidated) =>
         isPathAtOrInside(path, invalidated.path)
       )
-      if (hit !== undefined) return hit
+      if (hit !== undefined) return { invalidated: hit, lock }
     }
     return null
   }
@@ -216,7 +226,7 @@ export function useFileEditing(
       invalidatesPaths = [targetPath],
       abortMessage = SAVE_ABORTED_BY_FILE_OPERATION
     }: FileOperationLockOptions = {}
-  ): Promise<() => void> => {
+  ): Promise<(result?: FileOperationResult) => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
     // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
     for (;;) {
@@ -250,8 +260,13 @@ export function useFileEditing(
       if (pending.length === 0) break
       await Promise.all(pending)
     }
-    return () => {
+    return ({ succeeded = true }: FileOperationResult = {}) => {
       locksRef.current = locksRef.current.filter((lock) => lock !== entry)
+      // 失敗したなら何も起きていない。この操作を理由に中止した保存の通知は取り下げる
+      if (!succeeded && saveAbortNoticeRef.current?.lock === entry) {
+        saveAbortNoticeRef.current = null
+        setSaveError((prev) => (isSaveAbortNotice(prev) ? null : prev))
+      }
       releaseLock()
     }
   }
@@ -300,8 +315,8 @@ export function useFileEditing(
     // 黙って捨てるとユーザーには dirty マークしか見えないため、理由を伝える
     const blockedBefore = invalidationFor(path)
     if (blockedBefore !== null) {
-      saveAbortNoticeRef.current = { path }
-      setSaveError(new Error(blockedBefore.abortMessage))
+      saveAbortNoticeRef.current = { path, lock: blockedBefore.lock }
+      setSaveError(new Error(blockedBefore.invalidated.abortMessage))
       return
     }
     const generation = generationRef.current
@@ -323,8 +338,8 @@ export function useFileEditing(
         // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
         const blockedDuringWait = invalidationFor(path)
         if (blockedDuringWait !== null) {
-          saveAbortNoticeRef.current = { path }
-          setSaveError(new Error(blockedDuringWait.abortMessage))
+          saveAbortNoticeRef.current = { path, lock: blockedDuringWait.lock }
+          setSaveError(new Error(blockedDuringWait.invalidated.abortMessage))
           return
         }
       }

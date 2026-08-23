@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside, isSamePath, joinPath } from '../pathUtils'
+import { isPathAtOrInside, isPathInside, isSamePath, joinPath, isSafeEntryName } from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -158,5 +158,30 @@ describe('joinPath', () => {
   it('Windows のパスでは区切りを引き継ぐ', () => {
     expect(joinPath('C:\\project', 'a.ts')).toBe('C:\\project\\a.ts')
     expect(joinPath('C:\\', 'a.ts')).toBe('C:\\a.ts')
+  })
+})
+
+describe('isSafeEntryName', () => {
+  it('通常の名前は受け付ける', () => {
+    expect(isSafeEntryName('index.ts')).toBe(true)
+  })
+
+  it('空・空白のみ・. や .. は拒否する', () => {
+    expect(isSafeEntryName('')).toBe(false)
+    expect(isSafeEntryName('   ')).toBe(false)
+    expect(isSafeEntryName('.')).toBe(false)
+    expect(isSafeEntryName('..')).toBe(false)
+  })
+
+  it('区切り文字を含む名前は拒否する', () => {
+    expect(isSafeEntryName('/')).toBe(false)
+    expect(isSafeEntryName('\\')).toBe(false)
+    expect(isSafeEntryName('sub/a.ts')).toBe(false)
+    expect(isSafeEntryName('sub\\a.ts')).toBe(false)
+  })
+
+  it('前後に空白がある名前は拒否する', () => {
+    expect(isSafeEntryName(' a.ts')).toBe(false)
+    expect(isSafeEntryName('a.ts ')).toBe(false)
   })
 })
