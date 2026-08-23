@@ -284,22 +284,6 @@ def is_review_body(review):
     return any(marker.lower() in body for marker in KNOWN_BODY_MARKERS)
 
 
-def leading_paragraph(body):
-    # callout（"> [!NOTE]" など）に包まれることがあるため、引用記号と注記行を
-    # 落としたうえで、最初の空行までをひとまとまりとして返す
-    lines = []
-    for raw_line in body.splitlines():
-        line = re.sub(r"^\s*>\s?", "", raw_line).strip()
-        if line.startswith("[!"):
-            continue
-        if not line:
-            if lines:
-                break
-            continue
-        lines.append(line)
-    return " ".join(lines)
-
-
 def normalize(text):
     return re.sub(r"[^a-z0-9]+", " ", text.lower())
 
@@ -307,9 +291,9 @@ def normalize(text):
 def is_job_not_run(review):
     body = review["body"] or ""
     # 数値つきの Suppressed comments 節や、詳細な見出しがあれば本物のレビュー。
-    # 先頭段落に通知の文言が混ざっていても、これらがあれば押し切らない。実際に
-    # 踏んだ問題: 「先頭のかたまりを見て通知の語を拾う」を先に行うと、この
-    # 手順書のように通知の文面を説明した本物のレビューまで未実行と誤判定する。
+    # 本文のどこに通知の文言があっても、これらがあれば押し切らない。実際に
+    # 踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
+    # 未実行と誤判定していた。
     #
     # COUNTABLE_BODY_MARKERS のうち "Copilot reviewed" は使わない。
     # "Copilot reviewed 0 files. The job was not started because ..." という、
@@ -318,15 +302,9 @@ def is_job_not_run(review):
         return False
     if any(marker.lower() in body.lower() for marker in ("Review details", "Comments generated")):
         return False
-    # 先頭のかたまりにあれば通知。見出しの語をたまたま含む通知も、ここで拾える
-    if any(marker in normalize(leading_paragraph(body)) for marker in JOB_NOT_RUN_MARKERS):
-        return True
-    # 先頭に無くても、レビュー本文として読めないなら通知とみなす。callout が
-    # 数段落に分かれる場合や、文面が変わった場合を取りこぼさないため。
-    # ここでレビュー本文を除外しないと、この文面を引用したレビュー
-    # （このリポジトリのレビュー自身がそうだった）を未実行と誤判定する
-    if is_review_body(review):
-        return False
+    # 先頭段落だけを見ると、"Copilot reviewed 0 files.\n\nThe job was not started
+    # because ..." のように段落が分かれた通知（実例）を取りこぼす。上の強い根拠が
+    # 無いことは確認済みなので、本文全体を対象に探してよい
     return any(marker in normalize(body) for marker in JOB_NOT_RUN_MARKERS)
 
 
@@ -359,7 +337,7 @@ if review_bodies:
     # 「後続の未実行通知なし」＝収束と読めてしまう
     later_not_runs = [n for n in not_runs if submitted_at(n) >= submitted_at(r)]
     # 見出しの大文字小文字は揺れるため、件数の抽出でも区別しない
-    m = re.search(r"suppressed comments \((\d+)\)", body, re.IGNORECASE)
+    m = re.search(r"suppressed comments\s*\(\s*(\d+)\s*\)", body, re.IGNORECASE)
     if m:
         suppressed = int(m.group(1))
     elif "suppressed comments" in body.lower():
