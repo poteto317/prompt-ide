@@ -4,7 +4,7 @@ import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
 import { isPathAtOrInside, isSamePath, joinPath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { SAVE_ABORTED_BY_CREATE } from './useFileEditing'
+import { SAVE_ABORTED_BY_CREATE, SAVE_ABORTED_BY_RENAME_DESTINATION } from './useFileEditing'
 import type { FileOperationLockOptions, ResetForFileChangeOptions } from './useFileEditing'
 
 interface FileTreeOperationsOptions {
@@ -165,7 +165,7 @@ export function useFileTreeOperations({
   // 古いバッファで上書きしてしまうため。
   // 名前が空だと joinPath は親ディレクトリ自身を指し、その配下すべての保存を
   // 巻き込むため、その場合は無効化しない（名前の検証は main 側で行われる）
-  const createLockOptions = (parentPath: string, name: string): FileOperationLockOptions =>
+  const createFileLockOptions = (parentPath: string, name: string): FileOperationLockOptions =>
     name === ''
       ? { invalidatesPaths: null }
       : {
@@ -178,7 +178,7 @@ export function useFileTreeOperations({
       runLocked(
         parentPath,
         () => fileSystemApi.createFile(parentPath, name),
-        createLockOptions(parentPath, name)
+        createFileLockOptions(parentPath, name)
       ).then(() => true)
     )
 
@@ -187,7 +187,9 @@ export function useFileTreeOperations({
       runLocked(
         parentPath,
         () => fileSystemApi.createDirectory(parentPath, name),
-        createLockOptions(parentPath, name)
+        // ディレクトリを作り直しても、その中のファイルの保存は作り直しになるだけで
+        // 何かを潰すわけではない。無効化せず、完了を待ってから書き込む
+        { invalidatesPaths: null }
       ).then(() => true)
     )
 
@@ -207,7 +209,13 @@ export function useFileTreeOperations({
       // 削除してバッファだけ残したファイルと同じ名前へリネームしてきた場合に、
       // 古いバッファでその内容を上書きしてしまう
       const release = await lockPathForFileOperation(parentPrefix, {
-        invalidatesPaths: [node.path, newPath]
+        invalidatesPaths: [
+          // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう
+          { path: node.path },
+          // 先: 待って書くと、リネームしてきた内容を古いバッファで上書きする。
+          // ロックは完了で解放されるため、そのまま保存し直しても同じことが起きる
+          { path: newPath, abortMessage: SAVE_ABORTED_BY_RENAME_DESTINATION }
+        ]
       })
       try {
         await fileSystemApi.renameEntry(node.path, newName)
@@ -237,7 +245,7 @@ export function useFileTreeOperations({
         )
         // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
         // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
-        resetForFileChange({ keepSaveAbortNotice: true })
+        resetForFileChange({ renamed: { from: node.path, to: newPath } })
       }
       return true
     })

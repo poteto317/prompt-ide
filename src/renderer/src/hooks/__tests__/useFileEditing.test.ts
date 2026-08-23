@@ -493,7 +493,11 @@ describe('FS 操作のロックと saveFile', () => {
     await abortSaveByFileOperation(result)
     expect(result.current.saveError).toBeInstanceOf(Error)
 
-    act(() => result.current.resetForFileChange({ keepSaveAbortNotice: true }))
+    act(() =>
+      result.current.resetForFileChange({
+        renamed: { from: dirtyFile.path, to: '/project/renamed.ts' }
+      })
+    )
 
     expect(result.current.saveError).toBeInstanceOf(Error)
   })
@@ -515,6 +519,25 @@ describe('FS 操作のロックと saveFile', () => {
     })
 
     expect(result.current.saveError?.message).toBe('専用の文言')
+  })
+
+  it('中止の通知は、無関係なリネームの追随では残さない', async () => {
+    // 別の操作で立った通知が、後から起きたリネームに便乗して残ると、
+    // そのバッファでは起きていないことを説明する文言が出続ける
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await abortSaveByFileOperation(result)
+    expect(result.current.saveError).toBeInstanceOf(Error)
+
+    act(() =>
+      result.current.resetForFileChange({
+        renamed: { from: '/project/other.ts', to: '/project/moved.ts' }
+      })
+    )
+
+    expect(result.current.saveError).toBeNull()
   })
 
   it('中止の通知は、別のファイルを開いたら消す', async () => {

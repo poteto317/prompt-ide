@@ -484,6 +484,47 @@ describe('保存ロックの張り方', () => {
     )
   })
 
+  it('ディレクトリの作成では、配下の保存を無効にしない', async () => {
+    // 作り直したフォルダの中にファイルを保存し直すだけなので、何かを潰すわけではない
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createDirectory('/project', 'sub')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ invalidatesPaths: null })
+    )
+  })
+
+  it('リネームでは、移行先だけ別の文言で中止を伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/a.ts' },
+          { path: '/project/b.ts', abortMessage: expect.stringContaining('リネーム') }
+        ]
+      })
+    )
+  })
+
   it('作成の名前が空なら、親ディレクトリ配下を巻き込まない', async () => {
     // joinPath('/project', '') は '/project/' になり、その配下すべてが対象になる
     const lockPathForFileOperation = vi
@@ -521,6 +562,8 @@ describe('保存ロックの張り方', () => {
       )
     })
 
-    expect(resetForFileChange).toHaveBeenCalledWith({ keepSaveAbortNotice: true })
+    expect(resetForFileChange).toHaveBeenCalledWith({
+      renamed: { from: '/project/a.ts', to: '/project/b.ts' }
+    })
   })
 })
