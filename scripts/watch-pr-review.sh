@@ -264,6 +264,13 @@ COUNTABLE_BODY_MARKERS = (
     "Copilot reviewed",
 )
 
+# COUNTABLE_BODY_MARKERS のうち "Copilot reviewed" を除いたもの。is_job_not_run が
+# 「本文のどこにあっても本物のレビューと言い切れる」根拠として使う。手打ちで複製すると
+# 食い違いの元になるため、ここで一度だけ定義する。
+# "Copilot reviewed" を除く理由: "Copilot reviewed 0 files. The job was not started
+# because ..." という、未実行の通知自身がこの文言を名乗る実例があるため
+STRONG_REVIEW_MARKERS = tuple(m for m in COUNTABLE_BODY_MARKERS if m != "Copilot reviewed")
+
 # Copilot がレビューを実行できなかった場合も review として記録される。
 # 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
 # 文面は callout に包まれたり大文字小文字が変わったりするため、小文字化して探す
@@ -290,17 +297,23 @@ def normalize(text):
 
 def is_job_not_run(review):
     body = review["body"] or ""
-    # 数値つきの Suppressed comments 節や、詳細な見出しがあれば本物のレビュー。
-    # 本文のどこに通知の文言があっても、これらがあれば押し切らない。実際に
-    # 踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
-    # 未実行と誤判定していた。
-    #
-    # COUNTABLE_BODY_MARKERS のうち "Copilot reviewed" は使わない。
-    # "Copilot reviewed 0 files. The job was not started because ..." という、
-    # 未実行の通知自身がこの文言を名乗る実例があるため、強い根拠にならない
+    # 数値つきの Suppressed comments 節や、STRONG_REVIEW_MARKERS の見出しがあれば
+    # 本物のレビュー。本文のどこに通知の文言があっても、これらがあれば押し切らない。
+    # 実際に踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
+    # 未実行と誤判定していた
     if re.search(r"suppressed comments\s*\(\s*\d+\s*\)", body, re.IGNORECASE):
         return False
-    if any(marker.lower() in body.lower() for marker in ("Review details", "Comments generated")):
+    if any(marker.lower() in body.lower() for marker in STRONG_REVIEW_MARKERS):
+        return False
+    # 上の見出しが無いレビュー（"generated no comments" だけの短い形式など）もある。
+    # KNOWN_BODY_MARKERS を 2 種類以上含む場合も本物のレビューとして扱う。
+    # 1 種類だけでは弱すぎる（"Reviewed changes" 単体が未実行の通知に含まれた実例が
+    # あるため）が、実データでは "Pull request overview" 等の見出しが複数そろう
+    # レビューには必ず Review details か digit 付き Suppressed comments が伴っており、
+    # 2 種類以上が単独の通知に紛れ込む実例は無い
+    lowered = body.lower()
+    matched_known_markers = sum(1 for marker in KNOWN_BODY_MARKERS if marker.lower() in lowered)
+    if matched_known_markers >= 2:
         return False
     # 先頭段落だけを見ると、"Copilot reviewed 0 files.\n\nThe job was not started
     # because ..." のように段落が分かれた通知（実例）を取りこぼす。上の強い根拠が

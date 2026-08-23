@@ -232,10 +232,13 @@ export function useFileEditing(
   // 同じフォルダにある別ファイルのリネームなど。FS 操作と書き込みが同時に走らない
   // よう、重なるロックはすべて待つ。「無効化されているか」は invalidationFor と
   // 同じ判定を使い、二重に持たない
-  const blockingLocks = (path: string): FileOperationLock[] =>
-    locksRef.current.filter(
-      (lock) => isPathAtOrInside(path, lock.path) && invalidationFor(path)?.lock !== lock
+  const blockingLocks = (path: string): FileOperationLock[] => {
+    // path には依存するが lock には依存しない。ループの外で 1 回だけ求める
+    const invalidatingLock = invalidationFor(path)?.lock
+    return locksRef.current.filter(
+      (lock) => isPathAtOrInside(path, lock.path) && invalidatingLock !== lock
     )
+  }
 
   /**
    * targetPath 配下で進行中の保存があればその完了 promise を返す。無ければ null。
