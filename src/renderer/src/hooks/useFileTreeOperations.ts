@@ -4,7 +4,8 @@ import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
 import { isPathAtOrInside, isSamePath, joinPath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import type { FileOperationLockOptions } from './useFileEditing'
+import { SAVE_ABORTED_BY_CREATE } from './useFileEditing'
+import type { FileOperationLockOptions, ResetForFileChangeOptions } from './useFileEditing'
 
 interface FileTreeOperationsOptions {
   /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
@@ -12,7 +13,7 @@ interface FileTreeOperationsOptions {
   /** 呼び出し時点の openFile を同期的に返す(操作中に確定した結果も見えるようにする) */
   getOpenFile: () => OpenFile | null
   setOpenFile: (next: OpenFile | null) => void
-  resetForFileChange: () => void
+  resetForFileChange: (options?: ResetForFileChangeOptions) => void
   onConfirm: (message: string) => boolean
   /**
    * 指定パス配下を対象とする保留中のファイル読み込みを無効化する。
@@ -159,21 +160,35 @@ export function useFileTreeOperations({
     }
   }
 
+  // 既存のファイルは壊さないので、無関係な保存は待ってから書き込む。ただし作られる
+  // パス自体は無効にする。削除してバッファだけ残したファイルと同じ名前で作り直すと、
+  // 古いバッファで上書きしてしまうため。
+  // 名前が空だと joinPath は親ディレクトリ自身を指し、その配下すべての保存を
+  // 巻き込むため、その場合は無効化しない（名前の検証は main 側で行われる）
+  const createLockOptions = (parentPath: string, name: string): FileOperationLockOptions =>
+    name === ''
+      ? { invalidatesPaths: null }
+      : {
+          invalidatesPaths: [joinPath(parentPath, name)],
+          abortMessage: SAVE_ABORTED_BY_CREATE
+        }
+
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name), {
-        // 既存のファイルは壊さないので、無関係な保存は待ってから書き込む。
-        // ただし作られるパス自体は無効にする。削除してバッファだけ残した
-        // ファイルと同じ名前で作り直すと、古いバッファで上書きしてしまうため
-        invalidatesPaths: [joinPath(parentPath, name)]
-      }).then(() => true)
+      runLocked(
+        parentPath,
+        () => fileSystemApi.createFile(parentPath, name),
+        createLockOptions(parentPath, name)
+      ).then(() => true)
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name), {
-        invalidatesPaths: [joinPath(parentPath, name)]
-      }).then(() => true)
+      runLocked(
+        parentPath,
+        () => fileSystemApi.createDirectory(parentPath, name),
+        createLockOptions(parentPath, name)
+      ).then(() => true)
     )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
@@ -220,7 +235,9 @@ export function useFileTreeOperations({
             : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
               { ...current, path: newPath + current.path.slice(node.path.length) }
         )
-        resetForFileChange()
+        // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
+        // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
+        resetForFileChange({ keepSaveAbortNotice: true })
       }
       return true
     })

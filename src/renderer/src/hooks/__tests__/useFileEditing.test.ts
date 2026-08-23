@@ -470,13 +470,9 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveError).toBeInstanceOf(Error)
   })
 
-  it('中止の通知は、原因になった操作の完了では消さない', async () => {
-    // リネーム対象自身の保存を中止した場合、リネーム完了で resetForFileChange が
-    // 走る。ここで消すと、保存されなかったことがユーザーに伝わらない
-    const setOpenFile = vi.fn()
-    mockWriteFileContent.mockResolvedValue(undefined)
-    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
-
+  const abortSaveByFileOperation = async (result: {
+    current: ReturnType<typeof useFileEditing>
+  }): Promise<void> => {
     await act(async () => {
       await result.current.lockPathForFileOperation('/project/', {
         invalidatesPaths: [dirtyFile.path]
@@ -485,11 +481,54 @@ describe('FS 操作のロックと saveFile', () => {
     await act(async () => {
       await result.current.saveFile()
     })
+  }
+
+  it('中止の通知は、リネームの追随では消さない', async () => {
+    // リネーム対象自身の保存を中止した場合、リネーム完了で resetForFileChange が
+    // 走る。ここで消すと、保存されなかったことがユーザーに伝わらない
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await abortSaveByFileOperation(result)
+    expect(result.current.saveError).toBeInstanceOf(Error)
+
+    act(() => result.current.resetForFileChange({ keepSaveAbortNotice: true }))
+
+    expect(result.current.saveError).toBeInstanceOf(Error)
+  })
+
+  it('中止の理由はロックごとに変えられる', async () => {
+    // 作成と重なった場合は、そのまま保存すると作られたファイルを潰すため文言が違う
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await act(async () => {
+      await result.current.lockPathForFileOperation('/project', {
+        invalidatesPaths: [dirtyFile.path],
+        abortMessage: '専用の文言'
+      })
+    })
+    await act(async () => {
+      await result.current.saveFile()
+    })
+
+    expect(result.current.saveError?.message).toBe('専用の文言')
+  })
+
+  it('中止の通知は、別のファイルを開いたら消す', async () => {
+    // 表示中のバッファと無関係な通知が出続けると、どのファイルの話か分からなくなる
+    const setOpenFile = vi.fn()
+    mockWriteFileContent.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useFileEditing(dirtyFile, setOpenFile))
+
+    await abortSaveByFileOperation(result)
     expect(result.current.saveError).toBeInstanceOf(Error)
 
     act(() => result.current.resetForFileChange())
 
-    expect(result.current.saveError).toBeInstanceOf(Error)
+    expect(result.current.saveError).toBeNull()
   })
 
   it('書き込みの失敗は、ファイルが変わったら消す', async () => {

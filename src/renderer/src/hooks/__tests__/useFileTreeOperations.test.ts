@@ -7,6 +7,7 @@ vi.mock('../../lib/fileSystemApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
 import { useFileTreeOperations } from '../useFileTreeOperations'
+import type { FileOperationLockOptions, ResetForFileChangeOptions } from '../useFileEditing'
 
 const mockReadDirectory = vi.mocked(fileSystemApi.readDirectory)
 const mockCreateFile = vi.mocked(fileSystemApi.createFile)
@@ -27,11 +28,16 @@ function renderOperations(config?: {
   folderPath?: string | null
   initialOpenFile?: OpenFile | null
   onConfirm?: (message: string) => boolean
-  resetForFileChange?: () => void
+  resetForFileChange?: (options?: ResetForFileChangeOptions) => void
+  lockPathForFileOperation?: (
+    targetPath: string,
+    options?: FileOperationLockOptions
+  ) => Promise<() => void>
   invalidatePendingReads?: (affectedPath: string) => void
   beginTreeWrite?: () => (() => boolean) | null
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
+  const lockPathForFileOperation = config?.lockPathForFileOperation ?? (async () => () => {})
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
   const onConfirm = config?.onConfirm ?? vi.fn<(message: string) => boolean>().mockReturnValue(true)
   // null を明示的に渡すケースを undefined(デフォルト値を使う)と区別する
@@ -47,12 +53,12 @@ function renderOperations(config?: {
       onConfirm,
       invalidatePendingReads,
       beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
-      lockPathForFileOperation: async () => () => {},
+      lockPathForFileOperation,
       reportTreeLoad: vi.fn()
     })
     return { ...ops, openFile }
   })
-  return { result, resetForFileChange, onConfirm, invalidatePendingReads }
+  return { result, resetForFileChange, onConfirm, invalidatePendingReads, lockPathForFileOperation }
 }
 
 function renderOperationsWithFolder(getFolderPath: () => string | null) {
@@ -458,5 +464,63 @@ describe('ツリー再読込のフォルダ判定', () => {
       await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
     })
     expect(result.current.fileTree).toEqual(tree)
+  })
+})
+
+describe('保存ロックの張り方', () => {
+  it('作成では、作られるパスだけを無効にする', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'a.ts')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ invalidatesPaths: ['/project/a.ts'] })
+    )
+  })
+
+  it('作成の名前が空なら、親ディレクトリ配下を巻き込まない', async () => {
+    // joinPath('/project', '') は '/project/' になり、その配下すべてが対象になる
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', '')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ invalidatesPaths: null })
+    )
+  })
+
+  it('リネームの追随では、中止の通知を残すよう伝える', async () => {
+    const resetForFileChange = vi.fn()
+    const { result } = renderOperations({
+      resetForFileChange,
+      initialOpenFile: {
+        path: '/project/a.ts',
+        name: 'a.ts',
+        content: '',
+        savedContent: '',
+        language: 'typescript'
+      }
+    })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(resetForFileChange).toHaveBeenCalledWith({ keepSaveAbortNotice: true })
   })
 })

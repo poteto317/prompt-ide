@@ -7,7 +7,23 @@ import { useLatestRef } from './useLatestRef'
 
 const SAVE_ABORTED_BY_FILE_OPERATION =
   'ファイル操作と重なったため保存を中止しました。もう一度保存してください。'
+// 作成と重なった場合は、作られたファイルを上書きし得るため文言を変える。
+// ロックは作成の完了で解放されるので、そのまま保存し直すと新しいファイルを潰す
+export const SAVE_ABORTED_BY_CREATE =
+  '同じ名前のファイルが作成されました。このまま保存すると、作成されたファイルを上書きします。'
+const SAVE_ABORT_MESSAGES = new Set([SAVE_ABORTED_BY_FILE_OPERATION, SAVE_ABORTED_BY_CREATE])
+const isSaveAbortNotice = (error: Error | null): boolean =>
+  error !== null && SAVE_ABORT_MESSAGES.has(error.message)
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
+
+export type ResetForFileChangeOptions = {
+  /**
+   * ファイル操作と重なって保存を中止した通知を残すか。リネームの追随のように、
+   * 同じバッファが別の path で続く場合だけ true にする。別のファイルを開いた
+   * ときまで残すと、無関係なバッファの上に通知が出続ける
+   */
+  keepSaveAbortNotice?: boolean
+}
 
 export interface Options {
   onConfirm?: (message: string) => boolean
@@ -25,7 +41,7 @@ interface FileEditingState {
   saveError: Error | null
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
-  resetForFileChange: () => void
+  resetForFileChange: (options?: ResetForFileChangeOptions) => void
   confirmDiscardIfDirty: () => boolean
   /**
    * 指定パス配下を「FS 操作中」として予約し、進行中の保存が無くなるまで待つ。
@@ -57,6 +73,8 @@ interface FileEditingState {
  */
 export type FileOperationLockOptions = {
   invalidatesPaths?: readonly string[] | null
+  /** 無効化した保存を中止したときに表示する文言 */
+  abortMessage?: string
 }
 
 export function useFileEditing(
@@ -120,6 +138,7 @@ export function useFileEditing(
   type FileOperationLock = {
     path: string
     invalidatesPaths: readonly string[] | null
+    abortMessage: string
     done: Promise<void>
   }
   const locksRef = useRef<FileOperationLock[]>([])
@@ -172,7 +191,10 @@ export function useFileEditing(
   const lockPathForFileOperation = async (
     targetPath: string,
     // 既定は安全側。指定が無ければ targetPath 配下の保存を無効にする
-    { invalidatesPaths = [targetPath] }: FileOperationLockOptions = {}
+    {
+      invalidatesPaths = [targetPath],
+      abortMessage = SAVE_ABORTED_BY_FILE_OPERATION
+    }: FileOperationLockOptions = {}
   ): Promise<() => void> => {
     // 重なる予約が残っているうちは待つ。解放のたびに取り直して確認する。
     // 待たないと、親ディレクトリの削除と子ファイルのリネームなどが並行して走る
@@ -185,12 +207,14 @@ export function useFileEditing(
     const entry = {
       path: targetPath,
       invalidatesPaths,
+      abortMessage,
       done: new Promise<void>((resolve) => {
         releaseLock = resolve
       })
     }
     locksRef.current = [...locksRef.current, entry]
-    // 予約してから待つ。待機中に新しい保存は始まらないので、0 件になれば以降も 0 件。
+    // 予約してから待つ。予約が載っている間は、重なる保存が savingPromisesRef に
+    // 登録されない（登録はロックが無くなってから行う）ので、0 件になれば以降も 0 件。
     // ただし待機の解決順によっては複数回の確認が要るためループする
     for (;;) {
       const pending = [...savingPromisesRef.current.entries()]
@@ -215,14 +239,13 @@ export function useFileEditing(
   // 保存エラーをクリアする。これが無いと、保存に失敗したファイルから
   // 切り替えても（あるいは同じファイルを開き直しても）、無関係になった
   // 古いエラーがエディタ上に表示され続けてしまう。
-  const resetForFileChange = (): void => {
+  const resetForFileChange = ({
+    keepSaveAbortNotice = false
+  }: ResetForFileChangeOptions = {}): void => {
     generationRef.current += 1
-    // 書き込みの失敗は、別のファイルに移った時点で無関係になるので消す。
-    // ファイル操作と重なって中止した通知は残す。中止させた当のリネームが完了すると
-    // ここが呼ばれるため、一緒に消すと「保存されなかった」ことが伝わらない
-    setSaveError((prev) =>
-      prev !== null && prev.message === SAVE_ABORTED_BY_FILE_OPERATION ? prev : null
-    )
+    // 中止させた当のリネームが完了するとここが呼ばれる。一緒に消すと
+    // 「保存されなかった」ことが伝わらないため、追随の場合だけ残す
+    setSaveError((prev) => (keepSaveAbortNotice && isSaveAbortNotice(prev) ? prev : null))
   }
 
   const saveFile = async (): Promise<void> => {
@@ -239,8 +262,9 @@ export function useFileEditing(
     // 保存を始める前に判定する。始めてから抜けると、書き込んでいないのに
     // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する。
     // 黙って捨てるとユーザーには dirty マークしか見えないため、理由を伝える
-    if (invalidatingLocks(path).length > 0) {
-      setSaveError(new Error(SAVE_ABORTED_BY_FILE_OPERATION))
+    const blockedBefore = invalidatingLocks(path)
+    if (blockedBefore.length > 0) {
+      setSaveError(new Error(blockedBefore[0].abortMessage))
       return
     }
     const generation = generationRef.current
@@ -260,8 +284,9 @@ export function useFileEditing(
         if (generation !== generationRef.current) return
         // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
         // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
-        if (invalidatingLocks(path).length > 0) {
-          setSaveError(new Error(SAVE_ABORTED_BY_FILE_OPERATION))
+        const blockedDuringWait = invalidatingLocks(path)
+        if (blockedDuringWait.length > 0) {
+          setSaveError(new Error(blockedDuringWait[0].abortMessage))
           return
         }
       }
