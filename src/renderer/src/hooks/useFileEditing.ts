@@ -119,7 +119,7 @@ export function useFileEditing(
   // メッセージの文字列ではなく対象で判定する
   // lock は「どの FS 操作による中止か」。操作が失敗したときに取り下げる判定に使う。
   // 取り下げ後も「保存されなかった」ことは伝え続けるため、通知自体は残す
-  const saveAbortNoticeRef = useRef<{ path: string; lock: object | null } | null>(null)
+  const saveAbortNoticeRef = useRef<{ path: string; lock: FileOperationLock | null } | null>(null)
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
@@ -153,6 +153,33 @@ export function useFileEditing(
   // 一方、読み込み側（pendingSaveFor）からは見えないと、待っている保存を
   // 無視して保存前の内容を読み直し、その編集が失われる
   const parkedSavesRef = useRef<Map<string, Promise<void>>>(new Map())
+
+  // 1 つの保存は「待機中（parked）」か「書き込み中（in-flight）」のどちらか
+  // 片方にだけ存在する。2 つの Map を呼び出しごとに手で同期させると、
+  // 片方だけ更新し忘れて pendingSaveFor から見えなくなる・残り続けるといった
+  // 不整合が起きるため、状態遷移をここに閉じ込める
+  const saveTracking = {
+    park: (path: string, promise: Promise<void>): void => {
+      parkedSavesRef.current.set(path, promise)
+    },
+    // 待機が終わり、書き込みへ進む。ロック取得側が待つのは in-flight のみ
+    promote: (path: string, promise: Promise<void>): void => {
+      parkedSavesRef.current.delete(path)
+      savingPromisesRef.current.set(path, promise)
+    },
+    clear: (path: string): void => {
+      parkedSavesRef.current.delete(path)
+      savingPromisesRef.current.delete(path)
+    },
+    // pendingSaveFor が見る範囲。待機中も含めないと、待っている保存を
+    // 無視して保存前の内容を読み直してしまう
+    allEntries: (): [string, Promise<void>][] => [
+      ...savingPromisesRef.current.entries(),
+      ...parkedSavesRef.current.entries()
+    ],
+    // lockPathForFileOperation が待つ範囲。待機中を含めるとデッドロックする
+    inFlightEntries: (): [string, Promise<void>][] => [...savingPromisesRef.current.entries()]
+  }
   // path ごとの保存の完了回数。読み込みの前後で比べると、読み込み中に
   // 始まって完了した保存(完了時点で savingPromisesRef からは消えている)を
   // 検出できる
@@ -203,15 +230,11 @@ export function useFileEditing(
 
   // 無効化はしないが、完了まで書き込みを待つべきロック。同じ親の下での作成や、
   // 同じフォルダにある別ファイルのリネームなど。FS 操作と書き込みが同時に走らない
-  // よう、重なるロックはすべて待つ
+  // よう、重なるロックはすべて待つ。「無効化されているか」は invalidationFor と
+  // 同じ判定を使い、二重に持たない
   const blockingLocks = (path: string): FileOperationLock[] =>
     locksRef.current.filter(
-      (lock) =>
-        isPathAtOrInside(path, lock.path) &&
-        !(
-          lock.invalidatesPaths !== null &&
-          lock.invalidatesPaths.some((invalidated) => isPathAtOrInside(path, invalidated.path))
-        )
+      (lock) => isPathAtOrInside(path, lock.path) && invalidationFor(path)?.lock !== lock
     )
 
   /**
@@ -222,7 +245,8 @@ export function useFileEditing(
    * 順序前提が変わる)。
    */
   const pendingSaveFor = (targetPath: string): Promise<void> | null => {
-    const pending = [...savingPromisesRef.current.entries(), ...parkedSavesRef.current.entries()]
+    const pending = saveTracking
+      .allEntries()
       .filter(([path]) => isPathAtOrInside(path, targetPath))
       .map(([, promise]) => promise)
     if (pending.length === 0) return null
@@ -268,7 +292,8 @@ export function useFileEditing(
     // 登録されない（登録はロックが無くなってから行う）ので、0 件になれば以降も 0 件。
     // ただし待機の解決順によっては複数回の確認が要るためループする
     for (;;) {
-      const pending = [...savingPromisesRef.current.entries()]
+      const pending = saveTracking
+        .inFlightEntries()
         .filter(([path]) => isPathAtOrInside(path, targetPath))
         .map(([, promise]) => promise)
       if (pending.length === 0) break
@@ -344,7 +369,7 @@ export function useFileEditing(
     const savePromise = new Promise<void>((resolve) => {
       settleSave = resolve
     })
-    parkedSavesRef.current.set(path, savePromise)
+    saveTracking.park(path, savePromise)
     let attemptedWrite = false
     try {
       // 無効化を伴わないロック（同じフォルダでの作成、兄弟のリネームなど）は
@@ -369,8 +394,7 @@ export function useFileEditing(
       // 進行中の保存として登録するのはロックが無くなってから。待っている間に
       // 登録すると、ロック取得側（進行中の保存の完了を待つ）と待ち合って
       // デッドロックする
-      parkedSavesRef.current.delete(path)
-      savingPromisesRef.current.set(path, savePromise)
+      saveTracking.promote(path, savePromise)
       // 待っている間に編集されていれば、その内容を書く。待たずに書けた場合は
       // openFile は同じなので、通常経路の挙動は変わらない
       const latest = readOpenFile()
@@ -397,8 +421,7 @@ export function useFileEditing(
     } finally {
       savingPathsRef.current.delete(path)
       setSavingPaths(new Set(savingPathsRef.current))
-      parkedSavesRef.current.delete(path)
-      savingPromisesRef.current.delete(path)
+      saveTracking.clear(path)
       if (attemptedWrite) {
         const key = toComparablePath(path)
         saveCompletionsRef.current.set(key, (saveCompletionsRef.current.get(key) ?? 0) + 1)
