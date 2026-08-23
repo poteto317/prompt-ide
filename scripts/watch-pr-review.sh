@@ -306,6 +306,18 @@ def normalize(text):
 
 def is_job_not_run(review):
     body = review["body"] or ""
+    # 数値つきの Suppressed comments 節や、詳細な見出しがあれば本物のレビュー。
+    # 先頭段落に通知の文言が混ざっていても、これらがあれば押し切らない。実際に
+    # 踏んだ問題: 「先頭のかたまりを見て通知の語を拾う」を先に行うと、この
+    # 手順書のように通知の文面を説明した本物のレビューまで未実行と誤判定する。
+    #
+    # COUNTABLE_BODY_MARKERS のうち "Copilot reviewed" は使わない。
+    # "Copilot reviewed 0 files. The job was not started because ..." という、
+    # 未実行の通知自身がこの文言を名乗る実例があるため、強い根拠にならない
+    if re.search(r"suppressed comments\s*\(\s*\d+\s*\)", body, re.IGNORECASE):
+        return False
+    if any(marker.lower() in body.lower() for marker in ("Review details", "Comments generated")):
+        return False
     # 先頭のかたまりにあれば通知。見出しの語をたまたま含む通知も、ここで拾える
     if any(marker in normalize(leading_paragraph(body)) for marker in JOB_NOT_RUN_MARKERS):
         return True
