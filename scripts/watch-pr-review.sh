@@ -300,13 +300,22 @@ def leading_paragraph(body):
     return " ".join(lines)
 
 
+def normalize(text):
+    return re.sub(r"[^a-z0-9]+", " ", text.lower())
+
+
 def is_job_not_run(review):
-    # 判定は本文の先頭のかたまりだけで行う。本文全体を見ると、この文面を引用した
-    # レビュー（このリポジトリのレビュー自身がそうだった）を未実行と誤判定する。
-    # 逆に「レビュー本文として読めないこと」を条件にすると、見出しの語をたまたま
-    # 含む通知がレビュー本文に化けて、指摘 0 件＝収束と誤って判断してしまう
-    head = re.sub(r"[^a-z0-9]+", " ", leading_paragraph(review["body"] or "").lower())
-    return any(marker in head for marker in JOB_NOT_RUN_MARKERS)
+    body = review["body"] or ""
+    # 先頭のかたまりにあれば通知。見出しの語をたまたま含む通知も、ここで拾える
+    if any(marker in normalize(leading_paragraph(body)) for marker in JOB_NOT_RUN_MARKERS):
+        return True
+    # 先頭に無くても、レビュー本文として読めないなら通知とみなす。callout が
+    # 数段落に分かれる場合や、文面が変わった場合を取りこぼさないため。
+    # ここでレビュー本文を除外しないと、この文面を引用したレビュー
+    # （このリポジトリのレビュー自身がそうだった）を未実行と誤判定する
+    if is_review_body(review):
+        return False
+    return any(marker in normalize(body) for marker in JOB_NOT_RUN_MARKERS)
 
 
 def first_line(review):
