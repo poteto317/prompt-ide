@@ -189,6 +189,18 @@ export function useFileEditing(
     return null
   }
 
+  /**
+   * path が無効化されているなら、中止の通知を立てて true を返す。呼び出し側は
+   * true が返ったら書き込まずに抜ける（保存を始める前とロック待ちの後、2 箇所で使う）
+   */
+  const abortIfInvalidated = (path: string): boolean => {
+    const blocked = invalidationFor(path)
+    if (blocked === null) return false
+    saveAbortNoticeRef.current = { path, lock: blocked.lock }
+    setSaveError(new Error(blocked.invalidated.abortMessage))
+    return true
+  }
+
   // 無効化はしないが、完了まで書き込みを待つべきロック。同じ親の下での作成や、
   // 同じフォルダにある別ファイルのリネームなど。FS 操作と書き込みが同時に走らない
   // よう、重なるロックはすべて待つ
@@ -322,12 +334,7 @@ export function useFileEditing(
     // 保存を始める前に判定する。始めてから抜けると、書き込んでいないのに
     // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する。
     // 黙って捨てるとユーザーには dirty マークしか見えないため、理由を伝える
-    const blockedBefore = invalidationFor(path)
-    if (blockedBefore !== null) {
-      saveAbortNoticeRef.current = { path, lock: blockedBefore.lock }
-      setSaveError(new Error(blockedBefore.invalidated.abortMessage))
-      return
-    }
+    if (abortIfInvalidated(path)) return
     const generation = generationRef.current
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
@@ -351,12 +358,7 @@ export function useFileEditing(
         if (generation !== generationRef.current) return
         // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
         // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
-        const blockedDuringWait = invalidationFor(path)
-        if (blockedDuringWait !== null) {
-          saveAbortNoticeRef.current = { path, lock: blockedDuringWait.lock }
-          setSaveError(new Error(blockedDuringWait.invalidated.abortMessage))
-          return
-        }
+        if (abortIfInvalidated(path)) return
       }
       attemptedWrite = true
       // 書き込まずに戻る経路（ロック待ちの間にファイルが入れ替わった等）が

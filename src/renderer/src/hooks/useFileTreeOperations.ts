@@ -217,7 +217,9 @@ export function useFileTreeOperations({
       // 捨てると、Cmd+S が無反応に見えて内容が失われる。移行先を外すと、
       // 削除してバッファだけ残したファイルと同じ名前へリネームしてきた場合に、
       // 古いバッファでその内容を上書きしてしまう
-      const release = await lockPathForFileOperation(parentPrefix, {
+      // lock 取得 → 操作 → 成否を伴う release は createFile/createDirectory と
+      // 同じ形（runLocked が持つ「失敗を伝える」処理をここでも使う）
+      await runLocked(parentPrefix, () => fileSystemApi.renameEntry(node.path, newName), {
         invalidatesPaths: [
           // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう
           { path: node.path },
@@ -230,13 +232,6 @@ export function useFileTreeOperations({
             : [])
         ]
       })
-      let renamed = false
-      try {
-        await fileSystemApi.renameEntry(node.path, newName)
-        renamed = true
-      } finally {
-        release({ succeeded: renamed })
-      }
       // 読み込み中のファイルがリネーム対象なら、旧 path のまま表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
