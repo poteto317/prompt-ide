@@ -255,6 +255,15 @@ KNOWN_BODY_MARKERS = (
     "Files reviewed",
 )
 
+# 「Suppressed comments 節が無い＝指摘 0 件」と読んでよい根拠になる見出し。
+# "Reviewed changes" のような汎用的な語だけでは、Copilot の別種の投稿を
+# 指摘 0 件のレビューと取り違えて収束と誤判断する
+COUNTABLE_BODY_MARKERS = (
+    "Review details",
+    "Comments generated",
+    "Copilot reviewed",
+)
+
 # Copilot がレビューを実行できなかった場合も review として記録される。
 # 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
 # 文面は callout に包まれたり大文字小文字が変わったりするため、小文字化して探す
@@ -335,8 +344,13 @@ if review_bodies:
     elif "suppressed comments" in body.lower():
         # 節はあるのに件数を読めない。0 件と決めつけない
         suppressed = None
-    else:
+    elif any(marker.lower() in body.lower() for marker in COUNTABLE_BODY_MARKERS):
+        # レビューの体裁があり、節が無いなら 0 件
         suppressed = 0
+    else:
+        # レビュー本文らしくはあるが、件数の根拠になる見出しが無い。
+        # 0 件と決めつけると、Copilot の別種の投稿で収束と誤判断する
+        suppressed = None
     print("REVIEW ARRIVED: %s %s" % (r["author"]["login"], submitted_at(r)))
     if later_not_runs:
         # レビューは届いている。指摘への対応が先で、課金の確認はその後でよい
