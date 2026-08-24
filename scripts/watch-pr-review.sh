@@ -297,22 +297,26 @@ def normalize(text):
 
 def is_job_not_run(review):
     body = review["body"] or ""
+    lowered = body.lower()
     # 数値つきの Suppressed comments 節や、STRONG_REVIEW_MARKERS の見出しがあれば
     # 本物のレビュー。本文のどこに通知の文言があっても、これらがあれば押し切らない。
     # 実際に踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
     # 未実行と誤判定していた
     if re.search(r"suppressed comments\s*\(\s*\d+\s*\)", body, re.IGNORECASE):
         return False
-    if any(marker.lower() in body.lower() for marker in STRONG_REVIEW_MARKERS):
+    if any(marker.lower() in lowered for marker in STRONG_REVIEW_MARKERS):
         return False
     # 上の見出しが無いレビュー（"generated no comments" だけの短い形式など）もある。
     # KNOWN_BODY_MARKERS を 2 種類以上含む場合も本物のレビューとして扱う。
     # 1 種類だけでは弱すぎる（"Reviewed changes" 単体が未実行の通知に含まれた実例が
     # あるため）が、実データでは "Pull request overview" 等の見出しが複数そろう
     # レビューには必ず Review details か digit 付き Suppressed comments が伴っており、
-    # 2 種類以上が単独の通知に紛れ込む実例は無い
-    lowered = body.lower()
-    matched_known_markers = sum(1 for marker in KNOWN_BODY_MARKERS if marker.lower() in lowered)
+    # 2 種類以上が単独の通知に紛れ込む実例は無い。
+    # "Copilot reviewed" はここでも数えない。"Copilot reviewed 0 files. Files ..."
+    # のように、未実行の通知自身が別のマーカーと一緒にこの語を名乗る余地が
+    # 他のマーカーより大きいため（実例は無いが、他より作文されやすい）
+    countable_markers = tuple(m for m in KNOWN_BODY_MARKERS if m != "Copilot reviewed")
+    matched_known_markers = sum(1 for marker in countable_markers if marker.lower() in lowered)
     if matched_known_markers >= 2:
         return False
     # 先頭段落だけを見ると、"Copilot reviewed 0 files.\n\nThe job was not started

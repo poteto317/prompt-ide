@@ -101,6 +101,8 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
    - `bash scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
    - 収束の判断は監視が出す `NO FINDINGS` で行う。`NO PENDING REVIEW` や `WATCH TIMEOUT` は
      「指摘なし」ではない
+   - `NO FINDINGS` が出た場合も、それだけで収束と判断しない。GraphQL で `reviews` と
+     `reviewThreads` の最新を直接確認してから収束と判断する
    - `GITHUB_TOKEN`（GitHub Actions）からは Copilot レビューをトリガーできないため、必ず
      ローカルターミナルから実行する
    - REST の `pulls/:number/requested_reviewers` は bot を返さないため、依頼も確認も GraphQL で

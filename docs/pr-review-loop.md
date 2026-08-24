@@ -199,6 +199,11 @@ bash scripts/watch-pr-review.sh <OWNER> <REPO> <PR> "<baseline-iso8601>"
 「指摘が 0 件」という意味ではない。レビューの後にジョブ未実行の通知が届いている
 場合も `NO FINDINGS` は出ない（最新の依頼が実行されていないため）。
 
+**`NO FINDINGS` が出た場合も、`NO FINDINGS` の一言だけで収束と判断しない。**
+判定は本文のプローズ文字列マッチに頼っており（Copilot の言い回しが変わるたびに
+誤判定を修正してきた実績がある）、GraphQL で `reviews` と `reviewThreads` の
+最新を直接確認してから収束と判断すること。
+
 終了コードは原因ごとに分かれている。
 
 | コード | 意味 |
