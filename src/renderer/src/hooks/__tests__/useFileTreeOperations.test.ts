@@ -484,8 +484,11 @@ describe('保存ロックの張り方', () => {
     )
   })
 
-  it('ディレクトリの作成では、配下の保存を無効にしない', async () => {
-    // 作り直したフォルダの中にファイルを保存し直すだけなので、何かを潰すわけではない
+  it('ディレクトリの作成では、作られるパス自体だけを無効にする', async () => {
+    // 配下（sub/file.ts 等）の保存は、フォルダを作り直しても何かを潰すわけではない
+    // ので待つだけでよい。ただし削除してバッファだけ残したファイルと同じ名前の
+    // ディレクトリを作ると、待って書き込む扱いでは EISDIR で失敗するため、
+    // 作られるパス自体は createFile と同じく無効にする必要がある
     const lockPathForFileOperation = vi
       .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
       .mockResolvedValue(() => {})
@@ -497,7 +500,10 @@ describe('保存ロックの張り方', () => {
 
     expect(lockPathForFileOperation).toHaveBeenCalledWith(
       '/project',
-      expect.objectContaining({ invalidatesPaths: null })
+      expect.objectContaining({
+        invalidatesPaths: ['/project/sub'],
+        abortMessage: expect.stringContaining('ディレクトリ')
+      })
     )
   })
 

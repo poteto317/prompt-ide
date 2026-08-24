@@ -2,9 +2,19 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathAtOrInside, isSafeEntryName, isSamePath, joinPath } from '../lib/pathUtils'
+import {
+  isPathAtOrInside,
+  isSafeEntryName,
+  isSamePath,
+  joinPath,
+  replacePathPrefix
+} from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { SAVE_ABORTED_BY_CREATE, SAVE_ABORTED_BY_RENAME_DESTINATION } from './useFileEditing'
+import {
+  SAVE_ABORTED_BY_CREATE,
+  SAVE_ABORTED_BY_CREATE_DIRECTORY,
+  SAVE_ABORTED_BY_RENAME_DESTINATION
+} from './useFileEditing'
 import type {
   FileOperationLockOptions,
   FileOperationResult,
@@ -168,26 +178,28 @@ export function useFileTreeOperations({
     }
   }
 
-  // 既存のファイルは壊さないので、無関係な保存は待ってから書き込む。ただし作られる
-  // パス自体は無効にする。削除してバッファだけ残したファイルと同じ名前で作り直すと、
-  // 古いバッファで上書きしてしまうため。
+  // 既存のエントリは壊さないので、配下の無関係な保存は待ってから書き込む。ただし
+  // 作られるパス自体は無効にする。削除してバッファだけ残したファイルと同じ名前で
+  // 作り直すと、待って書き込む扱いでは古いバッファで上書きする（ディレクトリの
+  // 場合は EISDIR で失敗する）ため。
   // 区切りを含む名前や空の名前だと、joinPath が親ディレクトリ自身や別の階層を
   // 指してしまい、無関係な保存まで巻き込む。名前の検証は main 側が行うので、
   // ここでは「無効化の範囲を決めてよい名前か」だけを見る
-  const createFileLockOptions = (parentPath: string, name: string): FileOperationLockOptions =>
+  const createEntryLockOptions = (
+    parentPath: string,
+    name: string,
+    abortMessage: string
+  ): FileOperationLockOptions =>
     !isSafeEntryName(name)
       ? { invalidatesPaths: null }
-      : {
-          invalidatesPaths: [joinPath(parentPath, name)],
-          abortMessage: SAVE_ABORTED_BY_CREATE
-        }
+      : { invalidatesPaths: [joinPath(parentPath, name)], abortMessage }
 
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
       runLocked(
         parentPath,
         () => fileSystemApi.createFile(parentPath, name),
-        createFileLockOptions(parentPath, name)
+        createEntryLockOptions(parentPath, name, SAVE_ABORTED_BY_CREATE)
       ).then(() => true)
     )
 
@@ -196,9 +208,7 @@ export function useFileTreeOperations({
       runLocked(
         parentPath,
         () => fileSystemApi.createDirectory(parentPath, name),
-        // ディレクトリを作り直しても、その中のファイルの保存は作り直しになるだけで
-        // 何かを潰すわけではない。無効化せず、完了を待ってから書き込む
-        { invalidatesPaths: null }
+        createEntryLockOptions(parentPath, name, SAVE_ABORTED_BY_CREATE_DIRECTORY)
       ).then(() => true)
     )
 
@@ -251,7 +261,7 @@ export function useFileTreeOperations({
             ? // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
               { ...current, path: newPath, name: newName, language: detectLanguage(newName) }
             : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
-              { ...current, path: newPath + current.path.slice(node.path.length) }
+              { ...current, path: replacePathPrefix(current.path, node.path, newPath) }
         )
         // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
         // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない

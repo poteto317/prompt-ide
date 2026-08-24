@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside, isSamePath, joinPath, isSafeEntryName } from '../pathUtils'
+import {
+  isPathAtOrInside,
+  isPathInside,
+  isSamePath,
+  joinPath,
+  isSafeEntryName,
+  replacePathPrefix
+} from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -183,5 +190,23 @@ describe('isSafeEntryName', () => {
   it('前後に空白がある名前は拒否する', () => {
     expect(isSafeEntryName(' a.ts')).toBe(false)
     expect(isSafeEntryName('a.ts ')).toBe(false)
+  })
+})
+
+describe('replacePathPrefix', () => {
+  it('前方一致する部分を置き換える', () => {
+    expect(replacePathPrefix('/project/a.ts', '/project', '/moved')).toBe('/moved/a.ts')
+  })
+
+  it('from に末尾区切りが付いていても、二重区切りにならない', () => {
+    // isPathAtOrInside は末尾区切りを無視して判定するため、raw な文字数で
+    // 切ると from の末尾区切り分だけ余分に削れて壊れたパスになる
+    expect(replacePathPrefix('/project/sub/a.ts', '/project/sub/', '/moved')).toBe('/moved/a.ts')
+  })
+
+  it('path 自身のセパレータは変えない（Windows のパスをそのまま保つ）', () => {
+    expect(replacePathPrefix('C:\\proj\\sub\\a.ts', 'C:\\proj\\sub', 'C:\\moved')).toBe(
+      'C:\\moved\\a.ts'
+    )
   })
 })

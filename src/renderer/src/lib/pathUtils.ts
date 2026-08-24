@@ -91,3 +91,16 @@ export const joinPath = (parentPath: string, name: string): string => {
 // joinPath の無効化範囲を決めるために同じ条件を要る。ロジックは @shared/entryName
 // に一本化してあり、ここでは再エクスポートするだけ（main と食い違わせないため）
 export { isSafeEntryName } from '@shared/entryName'
+
+/**
+ * path が from 配下（または from 自身）であることを isPathAtOrInside で確認した後、
+ * from を to へ置き換えた新しいパスを返す。
+ *
+ * raw な文字数（from.length）で切ると、from の末尾に区切りが付いているなど、
+ * isPathAtOrInside が正規化で吸収する差異がそのままずれとして残る。from 側だけを
+ * 正規化した長さで切り、path 自身のセパレータ（Windows 表記など）は変えない。
+ */
+export const replacePathPrefix = (path: string, from: string, to: string): string => {
+  const trimmedFromLength = stripTrailingSeparators(toForwardSlashes(from)).length
+  return to + path.slice(trimmedFromLength)
+}

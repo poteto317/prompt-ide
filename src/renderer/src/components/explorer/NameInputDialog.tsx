@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isSafeEntryName } from '@shared/entryName'
 
 interface Props {
   title: string
@@ -7,10 +8,12 @@ interface Props {
   onCancel: () => void
 }
 
-// 入力チェックは UX 用(セキュリティ境界は main 側の assertValidEntryName)
+// 入力チェックは UX 用(セキュリティ境界は main 側の assertValidEntryName)。
+// 判定条件は isSafeEntryName に一本化してあり、main / renderer の保存ロックの
+// 無効化範囲（useFileTreeOperations）と食い違わせない
 function validateName(name: string): string | null {
   if (name.length === 0) return '名前を入力してください'
-  if (name === '.' || name === '..' || /[/\\]/.test(name)) return '使用できない名前です'
+  if (!isSafeEntryName(name)) return '使用できない名前です'
   return null
 }
 

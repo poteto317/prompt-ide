@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
+import { isPathAtOrInside, isSamePath, replacePathPrefix, toComparablePath } from '../lib/pathUtils'
 import { useLatestRef } from './useLatestRef'
 
 const SAVE_ABORTED_BY_FILE_OPERATION =
@@ -11,6 +11,10 @@ const SAVE_ABORTED_BY_FILE_OPERATION =
 // ロックは操作の完了で解放されるため、「もう一度保存してください」では誘導が逆になる
 export const SAVE_ABORTED_BY_CREATE =
   '同じ名前のファイルが作成されました。このまま保存すると、作成されたファイルを上書きします。'
+// ディレクトリの場合は「上書き」ではなく書き込み自体が失敗する（EISDIR）。
+// SAVE_ABORTED_BY_CREATE をそのまま使うと「ファイル」という語が不正確になる
+export const SAVE_ABORTED_BY_CREATE_DIRECTORY =
+  '同じ名前のディレクトリが作成されました。このまま保存すると失敗します。'
 export const SAVE_ABORTED_BY_RENAME_DESTINATION =
   '同じ名前へ別のファイルがリネームされました。このまま保存すると、その内容を上書きします。'
 
@@ -333,10 +337,10 @@ export function useFileEditing(
     const notice = saveAbortNoticeRef.current
     const follows =
       renamed !== undefined && notice !== null && isPathAtOrInside(notice.path, renamed.from)
-    if (follows && notice !== null) {
+    if (follows && notice !== null && renamed !== undefined) {
       saveAbortNoticeRef.current = {
         ...notice,
-        path: renamed.to + notice.path.slice(renamed.from.length)
+        path: replacePathPrefix(notice.path, renamed.from, renamed.to)
       }
     } else {
       saveAbortNoticeRef.current = null
