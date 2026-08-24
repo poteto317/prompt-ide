@@ -64,7 +64,10 @@ interface FileSystemState {
   deleteEntry: (node: FileTreeNode) => Promise<void>
 }
 
-export function useFileSystem(options?: Options): FileSystemState {
+// getOpenFile はここで常に自前の同期ミラーへ差し替えるため、呼び出し側が渡しても
+// 無視される。渡せてしまうと「渡したのに無視された」という気づきにくい不具合の
+// 種になるため、型からも外して渡せないようにする
+export function useFileSystem(options?: Omit<Options, 'getOpenFile'>): FileSystemState {
   const [folderPath, setFolderPath] = useState<string | null>(null)
   const [openFile, setOpenFile] = useState<OpenFile | null>(null)
   // ファイル読み込みの世代。ファイル切替が読み込み完了より先に起きても、

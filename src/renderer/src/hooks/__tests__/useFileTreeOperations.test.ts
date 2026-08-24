@@ -590,3 +590,21 @@ describe('保存ロックの張り方', () => {
     })
   })
 })
+
+describe('削除中の保存中止メッセージ', () => {
+  it('削除は専用の文言で中止を伝える（再保存しても親ごと消えているため）', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/a.ts',
+      expect.objectContaining({ abortMessage: expect.stringContaining('削除') })
+    )
+  })
+})

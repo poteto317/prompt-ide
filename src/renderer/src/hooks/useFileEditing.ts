@@ -15,6 +15,10 @@ export const SAVE_ABORTED_BY_CREATE =
 // SAVE_ABORTED_BY_CREATE をそのまま使うと「ファイル」という語が不正確になる
 export const SAVE_ABORTED_BY_CREATE_DIRECTORY =
   '同じ名前のディレクトリが作成されました。このまま保存すると失敗します。'
+// 削除は元のパス自体を無効にするため、その配下のファイルの保存もここに来る。
+// 親ごと消えているので、案内どおり再保存しても ENOENT で失敗する
+export const SAVE_ABORTED_BY_DELETE =
+  '削除されました。保存する場合は、フォルダを作り直してから行ってください。'
 export const SAVE_ABORTED_BY_RENAME_DESTINATION =
   '同じ名前へ別のファイルがリネームされました。このまま保存すると、その内容を上書きします。'
 
@@ -414,7 +418,10 @@ export function useFileEditing(
       // 書き込んだ内容だけが、その保存が対象としていた編集セッションに
       // 限定して反映される。
       setOpenFile((prev) =>
-        prev !== null && prev.path === path && generation === generationRef.current
+        // 大文字小文字だけが異なる同一実体になっているケース(Windows のケースのみ
+        // リネームで generation を伴わず path が変わることは無い契約だが、書き込み
+        // 先の選択(isSamePath)と反映条件を揃えておく方が読み手にとって一貫する)
+        prev !== null && isSamePath(prev.path, path) && generation === generationRef.current
           ? { ...prev, savedContent: contentToWrite }
           : prev
       )

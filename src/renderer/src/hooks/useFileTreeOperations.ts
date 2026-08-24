@@ -13,6 +13,7 @@ import * as fileSystemApi from '../lib/fileSystemApi'
 import {
   SAVE_ABORTED_BY_CREATE,
   SAVE_ABORTED_BY_CREATE_DIRECTORY,
+  SAVE_ABORTED_BY_DELETE,
   SAVE_ABORTED_BY_RENAME_DESTINATION
 } from './useFileEditing'
 import type {
@@ -216,7 +217,9 @@ export function useFileTreeOperations({
     runFileOperation(async () => {
       // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
       const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
-      const newPath = parentPrefix + newName
+      // joinPath は末尾の区切りを吸収してからつなぐため、区切り付きの
+      // parentPrefix をそのまま渡しても二重区切りにならない
+      const newPath = joinPath(parentPrefix, newName)
       // 保存中の書き込みがリネーム後に解決すると、旧パスが再作成される。
       // 操作の完了まで予約し、その間の新しい保存も開始させない。
       // 予約するのは元の path ではなく親ディレクトリ。移行先も同じ親の下に
@@ -231,7 +234,11 @@ export function useFileTreeOperations({
       // 同じ形（runLocked が持つ「失敗を伝える」処理をここでも使う）
       await runLocked(parentPrefix, () => fileSystemApi.renameEntry(node.path, newName), {
         invalidatesPaths: [
-          // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう
+          // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう。文言は
+          // 既定（SAVE_ABORTED_BY_FILE_OPERATION、「もう一度保存してください」）
+          // のままでよい。開いているファイル自身のリネームなら、下の
+          // resetForFileChange({ renamed }) がバッファを新パスへ追随させるため、
+          // 実際に「もう一度保存」すれば新パスへ正しく書き込まれる
           { path: node.path },
           // 先: 待って書くと、リネームしてきた内容を古いバッファで上書きする。
           // ロックは完了で解放されるため、そのまま保存し直しても同じことが起きる。
@@ -282,7 +289,9 @@ export function useFileTreeOperations({
     await runFileOperation(async () => {
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
-      const release = await lockPathForFileOperation(node.path)
+      const release = await lockPathForFileOperation(node.path, {
+        abortMessage: SAVE_ABORTED_BY_DELETE
+      })
       // 再確認から IPC の解決までの間もエディタは操作できる。ここでも
       // 開始時点の状態を控え、実行中に入った編集を確認なしで捨てない
       let bufferBeforeDelete: OpenFile | null = null
