@@ -13,7 +13,7 @@ export const stripTrailingSeparators = (path: string): string => path.replace(/[
 const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
 
 /** '/' 正規化後の文字列が Windows のパス(ドライブ文字 or UNC)か */
-const isWindowsStyle = (forwardPath: string): boolean =>
+export const isWindowsStyle = (forwardPath: string): boolean =>
   /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
 
 /**
@@ -83,7 +83,10 @@ export const toComparablePath = (path: string): string => normalizePair(path, pa
  */
 export const joinPath = (parentPath: string, name: string): string => {
   const base = stripTrailingSeparators(parentPath)
-  const separator = parentPath.includes('\\') ? '\\' : '/'
+  // parentPath がバックスラッシュを含むかどうかで区切りを決めると、POSIX の
+  // ディレクトリ名にバックスラッシュが含まれる場合（ファイルシステムレベルでは
+  // 禁止されていない）に誤って '\' を選んでしまう。ドライブ文字 or UNC かどうかで判定する
+  const separator = isWindowsStyle(toForwardSlashes(parentPath)) ? '\\' : '/'
   return `${base}${separator}${name}`
 }
 

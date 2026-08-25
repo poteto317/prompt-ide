@@ -166,6 +166,13 @@ describe('joinPath', () => {
     expect(joinPath('C:\\project', 'a.ts')).toBe('C:\\project\\a.ts')
     expect(joinPath('C:\\', 'a.ts')).toBe('C:\\a.ts')
   })
+
+  it('POSIX のディレクトリ名にバックスラッシュが含まれていても "/" でつなぐ', () => {
+    // ドライブ文字も UNC も無いパスは POSIX。ディレクトリ名にバックスラッシュを
+    // 含めること自体はファイルシステムレベルでは禁止されていないため、
+    // parentPath 全体にバックスラッシュがあるかで区切りを決めると誤判定する
+    expect(joinPath('/Users/x/a\\b', 'newName.txt')).toBe('/Users/x/a\\b/newName.txt')
+  })
 })
 
 describe('isSafeEntryName', () => {
