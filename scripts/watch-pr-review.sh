@@ -271,6 +271,10 @@ COUNTABLE_BODY_MARKERS = (
 # because ..." という、未実行の通知自身がこの文言を名乗る実例があるため
 STRONG_REVIEW_MARKERS = tuple(m for m in COUNTABLE_BODY_MARKERS if m != "Copilot reviewed")
 
+# "Suppressed comments" 節が数値つきかどうかの判定と、件数の抽出（グループ 1）を
+# 同じパターンで行う。2 箇所に手打ちで複製すると、空白の許容などがずれる
+SUPPRESSED_COUNT_PATTERN = r"suppressed comments\s*\(\s*(\d+)\s*\)"
+
 # Copilot がレビューを実行できなかった場合も review として記録される。
 # 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
 # 文面は callout に包まれたり大文字小文字が変わったりするため、小文字化して探す
@@ -302,7 +306,7 @@ def is_job_not_run(review):
     # 本物のレビュー。本文のどこに通知の文言があっても、これらがあれば押し切らない。
     # 実際に踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
     # 未実行と誤判定していた
-    if re.search(r"suppressed comments\s*\(\s*\d+\s*\)", body, re.IGNORECASE):
+    if re.search(SUPPRESSED_COUNT_PATTERN, body, re.IGNORECASE):
         return False
     if any(marker.lower() in lowered for marker in STRONG_REVIEW_MARKERS):
         return False
@@ -354,7 +358,7 @@ if review_bodies:
     # 「後続の未実行通知なし」＝収束と読めてしまう
     later_not_runs = [n for n in not_runs if submitted_at(n) >= submitted_at(r)]
     # 見出しの大文字小文字は揺れるため、件数の抽出でも区別しない
-    m = re.search(r"suppressed comments\s*\(\s*(\d+)\s*\)", body, re.IGNORECASE)
+    m = re.search(SUPPRESSED_COUNT_PATTERN, body, re.IGNORECASE)
     if m:
         suppressed = int(m.group(1))
     elif "suppressed comments" in body.lower():

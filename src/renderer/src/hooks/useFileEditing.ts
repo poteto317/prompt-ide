@@ -68,6 +68,16 @@ interface FileEditingState {
 }
 
 /**
+ * ロックを解放するときに、その FS 操作が成功したかを伝える。
+ * 失敗した場合、その操作を理由に中止した保存の通知は取り下げる。
+ * 何も起きていないのに「上書きします」と案内すると、誘導が逆になるため
+ */
+export type FileOperationResult = { succeeded?: boolean }
+
+/** 無効化するパスと、その保存を中止したときに伝える文言 */
+export type InvalidatedPath = { path: string; abortMessage?: string }
+
+/**
  * FS 操作のロックの指定。
  *
  * `invalidatesPaths` は「その操作によって消える・付け替わるパス」。この配下の保存は
@@ -80,16 +90,6 @@ interface FileEditingState {
  * 必要だが、無効になるのはリネーム対象自身だけで、同じフォルダの別ファイルの保存
  * まで捨ててはいけない。
  */
-/**
- * ロックを解放するときに、その FS 操作が成功したかを伝える。
- * 失敗した場合、その操作を理由に中止した保存の通知は取り下げる。
- * 何も起きていないのに「上書きします」と案内すると、誘導が逆になるため
- */
-export type FileOperationResult = { succeeded?: boolean }
-
-/** 無効化するパスと、その保存を中止したときに伝える文言 */
-export type InvalidatedPath = { path: string; abortMessage?: string }
-
 export type FileOperationLockOptions = {
   /**
    * 文字列だけを渡すと abortMessage（未指定なら既定の文言）が使われる。
