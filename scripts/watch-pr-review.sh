@@ -268,19 +268,16 @@ COUNTABLE_BODY_MARKERS = (
     "Comments generated",
 )
 
-# is_job_not_run が「本文のどこにあっても本物のレビューと言い切れる」根拠として
-# 使う。COUNTABLE_BODY_MARKERS と同じ理由で "Copilot reviewed" を含まないため、
-# 同じ集合をそのまま使う
-STRONG_REVIEW_MARKERS = COUNTABLE_BODY_MARKERS
-
 # is_job_not_run の「2 種類以上含めば本物のレビュー」判定に使う。KNOWN_BODY_MARKERS
-# から "Copilot reviewed" を除いたもの（除く理由は STRONG_REVIEW_MARKERS と同じ）。
+# から "Copilot reviewed" を除いたもの（除く理由は COUNTABLE_BODY_MARKERS と同じ）。
 # 呼び出しのたびに計算し直さないよう、ここで一度だけ定義する
 MULTI_MARKER_CANDIDATES = tuple(m for m in KNOWN_BODY_MARKERS if m != "Copilot reviewed")
 
 # "Suppressed comments" 節が数値つきかどうかの判定と、件数の抽出（グループ 1）を
-# 同じパターンで行う。2 箇所に手打ちで複製すると、空白の許容などがずれる
-SUPPRESSED_COUNT_PATTERN = r"suppressed comments\s*\(\s*(\d+)\s*\)"
+# 同じパターンで行う。2 箇所に手打ちで複製すると、空白の許容などがずれる。
+# 見出し自体の文字列（節の有無だけを見る判定でも使う）も、ここから作る
+SUPPRESSED_HEADING = "suppressed comments"
+SUPPRESSED_COUNT_PATTERN = SUPPRESSED_HEADING + r"\s*\(\s*(\d+)\s*\)"
 
 # Copilot がレビューを実行できなかった場合も review として記録される。
 # 指摘 0 件と区別しないと、実行されていないのに「指摘なし」と誤って判断する。
@@ -292,6 +289,7 @@ JOB_NOT_RUN_MARKERS = (
     "job was not started",
     "wasn t able to review any",
     "payments have failed",
+    "spending limit",
 )
 
 
@@ -309,13 +307,13 @@ def normalize(text):
 def is_job_not_run(review):
     body = review["body"] or ""
     lowered = body.lower()
-    # 数値つきの Suppressed comments 節や、STRONG_REVIEW_MARKERS の見出しがあれば
+    # 数値つきの Suppressed comments 節や、COUNTABLE_BODY_MARKERS の見出しがあれば
     # 本物のレビュー。本文のどこに通知の文言があっても、これらがあれば押し切らない。
     # 実際に踏んだ問題: 通知の文面を説明した本物のレビュー（この手順書自身がそう）を
     # 未実行と誤判定していた
     if re.search(SUPPRESSED_COUNT_PATTERN, body, re.IGNORECASE):
         return False
-    if any(marker.lower() in lowered for marker in STRONG_REVIEW_MARKERS):
+    if any(marker.lower() in lowered for marker in COUNTABLE_BODY_MARKERS):
         return False
     # 上の見出しが無いレビュー（"generated no comments" だけの短い形式など）もある。
     # KNOWN_BODY_MARKERS を 2 種類以上含む場合も本物のレビューとして扱う。
@@ -369,7 +367,7 @@ if review_bodies:
     m = re.search(SUPPRESSED_COUNT_PATTERN, body, re.IGNORECASE)
     if m:
         suppressed = int(m.group(1))
-    elif "suppressed comments" in body.lower():
+    elif SUPPRESSED_HEADING in body.lower():
         # 節はあるのに件数を読めない。0 件と決めつけない
         suppressed = None
     elif any(marker.lower() in body.lower() for marker in COUNTABLE_BODY_MARKERS):

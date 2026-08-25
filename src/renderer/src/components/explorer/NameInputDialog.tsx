@@ -10,7 +10,11 @@ interface Props {
 
 // 入力チェックは UX 用(セキュリティ境界は main 側の assertValidEntryName)。
 // 判定条件は isSafeEntryName に一本化してあり、main / renderer の保存ロックの
-// 無効化範囲（useFileTreeOperations）と食い違わせない
+// 無効化範囲（useFileTreeOperations）と食い違わせない。
+// 呼び出し側（handleSubmit）が前後の空白を trim してから渡すため、
+// isSafeEntryName の「前後に空白がある名前を拒否する」分岐はここでは発火しない
+// （自動で削って受け付ける UX にしている）。main 側の直接呼び出し
+// （このダイアログを経由しない IPC）に対しては、その分岐が引き続き有効
 function validateName(name: string): string | null {
   if (name.length === 0) return '名前を入力してください'
   if (!isSafeEntryName(name)) return '使用できない名前です'
