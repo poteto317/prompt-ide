@@ -258,18 +258,25 @@ KNOWN_BODY_MARKERS = (
 # 「Suppressed comments 節が無い＝指摘 0 件」と読んでよい根拠になる見出し。
 # "Reviewed changes" のような汎用的な語だけでは、Copilot の別種の投稿を
 # 指摘 0 件のレビューと取り違えて収束と誤判断する
+# "Copilot reviewed" は含めない。実データ 7 PR・100 件超のレビューを確認したが、
+# これだけを含み Review details / Comments generated / Suppressed comments の
+# いずれも持たない本文は無かった。だが「Copilot reviewed 0 files. The job was
+# not started because ...」という、未実行の通知自身がこの文言を名乗る実例が
+# 別にあり、これを根拠に suppressed=0 と決め打つと収束の誤判定につながる
 COUNTABLE_BODY_MARKERS = (
     "Review details",
     "Comments generated",
-    "Copilot reviewed",
 )
 
-# COUNTABLE_BODY_MARKERS のうち "Copilot reviewed" を除いたもの。is_job_not_run が
-# 「本文のどこにあっても本物のレビューと言い切れる」根拠として使う。手打ちで複製すると
-# 食い違いの元になるため、ここで一度だけ定義する。
-# "Copilot reviewed" を除く理由: "Copilot reviewed 0 files. The job was not started
-# because ..." という、未実行の通知自身がこの文言を名乗る実例があるため
-STRONG_REVIEW_MARKERS = tuple(m for m in COUNTABLE_BODY_MARKERS if m != "Copilot reviewed")
+# is_job_not_run が「本文のどこにあっても本物のレビューと言い切れる」根拠として
+# 使う。COUNTABLE_BODY_MARKERS と同じ理由で "Copilot reviewed" を含まないため、
+# 同じ集合をそのまま使う
+STRONG_REVIEW_MARKERS = COUNTABLE_BODY_MARKERS
+
+# is_job_not_run の「2 種類以上含めば本物のレビュー」判定に使う。KNOWN_BODY_MARKERS
+# から "Copilot reviewed" を除いたもの（除く理由は STRONG_REVIEW_MARKERS と同じ）。
+# 呼び出しのたびに計算し直さないよう、ここで一度だけ定義する
+MULTI_MARKER_CANDIDATES = tuple(m for m in KNOWN_BODY_MARKERS if m != "Copilot reviewed")
 
 # "Suppressed comments" 節が数値つきかどうかの判定と、件数の抽出（グループ 1）を
 # 同じパターンで行う。2 箇所に手打ちで複製すると、空白の許容などがずれる
@@ -319,8 +326,9 @@ def is_job_not_run(review):
     # "Copilot reviewed" はここでも数えない。"Copilot reviewed 0 files. Files ..."
     # のように、未実行の通知自身が別のマーカーと一緒にこの語を名乗る余地が
     # 他のマーカーより大きいため（実例は無いが、他より作文されやすい）
-    countable_markers = tuple(m for m in KNOWN_BODY_MARKERS if m != "Copilot reviewed")
-    matched_known_markers = sum(1 for marker in countable_markers if marker.lower() in lowered)
+    matched_known_markers = sum(
+        1 for marker in MULTI_MARKER_CANDIDATES if marker.lower() in lowered
+    )
     if matched_known_markers >= 2:
         return False
     # 先頭段落だけを見ると、"Copilot reviewed 0 files.\n\nThe job was not started
@@ -430,7 +438,9 @@ else:
   # 「レビュー本文が得られていない」判定を無効化する。依頼直後に別の Bot 投稿が
   # 1 件あるだけで監視を終えると、数分後に届く本物のレビューを取りこぼす。
   # レビュー本文やジョブ未実行の通知は、最低待機時間の内側でも即座に扱う
-  if printf '%s' "$verdict" | grep -qE 'NO PENDING REVIEW|NO REVIEW BODY' &&
+  # 行頭でアンカーする。未解決スレッドのパスなど、verdict の中身に
+  # "NO REVIEW BODY" 等の文字列がたまたま含まれるだけで誤って抑止しないため
+  if printf '%s\n' "$verdict" | grep -qE '^(NO PENDING REVIEW|NO REVIEW BODY)' &&
     [ $(($(date +%s) - STARTED)) -lt "$MIN_WAIT" ]; then
     verdict=""
   fi
