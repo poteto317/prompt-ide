@@ -608,3 +608,106 @@ describe('削除中の保存中止メッセージ', () => {
     )
   })
 })
+
+describe('release の呼び出しに succeeded を渡す', () => {
+  it('createFile が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockCreateFile.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'new.ts')
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('createFile が失敗したら succeeded: false で release する', async () => {
+    // これが呼ばれないと、中止の文言（作成されたファイルを上書きします）が
+    // 実際には何も作られていないのに取り下げられず残ってしまう
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockCreateFile.mockRejectedValue(new Error('EEXIST'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'new.ts')
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+
+  it('renameEntry が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockRenameEntry.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('renameEntry が失敗したら succeeded: false で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockRenameEntry.mockRejectedValue(new Error('EEXIST'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+
+  it('deleteEntry が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockDeleteEntry.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('ロック取得後に IPC 自体が失敗したら succeeded: false で release する', async () => {
+    // ロック取得より前の確認（削除しますか）で断ると、そもそもロックを
+    // 取らないので release は呼ばれない。ロックを取った後に失敗するのは、
+    // fileSystemApi.deleteEntry が例外を投げる経路
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockDeleteEntry.mockRejectedValue(new Error('EACCES'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+})
