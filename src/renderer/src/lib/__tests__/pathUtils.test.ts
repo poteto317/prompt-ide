@@ -173,6 +173,16 @@ describe('joinPath', () => {
     // parentPath 全体にバックスラッシュがあるかで区切りを決めると誤判定する
     expect(joinPath('/Users/x/a\\b', 'newName.txt')).toBe('/Users/x/a\\b/newName.txt')
   })
+
+  it('先頭が "//" の POSIX パス（一部のマウント構成で起こり得る）でも "/" でつなぐ', () => {
+    // UNC パス（\\server\share）と正規化後の見た目が同じになるため、
+    // 正規化後の文字列だけで判定すると POSIX の "//" パスを Windows と誤判定する
+    expect(joinPath('//mnt/share', 'a.ts')).toBe('//mnt/share/a.ts')
+  })
+
+  it('UNC パスでは区切りを引き継ぐ', () => {
+    expect(joinPath('\\\\server\\share', 'a.ts')).toBe('\\\\server\\share\\a.ts')
+  })
 })
 
 describe('isSafeEntryName', () => {
