@@ -289,8 +289,15 @@ JOB_NOT_RUN_MARKERS = (
     "job was not started",
     "wasn t able to review any",
     "payments have failed",
-    "spending limit",
 )
+
+# "spending limit" は単体だと短く一般的すぎる。このスクリプト自身が
+# JOB_NOT_RUN_MARKERS にこの文字列を持つため、このリポジトリの変更差分を
+# 要約する本物のレビューがこの語を引用しただけで誤判定し得る（実際に
+# 再現した）。実際の未実行通知は "your spending limit needs to be
+# increased" / "your organization s spending limit has been reached" の
+# ように所有格を伴うため、それを条件にして単なる引用と区別する
+SPENDING_LIMIT_PATTERN = r"(your|the) (organization s )?spending limit"
 
 
 def is_review_body(review):
@@ -332,7 +339,10 @@ def is_job_not_run(review):
     # 先頭段落だけを見ると、"Copilot reviewed 0 files.\n\nThe job was not started
     # because ..." のように段落が分かれた通知（実例）を取りこぼす。上の強い根拠が
     # 無いことは確認済みなので、本文全体を対象に探してよい
-    return any(marker in normalize(body) for marker in JOB_NOT_RUN_MARKERS)
+    normalized = normalize(body)
+    if any(marker in normalized for marker in JOB_NOT_RUN_MARKERS):
+        return True
+    return re.search(SPENDING_LIMIT_PATTERN, normalized) is not None
 
 
 def first_line(review):
