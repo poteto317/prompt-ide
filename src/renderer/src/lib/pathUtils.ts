@@ -83,23 +83,26 @@ export const toComparablePath = (path: string): string => normalizePair(path, pa
  */
 export const joinPath = (parentPath: string, name: string): string => {
   const base = stripTrailingSeparators(parentPath)
-  const separator = isWindowsStylePath(parentPath) ? '\\' : '/'
+  const separator = hasRawWindowsPrefix(parentPath) ? '\\' : '/'
   return `${base}${separator}${name}`
 }
 
 /**
- * つなぐ区切りを決めるためだけの判定。isWindowsStyle（比較の正規化用）とは
- * 別に持つ理由:
+ * つなぐ区切りを決めるためだけの判定。isWindowsStyle（比較の正規化用、
+ * 正規化「後」の文字列を受け取る）とは名前を変えて区別している。同じ
+ * `(path: string) => boolean` という型のため、型では区別できない。
+ *
+ * isWindowsStyle をここでも使わない理由:
  * - parentPath がバックスラッシュを含むかどうかだけで決めると、POSIX の
  *   ディレクトリ名にバックスラッシュが含まれる場合（ファイルシステムレベルでは
  *   禁止されていない）に誤って '\' を選んでしまう
  * - 正規化後（'/' 統一後）の文字列だけで UNC を判定すると、'//mnt/share' の
  *   ような POSIX パス（一部のマウント構成で起こり得る）が UNC パス
  *   ('\\server\share' を正規化した形と同じ見た目になる）と区別できず、
- *   誤って '\' を選んでしまう。UNC かどうかは正規化する前の生の文字列が
- *   バックスラッシュ 2 つで始まるかで見る
+ *   誤って '\' を選んでしまう。UNC かどうかは正規化する「前」の生の文字列が
+ *   バックスラッシュ 2 つで始まるかで見る（ここが isWindowsStyle との違い）
  */
-const isWindowsStylePath = (path: string): boolean =>
+const hasRawWindowsPrefix = (path: string): boolean =>
   /^[a-zA-Z]:/.test(path) || path.startsWith('\\\\')
 
 // 検証そのものは main 側（handlers/entryNameValidator）が行うが、こちらは

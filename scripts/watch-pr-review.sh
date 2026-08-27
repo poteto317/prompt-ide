@@ -268,10 +268,22 @@ COUNTABLE_BODY_MARKERS = (
     "Comments generated",
 )
 
-# is_job_not_run の「2 種類以上含めば本物のレビュー」判定に使う。KNOWN_BODY_MARKERS
-# から "Copilot reviewed" を除いたもの（除く理由は COUNTABLE_BODY_MARKERS と同じ）。
-# 呼び出しのたびに計算し直さないよう、ここで一度だけ定義する
-MULTI_MARKER_CANDIDATES = tuple(m for m in KNOWN_BODY_MARKERS if m != "Copilot reviewed")
+# is_job_not_run の「2 種類以上含めば本物のレビュー」判定に使う。
+# "Copilot reviewed" を含まない理由は COUNTABLE_BODY_MARKERS と同じ。
+#
+# KNOWN_BODY_MARKERS から特定の語を除く形（tuple(m for m in KNOWN_BODY_MARKERS
+# if m != "...")）ではなく、ここに直接書き出す。除く形だと、将来
+# KNOWN_BODY_MARKERS に "Copilot reviewed" と同じくらい弱い語（本文中に
+# 引用されやすい語）を足したとき、ここへの影響を誰も判断しないまま
+# 自動的にこの判定へ含まれてしまう
+MULTI_MARKER_CANDIDATES = (
+    "Suppressed comments",
+    "Review details",
+    "Comments generated",
+    "Pull request overview",
+    "Reviewed changes",
+    "Files reviewed",
+)
 
 # "Suppressed comments" 節が数値つきかどうかの判定と、件数の抽出（グループ 1）を
 # 同じパターンで行う。2 箇所に手打ちで複製すると、空白の許容などがずれる。

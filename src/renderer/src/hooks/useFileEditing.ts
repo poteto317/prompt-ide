@@ -90,6 +90,17 @@ export type InvalidatedPath = { path: string; abortMessage?: string }
  * 必要だが、無効になるのはリネーム対象自身だけで、同じフォルダの別ファイルの保存
  * まで捨ててはいけない。
  */
+/**
+ * FS 操作中のパスと、その完了を待つための Promise。ローカル変数やジェネリクスに
+ * 依存しない純粋なデータ形状のため、他の関連型と同じくモジュールレベルに置く。
+ * useFileEditing の外では使わないため export はしない
+ */
+type FileOperationLock = {
+  path: string
+  invalidatesPaths: readonly Required<InvalidatedPath>[] | null
+  done: Promise<void>
+}
+
 export type FileOperationLockOptions = {
   /**
    * 文字列だけを渡すと abortMessage（未指定なら既定の文言）が使われる。
@@ -196,11 +207,6 @@ export function useFileEditing(
   // FS 操作中のパスと、その完了を待つための Promise。
   // 無効化の対象になった配下の保存は書き込まない。対象外の保存は解放を待ってから
   // 書き込む。重なるパスの FS 操作同士も直列化する
-  type FileOperationLock = {
-    path: string
-    invalidatesPaths: readonly Required<InvalidatedPath>[] | null
-    done: Promise<void>
-  }
   // 中止の通知が「どのロックによるものか」。操作が失敗したら取り下げるために持つ
   const locksRef = useRef<FileOperationLock[]>([])
 
