@@ -41,10 +41,19 @@ export type ResetForFileChangeOptions = {
 
 export interface Options {
   onConfirm?: (message: string) => boolean
+}
+
+/**
+ * useFileEditing が実際に受け取るオプション。getOpenFile は公開型の Options には
+ * 含めない。Omit<Options, 'getOpenFile'> のような型除外は、事前に Options 型で
+ * 変数を作ってから渡す呼び出し方だと excess property check が効かずすり抜けるため、
+ * 「そもそも公開型に存在しない」形にして確実に防ぐ
+ */
+interface InternalOptions extends Options {
   /**
    * 同じ tick 内で確定した openFile を読むためのアクセサ。省略時は引数の openFile を
    * layout effect で追う ref を使うが、それでは同じ tick に入った編集を取りこぼす。
-   * 同期ミラーを持つ呼び出し側（useFileSystem）はそれを渡すこと
+   * 同期ミラーを持つ呼び出し側（useFileSystem）だけがこれを渡す
    */
   getOpenFile?: () => OpenFile | null
 }
@@ -119,7 +128,7 @@ export type FileOperationLockOptions = {
 export function useFileEditing(
   openFile: OpenFile | null,
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>,
-  { onConfirm = confirm, getOpenFile }: Options = {}
+  { onConfirm = confirm, getOpenFile }: InternalOptions = {}
 ): FileEditingState {
   // 保存中のファイルの path 集合を保持する。isSaving は単一の boolean ではなく
   // path の集合で判定することで、「file A の保存中に file B を保存しようとしたら
