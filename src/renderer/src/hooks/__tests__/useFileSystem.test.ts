@@ -2471,8 +2471,12 @@ describe('useFileSystem', () => {
     act(() => result.current.updateFileContent('編集済み'))
     const openedBefore = result.current.openFile
     const saveFile = result.current.saveFile
-    // 読み込みのたびに保存を挟み、競合し続ける状況を作る
+    // 読み込みのたびに保存を挟み、競合し続ける状況を作る。
+    // 保存は「未変更なら書かない」ため、毎回編集を入れてから呼ぶ
+    let edit = 0
     mockReadFileContent.mockImplementation(() => {
+      edit += 1
+      result.current.updateFileContent(`編集済み ${edit}`)
       void saveFile()
       return Promise.resolve('古い内容')
     })

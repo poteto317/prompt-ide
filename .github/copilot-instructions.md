@@ -26,60 +26,77 @@
 
 # PR レビューフロー
 
-PR へのコミットをプッシュした後は、以下の手順を必ず実施してください。
+**指摘が 0 件になるまで自走すること。** ユーザーに「レビューが来ているか」を目視で確認させたり、
+1 周ごとに指示を待ったりしない。巡回数が増えたことを理由に打ち切らない。
 
-1. **対応済みスレッドの Resolve**
-   - `gh api graphql` で PR の `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
-   - **対応済みの指摘のみ** `resolveReviewThread` ミューテーションで Resolve する（未対応の指摘を機械的に Resolve しないこと）
-   - 未対応の指摘が残っている場合は、先に対応してから Resolve する
-   - 対応済みスレッドの Resolve が完了したら次のステップへ
+具体的なコマンド・スクリプト・落とし穴は [docs/pr-review-loop.md](../docs/pr-review-loop.md) に
+まとめてある。ここはその要約で、詳細と実行例は手順書側を参照すること。
+
+スクリプトは bash と python3 に依存する。Windows では Git Bash / WSL から実行する。
+
+PR へのコミットをプッシュした後は、以下を 1 周として繰り返す。
+
+1. **指摘の取得**
+   - `reviewThreads` は `first:100` + `pageInfo` でページングして全件取る。`last` と `after` は
+     噛み合わないため、途中で打ち切ると古い未解決スレッドを見落とす
+   - `reviews` は逆に `first` ではなく **`last`** を使う。件数が増えると `first` は古い方から
+     埋まり、最新の到着を取りこぼす
+   - **レビュー本文も必ず読む。** suppressed comments はスレッドにならず、本文の `<details>` 内に
+     しか現れない。スレッドへの返信も review として記録されるため、`reviews(last:1)` では返信を
+     掴んで「指摘なし」と誤読する
+
+   クエリの具体例は [docs/pr-review-loop.md](../docs/pr-review-loop.md) の
+   「1. 指摘の取得」を参照。ここに複製すると、クエリの変更時にどちらか
+   片方だけ更新して食い違う（このファイルは要約と自認しているため、正典は
+   docs 側とする）
+
+2. **妥当性の検証**
+   - 指摘の前提を自分で確かめる。「テストが落ちる」と書かれていたら実際に走らせ、数値が
+     書かれていたら自分で計算する
+   - 前提が誤っていれば、根拠（実行結果・計算過程）を添えて対応しない判断を返信し、
+     PR 本文にも残す
+
+3. **TDD で修正**
+   - 失敗するテストを先に書き、実装後に通す
+   - **実装を戻すとそのテストが落ちること**まで確認する（`git stash push <実装ファイル>` →
+     テスト → `git stash pop`）
+   - `act(...).then(...)` 形式で書かない。失敗が unhandled rejection として握り潰される
+
+4. **検証**
+   - `npm test` / `npm run typecheck` / 変更したファイルへの `npx eslint`
+   - 実機（Electron）でも確認する。**起動したアプリは検証後に必ず自分で停止する**
+   - `pkill -f` を使う前に `pgrep -fl` で対象を確認する。パターンにはリポジトリ名を含んだ
+     パスを使い、無関係なプロセスを巻き込まない
+
+5. **コミットとプッシュ**
+   - `git add -A` は使わない（無関係な未追跡ファイルを巻き込む）。`git add -u` を使う
+   - コミットメッセージは日本語・Conventional Commit 形式
+
+6. **対応済みスレッドの Resolve**
+   - **対応済みの指摘のみ** `resolveReviewThread` ミューテーションで Resolve する
+     （未対応の指摘を機械的に Resolve しないこと）
+   - 返信には「何が起きていたか」「どう直したか」「どのテストで固定したか」を書く
 
    ```bash
-   # 未解決スレッドの一覧
-   gh api graphql -f query='
-   {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){
-     reviewThreads(first:100){totalCount pageInfo{hasNextPage endCursor} nodes{id isResolved path line comments(last:2){nodes{author{login} body}}}}
-   }}}'
-
-   # 対応済みスレッドの Resolve
    gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' \
      -f t='<THREAD_ID>'
    ```
 
-2. **Copilot へのレビュー依頼**
-   - 対応済みスレッドの Resolve が完了したら Copilot にレビューを依頼してください
-   - `GITHUB_TOKEN`（GitHub Actions）からは Copilot レビューをトリガーできないため、必ずローカルターミナルから実行すること
-   - `PR_NUMBER` には対象 PR の番号を設定してください（例: `7`）
-   - `REPO` には対象リポジトリの `OWNER/REPO` を設定してください（例: `your-org/your-repo`）
+7. **PR 本文の更新**
+   - コミットごとに「指摘 → 対応」の表を追記する。対応しない判断とその理由もここに残す
 
-   **Windows (PowerShell):**
-
-   ```powershell
-   $PR_NUMBER = "<対象PR番号>"
-   $REPO = "<OWNER/REPO>"
-   gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" `
-     -f "reviewers[]=copilot-pull-request-reviewer[bot]"
-   ```
-
-   **Mac / Linux (bash / zsh):**
-
-   ```bash
-   PR_NUMBER="<対象PR番号>"
-   REPO="<OWNER/REPO>"
-   gh api -X POST "repos/$REPO/pulls/$PR_NUMBER/requested_reviewers" \
-     -f "reviewers[]=copilot-pull-request-reviewer[bot]"
-   ```
-
-   REST の `requested_reviewers` は bot を返さないため、依頼できたかどうかの確認は
-   GraphQL 側で行ってください。依頼自体を GraphQL で行うこともできます。
-
-   ```bash
-   # PR の node id を取得して Copilot に依頼する
-   PR_ID=$(gh api graphql -f query='{repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){id}}}' \
-     -q .data.repository.pullRequest.id)
-   gh api graphql -f query='mutation($p:ID!){requestReviews(input:{pullRequestId:$p, botIds:["<COPILOT_BOT_NODE_ID>"], union:true}){
-     pullRequest{reviewRequests(first:5){nodes{requestedReviewer{__typename ... on Bot{login}}}}}}}' -f p="$PR_ID"
-   ```
+8. **再レビューの依頼と監視**
+   - `bash scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを
+     出力で確認する**
+   - `bash scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
+   - 収束の判断は監視が出す `NO FINDINGS` で行う。`NO PENDING REVIEW` や `WATCH TIMEOUT` は
+     「指摘なし」ではない
+   - `NO FINDINGS` が出た場合も、それだけで収束と判断しない。GraphQL で `reviews` と
+     `reviewThreads` の最新を直接確認してから収束と判断する
+   - `GITHUB_TOKEN`（GitHub Actions）からは Copilot レビューをトリガーできないため、必ず
+     ローカルターミナルから実行する
+   - REST の `pulls/:number/requested_reviewers` は bot を返さないため、依頼も確認も GraphQL で
+     行う（スクリプトがそうしている）
 
 # コーディングルール（汎用）
 

@@ -132,3 +132,46 @@ export const toComparablePath = (path: string): string => {
   // 同じ文字列どうしなので種別は必ず一致し、null にはならない
   return `${kind}:${normalized === null ? path : normalized[0]}`
 }
+
+/**
+ * 末尾の区切りを落とす。区切りの種類はパスの種別(Windows/POSIX)に応じて判定する。
+ * stripTrailingSeparators は POSIX の '\\' をファイル名の一部として保護するため
+ * '/' しか落とさない。Windows パスではここで '\\' も対象にする。
+ */
+const stripTrailingSeparatorsForPath = (path: string): string =>
+  isWindowsPath(path) ? path.replace(/[\\/]+$/, '') : stripTrailingSeparators(path)
+
+/**
+ * 親ディレクトリのパスと名前をつないで子のパスを作る。
+ * 区切り文字は親のパスから推定する（main 側の OS に依存するため）。
+ * ルート直下（親が '/' や 'C:\' のような区切りだけ・ドライブだけの形）でも
+ * 二重区切りにならないよう、末尾の区切りを落としてからつなぐ。
+ *
+ * 区切りの判定には isWindowsPath を使う(正規化前の生文字列で見る)。
+ * parentPath がバックスラッシュを含むかどうかだけで決めると、POSIX の
+ * ディレクトリ名にバックスラッシュが含まれる場合(ファイルシステムレベルでは
+ * 禁止されていない)に誤って '\' を選んでしまう。
+ */
+export const joinPath = (parentPath: string, name: string): string => {
+  const base = stripTrailingSeparatorsForPath(parentPath)
+  const separator = isWindowsPath(parentPath) ? '\\' : '/'
+  return `${base}${separator}${name}`
+}
+
+// 検証そのものは main 側（handlers/entryNameValidator）が行うが、こちらは
+// joinPath の無効化範囲を決めるために同じ条件を要る。ロジックは @shared/entryName
+// に一本化してあり、ここでは再エクスポートするだけ（main と食い違わせないため）
+export { isSafeEntryName } from '@shared/entryName'
+
+/**
+ * path が from 配下（または from 自身）であることを isPathAtOrInside で確認した後、
+ * from を to へ置き換えた新しいパスを返す。
+ *
+ * raw な文字数（from.length）で切ると、from の末尾に区切りが付いているなど、
+ * isPathAtOrInside が正規化で吸収する差異がそのままずれとして残る。from 側だけを
+ * 正規化した長さで切り、path 自身のセパレータ（Windows 表記など）は変えない。
+ */
+export const replacePathPrefix = (path: string, from: string, to: string): string => {
+  const trimmedFromLength = stripTrailingSeparatorsForPath(from).length
+  return to + path.slice(trimmedFromLength)
+}

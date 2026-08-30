@@ -7,6 +7,7 @@ vi.mock('../../lib/fileSystemApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
 import { useFileTreeOperations } from '../useFileTreeOperations'
+import type { FileOperationLockOptions, ResetForFileChangeOptions } from '../useFileEditing'
 
 const mockReadDirectory = vi.mocked(fileSystemApi.readDirectory)
 const mockCreateFile = vi.mocked(fileSystemApi.createFile)
@@ -27,11 +28,16 @@ function renderOperations(config?: {
   folderPath?: string | null
   initialOpenFile?: OpenFile | null
   onConfirm?: (message: string) => boolean
-  resetForFileChange?: () => void
+  resetForFileChange?: (options?: ResetForFileChangeOptions) => void
+  lockPathForFileOperation?: (
+    targetPath: string,
+    options?: FileOperationLockOptions
+  ) => Promise<() => void>
   invalidatePendingReads?: (affectedPath: string) => void
   beginTreeWrite?: () => (() => boolean) | null
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
+  const lockPathForFileOperation = config?.lockPathForFileOperation ?? (async () => () => {})
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
   const onConfirm = config?.onConfirm ?? vi.fn<(message: string) => boolean>().mockReturnValue(true)
   // null を明示的に渡すケースを undefined(デフォルト値を使う)と区別する
@@ -47,12 +53,12 @@ function renderOperations(config?: {
       onConfirm,
       invalidatePendingReads,
       beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
-      lockPathForFileOperation: async () => () => {},
+      lockPathForFileOperation,
       reportTreeLoad: vi.fn()
     })
     return { ...ops, openFile }
   })
-  return { result, resetForFileChange, onConfirm, invalidatePendingReads }
+  return { result, resetForFileChange, onConfirm, invalidatePendingReads, lockPathForFileOperation }
 }
 
 function renderOperationsWithFolder(getFolderPath: () => string | null) {
@@ -458,5 +464,315 @@ describe('ツリー再読込のフォルダ判定', () => {
       await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
     })
     expect(result.current.fileTree).toEqual(tree)
+  })
+})
+
+describe('保存ロックの張り方', () => {
+  it('作成では、作られるパスだけを無効にする', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'a.ts')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ invalidatesPaths: ['/project/a.ts'] })
+    )
+  })
+
+  it('ディレクトリの作成では、作られるパス自体だけを無効にする', async () => {
+    // 配下（sub/file.ts 等）の保存は、フォルダを作り直しても何かを潰すわけではない
+    // ので待つだけでよい。ただし削除してバッファだけ残したファイルと同じ名前の
+    // ディレクトリを作ると、待って書き込む扱いでは EISDIR で失敗するため、
+    // 作られるパス自体は createFile と同じく無効にする必要がある
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createDirectory('/project', 'sub')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({
+        invalidatesPaths: ['/project/sub'],
+        abortMessage: expect.stringContaining('ディレクトリ')
+      })
+    )
+  })
+
+  it('リネームでは、移行先だけ別の文言で中止を伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/a.ts' },
+          { path: '/project/b.ts', abortMessage: expect.stringContaining('リネーム') }
+        ]
+      })
+    )
+  })
+
+  it('リネーム先の名前が不正なら、移行先を無効化しない', async () => {
+    // '' や 'sub/x.ts' だと、親ディレクトリ自身や別の階層を指してしまう
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' }, '')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({ invalidatesPaths: [{ path: '/project/a.ts' }] })
+    )
+  })
+
+  it('作成の名前が空なら、親ディレクトリ配下を巻き込まない', async () => {
+    // joinPath('/project', '') は '/project/' になり、その配下すべてが対象になる
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', '')
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ invalidatesPaths: null })
+    )
+  })
+
+  it('リネームの追随では、中止の通知を残すよう伝える', async () => {
+    const resetForFileChange = vi.fn()
+    const { result } = renderOperations({
+      resetForFileChange,
+      initialOpenFile: {
+        path: '/project/a.ts',
+        name: 'a.ts',
+        content: '',
+        savedContent: '',
+        language: 'typescript'
+      }
+    })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(resetForFileChange).toHaveBeenCalledWith({
+      renamed: { from: '/project/a.ts', to: '/project/b.ts' }
+    })
+  })
+})
+
+describe('削除中の保存中止メッセージ', () => {
+  it('ファイル削除の中止では、フォルダの作り直しを案内しない', async () => {
+    // ファイル自身が消えただけで親フォルダは残っているため、再保存すれば
+    // ファイルは作り直される。「フォルダを作り直してから」は誤った案内になる
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    const [, options] = lockPathForFileOperation.mock.calls[0]
+    expect(options?.abortMessage).toContain('削除')
+    expect(options?.abortMessage).not.toContain('フォルダ')
+  })
+
+  it('ディレクトリ削除の中止では、フォルダの作り直しを案内する', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'sub', path: '/project/sub', type: 'directory' })
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/sub',
+      expect.objectContaining({ abortMessage: expect.stringContaining('フォルダ') })
+    )
+  })
+
+  it('リネーム先がファイルの場合、中止の文言は「ファイル」と伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/a.ts' },
+          { path: '/project/b.ts', abortMessage: expect.stringContaining('ファイル') }
+        ]
+      })
+    )
+  })
+
+  it('リネーム先がディレクトリの場合、中止の文言は「ディレクトリ」と伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'sub', path: '/project/sub', type: 'directory' },
+        'sub2'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/sub' },
+          { path: '/project/sub2', abortMessage: expect.stringContaining('ディレクトリ') }
+        ]
+      })
+    )
+  })
+})
+
+describe('release の呼び出しに succeeded を渡す', () => {
+  it('createFile が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockCreateFile.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'new.ts')
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('createFile が失敗したら succeeded: false で release する', async () => {
+    // これが呼ばれないと、中止の文言（作成されたファイルを上書きします）が
+    // 実際には何も作られていないのに取り下げられず残ってしまう
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockCreateFile.mockRejectedValue(new Error('EEXIST'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.createFile('/project', 'new.ts')
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+
+  it('renameEntry が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockRenameEntry.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('renameEntry が失敗したら succeeded: false で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockRenameEntry.mockRejectedValue(new Error('EEXIST'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+
+  it('deleteEntry が成功したら succeeded: true で release する', async () => {
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockDeleteEntry.mockResolvedValue(undefined)
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: true })
+  })
+
+  it('ロック取得後に IPC 自体が失敗したら succeeded: false で release する', async () => {
+    // ロック取得より前の確認（削除しますか）で断ると、そもそもロックを
+    // 取らないので release は呼ばれない。ロックを取った後に失敗するのは、
+    // fileSystemApi.deleteEntry が例外を投げる経路
+    const release = vi.fn()
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(release)
+    mockDeleteEntry.mockRejectedValue(new Error('EACCES'))
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
+    })
+
+    expect(release).toHaveBeenCalledWith({ succeeded: false })
   })
 })

@@ -2,8 +2,27 @@ import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
-import { isPathAtOrInside, isSamePath } from '../lib/pathUtils'
+import {
+  isPathAtOrInside,
+  isSafeEntryName,
+  isSamePath,
+  joinPath,
+  replacePathPrefix
+} from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
+import {
+  SAVE_ABORTED_BY_CREATE,
+  SAVE_ABORTED_BY_CREATE_DIRECTORY,
+  SAVE_ABORTED_BY_DELETE_DIRECTORY,
+  SAVE_ABORTED_BY_DELETE_FILE,
+  SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY,
+  SAVE_ABORTED_BY_RENAME_DESTINATION_FILE
+} from './useFileEditing'
+import type {
+  FileOperationLockOptions,
+  FileOperationResult,
+  ResetForFileChangeOptions
+} from './useFileEditing'
 
 interface FileTreeOperationsOptions {
   /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
@@ -11,7 +30,7 @@ interface FileTreeOperationsOptions {
   /** 呼び出し時点の openFile を同期的に返す(操作中に確定した結果も見えるようにする) */
   getOpenFile: () => OpenFile | null
   setOpenFile: (next: OpenFile | null) => void
-  resetForFileChange: () => void
+  resetForFileChange: (options?: ResetForFileChangeOptions) => void
   onConfirm: (message: string) => boolean
   /**
    * 指定パス配下を対象とする保留中のファイル読み込みを無効化する。
@@ -21,7 +40,10 @@ interface FileTreeOperationsOptions {
   /** ツリーへの書き込みを開始する。書き込めない場合は null */
   beginTreeWrite: () => (() => boolean) | null
   /** 指定パス配下を FS 操作中として予約する。解除関数を返す */
-  lockPathForFileOperation: (targetPath: string) => Promise<() => void>
+  lockPathForFileOperation: (
+    targetPath: string,
+    options?: FileOperationLockOptions
+  ) => Promise<(result?: FileOperationResult) => void>
   /** ツリー読み込みの結果を通知する(失敗の案内に使う) */
   reportTreeLoad: (error: Error | null) => void
 }
@@ -142,41 +164,101 @@ export function useFileTreeOperations({
 
   // 作成も同じ mutex を通す。通さないと、作成先の祖先のリネーム・削除と
   // 並行して走り、FS の結果が実行順に依存する
-  const runLocked = async (targetPath: string, operation: () => Promise<void>): Promise<void> => {
-    const release = await lockPathForFileOperation(targetPath)
+  const runLocked = async (
+    targetPath: string,
+    operation: () => Promise<void>,
+    options?: FileOperationLockOptions
+  ): Promise<void> => {
+    const release = await lockPathForFileOperation(targetPath, options)
+    // 操作が失敗したことを伝える。何も起きていないのに「上書きします」と
+    // 案内したままにすると、ユーザーが保存を諦めて編集を失う
+    let succeeded = false
     try {
       await operation()
+      succeeded = true
     } finally {
-      release()
+      release({ succeeded })
     }
   }
 
+  // 既存のエントリは壊さないので、配下の無関係な保存は待ってから書き込む。ただし
+  // 作られるパス自体は無効にする。削除してバッファだけ残したファイルと同じ名前で
+  // 作り直すと、待って書き込む扱いでは古いバッファで上書きする（ディレクトリの
+  // 場合は EISDIR で失敗する）ため。
+  // 区切りを含む名前や空の名前だと、joinPath が親ディレクトリ自身や別の階層を
+  // 指してしまい、無関係な保存まで巻き込む。名前の検証は main 側が行うので、
+  // ここでは「無効化の範囲を決めてよい名前か」だけを見る
+  const createEntryLockOptions = (
+    parentPath: string,
+    name: string,
+    abortMessage: string
+  ): FileOperationLockOptions =>
+    !isSafeEntryName(name)
+      ? { invalidatesPaths: null }
+      : { invalidatesPaths: [joinPath(parentPath, name)], abortMessage }
+
   const createFile = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createFile(parentPath, name)).then(() => true)
+      runLocked(
+        parentPath,
+        () => fileSystemApi.createFile(parentPath, name),
+        createEntryLockOptions(parentPath, name, SAVE_ABORTED_BY_CREATE)
+      ).then(() => true)
     )
 
   const createDirectory = (parentPath: string, name: string): Promise<void> =>
     runFileOperation(() =>
-      runLocked(parentPath, () => fileSystemApi.createDirectory(parentPath, name)).then(() => true)
+      runLocked(
+        parentPath,
+        () => fileSystemApi.createDirectory(parentPath, name),
+        createEntryLockOptions(parentPath, name, SAVE_ABORTED_BY_CREATE_DIRECTORY)
+      ).then(() => true)
     )
 
   const renameEntry = (node: FileTreeNode, newName: string): Promise<void> =>
     runFileOperation(async () => {
       // node.path は「親のプレフィックス + node.name」なので、末尾の name を差し替える
       const parentPrefix = node.path.slice(0, node.path.length - node.name.length)
-      const newPath = parentPrefix + newName
+      // joinPath は末尾の区切りを吸収してからつなぐため、区切り付きの
+      // parentPrefix をそのまま渡しても二重区切りにならない
+      const newPath = joinPath(parentPrefix, newName)
       // 保存中の書き込みがリネーム後に解決すると、旧パスが再作成される。
       // 操作の完了まで予約し、その間の新しい保存も開始させない。
       // 予約するのは元の path ではなく親ディレクトリ。移行先も同じ親の下に
       // 作られるため、元だけを予約すると移行先への作成・削除と並行に走り、
       // どちらが先に完了するかで結果が変わってしまう
-      const release = await lockPathForFileOperation(parentPrefix)
-      try {
-        await fileSystemApi.renameEntry(node.path, newName)
-      } finally {
-        release()
-      }
+      // 直列化は親ディレクトリ単位（移行先も同じ親の下に作られる）だが、
+      // 無効になるのは元と先の 2 つだけ。同じフォルダの別ファイルの保存まで
+      // 捨てると、Cmd+S が無反応に見えて内容が失われる。移行先を外すと、
+      // 削除してバッファだけ残したファイルと同じ名前へリネームしてきた場合に、
+      // 古いバッファでその内容を上書きしてしまう
+      // lock 取得 → 操作 → 成否を伴う release は createFile/createDirectory と
+      // 同じ形（runLocked が持つ「失敗を伝える」処理をここでも使う）
+      await runLocked(parentPrefix, () => fileSystemApi.renameEntry(node.path, newName), {
+        invalidatesPaths: [
+          // 元: 待って書くと、リネームで消えた旧パスを作り直してしまう。文言は
+          // 既定（SAVE_ABORTED_BY_FILE_OPERATION、「もう一度保存してください」）
+          // のままでよい。開いているファイル自身のリネームなら、下の
+          // resetForFileChange({ renamed }) がバッファを新パスへ追随させるため、
+          // 実際に「もう一度保存」すれば新パスへ正しく書き込まれる
+          { path: node.path },
+          // 先: 待って書くと、リネームしてきた内容を古いバッファで上書きする。
+          // ロックは完了で解放されるため、そのまま保存し直しても同じことが起きる。
+          // 区切りを含む名前や空の名前だと、親ディレクトリ自身や別の階層を指して
+          // 無関係な保存まで巻き込むため、その場合は元だけを無効にする
+          ...(isSafeEntryName(newName)
+            ? [
+                {
+                  path: newPath,
+                  abortMessage:
+                    node.type === 'directory'
+                      ? SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY
+                      : SAVE_ABORTED_BY_RENAME_DESTINATION_FILE
+                }
+              ]
+            : [])
+        ]
+      })
       // 読み込み中のファイルがリネーム対象なら、旧 path のまま表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
@@ -196,9 +278,11 @@ export function useFileTreeOperations({
             ? // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
               { ...current, path: newPath, name: newName, language: detectLanguage(newName) }
             : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
-              { ...current, path: newPath + current.path.slice(node.path.length) }
+              { ...current, path: replacePathPrefix(current.path, node.path, newPath) }
         )
-        resetForFileChange()
+        // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
+        // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
+        resetForFileChange({ renamed: { from: node.path, to: newPath } })
       }
       return true
     })
@@ -215,16 +299,23 @@ export function useFileTreeOperations({
     await runFileOperation(async () => {
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
-      const release = await lockPathForFileOperation(node.path)
+      const release = await lockPathForFileOperation(node.path, {
+        abortMessage:
+          node.type === 'directory' ? SAVE_ABORTED_BY_DELETE_DIRECTORY : SAVE_ABORTED_BY_DELETE_FILE
+      })
       // 再確認から IPC の解決までの間もエディタは操作できる。ここでも
       // 開始時点の状態を控え、実行中に入った編集を確認なしで捨てない
       let bufferBeforeDelete: OpenFile | null = null
+      let deleted = false
       try {
         if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return false
         bufferBeforeDelete = getOpenFile()
         await fileSystemApi.deleteEntry(node.path)
+        deleted = true
       } finally {
-        release()
+        // 削除しなかった（確認で断った・失敗した）場合、それを理由に中止した
+        // 保存の通知は取り下げる
+        release({ succeeded: deleted })
       }
       // 読み込み中のファイルが削除対象なら、その結果を表示しないようにする。
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ

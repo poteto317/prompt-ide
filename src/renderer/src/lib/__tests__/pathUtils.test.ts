@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { isPathAtOrInside, isPathInside, isSamePath, toComparablePath } from '../pathUtils'
+import {
+  isPathAtOrInside,
+  isPathInside,
+  isSamePath,
+  joinPath,
+  isSafeEntryName,
+  replacePathPrefix,
+  toComparablePath
+} from '../pathUtils'
 
 describe('isPathInside', () => {
   it('/ 区切りで親の内部にあるとき true を返す', () => {
@@ -139,6 +147,85 @@ describe('isSamePath', () => {
 
   it('別のパスは false', () => {
     expect(isSamePath('/a/b', '/a/c')).toBe(false)
+  })
+})
+
+describe('joinPath', () => {
+  it('親のパスと名前をつなぐ', () => {
+    expect(joinPath('/project', 'a.ts')).toBe('/project/a.ts')
+  })
+
+  it('親が末尾に区切りを持っていても二重にしない', () => {
+    expect(joinPath('/project/', 'a.ts')).toBe('/project/a.ts')
+  })
+
+  it('POSIX のルート直下でも二重区切りにならない', () => {
+    expect(joinPath('/', 'a.ts')).toBe('/a.ts')
+  })
+
+  it('Windows のパスでは区切りを引き継ぐ', () => {
+    expect(joinPath('C:\\project', 'a.ts')).toBe('C:\\project\\a.ts')
+    expect(joinPath('C:\\', 'a.ts')).toBe('C:\\a.ts')
+  })
+
+  it('POSIX のディレクトリ名にバックスラッシュが含まれていても "/" でつなぐ', () => {
+    // ドライブ文字も UNC も無いパスは POSIX。ディレクトリ名にバックスラッシュを
+    // 含めること自体はファイルシステムレベルでは禁止されていないため、
+    // parentPath 全体にバックスラッシュがあるかで区切りを決めると誤判定する
+    expect(joinPath('/Users/x/a\\b', 'newName.txt')).toBe('/Users/x/a\\b/newName.txt')
+  })
+
+  it('先頭が "//" の POSIX パス（一部のマウント構成で起こり得る）でも "/" でつなぐ', () => {
+    // UNC パス（\\server\share）と正規化後の見た目が同じになるため、
+    // 正規化後の文字列だけで判定すると POSIX の "//" パスを Windows と誤判定する
+    expect(joinPath('//mnt/share', 'a.ts')).toBe('//mnt/share/a.ts')
+  })
+
+  it('UNC パスでは区切りを引き継ぐ', () => {
+    expect(joinPath('\\\\server\\share', 'a.ts')).toBe('\\\\server\\share\\a.ts')
+  })
+})
+
+describe('isSafeEntryName', () => {
+  it('通常の名前は受け付ける', () => {
+    expect(isSafeEntryName('index.ts')).toBe(true)
+  })
+
+  it('空・空白のみ・. や .. は拒否する', () => {
+    expect(isSafeEntryName('')).toBe(false)
+    expect(isSafeEntryName('   ')).toBe(false)
+    expect(isSafeEntryName('.')).toBe(false)
+    expect(isSafeEntryName('..')).toBe(false)
+  })
+
+  it('区切り文字を含む名前は拒否する', () => {
+    expect(isSafeEntryName('/')).toBe(false)
+    expect(isSafeEntryName('\\')).toBe(false)
+    expect(isSafeEntryName('sub/a.ts')).toBe(false)
+    expect(isSafeEntryName('sub\\a.ts')).toBe(false)
+  })
+
+  it('前後に空白がある名前は拒否する', () => {
+    expect(isSafeEntryName(' a.ts')).toBe(false)
+    expect(isSafeEntryName('a.ts ')).toBe(false)
+  })
+})
+
+describe('replacePathPrefix', () => {
+  it('前方一致する部分を置き換える', () => {
+    expect(replacePathPrefix('/project/a.ts', '/project', '/moved')).toBe('/moved/a.ts')
+  })
+
+  it('from に末尾区切りが付いていても、二重区切りにならない', () => {
+    // isPathAtOrInside は末尾区切りを無視して判定するため、raw な文字数で
+    // 切ると from の末尾区切り分だけ余分に削れて壊れたパスになる
+    expect(replacePathPrefix('/project/sub/a.ts', '/project/sub/', '/moved')).toBe('/moved/a.ts')
+  })
+
+  it('path 自身のセパレータは変えない（Windows のパスをそのまま保つ）', () => {
+    expect(replacePathPrefix('C:\\proj\\sub\\a.ts', 'C:\\proj\\sub', 'C:\\moved')).toBe(
+      'C:\\moved\\a.ts'
+    )
   })
 })
 

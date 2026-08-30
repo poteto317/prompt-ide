@@ -228,9 +228,19 @@ export function useQuickOpen({
       // ダイアログだけ消えて入力中のクエリを失う
       // ダイアログは閉じるので、フォーカスはエディタへ移す
       inFlightOpensRef.current += 1
-      void selectFile(target.node, { moveFocusToEditor: true })
-        .then((opened) => {
-          inFlightOpensRef.current -= 1
+      void (async (): Promise<void> => {
+        try {
+          let opened = false
+          try {
+            opened = await selectFile(target.node, { moveFocusToEditor: true })
+          } catch {
+            // selectFile が投げた場合（破棄確認のコールバックが投げたなど）も
+            // 「開けなかった」として扱う。減算を飛ばすと hasHandedOverFocus が
+            // 以後ずっと true になり、閉じてもフォーカスが body に残る
+            opened = false
+          } finally {
+            inFlightOpensRef.current -= 1
+          }
           if (opened) {
             // 開けた場合は世代が進んでいても引き渡す。再オープンで引き渡しを
             // 落とすと、閉じたときにダイアログが元の要素へフォーカスを戻し、
@@ -245,12 +255,15 @@ export function useQuickOpen({
           if (openSucceededRef.current) return
           if (isOpenRef.current) return
           restoreFocusOrigin()
-        })
-        .finally(() => {
+        } catch {
+          // 開けた後の処理（フォーカスの引き渡しや復帰）が投げても、握り潰さずに
+          // ここで止める。void した IIFE から漏れると unhandled rejection になる
+        } finally {
           if (confirmingGenerationRef.current === generation) {
             confirmingGenerationRef.current = null
           }
-        })
+        }
+      })()
     },
     [results, activeIndex, selectFile, restoreFocusOrigin, isOpenRef]
   )
