@@ -592,7 +592,9 @@ describe('保存ロックの張り方', () => {
 })
 
 describe('削除中の保存中止メッセージ', () => {
-  it('削除は専用の文言で中止を伝える（再保存しても親ごと消えているため）', async () => {
+  it('ファイル削除の中止では、フォルダの作り直しを案内しない', async () => {
+    // ファイル自身が消えただけで親フォルダは残っているため、再保存すれば
+    // ファイルは作り直される。「フォルダを作り直してから」は誤った案内になる
     const lockPathForFileOperation = vi
       .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
       .mockResolvedValue(() => {})
@@ -602,9 +604,72 @@ describe('削除中の保存中止メッセージ', () => {
       await result.current.deleteEntry({ name: 'a.ts', path: '/project/a.ts', type: 'file' })
     })
 
+    const [, options] = lockPathForFileOperation.mock.calls[0]
+    expect(options?.abortMessage).toContain('削除')
+    expect(options?.abortMessage).not.toContain('フォルダ')
+  })
+
+  it('ディレクトリ削除の中止では、フォルダの作り直しを案内する', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'sub', path: '/project/sub', type: 'directory' })
+    })
+
     expect(lockPathForFileOperation).toHaveBeenCalledWith(
-      '/project/a.ts',
-      expect.objectContaining({ abortMessage: expect.stringContaining('削除') })
+      '/project/sub',
+      expect.objectContaining({ abortMessage: expect.stringContaining('フォルダ') })
+    )
+  })
+
+  it('リネーム先がファイルの場合、中止の文言は「ファイル」と伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+        'b.ts'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/a.ts' },
+          { path: '/project/b.ts', abortMessage: expect.stringContaining('ファイル') }
+        ]
+      })
+    )
+  })
+
+  it('リネーム先がディレクトリの場合、中止の文言は「ディレクトリ」と伝える', async () => {
+    const lockPathForFileOperation = vi
+      .fn<(targetPath: string, options?: FileOperationLockOptions) => Promise<() => void>>()
+      .mockResolvedValue(() => {})
+    const { result } = renderOperations({ lockPathForFileOperation })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'sub', path: '/project/sub', type: 'directory' },
+        'sub2'
+      )
+    })
+
+    expect(lockPathForFileOperation).toHaveBeenCalledWith(
+      '/project/',
+      expect.objectContaining({
+        invalidatesPaths: [
+          { path: '/project/sub' },
+          { path: '/project/sub2', abortMessage: expect.stringContaining('ディレクトリ') }
+        ]
+      })
     )
   })
 })

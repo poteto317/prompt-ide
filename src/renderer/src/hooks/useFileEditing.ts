@@ -17,10 +17,15 @@ export const SAVE_ABORTED_BY_CREATE_DIRECTORY =
   '同じ名前のディレクトリが作成されました。このまま保存すると失敗します。'
 // 削除は元のパス自体を無効にするため、その配下のファイルの保存もここに来る。
 // 親ごと消えているので、案内どおり再保存しても ENOENT で失敗する
-export const SAVE_ABORTED_BY_DELETE =
+export const SAVE_ABORTED_BY_DELETE_FILE = '削除されました。保存するともう一度作成されます。'
+// ディレクトリの削除では、開いているファイルの親フォルダごと消えている。
+// ファイル削除（親フォルダは残る）と案内を分ける
+export const SAVE_ABORTED_BY_DELETE_DIRECTORY =
   '削除されました。保存する場合は、フォルダを作り直してから行ってください。'
-export const SAVE_ABORTED_BY_RENAME_DESTINATION =
+export const SAVE_ABORTED_BY_RENAME_DESTINATION_FILE =
   '同じ名前へ別のファイルがリネームされました。このまま保存すると、その内容を上書きします。'
+export const SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY =
+  '同じ名前へ別のディレクトリがリネームされました。このまま保存すると、その中身を上書きします。'
 
 const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 

@@ -13,8 +13,10 @@ import * as fileSystemApi from '../lib/fileSystemApi'
 import {
   SAVE_ABORTED_BY_CREATE,
   SAVE_ABORTED_BY_CREATE_DIRECTORY,
-  SAVE_ABORTED_BY_DELETE,
-  SAVE_ABORTED_BY_RENAME_DESTINATION
+  SAVE_ABORTED_BY_DELETE_DIRECTORY,
+  SAVE_ABORTED_BY_DELETE_FILE,
+  SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY,
+  SAVE_ABORTED_BY_RENAME_DESTINATION_FILE
 } from './useFileEditing'
 import type {
   FileOperationLockOptions,
@@ -245,7 +247,15 @@ export function useFileTreeOperations({
           // 区切りを含む名前や空の名前だと、親ディレクトリ自身や別の階層を指して
           // 無関係な保存まで巻き込むため、その場合は元だけを無効にする
           ...(isSafeEntryName(newName)
-            ? [{ path: newPath, abortMessage: SAVE_ABORTED_BY_RENAME_DESTINATION }]
+            ? [
+                {
+                  path: newPath,
+                  abortMessage:
+                    node.type === 'directory'
+                      ? SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY
+                      : SAVE_ABORTED_BY_RENAME_DESTINATION_FILE
+                }
+              ]
             : [])
         ]
       })
@@ -290,7 +300,8 @@ export function useFileTreeOperations({
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
       const release = await lockPathForFileOperation(node.path, {
-        abortMessage: SAVE_ABORTED_BY_DELETE
+        abortMessage:
+          node.type === 'directory' ? SAVE_ABORTED_BY_DELETE_DIRECTORY : SAVE_ABORTED_BY_DELETE_FILE
       })
       // 再確認から IPC の解決までの間もエディタは操作できる。ここでも
       // 開始時点の状態を控え、実行中に入った編集を確認なしで捨てない
