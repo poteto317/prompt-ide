@@ -13,7 +13,7 @@ export const stripTrailingSeparators = (path: string): string => path.replace(/[
 const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
 
 /** '/' 正規化後の文字列が Windows のパス(ドライブ文字 or UNC)か */
-export const isWindowsStyle = (forwardPath: string): boolean =>
+const isWindowsStyle = (forwardPath: string): boolean =>
   /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
 
 /**

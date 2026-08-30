@@ -45,20 +45,10 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
      しか現れない。スレッドへの返信も review として記録されるため、`reviews(last:1)` では返信を
      掴んで「指摘なし」と誤読する
 
-   ```bash
-   # 未解決スレッドの一覧（hasNextPage が true なら after で続きを辿る）
-   gh api graphql -f query='
-   {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){
-     reviewThreads(first:100){totalCount pageInfo{hasNextPage endCursor}
-       nodes{id isResolved path line comments(last:2){nodes{author{login} body}}}}
-   }}}'
-
-   # レビュー本文（Bot が書いた、本文がレビューの形をしている最新のものを読む）
-   gh api graphql -f query='
-   {repository(owner:"<OWNER>",name:"<REPO>"){pullRequest(number:<PR_NUMBER>){
-     reviews(last:100){nodes{author{__typename login} submittedAt body}}
-   }}}'
-   ```
+   クエリの具体例は [docs/pr-review-loop.md](../docs/pr-review-loop.md) の
+   「1. 指摘の取得」を参照。ここに複製すると、クエリの変更時にどちらか
+   片方だけ更新して食い違う（このファイルは要約と自認しているため、正典は
+   docs 側とする）
 
 2. **妥当性の検証**
    - 指摘の前提を自分で確かめる。「テストが落ちる」と書かれていたら実際に走らせ、数値が
