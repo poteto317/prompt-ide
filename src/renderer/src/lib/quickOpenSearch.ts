@@ -1,6 +1,11 @@
 import type { FileTreeNode, FileNode } from '../types'
 import { fuzzyMatch } from './fuzzyMatch'
-import { isPathAtOrInside, stripTrailingSeparators, toForwardSlashes } from './pathUtils'
+import {
+  isPathAtOrInside,
+  normalizePathSeparators,
+  stripTrailingSeparators,
+  toForwardSlashes
+} from './pathUtils'
 
 export type QuickOpenResult = {
   node: FileNode
@@ -56,15 +61,25 @@ export const flattenFileTree = (nodes: FileTreeNode[]): FileNode[] => {
 
 /** rootPath 配下のパスを '/' 区切りの相対パスに正規化する */
 const toRelativePath = (fullPath: string, rootPath: string | null): string => {
-  const normalizedPath = toForwardSlashes(fullPath)
+  // ファイルパスの区切り正規化は Windows のパスにだけ効かせる。POSIX の '\\' は
+  // ファイル名の一部になり得るため、変換すると別ファイルを同じ扱いにしてしまう
+  const normalizedPath = normalizePathSeparators(fullPath)
   if (rootPath === null) return normalizedPath
-  const normalizedRoot = stripTrailingSeparators(toForwardSlashes(rootPath))
+  const normalizedRoot = stripTrailingSeparators(normalizePathSeparators(rootPath))
   // rootPath が POSIX のルート('/')だと末尾区切りの除去で空文字になる。
-  // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする
-  if (normalizedRoot.length === 0) return normalizedPath.replace(/^\//, '')
+  // その場合はフルパスを返さず、先頭の区切りだけ落としてルート相対にする。
+  // ここでも配下かどうかを確かめる。確かめないと、POSIX のルートに対して
+  // UNC のパスまでルート相対にしてしまい、'/server/share/...' という
+  // 実在しない表示になる
+  if (normalizedRoot.length === 0) {
+    if (!isPathAtOrInside(fullPath, rootPath)) return normalizedPath
+    return normalizedPath.replace(/^\//, '')
+  }
   // 前方一致を生の文字列で見ると、Windows で表記だけ違うルート(例: 'C:\\Project' と
-  // 'c:\\project')が別物と判定され、相対ディレクトリに絶対パスが出てしまう
-  if (!isPathAtOrInside(normalizedPath, normalizedRoot)) return normalizedPath
+  // 'c:\\project')が別物と判定され、相対ディレクトリに絶対パスが出てしまう。
+  // 判定には正規化前の値を渡す。正規化後の UNC('//Server/Share')は Windows の
+  // パスと判定できず、大文字小文字の違いを吸収できなくなる
+  if (!isPathAtOrInside(fullPath, rootPath)) return normalizedPath
   // 表記が違っても長さは同じなので、正規化前の文字列から同じ位置で切り出せる
   return normalizedPath.length <= normalizedRoot.length
     ? ''

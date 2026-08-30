@@ -105,6 +105,12 @@ describe('fuzzyMatch', () => {
     expect(fuzzyMatch('設計', '設計メモ.md')?.indices).toEqual([0, 1])
   })
 
+  it('前方にある通常位置より単語境界の一致を選ぶ', () => {
+    // 貪欲に前から詰めると [1, 10]('useFileSystem.ts' の 's' と 't')になる。
+    // DP は単語境界('S' と '.' の直後の 't')を選ぶ
+    expect(fuzzyMatch('st', 'useFileSystem.ts')?.indices).toEqual([7, 14])
+  })
+
   it('候補の単語境界条件が同じとき連続した並びを選ぶ', () => {
     // 'xaxaa' の 'a' はいずれも単語境界ではないため、連続ボーナスだけで決まる
     expect(fuzzyMatch('aa', 'xaxaa')?.indices).toEqual([3, 4])

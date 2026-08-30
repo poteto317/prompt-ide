@@ -4,17 +4,47 @@
 //   二重区切りになり、本来内部にあるパスを誤って false 判定する
 // - childPath が末尾区切りだと、parentPath と実質同一パスなのに「内部にある」と
 //   誤って true 判定してしまう(例: '/project/src/' は '/project/src' の内部ではなく同一)
-/** パス区切りを '/' に揃える */
+/**
+ * 利用者が入力した文字列のパス区切りを '/' に揃える。
+ * 検索クエリのように「'\\' は区切りのつもりで打たれている」場面で使う。
+ * ファイルパスの比較には使わない(POSIX の '\\' はファイル名の一部になり得る)。
+ */
 export const toForwardSlashes = (path: string): string => path.replace(/\\/g, '/')
-/** 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため */
-export const stripTrailingSeparators = (path: string): string => path.replace(/[/\\]+$/, '')
 
-/** 区切り文字だけで構成されるパス(POSIX のルート '/' など)か */
-const isRootPath = (path: string): boolean => /^[/\\]+$/.test(path)
+/**
+ * Windows のパス(ドライブ文字 or UNC)か。
+ *
+ * UNC は区切りが揃っている形だけを認める。'/\\server\\share' のように先頭の区切りが
+ * 混在する形は、POSIX では「ルート直下の \\server\\share という名前」であり、
+ * UNC と誤認すると保護したいファイル名を壊す。全て '/' の '//server/share' も
+ * POSIX として有効なため UNC とはみなさない(この形に '\\' は含まれないので、
+ * 変換しなくても Windows 側の判定は変わらない)。
+ */
+const isWindowsPath = (path: string): boolean =>
+  /^[a-zA-Z]:[\\/]/.test(path) || /^\\\\[^\\/]+\\/.test(path)
 
-/** '/' 正規化後の文字列が Windows のパス(ドライブ文字 or UNC)か */
-const isWindowsStyle = (forwardPath: string): boolean =>
-  /^([a-zA-Z]:\/|\/\/[^/]+\/)/.test(forwardPath)
+/**
+ * パス比較のために区切りを '/' へ揃える。
+ *
+ * POSIX では '\\' はファイル名に使える文字なので変換しない。変換すると
+ * '/project/foo\\bar.ts' と '/project/foo/bar.ts' が同一視され、履歴やロックが
+ * 衝突したり、削除の影響判定で別のファイルのタブを閉じたりする。
+ */
+export const normalizePathSeparators = (path: string): string =>
+  isWindowsPath(path) ? path.replace(/\\/g, '/') : path
+
+/**
+ * 末尾の区切り文字を落とす。'/a/b/' と '/a/b' を同じ path として扱うため。
+ * 区切りを揃えたあとに使う前提で、落とすのは '/' だけにする
+ * (POSIX では末尾の '\\' もファイル名の一部)。
+ */
+export const stripTrailingSeparators = (path: string): string => path.replace(/\/+$/, '')
+
+/**
+ * ルート('/')そのものか。
+ * POSIX では '\\' はルートではなく、そういう名前のパスなので、区切りを揃えてから見る。
+ */
+const isRootPath = (path: string): boolean => /^\/+$/.test(normalizePathSeparators(path))
 
 /**
  * 2 つのパスを比較用に正規化する。
@@ -23,20 +53,29 @@ const isWindowsStyle = (forwardPath: string): boolean =>
  * 同じ実体を指す。区別したまま比較すると、case-only rename の最中に旧表記の
  * 削除が予約の重複判定や「開いているファイルが対象か」の判定をすり抜け、
  * 削除済みのファイルがエディタに残って保存で作り直されてしまう。
- * 一方 POSIX は区別するため、Windows 形式(ドライブ文字 or UNC)のときだけ畳む。
- * 片方だけが Windows 形式でも突き合わせられるよう、判定は 2 つまとめて行う。
+ * 一方 POSIX は区別するため、両方が Windows 形式(ドライブ文字 or UNC)のときだけ畳む。
+ * 片方だけを見て畳むと、POSIX として扱うと定めた '//Server/Share/Foo' のような形が
+ * Windows の UNC と同一視される。ドライブ文字は '/' 区切りでも判定できるため、
+ * 'C:\\project' と 'C:/project' のような表記違いはこの条件でも突き合わせられる。
  */
-const normalizePair = (a: string, b: string): [string, string] => {
-  const forwardA = toForwardSlashes(a)
-  const forwardB = toForwardSlashes(b)
-  const normalizedA = stripTrailingSeparators(forwardA)
-  const normalizedB = stripTrailingSeparators(forwardB)
-  if (!isWindowsStyle(forwardA) && !isWindowsStyle(forwardB)) return [normalizedA, normalizedB]
+const normalizePair = (a: string, b: string): [string, string] | null => {
+  // Windows かどうかは正規化前の文字列で判定する。正規化後の文字列で見ると、
+  // POSIX の '//server/share' のような形まで Windows と誤認してしまう。
+  // 種別が違えば同じ実体を指すことはないため、突き合わせ自体を成立させない
+  // (UNC の '\\server\share' は正規化すると '//server/share' となり、
+  //  POSIX のパスと文字列としては一致してしまうため)
+  const aIsWindows = isWindowsPath(a)
+  if (aIsWindows !== isWindowsPath(b)) return null
+  const normalizedA = stripTrailingSeparators(normalizePathSeparators(a))
+  const normalizedB = stripTrailingSeparators(normalizePathSeparators(b))
+  if (!aIsWindows) return [normalizedA, normalizedB]
   return [normalizedA.toLowerCase(), normalizedB.toLowerCase()]
 }
 
 export const isPathInside = (childPath: string, parentPath: string): boolean => {
-  const [normalizedChild, normalizedParent] = normalizePair(childPath, parentPath)
+  const normalized = normalizePair(childPath, parentPath)
+  if (normalized === null) return false
+  const [normalizedChild, normalizedParent] = normalized
   // parentPath がルート('/')や空文字列など、正規化すると空になる場合は
   // 「親 + '/'」が単なる '/' に退化し、あらゆる絶対パスを内部と誤判定してしまう。
   // 同一パス(等値)も「内部」ではないため、あわせて明示的に false とする。
@@ -54,9 +93,17 @@ export const isPathInside = (childPath: string, parentPath: string): boolean => 
  * 「すべての絶対パスの親」として扱うのはこの判定だけに閉じる。
  */
 export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
-  if (isRootPath(targetPath)) return toForwardSlashes(path).startsWith('/')
-  const [normalizedPath, normalizedTarget] = normalizePair(path, targetPath)
-  return normalizedPath === normalizedTarget || isPathInside(normalizedPath, normalizedTarget)
+  if (isRootPath(targetPath)) {
+    // ルート特例は normalizePair を通らないため、ここでも種別を確かめる。
+    // POSIX のルートに Windows のパス(UNC は正規化すると '/' 始まりになる)を
+    // 配下として通すと、予約や削除の影響判定で無関係なファイルを巻き込む
+    if (isWindowsPath(path)) return false
+    return normalizePathSeparators(path).startsWith('/')
+  }
+  const normalized = normalizePair(path, targetPath)
+  if (normalized === null) return false
+  const [normalizedPath, normalizedTarget] = normalized
+  return normalizedPath === normalizedTarget || isPathInside(path, targetPath)
 }
 
 /**
@@ -64,7 +111,9 @@ export const isPathAtOrInside = (path: string, targetPath: string): boolean => {
  * (Windows のみ)大文字小文字の違いを無視して比較する。
  */
 export const isSamePath = (a: string, b: string): boolean => {
-  const [normalizedA, normalizedB] = normalizePair(a, b)
+  const normalized = normalizePair(a, b)
+  if (normalized === null) return false
+  const [normalizedA, normalizedB] = normalized
   return normalizedA === normalizedB
 }
 
@@ -72,38 +121,42 @@ export const isSamePath = (a: string, b: string): boolean => {
  * 比較・キーとして使うための正規化済みパス。区切り文字と末尾の区切りを揃え、
  * Windows(ドライブ文字 or UNC)なら大文字小文字も畳む。
  * Map のキーなど、2 つ組で比較できない場面で使う。
+ *
+ * 先頭に種別を付ける。UNC の '\\server\share' は正規化すると
+ * '//server/share' となり、POSIX の同名パスとキーが衝突するため
+ * (履歴の重複排除や Map の存在確認で別のファイルが混ざる)。
  */
-export const toComparablePath = (path: string): string => normalizePair(path, path)[0]
+export const toComparablePath = (path: string): string => {
+  const kind = isWindowsPath(path) ? 'windows' : 'posix'
+  const normalized = normalizePair(path, path)
+  // 同じ文字列どうしなので種別は必ず一致し、null にはならない
+  return `${kind}:${normalized === null ? path : normalized[0]}`
+}
+
+/**
+ * 末尾の区切りを落とす。区切りの種類はパスの種別(Windows/POSIX)に応じて判定する。
+ * stripTrailingSeparators は POSIX の '\\' をファイル名の一部として保護するため
+ * '/' しか落とさない。Windows パスではここで '\\' も対象にする。
+ */
+const stripTrailingSeparatorsForPath = (path: string): string =>
+  isWindowsPath(path) ? path.replace(/[\\/]+$/, '') : stripTrailingSeparators(path)
 
 /**
  * 親ディレクトリのパスと名前をつないで子のパスを作る。
  * 区切り文字は親のパスから推定する（main 側の OS に依存するため）。
  * ルート直下（親が '/' や 'C:\' のような区切りだけ・ドライブだけの形）でも
  * 二重区切りにならないよう、末尾の区切りを落としてからつなぐ。
+ *
+ * 区切りの判定には isWindowsPath を使う(正規化前の生文字列で見る)。
+ * parentPath がバックスラッシュを含むかどうかだけで決めると、POSIX の
+ * ディレクトリ名にバックスラッシュが含まれる場合(ファイルシステムレベルでは
+ * 禁止されていない)に誤って '\' を選んでしまう。
  */
 export const joinPath = (parentPath: string, name: string): string => {
-  const base = stripTrailingSeparators(parentPath)
-  const separator = hasRawWindowsPrefix(parentPath) ? '\\' : '/'
+  const base = stripTrailingSeparatorsForPath(parentPath)
+  const separator = isWindowsPath(parentPath) ? '\\' : '/'
   return `${base}${separator}${name}`
 }
-
-/**
- * つなぐ区切りを決めるためだけの判定。isWindowsStyle（比較の正規化用、
- * 正規化「後」の文字列を受け取る）とは名前を変えて区別している。同じ
- * `(path: string) => boolean` という型のため、型では区別できない。
- *
- * isWindowsStyle をここでも使わない理由:
- * - parentPath がバックスラッシュを含むかどうかだけで決めると、POSIX の
- *   ディレクトリ名にバックスラッシュが含まれる場合（ファイルシステムレベルでは
- *   禁止されていない）に誤って '\' を選んでしまう
- * - 正規化後（'/' 統一後）の文字列だけで UNC を判定すると、'//mnt/share' の
- *   ような POSIX パス（一部のマウント構成で起こり得る）が UNC パス
- *   ('\\server\share' を正規化した形と同じ見た目になる）と区別できず、
- *   誤って '\' を選んでしまう。UNC かどうかは正規化する「前」の生の文字列が
- *   バックスラッシュ 2 つで始まるかで見る（ここが isWindowsStyle との違い）
- */
-const hasRawWindowsPrefix = (path: string): boolean =>
-  /^[a-zA-Z]:/.test(path) || path.startsWith('\\\\')
 
 // 検証そのものは main 側（handlers/entryNameValidator）が行うが、こちらは
 // joinPath の無効化範囲を決めるために同じ条件を要る。ロジックは @shared/entryName
@@ -119,6 +172,6 @@ export { isSafeEntryName } from '@shared/entryName'
  * 正規化した長さで切り、path 自身のセパレータ（Windows 表記など）は変えない。
  */
 export const replacePathPrefix = (path: string, from: string, to: string): string => {
-  const trimmedFromLength = stripTrailingSeparators(toForwardSlashes(from)).length
+  const trimmedFromLength = stripTrailingSeparatorsForPath(from).length
   return to + path.slice(trimmedFromLength)
 }

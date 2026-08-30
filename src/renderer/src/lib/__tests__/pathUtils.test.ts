@@ -5,7 +5,8 @@ import {
   isSamePath,
   joinPath,
   isSafeEntryName,
-  replacePathPrefix
+  replacePathPrefix,
+  toComparablePath
 } from '../pathUtils'
 
 describe('isPathInside', () => {
@@ -225,5 +226,79 @@ describe('replacePathPrefix', () => {
     expect(replacePathPrefix('C:\\proj\\sub\\a.ts', 'C:\\proj\\sub', 'C:\\moved')).toBe(
       'C:\\moved\\a.ts'
     )
+  })
+})
+
+describe('POSIX のバックスラッシュ', () => {
+  // POSIX では '\\' はファイル名に使える文字。区切りへ変換すると別ファイルが
+  // 同一視され、履歴やロックが衝突したり、削除の影響判定で別のタブを閉じたりする
+  it('ファイル名に含まれる \\ を区切りとして扱わない', () => {
+    expect(isSamePath('/project/foo\\bar.ts', '/project/foo/bar.ts')).toBe(false)
+    expect(isPathInside('/project/foo\\bar.ts', '/project/foo')).toBe(false)
+    expect(isPathAtOrInside('/project/foo\\bar.ts', '/project/foo')).toBe(false)
+  })
+
+  it('比較用キーでも \\ を含む名前と区切りを区別する', () => {
+    expect(toComparablePath('/project/foo\\bar.ts')).not.toBe(
+      toComparablePath('/project/foo/bar.ts')
+    )
+  })
+
+  it('同じ名前どうしは一致する', () => {
+    expect(isSamePath('/project/foo\\bar.ts', '/project/foo\\bar.ts')).toBe(true)
+    expect(isPathAtOrInside('/project/foo\\bar.ts', '/project')).toBe(true)
+  })
+
+  it('先頭区切りが混在する形を UNC とみなさない', () => {
+    // POSIX の '/\\server\\share' は「ルート直下の \\server\\share という名前」。
+    // UNC と誤認して変換すると、この名前が '//server/share' と同一視される
+    expect(isSamePath('/\\server\\share', '//server/share')).toBe(false)
+    // キーとしても UNC の '\\\\server\\share'(正規化すると '//server/share')と別物になる
+    expect(toComparablePath('/\\server\\share')).not.toBe(toComparablePath('\\\\server\\share'))
+    expect(toComparablePath('/\\server\\share')).toContain('/\\server\\share')
+  })
+
+  it('片方が POSIX の全スラッシュ形なら Windows として畳まない', () => {
+    // '//Server/Share/Foo' は POSIX として扱うと定めた形。相手が UNC だからと
+    // いって小文字化すると、別物のパスを同一視してしまう
+    expect(isSamePath('//Server/Share/Foo', '\\\\server\\share\\foo')).toBe(false)
+  })
+
+  it('両方が Windows 形式なら表記が違っても一致する', () => {
+    expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
+    expect(isPathAtOrInside('\\\\Server\\Share\\A.ts', '\\\\server\\share')).toBe(true)
+  })
+
+  it('POSIX の全スラッシュ形と UNC を別のキーにする', () => {
+    // '\\\\server\\share\\foo' は正規化すると '//server/share/foo' になる。
+    // 種別を持たないキーだと POSIX のパスと衝突し、履歴や Map の存在確認で混ざる
+    expect(isSamePath('//server/share/foo', '\\\\server\\share\\foo')).toBe(false)
+    expect(toComparablePath('//server/share/foo')).not.toBe(
+      toComparablePath('\\\\server\\share\\foo')
+    )
+  })
+
+  it('POSIX のルートは Windows のパスを配下とみなさない', () => {
+    // ルート特例は normalizePair を通らないため、種別の分離を迂回していた
+    expect(isPathAtOrInside('\\\\server\\share\\file.ts', '/')).toBe(false)
+    expect(isPathAtOrInside('C:\\project\\a.ts', '/')).toBe(false)
+    expect(isPathAtOrInside('/project/a.ts', '/')).toBe(true)
+  })
+
+  it('種別が違うパスは配下ともみなさない', () => {
+    expect(isPathInside('\\\\server\\share\\foo\\a.ts', '//server/share/foo')).toBe(false)
+    expect(isPathAtOrInside('\\\\server\\share\\foo', '//server/share')).toBe(false)
+  })
+
+  it('バックスラッシュだけの文字列をルートとみなさない', () => {
+    // POSIX では '\\' はルートではなく、そういう名前の相対パス
+    expect(isPathAtOrInside('/etc/passwd', '\\')).toBe(false)
+    expect(isPathAtOrInside('/etc/passwd', '/')).toBe(true)
+  })
+
+  it('Windows のパスでは従来どおり \\ を区切りとして扱う', () => {
+    expect(isSamePath('C:\\project\\a.ts', 'C:/project/a.ts')).toBe(true)
+    expect(isPathInside('C:\\project\\a.ts', 'C:\\project')).toBe(true)
+    expect(isPathAtOrInside('\\\\server\\share\\a.ts', '\\\\server\\share')).toBe(true)
   })
 })
