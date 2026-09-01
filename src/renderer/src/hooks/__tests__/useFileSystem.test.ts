@@ -2993,5 +2993,37 @@ describe('useFileSystem', () => {
       // アクティブタブ(a.ts)の saveError はクリアされず残り続ける
       expect(result.current.saveError?.message).toBe('EACCES')
     })
+
+    it('reorderTabs: タブの並び順を入れ替える', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent
+        .mockResolvedValueOnce('const a = 1')
+        .mockResolvedValueOnce('const b = 2')
+        .mockResolvedValueOnce('const c = 3')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      for (const name of ['a', 'b', 'c']) {
+        await act(async () => {
+          await result.current.selectFile({
+            name: `${name}.ts`,
+            path: `/project/src/${name}.ts`,
+            type: 'file'
+          })
+        })
+      }
+
+      act(() => result.current.reorderTabs(0, 2))
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/src/b.ts',
+        '/project/src/c.ts',
+        '/project/src/a.ts'
+      ])
+      // アクティブファイルは変わらない
+      expect(result.current.activeFilePath).toBe('/project/src/c.ts')
+    })
   })
 })

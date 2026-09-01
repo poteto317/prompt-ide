@@ -7,6 +7,7 @@ import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing, DISCARD_CONFIRM_MESSAGE } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
+import { arrayMove } from '@dnd-kit/sortable'
 
 /**
  * 信号に保持するイベント数。消費側が同じレンダーまで処理できないことがあるため、
@@ -516,9 +517,14 @@ export function useFileSystem(options?: Options): FileSystemState {
   }
 
   const reorderTabs = (fromIndex: number, toIndex: number): void => {
-    // Task 4 で実装する
-    void fromIndex
-    void toIndex
+    setOpenFiles((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+        return prev
+      }
+      const next = arrayMove(prev, fromIndex, toIndex)
+      openFilesMirrorRef.current = next
+      return next
+    })
   }
 
   const closeFile = (): void => {
