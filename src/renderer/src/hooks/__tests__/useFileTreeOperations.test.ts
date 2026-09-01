@@ -26,7 +26,8 @@ function makeOpenFile(path: string, name: string): OpenFile {
 
 function renderOperations(config?: {
   folderPath?: string | null
-  initialOpenFile?: OpenFile | null
+  initialOpenFiles?: OpenFile[]
+  initialActiveFilePath?: string | null
   onConfirm?: (message: string) => boolean
   resetForFileChange?: (options?: ResetForFileChangeOptions) => void
   lockPathForFileOperation?: (
@@ -44,11 +45,13 @@ function renderOperations(config?: {
   const folderPath = config && 'folderPath' in config ? (config.folderPath ?? null) : '/project'
   const treeWriteGuard = makeTreeWriteGuard()
   const { result } = renderHook(() => {
-    const [openFile, setOpenFile] = useState<OpenFile | null>(config?.initialOpenFile ?? null)
+    const [openFiles, setOpenFiles] = useState<OpenFile[]>(config?.initialOpenFiles ?? [])
+    const activeFilePath = config?.initialActiveFilePath ?? openFiles[0]?.path ?? null
     const ops = useFileTreeOperations({
       getFolderPath: () => folderPath,
-      getOpenFile: () => openFile,
-      setOpenFile,
+      getOpenFiles: () => openFiles,
+      setOpenFiles,
+      getActiveFilePath: () => activeFilePath,
       resetForFileChange,
       onConfirm,
       invalidatePendingReads,
@@ -56,18 +59,18 @@ function renderOperations(config?: {
       lockPathForFileOperation,
       reportTreeLoad: vi.fn()
     })
-    return { ...ops, openFile }
+    return { ...ops, openFiles }
   })
   return { result, resetForFileChange, onConfirm, invalidatePendingReads, lockPathForFileOperation }
 }
 
 function renderOperationsWithFolder(getFolderPath: () => string | null) {
-  const { result } = renderHook(() => {
-    const [openFile, setOpenFile] = useState<OpenFile | null>(null)
-    return useFileTreeOperations({
+  const { result } = renderHook(() =>
+    useFileTreeOperations({
       getFolderPath,
-      getOpenFile: () => openFile,
-      setOpenFile,
+      getOpenFiles: () => [],
+      setOpenFiles: () => {},
+      getActiveFilePath: () => null,
       resetForFileChange: vi.fn(),
       onConfirm: () => true,
       invalidatePendingReads: vi.fn(),
@@ -75,7 +78,7 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       lockPathForFileOperation: async () => () => {},
       reportTreeLoad: vi.fn()
     })
-  })
+  )
   return { result }
 }
 
@@ -160,7 +163,7 @@ describe('useFileTreeOperations', () => {
       mockReadDirectory.mockResolvedValue(mockTree)
       const resetForFileChange = vi.fn()
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name),
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)],
         resetForFileChange
       })
 
@@ -174,7 +177,7 @@ describe('useFileTreeOperations', () => {
       })
 
       expect(mockRenameEntry).toHaveBeenCalledWith('/project/src/other.ts', 'renamed.ts')
-      expect(result.current.openFile?.path).toBe(fileNode.path)
+      expect(result.current.openFiles[0]?.path).toBe(fileNode.path)
       expect(resetForFileChange).not.toHaveBeenCalled()
     })
 
@@ -182,16 +185,16 @@ describe('useFileTreeOperations', () => {
       mockRenameEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue(mockTree)
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)]
       })
 
       await act(async () => {
         await result.current.renameEntry(fileNode, 'index.md')
       })
 
-      expect(result.current.openFile?.path).toBe('/project/src/index.md')
-      expect(result.current.openFile?.name).toBe('index.md')
-      expect(result.current.openFile?.language).toBe('markdown')
+      expect(result.current.openFiles[0]?.path).toBe('/project/src/index.md')
+      expect(result.current.openFiles[0]?.name).toBe('index.md')
+      expect(result.current.openFiles[0]?.language).toBe('markdown')
     })
 
     it('開いているファイル自体のリネームで resetForFileChange が呼ばれる(保存状態の世代を更新する)', async () => {
@@ -199,7 +202,7 @@ describe('useFileTreeOperations', () => {
       mockReadDirectory.mockResolvedValue(mockTree)
       const resetForFileChange = vi.fn()
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name),
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)],
         resetForFileChange
       })
 
@@ -214,7 +217,7 @@ describe('useFileTreeOperations', () => {
       mockRenameEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue(mockTree)
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)]
       })
 
       await act(async () => {
@@ -222,7 +225,7 @@ describe('useFileTreeOperations', () => {
       })
 
       expect(mockRenameEntry).toHaveBeenCalledWith('/project/src', 'lib')
-      expect(result.current.openFile?.path).toBe('/project/lib/index.ts')
+      expect(result.current.openFiles[0]?.path).toBe('/project/lib/index.ts')
     })
 
     it('開いているファイルの祖先ディレクトリのリネームでも resetForFileChange が呼ばれる', async () => {
@@ -230,7 +233,7 @@ describe('useFileTreeOperations', () => {
       mockReadDirectory.mockResolvedValue(mockTree)
       const resetForFileChange = vi.fn()
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name),
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)],
         resetForFileChange
       })
 
@@ -241,16 +244,16 @@ describe('useFileTreeOperations', () => {
       expect(resetForFileChange).toHaveBeenCalledOnce()
     })
 
-    it('openFile が null のとき何もしない(例外にならない)', async () => {
+    it('openFiles が空のとき何もしない(例外にならない)', async () => {
       mockRenameEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue(mockTree)
-      const { result } = renderOperations({ initialOpenFile: null })
+      const { result } = renderOperations({ initialOpenFiles: [] })
 
       await act(async () => {
         await result.current.renameEntry(fileNode, 'renamed.ts')
       })
 
-      expect(result.current.openFile).toBeNull()
+      expect(result.current.openFiles).toEqual([])
     })
   })
 
@@ -291,12 +294,12 @@ describe('useFileTreeOperations', () => {
       expect(mockReadDirectory).toHaveBeenCalledWith('/project')
     })
 
-    it('開いているファイル自体を削除すると openFile が閉じられ resetForFileChange が呼ばれる', async () => {
+    it('開いているファイル自体を削除すると openFiles が閉じられ resetForFileChange が呼ばれる', async () => {
       mockDeleteEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue([])
       const resetForFileChange = vi.fn()
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name),
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)],
         resetForFileChange
       })
 
@@ -304,29 +307,29 @@ describe('useFileTreeOperations', () => {
         await result.current.deleteEntry(fileNode)
       })
 
-      expect(result.current.openFile).toBeNull()
+      expect(result.current.openFiles).toEqual([])
       expect(resetForFileChange).toHaveBeenCalledOnce()
     })
 
-    it('開いているファイルの祖先ディレクトリを削除すると openFile が閉じられる', async () => {
+    it('開いているファイルの祖先ディレクトリを削除すると openFiles が閉じられる', async () => {
       mockDeleteEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue([])
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)]
       })
 
       await act(async () => {
         await result.current.deleteEntry(dirNode)
       })
 
-      expect(result.current.openFile).toBeNull()
+      expect(result.current.openFiles).toEqual([])
     })
 
-    it('無関係なファイルの削除では openFile を閉じない', async () => {
+    it('無関係なファイルの削除では openFiles を閉じない', async () => {
       mockDeleteEntry.mockResolvedValue(undefined)
       mockReadDirectory.mockResolvedValue([])
       const { result } = renderOperations({
-        initialOpenFile: makeOpenFile(fileNode.path, fileNode.name)
+        initialOpenFiles: [makeOpenFile(fileNode.path, fileNode.name)]
       })
 
       const otherNode: FileTreeNode = {
@@ -338,7 +341,7 @@ describe('useFileTreeOperations', () => {
         await result.current.deleteEntry(otherNode)
       })
 
-      expect(result.current.openFile?.path).toBe(fileNode.path)
+      expect(result.current.openFiles[0]?.path).toBe(fileNode.path)
     })
 
     it('失敗したとき error にセットされる', async () => {
@@ -569,13 +572,15 @@ describe('保存ロックの張り方', () => {
     const resetForFileChange = vi.fn()
     const { result } = renderOperations({
       resetForFileChange,
-      initialOpenFile: {
-        path: '/project/a.ts',
-        name: 'a.ts',
-        content: '',
-        savedContent: '',
-        language: 'typescript'
-      }
+      initialOpenFiles: [
+        {
+          path: '/project/a.ts',
+          name: 'a.ts',
+          content: '',
+          savedContent: '',
+          language: 'typescript'
+        }
+      ]
     })
 
     await act(async () => {
@@ -774,5 +779,84 @@ describe('release の呼び出しに succeeded を渡す', () => {
     })
 
     expect(release).toHaveBeenCalledWith({ succeeded: false })
+  })
+})
+
+describe('複数ファイルへの追随', () => {
+  it('祖先ディレクトリの削除で、配下にある開いている複数ファイルがすべて閉じる', async () => {
+    mockDeleteEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
+    const fileB = makeOpenFile('/project/src/b.ts', 'b.ts')
+    const { result } = renderOperations({
+      initialOpenFiles: [fileA, fileB],
+      initialActiveFilePath: fileA.path
+    })
+
+    await act(async () => {
+      await result.current.deleteEntry(dirNode)
+    })
+
+    expect(result.current.openFiles).toEqual([])
+  })
+
+  it('祖先ディレクトリの削除で、配下の非アクティブファイルが dirty なら確認する', async () => {
+    mockDeleteEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
+    const dirtyFileB = { ...makeOpenFile('/project/src/b.ts', 'b.ts'), content: '編集済み' }
+    const onConfirm = vi.fn().mockReturnValue(true)
+    const { result } = renderOperations({
+      initialOpenFiles: [fileA, dirtyFileB],
+      initialActiveFilePath: fileA.path,
+      onConfirm
+    })
+
+    await act(async () => {
+      await result.current.deleteEntry(dirNode)
+    })
+
+    expect(onConfirm).toHaveBeenCalled()
+    expect(result.current.openFiles).toEqual([])
+  })
+
+  it('祖先ディレクトリのリネームで、配下にある複数の開いているファイルの path がすべて付け替わる', async () => {
+    mockRenameEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
+    const fileB = makeOpenFile('/project/src/nested/b.ts', 'b.ts')
+    const { result } = renderOperations({
+      initialOpenFiles: [fileA, fileB],
+      initialActiveFilePath: fileA.path
+    })
+
+    await act(async () => {
+      await result.current.renameEntry(dirNode, 'renamed')
+    })
+
+    expect(result.current.openFiles.map((f) => f.path)).toEqual([
+      '/project/renamed/a.ts',
+      '/project/renamed/nested/b.ts'
+    ])
+  })
+
+  it('非アクティブファイルの削除では resetForFileChange を呼ばない', async () => {
+    mockDeleteEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
+    const fileB = makeOpenFile('/project/src/b.ts', 'b.ts')
+    const resetForFileChange = vi.fn()
+    const { result } = renderOperations({
+      initialOpenFiles: [fileA, fileB],
+      initialActiveFilePath: fileA.path,
+      resetForFileChange
+    })
+
+    await act(async () => {
+      await result.current.deleteEntry({ name: 'b.ts', path: '/project/src/b.ts', type: 'file' })
+    })
+
+    expect(resetForFileChange).not.toHaveBeenCalled()
+    expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
   })
 })

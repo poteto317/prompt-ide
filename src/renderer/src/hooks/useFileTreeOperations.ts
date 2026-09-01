@@ -27,9 +27,11 @@ import type {
 interface FileTreeOperationsOptions {
   /** 現在のフォルダを同期的に返す(クロージャの folderPath は切替後も古いままのため) */
   getFolderPath: () => string | null
-  /** 呼び出し時点の openFile を同期的に返す(操作中に確定した結果も見えるようにする) */
-  getOpenFile: () => OpenFile | null
-  setOpenFile: (next: OpenFile | null) => void
+  /** 呼び出し時点の openFiles を同期的に返す(操作中に確定した結果も見えるようにする) */
+  getOpenFiles: () => OpenFile[]
+  setOpenFiles: (updater: (prev: OpenFile[]) => OpenFile[]) => void
+  /** 現在アクティブなタブの path を同期的に返す(非アクティブタブへの影響では resetForFileChange を呼ばない) */
+  getActiveFilePath: () => string | null
   resetForFileChange: (options?: ResetForFileChangeOptions) => void
   onConfirm: (message: string) => boolean
   /**
@@ -66,8 +68,9 @@ interface FileTreeOperationsState {
 // フォルダ木の初回読み込み(openFolder/selectFile)は useFileSystem 側の責務のまま残す。
 export function useFileTreeOperations({
   getFolderPath,
-  getOpenFile,
-  setOpenFile,
+  getOpenFiles,
+  setOpenFiles,
+  getActiveFilePath,
   resetForFileChange,
   onConfirm,
   invalidatePendingReads,
@@ -111,24 +114,31 @@ export function useFileTreeOperations({
   const DISCARD_AFTER_DELETE_MESSAGE =
     'ファイルを削除しましたが、保存されていない変更があります。変更を破棄しますか？'
 
-  // 削除の待機中に入った未保存の編集を、確認なしで捨てない
+  const snapshotAffected = (node: FileTreeNode): OpenFile[] =>
+    getOpenFiles().filter((f) => isPathAtOrInside(f.path, node.path))
+
+  // 削除の待機中に入った未保存の編集を、確認なしで捨てない。影響を受ける
+  // ファイルが複数ある場合、その集合の中に dirty なものが一つでもあれば
+  // まとめて 1 回だけ確認する(ファイルごとに確認ダイアログを出すと煩雑なため)
   const confirmDiscardOfNewEdits = (
     node: FileTreeNode,
-    bufferAtConfirm: OpenFile | null,
+    affectedAtConfirm: OpenFile[],
     message: string = DISCARD_ON_DELETE_MESSAGE
   ): boolean => {
-    const current = getOpenFile()
-    if (current === null) return true
-    // 正規化後に同一なら isPathInside は false を返すため、完全一致を含む判定を使う。
-    // Windows では大文字小文字だけ違うパスも同じ実体を指す
-    const affected = isPathAtOrInside(current.path, node.path)
-    if (!affected) return true
-    if (current.content === current.savedContent) return true
+    const affectedNow = snapshotAffected(node)
+    const hasDirty = affectedNow.some((f) => f.content !== f.savedContent)
+    if (!hasDirty) return true
+    // 待機中に確認済みの状態から変わっていなければ再確認しない(同じダイアログが2回出るのを防ぐ)
     const unchanged =
-      bufferAtConfirm !== null &&
-      bufferAtConfirm.path === current.path &&
-      bufferAtConfirm.content === current.content &&
-      bufferAtConfirm.savedContent === current.savedContent
+      affectedNow.length === affectedAtConfirm.length &&
+      affectedNow.every((f) => {
+        const before = affectedAtConfirm.find((b) => isSamePath(b.path, f.path))
+        return (
+          before !== undefined &&
+          before.content === f.content &&
+          before.savedContent === f.savedContent
+        )
+      })
     if (unchanged) return true
     return onConfirm(message)
   }
@@ -263,23 +273,31 @@ export function useFileTreeOperations({
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
       // 開いているファイル自身、またはその祖先ディレクトリがリネームされた場合は
-      // openFile.path が変わる。useFileEditing は「path が変わる経路は必ず
+      // path が変わる。useFileEditing は「path が変わる経路は必ず
       // resetForFileChange() を伴う」ことを前提に savingPaths/generation を
-      // 管理しているため、ここで呼ばないと保存中インジケータが旧pathのまま
-      // 残ったり、保存完了時の savedContent 反映が旧path不一致でスキップされたりする
-      // (deleteEntry の affected 判定と同じロジック)。
+      // 管理しているため、アクティブなタブがこれに該当するのに呼ばないと保存中
+      // インジケータが旧pathのまま残ったり、保存完了時の savedContent 反映が
+      // 旧path不一致でスキップされたりする(deleteEntry の affected 判定と同じロジック)。
+      // resetForFileChange はアクティブなタブの保存状態を管理するものなので、
+      // 非アクティブなタブがリネームで影響を受けても呼んではならない
+      // (アクティブなタブの保存中インジケータを誤って初期化してしまう)。
       // 操作の完了時点で判定する。開始時点のクロージャで見ると、操作中に
       // 確定した読み込み結果(その path が対象配下)を取りこぼす
-      const current = getOpenFile()
-      const affected = current !== null && isPathAtOrInside(current.path, node.path)
-      if (affected) {
-        setOpenFile(
-          isSamePath(current.path, node.path)
+      const activePath = getActiveFilePath()
+      const activeAffected = activePath !== null && isPathAtOrInside(activePath, node.path)
+      let renamedOccurred = false
+      setOpenFiles((prev) =>
+        prev.map((f) => {
+          if (!isPathAtOrInside(f.path, node.path)) return f
+          renamedOccurred = true
+          return isSamePath(f.path, node.path)
             ? // 開いているファイル自体のリネーム: 拡張子変更で language も変わり得る
-              { ...current, path: newPath, name: newName, language: detectLanguage(newName) }
+              { ...f, path: newPath, name: newName, language: detectLanguage(newName) }
             : // 祖先ディレクトリのリネーム: プレフィックスを付け替える
-              { ...current, path: replacePathPrefix(current.path, node.path, newPath) }
-        )
+              { ...f, path: replacePathPrefix(f.path, node.path, newPath) }
+        })
+      )
+      if (renamedOccurred && activeAffected) {
         // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
         // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
         resetForFileChange({ renamed: { from: node.path, to: newPath } })
@@ -295,7 +313,7 @@ export function useFileTreeOperations({
     if (!onConfirm(message)) return
     // 確認からロック取得までの間にも編集できる。待機中に入った変更を
     // 確認なしで捨てないよう、開始時点の状態を控えておく
-    const bufferAtConfirm = getOpenFile()
+    const affectedAtConfirm = snapshotAffected(node)
     await runFileOperation(async () => {
       // 保存中の書き込みが削除後に解決すると、削除したファイルが復活する。
       // 操作の完了まで予約し、その間の新しい保存も開始させない
@@ -305,11 +323,11 @@ export function useFileTreeOperations({
       })
       // 再確認から IPC の解決までの間もエディタは操作できる。ここでも
       // 開始時点の状態を控え、実行中に入った編集を確認なしで捨てない
-      let bufferBeforeDelete: OpenFile | null = null
+      let affectedBeforeDelete: OpenFile[] = []
       let deleted = false
       try {
-        if (!confirmDiscardOfNewEdits(node, bufferAtConfirm)) return false
-        bufferBeforeDelete = getOpenFile()
+        if (!confirmDiscardOfNewEdits(node, affectedAtConfirm)) return false
+        affectedBeforeDelete = snapshotAffected(node)
         await fileSystemApi.deleteEntry(node.path)
         deleted = true
       } finally {
@@ -321,15 +339,17 @@ export function useFileTreeOperations({
       // await 中に始まった読み込みも拾えるよう、操作の成功後に呼ぶ
       invalidatePendingReads(node.path)
       // 削除の実行中に対象の読み込みが確定することがあるため、完了時点で判定する
-      const current = getOpenFile()
-      const affected = current !== null && isPathAtOrInside(current.path, node.path)
-      if (affected) {
-        // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
-        // そのまま保存すればファイルを作り直せる
-        if (confirmDiscardOfNewEdits(node, bufferBeforeDelete, DISCARD_AFTER_DELETE_MESSAGE)) {
-          setOpenFile(null)
-          resetForFileChange()
-        }
+      const affectedNow = snapshotAffected(node)
+      if (affectedNow.length === 0) return true
+      // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
+      // そのまま保存すればファイルを作り直せる
+      if (confirmDiscardOfNewEdits(node, affectedBeforeDelete, DISCARD_AFTER_DELETE_MESSAGE)) {
+        // resetForFileChange はアクティブなタブの保存状態を管理するものなので、
+        // 削除されたのが非アクティブなタブだけなら呼んではならない
+        const activePath = getActiveFilePath()
+        const activeAffected = activePath !== null && isPathAtOrInside(activePath, node.path)
+        setOpenFiles((prev) => prev.filter((f) => !isPathAtOrInside(f.path, node.path)))
+        if (activeAffected) resetForFileChange()
       }
       return true
     })
