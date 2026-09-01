@@ -2954,5 +2954,44 @@ describe('useFileSystem', () => {
       expect(onConfirm).toHaveBeenCalled()
       expect(result.current.openFiles).toHaveLength(1)
     })
+
+    it('closeTab: 非アクティブなタブを閉じても resetForFileChange が呼ばれない(アクティブタブの saveError が残る)', async () => {
+      // wasActive の判定を setOpenFilesAndFixActive の呼び出し後に行うよう誤って
+      // 入れ替えると、非アクティブなタブを閉じただけでアクティブタブの saveError が
+      // 誤ってクリアされてしまう。resetForFileChange 自体はスパイできないため、
+      // その効果(saveError のクリア)が起きていないことで間接的に検証する
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // a.ts をアクティブに戻し、保存を失敗させて saveError を立てておく
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      // 非アクティブな b.ts を閉じる(dirty ではないため確認は不要)
+      act(() => result.current.closeTab('/project/src/b.ts'))
+
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
+      // 非アクティブタブを閉じても resetForFileChange は呼ばれないため、
+      // アクティブタブ(a.ts)の saveError はクリアされず残り続ける
+      expect(result.current.saveError?.message).toBe('EACCES')
+    })
   })
 })
