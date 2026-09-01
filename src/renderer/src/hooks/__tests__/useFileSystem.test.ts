@@ -2877,5 +2877,82 @@ describe('useFileSystem', () => {
       expect(result.current.activeFilePath).toBe('/project/src/a.ts')
       expect(result.current.saveError).toBeNull()
     })
+
+    it('closeTab: dirty でないタブは確認せずに閉じ、アクティブなら右隣のタブに切り替わる', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent
+        .mockResolvedValueOnce('const a = 1')
+        .mockResolvedValueOnce('const b = 2')
+        .mockResolvedValueOnce('const c = 3')
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      const fileC: FileTreeNode = { name: 'c.ts', path: '/project/src/c.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileC)
+      })
+      act(() => result.current.activateTab('/project/src/b.ts'))
+      onConfirm.mockClear()
+
+      act(() => result.current.closeTab('/project/src/b.ts'))
+
+      expect(onConfirm).not.toHaveBeenCalled()
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/src/a.ts',
+        '/project/src/c.ts'
+      ])
+      expect(result.current.activeFilePath).toBe('/project/src/c.ts')
+    })
+
+    it('closeTab: 最後のタブを閉じるとアクティブファイルが null になる(Welcome表示)', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+
+      act(() => result.current.closeTab('/project/src/a.ts'))
+
+      expect(result.current.openFiles).toEqual([])
+      expect(result.current.activeFilePath).toBeNull()
+    })
+
+    it('closeTab: dirty なタブを閉じようとすると確認し、拒否されたら閉じない', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const onConfirm = vi.fn().mockReturnValue(false)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      act(() => result.current.updateFileContent('編集済み'))
+
+      act(() => result.current.closeTab('/project/src/a.ts'))
+
+      expect(onConfirm).toHaveBeenCalled()
+      expect(result.current.openFiles).toHaveLength(1)
+    })
   })
 })

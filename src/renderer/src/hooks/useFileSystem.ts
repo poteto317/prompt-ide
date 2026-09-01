@@ -491,8 +491,28 @@ export function useFileSystem(options?: Options): FileSystemState {
   }
 
   const closeTab = (path: string): void => {
-    // Task 3 で実装する
-    void path
+    const target = findFile(openFilesMirrorRef.current, path)
+    if (target === null) return
+    if (target.content !== target.savedContent && !onConfirm(DISCARD_CONFIRM_MESSAGE)) return
+    // wasActive は setOpenFilesAndFixActive を呼ぶ前の状態で判定する。呼んだ後だと
+    // activeFilePathMirrorRef が既に隣接タブへ書き換わっており、閉じたタブが
+    // アクティブだったかどうかを判定できなくなる
+    const wasActive = isSamePath(activeFilePathMirrorRef.current ?? '', path)
+    // 閉じたあとに保留中の読み込みが解決してファイルが再表示されるのを防ぐ。
+    // アクティブでないタブの保留中読み込みまで無効化すると、無関係な操作で
+    // 別タブの選択が失われる
+    if (
+      wasActive &&
+      pendingReadPathRef.current !== null &&
+      isSamePath(pendingReadPathRef.current, path)
+    ) {
+      latestReadRef.current += 1
+    }
+    setOpenFilesAndFixActive((prev) => prev.filter((f) => !isSamePath(f.path, path)))
+    // アクティブファイルの識別子が変わったときだけ resetForFileChange を呼ぶ
+    // (Task 1 の不変条件と同じ)。非アクティブなタブを閉じても isDirty/saveError 等は
+    // そのタブに関係ないため、リセットしてはいけない
+    if (wasActive) resetForFileChange()
   }
 
   const reorderTabs = (fromIndex: number, toIndex: number): void => {
