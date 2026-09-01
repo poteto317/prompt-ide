@@ -2799,5 +2799,83 @@ describe('useFileSystem', () => {
       expect(onConfirm).toHaveBeenCalled()
       expect(result.current.openFiles).toEqual([])
     })
+
+    it('activateTab: 存在するタブへ activeFilePath を切り替える', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      expect(result.current.activeFilePath).toBe('/project/src/b.ts')
+
+      act(() => result.current.activateTab('/project/src/a.ts'))
+
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.openFile?.path).toBe('/project/src/a.ts')
+      // タブの集合や順序は変えない
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/src/a.ts',
+        '/project/src/b.ts'
+      ])
+    })
+
+    it('activateTab: 存在しない path を渡しても何も起きない', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+
+      act(() => result.current.activateTab('/project/src/does-not-exist.ts'))
+
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.openFiles).toHaveLength(1)
+    })
+
+    it('activateTab: resetForFileChange により切り替え後に saveError がクリアされる', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // b.ts をアクティブなまま保存を失敗させ、saveError を立てておく
+      act(() => result.current.updateFileContent('編集済みB'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      act(() => result.current.activateTab('/project/src/a.ts'))
+
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.saveError).toBeNull()
+    })
   })
 })
