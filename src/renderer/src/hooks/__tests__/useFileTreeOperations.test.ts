@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FileTreeNode, OpenFile } from '../../types'
 
@@ -801,23 +801,66 @@ describe('複数ファイルへの追随', () => {
   })
 
   it('祖先ディレクトリの削除で、配下の非アクティブファイルが dirty なら確認する', async () => {
+    // onConfirm は「削除しますか？」の確認でも dirty 状態と無関係に必ず1回呼ばれるため、
+    // toHaveBeenCalled() だけでは破棄確認(confirmDiscardOfNewEdits)が実際に発火した
+    // ことを検証できない。破棄確認は「確認からロック取得までの待機中に状態が変化した
+    // 場合のみ」発火する設計(unchanged 判定)なので、ロック取得を意図的に足止めし、
+    // その待機中に非アクティブファイルの内容を変化させて、その分岐を確実に通す。
+    // useState だとこの待機中に取得した deleteEntry の呼び出しは、待機開始時点の
+    // クロージャに閉じ込められた古い openFiles しか見えず、後から setOpenFiles しても
+    // 反映されない(本番の openFileMirrorRef と同じ理由で、ここでも ref で同期ミラーする)
     mockDeleteEntry.mockResolvedValue(undefined)
     mockReadDirectory.mockResolvedValue([])
     const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
     const dirtyFileB = { ...makeOpenFile('/project/src/b.ts', 'b.ts'), content: '編集済み' }
     const onConfirm = vi.fn().mockReturnValue(true)
-    const { result } = renderOperations({
-      initialOpenFiles: [fileA, dirtyFileB],
-      initialActiveFilePath: fileA.path,
-      onConfirm
+    let resolveLock: (release: () => void) => void = () => {}
+    const lockPathForFileOperation = vi.fn(
+      () => new Promise<() => void>((resolve) => (resolveLock = resolve))
+    )
+    const treeWriteGuard = makeTreeWriteGuard()
+    const { result } = renderHook(() => {
+      const mirrorRef = useRef<OpenFile[]>([fileA, dirtyFileB])
+      const setOpenFiles = (updater: (prev: OpenFile[]) => OpenFile[]): void => {
+        mirrorRef.current = updater(mirrorRef.current)
+      }
+      const ops = useFileTreeOperations({
+        getFolderPath: () => '/project',
+        getOpenFiles: () => mirrorRef.current,
+        setOpenFiles,
+        getActiveFilePath: () => fileA.path,
+        resetForFileChange: vi.fn(),
+        onConfirm,
+        invalidatePendingReads: vi.fn(),
+        beginTreeWrite: treeWriteGuard,
+        lockPathForFileOperation,
+        reportTreeLoad: vi.fn()
+      })
+      return { ...ops, getOpenFiles: () => mirrorRef.current, setOpenFiles }
+    })
+
+    let deletePromise: Promise<void> = Promise.resolve()
+    act(() => {
+      deletePromise = result.current.deleteEntry(dirNode)
+    })
+    // 「削除しますか？」の確認のみが呼ばれ、ロック取得の待機中である
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+
+    // 待機中にさらに非アクティブファイルが編集される
+    act(() => {
+      result.current.setOpenFiles((prev) =>
+        prev.map((f) => (f.path === dirtyFileB.path ? { ...f, content: 'さらに編集' } : f))
+      )
     })
 
     await act(async () => {
-      await result.current.deleteEntry(dirNode)
+      resolveLock(() => {})
+      await deletePromise
     })
 
-    expect(onConfirm).toHaveBeenCalled()
-    expect(result.current.openFiles).toEqual([])
+    expect(onConfirm).toHaveBeenCalledTimes(2)
+    expect(onConfirm).toHaveBeenNthCalledWith(2, expect.stringContaining('保存されていない変更'))
+    expect(result.current.getOpenFiles()).toEqual([])
   })
 
   it('祖先ディレクトリのリネームで、配下にある複数の開いているファイルの path がすべて付け替わる', async () => {
