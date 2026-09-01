@@ -1,11 +1,10 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { useLatestRef } from './useLatestRef'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
-import { isPathAtOrInside, toComparablePath } from '../lib/pathUtils'
+import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
-import { useFileEditing } from './useFileEditing'
+import { useFileEditing, DISCARD_CONFIRM_MESSAGE } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
 
@@ -43,7 +42,10 @@ export interface SelectFileOptions {
 interface FileSystemState {
   folderPath: string | null
   fileTree: FileTreeNode[]
+  /** 後方互換の算出値。アクティブなタブ(openFiles から activeFilePath で引いたもの) */
   openFile: OpenFile | null
+  openFiles: OpenFile[]
+  activeFilePath: string | null
   /** ファイルを開くたびに進む信号。リネームによる path 変更と区別するために使う */
   openedFileSignal: OpenedFileSignal
   /** フォルダ走査に固有のエラー。ツリーが空の理由を判定するために error と分ける */
@@ -56,6 +58,9 @@ interface FileSystemState {
   /** ファイルを開けたら true。ディレクトリ・破棄確認のキャンセル・読み込み失敗では false */
   selectFile: (node: FileTreeNode, options?: SelectFileOptions) => Promise<boolean>
   closeFile: () => void
+  activateTab: (path: string) => void
+  closeTab: (path: string) => void
+  reorderTabs: (fromIndex: number, toIndex: number) => void
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
   createFile: (parentPath: string, name: string) => Promise<void>
@@ -68,7 +73,8 @@ interface FileSystemState {
 // getOpenFile を含めていないため、呼び出し側は最初から渡せない
 export function useFileSystem(options?: Options): FileSystemState {
   const [folderPath, setFolderPath] = useState<string | null>(null)
-  const [openFile, setOpenFile] = useState<OpenFile | null>(null)
+  const [openFiles, setOpenFiles] = useState<OpenFile[]>([])
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(null)
   // ファイル読み込みの世代。ファイル切替が読み込み完了より先に起きても、
   // 遅れて解決した古い読み込みが表示中のファイルやエラーを上書きしないようにする。
   // (エクスプローラーの連続クリックや、クイックオープンを閉じて開き直した場合に起きる)
@@ -93,26 +99,55 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 進行中のファイル読み込みの対象パス。リネーム・削除の影響範囲だけを
   // 無効化するために使う(無関係な操作で有効な選択まで捨てないため)
   const pendingReadPathRef = useRef<string | null>(null)
-  // openFile の同期ミラー。React の state はコミット後にしか読めないため、
-  // 「操作の途中で確定した openFile」を同じ tick 内で参照するために持つ
-  const openFileMirrorRef = useRef<OpenFile | null>(null)
+  // openFiles/activeFilePath の同期ミラー。React state はコミット後にしか読めないため、
+  // 「操作の途中で確定した値」を同じ tick 内で参照するために持つ(既存の openFileMirrorRef と同じ理由)
+  const openFilesMirrorRef = useRef<OpenFile[]>([])
+  const activeFilePathMirrorRef = useRef<string | null>(null)
   // folderPath の同期ミラー。ツリー再読込が「今どのフォルダを見ているか」を
   // 判定するために使う(クロージャの folderPath は切替後も古いままになる)
   const folderPathMirrorRef = useRef<string | null>(null)
 
-  // openFile を更新する唯一の経路。ミラーを必ず同時に更新する。
-  // 関数形式も受け付けるのは、useFileEditing が prev を基に更新するため。
-  // 生の setOpenFile を渡すとミラーへ編集内容が届かず、リネーム時に古い状態を
-  // 書き戻して未保存の編集を失う
-  // openFile の更新はすべてここを通るため、ミラーが常に最新の確定値になる。
-  // 関数形式の prev もミラーから解決することで、React のコミットを待たずに
-  // 同じ tick 内で最新値を参照できる状態を保つ
+  const findFile = (files: OpenFile[], path: string | null): OpenFile | null =>
+    path === null ? null : (files.find((f) => isSamePath(f.path, path)) ?? null)
+
+  // useFileEditing へ渡す、アクティブファイルの中身だけを同期的に返す関数
+  const getOpenFile = (): OpenFile | null =>
+    findFile(openFilesMirrorRef.current, activeFilePathMirrorRef.current)
+
+  // useFileEditing へ渡す唯一の更新経路。アクティブファイルの content/savedContent の
+  // 更新のみを行う(null 化や新規追加はこの経路を通らない、closeTab/selectFile が別途行う)。
+  // React の setState 更新関数は同じ tick 内で同期的に呼ばれるとは限らないため、
+  // ミラーは「prev を updater 内で読んで書く」のではなく、常にミラー自身を prev として
+  // 同期的に読み書きしてから setOpenFiles には確定済みの値を渡す(openFileMirrorRef と同じ設計)
   const commitOpenFile: Dispatch<SetStateAction<OpenFile | null>> = (next) => {
-    const value = typeof next === 'function' ? next(openFileMirrorRef.current) : next
-    openFileMirrorRef.current = value
-    setOpenFile(value)
+    const activePath = activeFilePathMirrorRef.current
+    if (activePath === null) return
+    const prev = openFilesMirrorRef.current
+    const currentActive = findFile(prev, activePath)
+    const value = typeof next === 'function' ? next(currentActive) : next
+    if (value === null) return
+    const nextFiles = prev.map((f) => (isSamePath(f.path, activePath) ? value : f))
+    openFilesMirrorRef.current = nextFiles
+    setOpenFiles(nextFiles)
   }
-  const getOpenFile = (): OpenFile | null => openFileMirrorRef.current
+
+  // openFiles 配列全体を更新する経路(useFileTreeOperations が使う)。更新後、
+  // activeFilePath が配列から消えていたら隣接タブへ遷移する。commitOpenFile と同じ理由で、
+  // ミラーへの反映と activeFilePath の補正は setOpenFiles の updater の外(同期的)に行う
+  const setOpenFilesAndFixActive = (updater: (prev: OpenFile[]) => OpenFile[]): void => {
+    const prev = openFilesMirrorRef.current
+    const next = updater(prev)
+    openFilesMirrorRef.current = next
+    const activePath = activeFilePathMirrorRef.current
+    if (activePath !== null && findFile(next, activePath) === null) {
+      const prevIndex = prev.findIndex((f) => isSamePath(f.path, activePath))
+      const fallback = computeAdjacentPath(prev, next, prevIndex)
+      activeFilePathMirrorRef.current = fallback
+      setActiveFilePath(fallback)
+    }
+    setOpenFiles(next)
+  }
+
   // ファイルを「開いた」ことを伝える信号。リネームでも openFile.path は変わる
   // ため、path の変化だけでは open と区別できない。カウンタだけでなく対象パスも
   // 持たせるのは、受け手が信号を処理する時点で既に別のファイルへ切り替わって
@@ -126,6 +161,11 @@ export function useFileSystem(options?: Options): FileSystemState {
   const openedFileEventSeqRef = useRef(0)
   const onConfirm = options?.onConfirm ?? confirm
 
+  // レンダー中は ref を直接読まず、state (openFiles/activeFilePath) から算出する。
+  // レンダー時点では前回のコミットで両者は一致しているため安全に使え、
+  // ref を読むと再レンダーの起点にならず更新が反映されないことがある
+  const activeFile = findFile(openFiles, activeFilePath)
+
   // フォルダ/ファイル読み込み系のエラー(error)と保存系のエラー(saveError)を分離する。
   // 同一の error を Sidebar/EditorPanel 双方に渡すと、フォルダ読み込み失敗が
   // エディタ側に「保存失敗」として表示されるなど無関係なエラーが混線するため。
@@ -136,43 +176,27 @@ export function useFileSystem(options?: Options): FileSystemState {
     updateFileContent,
     saveFile,
     resetForFileChange,
-    confirmDiscardIfDirty,
     lockPathForFileOperation,
     pendingSaveFor,
     saveCompletionsFor
     // getOpenFile を渡す。layout effect で更新される ref では、同じ tick に入った
     // 編集（commitOpenFile はミラーを即時更新する）を取りこぼす
-  } = useFileEditing(openFile, commitOpenFile, { ...options, getOpenFile })
+  } = useFileEditing(activeFile, commitOpenFile, { ...options, getOpenFile })
 
-  // 読み込みを待つ間に編集が入ることがある。開始時に取得した関数は当時の
-  // isDirty を閉じ込めているため、コミット直前の再確認には最新のものを使う
-  const confirmDiscardIfDirtyRef = useLatestRef(confirmDiscardIfDirty)
-  /** 破棄確認の要否を判定するためのスナップショット(ファイルと内容の組) */
-  // savedContent も含める。content と path だけだと「編集→保存→元に戻す」で
-  // 変化なしと誤判定し、保存後の未保存編集を確認なしに破棄する
-  type BufferSnapshot = { path: string | null; content: string | null; savedContent: string | null }
-  // 同期ミラーから取る。layout effect で更新される ref だと、同じ tick に入った
-  // 編集(commitOpenFile はミラーを即時更新する)を取りこぼし、未保存の変更を
-  // 無確認で上書きしてしまう
-  const snapshotBuffer = (): BufferSnapshot => ({
-    path: openFileMirrorRef.current?.path ?? null,
-    content: openFileMirrorRef.current?.content ?? null,
-    savedContent: openFileMirrorRef.current?.savedContent ?? null
-  })
+  // 全タブの中に dirty なものがあるか。フォルダ切り替えは全タブを閉じる操作なので、
+  // アクティブなタブ単体ではなく開いている全タブを対象に判定する
+  const hasAnyDirtyTab = (): boolean =>
+    openFilesMirrorRef.current.some((f) => f.content !== f.savedContent)
 
-  // 待機の前後でバッファが変わっていたら、開始時の確認はその状態を見ていない。
-  // 変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)。
-  // 内容だけでなく path も見るのは、別ファイルへ切り替わって偶然同じ内容に
-  // なった場合に「変化なし」と誤判定しないため
-  const confirmDiscardIfChangedSince = (snapshot: BufferSnapshot): boolean => {
-    const now = snapshotBuffer()
-    if (
-      now.path === snapshot.path &&
-      now.content === snapshot.content &&
-      now.savedContent === snapshot.savedContent
-    )
-      return true
-    return confirmDiscardIfDirtyRef.current()
+  const confirmDiscardAnyDirty = (): boolean =>
+    !hasAnyDirtyTab() || onConfirm(DISCARD_CONFIRM_MESSAGE)
+
+  // 待機の前後で「dirty なタブがあるか」が変わっていたら、開始時の確認はその状態を
+  // 見ていない。変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)
+  const confirmDiscardChangedSinceOpenFolder = (dirtyAtStart: boolean): boolean => {
+    const dirtyNow = hasAnyDirtyTab()
+    if (dirtyNow === dirtyAtStart) return true
+    return confirmDiscardAnyDirty()
   }
 
   // ファイル操作CRUD(作成/リネーム/削除)と、開いているファイルへの追随ロジックは
@@ -188,8 +212,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     deleteEntry,
     refreshTree
   } = useFileTreeOperations({
-    getOpenFile,
-    setOpenFile: commitOpenFile,
+    getOpenFiles: () => openFilesMirrorRef.current,
+    setOpenFiles: setOpenFilesAndFixActive,
+    getActiveFilePath: () => activeFilePathMirrorRef.current,
     resetForFileChange,
     onConfirm,
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
@@ -227,7 +252,7 @@ export function useFileSystem(options?: Options): FileSystemState {
   })
 
   const openFolder = async (): Promise<void> => {
-    if (!confirmDiscardIfDirty()) return
+    if (!confirmDiscardAnyDirty()) return
     // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
@@ -243,7 +268,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     let selectedPath: string | null = null
     // 失敗経路でも成功経路と同じ判定を行うため、走査開始時点の状態を控える
     let committedOpenAtStart: number | null = null
-    let snapshot: BufferSnapshot | null = null
+    let dirtyAtStart: boolean | null = null
     try {
       const path = await fileSystemApi.openFolder()
       // 先行ダイアログが後発の選択より遅れて返ることがある。古い試行のまま
@@ -257,11 +282,11 @@ export function useFileSystem(options?: Options): FileSystemState {
       scanning = true
       selectedPath = path
       directoryReadId = ++latestDirectoryReadRef.current
-      // フォルダを開き直すと openFile を null に戻すため、保留中の読み込みも無効化する
+      // フォルダを開き直すと openFiles を空に戻すため、保留中の読み込みも無効化する
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
       committedOpenAtStart = committedOpenRef.current
-      snapshot = snapshotBuffer()
+      dirtyAtStart = hasAnyDirtyTab()
       const treeWriteSeq = ++treeWriteSeqRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
@@ -287,8 +312,10 @@ export function useFileSystem(options?: Options): FileSystemState {
       // ディレクトリ走査は秒単位になり得る。その間に入った編集は開始時の確認が
       // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
       // フォルダとツリーだけ確定し、ファイルは開いたまま残す
-      if (!confirmDiscardIfChangedSince(snapshot)) return
-      commitOpenFile(null)
+      if (!confirmDiscardChangedSinceOpenFolder(dirtyAtStart)) return
+      setOpenFilesAndFixActive(() => [])
+      activeFilePathMirrorRef.current = null
+      setActiveFilePath(null)
       resetForFileChange()
     } catch (err) {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない。
@@ -312,10 +339,12 @@ export function useFileSystem(options?: Options): FileSystemState {
         if (
           committedOpenAtStart !== null &&
           committedOpenRef.current === committedOpenAtStart &&
-          snapshot !== null &&
-          confirmDiscardIfChangedSince(snapshot)
+          dirtyAtStart !== null &&
+          confirmDiscardChangedSinceOpenFolder(dirtyAtStart)
         ) {
-          commitOpenFile(null)
+          setOpenFilesAndFixActive(() => [])
+          activeFilePathMirrorRef.current = null
+          setActiveFilePath(null)
           resetForFileChange()
         }
       }
@@ -353,11 +382,32 @@ export function useFileSystem(options?: Options): FileSystemState {
     if (node.type !== 'file') return false
     // TypeScript resets property narrowing after `await`; capture the narrowed type here.
     const fileNode = node as FileNode
-    if (!confirmDiscardIfDirty()) return false
+    // 既に開いているタブなら、新規タブを作らずアクティブ化するだけでよい。
+    // 別タブへの切り替えは既存タブの内容を破棄しないため、確認は不要
+    const existing = findFile(openFilesMirrorRef.current, fileNode.path)
+    if (existing !== null) {
+      activeFilePathMirrorRef.current = fileNode.path
+      setActiveFilePath(fileNode.path)
+      resetForFileChange()
+      setOpenedFileSignal((prev) => {
+        const nextId = ++openedFileEventSeqRef.current
+        const openedKey = toComparablePath(fileNode.path)
+        return {
+          events: [
+            ...prev.events.filter((event) => toComparablePath(event.path) !== openedKey),
+            {
+              id: nextId,
+              path: fileNode.path,
+              moveFocusToEditor: options?.moveFocusToEditor === true
+            }
+          ].slice(-MAX_OPENED_FILE_EVENTS)
+        }
+      })
+      return true
+    }
     setError(null)
     const readId = ++latestReadRef.current
     pendingReadPathRef.current = fileNode.path
-    const snapshot = snapshotBuffer()
     try {
       // 同じ path の保存が進行中なら、その完了を待ってから読む。待たないと
       // write 完了前の旧内容を読み取り、しかも再オープンで世代が進むため
@@ -397,8 +447,10 @@ export function useFileSystem(options?: Options): FileSystemState {
       }
       // 待っている間に別のファイルへ切り替わっていたら、この結果は捨てる
       if (readId !== latestReadRef.current) return false
-      if (!confirmDiscardIfChangedSince(snapshot)) return false
-      commitOpenFile(createOpenFile(fileNode, content))
+      // 新規タブとして追加する。既存タブは破棄しないため、ここで破棄確認は不要
+      setOpenFilesAndFixActive((prev) => [...prev, createOpenFile(fileNode, content)])
+      activeFilePathMirrorRef.current = fileNode.path
+      setActiveFilePath(fileNode.path)
       resetForFileChange()
       committedOpenRef.current += 1
       // 信号はどの経路でも進める(最近開いたファイルの履歴に使うため)。
@@ -431,18 +483,36 @@ export function useFileSystem(options?: Options): FileSystemState {
     }
   }
 
-  const closeFile = (): void => {
-    if (!confirmDiscardIfDirty()) return
-    // 閉じたあとに保留中の読み込みが解決してファイルが再表示されるのを防ぐ
-    latestReadRef.current += 1
-    commitOpenFile(null)
+  const activateTab = (path: string): void => {
+    if (findFile(openFilesMirrorRef.current, path) === null) return
+    activeFilePathMirrorRef.current = path
+    setActiveFilePath(path)
     resetForFileChange()
+  }
+
+  const closeTab = (path: string): void => {
+    // Task 3 で実装する
+    void path
+  }
+
+  const reorderTabs = (fromIndex: number, toIndex: number): void => {
+    // Task 4 で実装する
+    void fromIndex
+    void toIndex
+  }
+
+  const closeFile = (): void => {
+    const activePath = activeFilePathMirrorRef.current
+    if (activePath === null) return
+    closeTab(activePath)
   }
 
   return {
     folderPath,
     fileTree,
-    openFile,
+    openFile: activeFile,
+    openFiles,
+    activeFilePath,
     openedFileSignal,
     folderLoadError,
     isDirty,
@@ -452,6 +522,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     openFolder,
     selectFile,
     closeFile,
+    activateTab,
+    closeTab,
+    reorderTabs,
     updateFileContent,
     saveFile,
     createFile,
@@ -459,4 +532,18 @@ export function useFileSystem(options?: Options): FileSystemState {
     renameEntry,
     deleteEntry
   }
+}
+
+// 配列から要素が消えたとき、消えた要素があった位置を基準に次にアクティブにする
+// タブの path を返す。右隣を優先し、無ければ左隣、どちらも無ければ null
+// (右優先はエディタタブの一般的な挙動に合わせる)
+function computeAdjacentPath(
+  _prev: OpenFile[],
+  next: OpenFile[],
+  removedIndex: number
+): string | null {
+  if (removedIndex === -1) return next[0]?.path ?? null
+  if (removedIndex < next.length) return next[removedIndex].path
+  if (removedIndex - 1 >= 0 && removedIndex - 1 < next.length) return next[removedIndex - 1].path
+  return next[next.length - 1]?.path ?? null
 }

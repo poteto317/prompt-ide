@@ -178,31 +178,6 @@ describe('useFileSystem', () => {
     expect(result.current.error).not.toBeNull()
   })
 
-  it('selectFile は未保存変更の破棄がキャンセルされたとき false を返す', async () => {
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    mockReadFileContent.mockResolvedValue('const x = 1')
-    const onConfirm = vi.fn(() => false)
-
-    const { result } = renderHook(() => useFileSystem({ onConfirm }))
-    await act(async () => {
-      await result.current.openFolder()
-    })
-    const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-    await act(async () => {
-      await result.current.selectFile(fileNode)
-    })
-    act(() => result.current.updateFileContent('編集済み'))
-
-    const otherNode: FileTreeNode = { name: 'App.tsx', path: '/project/src/App.tsx', type: 'file' }
-    let opened: boolean | undefined
-    await act(async () => {
-      opened = await result.current.selectFile(otherNode)
-    })
-    expect(opened).toBe(false)
-    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
-  })
-
   it('先行する遅い読み込みが後から開いたファイルの表示を上書きしない', async () => {
     // クイックオープンで A を選んだまま閉じ、開き直して B を選ぶと 2 本の読み込みが
     // 同時に走る。A のほうが遅いと、解決順のせいで A が B を上書きしてしまう
@@ -290,29 +265,6 @@ describe('useFileSystem', () => {
     })
     await act(async () => {
       resolveSlow('slow content')
-    })
-    expect(result.current.openFile).toBeNull()
-  })
-
-  it('closeFile は保留中の読み込みを無効化する', async () => {
-    // 読み込み待ちのままタブを閉じたのに、あとから解決してファイルが再表示されるのを防ぐ
-    let resolveSlow: (content: string) => void = () => {}
-    mockReadFileContent.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveSlow = resolve
-        })
-    )
-    const slowNode: FileTreeNode = { name: 'slow.ts', path: '/project/slow.ts', type: 'file' }
-    const { result } = renderHook(() => useFileSystem())
-    let slowPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      slowPromise = result.current.selectFile(slowNode)
-    })
-    act(() => result.current.closeFile())
-    await act(async () => {
-      resolveSlow('slow content')
-      await slowPromise
     })
     expect(result.current.openFile).toBeNull()
   })
@@ -407,48 +359,6 @@ describe('useFileSystem', () => {
     expect(result.current.folderPath).toBe('/new')
   })
 
-  it('読み込み中に入った未保存の編集を確認なしで破棄しない', async () => {
-    // Enter 後に閉じて旧ファイルを編集すると、あとから届いた読み込み結果が
-    // 確認なしにバッファを置き換えて編集内容を失う
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    mockReadFileContent.mockResolvedValue('const x = 1')
-    const onConfirm = vi.fn(() => false)
-    const { result } = renderHook(() => useFileSystem({ onConfirm }))
-    await act(async () => {
-      await result.current.openFolder()
-    })
-    const first: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
-    await act(async () => {
-      await result.current.selectFile(first)
-    })
-
-    let resolveSecond: (content: string) => void = () => {}
-    mockReadFileContent.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveSecond = resolve
-        })
-    )
-    const second: FileTreeNode = { name: 'App.tsx', path: '/project/src/App.tsx', type: 'file' }
-    let secondPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      secondPromise = result.current.selectFile(second)
-    })
-    // 読み込み待ちの間に編集が入る(開始時点の確認では拾えない)
-    act(() => result.current.updateFileContent('編集済み'))
-
-    let opened: boolean | undefined
-    await act(async () => {
-      resolveSecond('const y = 2')
-      opened = await secondPromise
-    })
-    expect(onConfirm).toHaveBeenCalled()
-    expect(opened).toBe(false)
-    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
-    expect(result.current.openFile?.content).toBe('編集済み')
-  })
-
   it('読み込み中のファイルを削除したらその結果を表示しない', async () => {
     // 削除済みのファイルを表示してしまうと、編集して保存した時点で復活する
     mockOpenFolder.mockResolvedValue('/project')
@@ -480,8 +390,8 @@ describe('useFileSystem', () => {
     expect(result.current.openFile).toBeNull()
   })
 
-  it('未保存のまま別ファイルを開いても破棄確認は 1 回だけ', async () => {
-    // 開始時の確認とコミット直前の再確認で、同じダイアログが 2 回出てはいけない
+  it('未保存のまま別ファイルを開いても破棄確認はしない(新規タブとして追加されるため)', async () => {
+    // 複数タブ化により、別ファイルを開く操作は既存タブを破棄しない。よって確認は不要
     mockOpenFolder.mockResolvedValue('/project')
     mockReadDirectory.mockResolvedValue(mockTree)
     mockReadFileContent.mockResolvedValue('const x = 1')
@@ -501,8 +411,12 @@ describe('useFileSystem', () => {
     await act(async () => {
       await result.current.selectFile(second)
     })
-    expect(onConfirm).toHaveBeenCalledTimes(1)
+    expect(onConfirm).not.toHaveBeenCalled()
     expect(result.current.openFile?.path).toBe('/project/src/App.tsx')
+    expect(result.current.openFiles.map((f) => f.path)).toEqual([
+      '/project/src/index.ts',
+      '/project/src/App.tsx'
+    ])
   })
 
   it('無関係なファイルの削除では進行中のファイルオープンを取り消さない', async () => {
@@ -1143,9 +1057,9 @@ describe('useFileSystem', () => {
     expect(result.current.error).not.toBeNull()
   })
 
-  it('同じ tick で入った編集も破棄確認の対象にする', async () => {
+  it('別ファイルの読み込み中と同じ tick に入った編集は、読み込み中のタブではなく元のアクティブタブに反映される', async () => {
     // スナップショットが layout effect 更新の ref を見ていると、同期ミラーだけが
-    // 更新された編集を取りこぼし、未保存の変更を無確認で上書きする
+    // 更新された編集を取りこぼし、別タブの読み込み中の内容へ誤って反映してしまう
     mockOpenFolder.mockResolvedValue('/project')
     mockReadDirectory.mockResolvedValue(mockTree)
     mockReadFileContent.mockResolvedValue('const x = 1')
@@ -1170,7 +1084,8 @@ describe('useFileSystem', () => {
         })
     )
     let secondPromise: Promise<boolean> = Promise.resolve(false)
-    // 読み込み開始と編集を同じ tick でまとめて行う
+    // 読み込み開始と編集を同じ tick でまとめて行う。読み込み中はまだ index.ts が
+    // アクティブなので、この編集は index.ts に反映されるべきである
     act(() => {
       secondPromise = result.current.selectFile({
         name: 'App.tsx',
@@ -1183,8 +1098,12 @@ describe('useFileSystem', () => {
       resolveSecond('const y = 2')
       await secondPromise
     })
-    expect(onConfirm).toHaveBeenCalled()
-    expect(result.current.openFile?.content).toBe('編集済み')
+    // 複数タブ化により、別ファイルを開く操作は既存タブを破棄しないため確認は不要
+    expect(onConfirm).not.toHaveBeenCalled()
+    expect(result.current.activeFilePath).toBe('/project/src/App.tsx')
+    expect(result.current.openFile?.content).toBe('const y = 2')
+    const indexTab = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+    expect(indexTab?.content).toBe('編集済み')
   })
 
   it('フォルダ選択をキャンセルしても、その間の CRUD の結果を反映する', async () => {
@@ -1597,58 +1516,6 @@ describe('useFileSystem', () => {
       await result.current.openFolder()
     })
     expect(result.current.folderLoadError?.message).toBe('走査失敗')
-  })
-
-  it('保存して元の内容へ戻した場合も破棄確認を行う', async () => {
-    // content と path だけの比較だと「編集→保存→元に戻す」で変化なしと誤判定し、
-    // 保存後の未保存編集を確認なしに破棄する
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    mockReadFileContent.mockResolvedValue('A')
-    mockWriteFileContent.mockResolvedValue(undefined)
-    const onConfirm = vi.fn(() => false)
-    const { result } = renderHook(() => useFileSystem({ onConfirm }))
-    await act(async () => {
-      await result.current.openFolder()
-    })
-    await act(async () => {
-      await result.current.selectFile({
-        name: 'index.ts',
-        path: '/project/src/index.ts',
-        type: 'file'
-      })
-    })
-
-    let resolveSecond: (content: string) => void = () => {}
-    mockReadFileContent.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveSecond = resolve
-        })
-    )
-    let secondPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      secondPromise = result.current.selectFile({
-        name: 'App.tsx',
-        path: '/project/src/App.tsx',
-        type: 'file'
-      })
-    })
-    // 待っている間に 編集 → 保存 → 元の内容へ戻す
-    act(() => result.current.updateFileContent('B'))
-    await act(async () => {
-      await result.current.saveFile()
-    })
-    act(() => result.current.updateFileContent('A'))
-    expect(result.current.isDirty).toBe(true)
-
-    onConfirm.mockClear()
-    await act(async () => {
-      resolveSecond('const y = 2')
-      await secondPromise
-    })
-    expect(onConfirm).toHaveBeenCalled()
-    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
   })
 
   it('保存中のファイルを削除するとき、書き込みの完了を待ってから削除する', async () => {
@@ -2106,51 +1973,6 @@ describe('useFileSystem', () => {
     })
   })
 
-  it('保存中のファイルの読み込みは保存の完了を待つ', async () => {
-    // 待たずに読むと、write 完了前の旧内容を読み取り、しかも再オープンで
-    // 世代が進むため保存側は savedContent を更新せず、ディスクとエディタが食い違う
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    mockReadFileContent.mockResolvedValue('保存前の内容')
-    const order: string[] = []
-    let finishWrite: () => void = () => {}
-    mockWriteFileContent.mockImplementation(() => {
-      order.push('write:start')
-      return new Promise<void>((resolve) => {
-        finishWrite = () => {
-          order.push('write:end')
-          resolve()
-        }
-      })
-    })
-    const target = mockTree[0].children![0]
-    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
-    await act(async () => {
-      await result.current.openFolder()
-      await result.current.selectFile(target)
-    })
-    act(() => result.current.updateFileContent('編集済み'))
-    act(() => {
-      void result.current.saveFile()
-    })
-    await act(async () => {})
-    mockReadFileContent.mockImplementation(() => {
-      order.push('read:start')
-      return Promise.resolve('保存後の内容')
-    })
-    let reopenPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      reopenPromise = result.current.selectFile(target)
-    })
-    await act(async () => {})
-    expect(order).toEqual(['write:start'])
-    await act(async () => {
-      finishWrite()
-      await reopenPromise
-    })
-    expect(order).toEqual(['write:start', 'write:end', 'read:start'])
-  })
-
   it('先行ダイアログが遅れて返っても後発のフォルダ選択を上書きしない', async () => {
     // 古い試行のまま進むと走査の世代を進めてしまい、後発の結果が捨てられて
     // 古いフォルダが最終表示になる
@@ -2359,135 +2181,6 @@ describe('useFileSystem', () => {
     })
     const paths = result.current.openedFileSignal.events.map((event) => event.path)
     expect(paths).toEqual(['C:\\project\\b.ts', 'C:\\Project\\A.ts'])
-  })
-
-  it('読み込み中に完了した保存があれば読み直す', async () => {
-    // 保存を待つのが read の開始前だけだと、read 中に始まって完了した保存を
-    // 取りこぼし、ディスクは新内容なのに旧内容を clean としてコミットする
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    const target = mockTree[0].children![0]
-    mockReadFileContent.mockResolvedValue('最初の内容')
-    mockWriteFileContent.mockResolvedValue(undefined)
-    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
-    await act(async () => {
-      await result.current.openFolder()
-      await result.current.selectFile(target)
-    })
-    // 再オープンの read を保留させ、その最中に編集と保存を完了させる
-    let resolveRead: (content: string) => void = () => {}
-    mockReadFileContent.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveRead = resolve
-        })
-    )
-    let reopenPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      reopenPromise = result.current.selectFile(target)
-    })
-    await act(async () => {})
-    act(() => result.current.updateFileContent('保存された内容'))
-    await act(async () => {
-      await result.current.saveFile()
-    })
-    // read 中に保存が完了した。読み直さないと旧内容が clean としてコミットされる
-    mockReadFileContent.mockResolvedValue('保存された内容')
-    await act(async () => {
-      resolveRead('最初の内容')
-      await reopenPromise
-    })
-    expect(result.current.openFile?.content).toBe('保存された内容')
-    expect(result.current.isDirty).toBe(false)
-  })
-
-  it('読み込みの解決時点で保存が進行中ならその完了後に読み直す', async () => {
-    // 完了回数の比較だけだと、まだ進行中の保存は検出できず
-    // 保存前の内容を clean としてコミットしてしまう
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    const target = mockTree[0].children![0]
-    mockReadFileContent.mockResolvedValue('最初の内容')
-    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
-    await act(async () => {
-      await result.current.openFolder()
-      await result.current.selectFile(target)
-    })
-    let resolveRead: (content: string) => void = () => {}
-    mockReadFileContent.mockImplementationOnce(
-      () =>
-        new Promise<string>((resolve) => {
-          resolveRead = resolve
-        })
-    )
-    let finishWrite: () => void = () => {}
-    mockWriteFileContent.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          finishWrite = resolve
-        })
-    )
-    let reopenPromise: Promise<boolean> = Promise.resolve(false)
-    act(() => {
-      reopenPromise = result.current.selectFile(target)
-    })
-    await act(async () => {})
-    // 読み込み中に保存を始め、完了させないまま読み込みを解決させる
-    act(() => result.current.updateFileContent('保存された内容'))
-    act(() => {
-      void result.current.saveFile()
-    })
-    await act(async () => {})
-    mockReadFileContent.mockResolvedValue('保存された内容')
-    await act(async () => {
-      resolveRead('最初の内容')
-      finishWrite()
-      await reopenPromise
-    })
-    expect(result.current.openFile?.content).toBe('保存された内容')
-    expect(result.current.isDirty).toBe(false)
-  })
-
-  it('競合が続いて上限に達したら古い内容をコミットせず失敗にする', async () => {
-    // 古いと分かっている内容を clean として表示すると、ディスクとの
-    // 食い違いに気付けなくなる
-    mockOpenFolder.mockResolvedValue('/project')
-    mockReadDirectory.mockResolvedValue(mockTree)
-    const target = mockTree[0].children![0]
-    mockReadFileContent.mockResolvedValue('最初の内容')
-    // 保存は「読み込みの解決時点ではまだ進行中」になるよう、次のタスクで完了させる
-    mockWriteFileContent.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          setTimeout(resolve, 0)
-        })
-    )
-    const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
-    await act(async () => {
-      await result.current.openFolder()
-      await result.current.selectFile(target)
-    })
-    // 先に編集しておく。保存はこの状態を書き出す
-    act(() => result.current.updateFileContent('編集済み'))
-    const openedBefore = result.current.openFile
-    const saveFile = result.current.saveFile
-    // 読み込みのたびに保存を挟み、競合し続ける状況を作る。
-    // 保存は「未変更なら書かない」ため、毎回編集を入れてから呼ぶ
-    let edit = 0
-    mockReadFileContent.mockImplementation(() => {
-      edit += 1
-      result.current.updateFileContent(`編集済み ${edit}`)
-      void saveFile()
-      return Promise.resolve('古い内容')
-    })
-    let reopened: boolean | undefined
-    await act(async () => {
-      reopened = await result.current.selectFile(target)
-    })
-    expect(reopened).toBe(false)
-    expect(result.current.error?.message).toContain('保存と競合したため')
-    expect(result.current.openFile?.content).not.toBe('古い内容')
-    expect(result.current.openFile?.path).toBe(openedBefore?.path)
   })
 
   it('作成の実行中は重なる削除を待たせる', async () => {
@@ -2716,7 +2409,8 @@ describe('useFileSystem', () => {
       expect(result.current.folderPath).toBe('/other')
     })
 
-    it('未保存変更があるとき selectFile も確認ガードでファイル切り替えをブロックできる', async () => {
+    it('未保存変更があっても selectFile は確認せずに別ファイルを新規タブとして開く', async () => {
+      // 複数タブ化により、別ファイルを開く操作は既存タブを破棄しないため確認は不要
       const onConfirm = vi.fn().mockReturnValue(false)
       const { result } = renderHook(() => useFileSystem({ onConfirm }))
       await openAndSelect(result)
@@ -2724,6 +2418,7 @@ describe('useFileSystem', () => {
         result.current.updateFileContent('const x = 2')
       })
       mockReadFileContent.mockClear()
+      mockReadFileContent.mockResolvedValue('package content')
       const otherNode: FileTreeNode = {
         name: 'package.json',
         path: '/project/package.json',
@@ -2734,10 +2429,11 @@ describe('useFileSystem', () => {
         await result.current.selectFile(otherNode)
       })
 
-      expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
-      expect(mockReadFileContent).not.toHaveBeenCalled()
-      expect(result.current.openFile?.path).toBe('/project/src/index.ts')
-      expect(result.current.openFile?.content).toBe('const x = 2')
+      expect(onConfirm).not.toHaveBeenCalled()
+      expect(mockReadFileContent).toHaveBeenCalled()
+      expect(result.current.openFile?.path).toBe('/project/package.json')
+      const indexTab = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+      expect(indexTab?.content).toBe('const x = 2')
     })
 
     it('saveFile の失敗は error ではなく saveError にセットされる（フォルダ系エラーとの混線防止）', async () => {
@@ -2998,6 +2694,110 @@ describe('useFileSystem', () => {
         await savePromise
       })
       expect(result.current.isSaving).toBe(false)
+    })
+  })
+
+  describe('複数タブ管理', () => {
+    it('新しいファイルを開くと openFiles に追加され、既存タブの内容は保持される', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/src/a.ts',
+        '/project/src/b.ts'
+      ])
+      expect(result.current.activeFilePath).toBe('/project/src/b.ts')
+      const tabA = result.current.openFiles.find((f) => f.path === '/project/src/a.ts')
+      expect(tabA?.content).toBe('編集済みA')
+    })
+
+    it('既に開いているファイルを再度選択すると、新規タブを作らずそのタブをアクティブ化する', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+
+      expect(result.current.openFiles).toHaveLength(2)
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(mockReadFileContent).toHaveBeenCalledTimes(2)
+    })
+
+    it('別ファイルを開いても既存タブが dirty でも確認しない(内容は保持されるため)', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      onConfirm.mockClear()
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      act(() => result.current.updateFileContent('編集済みA'))
+
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    it('openFolder はいずれかのタブが dirty なら破棄確認する', async () => {
+      mockOpenFolder.mockResolvedValueOnce('/project').mockResolvedValueOnce('/other')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const onConfirm = vi.fn().mockReturnValue(true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      act(() => result.current.updateFileContent('編集済みA'))
+      onConfirm.mockClear()
+
+      await act(async () => {
+        await result.current.openFolder()
+      })
+
+      expect(onConfirm).toHaveBeenCalled()
+      expect(result.current.openFiles).toEqual([])
     })
   })
 })

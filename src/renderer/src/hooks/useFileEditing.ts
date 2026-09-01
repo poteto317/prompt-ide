@@ -27,7 +27,7 @@ export const SAVE_ABORTED_BY_RENAME_DESTINATION_FILE =
 export const SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY =
   '同じ名前へ別のディレクトリがリネームされました。このまま保存すると、その中身を上書きします。'
 
-const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
+export const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
 export type ResetForFileChangeOptions = {
   /**
