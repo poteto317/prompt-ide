@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
+import { useSensor, PointerSensor } from '@dnd-kit/core'
 import EditorTabs from '../EditorTabs'
 
 // dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
@@ -8,7 +9,6 @@ import EditorTabs from '../EditorTabs'
 vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   PointerSensor: class {},
-  KeyboardSensor: class {},
   closestCenter: vi.fn(),
   useSensor: vi.fn(),
   useSensors: vi.fn(() => [])
@@ -16,7 +16,6 @@ vi.mock('@dnd-kit/core', () => ({
 
 vi.mock('@dnd-kit/sortable', () => ({
   SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  sortableKeyboardCoordinates: {},
   horizontalListSortingStrategy: {},
   useSortable: () => ({
     attributes: {},
@@ -94,5 +93,22 @@ describe('EditorTabs', () => {
   it('closable を省略すると各タブに閉じるボタンを表示する(既定 true)', () => {
     renderTabs()
     expect(screen.getAllByLabelText('タブを閉じる')).toHaveLength(2)
+  })
+
+  it('並び替えの起動元は PointerSensor のみで、微小な移動ではドラッグを開始しない', () => {
+    // KeyboardSensor を足すと、その onKeyDown(dnd-kit のドラッグ起動用)が
+    // EditorTab 自身の onKeyDown(Enter/Space でのタブ切り替え)を後勝ちで
+    // 上書きしてしまい、「設定されているのに実際には起動できない」状態になる。
+    // PointerSensor のみを使うことで、この壊れた設定自体を無くす
+    // このファイル内の他のテストでも同じモックを描画するため、呼び出し回数は
+    // 累積する。「このレンダーで増えた1回」だけを見て、内容を確認する
+    const callsBefore = vi.mocked(useSensor).mock.calls.length
+    renderTabs()
+    const calls = vi.mocked(useSensor).mock.calls
+    expect(calls.length).toBe(callsBefore + 1)
+    expect(calls[calls.length - 1]).toEqual([
+      PointerSensor,
+      { activationConstraint: { distance: 4 } }
+    ])
   })
 })

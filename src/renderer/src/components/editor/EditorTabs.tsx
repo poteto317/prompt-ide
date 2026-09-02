@@ -1,17 +1,6 @@
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors
-} from '@dnd-kit/core'
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import type { DragEndEvent } from '@dnd-kit/core'
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  horizontalListSortingStrategy
-} from '@dnd-kit/sortable'
+import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
 import EditorTab from './EditorTab'
 import EditorSaveControl from './EditorSaveControl'
 
@@ -46,10 +35,18 @@ export default function EditorTabs({
   onSave,
   closable = true
 }: Props): React.JSX.Element {
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  )
+  // ポインタのみ対応。EditorTab は listeners を dnd-kit の並び替えと同じ要素に
+  // 直接スプレッドしているため、KeyboardSensor を足すと dnd-kit 自身の
+  // onKeyDown(KeyboardSensor の起動に必要)が EditorTab の onKeyDown(Enter/Space
+  // でのタブ切り替え)に後勝ちで上書きされ、キーボードでの並び替えは実際には
+  // 起動できないまま「設定されているように見える」状態になる。キーボードでの
+  // タブ切り替え(Enter/Space)自体は EditorTab 側の onKeyDown でこの設定と無関係に
+  // 動くため、並び替えの起動元を PointerSensor のみに絞ってこの状態を解消する
+  // (キーボードでの並び替えは別途の対応が必要な既知の UX ギャップとして残る)。
+  // activationConstraint によって、わずかなポインタ移動だけではドラッグが
+  // 開始しないようにする。無指定だと mousedown 直後の微小な移動でドラッグ扱いに
+  // なり、クリックでのタブ切り替え・閉じるボタンのクリックと干渉し得るため
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const activeTab = tabs.find((t) => t.path === activePath) ?? null
   const isDirty = activeTab?.isDirty ?? false
 
