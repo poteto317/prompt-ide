@@ -15,6 +15,7 @@ export default function WelcomeView(): React.JSX.Element {
         onActivateTab={() => {}}
         onCloseTab={() => {}}
         onReorderTabs={() => {}}
+        closable={false}
       />
       <div className="editor-body">
         <Editor

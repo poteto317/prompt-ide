@@ -30,6 +30,9 @@ interface Props {
   onCloseTab: (path: string) => void
   onReorderTabs: (fromIndex: number, toIndex: number) => void
   onSave: () => void
+  /** 全タブに共通で閉じるボタンを表示するか。既定は true。WelcomeView の
+   * プレースホルダタブ(常に1件だけ)を表示する場合のみ false を渡す */
+  closable?: boolean
 }
 
 export default function EditorTabs({
@@ -40,7 +43,8 @@ export default function EditorTabs({
   onActivateTab,
   onCloseTab,
   onReorderTabs,
-  onSave
+  onSave,
+  closable = true
 }: Props): React.JSX.Element {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -71,6 +75,7 @@ export default function EditorTabs({
                 isActive={tab.path === activePath}
                 onActivate={() => onActivateTab(tab.path)}
                 onClose={() => onCloseTab(tab.path)}
+                closable={closable}
               />
             ))}
           </div>

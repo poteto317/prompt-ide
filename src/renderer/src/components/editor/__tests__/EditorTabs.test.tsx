@@ -85,4 +85,14 @@ describe('EditorTabs', () => {
     renderTabs({ saveError: new Error('保存に失敗しました') })
     expect(screen.getByRole('alert')).toHaveTextContent('保存に失敗しました')
   })
+
+  it('closable=false のとき、どのタブにも閉じるボタンを表示しない(WelcomeView のプレースホルダタブ用)', () => {
+    renderTabs({ closable: false })
+    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
+  })
+
+  it('closable を省略すると各タブに閉じるボタンを表示する(既定 true)', () => {
+    renderTabs()
+    expect(screen.getAllByLabelText('タブを閉じる')).toHaveLength(2)
+  })
 })

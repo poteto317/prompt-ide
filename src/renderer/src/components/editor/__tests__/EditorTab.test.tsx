@@ -64,6 +64,16 @@ describe('EditorTab', () => {
     expect(onActivate).not.toHaveBeenCalled()
   })
 
+  it('closable=false のとき、閉じるボタンを表示しない(押しても何も起きないボタンを見せない)', () => {
+    renderTab({ closable: false })
+    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
+  })
+
+  it('closable を省略すると閉じるボタンを表示する(既定 true)', () => {
+    renderTab()
+    expect(screen.getByLabelText('タブを閉じる')).toBeInTheDocument()
+  })
+
   describe('キーボード操作', () => {
     it('Enterキーでタブにフォーカス後、Enterキーで onActivate が呼ばれる', async () => {
       const onActivate = vi.fn()

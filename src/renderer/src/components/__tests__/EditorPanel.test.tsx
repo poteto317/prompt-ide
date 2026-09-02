@@ -106,15 +106,13 @@ describe('EditorPanel — openFile なし', () => {
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
 
-  it('"welcome.ts" タブの閉じるボタンをクリックしても onCloseTab は呼ばれない（プレースホルダーのため）', async () => {
-    // WelcomeView のタブは openFiles に属さないプレースホルダーで、EditorTab 自体は
-    // 共通コンポーネントのため閉じるボタン自体は表示されるが、無効な no-op が
-    // 割り当てられているだけで実ファイルには影響しない
-    const user = userEvent.setup()
-    const onCloseTab = vi.fn()
-    render(<EditorPanel {...defaultProps} onCloseTab={onCloseTab} />)
-    await user.click(screen.getByLabelText('タブを閉じる'))
-    expect(onCloseTab).not.toHaveBeenCalled()
+  it('"welcome.ts" タブに閉じるボタンを表示しない（プレースホルダーのため）', () => {
+    // WelcomeView のタブは openFiles に属さないプレースホルダーで、閉じる操作を
+    // 持たない。以前は共通コンポーネントの都合で押しても何も起きない no-op の
+    // 閉じるボタンが表示されていたが、押せるのに何も起きないボタンを見せないよう
+    // closable={false} でボタン自体を非表示にする
+    render(<EditorPanel {...defaultProps} onCloseTab={vi.fn()} />)
+    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
   })
 })
 

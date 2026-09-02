@@ -8,6 +8,9 @@ interface Props {
   isActive: boolean
   onActivate: () => void
   onClose: () => void
+  /** 閉じるボタンを表示するか。既定は true。WelcomeView のプレースホルダタブは
+   * 閉じる操作を持たないため false を渡し、押しても何も起きないボタンを見せない */
+  closable?: boolean
 }
 
 export default function EditorTab({
@@ -16,7 +19,8 @@ export default function EditorTab({
   isDirty,
   isActive,
   onActivate,
-  onClose
+  onClose,
+  closable = true
 }: Props): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: path
@@ -56,17 +60,19 @@ export default function EditorTab({
           ●
         </span>
       )}
-      <button
-        type="button"
-        className="editor-tab__close-btn"
-        onClick={(e) => {
-          e.stopPropagation()
-          onClose()
-        }}
-        aria-label="タブを閉じる"
-      >
-        ×
-      </button>
+      {closable && (
+        <button
+          type="button"
+          className="editor-tab__close-btn"
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
+          aria-label="タブを閉じる"
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }
