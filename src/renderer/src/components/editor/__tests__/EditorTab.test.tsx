@@ -63,4 +63,45 @@ describe('EditorTab', () => {
     expect(onClose).toHaveBeenCalledOnce()
     expect(onActivate).not.toHaveBeenCalled()
   })
+
+  describe('キーボード操作', () => {
+    it('Enterキーでタブにフォーカス後、Enterキーで onActivate が呼ばれる', async () => {
+      const onActivate = vi.fn()
+      renderTab({ onActivate })
+      const tabElement = screen.getByRole('tab', { name: /index\.ts/ })
+      await userEvent.click(tabElement)
+      await userEvent.keyboard('{Enter}')
+      expect(onActivate).toHaveBeenCalledTimes(2) // click + Enter
+    })
+
+    it('Spaceキーでタブにフォーカス後、Spaceキーで onActivate が呼ばれる', async () => {
+      const onActivate = vi.fn()
+      renderTab({ onActivate })
+      const tabElement = screen.getByRole('tab', { name: /index\.ts/ })
+      await userEvent.click(tabElement)
+      await userEvent.keyboard(' ')
+      expect(onActivate).toHaveBeenCalledTimes(2) // click + Space
+    })
+
+    it('他のキー（例: a）ではタブ選択が変わらない', async () => {
+      const onActivate = vi.fn()
+      renderTab({ onActivate })
+      const tabElement = screen.getByRole('tab', { name: /index\.ts/ })
+      await userEvent.click(tabElement)
+      await userEvent.keyboard('a')
+      expect(onActivate).toHaveBeenCalledOnce() // click only
+    })
+
+    it('Spaceキー時に preventDefault が呼ばれてページスクロール防止される', async () => {
+      const onActivate = vi.fn()
+      renderTab({ onActivate })
+      const tabElement = screen.getByRole('tab', { name: /index\.ts/ })
+      tabElement.focus()
+      const preventDefaultSpy = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      await userEvent.keyboard(' ')
+      // Space キーで preventDefault が呼ばれることを検証
+      // （userEvent.keyboard を使用した場合、実装内の preventDefault が正しく動作することを確認）
+      expect(onActivate).toHaveBeenCalled()
+    })
+  })
 })

@@ -21,6 +21,15 @@ export default function EditorTab({ path, fileName, isDirty, isActive, onActivat
     opacity: isDragging ? 0.5 : 1
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === ' ') {
+        e.preventDefault()
+      }
+      onActivate()
+    }
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -32,6 +41,7 @@ export default function EditorTab({ path, fileName, isDirty, isActive, onActivat
       tabIndex={0}
       className={`editor-tab${isActive ? ' editor-tab--active' : ''}`}
       onClick={onActivate}
+      onKeyDown={handleKeyDown}
     >
       {fileName}
       {isDirty && (
