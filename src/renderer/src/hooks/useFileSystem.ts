@@ -173,11 +173,21 @@ export function useFileSystem(options?: Options): FileSystemState {
     const next = updater(prev)
     openFilesMirrorRef.current = next
     const activePath = activeFilePathMirrorRef.current
-    if (activePath !== null && findFile(next, activePath) === null) {
-      const prevIndex = prev.findIndex((f) => isSamePath(f.path, activePath))
-      const fallback = computeAdjacentPath(prev, next, prevIndex)
-      activeFilePathMirrorRef.current = fallback
-      setActiveFilePath(fallback)
+    if (activePath !== null) {
+      const found = findFile(next, activePath)
+      if (found === null) {
+        const prevIndex = prev.findIndex((f) => isSamePath(f.path, activePath))
+        const fallback = computeAdjacentPath(prev, next, prevIndex)
+        activeFilePathMirrorRef.current = fallback
+        setActiveFilePath(fallback)
+      } else if (found.path !== activePath) {
+        // Windows での大文字小文字のみのリネームなど、isSamePath では同一実体でも
+        // 文字列としては変わっている場合。EditorPanel/EditorTabs は activeFilePath と
+        // openFiles の path を厳密な === で突き合わせるため、ここで新しい表記に
+        // 揃えておかないと「見つからない」扱いになり Welcome 画面へ落ちてしまう
+        activeFilePathMirrorRef.current = found.path
+        setActiveFilePath(found.path)
+      }
     }
     setOpenFiles(next)
   }

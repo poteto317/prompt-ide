@@ -3134,5 +3134,37 @@ describe('useFileSystem', () => {
       // アクティブファイルは変わらない
       expect(result.current.activeFilePath).toBe('/project/src/c.ts')
     })
+
+    it('Windows形式パスの大文字小文字のみのリネームでも activeFilePath が新しい表記と厳密に一致する', async () => {
+      // isSamePath は Windows 形式のパスを大文字小文字を無視して比較するため、
+      // 大文字小文字だけが変わるリネームでは「見つかった」まま activeFilePath の
+      // 表記が更新されずに残っていた。EditorPanel/EditorTabs は openFiles の path と
+      // activeFilePath を厳密な === で突き合わせるため、表記が食い違うと
+      // アクティブなタブが見つからず Welcome 画面に落ちてしまう
+      const winTree: FileTreeNode[] = [
+        { name: 'README.md', path: 'C:\\project\\README.md', type: 'file' }
+      ]
+      mockOpenFolder.mockResolvedValue('C:\\project')
+      mockReadDirectory.mockResolvedValue(winTree)
+      mockReadFileContent.mockResolvedValue('# hello')
+      mockRenameEntry.mockResolvedValue(undefined)
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const node: FileTreeNode = { name: 'README.md', path: 'C:\\project\\README.md', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(node)
+      })
+      expect(result.current.activeFilePath).toBe('C:\\project\\README.md')
+
+      await act(async () => {
+        await result.current.renameEntry(node, 'readme.md')
+      })
+
+      expect(result.current.activeFilePath).toBe('C:\\project\\readme.md')
+      expect(result.current.openFile).not.toBeNull()
+      expect(result.current.openFile?.path).toBe('C:\\project\\readme.md')
+    })
   })
 })
