@@ -357,31 +357,6 @@ describe('resetForFileChange', () => {
   })
 })
 
-describe('confirmDiscardIfDirty', () => {
-  it('isDirty が false のとき true を返し onConfirm を呼ばない', () => {
-    const onConfirm = vi.fn()
-    const { result } = renderHook(() => useFileEditing(cleanFile, vi.fn(), { onConfirm }))
-
-    expect(result.current.confirmDiscardIfDirty()).toBe(true)
-    expect(onConfirm).not.toHaveBeenCalled()
-  })
-
-  it('isDirty のとき onConfirm を呼び、true が返ればそのまま true を返す', () => {
-    const onConfirm = vi.fn().mockReturnValue(true)
-    const { result } = renderHook(() => useFileEditing(dirtyFile, vi.fn(), { onConfirm }))
-
-    expect(result.current.confirmDiscardIfDirty()).toBe(true)
-    expect(onConfirm).toHaveBeenCalledWith(expect.any(String))
-  })
-
-  it('isDirty のとき onConfirm が false を返せば false を返す', () => {
-    const onConfirm = vi.fn().mockReturnValue(false)
-    const { result } = renderHook(() => useFileEditing(dirtyFile, vi.fn(), { onConfirm }))
-
-    expect(result.current.confirmDiscardIfDirty()).toBe(false)
-  })
-})
-
 describe('FS 操作のロックと saveFile', () => {
   it('親ディレクトリがロックされている間は書き込まず、解放後に書き込む', async () => {
     const setOpenFile = vi.fn()

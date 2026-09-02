@@ -65,7 +65,6 @@ interface FileEditingState {
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
   resetForFileChange: (options?: ResetForFileChangeOptions) => void
-  confirmDiscardIfDirty: () => boolean
   /**
    * 指定パス配下を「FS 操作中」として予約し、進行中の保存が無くなるまで待つ。
    * 戻り値を呼ぶまで、無効化の対象になったパス配下の新しい保存は書き込みを行わない。
@@ -128,7 +127,7 @@ export type FileOperationLockOptions = {
 export function useFileEditing(
   openFile: OpenFile | null,
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>,
-  { onConfirm = confirm, getOpenFile }: InternalOptions = {}
+  { getOpenFile }: InternalOptions = {}
 ): FileEditingState {
   // 保存中のファイルの path 集合を保持する。isSaving は単一の boolean ではなく
   // path の集合で判定することで、「file A の保存中に file B を保存しようとしたら
@@ -464,8 +463,6 @@ export function useFileEditing(
     }
   }
 
-  const confirmDiscardIfDirty = (): boolean => !isDirty || onConfirm(DISCARD_CONFIRM_MESSAGE)
-
   return {
     isDirty,
     isSaving,
@@ -473,7 +470,6 @@ export function useFileEditing(
     updateFileContent,
     saveFile,
     resetForFileChange,
-    confirmDiscardIfDirty,
     lockPathForFileOperation,
     pendingSaveFor,
     saveCompletionsFor
