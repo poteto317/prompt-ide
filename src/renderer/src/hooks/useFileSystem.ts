@@ -564,15 +564,17 @@ export function useFileSystem(options?: Options): FileSystemState {
     if (wasActive) resetForFileChange()
   }
 
+  // commitOpenFile/setOpenFilesAndFixActive と同じ理由(React の setState 更新関数は
+  // 同じ tick 内で同期的に呼ばれるとは限らない)で、ミラーへの反映は updater の外で
+  // 同期的に行い、setOpenFiles には確定済みの配列を渡す
   const reorderTabs = (fromIndex: number, toIndex: number): void => {
-    setOpenFiles((prev) => {
-      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
-        return prev
-      }
-      const next = arrayMove(prev, fromIndex, toIndex)
-      openFilesMirrorRef.current = next
-      return next
-    })
+    const prev = openFilesMirrorRef.current
+    if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+      return
+    }
+    const next = arrayMove(prev, fromIndex, toIndex)
+    openFilesMirrorRef.current = next
+    setOpenFiles(next)
   }
 
   const closeFile = (): void => {

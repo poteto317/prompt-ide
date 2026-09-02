@@ -3166,5 +3166,47 @@ describe('useFileSystem', () => {
       expect(result.current.openFile).not.toBeNull()
       expect(result.current.openFile?.path).toBe('C:\\project\\readme.md')
     })
+
+    it('reorderTabs: 同じ tick内で続けて別の操作を呼んでも並び替えが失われない(ミラー同期の不変条件)', async () => {
+      // reorderTabs が commitOpenFile/setOpenFilesAndFixActive と異なり、
+      // functional updater のコールバック内でミラーを更新する実装のままだと、
+      // 同じ tick で後続する closeTab が読む openFilesMirrorRef が並び替え前の
+      // ままになり、closeTab 側の setOpenFiles(plain array) がそれを最終状態として
+      // 上書きしてしまう(=並び替えが黙って失われる)
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent
+        .mockResolvedValueOnce('const a = 1')
+        .mockResolvedValueOnce('const b = 2')
+        .mockResolvedValueOnce('const c = 3')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      for (const name of ['a', 'b', 'c']) {
+        await act(async () => {
+          await result.current.selectFile({
+            name: `${name}.ts`,
+            path: `/project/src/${name}.ts`,
+            type: 'file'
+          })
+        })
+      }
+      act(() => result.current.activateTab('/project/src/b.ts'))
+
+      // reorderTabs と closeTab を同じ tick(同じ act 呼び出し)内で連続して呼ぶ
+      act(() => {
+        result.current.reorderTabs(0, 2) // [a,b,c] -> [b,c,a]
+        result.current.closeTab('/project/src/b.ts') // アクティブな b を閉じる
+      })
+
+      // 並び替え後の [b,c,a] から b を除いた [c,a] になっているべき
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/src/c.ts',
+        '/project/src/a.ts'
+      ])
+      // 並び替え後の右隣(c)がアクティブになる
+      expect(result.current.activeFilePath).toBe('/project/src/c.ts')
+    })
   })
 })
