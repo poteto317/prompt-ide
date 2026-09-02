@@ -100,7 +100,8 @@ describe('EditorTab', () => {
       const preventDefaultSpy = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
       await userEvent.keyboard(' ')
       // Space キーで preventDefault が呼ばれることを検証
-      // （userEvent.keyboard を使用した場合、実装内の preventDefault が正しく動作することを確認）
+      // （ページスクロール防止のために実装内で呼び出されていることを確認）
+      expect(preventDefaultSpy).toHaveBeenCalled()
       expect(onActivate).toHaveBeenCalled()
     })
   })
