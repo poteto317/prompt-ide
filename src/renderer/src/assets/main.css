@@ -844,6 +844,13 @@ body {
   align-items: stretch;
 }
 
+.editor-tabs__list {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  min-width: 0;
+}
+
 .editor-tab {
   display: flex;
   align-items: center;
