@@ -120,6 +120,18 @@ export function useFileSystem(options?: Options): FileSystemState {
   // React の setState 更新関数は同じ tick 内で同期的に呼ばれるとは限らないため、
   // ミラーは「prev を updater 内で読んで書く」のではなく、常にミラー自身を prev として
   // 同期的に読み書きしてから setOpenFiles には確定済みの値を渡す(openFileMirrorRef と同じ設計)
+  //
+  // 関数形の更新には 2 通りの由来がある。
+  // - updateFileContent: 常にアクティブなタブ自身を対象とする(入力を必ず新しい
+  //   オブジェクトへ変換する。同期呼び出しなので「今のアクティブタブ」で常に正しい)
+  // - saveFile の保存完了: 保存を開始した時点の path を内部で捕まえており、その
+  //   path と一致しない・世代が古い入力は素通し(同一参照)で返す。保存は非同期のため、
+  //   完了した時点では別のタブへ切り替わっている(が、保存対象のタブ自体はまだ
+  //   openFiles に残っている)ことがある。その場合、アクティブなタブへ適用しても
+  //   path 不一致で素通しされるだけで、保存対象のタブには一生反映されない。
+  // どちらの由来かはここからは分からないため、まずアクティブなタブへ適用し、
+  // それが素通し(同一参照)だった場合に限り、他のタブへも同じ更新関数を試す。
+  // updateFileContent は素通しをしないため、この経路には来ない
   const commitOpenFile: Dispatch<SetStateAction<OpenFile | null>> = (next) => {
     const activePath = activeFilePathMirrorRef.current
     if (activePath === null) return
@@ -127,9 +139,30 @@ export function useFileSystem(options?: Options): FileSystemState {
     const currentActive = findFile(prev, activePath)
     const value = typeof next === 'function' ? next(currentActive) : next
     if (value === null) return
-    const nextFiles = prev.map((f) => (isSamePath(f.path, activePath) ? value : f))
-    openFilesMirrorRef.current = nextFiles
-    setOpenFiles(nextFiles)
+    if (typeof next !== 'function' || value !== currentActive) {
+      const nextFiles = prev.map((f) => (isSamePath(f.path, activePath) ? value : f))
+      openFilesMirrorRef.current = nextFiles
+      setOpenFiles(nextFiles)
+      return
+    }
+    // アクティブなタブへの適用が素通しだった。保存を開始した時点でアクティブ
+    // だった、今は非アクティブな別タブが対象の可能性があるため、他のタブでも
+    // 試す。一致するタブはたかだか 1 つの想定(保存対象の path は 1 つ)なので、
+    // 最初に見つかったものへ適用して抜ける
+    for (const f of prev) {
+      if (isSamePath(f.path, activePath)) continue
+      const candidate = next(f)
+      // null は「対象外」を表す既存の規約(この関数冒頭の value === null と同じ)。
+      // それ以外で入力と異なる参照が返ってきたら、そのタブが更新対象だったと分かる
+      if (candidate !== null && candidate !== f) {
+        const nextFiles = prev.map((entry) => (entry === f ? candidate : entry))
+        openFilesMirrorRef.current = nextFiles
+        setOpenFiles(nextFiles)
+        return
+      }
+    }
+    // どのタブにも一致しなかった(保存対象のタブが既に閉じられているなど)。
+    // 反映先が無いので何もしない
   }
 
   // openFiles 配列全体を更新する経路(useFileTreeOperations が使う)。更新後、
@@ -177,6 +210,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     updateFileContent,
     saveFile,
     resetForFileChange,
+    switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,
     saveCompletionsFor
@@ -389,7 +423,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     if (existing !== null) {
       activeFilePathMirrorRef.current = fileNode.path
       setActiveFilePath(fileNode.path)
-      resetForFileChange()
+      // 既存タブへのアクティブ切り替えであり、バッファは破棄されないため
+      // generation は進めない(進行中の保存を誤って無効扱いにしないため)
+      switchActiveFile()
       setOpenedFileSignal((prev) => {
         const nextId = ++openedFileEventSeqRef.current
         const openedKey = toComparablePath(fileNode.path)
@@ -488,7 +524,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     if (findFile(openFilesMirrorRef.current, path) === null) return
     activeFilePathMirrorRef.current = path
     setActiveFilePath(path)
-    resetForFileChange()
+    // 既存タブ間の切り替えであり、バッファは破棄されないため generation は
+    // 進めない(進行中の保存を誤って無効扱いにしないため)
+    switchActiveFile()
   }
 
   const closeTab = (path: string): void => {

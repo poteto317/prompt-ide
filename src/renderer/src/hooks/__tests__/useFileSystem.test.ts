@@ -2994,6 +2994,115 @@ describe('useFileSystem', () => {
       expect(result.current.saveError?.message).toBe('EACCES')
     })
 
+    it('保存の書き込み中にタブを切り替えても、完了後に元タブの savedContent が更新される', async () => {
+      // activateTab が resetForFileChange(generation を進める) を呼んでいた頃は、
+      // 切り替え前のタブに対する保存が「もう無関係な世代」と誤判定され、
+      // 完了しても savedContent が更新されずタブが dirty のまま残っていた
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      let resolveWrite: () => void = () => {}
+      mockWriteFileContent.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+
+      let savePromise: Promise<void> = Promise.resolve()
+      act(() => {
+        savePromise = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      // 書き込みが完了する前に別タブへ切り替える
+      act(() => result.current.activateTab('/project/src/b.ts'))
+
+      await act(async () => {
+        resolveWrite()
+        await savePromise
+      })
+
+      act(() => result.current.activateTab('/project/src/a.ts'))
+
+      expect(result.current.openFile?.path).toBe('/project/src/a.ts')
+      expect(result.current.openFile?.content).toBe('編集済みA')
+      expect(result.current.openFile?.savedContent).toBe('編集済みA')
+    })
+
+    it('FS操作のロック待ち中にタブを切り替えても、保存は破棄されず書き込まれる', async () => {
+      // activateTab が generation を進めていた頃は、ロック待ちループの
+      // 「generation !== generationRef.current」判定で保存が黙って return され、
+      // 書き込み自体が行われずデータが失われていた
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockResolvedValue(undefined)
+      let resolveCreate: () => void = () => {}
+      mockCreateFile.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveCreate = resolve
+          })
+      )
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+
+      // 同じフォルダ(親: /project/src)への作成が、a.ts の保存をブロックする
+      // (作成対象自身ではないので無効化はされず、完了を待ってから書き込む)
+      let createPromise: Promise<void> = Promise.resolve()
+      await act(async () => {
+        createPromise = result.current.createFile('/project/src', 'new.ts')
+        // ロック取得 → createFile の IPC 呼び出しが実際に始まるところまで進める
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(mockCreateFile).toHaveBeenCalled()
+
+      let savePromise: Promise<void> = Promise.resolve()
+      await act(async () => {
+        savePromise = result.current.saveFile()
+        await Promise.resolve()
+      })
+      expect(mockWriteFileContent).not.toHaveBeenCalled()
+
+      // ロック待ちの間に別タブへ切り替える
+      act(() => result.current.activateTab('/project/src/b.ts'))
+
+      await act(async () => {
+        resolveCreate()
+        await Promise.all([createPromise, savePromise])
+      })
+
+      expect(mockWriteFileContent).toHaveBeenCalledWith('/project/src/a.ts', '編集済みA')
+    })
+
     it('reorderTabs: タブの並び順を入れ替える', async () => {
       mockOpenFolder.mockResolvedValue('/project')
       mockReadDirectory.mockResolvedValue(mockTree)

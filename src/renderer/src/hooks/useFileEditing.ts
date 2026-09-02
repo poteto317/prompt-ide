@@ -66,6 +66,17 @@ interface FileEditingState {
   saveFile: () => Promise<void>
   resetForFileChange: (options?: ResetForFileChangeOptions) => void
   /**
+   * 既存タブへのアクティブ切り替え(activateTab、selectFile の既存タブ再選択)で
+   * 呼ぶ。表示先が変わるだけで、そのタブの content/savedContent（バッファの実体）は
+   * 破棄・再読込されないため、generation は進めない。世代を進めてしまうと、
+   * 切り替え前のタブに対して進行中だった保存(書き込み待ち・ロック待ち)が
+   * 「もう無関係な世代」と誤判定され、savedContent への反映がスキップされたり
+   * (dirty 表示が残り続ける)、ロック解放後の書き込み自体を諦めて戻ったりする
+   * (データが失われる)。世代を進めずに保存エラー表示だけを切り替え先のタブ用に
+   * クリアしたい場合はこちらを使う。
+   */
+  switchActiveFile: () => void
+  /**
    * 指定パス配下を「FS 操作中」として予約し、進行中の保存が無くなるまで待つ。
    * 戻り値を呼ぶまで、無効化の対象になったパス配下の新しい保存は書き込みを行わない。
    * 無効化の対象でない保存（作成中の同じフォルダにある別ファイルなど）は開始され、
@@ -353,8 +364,10 @@ export function useFileEditing(
   // 保存エラーをクリアする。これが無いと、保存に失敗したファイルから
   // 切り替えても（あるいは同じファイルを開き直しても）、無関係になった
   // 古いエラーがエディタ上に表示され続けてしまう。
-  const resetForFileChange = ({ renamed }: ResetForFileChangeOptions = {}): void => {
-    generationRef.current += 1
+  // resetForFileChange と switchActiveFile の共通部分。中止通知/saveError の
+  // クリア(またはリネーム追随)だけを行い、generation を進めるかどうかは
+  // 呼び出し元(resetForFileChange 自身)が別途担う
+  const clearStaleSaveState = ({ renamed }: ResetForFileChangeOptions = {}): void => {
     // 中止させた当のリネームが完了するとここが呼ばれる。一緒に消すと
     // 「保存されなかった」ことが伝わらないため、その付け替えに追随する通知だけ残す
     const notice = saveAbortNoticeRef.current
@@ -369,6 +382,16 @@ export function useFileEditing(
       saveAbortNoticeRef.current = null
     }
     setSaveError((prev) => (follows ? prev : null))
+  }
+
+  const resetForFileChange = (options: ResetForFileChangeOptions = {}): void => {
+    generationRef.current += 1
+    clearStaleSaveState(options)
+  }
+
+  // 既存タブへの切り替え専用。generation は進めない(コメントは公開型の定義を参照)
+  const switchActiveFile = (): void => {
+    clearStaleSaveState()
   }
 
   const saveFile = async (): Promise<void> => {
@@ -470,6 +493,7 @@ export function useFileEditing(
     updateFileContent,
     saveFile,
     resetForFileChange,
+    switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,
     saveCompletionsFor
