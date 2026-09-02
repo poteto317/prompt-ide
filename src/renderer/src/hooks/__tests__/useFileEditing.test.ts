@@ -270,7 +270,7 @@ describe('resetForFileChange', () => {
     expect(result.current.saveError?.message).toBe('EACCES')
 
     act(() => {
-      result.current.resetForFileChange()
+      result.current.resetForFileChange(dirtyFile.path)
     })
     expect(result.current.saveError).toBeNull()
   })
@@ -289,7 +289,16 @@ describe('resetForFileChange', () => {
     expect(result.current.saveError?.message).toBe('EACCES')
   })
 
-  it('保存中に別ファイルへ切り替わっていた場合、後から保存が失敗しても saveError はセットされない', async () => {
+  it('保存中に無関係な別ファイルを新規に開いても、後から届いたその保存の失敗は表示される(saveError は path キーではない既知の制約)', async () => {
+    // generationRef が path キーの Map になったことで、resetForFileChange(path) は
+    // 渡された path の世代しか進めなくなった。ここでの path は
+    // useFileSystem.ts の selectFile が新規に開くファイル(otherFile)自身の path
+    // であり、保存中の dirtyFile の世代には一切影響しない(＝ dirtyFile の保存は
+    // もう無関係な世代とは誤判定されず、正しく完了として扱われる)。
+    // 一方 saveError は path キーではない単一値のまま(意図的に対応範囲外とした
+    // 既知の制約)なので、dirtyFile の保存が後から失敗すると、そのエラーは
+    // 今アクティブな otherFile の画面にも表示されてしまう。これは today's fix の
+    // 対象ではない、既知の制約の帰結。
     let rejectWrite: (err: Error) => void = () => {}
     mockWriteFileContent.mockImplementation(
       () =>
@@ -306,11 +315,11 @@ describe('resetForFileChange', () => {
       savePromise = result.current.saveFile()
     })
 
-    // useFileSystem.ts の selectFile/openFolder は setOpenFile 成功後に必ず
-    // resetForFileChange() も呼ぶため、その実際の呼び出しパターンを再現する。
+    // useFileSystem.ts の selectFile は新規に開くファイル(ここでは otherFile)自身の
+    // path で resetForFileChange を呼ぶため、その実際の呼び出しパターンを再現する。
     rerender({ file: otherFile })
     act(() => {
-      result.current.resetForFileChange()
+      result.current.resetForFileChange(otherFile.path)
     })
 
     await act(async () => {
@@ -318,7 +327,7 @@ describe('resetForFileChange', () => {
       await savePromise
     })
 
-    expect(result.current.saveError).toBeNull()
+    expect(result.current.saveError?.message).toBe('EACCES')
   })
 
   it('保存中に同じファイルを開き直した(resetForFileChangeで世代が変わった)場合、遅れて届いた古い保存成功は反映されない', async () => {
@@ -340,11 +349,13 @@ describe('resetForFileChange', () => {
     })
 
     // ユーザーが破棄確認の上で同じ path のファイルを開き直した想定
-    // （selectFile が新しい OpenFile オブジェクトを生成し resetForFileChange を呼ぶ）
+    // （selectFile が新しい OpenFile オブジェクトを生成し、その path で
+    // resetForFileChange を呼ぶ。同じ path なので、この path の世代が進み、
+    // 進行中だった保存(同じ path を捕まえている)を正しく無効化する）
     const reloadedSameFile: OpenFile = { ...dirtyFile, content: dirtyFile.savedContent }
     rerender({ file: reloadedSameFile })
     act(() => {
-      result.current.resetForFileChange()
+      result.current.resetForFileChange(dirtyFile.path)
     })
 
     await act(async () => {
@@ -519,7 +530,7 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveError).toBeInstanceOf(Error)
 
     act(() =>
-      result.current.resetForFileChange({
+      result.current.resetForFileChange('/project/renamed.ts', {
         renamed: { from: dirtyFile.path, to: '/project/renamed.ts' }
       })
     )
@@ -605,7 +616,7 @@ describe('FS 操作のロックと saveFile', () => {
     expect(result.current.saveError).toBeInstanceOf(Error)
 
     act(() =>
-      result.current.resetForFileChange({
+      result.current.resetForFileChange('/project/moved.ts', {
         renamed: { from: '/project/other.ts', to: '/project/moved.ts' }
       })
     )
@@ -622,7 +633,7 @@ describe('FS 操作のロックと saveFile', () => {
     await abortSaveByFileOperation(result)
     expect(result.current.saveError).toBeInstanceOf(Error)
 
-    act(() => result.current.resetForFileChange())
+    act(() => result.current.resetForFileChange(otherFile.path))
 
     expect(result.current.saveError).toBeNull()
   })
@@ -637,7 +648,7 @@ describe('FS 操作のロックと saveFile', () => {
     })
     expect(result.current.saveError?.message).toBe('EACCES')
 
-    act(() => result.current.resetForFileChange())
+    act(() => result.current.resetForFileChange(otherFile.path))
 
     expect(result.current.saveError).toBeNull()
   })
@@ -819,8 +830,8 @@ describe('FS 操作のロックと saveFile', () => {
     })
 
     await act(async () => {
-      // 別のファイルを開いた（開き直した）
-      result.current.resetForFileChange()
+      // 同じ path のファイルを開き直した(保存対象自身の世代が進む)
+      result.current.resetForFileChange(dirtyFile.path)
       release()
       await savePromise
     })

@@ -27,9 +27,8 @@ function makeOpenFile(path: string, name: string): OpenFile {
 function renderOperations(config?: {
   folderPath?: string | null
   initialOpenFiles?: OpenFile[]
-  initialActiveFilePath?: string | null
   onConfirm?: (message: string) => boolean
-  resetForFileChange?: (options?: ResetForFileChangeOptions) => void
+  resetForFileChange?: (path: string, options?: ResetForFileChangeOptions) => void
   lockPathForFileOperation?: (
     targetPath: string,
     options?: FileOperationLockOptions
@@ -46,12 +45,10 @@ function renderOperations(config?: {
   const treeWriteGuard = makeTreeWriteGuard()
   const { result } = renderHook(() => {
     const [openFiles, setOpenFiles] = useState<OpenFile[]>(config?.initialOpenFiles ?? [])
-    const activeFilePath = config?.initialActiveFilePath ?? openFiles[0]?.path ?? null
     const ops = useFileTreeOperations({
       getFolderPath: () => folderPath,
       getOpenFiles: () => openFiles,
       setOpenFiles,
-      getActiveFilePath: () => activeFilePath,
       resetForFileChange,
       onConfirm,
       invalidatePendingReads,
@@ -70,7 +67,6 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       getFolderPath,
       getOpenFiles: () => [],
       setOpenFiles: () => {},
-      getActiveFilePath: () => null,
       resetForFileChange: vi.fn(),
       onConfirm: () => true,
       invalidatePendingReads: vi.fn(),
@@ -590,7 +586,7 @@ describe('保存ロックの張り方', () => {
       )
     })
 
-    expect(resetForFileChange).toHaveBeenCalledWith({
+    expect(resetForFileChange).toHaveBeenCalledWith('/project/b.ts', {
       renamed: { from: '/project/a.ts', to: '/project/b.ts' }
     })
   })
@@ -789,8 +785,7 @@ describe('複数ファイルへの追随', () => {
     const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
     const fileB = makeOpenFile('/project/src/b.ts', 'b.ts')
     const { result } = renderOperations({
-      initialOpenFiles: [fileA, fileB],
-      initialActiveFilePath: fileA.path
+      initialOpenFiles: [fileA, fileB]
     })
 
     await act(async () => {
@@ -828,7 +823,6 @@ describe('複数ファイルへの追随', () => {
         getFolderPath: () => '/project',
         getOpenFiles: () => mirrorRef.current,
         setOpenFiles,
-        getActiveFilePath: () => fileA.path,
         resetForFileChange: vi.fn(),
         onConfirm,
         invalidatePendingReads: vi.fn(),
@@ -869,8 +863,7 @@ describe('複数ファイルへの追随', () => {
     const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
     const fileB = makeOpenFile('/project/src/nested/b.ts', 'b.ts')
     const { result } = renderOperations({
-      initialOpenFiles: [fileA, fileB],
-      initialActiveFilePath: fileA.path
+      initialOpenFiles: [fileA, fileB]
     })
 
     await act(async () => {
@@ -883,7 +876,14 @@ describe('複数ファイルへの追随', () => {
     ])
   })
 
-  it('非アクティブファイルの削除では resetForFileChange を呼ばない', async () => {
+  it('非アクティブファイルの削除でも、削除された当該ファイル自身の resetForFileChange は呼ばれる', async () => {
+    // generation が path キーの Map になったことで、resetForFileChange の呼び出しは
+    // 対象タブ自身の世代しか進めなくなり、他の開いているタブ(ここでは非アクティブな
+    // まま残る a.ts)の保存には一切影響しない。そのため、削除されたのが非アクティブな
+    // タブであっても、その削除対象自身の generation は進めてよい
+    // (以前はアクティブなタブ以外への影響では呼ばない、という gate があったが、
+    // それは generation がグローバル単一カウンタだった頃、無関係なアクティブタブの
+    // 保存状態まで巻き込んでしまうのを防ぐためのものだった)
     mockDeleteEntry.mockResolvedValue(undefined)
     mockReadDirectory.mockResolvedValue([])
     const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
@@ -891,7 +891,6 @@ describe('複数ファイルへの追随', () => {
     const resetForFileChange = vi.fn()
     const { result } = renderOperations({
       initialOpenFiles: [fileA, fileB],
-      initialActiveFilePath: fileA.path,
       resetForFileChange
     })
 
@@ -899,7 +898,7 @@ describe('複数ファイルへの追随', () => {
       await result.current.deleteEntry({ name: 'b.ts', path: '/project/src/b.ts', type: 'file' })
     })
 
-    expect(resetForFileChange).not.toHaveBeenCalled()
+    expect(resetForFileChange).toHaveBeenCalledExactlyOnceWith('/project/src/b.ts')
     expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
   })
 })

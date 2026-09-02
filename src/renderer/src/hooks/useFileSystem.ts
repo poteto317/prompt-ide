@@ -220,6 +220,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     updateFileContent,
     saveFile,
     resetForFileChange,
+    resetForFolderChange,
     switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,
@@ -259,7 +260,6 @@ export function useFileSystem(options?: Options): FileSystemState {
   } = useFileTreeOperations({
     getOpenFiles: () => openFilesMirrorRef.current,
     setOpenFiles: setOpenFilesAndFixActive,
-    getActiveFilePath: () => activeFilePathMirrorRef.current,
     resetForFileChange,
     onConfirm,
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
@@ -358,10 +358,14 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
       // フォルダとツリーだけ確定し、ファイルは開いたまま残す
       if (!confirmDiscardChangedSinceOpenFolder(dirtyAtStart)) return
+      // クリアする前の全タブを控える。フォルダを開き直すと openFiles を丸ごと
+      // 空にするため、それまで開いていた全タブの保存セッションを無効化する必要が
+      // ある(参照している path が無くなる各タブ個別にではなく、まとめて 1 回で行う)
+      const pathsBeingCleared = openFilesMirrorRef.current.map((f) => f.path)
       setOpenFilesAndFixActive(() => [])
       activeFilePathMirrorRef.current = null
       setActiveFilePath(null)
-      resetForFileChange()
+      resetForFolderChange(pathsBeingCleared)
     } catch (err) {
       // 後発の操作が確定したあとに古い読み込みが失敗しても、現在の状態を汚さない。
       // 走査前(ダイアログ段階)の失敗は試行の世代で、走査後は走査の世代で判定する
@@ -387,10 +391,11 @@ export function useFileSystem(options?: Options): FileSystemState {
           dirtyAtStart !== null &&
           confirmDiscardChangedSinceOpenFolder(dirtyAtStart)
         ) {
+          const pathsBeingCleared = openFilesMirrorRef.current.map((f) => f.path)
           setOpenFilesAndFixActive(() => [])
           activeFilePathMirrorRef.current = null
           setActiveFilePath(null)
-          resetForFileChange()
+          resetForFolderChange(pathsBeingCleared)
         }
       }
       const failure = err instanceof Error ? err : new Error(String(err))
@@ -498,7 +503,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       setOpenFilesAndFixActive((prev) => [...prev, createOpenFile(fileNode, content)])
       activeFilePathMirrorRef.current = fileNode.path
       setActiveFilePath(fileNode.path)
-      resetForFileChange()
+      resetForFileChange(fileNode.path)
       committedOpenRef.current += 1
       // 信号はどの経路でも進める(最近開いたファイルの履歴に使うため)。
       // フォーカスをエディタへ移すかは呼び出し側が決める。エクスプローラーの
@@ -558,10 +563,16 @@ export function useFileSystem(options?: Options): FileSystemState {
       latestReadRef.current += 1
     }
     setOpenFilesAndFixActive((prev) => prev.filter((f) => !isSamePath(f.path, path)))
-    // アクティブファイルの識別子が変わったときだけ resetForFileChange を呼ぶ
-    // (Task 1 の不変条件と同じ)。非アクティブなタブを閉じても isDirty/saveError 等は
-    // そのタブに関係ないため、リセットしてはいけない
-    if (wasActive) resetForFileChange()
+    // アクティブファイルの識別子が変わったときだけ resetForFileChange を呼ぶ。
+    // generation が path キーの Map になった後も、この gate 自体は残す必要がある。
+    // resetForFileChange は generation の他に clearStaleSaveState(グローバルな
+    // saveError/中止通知のクリア)も行うため、閉じたタブがアクティブでない場合に
+    // 呼んでしまうと、閉じたタブとは無関係な「現在アクティブな別タブ」の
+    // saveError まで誤って消してしまう(saveError は path キーではなく単一値の
+    // ままなので、per-path 化の恩恵を受けない)。閉じたタブ自身の保存中バッファは
+    // wasActive に関わらずどのみち openFiles から破棄されるため、閉じたタブの
+    // 世代を進める安全上の必要性も無い。
+    if (wasActive) resetForFileChange(path)
   }
 
   // commitOpenFile/setOpenFilesAndFixActive と同じ理由(React の setState 更新関数は

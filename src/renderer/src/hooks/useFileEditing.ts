@@ -64,7 +64,12 @@ interface FileEditingState {
   saveError: Error | null
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
-  resetForFileChange: (options?: ResetForFileChangeOptions) => void
+  resetForFileChange: (path: string, options?: ResetForFileChangeOptions) => void
+  /**
+   * openFolder 専用。渡した全 path の generation をまとめて無効化する
+   * (フォルダを開き直すと openFiles を丸ごと空にするため)
+   */
+  resetForFolderChange: (paths: readonly string[]) => void
   /**
    * 既存タブへのアクティブ切り替え(activateTab、selectFile の既存タブ再選択)で
    * 呼ぶ。表示先が変わるだけで、そのタブの content/savedContent（バッファの実体）は
@@ -169,17 +174,36 @@ export function useFileEditing(
   // 「編集セッション」の世代カウンタ。ファイルを開き直す（selectFile/openFolder
   // で新しく読み込む）、またはリネーム・祖先ディレクトリのリネームで
   // openFile.path が付け替わる（useFileTreeOperations.ts の renameEntry）
-  // たびに、呼び出し側から resetForFileChange() を呼んでインクリメントして
+  // たびに、呼び出し側から resetForFileChange(path) を呼んでインクリメントして
   // もらう。同じ path のファイルを一度閉じて（保存中に破棄確認を経て）再度
   // 開き直した場合でも世代が変わるため、path 文字列だけを見て「同じ編集
   // セッション」だと誤判定しない。openFile.path が変化する経路は必ず
-  // resetForFileChange() を伴うことが不変条件であり、「表示中のファイルが
+  // resetForFileChange(path) を伴うことが不変条件であり、「表示中のファイルが
   // 変わったか」の判定は generation の一致だけで完結する（別途 path を
   // 追跡する ref は不要）。
   // これを render 中に条件付きで直接代入する形で実装していたこともあったが、
   // 並行レンダリング下でコミットされないレンダーの値が残る可能性を指摘され、
   // generation への一本化でその懸念自体を無くした。
-  const generationRef = useRef(0)
+  //
+  // path キーの Map にしているのは、単一のグローバルカウンタだと「タブ A の
+  // 保存中に、無関係なタブ B を開き直す・閉じる・リネームする」だけで A の
+  // 保存まで無効扱いになってしまうため（保存完了時に savedContent への反映が
+  // スキップされて dirty のまま固着する、あるいはロック待ち中の書き込みが
+  // 黙って中止されデータが失われる）。path ごとに独立した世代を持たせることで、
+  // ある 1 つのタブの識別子の変化が他のタブの保存に一切影響しないようにする。
+  // 存在しない path の世代は 0 として扱う(未使用の path にエントリを
+  // 前もって作る必要はない)。
+  const generationRef = useRef<Map<string, number>>(new Map())
+
+  /** path の現在の世代。エントリが無ければ 0(まだ一度も無効化されていない) */
+  const getGeneration = (path: string): number =>
+    generationRef.current.get(toComparablePath(path)) ?? 0
+
+  /** path の世代を 1 つ進める。他の path の世代には一切影響しない */
+  const bumpGeneration = (path: string): void => {
+    const key = toComparablePath(path)
+    generationRef.current.set(key, (generationRef.current.get(key) ?? 0) + 1)
+  }
 
   // 同一ファイルへの多重保存（連打・Cmd+Sの連続入力）を同期的に防ぐ。React
   // state だけに頼ると、同一レンダー内で saveFile() が連続で呼ばれた場合に
@@ -384,9 +408,19 @@ export function useFileEditing(
     setSaveError((prev) => (follows ? prev : null))
   }
 
-  const resetForFileChange = (options: ResetForFileChangeOptions = {}): void => {
-    generationRef.current += 1
+  const resetForFileChange = (path: string, options: ResetForFileChangeOptions = {}): void => {
+    bumpGeneration(path)
     clearStaleSaveState(options)
+  }
+
+  // openFolder 専用。フォルダを開き直すと openFiles を丸ごと空にするため、
+  // それまで開いていた全タブの識別子が一括で無効になる。resetForFileChange を
+  // path の数だけ呼ぶと clearStaleSaveState(グローバルな saveError 等のクリア)も
+  // その回数だけ走ってしまう(実害はないが、無駄で読み手にも意図が伝わりにくい)。
+  // 「まとめて 1 回の無効化」であることを表すため専用の関数にする
+  const resetForFolderChange = (paths: readonly string[]): void => {
+    paths.forEach((path) => bumpGeneration(path))
+    clearStaleSaveState()
   }
 
   // 既存タブへの切り替え専用。generation は進めない(コメントは公開型の定義を参照)
@@ -413,7 +447,7 @@ export function useFileEditing(
     // 「保存が完了した」として数えられ、読み込み側が競合を誤検出する。
     // 黙って捨てるとユーザーには dirty マークしか見えないため、理由を伝える
     if (abortIfInvalidated(path)) return
-    const generation = generationRef.current
+    const generation = getGeneration(path)
     savingPathsRef.current.add(path)
     setSavingPaths(new Set(savingPathsRef.current))
     let settleSave: () => void = () => {}
@@ -433,7 +467,7 @@ export function useFileEditing(
         await Promise.all(waiting.map((lock) => lock.done))
         // 待っている間にファイルが切り替わった・開き直された場合は、この保存は
         // もう画面上の編集セッションとは無関係なので書き込まない
-        if (generation !== generationRef.current) return
+        if (generation !== getGeneration(path)) return
         // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
         // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
         if (abortIfInvalidated(path)) return
@@ -463,7 +497,7 @@ export function useFileEditing(
         // 大文字小文字だけが異なる同一実体になっているケース(Windows のケースのみ
         // リネームで generation を伴わず path が変わることは無い契約だが、書き込み
         // 先の選択(isSamePath)と反映条件を揃えておく方が読み手にとって一貫する)
-        prev !== null && isSamePath(prev.path, path) && generation === generationRef.current
+        prev !== null && isSamePath(prev.path, path) && generation === getGeneration(path)
           ? { ...prev, savedContent: contentToWrite }
           : prev
       )
@@ -471,7 +505,7 @@ export function useFileEditing(
       // 保存中に別ファイルへ切り替わっていた、または同じファイルを開き直して
       // いた場合、この保存失敗はもう画面上の編集セッションとは無関係なので
       // エラーを表示しない。
-      if (generation === generationRef.current) {
+      if (generation === getGeneration(path)) {
         setSaveError(err instanceof Error ? err : new Error(String(err)))
       }
     } finally {
@@ -493,6 +527,7 @@ export function useFileEditing(
     updateFileContent,
     saveFile,
     resetForFileChange,
+    resetForFolderChange,
     switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,

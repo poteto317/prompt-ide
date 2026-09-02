@@ -30,9 +30,7 @@ interface FileTreeOperationsOptions {
   /** 呼び出し時点の openFiles を同期的に返す(操作中に確定した結果も見えるようにする) */
   getOpenFiles: () => OpenFile[]
   setOpenFiles: (updater: (prev: OpenFile[]) => OpenFile[]) => void
-  /** 現在アクティブなタブの path を同期的に返す(非アクティブタブへの影響では resetForFileChange を呼ばない) */
-  getActiveFilePath: () => string | null
-  resetForFileChange: (options?: ResetForFileChangeOptions) => void
+  resetForFileChange: (path: string, options?: ResetForFileChangeOptions) => void
   onConfirm: (message: string) => boolean
   /**
    * 指定パス配下を対象とする保留中のファイル読み込みを無効化する。
@@ -70,7 +68,6 @@ export function useFileTreeOperations({
   getFolderPath,
   getOpenFiles,
   setOpenFiles,
-  getActiveFilePath,
   resetForFileChange,
   onConfirm,
   invalidatePendingReads,
@@ -274,17 +271,23 @@ export function useFileTreeOperations({
       invalidatePendingReads(node.path)
       // 開いているファイル自身、またはその祖先ディレクトリがリネームされた場合は
       // path が変わる。useFileEditing は「path が変わる経路は必ず
-      // resetForFileChange() を伴う」ことを前提に savingPaths/generation を
-      // 管理しているため、アクティブなタブがこれに該当するのに呼ばないと保存中
-      // インジケータが旧pathのまま残ったり、保存完了時の savedContent 反映が
-      // 旧path不一致でスキップされたりする(deleteEntry の affected 判定と同じロジック)。
-      // resetForFileChange はアクティブなタブの保存状態を管理するものなので、
-      // 非アクティブなタブがリネームで影響を受けても呼んではならない
-      // (アクティブなタブの保存中インジケータを誤って初期化してしまう)。
-      // 操作の完了時点で判定する。開始時点のクロージャで見ると、操作中に
-      // 確定した読み込み結果(その path が対象配下)を取りこぼす
-      const activePath = getActiveFilePath()
-      const activeAffected = activePath !== null && isPathAtOrInside(activePath, node.path)
+      // resetForFileChange(path) を伴う」ことを前提に savingPaths/generation を
+      // 管理しているため、これに該当するのに呼ばないと保存中インジケータが
+      // 旧pathのまま残ったり、保存完了時の savedContent 反映が旧path不一致で
+      // スキップされたりする(deleteEntry の affected 判定と同じロジック)。
+      // generation が path キーの Map になったことで、resetForFileChange の
+      // 呼び出しはそのタブ自身の世代しか進めなくなった(他の開いているタブの
+      // 保存には一切影響しない)ため、以前のようにアクティブなタブかどうかで
+      // 呼び出しをゲートする必要はもう無い。非アクティブなタブのリネームでも
+      // 素直に呼んでよい。
+      // ここで進めるのはリネーム対象自身(node.path → newPath)の世代のみとする。
+      // 祖先ディレクトリのリネームで付随的に path が変わる配下のファイルまで
+      // 個別に世代を進めなくても安全なのは、それらの保存はリネーム自身が取得する
+      // 親ディレクトリロック(runLocked の待機)によって、このリネームが実行される
+      // 時点で既に完了しているため(ロックは対象配下の in-flight な保存すべてが
+      // 終わるまで解放されない)。つまりリネームの瞬間に「巻き込まれる」進行中の
+      // 保存は存在せず、世代を進めて守るべき対象は node.path 自身の識別子の
+      // 切り替わりだけになる。
       let renamedOccurred = false
       setOpenFiles((prev) =>
         prev.map((f) => {
@@ -297,10 +300,10 @@ export function useFileTreeOperations({
               { ...f, path: replacePathPrefix(f.path, node.path, newPath) }
         })
       )
-      if (renamedOccurred && activeAffected) {
+      if (renamedOccurred) {
         // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
         // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
-        resetForFileChange({ renamed: { from: node.path, to: newPath } })
+        resetForFileChange(newPath, { renamed: { from: node.path, to: newPath } })
       }
       return true
     })
@@ -344,12 +347,13 @@ export function useFileTreeOperations({
       // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
       // そのまま保存すればファイルを作り直せる
       if (confirmDiscardOfNewEdits(node, affectedBeforeDelete, DISCARD_AFTER_DELETE_MESSAGE)) {
-        // resetForFileChange はアクティブなタブの保存状態を管理するものなので、
-        // 削除されたのが非アクティブなタブだけなら呼んではならない
-        const activePath = getActiveFilePath()
-        const activeAffected = activePath !== null && isPathAtOrInside(activePath, node.path)
+        // generation が path キーの Map になったことで、resetForFileChange の
+        // 呼び出しは対象タブ自身の世代しか進めなくなった(他の開いているタブの
+        // 保存には一切影響しない)ため、削除されたのがアクティブなタブかどうかで
+        // ゲートする必要はもう無い。影響を受けた全ファイル(ディレクトリ削除では
+        // 複数あり得る)それぞれの世代を個別に進める
         setOpenFiles((prev) => prev.filter((f) => !isPathAtOrInside(f.path, node.path)))
-        if (activeAffected) resetForFileChange()
+        affectedNow.forEach((f) => resetForFileChange(f.path))
       }
       return true
     })
