@@ -9,7 +9,17 @@ import { useHistory } from './useHistory'
 import { usePromptRunner } from './usePromptRunner'
 import { useQuickOpen } from './useQuickOpen'
 
-export function useAppState() {
+type AppState = { quickOpen: ReturnType<typeof useQuickOpen> } & ReturnType<typeof usePanelState> &
+  ReturnType<typeof useFileSystem> &
+  ReturnType<typeof usePrompts> &
+  ReturnType<typeof useProgressTasks> &
+  ReturnType<typeof useGitStatus> &
+  ReturnType<typeof useSettings> &
+  ReturnType<typeof usePromptExecution> &
+  ReturnType<typeof useHistory> &
+  ReturnType<typeof usePromptRunner>
+
+export function useAppState(): AppState {
   const panel = usePanelState()
   const fileSystem = useFileSystem()
   const prompts = usePrompts()

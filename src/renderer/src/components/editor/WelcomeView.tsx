@@ -3,7 +3,7 @@ import { WELCOME_CODE } from '../../config/welcomeCode'
 import { editorOptions } from '../../lib/editorOptions'
 import EditorTabs from './EditorTabs'
 
-export default function WelcomeView() {
+export default function WelcomeView(): React.JSX.Element {
   return (
     <>
       <EditorTabs

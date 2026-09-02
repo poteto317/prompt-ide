@@ -61,7 +61,7 @@ export default function EditorPanel({
   onCancelExecution,
   isOverlayOpen,
   openedFileSignal
-}: Props) {
+}: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
   // Ctrl/Cmd+S が常に最新の onSave を呼べるよう ref 経由で参照する。

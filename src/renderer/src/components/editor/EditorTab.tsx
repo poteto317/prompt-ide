@@ -10,7 +10,14 @@ interface Props {
   onClose: () => void
 }
 
-export default function EditorTab({ path, fileName, isDirty, isActive, onActivate, onClose }: Props) {
+export default function EditorTab({
+  path,
+  fileName,
+  isDirty,
+  isActive,
+  onActivate,
+  onClose
+}: Props): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: path
   })
@@ -21,7 +28,7 @@ export default function EditorTab({ path, fileName, isDirty, isActive, onActivat
     opacity: isDragging ? 0.5 : 1
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
     if (e.key === 'Enter' || e.key === ' ') {
       if (e.key === ' ') {
         e.preventDefault()

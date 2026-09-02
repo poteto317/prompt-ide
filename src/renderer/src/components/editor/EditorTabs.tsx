@@ -41,7 +41,7 @@ export default function EditorTabs({
   onCloseTab,
   onReorderTabs,
   onSave
-}: Props) {
+}: Props): React.JSX.Element {
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
