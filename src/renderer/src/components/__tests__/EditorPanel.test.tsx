@@ -10,6 +10,35 @@ import type { OpenedFileEvent } from '../../hooks/useFileSystem'
 import type { OpenFile } from '../../types'
 import EditorPanel from '../EditorPanel'
 
+// dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
+// EditorTabs.test.tsx と同じ方針で DndContext/SortableContext/useSortable をモックする
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PointerSensor: class {},
+  KeyboardSensor: class {},
+  closestCenter: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => [])
+}))
+
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  sortableKeyboardCoordinates: {},
+  horizontalListSortingStrategy: {},
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false
+  })
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } }
+}))
+
 const mockOpenFile: OpenFile = {
   path: '/project/src/index.ts',
   name: 'index.ts',
@@ -18,14 +47,24 @@ const mockOpenFile: OpenFile = {
   language: 'typescript'
 }
 
+// タブの isDirty は EditorPanel 内で content !== savedContent から算出されるため、
+// 「未保存」状態を再現するテストではこちらを使う
+const dirtyMockOpenFile: OpenFile = {
+  ...mockOpenFile,
+  content: 'const x = 2'
+}
+
 const defaultProps = {
-  openFile: null as OpenFile | null,
+  openFiles: [] as OpenFile[],
+  activeFilePath: null as string | null,
   isDirty: false,
   isSaving: false,
   saveError: null as Error | null,
   onChangeContent: vi.fn(),
   onSave: vi.fn(),
-  onCloseFile: vi.fn(),
+  onActivateTab: vi.fn(),
+  onCloseTab: vi.fn(),
+  onReorderTabs: vi.fn(),
   isExecuting: false,
   result: null as string | null,
   streamingText: '',
@@ -34,6 +73,16 @@ const defaultProps = {
   onCancelExecution: vi.fn(),
   isOverlayOpen: false,
   openedFileSignal: { events: [] as OpenedFileEvent[] }
+}
+
+/** openFile 単体を渡す旧APIのテストをそのまま活かすためのヘルパー。
+ *  openFile が非 null なら openFiles=[openFile]・activeFilePath=openFile.path に変換する */
+function withOpenFile(
+  openFile: OpenFile | null
+): Pick<typeof defaultProps, 'openFiles' | 'activeFilePath'> {
+  return openFile === null
+    ? { openFiles: [], activeFilePath: null }
+    : { openFiles: [openFile], activeFilePath: openFile.path }
 }
 
 describe('EditorPanel — openFile なし', () => {
@@ -57,48 +106,56 @@ describe('EditorPanel — openFile なし', () => {
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
 
-  it('"welcome.ts" タブには閉じるボタンが表示されない（実ファイルが開かれていないため）', () => {
-    render(<EditorPanel {...defaultProps} />)
-    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
+  it('"welcome.ts" タブの閉じるボタンをクリックしても onCloseTab は呼ばれない（プレースホルダーのため）', async () => {
+    // WelcomeView のタブは openFiles に属さないプレースホルダーで、EditorTab 自体は
+    // 共通コンポーネントのため閉じるボタン自体は表示されるが、無効な no-op が
+    // 割り当てられているだけで実ファイルには影響しない
+    const user = userEvent.setup()
+    const onCloseTab = vi.fn()
+    render(<EditorPanel {...defaultProps} onCloseTab={onCloseTab} />)
+    await user.click(screen.getByLabelText('タブを閉じる'))
+    expect(onCloseTab).not.toHaveBeenCalled()
   })
 })
 
 describe('EditorPanel — openFile あり', () => {
   it('ファイル名がタブに表示される', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.getByText('index.ts')).toBeInTheDocument()
   })
 
   it('タブに editor-tab--active クラスが付く', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.getByText('index.ts')).toHaveClass('editor-tab--active')
   })
 
   it('"welcome.ts" タブは表示されない', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.queryByText('welcome.ts')).not.toBeInTheDocument()
   })
 
   it('実ファイルが開かれているときは閉じるボタンが表示される', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.getByLabelText('タブを閉じる')).toBeInTheDocument()
   })
 
-  it('閉じるボタンクリックで onCloseFile が呼ばれる', async () => {
+  it('閉じるボタンクリックで onCloseTab がそのファイルの path で呼ばれる', async () => {
     const user = userEvent.setup()
-    const onCloseFile = vi.fn()
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} onCloseFile={onCloseFile} />)
+    const onCloseTab = vi.fn()
+    render(
+      <EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} onCloseTab={onCloseTab} />
+    )
     await user.click(screen.getByLabelText('タブを閉じる'))
-    expect(onCloseFile).toHaveBeenCalledOnce()
+    expect(onCloseTab).toHaveBeenCalledWith(mockOpenFile.path)
   })
 
   it('Monaco Editor のモックが描画される', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
   })
 
   it('エディタは読み取り専用ではない（編集可能）', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} />)
     expect(screen.getByTestId('monaco-editor')).toHaveAttribute('data-readonly', 'false')
   })
 
@@ -106,42 +163,60 @@ describe('EditorPanel — openFile あり', () => {
     const user = userEvent.setup()
     const onChangeContent = vi.fn()
     render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} onChangeContent={onChangeContent} />
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        onChangeContent={onChangeContent}
+      />
     )
     await user.type(screen.getByTestId('monaco-editor-textarea'), 'x')
     expect(onChangeContent).toHaveBeenCalled()
   })
 
   it('isDirty=true のとき保存ボタンが有効化される', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(dirtyMockOpenFile)} isDirty={true} />)
     expect(screen.getByLabelText('保存')).not.toBeDisabled()
   })
 
   it('isDirty=false のとき保存ボタンが無効化される', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={false} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} isDirty={false} />)
     expect(screen.getByLabelText('保存')).toBeDisabled()
   })
 
   it('保存ボタンクリックで onSave が呼ばれる', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} onSave={onSave} />)
+    render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(dirtyMockOpenFile)}
+        isDirty={true}
+        onSave={onSave}
+      />
+    )
     await user.click(screen.getByLabelText('保存'))
     expect(onSave).toHaveBeenCalledOnce()
   })
 
   it('isSaving=true のとき、isDirty=true でも保存ボタンが無効化される（多重保存防止）', () => {
-    render(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} isSaving={true} />)
+    render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(dirtyMockOpenFile)}
+        isDirty={true}
+        isSaving={true}
+      />
+    )
     expect(screen.getByLabelText('保存')).toBeDisabled()
   })
 
   it('未保存インジケータは isDirty=true のときのみ表示される', () => {
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={false} />
+      <EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} isDirty={false} />
     )
     expect(document.querySelector('.editor-tab__dirty-dot')).not.toBeInTheDocument()
 
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} isDirty={true} />)
+    rerender(<EditorPanel {...defaultProps} {...withOpenFile(dirtyMockOpenFile)} isDirty={true} />)
     expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
   })
 
@@ -152,7 +227,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -165,7 +240,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         isOverlayOpen
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
@@ -177,7 +252,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         isOverlayOpen
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
@@ -186,7 +261,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         isOverlayOpen={false}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
@@ -200,7 +275,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -208,7 +283,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={null}
+        {...withOpenFile(null)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -216,7 +291,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 2, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -236,7 +311,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -251,7 +326,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -259,7 +334,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        {...withOpenFile({ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' })}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -279,7 +354,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -290,7 +365,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
         isOverlayOpen
       />
@@ -298,7 +373,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -312,7 +387,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -325,14 +400,14 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={null}
+        {...withOpenFile(null)}
         openedFileSignal={{ events: [{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 0, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -346,7 +421,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -356,7 +431,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={{ ...mockOpenFile, path: '/project/other.ts', name: 'other.ts' }}
+        {...withOpenFile({ ...mockOpenFile, path: '/project/other.ts', name: 'other.ts' })}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -369,7 +444,7 @@ describe('EditorPanel — openFile あり', () => {
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{ events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }] }}
       />
     )
@@ -379,7 +454,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{
           events: [{ id: 2, path: mockOpenFile.path, moveFocusToEditor: false }]
         }}
@@ -396,7 +471,7 @@ describe('EditorPanel — openFile あり', () => {
       events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }]
     }
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} openedFileSignal={signal} />
+      <EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} openedFileSignal={signal} />
     )
     mockEditorModel.current = {}
     mockFocus.mockClear()
@@ -404,7 +479,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        {...withOpenFile({ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' })}
         openedFileSignal={signal}
       />
     )
@@ -412,7 +487,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        {...withOpenFile({ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' })}
         openedFileSignal={signal}
         isOverlayOpen
       />
@@ -420,7 +495,7 @@ describe('EditorPanel — openFile あり', () => {
     rerender(
       <EditorPanel
         {...defaultProps}
-        openFile={{ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' }}
+        {...withOpenFile({ ...mockOpenFile, path: '/project/renamed.ts', name: 'renamed.ts' })}
         openedFileSignal={signal}
       />
     )
@@ -438,7 +513,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         openedFileSignal={{
           events: [{ id: 1, path: mockOpenFile.path, moveFocusToEditor: true }]
         }}
@@ -450,14 +525,14 @@ describe('EditorPanel — openFile あり', () => {
   })
 
   it('ファイルを開いていないときはフォーカスしない', () => {
-    render(<EditorPanel {...defaultProps} openFile={null} />)
+    render(<EditorPanel {...defaultProps} {...withOpenFile(null)} />)
     expect(mockFocus).not.toHaveBeenCalled()
   })
 
   it('Ctrl/Cmd+S コマンドが登録され、実行すると最新の onSave が呼ばれる', () => {
     const onSave = vi.fn()
     const { rerender } = render(
-      <EditorPanel {...defaultProps} openFile={mockOpenFile} onSave={onSave} />
+      <EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} onSave={onSave} />
     )
     // キーバインド値の算出ロジック（OR演算）自体は editorShortcuts.test.ts で検証済みのため、
     // ここでは EditorPanel が onMount 経由でコマンドを登録することのみを確認する
@@ -466,7 +541,7 @@ describe('EditorPanel — openFile あり', () => {
 
     // onMount 後に onSave が差し替わっても、ref 経由で最新の onSave を呼ぶことを確認する
     const nextOnSave = vi.fn()
-    rerender(<EditorPanel {...defaultProps} openFile={mockOpenFile} onSave={nextOnSave} />)
+    rerender(<EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} onSave={nextOnSave} />)
 
     registeredCommand()
 
@@ -478,7 +553,7 @@ describe('EditorPanel — openFile あり', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        openFile={mockOpenFile}
+        {...withOpenFile(mockOpenFile)}
         saveError={new Error('保存に失敗しました')}
       />
     )
@@ -508,5 +583,27 @@ describe('EditorPanel — OutputPanel 連携', () => {
     render(<EditorPanel {...defaultProps} result="テキスト" onClearResult={onClearResult} />)
     await user.click(screen.getByRole('button', { name: '出力をクリア' }))
     expect(onClearResult).toHaveBeenCalledOnce()
+  })
+})
+
+describe('EditorPanel — 複数タブ', () => {
+  it('非アクティブなタブのファイルは Monaco にレンダーされない', () => {
+    const fileA = {
+      path: '/a.ts',
+      name: 'a.ts',
+      content: 'a',
+      savedContent: 'a',
+      language: 'typescript'
+    }
+    const fileB = {
+      path: '/b.ts',
+      name: 'b.ts',
+      content: 'b',
+      savedContent: 'b',
+      language: 'typescript'
+    }
+    render(<EditorPanel {...defaultProps} openFiles={[fileA, fileB]} activeFilePath={fileA.path} />)
+    expect(screen.getByRole('tab', { name: /^a\.ts/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^b\.ts/ })).toHaveAttribute('aria-selected', 'false')
   })
 })

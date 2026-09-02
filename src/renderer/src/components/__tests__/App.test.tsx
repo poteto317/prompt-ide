@@ -81,6 +81,13 @@ describe('App', () => {
   it('フォルダ未オープンのときクイックオープンがフォルダを開くよう案内する', async () => {
     render(<App />)
     await userEvent.keyboard('{Control>}p{/Control}')
-    expect(screen.getByRole('status')).toHaveTextContent('フォルダが開かれていません')
+    // dnd-kit の DndContext（EditorTabs 経由で WelcomeView が使う）が role="status" の
+    // アナウンス用ライブリージョンを別途描画するため、role ではなく案内文のテキストで特定する
+    // （status/alert 等のライブリージョンロールは ARIA 上「name from content」の対象外で、
+    // getByRole の name フィルタでは絞り込めない）
+    const message = screen.getByText(
+      'フォルダが開かれていません。エクスプローラーからフォルダを開いてください'
+    )
+    expect(message).toHaveAttribute('role', 'status')
   })
 })

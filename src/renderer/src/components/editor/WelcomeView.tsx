@@ -7,11 +7,14 @@ export default function WelcomeView() {
   return (
     <>
       <EditorTabs
-        fileName="welcome.ts"
-        isDirty={false}
+        tabs={[{ path: 'welcome.ts', name: 'welcome.ts', isDirty: false }]}
+        activePath="welcome.ts"
         isSaving={false}
         saveError={null}
         onSave={() => {}}
+        onActivateTab={() => {}}
+        onCloseTab={() => {}}
+        onReorderTabs={() => {}}
       />
       <div className="editor-body">
         <Editor

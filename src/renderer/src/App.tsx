@@ -13,6 +13,8 @@ export default function App(): React.JSX.Element {
     folderPath,
     fileTree,
     openFile,
+    openFiles,
+    activeFilePath,
     openedFileSignal,
     isDirty,
     isSaving,
@@ -20,7 +22,9 @@ export default function App(): React.JSX.Element {
     saveError,
     openFolder,
     selectFile,
-    closeFile,
+    activateTab,
+    closeTab,
+    reorderTabs,
     updateFileContent,
     saveFile,
     createFile,
@@ -126,13 +130,16 @@ export default function App(): React.JSX.Element {
             />
           )}
           <EditorPanel
-            openFile={openFile}
+            openFiles={openFiles}
+            activeFilePath={activeFilePath}
             isDirty={isDirty}
             isSaving={isSaving}
             saveError={saveError}
             onChangeContent={updateFileContent}
             onSave={saveFile}
-            onCloseFile={closeFile}
+            onActivateTab={activateTab}
+            onCloseTab={closeTab}
+            onReorderTabs={reorderTabs}
             isExecuting={isExecuting}
             result={result}
             streamingText={streamingText}

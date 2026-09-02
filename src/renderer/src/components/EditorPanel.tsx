@@ -11,13 +11,16 @@ import EditorTabs from './editor/EditorTabs'
 import OutputPanel from './output/OutputPanel'
 
 interface Props {
-  openFile: OpenFile | null
+  openFiles: OpenFile[]
+  activeFilePath: string | null
   isDirty: boolean
   isSaving: boolean
   saveError: Error | null
   onChangeContent: (content: string) => void
   onSave: () => void
-  onCloseFile: () => void
+  onActivateTab: (path: string) => void
+  onCloseTab: (path: string) => void
+  onReorderTabs: (fromIndex: number, toIndex: number) => void
   isExecuting: boolean
   result: string | null
   streamingText: string
@@ -40,13 +43,16 @@ const isFocusUnclaimed = (): boolean => {
 }
 
 export default function EditorPanel({
-  openFile,
+  openFiles,
+  activeFilePath,
   isDirty,
   isSaving,
   saveError,
   onChangeContent,
   onSave,
-  onCloseFile,
+  onActivateTab,
+  onCloseTab,
+  onReorderTabs,
   isExecuting,
   result,
   streamingText,
@@ -56,6 +62,7 @@ export default function EditorPanel({
   isOverlayOpen,
   openedFileSignal
 }: Props) {
+  const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
   // Ctrl/Cmd+S が常に最新の onSave を呼べるよう ref 経由で参照する。
   const onSaveRef = useLatestRef(onSave)
@@ -153,12 +160,20 @@ export default function EditorPanel({
       ) : (
         <>
           <EditorTabs
-            fileName={openFile.name}
-            isDirty={isDirty}
+            tabs={openFiles.map((f) => ({
+              path: f.path,
+              name: f.name,
+              // アクティブなタブは呼び出し元(useFileEditing)が算出した isDirty を使う。
+              // 非アクティブなタブにはその算出値が無いため、同じ式で自前に求める
+              isDirty: f.path === activeFilePath ? isDirty : f.content !== f.savedContent
+            }))}
+            activePath={activeFilePath}
             isSaving={isSaving}
             saveError={saveError}
             onSave={onSave}
-            onClose={onCloseFile}
+            onActivateTab={onActivateTab}
+            onCloseTab={onCloseTab}
+            onReorderTabs={onReorderTabs}
           />
           <div className="editor-body">
             <Editor
