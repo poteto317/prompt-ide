@@ -1,66 +1,88 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, it, expect, vi } from 'vitest'
 import EditorTabs from '../EditorTabs'
 
-const defaultProps = {
-  fileName: 'index.ts',
-  isDirty: false,
-  isSaving: false,
-  saveError: null as Error | null,
-  onSave: vi.fn(),
-  onClose: vi.fn()
+// dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
+// PromptsPanel.test.tsx と同じ方針で DndContext/SortableContext/useSortable をモックする
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PointerSensor: class {},
+  KeyboardSensor: class {},
+  closestCenter: vi.fn(),
+  useSensor: vi.fn(),
+  useSensors: vi.fn(() => [])
+}))
+
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  sortableKeyboardCoordinates: {},
+  horizontalListSortingStrategy: {},
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false
+  })
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => '' } }
+}))
+
+function renderTabs(propsOverride: Partial<React.ComponentProps<typeof EditorTabs>> = {}) {
+  const props: React.ComponentProps<typeof EditorTabs> = {
+    tabs: [
+      { path: '/project/a.ts', name: 'a.ts', isDirty: false },
+      { path: '/project/b.ts', name: 'b.ts', isDirty: true }
+    ],
+    activePath: '/project/a.ts',
+    isSaving: false,
+    saveError: null,
+    onActivateTab: vi.fn(),
+    onCloseTab: vi.fn(),
+    onReorderTabs: vi.fn(),
+    onSave: vi.fn(),
+    ...propsOverride
+  }
+  return render(<EditorTabs {...props} />)
 }
 
 describe('EditorTabs', () => {
-  it('editor-tabs ラッパーが存在する', () => {
-    const { container } = render(<EditorTabs {...defaultProps} />)
-    expect(container.firstChild).toHaveClass('editor-tabs')
+  it('role="tablist" のもとで、開いている全タブを表示する', () => {
+    renderTabs()
+    expect(screen.getByRole('tablist')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /^a\.ts/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: /^b\.ts/ })).toHaveAttribute('aria-selected', 'false')
   })
 
-  it('EditorTab（ファイル名）と EditorSaveControl（保存ボタン）の両方が描画される', () => {
-    render(<EditorTabs {...defaultProps} />)
-    expect(screen.getByText('index.ts')).toBeInTheDocument()
-    expect(screen.getByLabelText('保存')).toBeInTheDocument()
+  it('タブをクリックすると onActivateTab がそのタブの path で呼ばれる', async () => {
+    const onActivateTab = vi.fn()
+    renderTabs({ onActivateTab })
+    await userEvent.click(screen.getByRole('tab', { name: /^b\.ts/ }))
+    expect(onActivateTab).toHaveBeenCalledWith('/project/b.ts')
   })
 
-  it('onClose は EditorTab の閉じるボタンに配線される', async () => {
-    const user = userEvent.setup()
-    const onClose = vi.fn()
-    render(<EditorTabs {...defaultProps} onClose={onClose} />)
-    await user.click(screen.getByLabelText('タブを閉じる'))
-    expect(onClose).toHaveBeenCalledOnce()
+  it('タブの閉じるボタンをクリックすると onCloseTab がそのタブの path で呼ばれる', async () => {
+    const onCloseTab = vi.fn()
+    renderTabs({ onCloseTab })
+    const tabA = screen.getByRole('tab', { name: /^a\.ts/ })
+    await userEvent.click(within(tabA).getByLabelText('タブを閉じる'))
+    expect(onCloseTab).toHaveBeenCalledWith('/project/a.ts')
   })
 
-  it('onSave は EditorSaveControl の保存ボタンに配線される', async () => {
-    const user = userEvent.setup()
-    const onSave = vi.fn()
-    render(<EditorTabs {...defaultProps} isDirty={true} onSave={onSave} />)
-    await user.click(screen.getByLabelText('保存'))
-    expect(onSave).toHaveBeenCalledOnce()
+  it('アクティブタブの isDirty に基づいて保存ボタンの活性状態が決まる', () => {
+    renderTabs({
+      tabs: [{ path: '/project/a.ts', name: 'a.ts', isDirty: true }],
+      activePath: '/project/a.ts'
+    })
+    expect(screen.getByLabelText('保存')).toBeEnabled()
   })
 
-  it('saveError は EditorSaveControl 側に配線される', () => {
-    render(<EditorTabs {...defaultProps} saveError={new Error('保存に失敗しました')} />)
+  it('保存エラーがあれば表示する', () => {
+    renderTabs({ saveError: new Error('保存に失敗しました') })
     expect(screen.getByRole('alert')).toHaveTextContent('保存に失敗しました')
-  })
-
-  it('isDirty は EditorTab（未保存インジケータ）と EditorSaveControl（保存ボタン活性）の両方に配線される', () => {
-    render(<EditorTabs {...defaultProps} isDirty={true} />)
-    expect(document.querySelector('.editor-tab__dirty-dot')).toBeInTheDocument()
-    expect(screen.getByLabelText('保存')).not.toBeDisabled()
-  })
-
-  it('onClose が未指定のとき閉じるボタンは表示されない（例: WelcomeView のプレースホルダータブ）', () => {
-    render(
-      <EditorTabs
-        fileName={defaultProps.fileName}
-        isDirty={defaultProps.isDirty}
-        isSaving={defaultProps.isSaving}
-        saveError={defaultProps.saveError}
-        onSave={defaultProps.onSave}
-      />
-    )
-    expect(screen.queryByLabelText('タブを閉じる')).not.toBeInTheDocument()
   })
 })
