@@ -2994,6 +2994,49 @@ describe('useFileSystem', () => {
       expect(result.current.saveError?.message).toBe('EACCES')
     })
 
+    it('deleteEntry: 非アクティブなファイルを削除しても、アクティブタブの saveError は残る', async () => {
+      // closeTab の wasActive ゲートと同じ理由で、renameEntry/deleteEntry も
+      // 「影響を受けたのがアクティブなタブかどうか」で clearStaleSaveState
+      // (resetForFileChange 経由)を呼ぶかどうかを分ける必要がある。ここでは
+      // 実際の useFileEditing/useFileTreeOperations の結線を通した統合テストとして、
+      // 非アクティブな b.ts を削除しても、アクティブな a.ts の saveError が
+      // 誤ってクリアされないことを検証する
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      mockDeleteEntry.mockResolvedValue(undefined)
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // a.ts をアクティブに戻し、保存を失敗させて saveError を立てておく
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      // 非アクティブな b.ts を削除する
+      await act(async () => {
+        await result.current.deleteEntry(fileB)
+      })
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
+      // 無関係な非アクティブファイルの削除で、アクティブタブ(a.ts)の saveError が
+      // 誤ってクリアされてはいけない
+      expect(result.current.saveError?.message).toBe('EACCES')
+    })
+
     it('保存の書き込み中にタブを切り替えても、完了後に元タブの savedContent が更新される', async () => {
       // activateTab が resetForFileChange(generation を進める) を呼んでいた頃は、
       // 切り替え前のタブに対する保存が「もう無関係な世代」と誤判定され、

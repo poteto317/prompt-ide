@@ -30,7 +30,19 @@ interface FileTreeOperationsOptions {
   /** 呼び出し時点の openFiles を同期的に返す(操作中に確定した結果も見えるようにする) */
   getOpenFiles: () => OpenFile[]
   setOpenFiles: (updater: (prev: OpenFile[]) => OpenFile[]) => void
+  /**
+   * 現在アクティブなタブの path を同期的に返す。resetForFileChange(clearStaleSaveState
+   * を伴う)を呼ぶべきか、invalidatePath(generation のみ)で済ませるべきかを
+   * 判定するために使う(saveError/saveAbortNoticeRef が path キーではない単一の
+   * グローバル値であるため、非アクティブなタブへの影響でクリアしてはならない)
+   */
+  getActiveFilePath: () => string | null
   resetForFileChange: (path: string, options?: ResetForFileChangeOptions) => void
+  /**
+   * 指定 path の generation だけを進める(saveError/saveAbortNoticeRef はクリアしない)。
+   * リネーム・削除で影響を受けたが、アクティブなタブではないファイルに使う
+   */
+  invalidatePath: (path: string) => void
   onConfirm: (message: string) => boolean
   /**
    * 指定パス配下を対象とする保留中のファイル読み込みを無効化する。
@@ -68,7 +80,9 @@ export function useFileTreeOperations({
   getFolderPath,
   getOpenFiles,
   setOpenFiles,
+  getActiveFilePath,
   resetForFileChange,
+  invalidatePath,
   onConfirm,
   invalidatePendingReads,
   beginTreeWrite,
@@ -271,15 +285,25 @@ export function useFileTreeOperations({
       invalidatePendingReads(node.path)
       // 開いているファイル自身、またはその祖先ディレクトリがリネームされた場合は
       // path が変わる。useFileEditing は「path が変わる経路は必ず
-      // resetForFileChange(path) を伴う」ことを前提に savingPaths/generation を
-      // 管理しているため、これに該当するのに呼ばないと保存中インジケータが
-      // 旧pathのまま残ったり、保存完了時の savedContent 反映が旧path不一致で
-      // スキップされたりする(deleteEntry の affected 判定と同じロジック)。
-      // generation が path キーの Map になったことで、resetForFileChange の
-      // 呼び出しはそのタブ自身の世代しか進めなくなった(他の開いているタブの
-      // 保存には一切影響しない)ため、以前のようにアクティブなタブかどうかで
-      // 呼び出しをゲートする必要はもう無い。非アクティブなタブのリネームでも
-      // 素直に呼んでよい。
+      // resetForFileChange(path)/invalidatePath(path) を伴う」ことを前提に
+      // savingPaths/generation を管理しているため、これに該当するのに呼ばないと
+      // 保存中インジケータが旧pathのまま残ったり、保存完了時の savedContent 反映が
+      // 旧path不一致でスキップされたりする(deleteEntry の affected 判定と同じロジック)。
+      // generation が path キーの Map になったことで、generation の無効化自体は
+      // アクティブなタブかどうかに関わらず行ってよい(他の開いているタブの保存には
+      // 一切影響しないため)。
+      // ただし resetForFileChange は generation を進めるだけでなく、
+      // saveError/saveAbortNoticeRef(path キーではない単一のグローバル値)の
+      // クリアも行う(clearStaleSaveState)。リネーム対象がアクティブなタブでない
+      // 場合にこれを呼んでしまうと、今アクティブな別タブに表示中のエラー・
+      // 中止通知を、無関係なリネームだけで誤って消してしまう(closeTab の
+      // wasActive ゲートと同じ理由)。そのため、アクティブなタブが影響を受けた
+      // ときだけ resetForFileChange(clearStaleSaveState を伴う)を呼び、
+      // そうでなければ invalidatePath(generation のみ)を呼ぶ。
+      // 操作の完了時点で判定する。開始時点のクロージャで見ると、操作中に
+      // 確定した読み込み結果(その path が対象配下)を取りこぼす
+      const activePath = getActiveFilePath()
+      const activeAffected = activePath !== null && isPathAtOrInside(activePath, node.path)
       // ここで進めるのはリネーム対象自身(node.path → newPath)の世代のみとする。
       // 祖先ディレクトリのリネームで付随的に path が変わる配下のファイルまで
       // 個別に世代を進めなくても安全なのは、それらの保存はリネーム自身が取得する
@@ -301,9 +325,15 @@ export function useFileTreeOperations({
         })
       )
       if (renamedOccurred) {
-        // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
-        // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
-        resetForFileChange(newPath, { renamed: { from: node.path, to: newPath } })
+        if (activeAffected) {
+          // 同じバッファが別の path で続く。このリネームが原因で中止した保存の
+          // 通知を、ここで消してしまうと「保存されなかった」ことが伝わらない
+          resetForFileChange(newPath, { renamed: { from: node.path, to: newPath } })
+        } else {
+          // アクティブでないタブのリネーム。generation だけ進め、今アクティブな
+          // 別タブの saveError/中止通知には触れない
+          invalidatePath(newPath)
+        }
       }
       return true
     })
@@ -347,13 +377,27 @@ export function useFileTreeOperations({
       // 破棄を断った場合はバッファを残す。削除自体は完了しているため、
       // そのまま保存すればファイルを作り直せる
       if (confirmDiscardOfNewEdits(node, affectedBeforeDelete, DISCARD_AFTER_DELETE_MESSAGE)) {
-        // generation が path キーの Map になったことで、resetForFileChange の
-        // 呼び出しは対象タブ自身の世代しか進めなくなった(他の開いているタブの
-        // 保存には一切影響しない)ため、削除されたのがアクティブなタブかどうかで
-        // ゲートする必要はもう無い。影響を受けた全ファイル(ディレクトリ削除では
-        // 複数あり得る)それぞれの世代を個別に進める
+        // generation が path キーの Map になったことで、generation の無効化自体は
+        // 削除されたのがアクティブなタブかどうかに関わらず行ってよい(他の開いている
+        // タブの保存には一切影響しないため)。影響を受けた全ファイル(ディレクトリ
+        // 削除では複数あり得る)それぞれの generation を個別に進める。
+        // ただし resetForFileChange は generation に加えて saveError/
+        // saveAbortNoticeRef(path キーではない単一のグローバル値)もクリアする
+        // (clearStaleSaveState)。削除されたファイルがアクティブなタブでない場合に
+        // これを呼ぶと、今アクティブな別タブに表示中のエラー・中止通知を、
+        // 無関係な削除だけで誤って消してしまう(closeTab の wasActive ゲートと
+        // 同じ理由)。そのため、アクティブなタブ自身が含まれている場合だけ
+        // resetForFileChange(clearStaleSaveState を伴う)を呼び、それ以外の
+        // 影響ファイルは invalidatePath(generation のみ)にとどめる
+        const activePath = getActiveFilePath()
         setOpenFiles((prev) => prev.filter((f) => !isPathAtOrInside(f.path, node.path)))
-        affectedNow.forEach((f) => resetForFileChange(f.path))
+        affectedNow.forEach((f) => {
+          if (activePath !== null && isSamePath(f.path, activePath)) {
+            resetForFileChange(f.path)
+          } else {
+            invalidatePath(f.path)
+          }
+        })
       }
       return true
     })

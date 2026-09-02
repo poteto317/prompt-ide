@@ -27,8 +27,10 @@ function makeOpenFile(path: string, name: string): OpenFile {
 function renderOperations(config?: {
   folderPath?: string | null
   initialOpenFiles?: OpenFile[]
+  initialActiveFilePath?: string | null
   onConfirm?: (message: string) => boolean
   resetForFileChange?: (path: string, options?: ResetForFileChangeOptions) => void
+  invalidatePath?: (path: string) => void
   lockPathForFileOperation?: (
     targetPath: string,
     options?: FileOperationLockOptions
@@ -37,6 +39,7 @@ function renderOperations(config?: {
   beginTreeWrite?: () => (() => boolean) | null
 }) {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
+  const invalidatePath = config?.invalidatePath ?? vi.fn()
   const lockPathForFileOperation = config?.lockPathForFileOperation ?? (async () => () => {})
   const invalidatePendingReads = config?.invalidatePendingReads ?? vi.fn()
   const onConfirm = config?.onConfirm ?? vi.fn<(message: string) => boolean>().mockReturnValue(true)
@@ -45,11 +48,14 @@ function renderOperations(config?: {
   const treeWriteGuard = makeTreeWriteGuard()
   const { result } = renderHook(() => {
     const [openFiles, setOpenFiles] = useState<OpenFile[]>(config?.initialOpenFiles ?? [])
+    const activeFilePath = config?.initialActiveFilePath ?? openFiles[0]?.path ?? null
     const ops = useFileTreeOperations({
       getFolderPath: () => folderPath,
       getOpenFiles: () => openFiles,
       setOpenFiles,
+      getActiveFilePath: () => activeFilePath,
       resetForFileChange,
+      invalidatePath,
       onConfirm,
       invalidatePendingReads,
       beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
@@ -58,7 +64,14 @@ function renderOperations(config?: {
     })
     return { ...ops, openFiles }
   })
-  return { result, resetForFileChange, onConfirm, invalidatePendingReads, lockPathForFileOperation }
+  return {
+    result,
+    resetForFileChange,
+    invalidatePath,
+    onConfirm,
+    invalidatePendingReads,
+    lockPathForFileOperation
+  }
 }
 
 function renderOperationsWithFolder(getFolderPath: () => string | null) {
@@ -67,7 +80,9 @@ function renderOperationsWithFolder(getFolderPath: () => string | null) {
       getFolderPath,
       getOpenFiles: () => [],
       setOpenFiles: () => {},
+      getActiveFilePath: () => null,
       resetForFileChange: vi.fn(),
+      invalidatePath: vi.fn(),
       onConfirm: () => true,
       invalidatePendingReads: vi.fn(),
       beginTreeWrite: makeTreeWriteGuard(),
@@ -823,7 +838,9 @@ describe('複数ファイルへの追随', () => {
         getFolderPath: () => '/project',
         getOpenFiles: () => mirrorRef.current,
         setOpenFiles,
+        getActiveFilePath: () => fileA.path,
         resetForFileChange: vi.fn(),
+        invalidatePath: vi.fn(),
         onConfirm,
         invalidatePendingReads: vi.fn(),
         beginTreeWrite: treeWriteGuard,
@@ -876,29 +893,67 @@ describe('複数ファイルへの追随', () => {
     ])
   })
 
-  it('非アクティブファイルの削除でも、削除された当該ファイル自身の resetForFileChange は呼ばれる', async () => {
-    // generation が path キーの Map になったことで、resetForFileChange の呼び出しは
-    // 対象タブ自身の世代しか進めなくなり、他の開いているタブ(ここでは非アクティブな
-    // まま残る a.ts)の保存には一切影響しない。そのため、削除されたのが非アクティブな
-    // タブであっても、その削除対象自身の generation は進めてよい
-    // (以前はアクティブなタブ以外への影響では呼ばない、という gate があったが、
-    // それは generation がグローバル単一カウンタだった頃、無関係なアクティブタブの
-    // 保存状態まで巻き込んでしまうのを防ぐためのものだった)
+  it('非アクティブファイルの削除では、その path の generation だけ進め、アクティブタブの saveError/中止通知はクリアしない', async () => {
+    // generation が path キーの Map になったことで、無効化(generation を進めること)
+    // 自体は削除されたのが非アクティブなタブでも安全に行える(他の開いているタブの
+    // 保存には一切影響しないため)。しかし resetForFileChange は generation に加えて
+    // saveError/saveAbortNoticeRef(path キーではない単一のグローバル値)もクリアする
+    // (clearStaleSaveState)。削除されたファイルが非アクティブ(ここでは a.ts が
+    // アクティブなまま)なのに resetForFileChange を呼んでしまうと、a.ts に表示中の
+    // エラー・中止通知を無関係な削除だけで誤って消してしまう(closeTab の
+    // wasActive ゲートと同じ理由)。そのため、非アクティブなファイルの削除では
+    // invalidatePath(generation のみ)を呼び、resetForFileChange(clearStaleSaveState
+    // を伴う)は呼ばない
     mockDeleteEntry.mockResolvedValue(undefined)
     mockReadDirectory.mockResolvedValue([])
     const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
     const fileB = makeOpenFile('/project/src/b.ts', 'b.ts')
     const resetForFileChange = vi.fn()
+    const invalidatePath = vi.fn()
     const { result } = renderOperations({
       initialOpenFiles: [fileA, fileB],
-      resetForFileChange
+      // a.ts (fileA) がアクティブ。renderOperations のデフォルトは openFiles[0]
+      initialActiveFilePath: fileA.path,
+      resetForFileChange,
+      invalidatePath
     })
 
     await act(async () => {
       await result.current.deleteEntry({ name: 'b.ts', path: '/project/src/b.ts', type: 'file' })
     })
 
-    expect(resetForFileChange).toHaveBeenCalledExactlyOnceWith('/project/src/b.ts')
+    expect(resetForFileChange).not.toHaveBeenCalled()
+    expect(invalidatePath).toHaveBeenCalledExactlyOnceWith('/project/src/b.ts')
     expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
+  })
+
+  it('非アクティブファイルのリネームでは、その path の generation だけ進め、アクティブタブの saveError/中止通知はクリアしない', async () => {
+    mockRenameEntry.mockResolvedValue(undefined)
+    mockReadDirectory.mockResolvedValue([])
+    const fileA = makeOpenFile('/project/src/a.ts', 'a.ts')
+    const fileB = makeOpenFile('/project/src/b.ts', 'b.ts')
+    const resetForFileChange = vi.fn()
+    const invalidatePath = vi.fn()
+    const { result } = renderOperations({
+      initialOpenFiles: [fileA, fileB],
+      // a.ts (fileA) がアクティブ
+      initialActiveFilePath: fileA.path,
+      resetForFileChange,
+      invalidatePath
+    })
+
+    await act(async () => {
+      await result.current.renameEntry(
+        { name: 'b.ts', path: '/project/src/b.ts', type: 'file' },
+        'renamed.ts'
+      )
+    })
+
+    expect(resetForFileChange).not.toHaveBeenCalled()
+    expect(invalidatePath).toHaveBeenCalledExactlyOnceWith('/project/src/renamed.ts')
+    expect(result.current.openFiles.map((f) => f.path)).toEqual([
+      '/project/src/a.ts',
+      '/project/src/renamed.ts'
+    ])
   })
 })

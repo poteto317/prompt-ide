@@ -71,6 +71,18 @@ interface FileEditingState {
    */
   resetForFolderChange: (paths: readonly string[]) => void
   /**
+   * 指定 path の generation だけを進める。saveError/saveAbortNoticeRef の
+   * クリア(clearStaleSaveState)は行わない。
+   *
+   * リネーム・削除で「影響を受けたが、アクティブなタブではない」ファイルに使う。
+   * saveError/saveAbortNoticeRef は path キーではない単一のグローバル値のため、
+   * アクティブでないタブへの操作で clearStaleSaveState まで呼んでしまうと、
+   * 今アクティブな別タブに表示中のエラー・中止通知を誤って消してしまう
+   * (closeTab の wasActive ゲートと同じ理由)。generation の無効化自体は
+   * 他タブの保存に影響しないため、アクティブかどうかに関わらず行ってよい。
+   */
+  invalidatePath: (path: string) => void
+  /**
    * 既存タブへのアクティブ切り替え(activateTab、selectFile の既存タブ再選択)で
    * 呼ぶ。表示先が変わるだけで、そのタブの content/savedContent（バッファの実体）は
    * 破棄・再読込されないため、generation は進めない。世代を進めてしまうと、
@@ -171,16 +183,20 @@ export function useFileEditing(
   const isDirty = openFile !== null && openFile.content !== openFile.savedContent
   const isSaving = openFile !== null && savingPaths.has(openFile.path)
 
-  // 「編集セッション」の世代カウンタ。ファイルを開き直す（selectFile/openFolder
-  // で新しく読み込む）、またはリネーム・祖先ディレクトリのリネームで
-  // openFile.path が付け替わる（useFileTreeOperations.ts の renameEntry）
-  // たびに、呼び出し側から resetForFileChange(path) を呼んでインクリメントして
-  // もらう。同じ path のファイルを一度閉じて（保存中に破棄確認を経て）再度
-  // 開き直した場合でも世代が変わるため、path 文字列だけを見て「同じ編集
-  // セッション」だと誤判定しない。openFile.path が変化する経路は必ず
-  // resetForFileChange(path) を伴うことが不変条件であり、「表示中のファイルが
-  // 変わったか」の判定は generation の一致だけで完結する（別途 path を
-  // 追跡する ref は不要）。
+  // 「path ごとの編集セッション」の世代カウンタ。あるタブが開き直された
+  // （selectFile/openFolder で新しく読み込む）、またはリネーム・祖先ディレクトリの
+  // リネームで path が付け替わった（useFileTreeOperations.ts の renameEntry）
+  // 際に、呼び出し側から resetForFileChange(path)/invalidatePath(path) を
+  // 呼んでその path の世代だけをインクリメントしてもらう。同じ path のファイルを
+  // 一度閉じて（保存中に破棄確認を経て）再度開き直した場合でも世代が変わるため、
+  // path 文字列だけを見て「同じバッファ実体」だと誤判定しない。
+  // ある path の generation を保存開始時と比較して不一致であれば、「その path の
+  // バッファ実体が(開き直し・リネーム・タブを閉じるなどで)破棄・再割当てされた」
+  // ことを意味する。この判定は path ごとに完結しており、他の path の generation
+  // には一切影響しない(単一カウンタだった頃と違い、無関係なタブの操作が
+  // 別のタブの保存を巻き込むことは無い)。
+  // なお「今アクティブなタブが何か」自体は openFile/activeFilePath 側で別途
+  // 管理しており、generation は各 path の「バッファ実体の世代」だけを表す。
   // これを render 中に条件付きで直接代入する形で実装していたこともあったが、
   // 並行レンダリング下でコミットされないレンダーの値が残る可能性を指摘され、
   // generation への一本化でその懸念自体を無くした。
@@ -413,6 +429,15 @@ export function useFileEditing(
     clearStaleSaveState(options)
   }
 
+  // リネーム・削除で影響を受けたが、アクティブなタブではないファイル用。
+  // generation だけを進め、saveError/saveAbortNoticeRef(グローバル単一値)には
+  // 触れない。ここで clearStaleSaveState まで呼んでしまうと、今アクティブな
+  // 別タブに表示中のエラー・中止通知を、無関係な非アクティブファイルへの
+  // 操作だけで誤って消してしまう
+  const invalidatePath = (path: string): void => {
+    bumpGeneration(path)
+  }
+
   // openFolder 専用。フォルダを開き直すと openFiles を丸ごと空にするため、
   // それまで開いていた全タブの識別子が一括で無効になる。resetForFileChange を
   // path の数だけ呼ぶと clearStaleSaveState(グローバルな saveError 等のクリア)も
@@ -465,8 +490,11 @@ export function useFileEditing(
         const waiting = blockingLocks(path)
         if (waiting.length === 0) break
         await Promise.all(waiting.map((lock) => lock.done))
-        // 待っている間にファイルが切り替わった・開き直された場合は、この保存は
-        // もう画面上の編集セッションとは無関係なので書き込まない
+        // 待っている間にこの path 自身が無効化された(このタブが閉じられた・
+        // 同じ path で開き直された・リネームされたなど)場合は、この保存は
+        // もう対象のバッファ実体とは無関係なので書き込まない。無関係な別ファイルを
+        // 開く・閉じる・リネームする操作はこの path の generation に影響しないため、
+        // ここでは検出されず、書き込みは通常どおり続行される(per-path 化の要点)
         if (generation !== getGeneration(path)) return
         // 待っている間にリネーム・削除が予約されていた場合も書き込まない。
         // 「保存中」を表示したまま黙って捨てないよう、ここでも理由を伝える
@@ -489,10 +517,13 @@ export function useFileEditing(
         latest !== null && isSamePath(latest.path, path) ? latest.content : content
       await fileSystemApi.writeFileContent(path, contentToWrite)
       // 書き込みに使った時点の path/content/generation を捕捉しているため、
-      // await 中にユーザーがさらに編集したり、別ファイルへ切り替えたり、
-      // 同じファイルを開き直したりしても、savedContent には実際にディスクへ
-      // 書き込んだ内容だけが、その保存が対象としていた編集セッションに
-      // 限定して反映される。
+      // await 中にユーザーがさらに編集したり、この path 自身が閉じられる・
+      // 同じ path で開き直される・リネームされるなどして無効化されたりしても、
+      // savedContent には実際にディスクへ書き込んだ内容だけが、その保存が
+      // 対象としていたバッファ実体に限定して反映される。無関係な別ファイルへの
+      // 操作(新規オープン・別タブのクローズ・別ファイルのリネーム/削除)は
+      // この path の generation に影響しないため、それらと同時に走っていても
+      // 反映は妨げられない。
       setOpenFile((prev) =>
         // 大文字小文字だけが異なる同一実体になっているケース(Windows のケースのみ
         // リネームで generation を伴わず path が変わることは無い契約だが、書き込み
@@ -502,9 +533,14 @@ export function useFileEditing(
           : prev
       )
     } catch (err) {
-      // 保存中に別ファイルへ切り替わっていた、または同じファイルを開き直して
-      // いた場合、この保存失敗はもう画面上の編集セッションとは無関係なので
-      // エラーを表示しない。
+      // この path 自身が無効化されていた(このタブが閉じられた・同じ path で
+      // 開き直された・リネームされたなど)場合、この保存失敗はもう対象の
+      // バッファ実体とは無関係なのでエラーを表示しない。
+      // 一方、無関係な別ファイルを新規に開いただけではこの path の generation は
+      // 変わらないため、その場合は通常どおり saveError に反映される。saveError
+      // 自体は path キー化されていない単一のグローバル値なので、その結果、
+      // 今アクティブな別タブの画面にこの失敗が表示されることがあるが、これは
+      // 意図的に対応範囲外とした既知の制約であり、バグではない。
       if (generation === getGeneration(path)) {
         setSaveError(err instanceof Error ? err : new Error(String(err)))
       }
@@ -528,6 +564,7 @@ export function useFileEditing(
     saveFile,
     resetForFileChange,
     resetForFolderChange,
+    invalidatePath,
     switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,

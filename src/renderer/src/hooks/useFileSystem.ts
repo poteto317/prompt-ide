@@ -221,6 +221,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     saveFile,
     resetForFileChange,
     resetForFolderChange,
+    invalidatePath,
     switchActiveFile,
     lockPathForFileOperation,
     pendingSaveFor,
@@ -260,7 +261,9 @@ export function useFileSystem(options?: Options): FileSystemState {
   } = useFileTreeOperations({
     getOpenFiles: () => openFilesMirrorRef.current,
     setOpenFiles: setOpenFilesAndFixActive,
+    getActiveFilePath: () => activeFilePathMirrorRef.current,
     resetForFileChange,
+    invalidatePath,
     onConfirm,
     // リネーム・削除の対象が読み込み中のファイルなら、その結果を表示しないようにする。
     // (削除済みファイルを表示すると、編集して保存した時点で復活してしまう)
