@@ -9,6 +9,7 @@ import { useGitOperations } from '../useGitOperations'
 const mockStageFile = vi.mocked(gitApi.stageFile)
 const mockUnstageFile = vi.mocked(gitApi.unstageFile)
 const mockCommitChanges = vi.mocked(gitApi.commitChanges)
+const mockAmendCommit = vi.mocked(gitApi.amendCommit)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -183,5 +184,85 @@ describe('commit', () => {
       await Promise.all([first, second])
     })
     expect(mockCommitChanges).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('amend', () => {
+  it('gitApi.amendCommit を呼び、成功時に true を返し refreshGitStatus を呼ぶ', async () => {
+    mockAmendCommit.mockResolvedValue(undefined)
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitOperations(refreshGitStatus))
+
+    let amendResult = false
+    await act(async () => {
+      amendResult = await result.current.amend('feat: 修正後')
+    })
+
+    expect(mockAmendCommit).toHaveBeenCalledWith('feat: 修正後')
+    expect(amendResult).toBe(true)
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+  })
+
+  it('失敗時は false を返し operationError をセットする', async () => {
+    mockAmendCommit.mockRejectedValue(new Error('amend failed'))
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitOperations(refreshGitStatus))
+
+    let amendResult = true
+    await act(async () => {
+      amendResult = await result.current.amend('msg')
+    })
+
+    expect(amendResult).toBe(false)
+    expect(result.current.operationError?.message).toBe('amend failed')
+  })
+
+  it('実行中は isCommitting が true になる', async () => {
+    let resolveAmend: () => void = () => {}
+    mockAmendCommit.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveAmend = resolve
+        })
+    )
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitOperations(refreshGitStatus))
+
+    let amendPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      amendPromise = result.current.amend('msg')
+    })
+    expect(result.current.isCommitting).toBe(true)
+
+    await act(async () => {
+      resolveAmend()
+      await amendPromise
+    })
+    expect(result.current.isCommitting).toBe(false)
+  })
+
+  it('commit 実行中の amend 呼び出しは amendCommit を呼ばない', async () => {
+    let resolveCommit: () => void = () => {}
+    mockCommitChanges.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCommit = resolve
+        })
+    )
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitOperations(refreshGitStatus))
+
+    let commitPromise: Promise<boolean> = Promise.resolve(false)
+    let amendPromise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      commitPromise = result.current.commit('msg1')
+      amendPromise = result.current.amend('msg2')
+    })
+
+    await act(async () => {
+      resolveCommit()
+      await Promise.all([commitPromise, amendPromise])
+    })
+    expect(mockAmendCommit).not.toHaveBeenCalled()
   })
 })

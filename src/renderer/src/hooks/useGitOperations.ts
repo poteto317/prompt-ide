@@ -7,6 +7,7 @@ export interface GitOperationsState {
   unstageFile: (path: string) => Promise<void>
   isCommitting: boolean
   commit: (message: string) => Promise<boolean>
+  amend: (message: string) => Promise<boolean>
   operationError: Error | null
 }
 
@@ -59,5 +60,23 @@ export function useGitOperations(refreshGitStatus: () => Promise<void>): GitOper
     }
   }
 
-  return { stagingPaths, stageFile, unstageFile, isCommitting, commit, operationError }
+  const amend = async (message: string): Promise<boolean> => {
+    if (isCommittingRef.current) return false
+    isCommittingRef.current = true
+    setIsCommitting(true)
+    try {
+      await gitApi.amendCommit(message)
+      setOperationError(null)
+      return true
+    } catch (err) {
+      setOperationError(err instanceof Error ? err : new Error(String(err)))
+      return false
+    } finally {
+      isCommittingRef.current = false
+      setIsCommitting(false)
+      await refreshGitStatus()
+    }
+  }
+
+  return { stagingPaths, stageFile, unstageFile, isCommitting, commit, amend, operationError }
 }
