@@ -56,6 +56,25 @@ export async function deleteEntry(targetPath: string): Promise<void> {
   await rm(targetPath, { recursive: true })
 }
 
+function isEnoent(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
+export async function addToGitignore(folderPath: string, relativePath: string): Promise<void> {
+  const gitignorePath = join(folderPath, '.gitignore')
+  let existingContent = ''
+  try {
+    existingContent = await readFile(gitignorePath, 'utf-8')
+  } catch (err) {
+    if (!isEnoent(err)) throw err
+  }
+  const existingLines = existingContent.split('\n').map((line) => line.trim())
+  if (existingLines.includes(relativePath)) return
+  const needsNewline = existingContent.length > 0 && !existingContent.endsWith('\n')
+  const newContent = existingContent + (needsNewline ? '\n' : '') + relativePath + '\n'
+  await writeFile(gitignorePath, newContent, 'utf-8')
+}
+
 export async function readDirRecursive(dirPath: string, depth = 0): Promise<FileTreeNode[]> {
   if (depth > MAX_DEPTH) return []
   const entries = await readdir(dirPath, { withFileTypes: true })

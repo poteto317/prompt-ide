@@ -11,6 +11,7 @@ const mockCreateFile = vi.hoisted(() => vi.fn())
 const mockCreateDirectory = vi.hoisted(() => vi.fn())
 const mockRenameEntry = vi.hoisted(() => vi.fn())
 const mockDeleteEntry = vi.hoisted(() => vi.fn())
+const mockAddToGitignore = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
 vi.mock('../../dialogService', () => ({ openFolderDialog: mockOpenFolderDialog }))
@@ -21,7 +22,8 @@ vi.mock('../../fileSystem', () => ({
   createFile: mockCreateFile,
   createDirectory: mockCreateDirectory,
   renameEntry: mockRenameEntry,
-  deleteEntry: mockDeleteEntry
+  deleteEntry: mockDeleteEntry,
+  addToGitignore: mockAddToGitignore
 }))
 vi.mock('node:fs/promises', () => ({
   default: { realpath: mockRealpath },
@@ -510,6 +512,29 @@ describe('registerFileSystemHandlers', () => {
       await expect(
         getRegisteredHandler('fs:deleteEntry')(makeEvent(1), '/outside')
       ).rejects.toThrow('Access denied: /outside')
+    })
+  })
+
+  describe('fs:addToGitignore', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('assertWithinFolder で境界チェックし、フォルダルートからの相対パスで addToGitignore を呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockAddToGitignore.mockResolvedValue(undefined)
+      await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/dist')
+      expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'dist')
     })
   })
 })

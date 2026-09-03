@@ -34,7 +34,8 @@ import {
   createFile,
   createDirectory,
   renameEntry,
-  deleteEntry
+  deleteEntry,
+  addToGitignore
 } from '../fileSystem'
 
 type MockDirent = {
@@ -47,7 +48,7 @@ function makeDirent(name: string, isDir: boolean): MockDirent {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
 })
 
 describe('readDirRecursive', () => {
@@ -231,5 +232,36 @@ describe('deleteEntry', () => {
     const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
     mockRm.mockRejectedValue(err)
     await expect(deleteEntry('/project/gone')).rejects.toThrow('ENOENT')
+  })
+})
+
+describe('addToGitignore', () => {
+  it('.gitignore が存在しない場合、新規作成して相対パスを書き込む', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    await addToGitignore('/project', 'dist/')
+    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'dist/\n', 'utf-8')
+  })
+
+  it('.gitignore が既存で末尾に改行がある場合、そのまま追記する', async () => {
+    mockReadFile.mockResolvedValue('node_modules/\n')
+    await addToGitignore('/project', 'dist/')
+    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'node_modules/\ndist/\n', 'utf-8')
+  })
+
+  it('.gitignore が既存で末尾に改行が無い場合、改行を補ってから追記する', async () => {
+    mockReadFile.mockResolvedValue('node_modules/')
+    await addToGitignore('/project', 'dist/')
+    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'node_modules/\ndist/\n', 'utf-8')
+  })
+
+  it('同じ行が既に存在する場合、書き込みを行わない', async () => {
+    mockReadFile.mockResolvedValue('node_modules/\ndist/\n')
+    await addToGitignore('/project', 'dist/')
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
+
+  it('ENOENT 以外のエラーは伝播する', async () => {
+    mockReadFile.mockRejectedValue(new Error('permission denied'))
+    await expect(addToGitignore('/project', 'dist/')).rejects.toThrow('permission denied')
   })
 })

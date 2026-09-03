@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join, dirname, relative } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { openFolderDialog } from '../dialogService'
 import {
@@ -9,7 +9,8 @@ import {
   createFile,
   createDirectory,
   renameEntry,
-  deleteEntry
+  deleteEntry,
+  addToGitignore
 } from '../fileSystem'
 import type { FolderAccessManager } from '../folderAccessManager'
 import { getAllowedFolder, assertFileAccess } from './fileAccessGuard'
@@ -104,5 +105,12 @@ export function registerFileSystemHandlers(
     } catch (err) {
       throw convertFsAccessError(err, `対象が見つかりません: ${targetPath}`, targetPath)
     }
+  })
+
+  ipcMain.handle('fs:addToGitignore', async (event: IpcMainInvokeEvent, targetPath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await folderAccess.assertWithinFolder(allowedFolder, targetPath)
+    const relativePath = relative(allowedFolder, targetPath)
+    await addToGitignore(allowedFolder, relativePath)
   })
 }
