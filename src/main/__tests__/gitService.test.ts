@@ -5,6 +5,7 @@ const mockStatus = vi.hoisted(() => vi.fn())
 const mockAdd = vi.hoisted(() => vi.fn())
 const mockReset = vi.hoisted(() => vi.fn())
 const mockCommit = vi.hoisted(() => vi.fn())
+const mockDiff = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => ({
     checkIsRepo: mockCheckIsRepo,
@@ -12,12 +13,19 @@ const mockSimpleGit = vi.hoisted(() =>
     add: mockAdd,
     reset: mockReset,
     commit: mockCommit,
+    diff: mockDiff,
   }))
 )
 
-vi.mock('simple-git', () => ({ default: mockSimpleGit }))
+const mockReadFile = vi.hoisted(() => vi.fn())
 
-import { getGitStatus, stageFile, unstageFile, commit } from '../gitService'
+vi.mock('simple-git', () => ({ default: mockSimpleGit }))
+vi.mock('node:fs/promises', () => ({
+  default: { readFile: mockReadFile },
+  readFile: mockReadFile,
+}))
+
+import { getGitStatus, stageFile, unstageFile, commit, getDiff } from '../gitService'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -133,5 +141,42 @@ describe('commit', () => {
   it('commit が throw した場合エラーが伝播する', async () => {
     mockCommit.mockRejectedValue(new Error('commit failed'))
     await expect(commit('/project', 'msg')).rejects.toThrow('commit failed')
+  })
+})
+
+describe('getDiff', () => {
+  it('未ステージの変更を simpleGit を folderPath で呼び、diff を [\'-U3\', \'--\', filePath] で呼ぶ', async () => {
+    mockStatus.mockResolvedValue({ files: [{ path: 'src/index.ts', index: 'M', working_dir: 'M' }] })
+    mockDiff.mockResolvedValue('diff --git a/src/index.ts b/src/index.ts\n@@ -1 +1 @@\n-a\n+b\n')
+    const result = await getDiff('/project', 'src/index.ts', false)
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockDiff).toHaveBeenCalledWith(['-U3', '--', 'src/index.ts'])
+    expect(result).toBe('diff --git a/src/index.ts b/src/index.ts\n@@ -1 +1 @@\n-a\n+b\n')
+  })
+
+  it('ステージ済みの変更を diff を [\'--cached\', \'-U3\', \'--\', filePath] で呼ぶ', async () => {
+    mockStatus.mockResolvedValue({ files: [{ path: 'src/index.ts', index: 'M', working_dir: ' ' }] })
+    mockDiff.mockResolvedValue('diff --git a/src/index.ts b/src/index.ts\n@@ -1 +1 @@\n-a\n+b\n')
+    const result = await getDiff('/project', 'src/index.ts', true)
+    expect(mockDiff).toHaveBeenCalledWith(['--cached', '-U3', '--', 'src/index.ts'])
+    expect(result).toBe('diff --git a/src/index.ts b/src/index.ts\n@@ -1 +1 @@\n-a\n+b\n')
+  })
+
+  it('未追跡ファイル(index === "?")の場合、diff を呼ばずファイル内容から疑似diffを組み立てる', async () => {
+    mockStatus.mockResolvedValue({ files: [{ path: 'new.txt', index: '?', working_dir: '?' }] })
+    mockReadFile.mockResolvedValue('line1\nline2\n')
+    const result = await getDiff('/project', 'new.txt', false)
+    expect(mockDiff).not.toHaveBeenCalled()
+    expect(mockReadFile).toHaveBeenCalledWith('/project/new.txt', 'utf-8')
+    expect(result).toContain('--- /dev/null')
+    expect(result).toContain('+++ b/new.txt')
+    expect(result).toContain('+line1')
+    expect(result).toContain('+line2')
+  })
+
+  it('diff が throw した場合エラーが伝播する', async () => {
+    mockStatus.mockResolvedValue({ files: [{ path: 'src/index.ts', index: 'M', working_dir: 'M' }] })
+    mockDiff.mockRejectedValue(new Error('diff failed'))
+    await expect(getDiff('/project', 'src/index.ts', false)).rejects.toThrow('diff failed')
   })
 })

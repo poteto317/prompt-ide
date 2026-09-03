@@ -1,3 +1,5 @@
+import { join } from 'path'
+import { readFile } from 'node:fs/promises'
 import simpleGit from 'simple-git'
 import type { GitStatusResult } from '@shared/types'
 
@@ -34,4 +36,37 @@ export async function unstageFile(folderPath: string, filePath: string): Promise
 export async function commit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
   await git.commit(message)
+}
+
+function buildUntrackedDiff(filePath: string, content: string): string {
+  const lines = content.split('\n')
+  // 末尾の空行は split の仕様上、実ファイルに無い余分な要素になるため取り除く
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  const addedLines = lines.map((line) => `+${line}`).join('\n')
+  return (
+    `diff --git a/${filePath} b/${filePath}\n` +
+    `new file mode 100644\n` +
+    `--- /dev/null\n` +
+    `+++ b/${filePath}\n` +
+    `@@ -0,0 +1,${lines.length} @@\n` +
+    `${addedLines}\n`
+  )
+}
+
+export async function getDiff(
+  folderPath: string,
+  filePath: string,
+  staged: boolean
+): Promise<string> {
+  const git = simpleGit(folderPath)
+  if (!staged) {
+    const status = await git.status()
+    const file = status.files.find((f) => f.path === filePath)
+    if (file !== undefined && file.index === '?') {
+      const content = await readFile(join(folderPath, filePath), 'utf-8')
+      return buildUntrackedDiff(filePath, content)
+    }
+  }
+  const args = staged ? ['--cached', '-U3', '--', filePath] : ['-U3', '--', filePath]
+  return git.diff(args)
 }
