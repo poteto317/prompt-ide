@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { join } from 'path'
 import { readFile } from 'node:fs/promises'
 import simpleGit from 'simple-git'
-import type { GitStatusResult } from '@shared/types'
+import type { GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
 
 export async function getGitStatus(folderPath: string): Promise<GitStatusResult> {
   const git = simpleGit(folderPath)
@@ -103,4 +103,40 @@ export async function unstageHunk(folderPath: string, filePath: string, patch: s
     ['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'],
     patch
   )
+}
+
+export async function getLog(folderPath: string, limit: number, skip: number): Promise<GitLogEntry[]> {
+  const git = simpleGit(folderPath)
+  const format = '%H%x1f%s%x1f%aI%x1f%an%x1e'
+  let output: string
+  try {
+    output = await git.raw(['log', `--max-count=${limit}`, `--skip=${skip}`, `--pretty=format:${format}`])
+  } catch {
+    return []
+  }
+  return output
+    .split('\x1e')
+    .map((record) => record.trim())
+    .filter((record) => record.length > 0)
+    .map((record) => {
+      const [hash, message, date, authorName] = record.split('\x1f')
+      return { hash, message, date, authorName }
+    })
+}
+
+export async function getBranches(folderPath: string): Promise<GitBranch[]> {
+  const git = simpleGit(folderPath)
+  const summary = await git.branchLocal()
+  return summary.all.map((name) => ({ name, current: name === summary.current }))
+}
+
+export async function getTags(folderPath: string): Promise<string[]> {
+  const git = simpleGit(folderPath)
+  const result = await git.tags()
+  return result.all
+}
+
+export async function amendCommit(folderPath: string, message: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await git.commit(message, ['--amend'])
 }

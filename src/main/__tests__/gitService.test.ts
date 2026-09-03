@@ -6,6 +6,9 @@ const mockAdd = vi.hoisted(() => vi.fn())
 const mockReset = vi.hoisted(() => vi.fn())
 const mockCommit = vi.hoisted(() => vi.fn())
 const mockDiff = vi.hoisted(() => vi.fn())
+const mockRaw = vi.hoisted(() => vi.fn())
+const mockBranchLocal = vi.hoisted(() => vi.fn())
+const mockTags = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => ({
     checkIsRepo: mockCheckIsRepo,
@@ -14,6 +17,9 @@ const mockSimpleGit = vi.hoisted(() =>
     reset: mockReset,
     commit: mockCommit,
     diff: mockDiff,
+    raw: mockRaw,
+    branchLocal: mockBranchLocal,
+    tags: mockTags,
   }))
 )
 
@@ -30,7 +36,19 @@ vi.mock('node:child_process', () => ({
   spawn: mockSpawn,
 }))
 
-import { getGitStatus, stageFile, unstageFile, commit, getDiff, stageHunk, unstageHunk } from '../gitService'
+import {
+  getGitStatus,
+  stageFile,
+  unstageFile,
+  commit,
+  getDiff,
+  stageHunk,
+  unstageHunk,
+  getLog,
+  getBranches,
+  getTags,
+  amendCommit,
+} from '../gitService'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -242,5 +260,65 @@ describe('unstageHunk', () => {
       ['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'],
       { cwd: '/project' }
     )
+  })
+})
+
+describe('getLog', () => {
+  it('git log を --max-count/--skip/--pretty オプションで呼び、レコードをパースして返す', async () => {
+    const record =
+      'abc123\x1ffeat: 新機能\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e' +
+      'def456\x1ffix: バグ修正\x1f2026-09-02T10:00:00+09:00\x1fBob\x1e'
+    mockRaw.mockResolvedValue(record)
+    const result = await getLog('/project', 20, 0)
+    expect(mockRaw).toHaveBeenCalledWith([
+      'log',
+      '--max-count=20',
+      '--skip=0',
+      '--pretty=format:%H%x1f%s%x1f%aI%x1f%an%x1e',
+    ])
+    expect(result).toEqual([
+      { hash: 'abc123', message: 'feat: 新機能', date: '2026-09-03T10:00:00+09:00', authorName: 'Alice' },
+      { hash: 'def456', message: 'fix: バグ修正', date: '2026-09-02T10:00:00+09:00', authorName: 'Bob' },
+    ])
+  })
+
+  it('コミットが無いリポジトリで raw が throw した場合、空配列を返す', async () => {
+    mockRaw.mockRejectedValue(new Error('fatal: your current branch does not have any commits yet'))
+    const result = await getLog('/project', 20, 0)
+    expect(result).toEqual([])
+  })
+})
+
+describe('getBranches', () => {
+  it('branchLocal の結果を GitBranch[] に変換する', async () => {
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    const result = await getBranches('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(result).toEqual([
+      { name: 'main', current: true },
+      { name: 'feature/x', current: false },
+    ])
+  })
+})
+
+describe('getTags', () => {
+  it('tags の結果を string[] で返す', async () => {
+    mockTags.mockResolvedValue({ all: ['v1.0.0', 'v1.1.0'] })
+    const result = await getTags('/project')
+    expect(result).toEqual(['v1.0.0', 'v1.1.0'])
+  })
+})
+
+describe('amendCommit', () => {
+  it('simpleGit を folderPath で呼び、commit を [\'--amend\'] オプション付きで呼ぶ', async () => {
+    mockCommit.mockResolvedValue(undefined)
+    await amendCommit('/project', 'feat: 修正後のメッセージ')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockCommit).toHaveBeenCalledWith('feat: 修正後のメッセージ', ['--amend'])
+  })
+
+  it('commit が throw した場合エラーが伝播する', async () => {
+    mockCommit.mockRejectedValue(new Error('amend failed'))
+    await expect(amendCommit('/project', 'msg')).rejects.toThrow('amend failed')
   })
 })

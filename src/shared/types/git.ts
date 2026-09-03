@@ -11,3 +11,15 @@ export type GitStatusResult = {
   behind: number
   files: GitFileStatus[]
 }
+
+export type GitLogEntry = {
+  hash: string
+  message: string
+  date: string
+  authorName: string
+}
+
+export type GitBranch = {
+  name: string
+  current: boolean
+}
