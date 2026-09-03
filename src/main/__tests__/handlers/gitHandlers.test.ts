@@ -6,12 +6,18 @@ const mockGetGitStatus = vi.hoisted(() => vi.fn())
 const mockStageFile = vi.hoisted(() => vi.fn())
 const mockUnstageFile = vi.hoisted(() => vi.fn())
 const mockCommit = vi.hoisted(() => vi.fn())
+const mockGetDiff = vi.hoisted(() => vi.fn())
+const mockStageHunk = vi.hoisted(() => vi.fn())
+const mockUnstageHunk = vi.hoisted(() => vi.fn())
 
 vi.mock('../../gitService', () => ({
   getGitStatus: mockGetGitStatus,
   stageFile: mockStageFile,
   unstageFile: mockUnstageFile,
   commit: mockCommit,
+  getDiff: mockGetDiff,
+  stageHunk: mockStageHunk,
+  unstageHunk: mockUnstageHunk,
 }))
 
 import { registerGitHandlers } from '../../handlers/gitHandlers'
@@ -265,6 +271,68 @@ describe('registerGitHandlers', () => {
       await expect(getRegisteredHandler('git:commit')(makeEvent(1), 'msg')).rejects.toThrow(
         'commit failed'
       )
+    })
+  })
+
+  describe('git:getDiff', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:getDiff')(makeEvent(1), 'src/index.ts', false)
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('境界チェック後、getDiff を解決済みパスと staged 引数で呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetDiff.mockResolvedValue('DIFF_TEXT')
+      const result = await getRegisteredHandler('git:getDiff')(makeEvent(1), 'src/index.ts', true)
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockGetDiff).toHaveBeenCalledWith('/project', '/project/src/index.ts', true)
+      expect(result).toBe('DIFF_TEXT')
+    })
+  })
+
+  describe('git:stageHunk', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:stageHunk')(makeEvent(1), 'src/index.ts', 'PATCH')
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('境界チェック後、stageHunk を解決済みパスと patch 引数で呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockStageHunk.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:stageHunk')(makeEvent(1), 'src/index.ts', 'PATCH')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockStageHunk).toHaveBeenCalledWith('/project', '/project/src/index.ts', 'PATCH')
+    })
+  })
+
+  describe('git:unstageHunk', () => {
+    it('境界チェック後、unstageHunk を解決済みパスと patch 引数で呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockUnstageHunk.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:unstageHunk')(makeEvent(1), 'src/index.ts', 'PATCH')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockUnstageHunk).toHaveBeenCalledWith('/project', '/project/src/index.ts', 'PATCH')
     })
   })
 })

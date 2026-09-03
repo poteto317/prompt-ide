@@ -1,6 +1,6 @@
 import { resolve, dirname } from 'path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { getGitStatus, stageFile, unstageFile, commit } from '../gitService'
+import { getGitStatus, stageFile, unstageFile, commit, getDiff, stageHunk, unstageHunk } from '../gitService'
 import type { FolderAccessManager } from '../folderAccessManager'
 
 function isEnoent(err: unknown): boolean {
@@ -44,6 +44,39 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
     await unstageFile(allowedFolder, resolvedPath)
   })
+
+  ipcMain.handle(
+    'git:getDiff',
+    async (event: IpcMainInvokeEvent, filePath: string, staged: boolean) => {
+      const allowedFolder = folderAccess.get(event.sender.id)
+      if (allowedFolder === undefined) throw new Error('No folder open')
+      const resolvedPath = resolve(allowedFolder, filePath)
+      await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
+      return getDiff(allowedFolder, resolvedPath, staged)
+    }
+  )
+
+  ipcMain.handle(
+    'git:stageHunk',
+    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
+      const allowedFolder = folderAccess.get(event.sender.id)
+      if (allowedFolder === undefined) throw new Error('No folder open')
+      const resolvedPath = resolve(allowedFolder, filePath)
+      await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
+      await stageHunk(allowedFolder, resolvedPath, patch)
+    }
+  )
+
+  ipcMain.handle(
+    'git:unstageHunk',
+    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
+      const allowedFolder = folderAccess.get(event.sender.id)
+      if (allowedFolder === undefined) throw new Error('No folder open')
+      const resolvedPath = resolve(allowedFolder, filePath)
+      await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
+      await unstageHunk(allowedFolder, resolvedPath, patch)
+    }
+  )
 
   ipcMain.handle('git:commit', async (event: IpcMainInvokeEvent, message: string) => {
     const allowedFolder = folderAccess.get(event.sender.id)
