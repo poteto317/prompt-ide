@@ -2,16 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockCheckIsRepo = vi.hoisted(() => vi.fn())
 const mockStatus = vi.hoisted(() => vi.fn())
+const mockAdd = vi.hoisted(() => vi.fn())
+const mockReset = vi.hoisted(() => vi.fn())
+const mockCommit = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => ({
     checkIsRepo: mockCheckIsRepo,
     status: mockStatus,
+    add: mockAdd,
+    reset: mockReset,
+    commit: mockCommit,
   }))
 )
 
 vi.mock('simple-git', () => ({ default: mockSimpleGit }))
 
-import { getGitStatus } from '../gitService'
+import { getGitStatus, stageFile, unstageFile, commit } from '../gitService'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -85,5 +91,47 @@ describe('getGitStatus', () => {
     mockCheckIsRepo.mockResolvedValue(true)
     mockStatus.mockRejectedValue(new Error('git error'))
     await expect(getGitStatus('/project')).rejects.toThrow('git error')
+  })
+})
+
+describe('stageFile', () => {
+  it('simpleGit を folderPath で呼び、add を filePath で呼ぶ', async () => {
+    mockAdd.mockResolvedValue(undefined)
+    await stageFile('/project', 'src/index.ts')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockAdd).toHaveBeenCalledWith('src/index.ts')
+  })
+
+  it('add が throw した場合エラーが伝播する', async () => {
+    mockAdd.mockRejectedValue(new Error('add failed'))
+    await expect(stageFile('/project', 'src/index.ts')).rejects.toThrow('add failed')
+  })
+})
+
+describe('unstageFile', () => {
+  it('simpleGit を folderPath で呼び、reset を ["--", filePath] で呼ぶ', async () => {
+    mockReset.mockResolvedValue(undefined)
+    await unstageFile('/project', 'src/index.ts')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockReset).toHaveBeenCalledWith(['--', 'src/index.ts'])
+  })
+
+  it('reset が throw した場合エラーが伝播する', async () => {
+    mockReset.mockRejectedValue(new Error('reset failed'))
+    await expect(unstageFile('/project', 'src/index.ts')).rejects.toThrow('reset failed')
+  })
+})
+
+describe('commit', () => {
+  it('simpleGit を folderPath で呼び、commit を message で呼ぶ', async () => {
+    mockCommit.mockResolvedValue(undefined)
+    await commit('/project', 'feat: 新機能を追加する')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockCommit).toHaveBeenCalledWith('feat: 新機能を追加する')
+  })
+
+  it('commit が throw した場合エラーが伝播する', async () => {
+    mockCommit.mockRejectedValue(new Error('commit failed'))
+    await expect(commit('/project', 'msg')).rejects.toThrow('commit failed')
   })
 })

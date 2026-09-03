@@ -20,3 +20,18 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
     })),
   }
 }
+
+export async function stageFile(folderPath: string, filePath: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await git.add(filePath)
+}
+
+export async function unstageFile(folderPath: string, filePath: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await git.reset(['--', filePath])
+}
+
+export async function commit(folderPath: string, message: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await git.commit(message)
+}
