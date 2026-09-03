@@ -22,6 +22,9 @@ declare global {
       renameEntry(path: string, newName: string): Promise<void>
       deleteEntry(path: string): Promise<void>
       getGitStatus(): Promise<GitStatusResult>
+      stageFile(filePath: string): Promise<void>
+      unstageFile(filePath: string): Promise<void>
+      commitChanges(message: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>
       getModelSettings(): Promise<ModelSettings>
