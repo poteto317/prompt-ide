@@ -104,6 +104,19 @@ describe('registerGitHandlers', () => {
       ).rejects.toThrow('Access denied')
       expect(mockStageFile).not.toHaveBeenCalled()
     })
+
+    it('相対パスの filePath を allowedFolder 基準の絶対パスに解決してから assertWithinFolder と stageFile を呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockStageFile.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:stage')(makeEvent(1), 'src/index.ts')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockStageFile).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+    })
   })
 
   describe('git:unstage', () => {
@@ -139,6 +152,19 @@ describe('registerGitHandlers', () => {
         getRegisteredHandler('git:unstage')(makeEvent(1), '/outside/file.ts')
       ).rejects.toThrow('Access denied')
       expect(mockUnstageFile).not.toHaveBeenCalled()
+    })
+
+    it('相対パスの filePath を allowedFolder 基準の絶対パスに解決してから assertWithinFolder と unstageFile を呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockUnstageFile.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:unstage')(makeEvent(1), 'src/index.ts')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockUnstageFile).toHaveBeenCalledWith('/project', '/project/src/index.ts')
     })
   })
 

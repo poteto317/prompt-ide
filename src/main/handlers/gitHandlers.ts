@@ -1,3 +1,4 @@
+import { resolve } from 'path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { getGitStatus, stageFile, unstageFile, commit } from '../gitService'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -12,15 +13,17 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:stage', async (event: IpcMainInvokeEvent, filePath: string) => {
     const allowedFolder = folderAccess.get(event.sender.id)
     if (allowedFolder === undefined) throw new Error('No folder open')
-    await folderAccess.assertWithinFolder(allowedFolder, filePath)
-    await stageFile(allowedFolder, filePath)
+    const resolvedPath = resolve(allowedFolder, filePath)
+    await folderAccess.assertWithinFolder(allowedFolder, resolvedPath)
+    await stageFile(allowedFolder, resolvedPath)
   })
 
   ipcMain.handle('git:unstage', async (event: IpcMainInvokeEvent, filePath: string) => {
     const allowedFolder = folderAccess.get(event.sender.id)
     if (allowedFolder === undefined) throw new Error('No folder open')
-    await folderAccess.assertWithinFolder(allowedFolder, filePath)
-    await unstageFile(allowedFolder, filePath)
+    const resolvedPath = resolve(allowedFolder, filePath)
+    await folderAccess.assertWithinFolder(allowedFolder, resolvedPath)
+    await unstageFile(allowedFolder, resolvedPath)
   })
 
   ipcMain.handle('git:commit', async (event: IpcMainInvokeEvent, message: string) => {
