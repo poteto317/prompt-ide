@@ -39,8 +39,7 @@ export function useGitOperations(refreshGitStatus: () => Promise<void>): GitOper
   }
 
   const stageFile = (path: string): Promise<void> => runStageOperation(path, gitApi.stageFile)
-  const unstageFile = (path: string): Promise<void> =>
-    runStageOperation(path, gitApi.unstageFile)
+  const unstageFile = (path: string): Promise<void> => runStageOperation(path, gitApi.unstageFile)
 
   const commit = async (message: string): Promise<boolean> => {
     if (isCommittingRef.current) return false

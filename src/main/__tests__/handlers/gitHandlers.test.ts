@@ -24,6 +24,7 @@ function makeFolderAccess(overrides?: Partial<FolderAccessManager>): FolderAcces
     get: vi.fn(),
     delete: vi.fn(),
     assertWithinFolder: vi.fn(),
+    assertParentWithinFolder: vi.fn(),
     ...overrides,
   } as unknown as FolderAccessManager
 }
@@ -117,6 +118,42 @@ describe('registerGitHandlers', () => {
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
       expect(mockStageFile).toHaveBeenCalledWith('/project', '/project/src/index.ts')
     })
+
+    it('assertWithinFolder が ENOENT で失敗した場合（削除済みファイル）、assertParentWithinFolder で親ディレクトリを検証してから stageFile を呼ぶ', async () => {
+      const enoent = Object.assign(new Error('ENOENT: no such file or directory'), {
+        code: 'ENOENT',
+      })
+      const assertWithinFolder = vi.fn().mockRejectedValue(enoent)
+      const assertParentWithinFolder = vi.fn().mockResolvedValue('/project')
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockStageFile.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:stage')(makeEvent(1), 'deleted.ts')
+      expect(assertParentWithinFolder).toHaveBeenCalledWith('/project', '/project')
+      expect(mockStageFile).toHaveBeenCalledWith('/project', '/project/deleted.ts')
+    })
+
+    it('assertWithinFolder が ENOENT 以外のエラーで失敗した場合、assertParentWithinFolder にフォールバックせずエラーを伝播する', async () => {
+      const assertWithinFolder = vi
+        .fn()
+        .mockRejectedValue(new Error('Access denied: /outside/deleted.ts'))
+      const assertParentWithinFolder = vi.fn()
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:stage')(makeEvent(1), '../outside/deleted.ts')
+      ).rejects.toThrow('Access denied')
+      expect(assertParentWithinFolder).not.toHaveBeenCalled()
+      expect(mockStageFile).not.toHaveBeenCalled()
+    })
   })
 
   describe('git:unstage', () => {
@@ -165,6 +202,42 @@ describe('registerGitHandlers', () => {
       await getRegisteredHandler('git:unstage')(makeEvent(1), 'src/index.ts')
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
       expect(mockUnstageFile).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+    })
+
+    it('assertWithinFolder が ENOENT で失敗した場合（削除済みファイル）、assertParentWithinFolder で親ディレクトリを検証してから unstageFile を呼ぶ', async () => {
+      const enoent = Object.assign(new Error('ENOENT: no such file or directory'), {
+        code: 'ENOENT',
+      })
+      const assertWithinFolder = vi.fn().mockRejectedValue(enoent)
+      const assertParentWithinFolder = vi.fn().mockResolvedValue('/project')
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockUnstageFile.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:unstage')(makeEvent(1), 'deleted.ts')
+      expect(assertParentWithinFolder).toHaveBeenCalledWith('/project', '/project')
+      expect(mockUnstageFile).toHaveBeenCalledWith('/project', '/project/deleted.ts')
+    })
+
+    it('assertWithinFolder が ENOENT 以外のエラーで失敗した場合、assertParentWithinFolder にフォールバックせずエラーを伝播する', async () => {
+      const assertWithinFolder = vi
+        .fn()
+        .mockRejectedValue(new Error('Access denied: /outside/deleted.ts'))
+      const assertParentWithinFolder = vi.fn()
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:unstage')(makeEvent(1), '../outside/deleted.ts')
+      ).rejects.toThrow('Access denied')
+      expect(assertParentWithinFolder).not.toHaveBeenCalled()
+      expect(mockUnstageFile).not.toHaveBeenCalled()
     })
   })
 

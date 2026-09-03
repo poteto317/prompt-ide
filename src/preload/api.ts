@@ -26,8 +26,7 @@ export const api = {
   getGitStatus: (): Promise<GitStatusResult> => ipcRenderer.invoke('git:getStatus'),
   stageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:stage', filePath),
   unstageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:unstage', filePath),
-  commitChanges: (message: string): Promise<void> =>
-    ipcRenderer.invoke('git:commit', message),
+  commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),
   getModelSettings: (): Promise<ModelSettings> => ipcRenderer.invoke('settings:getModelSettings'),
