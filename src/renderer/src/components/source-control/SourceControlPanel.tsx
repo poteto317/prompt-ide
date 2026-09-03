@@ -1,4 +1,4 @@
-import type { GitStatusResult } from '@shared/types'
+import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 
 interface Props {
@@ -9,8 +9,17 @@ interface Props {
   stagingPaths: ReadonlySet<string>
   onStage: (path: string) => void
   onUnstage: (path: string) => void
+  onOpenDiff: (path: string, staged: boolean) => void
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
+  lastCommitMessage: string | null
+  onAmend: (message: string) => Promise<boolean>
+  log: GitLogEntry[]
+  branches: GitBranch[]
+  tags: string[]
+  hasMoreLog: boolean
+  isLoadingLog: boolean
+  onLoadMoreLog: () => void
   operationError: Error | null
 }
 
@@ -22,8 +31,17 @@ export default function SourceControlPanel({
   stagingPaths,
   onStage,
   onUnstage,
+  onOpenDiff,
   isCommitting,
   onCommit,
+  lastCommitMessage,
+  onAmend,
+  log,
+  branches,
+  tags,
+  hasMoreLog,
+  isLoadingLog,
+  onLoadMoreLog,
   operationError
 }: Props): React.JSX.Element {
   return (
@@ -55,8 +73,17 @@ export default function SourceControlPanel({
             stagingPaths={stagingPaths}
             onStage={onStage}
             onUnstage={onUnstage}
+            onOpenDiff={onOpenDiff}
             isCommitting={isCommitting}
             onCommit={onCommit}
+            lastCommitMessage={lastCommitMessage}
+            onAmend={onAmend}
+            log={log}
+            branches={branches}
+            tags={tags}
+            hasMoreLog={hasMoreLog}
+            isLoadingLog={isLoadingLog}
+            onLoadMoreLog={onLoadMoreLog}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

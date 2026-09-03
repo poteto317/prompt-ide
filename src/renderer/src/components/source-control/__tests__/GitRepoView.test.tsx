@@ -13,8 +13,17 @@ const baseProps = {
   stagingPaths: new Set<string>(),
   onStage: vi.fn(),
   onUnstage: vi.fn(),
+  onOpenDiff: vi.fn(),
   isCommitting: false,
-  onCommit: vi.fn().mockResolvedValue(true)
+  onCommit: vi.fn().mockResolvedValue(true),
+  lastCommitMessage: null,
+  onAmend: vi.fn().mockResolvedValue(true),
+  log: [],
+  branches: [],
+  tags: [],
+  hasMoreLog: false,
+  isLoadingLog: false,
+  onLoadMoreLog: vi.fn()
 }
 
 describe('GitRepoView', () => {
@@ -93,8 +102,17 @@ describe('GitRepoView', () => {
         stagingPaths={new Set()}
         onStage={onStage}
         onUnstage={onUnstage}
+        onOpenDiff={vi.fn()}
         isCommitting={false}
         onCommit={onCommit}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMoreLog={false}
+        isLoadingLog={false}
+        onLoadMoreLog={vi.fn()}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -102,5 +120,90 @@ describe('GitRepoView', () => {
     await userEvent.click(screen.getByLabelText('staged.ts をアンステージ'))
     expect(onUnstage).toHaveBeenCalledWith('staged.ts')
     expect(screen.getByLabelText('コミットメッセージ')).toBeInTheDocument()
+  })
+
+  it('CommitSection と HistorySection に必要な props が渡る', () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={[]}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onUnstage={vi.fn()}
+        onOpenDiff={vi.fn()}
+        isCommitting={false}
+        onCommit={vi.fn().mockResolvedValue(true)}
+        lastCommitMessage="feat: 直前のコミット"
+        onAmend={vi.fn().mockResolvedValue(true)}
+        log={[{ hash: 'abc1234', message: 'feat: 新機能', date: 'd', authorName: 'x' }]}
+        branches={[{ name: 'main', current: true }]}
+        tags={[]}
+        hasMoreLog={false}
+        isLoadingLog={false}
+        onLoadMoreLog={vi.fn()}
+      />
+    )
+    expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
+    expect(
+      screen.getByText('main', { selector: '.history-section__badge--branch-current' })
+    ).toBeInTheDocument()
+  })
+
+  it('ChangesSection の onOpenDiff は staged=false で呼ばれる', async () => {
+    const onOpenDiff = vi.fn()
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={[{ path: 'a.ts', index: ' ', workingDir: 'M' }]}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onUnstage={vi.fn()}
+        onOpenDiff={onOpenDiff}
+        isCommitting={false}
+        onCommit={vi.fn().mockResolvedValue(true)}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMoreLog={false}
+        isLoadingLog={false}
+        onLoadMoreLog={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByText('a.ts'))
+    expect(onOpenDiff).toHaveBeenCalledWith('a.ts', false)
+  })
+
+  it('StagedSection の onOpenDiff は staged=true で呼ばれる', async () => {
+    const onOpenDiff = vi.fn()
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={[{ path: 'a.ts', index: 'M', workingDir: ' ' }]}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onUnstage={vi.fn()}
+        onOpenDiff={onOpenDiff}
+        isCommitting={false}
+        onCommit={vi.fn().mockResolvedValue(true)}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMoreLog={false}
+        isLoadingLog={false}
+        onLoadMoreLog={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByText('a.ts'))
+    expect(onOpenDiff).toHaveBeenCalledWith('a.ts', true)
   })
 })

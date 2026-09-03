@@ -90,6 +90,31 @@ const mockUseQuickOpen = vi.hoisted(() =>
   }))
 )
 
+// useGitHistory はマウント時の useEffect で setState するため、実物のまま呼ぶと
+// レンダーが2回走り、他のモックフックの呼び出し回数アサーションが崩れる。
+// そのため useDiffTabs とあわせて静的な戻り値のモックに差し替える
+const mockUseDiffTabs = vi.hoisted(() =>
+  vi.fn(() => ({
+    diffTabs: [],
+    activeDiffTab: null,
+    openDiffTab: vi.fn(),
+    closeDiffTab: vi.fn(),
+    activateDiffTab: vi.fn()
+  }))
+)
+
+const mockUseGitHistory = vi.hoisted(() =>
+  vi.fn(() => ({
+    log: [],
+    branches: [],
+    tags: [],
+    hasMore: false,
+    isLoading: false,
+    loadMore: vi.fn(),
+    refresh: vi.fn()
+  }))
+)
+
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
@@ -99,6 +124,8 @@ vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
 vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
 vi.mock('../useHistory', () => ({ useHistory: mockUseHistory }))
 vi.mock('../usePromptRunner', () => ({ usePromptRunner: mockUsePromptRunner }))
+vi.mock('../useDiffTabs', () => ({ useDiffTabs: mockUseDiffTabs }))
+vi.mock('../useGitHistory', () => ({ useGitHistory: mockUseGitHistory }))
 
 import { useAppState } from '../useAppState'
 

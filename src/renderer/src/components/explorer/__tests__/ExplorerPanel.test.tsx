@@ -24,7 +24,8 @@ const defaultProps = {
   onCreateFile: vi.fn(),
   onCreateDirectory: vi.fn(),
   onRenameEntry: vi.fn(),
-  onDeleteEntry: vi.fn()
+  onDeleteEntry: vi.fn(),
+  onAddToGitignore: vi.fn()
 }
 
 const openedProps = { ...defaultProps, folderPath: '/p', fileTree: mockTree }

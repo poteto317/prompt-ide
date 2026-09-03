@@ -15,7 +15,7 @@ import type {
   StageId,
   HistoryEntry
 } from '../types'
-import type { GitStatusResult, ModelSettings } from '@shared/types'
+import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 
 interface Props {
   activePanel: Panel
@@ -61,6 +61,16 @@ interface Props {
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
   gitOperationError: Error | null
+  onOpenDiff: (path: string, staged: boolean) => void
+  onAmend: (message: string) => Promise<boolean>
+  lastCommitMessage: string | null
+  log: GitLogEntry[]
+  branches: GitBranch[]
+  tags: string[]
+  hasMoreLog: boolean
+  isLoadingLog: boolean
+  onLoadMoreLog: () => void
+  onAddToGitignore: (node: FileTreeNode) => void
   hasKey: boolean
   apiKeyLoaded: boolean
   keyStoreError: string | null
@@ -114,6 +124,16 @@ export default function Sidebar({
   isCommitting,
   onCommit,
   gitOperationError,
+  onOpenDiff,
+  onAmend,
+  lastCommitMessage,
+  log,
+  branches,
+  tags,
+  hasMoreLog,
+  isLoadingLog,
+  onLoadMoreLog,
+  onAddToGitignore,
   hasKey,
   apiKeyLoaded,
   keyStoreError,
@@ -137,6 +157,7 @@ export default function Sidebar({
           onCreateDirectory={onCreateDirectory}
           onRenameEntry={onRenameEntry}
           onDeleteEntry={onDeleteEntry}
+          onAddToGitignore={onAddToGitignore}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'prompts'}>
@@ -184,8 +205,17 @@ export default function Sidebar({
           stagingPaths={stagingPaths}
           onStage={onStageFile}
           onUnstage={onUnstageFile}
+          onOpenDiff={onOpenDiff}
           isCommitting={isCommitting}
           onCommit={onCommit}
+          lastCommitMessage={lastCommitMessage}
+          onAmend={onAmend}
+          log={log}
+          branches={branches}
+          tags={tags}
+          hasMoreLog={hasMoreLog}
+          isLoadingLog={isLoadingLog}
+          onLoadMoreLog={onLoadMoreLog}
           operationError={gitOperationError}
         />
       </PanelContainer>

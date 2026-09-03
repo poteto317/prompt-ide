@@ -6,6 +6,7 @@ export interface ExplorerMenuActions {
   onCreateDirectory: (parentPath: string) => void
   onRename: (node: FileTreeNode) => void
   onDelete: (node: FileTreeNode) => void
+  onAddToGitignore: (node: FileTreeNode) => void
 }
 
 // エクスプローラーの右クリックメニューに表示する項目を、対象ノードの種類に応じて構築する。
@@ -33,7 +34,12 @@ export function buildMenuItems(
   if (node !== null) {
     items.push(
       { id: 'rename', label: 'リネーム', onSelect: () => actions.onRename(node) },
-      { id: 'delete', label: '削除', onSelect: () => actions.onDelete(node) }
+      { id: 'delete', label: '削除', onSelect: () => actions.onDelete(node) },
+      {
+        id: 'addToGitignore',
+        label: '.gitignore に追加',
+        onSelect: () => actions.onAddToGitignore(node)
+      }
     )
   }
   return items

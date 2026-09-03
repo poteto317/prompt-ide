@@ -1930,3 +1930,137 @@ body {
   font-size: 12px;
   color: #8c8c8c;
 }
+
+.source-control-panel__amend-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #cccccc;
+}
+
+.diff-view {
+  padding: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: auto;
+  height: 100%;
+}
+
+.diff-view__hunk {
+  margin-bottom: 12px;
+  border: 1px solid #333333;
+  border-radius: 3px;
+}
+
+.diff-view__hunk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #333333;
+}
+
+.diff-view__hunk-header-text {
+  color: #8a8a8a;
+}
+
+.diff-view__hunk-action-btn {
+  padding: 2px 8px;
+  background: #0e639c;
+  border: none;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.diff-view__hunk-action-btn:hover {
+  background: #1177bb;
+}
+
+.diff-view__line {
+  white-space: pre;
+  padding: 0 8px;
+}
+
+.diff-view__line--added {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.diff-view__line--removed {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
+.diff-view__line--context {
+  color: #cccccc;
+}
+
+.history-section__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.history-section__badge {
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  background: #3c3c3c;
+  color: #cccccc;
+}
+
+.history-section__badge--branch-current {
+  background: #0e639c;
+  color: #ffffff;
+}
+
+.history-section__log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.history-section__log-item {
+  display: flex;
+  gap: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.history-section__log-hash {
+  font-family: monospace;
+  color: #8a8a8a;
+  flex-shrink: 0;
+}
+
+.history-section__log-message {
+  color: #cccccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-section__load-more-btn {
+  width: 100%;
+  padding: 4px;
+  background: transparent;
+  border: none;
+  color: #8a8a8a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.history-section__load-more-btn:hover:not(:disabled) {
+  color: #cccccc;
+}
+
+.history-section__load-more-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

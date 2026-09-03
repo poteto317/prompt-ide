@@ -8,7 +8,7 @@ describe('StagedSection', () => {
   it('staged ファイルがない場合は何も描画しない', () => {
     const files: GitFileStatus[] = [{ path: 'file.ts', index: ' ', workingDir: 'M' }]
     const { container } = render(
-      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />
+      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />
     )
     expect(container.firstChild).toBeNull()
   })
@@ -16,7 +16,7 @@ describe('StagedSection', () => {
   it('index="?" のファイルは staged に含まない', () => {
     const files: GitFileStatus[] = [{ path: 'new.ts', index: '?', workingDir: '?' }]
     const { container } = render(
-      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />
+      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />
     )
     expect(container.firstChild).toBeNull()
   })
@@ -26,19 +26,19 @@ describe('StagedSection', () => {
       { path: 'a.ts', index: 'M', workingDir: ' ' },
       { path: 'b.ts', index: 'A', workingDir: ' ' },
     ]
-    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />)
+    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />)
     expect(screen.getByText('ステージ済み (2)')).toBeInTheDocument()
   })
 
   it('staged ファイルのパスが表示される', () => {
     const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
-    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />)
+    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />)
     expect(screen.getByText('src/index.ts')).toBeInTheDocument()
   })
 
   it('staged ファイルのステータス文字（index）が表示される', () => {
     const files: GitFileStatus[] = [{ path: 'file.ts', index: 'A', workingDir: ' ' }]
-    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />)
+    render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />)
     expect(screen.getByText('A')).toBeInTheDocument()
   })
 
@@ -46,7 +46,7 @@ describe('StagedSection', () => {
     // staged フィルタは index !== ' ' && index !== '?' なので ' ' は除外される
     const files: GitFileStatus[] = [{ path: 'file.ts', index: ' ', workingDir: ' ' }]
     const { container } = render(
-      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />
+      <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />
     )
     expect(container.firstChild).toBeNull()
   })
@@ -54,14 +54,14 @@ describe('StagedSection', () => {
   describe('アンステージボタン', () => {
     it('各ファイルにアンステージボタンを表示する', () => {
       const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
-      render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} />)
+      render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />)
       expect(screen.getByLabelText('src/index.ts をアンステージ')).toBeInTheDocument()
     })
 
     it('アンステージボタンをクリックすると onUnstage がそのパスで呼ばれる', async () => {
       const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
       const onUnstage = vi.fn()
-      render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={onUnstage} />)
+      render(<StagedSection files={files} stagingPaths={new Set()} onUnstage={onUnstage} onOpenDiff={vi.fn()} />)
       await userEvent.click(screen.getByLabelText('src/index.ts をアンステージ'))
       expect(onUnstage).toHaveBeenCalledWith('src/index.ts')
     })
@@ -73,9 +73,32 @@ describe('StagedSection', () => {
           files={files}
           stagingPaths={new Set(['src/index.ts'])}
           onUnstage={vi.fn()}
+          onOpenDiff={vi.fn()}
         />
       )
       expect(screen.getByLabelText('src/index.ts をアンステージ')).toBeDisabled()
+    })
+  })
+
+  describe('diff表示', () => {
+    it('ファイル行をクリックすると onOpenDiff がそのパスで呼ばれる', async () => {
+      const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
+      const onOpenDiff = vi.fn()
+      render(
+        <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={onOpenDiff} />
+      )
+      await userEvent.click(screen.getByText('src/index.ts'))
+      expect(onOpenDiff).toHaveBeenCalledWith('src/index.ts')
+    })
+
+    it('アンステージボタンをクリックしても onOpenDiff は呼ばれない', async () => {
+      const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
+      const onOpenDiff = vi.fn()
+      render(
+        <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={onOpenDiff} />
+      )
+      await userEvent.click(screen.getByLabelText('src/index.ts をアンステージ'))
+      expect(onOpenDiff).not.toHaveBeenCalled()
     })
   })
 })

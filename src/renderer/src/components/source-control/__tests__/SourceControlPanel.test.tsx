@@ -12,8 +12,17 @@ const baseProps = {
   stagingPaths: new Set<string>(),
   onStage: vi.fn(),
   onUnstage: vi.fn(),
+  onOpenDiff: vi.fn(),
   isCommitting: false,
   onCommit: vi.fn().mockResolvedValue(true),
+  lastCommitMessage: null,
+  onAmend: vi.fn().mockResolvedValue(true),
+  log: [],
+  branches: [],
+  tags: [],
+  hasMoreLog: false,
+  isLoadingLog: false,
+  onLoadMoreLog: vi.fn(),
   operationError: null as Error | null,
 }
 
@@ -152,8 +161,17 @@ describe('SourceControlPanel', () => {
         stagingPaths={new Set()}
         onStage={vi.fn()}
         onUnstage={vi.fn()}
+        onOpenDiff={vi.fn()}
         isCommitting={false}
         onCommit={vi.fn()}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMoreLog={false}
+        isLoadingLog={false}
+        onLoadMoreLog={vi.fn()}
         operationError={new Error('ステージに失敗しました')}
       />
     )

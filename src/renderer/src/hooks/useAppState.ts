@@ -9,6 +9,8 @@ import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
 import { usePromptRunner } from './usePromptRunner'
 import { useQuickOpen } from './useQuickOpen'
+import { useDiffTabs } from './useDiffTabs'
+import { useGitHistory } from './useGitHistory'
 
 type AppState = { quickOpen: ReturnType<typeof useQuickOpen> } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
@@ -19,7 +21,9 @@ type AppState = { quickOpen: ReturnType<typeof useQuickOpen> } & ReturnType<type
   ReturnType<typeof useSettings> &
   ReturnType<typeof usePromptExecution> &
   ReturnType<typeof useHistory> &
-  ReturnType<typeof usePromptRunner>
+  ReturnType<typeof usePromptRunner> &
+  ReturnType<typeof useDiffTabs> &
+  ReturnType<typeof useGitHistory>
 
 export function useAppState(): AppState {
   const panel = usePanelState()
@@ -28,6 +32,8 @@ export function useAppState(): AppState {
   const progress = useProgressTasks()
   const git = useGitStatus(fileSystem.folderPath)
   const gitOperations = useGitOperations(git.refreshGitStatus)
+  const diffTabs = useDiffTabs()
+  const gitHistory = useGitHistory(fileSystem.folderPath)
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
@@ -54,6 +60,8 @@ export function useAppState(): AppState {
     ...progress,
     ...git,
     ...gitOperations,
+    ...diffTabs,
+    ...gitHistory,
     ...settings,
     ...execution,
     ...history,

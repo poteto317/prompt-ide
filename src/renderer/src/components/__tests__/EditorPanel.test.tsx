@@ -8,6 +8,7 @@ import {
 } from '../../__tests__/__mocks__/@monaco-editor/react'
 import type { OpenedFileEvent } from '../../hooks/useFileSystem'
 import type { OpenFile } from '../../types'
+import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import EditorPanel from '../EditorPanel'
 
 // dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
@@ -72,7 +73,15 @@ const defaultProps = {
   onClearResult: vi.fn(),
   onCancelExecution: vi.fn(),
   isOverlayOpen: false,
-  openedFileSignal: { events: [] as OpenedFileEvent[] }
+  openedFileSignal: { events: [] as OpenedFileEvent[] },
+  diffTabs: [] as DiffTabKey[],
+  activeDiffTab: null as DiffTabKey | null,
+  onActivateDiffTab: vi.fn(),
+  onCloseDiffTab: vi.fn(),
+  diffContent: null as string | null,
+  diffStaged: false,
+  onStageHunk: vi.fn(),
+  onUnstageHunk: vi.fn()
 }
 
 /** openFile 単体を渡す旧APIのテストをそのまま活かすためのヘルパー。
@@ -603,5 +612,50 @@ describe('EditorPanel — 複数タブ', () => {
     render(<EditorPanel {...defaultProps} openFiles={[fileA, fileB]} activeFilePath={fileA.path} />)
     expect(screen.getByRole('tab', { name: /^a\.ts/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tab', { name: /^b\.ts/ })).toHaveAttribute('aria-selected', 'false')
+  })
+})
+
+describe('EditorPanel — diff タブ', () => {
+  it('activeDiffTab がある場合、DiffView を表示しMonaco Editorは表示しない', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+      />
+    )
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(screen.getByText('-a')).toBeInTheDocument()
+  })
+
+  it('diffTabs がある場合、タブバーに diff タブが表示される', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+      />
+    )
+    expect(screen.getByText('index.ts (差分)')).toBeInTheDocument()
+  })
+
+  it('diff タブをクリックすると onActivateDiffTab が呼ばれる', async () => {
+    const onActivateDiffTab = vi.fn()
+    const otherFile: OpenFile = { ...mockOpenFile, path: '/project/src/other.ts', name: 'other.ts' }
+    render(
+      <EditorPanel
+        {...defaultProps}
+        openFiles={[otherFile]}
+        activeFilePath={otherFile.path}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={null}
+        onActivateDiffTab={onActivateDiffTab}
+        diffContent={null}
+      />
+    )
+    await userEvent.click(screen.getByText('index.ts (差分)'))
+    expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
   })
 })

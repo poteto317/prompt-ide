@@ -1,9 +1,13 @@
+import { useState, useCallback, useEffect } from 'react'
 import { useAppState } from './hooks/useAppState'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
 import StatusBar from './components/StatusBar'
 import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
+import * as gitApi from './lib/gitApi'
+import * as fileSystemApi from './lib/fileSystemApi'
+import type { FileTreeNode } from './types'
 
 export default function App(): React.JSX.Element {
   const {
@@ -57,6 +61,19 @@ export default function App(): React.JSX.Element {
     isCommitting,
     commit,
     operationError,
+    diffTabs,
+    activeDiffTab,
+    openDiffTab,
+    closeDiffTab,
+    activateDiffTab,
+    amend,
+    log,
+    branches,
+    tags,
+    hasMore,
+    isLoading: isLoadingHistory,
+    loadMore,
+    refresh: refreshHistory,
     hasKey,
     apiKeyLoaded,
     keyStoreError,
@@ -77,6 +94,60 @@ export default function App(): React.JSX.Element {
     rerunHistoryEntry,
     quickOpen
   } = useAppState()
+
+  const [diffContent, setDiffContent] = useState<string | null>(null)
+  const [diffStaged, setDiffStaged] = useState(false)
+
+  const handleOpenDiff = useCallback(
+    async (path: string, staged: boolean): Promise<void> => {
+      openDiffTab({ path, staged })
+      const content = await gitApi.getDiff(path, staged)
+      setDiffContent(content)
+      setDiffStaged(staged)
+    },
+    [openDiffTab]
+  )
+
+  useEffect(() => {
+    if (activeDiffTab === null) return
+    // diff 内容の取得は activeDiffTab の変更を起点とする外部システム(git)との
+    // 同期であり、取得結果を setState する正当なデータフェッチパターンのため抑制する
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void handleOpenDiff(activeDiffTab.path, activeDiffTab.staged)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDiffTab])
+
+  const handleStageHunk = async (patch: string): Promise<void> => {
+    if (activeDiffTab === null) return
+    await gitApi.stageHunk(activeDiffTab.path, patch)
+    await refreshGitStatus()
+    const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
+    setDiffContent(content)
+  }
+
+  const handleUnstageHunk = async (patch: string): Promise<void> => {
+    if (activeDiffTab === null) return
+    await gitApi.unstageHunk(activeDiffTab.path, patch)
+    await refreshGitStatus()
+    const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
+    setDiffContent(content)
+  }
+
+  const handleCommit = async (message: string): Promise<boolean> => {
+    const succeeded = await commit(message)
+    if (succeeded) void refreshHistory()
+    return succeeded
+  }
+
+  const handleAmend = async (message: string): Promise<boolean> => {
+    const succeeded = await amend(message)
+    if (succeeded) void refreshHistory()
+    return succeeded
+  }
+
+  const handleAddToGitignore = (node: FileTreeNode): void => {
+    void fileSystemApi.addToGitignore(node.path)
+  }
 
   return (
     <>
@@ -130,8 +201,18 @@ export default function App(): React.JSX.Element {
               onStageFile={stageFile}
               onUnstageFile={unstageFile}
               isCommitting={isCommitting}
-              onCommit={commit}
+              onCommit={handleCommit}
               gitOperationError={operationError}
+              onOpenDiff={handleOpenDiff}
+              onAmend={handleAmend}
+              lastCommitMessage={log[0]?.message ?? null}
+              log={log}
+              branches={branches}
+              tags={tags}
+              hasMoreLog={hasMore}
+              isLoadingLog={isLoadingHistory}
+              onLoadMoreLog={loadMore}
+              onAddToGitignore={handleAddToGitignore}
               hasKey={hasKey}
               apiKeyLoaded={apiKeyLoaded}
               keyStoreError={keyStoreError}
@@ -160,6 +241,14 @@ export default function App(): React.JSX.Element {
             onCancelExecution={cancelExecution}
             isOverlayOpen={quickOpen.isOpen}
             openedFileSignal={openedFileSignal}
+            diffTabs={diffTabs}
+            activeDiffTab={activeDiffTab}
+            onActivateDiffTab={activateDiffTab}
+            onCloseDiffTab={closeDiffTab}
+            diffContent={diffContent}
+            diffStaged={diffStaged}
+            onStageHunk={handleStageHunk}
+            onUnstageHunk={handleUnstageHunk}
           />
         </div>
       </div>

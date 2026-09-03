@@ -17,6 +17,7 @@ interface Props {
   onCreateDirectory: (parentPath: string, name: string) => void
   onRenameEntry: (node: FileTreeNode, newName: string) => void
   onDeleteEntry: (node: FileTreeNode) => void
+  onAddToGitignore: (node: FileTreeNode) => void
 }
 
 type DialogState =
@@ -39,8 +40,9 @@ export default function ExplorerPanel({
   onCreateFile,
   onCreateDirectory,
   onRenameEntry,
-  onDeleteEntry
-}: Props) {
+  onDeleteEntry,
+  onAddToGitignore
+}: Props): React.JSX.Element {
   const { menu, openMenu, closeMenu } = useContextMenu()
   const [dialog, setDialog] = useState<DialogState | null>(null)
 
@@ -95,7 +97,8 @@ export default function ExplorerPanel({
             onCreateFile: (parentPath) => setDialog({ mode: 'createFile', parentPath }),
             onCreateDirectory: (parentPath) => setDialog({ mode: 'createDirectory', parentPath }),
             onRename: (node) => setDialog({ mode: 'rename', node }),
-            onDelete: onDeleteEntry
+            onDelete: onDeleteEntry,
+            onAddToGitignore
           })}
           onClose={closeMenu}
         />

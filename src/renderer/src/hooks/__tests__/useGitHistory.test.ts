@@ -163,7 +163,7 @@ describe('useGitHistory', () => {
     mockGetTags.mockResolvedValue([])
 
     const { rerender, result } = renderHook(({ path }: { path: string | null }) => useGitHistory(path), {
-      initialProps: { path: '/project' }
+      initialProps: { path: '/project' as string | null }
     })
 
     // fetch が開始される（isLoading === true）

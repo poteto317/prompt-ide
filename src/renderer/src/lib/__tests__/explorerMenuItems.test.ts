@@ -10,7 +10,8 @@ function makeActions() {
     onCreateFile: vi.fn(),
     onCreateDirectory: vi.fn(),
     onRename: vi.fn(),
-    onDelete: vi.fn()
+    onDelete: vi.fn(),
+    onAddToGitignore: vi.fn()
   }
 }
 
@@ -25,20 +26,20 @@ describe('buildMenuItems', () => {
     expect(items.map((i) => i.label)).toEqual(['新規ファイル', '新規フォルダ'])
   })
 
-  it('node がディレクトリのとき4項目すべて返す', () => {
+  it('node がディレクトリのとき5項目すべて返す', () => {
     const items = buildMenuItems('/project', dirNode, makeActions())
-    expect(items.map((i) => i.label)).toEqual(['新規ファイル', '新規フォルダ', 'リネーム', '削除'])
+    expect(items.map((i) => i.label)).toEqual(['新規ファイル', '新規フォルダ', 'リネーム', '削除', '.gitignore に追加'])
   })
 
-  it('node がファイルのときリネーム・削除のみ返す', () => {
+  it('node がファイルのときリネーム・削除・.gitignore に追加が返される', () => {
     const items = buildMenuItems('/project', fileNode, makeActions())
-    expect(items.map((i) => i.label)).toEqual(['リネーム', '削除'])
+    expect(items.map((i) => i.label)).toEqual(['リネーム', '削除', '.gitignore に追加'])
   })
 
   it('各項目が一意な id を持つ(React の key に使うため)', () => {
     const items = buildMenuItems('/project', dirNode, makeActions())
     const ids = items.map((i) => i.id)
-    expect(ids).toEqual(['createFile', 'createDirectory', 'rename', 'delete'])
+    expect(ids).toEqual(['createFile', 'createDirectory', 'rename', 'delete', 'addToGitignore'])
     expect(new Set(ids).size).toBe(ids.length)
   })
 
@@ -68,5 +69,44 @@ describe('buildMenuItems', () => {
     const items = buildMenuItems('/project', dirNode, actions)
     items.find((i) => i.label === '削除')?.onSelect()
     expect(actions.onDelete).toHaveBeenCalledWith(dirNode)
+  })
+})
+
+describe('.gitignoreに追加', () => {
+  it('node が非nullのとき「.gitignore に追加」項目を含む', () => {
+    const node: FileTreeNode = { name: 'dist', path: '/project/dist', type: 'directory' }
+    const items = buildMenuItems('/project', node, {
+      onCreateFile: vi.fn(),
+      onCreateDirectory: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+      onAddToGitignore: vi.fn()
+    })
+    expect(items.some((item) => item.id === 'addToGitignore')).toBe(true)
+  })
+
+  it('「.gitignore に追加」を選択すると onAddToGitignore が node で呼ばれる', () => {
+    const node: FileTreeNode = { name: 'dist', path: '/project/dist', type: 'directory' }
+    const onAddToGitignore = vi.fn()
+    const items = buildMenuItems('/project', node, {
+      onCreateFile: vi.fn(),
+      onCreateDirectory: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+      onAddToGitignore
+    })
+    items.find((item) => item.id === 'addToGitignore')?.onSelect()
+    expect(onAddToGitignore).toHaveBeenCalledWith(node)
+  })
+
+  it('node が null のとき「.gitignore に追加」項目を含まない', () => {
+    const items = buildMenuItems('/project', null, {
+      onCreateFile: vi.fn(),
+      onCreateDirectory: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+      onAddToGitignore: vi.fn()
+    })
+    expect(items.some((item) => item.id === 'addToGitignore')).toBe(false)
   })
 })
