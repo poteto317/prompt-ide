@@ -151,4 +151,38 @@ describe('useGitHistory', () => {
     expect(mockGetLog).toHaveBeenCalledTimes(2) // 初期ロード1回 + loadMore1回
     expect(mockGetLog).toHaveBeenLastCalledWith(20, 20)
   })
+
+  it('folderPath が非null→null に遷移する際、fetch中でも isLoading は false に戻る', async () => {
+    // fetch が遅延するように設定
+    let resolveFetch: (value: any) => void
+    const fetchPromise = new Promise((resolve) => {
+      resolveFetch = resolve
+    })
+    mockGetLog.mockReturnValueOnce(fetchPromise as any)
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+
+    const { rerender, result } = renderHook(({ path }: { path: string | null }) => useGitHistory(path), {
+      initialProps: { path: '/project' }
+    })
+
+    // fetch が開始される（isLoading === true）
+    await waitFor(() => {
+      // getLog が呼ばれたことを確認
+      expect(mockGetLog).toHaveBeenCalledWith(20, 0)
+    })
+
+    // fetch完了前に folderPath を null に変更
+    rerender({ path: null })
+
+    // この時点で isLoading は false になるべき
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // 古い fetch が後から完了しても、state は更新されない（canceled済み）
+    resolveFetch!([{ hash: 'old', message: 'm', date: 'd', authorName: 'x' }])
+
+    // isLoading は false のまま、log は空のまま
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.log).toEqual([])
+  })
 })

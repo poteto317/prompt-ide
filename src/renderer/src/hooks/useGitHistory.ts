@@ -30,6 +30,7 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
         setBranches([])
         setTags([])
         setHasMore(false)
+        setIsLoading(false)
         return
       }
       setIsLoading(true)
@@ -46,9 +47,7 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
           setHasMore(logResult.length === PAGE_SIZE)
         }
       } finally {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
+        setIsLoading(false)
       }
     }
 
