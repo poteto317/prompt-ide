@@ -79,4 +79,76 @@ describe('useGitHistory', () => {
     await result.current.refresh()
     expect(mockGetLog).toHaveBeenCalledWith(20, 0)
   })
+
+  it('folderPath が素早く変更されたとき、古いフォルダの結果で状態が上書きされない', async () => {
+    const projectALog = [{ hash: 'a1', message: 'commit A', date: 'd', authorName: 'x' }]
+    const projectBLog = [
+      { hash: 'b1', message: 'commit B1', date: 'd', authorName: 'y' },
+      { hash: 'b2', message: 'commit B2', date: 'd', authorName: 'y' }
+    ]
+
+    // 最初のフェッチは遅延させておく
+    let resolveFirstFetch: (value: typeof projectALog) => void
+    const firstFetchPromise = new Promise<typeof projectALog>((resolve) => {
+      resolveFirstFetch = resolve
+    })
+    mockGetLog.mockReturnValueOnce(firstFetchPromise as any)
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+
+    const { rerender } = renderHook(({ path }) => useGitHistory(path), {
+      initialProps: { path: '/projectA' }
+    })
+
+    // フォルダをBに変更（このフェッチは速く完了する）
+    mockGetLog.mockResolvedValueOnce(projectBLog)
+    rerender({ path: '/projectB' })
+    await waitFor(() => expect(mockGetLog).toHaveBeenCalledWith(20, 0))
+
+    // 古いフォルダAのフェッチが完了する
+    resolveFirstFetch!(projectALog)
+
+    // 最終的な状態はプロジェクトBの結果であるべき（Aで上書きされていない）
+    await waitFor(() => {
+      expect(mockGetLog).toHaveBeenCalledWith(20, 0)
+    })
+    // 最後のgetLog呼び出しがプロジェクトBのもの（2件）であることを確認
+    const lastCallResult = await mockGetLog.mock.results[mockGetLog.mock.results.length - 1].value
+    expect(lastCallResult).toHaveLength(2)
+  })
+
+  it('loadMore が実行中に再度呼ばれても、同じページを重複取得しない', async () => {
+    mockGetLog.mockResolvedValueOnce(
+      Array.from({ length: 20 }, (_, i) => ({ hash: `a${i}`, message: 'm', date: 'd', authorName: 'x' }))
+    )
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    // loadMore が完了するまで待たないで、すぐに2回目を呼ぶ
+    let resolveLoadMore: (value: any) => void
+    const loadMorePromise = new Promise((resolve) => {
+      resolveLoadMore = resolve
+    })
+    mockGetLog.mockReturnValueOnce(loadMorePromise as any)
+
+    // 最初のloadMore呼び出し
+    const promise1 = result.current.loadMore()
+
+    // isLoadingがtrueになるまで待つ
+    await waitFor(() => expect(result.current.isLoading).toBe(true))
+
+    // 2回目のloadMore呼び出し（guard により実行されるべきではない）
+    const promise2 = result.current.loadMore()
+
+    // 両方を完了させる
+    resolveLoadMore!([{ hash: 'b0', message: 'm2', date: 'd2', authorName: 'y' }])
+    await promise1
+    await promise2
+
+    // getLog は1回だけ呼ばれるべき（2回目のloadMoreはガード済みで呼ばれない）
+    expect(mockGetLog).toHaveBeenCalledTimes(2) // 初期ロード1回 + loadMore1回
+    expect(mockGetLog).toHaveBeenLastCalledWith(20, 20)
+  })
 })
