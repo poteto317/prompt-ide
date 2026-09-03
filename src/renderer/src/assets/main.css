@@ -1070,6 +1070,82 @@ body {
   background: #2a2d2e;
 }
 
+.source-control-panel__stage-btn,
+.source-control-panel__unstage-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #cccccc;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.source-control-panel__file-item:hover .source-control-panel__stage-btn,
+.source-control-panel__file-item:hover .source-control-panel__unstage-btn {
+  display: flex;
+}
+
+.source-control-panel__stage-btn:hover,
+.source-control-panel__unstage-btn:hover {
+  background: #454545;
+}
+
+.source-control-panel__stage-btn:disabled,
+.source-control-panel__unstage-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.source-control-panel__commit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid #333333;
+}
+
+.source-control-panel__commit-input {
+  resize: vertical;
+  min-height: 48px;
+  padding: 6px 8px;
+  background: #3c3c3c;
+  border: 1px solid #454545;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.source-control-panel__commit-btn {
+  align-self: flex-end;
+  padding: 4px 12px;
+  background: #0e639c;
+  border: none;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.source-control-panel__commit-btn:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.source-control-panel__commit-btn:disabled {
+  background: #454545;
+  color: #8a8a8a;
+  cursor: default;
+}
+
 .source-control-panel__file-status {
   font-size: 11px;
   font-weight: 700;

@@ -9,6 +9,12 @@ const baseProps = {
   gitLoading: false,
   gitError: null as Error | null,
   onRefresh: vi.fn(),
+  stagingPaths: new Set<string>(),
+  onStage: vi.fn(),
+  onUnstage: vi.fn(),
+  isCommitting: false,
+  onCommit: vi.fn().mockResolvedValue(true),
+  operationError: null as Error | null,
 }
 
 const repoStatus: GitStatusResult = {
@@ -133,5 +139,24 @@ describe('SourceControlPanel', () => {
     const status: GitStatusResult = { ...repoStatus, branch: null }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('(no branch)')).toBeInTheDocument()
+  })
+
+  it('operationError があれば表示する', () => {
+    const gitStatus: GitStatusResult = { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] }
+    render(
+      <SourceControlPanel
+        gitStatus={gitStatus}
+        gitLoading={false}
+        gitError={null}
+        onRefresh={vi.fn()}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onUnstage={vi.fn()}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        operationError={new Error('ステージに失敗しました')}
+      />
+    )
+    expect(screen.getByText('ステージに失敗しました')).toBeInTheDocument()
   })
 })

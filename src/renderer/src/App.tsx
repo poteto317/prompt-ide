@@ -51,6 +51,12 @@ export default function App(): React.JSX.Element {
     gitLoading,
     gitError,
     refreshGitStatus,
+    stagingPaths,
+    stageFile,
+    unstageFile,
+    isCommitting,
+    commit,
+    operationError,
     hasKey,
     apiKeyLoaded,
     keyStoreError,
@@ -120,6 +126,12 @@ export default function App(): React.JSX.Element {
               gitLoading={gitLoading}
               gitError={gitError}
               onRefreshGitStatus={refreshGitStatus}
+              stagingPaths={stagingPaths}
+              onStageFile={stageFile}
+              onUnstageFile={unstageFile}
+              isCommitting={isCommitting}
+              onCommit={commit}
+              gitOperationError={operationError}
               hasKey={hasKey}
               apiKeyLoaded={apiKeyLoaded}
               keyStoreError={keyStoreError}

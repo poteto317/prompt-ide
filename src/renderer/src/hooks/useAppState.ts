@@ -3,6 +3,7 @@ import { useFileSystem } from './useFileSystem'
 import { usePrompts } from './usePrompts'
 import { useProgressTasks } from './useProgressTasks'
 import { useGitStatus } from './useGitStatus'
+import { useGitOperations } from './useGitOperations'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
@@ -14,6 +15,7 @@ type AppState = { quickOpen: ReturnType<typeof useQuickOpen> } & ReturnType<type
   ReturnType<typeof usePrompts> &
   ReturnType<typeof useProgressTasks> &
   ReturnType<typeof useGitStatus> &
+  ReturnType<typeof useGitOperations> &
   ReturnType<typeof useSettings> &
   ReturnType<typeof usePromptExecution> &
   ReturnType<typeof useHistory> &
@@ -25,6 +27,7 @@ export function useAppState(): AppState {
   const prompts = usePrompts()
   const progress = useProgressTasks()
   const git = useGitStatus(fileSystem.folderPath)
+  const gitOperations = useGitOperations(git.refreshGitStatus)
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
@@ -50,6 +53,7 @@ export function useAppState(): AppState {
     ...prompts,
     ...progress,
     ...git,
+    ...gitOperations,
     ...settings,
     ...execution,
     ...history,

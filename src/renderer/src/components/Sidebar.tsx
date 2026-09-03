@@ -55,6 +55,12 @@ interface Props {
   gitLoading: boolean
   gitError: Error | null
   onRefreshGitStatus: () => void
+  stagingPaths: ReadonlySet<string>
+  onStageFile: (path: string) => void
+  onUnstageFile: (path: string) => void
+  isCommitting: boolean
+  onCommit: (message: string) => Promise<boolean>
+  gitOperationError: Error | null
   hasKey: boolean
   apiKeyLoaded: boolean
   keyStoreError: string | null
@@ -102,6 +108,12 @@ export default function Sidebar({
   gitLoading,
   gitError,
   onRefreshGitStatus,
+  stagingPaths,
+  onStageFile,
+  onUnstageFile,
+  isCommitting,
+  onCommit,
+  gitOperationError,
   hasKey,
   apiKeyLoaded,
   keyStoreError,
@@ -109,7 +121,7 @@ export default function Sidebar({
   modelSettings,
   modelSettingsLoaded,
   onSaveModelSettings
-}: Props) {
+}: Props): React.JSX.Element {
   return (
     <div className="sidebar">
       <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
@@ -169,6 +181,12 @@ export default function Sidebar({
           gitLoading={gitLoading}
           gitError={gitError}
           onRefresh={onRefreshGitStatus}
+          stagingPaths={stagingPaths}
+          onStage={onStageFile}
+          onUnstage={onUnstageFile}
+          isCommitting={isCommitting}
+          onCommit={onCommit}
+          operationError={gitOperationError}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'settings'}>

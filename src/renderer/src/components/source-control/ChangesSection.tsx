@@ -3,9 +3,15 @@ import { statusChar } from '../../lib/gitUtils'
 
 interface Props {
   files: GitFileStatus[]
+  stagingPaths: ReadonlySet<string>
+  onStage: (path: string) => void
 }
 
-export default function ChangesSection({ files }: Props) {
+export default function ChangesSection({
+  files,
+  stagingPaths,
+  onStage
+}: Props): React.JSX.Element | null {
   const changed = files.filter((f) => f.workingDir !== ' ' || f.index === '?')
   if (changed.length === 0) return null
   return (
@@ -18,6 +24,15 @@ export default function ChangesSection({ files }: Props) {
               {f.index === '?' ? statusChar(f.index) : statusChar(f.workingDir)}
             </span>
             <span className="source-control-panel__file-path">{f.path}</span>
+            <button
+              type="button"
+              className="source-control-panel__stage-btn"
+              onClick={() => onStage(f.path)}
+              disabled={stagingPaths.has(f.path)}
+              aria-label={`${f.path} をステージ`}
+            >
+              +
+            </button>
           </li>
         ))}
       </ul>
