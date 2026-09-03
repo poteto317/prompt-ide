@@ -56,17 +56,13 @@ export async function deleteEntry(targetPath: string): Promise<void> {
   await rm(targetPath, { recursive: true })
 }
 
-function isEnoent(err: unknown): boolean {
-  return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT'
-}
-
 export async function addToGitignore(folderPath: string, relativePath: string): Promise<void> {
   const gitignorePath = join(folderPath, '.gitignore')
   let existingContent = ''
   try {
     existingContent = await readFile(gitignorePath, 'utf-8')
   } catch (err) {
-    if (!isEnoent(err)) throw err
+    if (!isEnoentError(err)) throw err
   }
   const existingLines = existingContent.split('\n').map((line) => line.trim())
   if (existingLines.includes(relativePath)) return
