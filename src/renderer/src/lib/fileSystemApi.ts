@@ -31,3 +31,7 @@ export function renameEntry(path: string, newName: string): Promise<void> {
 export function deleteEntry(path: string): Promise<void> {
   return window.api.deleteEntry(path)
 }
+
+export function addToGitignore(targetPath: string): Promise<void> {
+  return window.api.addToGitignore(targetPath)
+}

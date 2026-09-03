@@ -8,7 +8,8 @@ import {
   createFile,
   createDirectory,
   renameEntry,
-  deleteEntry
+  deleteEntry,
+  addToGitignore
 } from '../fileSystemApi'
 
 const mockApi = {
@@ -19,7 +20,8 @@ const mockApi = {
   createFile: vi.fn(),
   createDirectory: vi.fn(),
   renameEntry: vi.fn(),
-  deleteEntry: vi.fn()
+  deleteEntry: vi.fn(),
+  addToGitignore: vi.fn()
 }
 
 beforeEach(() => {
@@ -99,5 +101,12 @@ describe('deleteEntry', () => {
     mockApi.deleteEntry.mockResolvedValue(undefined)
     await deleteEntry('/project/a.txt')
     expect(mockApi.deleteEntry).toHaveBeenCalledWith('/project/a.txt')
+  })
+})
+
+describe('addToGitignore', () => {
+  it('window.api.addToGitignore を targetPath で呼ぶ', async () => {
+    await addToGitignore('/project/dist')
+    expect(mockApi.addToGitignore).toHaveBeenCalledWith('/project/dist')
   })
 })

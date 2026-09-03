@@ -3,6 +3,8 @@ import type {
   CLIOnlyToolId,
   FileTreeNode,
   GitStatusResult,
+  GitLogEntry,
+  GitBranch,
   HistoryEntry,
   ModelSettings,
   Prompt,
@@ -25,6 +27,14 @@ declare global {
       stageFile(filePath: string): Promise<void>
       unstageFile(filePath: string): Promise<void>
       commitChanges(message: string): Promise<void>
+      getDiff(filePath: string, staged: boolean): Promise<string>
+      stageHunk(filePath: string, patch: string): Promise<void>
+      unstageHunk(filePath: string, patch: string): Promise<void>
+      getLog(limit: number, skip: number): Promise<GitLogEntry[]>
+      getBranches(): Promise<GitBranch[]>
+      getTags(): Promise<string[]>
+      amendCommit(message: string): Promise<void>
+      addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>
       getModelSettings(): Promise<ModelSettings>

@@ -1,12 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
-import { getGitStatus, stageFile, unstageFile, commitChanges } from '../gitApi'
+import {
+  getGitStatus,
+  stageFile,
+  unstageFile,
+  commitChanges,
+  getDiff,
+  stageHunk,
+  unstageHunk,
+  getLog,
+  getBranches,
+  getTags,
+  amendCommit
+} from '../gitApi'
 
 const mockApi = {
   getGitStatus: vi.fn(),
   stageFile: vi.fn(),
   unstageFile: vi.fn(),
   commitChanges: vi.fn(),
+  getDiff: vi.fn(),
+  stageHunk: vi.fn(),
+  unstageHunk: vi.fn(),
+  getLog: vi.fn(),
+  getBranches: vi.fn(),
+  getTags: vi.fn(),
+  amendCommit: vi.fn(),
 }
 
 beforeEach(() => {
@@ -59,5 +78,60 @@ describe('commitChanges', () => {
     mockApi.commitChanges.mockResolvedValue(undefined)
     await commitChanges('feat: 新機能')
     expect(mockApi.commitChanges).toHaveBeenCalledWith('feat: 新機能')
+  })
+})
+
+describe('getDiff', () => {
+  it('window.api.getDiff を filePath/staged で呼ぶ', async () => {
+    ;(mockApi.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue('DIFF')
+    const result = await getDiff('src/index.ts', true)
+    expect(mockApi.getDiff).toHaveBeenCalledWith('src/index.ts', true)
+    expect(result).toBe('DIFF')
+  })
+})
+
+describe('stageHunk', () => {
+  it('window.api.stageHunk を filePath/patch で呼ぶ', async () => {
+    await stageHunk('src/index.ts', 'PATCH')
+    expect(mockApi.stageHunk).toHaveBeenCalledWith('src/index.ts', 'PATCH')
+  })
+})
+
+describe('unstageHunk', () => {
+  it('window.api.unstageHunk を filePath/patch で呼ぶ', async () => {
+    await unstageHunk('src/index.ts', 'PATCH')
+    expect(mockApi.unstageHunk).toHaveBeenCalledWith('src/index.ts', 'PATCH')
+  })
+})
+
+describe('getLog', () => {
+  it('window.api.getLog を limit/skip で呼ぶ', async () => {
+    ;(mockApi.getLog as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    const result = await getLog(20, 0)
+    expect(mockApi.getLog).toHaveBeenCalledWith(20, 0)
+    expect(result).toEqual([])
+  })
+})
+
+describe('getBranches', () => {
+  it('window.api.getBranches を呼ぶ', async () => {
+    ;(mockApi.getBranches as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    await getBranches()
+    expect(mockApi.getBranches).toHaveBeenCalled()
+  })
+})
+
+describe('getTags', () => {
+  it('window.api.getTags を呼ぶ', async () => {
+    ;(mockApi.getTags as ReturnType<typeof vi.fn>).mockResolvedValue([])
+    await getTags()
+    expect(mockApi.getTags).toHaveBeenCalled()
+  })
+})
+
+describe('amendCommit', () => {
+  it('window.api.amendCommit を message で呼ぶ', async () => {
+    await amendCommit('feat: 修正後')
+    expect(mockApi.amendCommit).toHaveBeenCalledWith('feat: 修正後')
   })
 })

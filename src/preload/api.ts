@@ -3,6 +3,8 @@ import type {
   CLIOnlyToolId,
   FileTreeNode,
   GitStatusResult,
+  GitLogEntry,
+  GitBranch,
   HistoryEntry,
   ModelSettings,
   Prompt,
@@ -27,6 +29,19 @@ export const api = {
   stageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:stage', filePath),
   unstageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:unstage', filePath),
   commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
+  getDiff: (filePath: string, staged: boolean): Promise<string> =>
+    ipcRenderer.invoke('git:getDiff', filePath, staged),
+  stageHunk: (filePath: string, patch: string): Promise<void> =>
+    ipcRenderer.invoke('git:stageHunk', filePath, patch),
+  unstageHunk: (filePath: string, patch: string): Promise<void> =>
+    ipcRenderer.invoke('git:unstageHunk', filePath, patch),
+  getLog: (limit: number, skip: number): Promise<GitLogEntry[]> =>
+    ipcRenderer.invoke('git:getLog', limit, skip),
+  getBranches: (): Promise<GitBranch[]> => ipcRenderer.invoke('git:getBranches'),
+  getTags: (): Promise<string[]> => ipcRenderer.invoke('git:getTags'),
+  amendCommit: (message: string): Promise<void> => ipcRenderer.invoke('git:amendCommit', message),
+  addToGitignore: (targetPath: string): Promise<void> =>
+    ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),
   getModelSettings: (): Promise<ModelSettings> => ipcRenderer.invoke('settings:getModelSettings'),
