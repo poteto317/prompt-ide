@@ -97,40 +97,51 @@ export default function App(): React.JSX.Element {
 
   const [diffContent, setDiffContent] = useState<string | null>(null)
   const [diffStaged, setDiffStaged] = useState(false)
+  // ハンクのステージ/アンステージ後に同じ activeDiffTab のまま diff を再取得させるための
+  // 明示的なトリガー。activeDiffTab 自体は変わらないため、依存配列に activeDiffTab だけを
+  // 置いた effect では変化を検知できない
+  const [diffRefreshSignal, setDiffRefreshSignal] = useState(0)
 
+  // タブを開く操作(openDiffTab の呼び出し)と、diff 内容の取得(activeDiffTab の変化に対する
+  // 反応)を分離する。以前は同じ関数内で両方行っていたため、
+  // openDiffTab → activeDiffTab 更新(常に新しいオブジェクト参照) → 監視 effect 発火 →
+  // handleOpenDiff が再度 openDiffTab を呼ぶ → … という無限ループが発生していた
   const handleOpenDiff = useCallback(
-    async (path: string, staged: boolean): Promise<void> => {
+    (path: string, staged: boolean): void => {
       openDiffTab({ path, staged })
-      const content = await gitApi.getDiff(path, staged)
-      setDiffContent(content)
-      setDiffStaged(staged)
     },
     [openDiffTab]
   )
 
   useEffect(() => {
     if (activeDiffTab === null) return
-    // diff 内容の取得は activeDiffTab の変更を起点とする外部システム(git)との
-    // 同期であり、取得結果を setState する正当なデータフェッチパターンのため抑制する
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void handleOpenDiff(activeDiffTab.path, activeDiffTab.staged)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDiffTab])
+    // タブ切替中に古い fetch が後から解決しても、現在のタブの表示を上書きしないよう
+    // cancelled フラグで無効化する
+    let cancelled = false
+    void (async (): Promise<void> => {
+      const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
+      if (cancelled) return
+      setDiffContent(content)
+      setDiffStaged(activeDiffTab.staged)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeDiffTab, diffRefreshSignal])
 
   const handleStageHunk = async (patch: string): Promise<void> => {
     if (activeDiffTab === null) return
     await gitApi.stageHunk(activeDiffTab.path, patch)
     await refreshGitStatus()
-    const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
-    setDiffContent(content)
+    // diff の再取得は上の effect に一任する(stale closure による古いタブの上書きを防ぐため)
+    setDiffRefreshSignal((n) => n + 1)
   }
 
   const handleUnstageHunk = async (patch: string): Promise<void> => {
     if (activeDiffTab === null) return
     await gitApi.unstageHunk(activeDiffTab.path, patch)
     await refreshGitStatus()
-    const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
-    setDiffContent(content)
+    setDiffRefreshSignal((n) => n + 1)
   }
 
   const handleCommit = async (message: string): Promise<boolean> => {
