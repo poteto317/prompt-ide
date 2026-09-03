@@ -9,6 +9,10 @@ const mockCommit = vi.hoisted(() => vi.fn())
 const mockGetDiff = vi.hoisted(() => vi.fn())
 const mockStageHunk = vi.hoisted(() => vi.fn())
 const mockUnstageHunk = vi.hoisted(() => vi.fn())
+const mockGetLog = vi.hoisted(() => vi.fn())
+const mockGetBranches = vi.hoisted(() => vi.fn())
+const mockGetTags = vi.hoisted(() => vi.fn())
+const mockAmendCommit = vi.hoisted(() => vi.fn())
 
 vi.mock('../../gitService', () => ({
   getGitStatus: mockGetGitStatus,
@@ -18,6 +22,10 @@ vi.mock('../../gitService', () => ({
   getDiff: mockGetDiff,
   stageHunk: mockStageHunk,
   unstageHunk: mockUnstageHunk,
+  getLog: mockGetLog,
+  getBranches: mockGetBranches,
+  getTags: mockGetTags,
+  amendCommit: mockAmendCommit,
 }))
 
 import { registerGitHandlers } from '../../handlers/gitHandlers'
@@ -333,6 +341,54 @@ describe('registerGitHandlers', () => {
       await getRegisteredHandler('git:unstageHunk')(makeEvent(1), 'src/index.ts', 'PATCH')
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
       expect(mockUnstageHunk).toHaveBeenCalledWith('/project', '/project/src/index.ts', 'PATCH')
+    })
+  })
+
+  describe('git:getLog', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:getLog')(makeEvent(1), 20, 0)).rejects.toThrow(
+        'No folder open'
+      )
+    })
+
+    it('folderAccess の allowedFolder と limit/skip を引数に getLog を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetLog.mockResolvedValue([])
+      await getRegisteredHandler('git:getLog')(makeEvent(1), 20, 0)
+      expect(mockGetLog).toHaveBeenCalledWith('/project', 20, 0)
+    })
+  })
+
+  describe('git:getBranches', () => {
+    it('folderAccess の allowedFolder を引数に getBranches を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetBranches.mockResolvedValue([])
+      await getRegisteredHandler('git:getBranches')(makeEvent(1))
+      expect(mockGetBranches).toHaveBeenCalledWith('/project')
+    })
+  })
+
+  describe('git:getTags', () => {
+    it('folderAccess の allowedFolder を引数に getTags を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetTags.mockResolvedValue([])
+      await getRegisteredHandler('git:getTags')(makeEvent(1))
+      expect(mockGetTags).toHaveBeenCalledWith('/project')
+    })
+  })
+
+  describe('git:amendCommit', () => {
+    it('folderAccess の allowedFolder と message を引数に amendCommit を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockAmendCommit.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:amendCommit')(makeEvent(1), 'feat: 修正後')
+      expect(mockAmendCommit).toHaveBeenCalledWith('/project', 'feat: 修正後')
     })
   })
 })

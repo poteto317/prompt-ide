@@ -1,6 +1,18 @@
 import { resolve, dirname } from 'path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { getGitStatus, stageFile, unstageFile, commit, getDiff, stageHunk, unstageHunk } from '../gitService'
+import {
+  getGitStatus,
+  stageFile,
+  unstageFile,
+  commit,
+  getDiff,
+  stageHunk,
+  unstageHunk,
+  getLog,
+  getBranches,
+  getTags,
+  amendCommit,
+} from '../gitService'
 import type { FolderAccessManager } from '../folderAccessManager'
 
 function isEnoent(err: unknown): boolean {
@@ -82,5 +94,29 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = folderAccess.get(event.sender.id)
     if (allowedFolder === undefined) throw new Error('No folder open')
     await commit(allowedFolder, message)
+  })
+
+  ipcMain.handle('git:getLog', async (event: IpcMainInvokeEvent, limit: number, skip: number) => {
+    const allowedFolder = folderAccess.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
+    return getLog(allowedFolder, limit, skip)
+  })
+
+  ipcMain.handle('git:getBranches', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = folderAccess.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
+    return getBranches(allowedFolder)
+  })
+
+  ipcMain.handle('git:getTags', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = folderAccess.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
+    return getTags(allowedFolder)
+  })
+
+  ipcMain.handle('git:amendCommit', async (event: IpcMainInvokeEvent, message: string) => {
+    const allowedFolder = folderAccess.get(event.sender.id)
+    if (allowedFolder === undefined) throw new Error('No folder open')
+    await amendCommit(allowedFolder, message)
   })
 }
