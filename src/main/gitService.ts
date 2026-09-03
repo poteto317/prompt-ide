@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { join } from 'path'
 import { readFile } from 'node:fs/promises'
 import simpleGit from 'simple-git'
@@ -69,4 +70,37 @@ export async function getDiff(
   }
   const args = staged ? ['--cached', '-U3', '--', filePath] : ['-U3', '--', filePath]
   return git.diff(args)
+}
+
+function runGitApply(cwd: string, filePath: string, args: string[], input: string): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    const proc = spawn('git', args, { cwd })
+    let stderr = ''
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+    })
+    proc.on('error', reject)
+    proc.on('close', (code: number) => {
+      if (code === 0) {
+        resolvePromise()
+      } else {
+        reject(new Error(`git apply failed for ${filePath}: ${stderr.trim()}`))
+      }
+    })
+    proc.stdin.write(input)
+    proc.stdin.end()
+  })
+}
+
+export async function stageHunk(folderPath: string, filePath: string, patch: string): Promise<void> {
+  await runGitApply(folderPath, filePath, ['apply', '--cached', '--whitespace=nowarn', '-'], patch)
+}
+
+export async function unstageHunk(folderPath: string, filePath: string, patch: string): Promise<void> {
+  await runGitApply(
+    folderPath,
+    filePath,
+    ['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'],
+    patch
+  )
 }

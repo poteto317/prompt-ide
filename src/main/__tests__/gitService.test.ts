@@ -18,14 +18,19 @@ const mockSimpleGit = vi.hoisted(() =>
 )
 
 const mockReadFile = vi.hoisted(() => vi.fn())
+const mockSpawn = vi.hoisted(() => vi.fn())
 
 vi.mock('simple-git', () => ({ default: mockSimpleGit }))
 vi.mock('node:fs/promises', () => ({
   default: { readFile: mockReadFile },
   readFile: mockReadFile,
 }))
+vi.mock('node:child_process', () => ({
+  default: { spawn: mockSpawn },
+  spawn: mockSpawn,
+}))
 
-import { getGitStatus, stageFile, unstageFile, commit, getDiff } from '../gitService'
+import { getGitStatus, stageFile, unstageFile, commit, getDiff, stageHunk, unstageHunk } from '../gitService'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -178,5 +183,64 @@ describe('getDiff', () => {
     mockStatus.mockResolvedValue({ files: [{ path: 'src/index.ts', index: 'M', working_dir: 'M' }] })
     mockDiff.mockRejectedValue(new Error('diff failed'))
     await expect(getDiff('/project', 'src/index.ts', false)).rejects.toThrow('diff failed')
+  })
+})
+
+import { EventEmitter } from 'node:events'
+
+function createMockProcess(): {
+  proc: EventEmitter & { stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> }; stderr: EventEmitter }
+  emitClose: (code: number) => void
+  emitStderr: (data: string) => void
+} {
+  const proc = new EventEmitter() as EventEmitter & {
+    stdin: { write: ReturnType<typeof vi.fn>; end: ReturnType<typeof vi.fn> }
+    stderr: EventEmitter
+  }
+  proc.stdin = { write: vi.fn(), end: vi.fn() }
+  proc.stderr = new EventEmitter()
+  return {
+    proc,
+    emitClose: (code: number) => proc.emit('close', code),
+    emitStderr: (data: string) => proc.stderr.emit('data', Buffer.from(data)),
+  }
+}
+
+describe('stageHunk', () => {
+  it('git apply --cached を実行し、patch を stdin に書き込む', async () => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = stageHunk('/project', 'src/index.ts', 'PATCH_TEXT')
+    emitClose(0)
+    await promise
+    expect(mockSpawn).toHaveBeenCalledWith('git', ['apply', '--cached', '--whitespace=nowarn', '-'], {
+      cwd: '/project',
+    })
+    expect(proc.stdin.write).toHaveBeenCalledWith('PATCH_TEXT')
+    expect(proc.stdin.end).toHaveBeenCalled()
+  })
+
+  it('プロセスが非ゼロ終了コードの場合、stderr を含むエラーで reject する', async () => {
+    const { proc, emitClose, emitStderr } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = stageHunk('/project', 'src/index.ts', 'PATCH_TEXT')
+    emitStderr('patch does not apply')
+    emitClose(1)
+    await expect(promise).rejects.toThrow(/patch does not apply/)
+  })
+})
+
+describe('unstageHunk', () => {
+  it('git apply --cached --reverse を実行する', async () => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = unstageHunk('/project', 'src/index.ts', 'PATCH_TEXT')
+    emitClose(0)
+    await promise
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'git',
+      ['apply', '--cached', '--reverse', '--whitespace=nowarn', '-'],
+      { cwd: '/project' }
+    )
   })
 })
