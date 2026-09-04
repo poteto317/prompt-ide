@@ -13,6 +13,7 @@ const mockGetLog = vi.hoisted(() => vi.fn())
 const mockGetBranches = vi.hoisted(() => vi.fn())
 const mockGetTags = vi.hoisted(() => vi.fn())
 const mockAmendCommit = vi.hoisted(() => vi.fn())
+const mockToPosixRelativePath = vi.hoisted(() => vi.fn())
 
 vi.mock('../../gitService', () => ({
   getGitStatus: mockGetGitStatus,
@@ -26,6 +27,10 @@ vi.mock('../../gitService', () => ({
   getBranches: mockGetBranches,
   getTags: mockGetTags,
   amendCommit: mockAmendCommit,
+}))
+
+vi.mock('../../pathNormalize', () => ({
+  toPosixRelativePath: mockToPosixRelativePath,
 }))
 
 import { registerGitHandlers } from '../../handlers/gitHandlers'
@@ -55,6 +60,9 @@ function makeEvent(senderId: number) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 既存の git:getDiff テストはこの正規化を素通し(恒等関数)として扱う。
+  // 正規化そのものの振る舞いは pathNormalize.test.ts で検証する
+  mockToPosixRelativePath.mockImplementation((p: string) => p)
 })
 
 describe('registerGitHandlers', () => {
@@ -331,6 +339,27 @@ describe('registerGitHandlers', () => {
       await getRegisteredHandler('git:getDiff')(makeEvent(1), 'sub/dir/file.ts', true)
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/sub/dir/file.ts')
       expect(mockGetDiff).toHaveBeenCalledWith('/project', 'sub/dir/file.ts', true)
+    })
+
+    it('relative() の結果を toPosixRelativePath に通してから getDiff に渡す（Windows のバックスラッシュ区切りを正規化するため）', async () => {
+      // path.relative は Windows では \ 区切りの文字列を返すが、simple-git の相対パス
+      // 表現は常に / 区切りのため、toPosixRelativePath による正規化を経由することを
+      // 統合的に検証する。正規化関数自体の変換ロジックは pathNormalize.test.ts で
+      // 単体テストする(実行環境自体を Windows にできないため、ここでは
+      // toPosixRelativePath が実際に呼び出され、その戻り値が getDiff に渡ることのみ確認する)
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetDiff.mockResolvedValue('DIFF_TEXT')
+      mockToPosixRelativePath.mockReturnValue('NORMALIZED_PATH')
+
+      await getRegisteredHandler('git:getDiff')(makeEvent(1), 'sub/dir/file.ts', false)
+
+      expect(mockToPosixRelativePath).toHaveBeenCalledWith('sub/dir/file.ts')
+      expect(mockGetDiff).toHaveBeenCalledWith('/project', 'NORMALIZED_PATH', false)
     })
   })
 

@@ -13,6 +13,7 @@ const mockRenameEntry = vi.hoisted(() => vi.fn())
 const mockDeleteEntry = vi.hoisted(() => vi.fn())
 const mockAddToGitignore = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
+const mockToPosixRelativePath = vi.hoisted(() => vi.fn())
 
 vi.mock('../../dialogService', () => ({ openFolderDialog: mockOpenFolderDialog }))
 vi.mock('../../fileSystem', () => ({
@@ -28,6 +29,9 @@ vi.mock('../../fileSystem', () => ({
 vi.mock('node:fs/promises', () => ({
   default: { realpath: mockRealpath },
   realpath: mockRealpath
+}))
+vi.mock('../../pathNormalize', () => ({
+  toPosixRelativePath: mockToPosixRelativePath
 }))
 
 import { registerFileSystemHandlers } from '../../handlers/fileSystemHandlers'
@@ -72,6 +76,9 @@ function makeEnoentError(path: string): NodeJS.ErrnoException {
 beforeEach(() => {
   vi.clearAllMocks()
   mockRealpath.mockImplementation((p: string) => Promise.resolve(resolvePath(p)))
+  // 既存の fs:addToGitignore テストはこの正規化を素通し(恒等関数)として扱う。
+  // 正規化そのものの変換ロジックは pathNormalize.test.ts で検証する
+  mockToPosixRelativePath.mockImplementation((p: string) => p)
 })
 
 describe('registerFileSystemHandlers', () => {
@@ -535,6 +542,25 @@ describe('registerFileSystemHandlers', () => {
       await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/dist')
       expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'dist')
+    })
+
+    it('relative() の結果を toPosixRelativePath に通してから addToGitignore に渡す（Windows のバックスラッシュ区切りを正規化するため）', async () => {
+      // path.relative は Windows では \ 区切りの文字列を返すが、.gitignore のパターンは
+      // / 区切りでなければ無効になる。toPosixRelativePath による正規化を経由することを
+      // 統合的に検証する。正規化関数自体の変換ロジックは pathNormalize.test.ts で単体テストする
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockAddToGitignore.mockResolvedValue(undefined)
+      mockToPosixRelativePath.mockReturnValue('NORMALIZED_PATH')
+
+      await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/sub/dir/generated')
+
+      expect(mockToPosixRelativePath).toHaveBeenCalledWith('sub/dir/generated')
+      expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'NORMALIZED_PATH')
     })
   })
 })

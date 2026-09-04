@@ -14,6 +14,7 @@ import {
   amendCommit,
 } from '../gitService'
 import type { FolderAccessManager } from '../folderAccessManager'
+import { toPosixRelativePath } from '../pathNormalize'
 
 function isEnoent(err: unknown): boolean {
   return err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT'
@@ -66,8 +67,11 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
       await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
       // 境界チェックは絶対パスで行うが、getDiff/simple-git の status().files[].path は
       // リポジトリルートからの相対パスなので、そちらへ合わせて相対パスを渡す。
-      // 絶対パスのまま渡すと未追跡ファイルの判定が一致せず、疑似diffが生成されない
-      return getDiff(allowedFolder, relative(allowedFolder, resolvedPath), staged)
+      // 絶対パスのまま渡すと未追跡ファイルの判定が一致せず、疑似diffが生成されない。
+      // path.relative は Windows では区切り文字が \ になるが、simple-git の相対パスは
+      // 常に / 区切りのため、比較が一致するようフォワードスラッシュへ正規化する
+      const relativePath = toPosixRelativePath(relative(allowedFolder, resolvedPath))
+      return getDiff(allowedFolder, relativePath, staged)
     }
   )
 

@@ -16,6 +16,7 @@ import type { FolderAccessManager } from '../folderAccessManager'
 import { getAllowedFolder, assertFileAccess } from './fileAccessGuard'
 import { assertValidEntryName } from './entryNameValidator'
 import { convertFsError, convertFsAccessError } from './fsErrorConverter'
+import { toPosixRelativePath } from '../pathNormalize'
 
 // fs:createFile と fs:createDirectory は、実際に呼び出す fs 操作以外は
 // 名前検証・アクセス境界チェック・エラー変換まで全く同じ流れのため共通化する
@@ -110,7 +111,9 @@ export function registerFileSystemHandlers(
   ipcMain.handle('fs:addToGitignore', async (event: IpcMainInvokeEvent, targetPath: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await folderAccess.assertWithinFolder(allowedFolder, targetPath)
-    const relativePath = relative(allowedFolder, targetPath)
+    // path.relative は Windows では \ 区切りの文字列を返すが、.gitignore のパターンは
+    // / 区切りでなければ無効になる(あるいは意図通りに一致しない)ため正規化する
+    const relativePath = toPosixRelativePath(relative(allowedFolder, targetPath))
     await addToGitignore(allowedFolder, relativePath)
   })
 }
