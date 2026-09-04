@@ -21,22 +21,22 @@ export default function ChangesSection({
       <h3 className="source-control-panel__section-title">変更 ({changed.length})</h3>
       <ul className="source-control-panel__file-list">
         {changed.map((f) => (
-          <li
-            key={f.path}
-            className="source-control-panel__file-item"
-            onClick={() => onOpenDiff(f.path)}
-          >
+          <li key={f.path} className="source-control-panel__file-item">
             <span className="source-control-panel__file-status source-control-panel__file-status--changed">
               {f.index === '?' ? statusChar(f.index) : statusChar(f.workingDir)}
             </span>
-            <span className="source-control-panel__file-path">{f.path}</span>
+            <button
+              type="button"
+              className="source-control-panel__file-path"
+              onClick={() => onOpenDiff(f.path)}
+              aria-label={`${f.path} の差分を表示`}
+            >
+              {f.path}
+            </button>
             <button
               type="button"
               className="source-control-panel__stage-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onStage(f.path)
-              }}
+              onClick={() => onStage(f.path)}
               disabled={stagingPaths.has(f.path)}
               aria-label={`${f.path} をステージ`}
             >

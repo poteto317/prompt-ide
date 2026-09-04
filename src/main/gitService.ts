@@ -43,15 +43,16 @@ function buildUntrackedDiff(filePath: string, content: string): string {
   const lines = content.split('\n')
   // 末尾の空行は split の仕様上、実ファイルに無い余分な要素になるため取り除く
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
-  const addedLines = lines.map((line) => `+${line}`).join('\n')
-  return (
+  const header =
     `diff --git a/${filePath} b/${filePath}\n` +
     `new file mode 100644\n` +
     `--- /dev/null\n` +
     `+++ b/${filePath}\n` +
-    `@@ -0,0 +1,${lines.length} @@\n` +
-    `${addedLines}\n`
-  )
+    `@@ -0,0 +1,${lines.length} @@\n`
+  // 空ファイル(lines.length === 0)の場合、追加行が無いので末尾に余分な改行を付けない
+  if (lines.length === 0) return header
+  const addedLines = lines.map((line) => `+${line}`).join('\n')
+  return `${header}${addedLines}\n`
 }
 
 export async function getDiff(
@@ -107,7 +108,10 @@ export async function unstageHunk(folderPath: string, filePath: string, patch: s
 
 export async function getLog(folderPath: string, limit: number, skip: number): Promise<GitLogEntry[]> {
   const git = simpleGit(folderPath)
-  const format = '%H%x1f%s%x1f%aI%x1f%an%x1e'
+  // %s(subject 1行のみ)ではなく %B(生のコミットメッセージ全体、複数行本文を含む)を使う。
+  // amend 時にこの message をそのままメッセージ欄へ入れるため、%s のままだと複数行の
+  // コミット本文が amend のたびに1行に切り詰められてしまう
+  const format = '%H%x1f%B%x1f%aI%x1f%an%x1e'
   let output: string
   try {
     output = await git.raw(['log', `--max-count=${limit}`, `--skip=${skip}`, `--pretty=format:${format}`])
@@ -119,8 +123,10 @@ export async function getLog(folderPath: string, limit: number, skip: number): P
     .map((record) => record.trim())
     .filter((record) => record.length > 0)
     .map((record) => {
-      const [hash, message, date, authorName] = record.split('\x1f')
-      return { hash, message, date, authorName }
+      const [hash, rawMessage, date, authorName] = record.split('\x1f')
+      // %B は本文末尾に改行を含むことがあるため、複数行本文の内部の改行は保ちつつ
+      // 前後の余分な空白/改行だけを取り除く
+      return { hash, message: rawMessage.trim(), date, authorName }
     })
 }
 

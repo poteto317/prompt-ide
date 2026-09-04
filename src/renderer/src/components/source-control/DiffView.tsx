@@ -5,6 +5,8 @@ interface Props {
   staged: boolean
   onStageHunk: (patch: string) => void
   onUnstageHunk: (patch: string) => void
+  /** true の間はハンク操作ボタンを無効化する(実行中の多重クリック防止) */
+  disabled?: boolean
 }
 
 function lineClassName(line: string): string {
@@ -17,7 +19,8 @@ export default function DiffView({
   diffText,
   staged,
   onStageHunk,
-  onUnstageHunk
+  onUnstageHunk,
+  disabled = false
 }: Props): React.JSX.Element {
   const parsed = parseDiff(diffText)
   const buttonLabel = staged ? 'このハンクをアンステージ' : 'このハンクをステージ'
@@ -31,6 +34,7 @@ export default function DiffView({
             <button
               type="button"
               className="diff-view__hunk-action-btn"
+              disabled={disabled}
               onClick={() => {
                 const patch = buildHunkPatch(parsed, index)
                 if (staged) {

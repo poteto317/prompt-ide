@@ -291,7 +291,7 @@ describe('registerGitHandlers', () => {
       ).rejects.toThrow('No folder open')
     })
 
-    it('境界チェック後、getDiff を解決済みパスと staged 引数で呼ぶ', async () => {
+    it('境界チェックは解決済みの絶対パスで行うが、getDiff には相対パスで呼ぶ', async () => {
       const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
       const folderAccess = makeFolderAccess({
         get: vi.fn().mockReturnValue('/project'),
@@ -301,8 +301,36 @@ describe('registerGitHandlers', () => {
       mockGetDiff.mockResolvedValue('DIFF_TEXT')
       const result = await getRegisteredHandler('git:getDiff')(makeEvent(1), 'src/index.ts', true)
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
-      expect(mockGetDiff).toHaveBeenCalledWith('/project', '/project/src/index.ts', true)
+      expect(mockGetDiff).toHaveBeenCalledWith('/project', 'src/index.ts', true)
       expect(result).toBe('DIFF_TEXT')
+    })
+
+    it('絶対パスの filePath が渡っても、getDiff には allowedFolder 基準の相対パスで呼ぶ', async () => {
+      // simple-git の status().files[].path はリポジトリルートからの相対パスのため、
+      // getDiff 内の未追跡ファイル判定と一致させる必要がある。絶対パスのまま渡すと
+      // 判定が常に不一致になり、未追跡ファイルの疑似diffが生成されない
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetDiff.mockResolvedValue('DIFF_TEXT')
+      await getRegisteredHandler('git:getDiff')(makeEvent(1), '/project/src/index.ts', false)
+      expect(mockGetDiff).toHaveBeenCalledWith('/project', 'src/index.ts', false)
+    })
+
+    it('ネストした相対パスも allowedFolder 基準の相対パスのまま getDiff に渡る', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetDiff.mockResolvedValue('DIFF_TEXT')
+      await getRegisteredHandler('git:getDiff')(makeEvent(1), 'sub/dir/file.ts', true)
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/sub/dir/file.ts')
+      expect(mockGetDiff).toHaveBeenCalledWith('/project', 'sub/dir/file.ts', true)
     })
   })
 

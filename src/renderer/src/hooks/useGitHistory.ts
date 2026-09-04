@@ -46,6 +46,10 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
           setTags(tagsResult)
           setHasMore(logResult.length === PAGE_SIZE)
         }
+      } catch {
+        // git 管理外のフォルダでは getBranches/getTags が throw する。呼び出し元は
+        // isRepo を見て履歴セクションの描画有無を決めるため、ここでは unhandled
+        // rejection を防ぐために握りつぶすだけでよい
       } finally {
         setIsLoading(false)
       }
@@ -71,6 +75,9 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
       setBranches(branchesResult)
       setTags(tagsResult)
       setHasMore(logResult.length === PAGE_SIZE)
+    } catch {
+      // 上のマウント時 fetch と同様、git 管理外のフォルダでの reject を
+      // unhandled rejection にしないためだけに握りつぶす
     } finally {
       setIsLoading(false)
     }
@@ -83,6 +90,8 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
       const nextPage = await gitApi.getLog(PAGE_SIZE, log.length)
       setLog((prev) => [...prev, ...nextPage])
       setHasMore(nextPage.length === PAGE_SIZE)
+    } catch {
+      // 同上
     } finally {
       setIsLoading(false)
     }

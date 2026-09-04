@@ -21,22 +21,22 @@ export default function StagedSection({
       <h3 className="source-control-panel__section-title">ステージ済み ({staged.length})</h3>
       <ul className="source-control-panel__file-list">
         {staged.map((f) => (
-          <li
-            key={f.path}
-            className="source-control-panel__file-item"
-            onClick={() => onOpenDiff(f.path)}
-          >
+          <li key={f.path} className="source-control-panel__file-item">
             <span className="source-control-panel__file-status source-control-panel__file-status--staged">
               {statusChar(f.index)}
             </span>
-            <span className="source-control-panel__file-path">{f.path}</span>
+            <button
+              type="button"
+              className="source-control-panel__file-path"
+              onClick={() => onOpenDiff(f.path)}
+              aria-label={`${f.path} の差分を表示`}
+            >
+              {f.path}
+            </button>
             <button
               type="button"
               className="source-control-panel__unstage-btn"
-              onClick={(e) => {
-                e.stopPropagation()
-                onUnstage(f.path)
-              }}
+              onClick={() => onUnstage(f.path)}
               disabled={stagingPaths.has(f.path)}
               aria-label={`${f.path} をアンステージ`}
             >

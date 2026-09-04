@@ -35,6 +35,45 @@ describe('HistorySection', () => {
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
   })
 
+  it('複数行のコミットメッセージは最初の行だけを表示する', () => {
+    render(
+      <HistorySection
+        log={[
+          {
+            hash: 'abcdef1234567',
+            message: 'feat: 新機能\n\n詳細な説明文',
+            date: '2026-09-03T10:00:00+09:00',
+            authorName: 'Alice'
+          }
+        ]}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        onLoadMore={vi.fn()}
+      />
+    )
+    expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
+    expect(screen.queryByText(/詳細な説明文/)).not.toBeInTheDocument()
+  })
+
+  it('各コミットに日時関連のテキストが表示される（相対日時）', () => {
+    // 設計仕様は「ハッシュ短縮形・メッセージ1行・相対日時」を要求しているが、
+    // 以前は entry.date が描画されておらず、履歴一覧に日時が一切表示されなかった
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    render(
+      <HistorySection
+        log={[{ hash: 'abcdef1234567', message: 'feat: 新機能', date: oneHourAgo, authorName: 'Alice' }]}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        onLoadMore={vi.fn()}
+      />
+    )
+    expect(screen.getByText('1時間前')).toBeInTheDocument()
+  })
+
   it('hasMore が true のとき「もっと見る」ボタンを表示する', () => {
     render(
       <HistorySection log={[]} branches={[]} tags={[]} hasMore={true} isLoading={false} onLoadMore={vi.fn()} />

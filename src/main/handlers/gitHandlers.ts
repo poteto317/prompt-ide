@@ -1,4 +1,4 @@
-import { resolve, dirname } from 'path'
+import { resolve, dirname, relative } from 'path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import {
   getGitStatus,
@@ -64,7 +64,10 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
       if (allowedFolder === undefined) throw new Error('No folder open')
       const resolvedPath = resolve(allowedFolder, filePath)
       await assertFileWithinFolder(folderAccess, allowedFolder, resolvedPath)
-      return getDiff(allowedFolder, resolvedPath, staged)
+      // 境界チェックは絶対パスで行うが、getDiff/simple-git の status().files[].path は
+      // リポジトリルートからの相対パスなので、そちらへ合わせて相対パスを渡す。
+      // 絶対パスのまま渡すと未追跡ファイルの判定が一致せず、疑似diffが生成されない
+      return getDiff(allowedFolder, relative(allowedFolder, resolvedPath), staged)
     }
   )
 

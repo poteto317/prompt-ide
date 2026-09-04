@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useAppState } from './hooks/useAppState'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
 import StatusBar from './components/StatusBar'
 import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
-import * as gitApi from './lib/gitApi'
 import * as fileSystemApi from './lib/fileSystemApi'
 import type { FileTreeNode } from './types'
 
@@ -66,6 +65,13 @@ export default function App(): React.JSX.Element {
     openDiffTab,
     closeDiffTab,
     activateDiffTab,
+    deactivateDiffTab,
+    diffContent,
+    diffStaged,
+    diffError,
+    isHunkOperationInProgress,
+    stageHunk,
+    unstageHunk,
     amend,
     log,
     branches,
@@ -95,15 +101,9 @@ export default function App(): React.JSX.Element {
     quickOpen
   } = useAppState()
 
-  const [diffContent, setDiffContent] = useState<string | null>(null)
-  const [diffStaged, setDiffStaged] = useState(false)
-  // ハンクのステージ/アンステージ後に同じ activeDiffTab のまま diff を再取得させるための
-  // 明示的なトリガー。activeDiffTab 自体は変わらないため、依存配列に activeDiffTab だけを
-  // 置いた effect では変化を検知できない
-  const [diffRefreshSignal, setDiffRefreshSignal] = useState(0)
-
   // タブを開く操作(openDiffTab の呼び出し)と、diff 内容の取得(activeDiffTab の変化に対する
-  // 反応)を分離する。以前は同じ関数内で両方行っていたため、
+  // 反応、および実行中フラグ・エラー状態)は useDiffOperations(useAppState 経由)に分離する。
+  // 以前は同じ関数内で両方行っていたため、
   // openDiffTab → activeDiffTab 更新(常に新しいオブジェクト参照) → 監視 effect 発火 →
   // handleOpenDiff が再度 openDiffTab を呼ぶ → … という無限ループが発生していた
   const handleOpenDiff = useCallback(
@@ -112,37 +112,6 @@ export default function App(): React.JSX.Element {
     },
     [openDiffTab]
   )
-
-  useEffect(() => {
-    if (activeDiffTab === null) return
-    // タブ切替中に古い fetch が後から解決しても、現在のタブの表示を上書きしないよう
-    // cancelled フラグで無効化する
-    let cancelled = false
-    void (async (): Promise<void> => {
-      const content = await gitApi.getDiff(activeDiffTab.path, activeDiffTab.staged)
-      if (cancelled) return
-      setDiffContent(content)
-      setDiffStaged(activeDiffTab.staged)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [activeDiffTab, diffRefreshSignal])
-
-  const handleStageHunk = async (patch: string): Promise<void> => {
-    if (activeDiffTab === null) return
-    await gitApi.stageHunk(activeDiffTab.path, patch)
-    await refreshGitStatus()
-    // diff の再取得は上の effect に一任する(stale closure による古いタブの上書きを防ぐため)
-    setDiffRefreshSignal((n) => n + 1)
-  }
-
-  const handleUnstageHunk = async (patch: string): Promise<void> => {
-    if (activeDiffTab === null) return
-    await gitApi.unstageHunk(activeDiffTab.path, patch)
-    await refreshGitStatus()
-    setDiffRefreshSignal((n) => n + 1)
-  }
 
   const handleCommit = async (message: string): Promise<boolean> => {
     const succeeded = await commit(message)
@@ -256,10 +225,13 @@ export default function App(): React.JSX.Element {
             activeDiffTab={activeDiffTab}
             onActivateDiffTab={activateDiffTab}
             onCloseDiffTab={closeDiffTab}
+            onDeactivateDiffTab={deactivateDiffTab}
             diffContent={diffContent}
             diffStaged={diffStaged}
-            onStageHunk={handleStageHunk}
-            onUnstageHunk={handleUnstageHunk}
+            diffError={diffError}
+            isHunkOperationInProgress={isHunkOperationInProgress}
+            onStageHunk={stageHunk}
+            onUnstageHunk={unstageHunk}
           />
         </div>
       </div>

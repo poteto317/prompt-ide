@@ -78,8 +78,11 @@ const defaultProps = {
   activeDiffTab: null as DiffTabKey | null,
   onActivateDiffTab: vi.fn(),
   onCloseDiffTab: vi.fn(),
+  onDeactivateDiffTab: vi.fn(),
   diffContent: null as string | null,
   diffStaged: false,
+  diffError: null as Error | null,
+  isHunkOperationInProgress: false,
   onStageHunk: vi.fn(),
   onUnstageHunk: vi.fn()
 }
@@ -657,5 +660,69 @@ describe('EditorPanel — diff タブ', () => {
     )
     await userEvent.click(screen.getByText('index.ts (差分)'))
     expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
+  })
+
+  it('ファイルタブをクリックすると onDeactivateDiffTab が呼ばれ、diff タブが非アクティブになると Monaco Editor が表示される', async () => {
+    // 以前は diff タブを開くとファイルタブへ戻る経路が無く、activeFilePath は
+    // 更新されてもタブバー・本文表示が diff タブに固定されたままになっていた
+    const onDeactivateDiffTab = vi.fn()
+    const onActivateTab = vi.fn()
+    const { rerender } = render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        diffTabs={[{ path: 'src/other.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/other.ts', staged: false }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+        onDeactivateDiffTab={onDeactivateDiffTab}
+        onActivateTab={onActivateTab}
+      />
+    )
+    // diff タブがアクティブな間は Monaco Editor が表示されない
+    expect(screen.queryByTestId('monaco-editor')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('index.ts'))
+    expect(onDeactivateDiffTab).toHaveBeenCalled()
+    expect(onActivateTab).toHaveBeenCalledWith(mockOpenFile.path)
+
+    // 親が activeDiffTab を null に更新した状態を再現する
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        diffTabs={[{ path: 'src/other.ts', staged: false }]}
+        activeDiffTab={null}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+        onDeactivateDiffTab={onDeactivateDiffTab}
+        onActivateTab={onActivateTab}
+      />
+    )
+    expect(screen.getByTestId('monaco-editor')).toBeInTheDocument()
+  })
+
+  it('diffError があるとき、diff の上部にエラーメッセージが表示される', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={null}
+        diffError={new Error('diff の取得に失敗しました')}
+      />
+    )
+    expect(screen.getByText('diff の取得に失敗しました')).toBeInTheDocument()
+  })
+
+  it('isHunkOperationInProgress のとき DiffView に disabled が渡り、ハンクボタンが無効化される', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+        isHunkOperationInProgress={true}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'このハンクをステージ' })).toBeDisabled()
   })
 })

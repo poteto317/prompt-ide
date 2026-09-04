@@ -86,8 +86,18 @@ describe('ChangesSection', () => {
       render(
         <ChangesSection files={files} stagingPaths={new Set()} onStage={vi.fn()} onOpenDiff={onOpenDiff} />
       )
-      await userEvent.click(screen.getByText('src/index.ts'))
+      await userEvent.click(screen.getByRole('button', { name: 'src/index.ts の差分を表示' }))
       expect(onOpenDiff).toHaveBeenCalledWith('src/index.ts')
+    })
+
+    it('ファイルパスがキーボードで到達可能なボタンとして表示される', () => {
+      // <li onClick> だけでは支援技術・キーボード操作のみのユーザーが diff を
+      // 開けないため、button + aria-label で到達可能にする
+      const files: GitFileStatus[] = [{ path: 'src/index.ts', index: ' ', workingDir: 'M' }]
+      render(
+        <ChangesSection files={files} stagingPaths={new Set()} onStage={vi.fn()} onOpenDiff={vi.fn()} />
+      )
+      expect(screen.getByRole('button', { name: 'src/index.ts の差分を表示' })).toBeInTheDocument()
     })
 
     it('ステージボタンをクリックしても onOpenDiff は呼ばれない', async () => {

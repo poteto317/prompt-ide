@@ -11,6 +11,8 @@ export interface DiffTabsState {
   openDiffTab: (key: DiffTabKey) => void
   closeDiffTab: (key: DiffTabKey) => void
   activateDiffTab: (key: DiffTabKey) => void
+  /** diff タブをどれもアクティブでない状態に戻す(実ファイルタブへ切り替えるときに使う) */
+  deactivateDiffTab: () => void
 }
 
 function isSameKey(a: DiffTabKey, b: DiffTabKey): boolean {
@@ -44,7 +46,11 @@ export function useDiffTabs(): DiffTabsState {
     setActiveDiffTab(key)
   }
 
-  return { diffTabs, activeDiffTab, openDiffTab, closeDiffTab, activateDiffTab }
+  const deactivateDiffTab = (): void => {
+    setActiveDiffTab(null)
+  }
+
+  return { diffTabs, activeDiffTab, openDiffTab, closeDiffTab, activateDiffTab, deactivateDiffTab }
 }
 
 export function encodeDiffTabPath(key: DiffTabKey): string {

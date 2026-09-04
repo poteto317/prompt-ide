@@ -38,8 +38,13 @@ interface Props {
   activeDiffTab: DiffTabKey | null
   onActivateDiffTab: (key: DiffTabKey) => void
   onCloseDiffTab: (key: DiffTabKey) => void
+  /** 実ファイルタブがアクティブ化されるとき、diff タブを非アクティブ化するために呼ぶ */
+  onDeactivateDiffTab: () => void
   diffContent: string | null
   diffStaged: boolean
+  diffError: Error | null
+  /** ハンク操作の実行中か。true の間は DiffView のボタンを無効化する */
+  isHunkOperationInProgress: boolean
   onStageHunk: (patch: string) => void
   onUnstageHunk: (patch: string) => void
 }
@@ -76,8 +81,11 @@ export default function EditorPanel({
   activeDiffTab,
   onActivateDiffTab,
   onCloseDiffTab,
+  onDeactivateDiffTab,
   diffContent,
   diffStaged,
+  diffError,
+  isHunkOperationInProgress,
   onStageHunk,
   onUnstageHunk
 }: Props): React.JSX.Element {
@@ -192,6 +200,10 @@ export default function EditorPanel({
     if (isDiffTabPath(path)) {
       onActivateDiffTab(decodeDiffTabPath(path))
     } else {
+      // 実ファイルタブへの切り替え時、diff タブを非アクティブ化する。しないと
+      // activeFilePath は更新されてもタブバーのハイライト・本文表示が diff タブの
+      // ままになり、実ファイルタブへ二度と戻れなくなる
+      onDeactivateDiffTab()
       onActivateTab(path)
     }
   }
@@ -220,38 +232,44 @@ export default function EditorPanel({
             onReorderTabs={onReorderTabs}
           />
           <div className="editor-body">
-            {activeDiffTab !== null
-              ? diffContent !== null && (
+            {activeDiffTab !== null ? (
+              <>
+                {diffError !== null && <p className="diff-view__error">{diffError.message}</p>}
+                {diffContent !== null && (
                   <DiffView
                     diffText={diffContent}
                     staged={diffStaged}
                     onStageHunk={onStageHunk}
                     onUnstageHunk={onUnstageHunk}
-                  />
-                )
-              : openFile !== null && (
-                  <Editor
-                    key={openFile.path}
-                    height="100%"
-                    language={openFile.language}
-                    theme="vs-dark"
-                    value={openFile.content}
-                    options={editorOptions}
-                    onChange={(value) => onChangeContent(value ?? '')}
-                    onMount={(editorInstance, monaco) => {
-                      // onMount は非同期に発火するため、素早く切り替えたときに
-                      // 破棄済みの古いファイルの callback が後から届くことがある。
-                      // 現在のファイルのものだけを保持する
-                      if (openFilePathRef.current !== openFile.path) return
-                      // 破棄済みインスタンスの遅延 callback で現在の参照を壊さない
-                      if (editorInstance.getModel() === null) return
-                      editorRef.current = editorInstance
-                      mountedPathRef.current = openFile.path
-                      registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
-                      focusEditorIfPending()
-                    }}
+                    disabled={isHunkOperationInProgress}
                   />
                 )}
+              </>
+            ) : (
+              openFile !== null && (
+                <Editor
+                  key={openFile.path}
+                  height="100%"
+                  language={openFile.language}
+                  theme="vs-dark"
+                  value={openFile.content}
+                  options={editorOptions}
+                  onChange={(value) => onChangeContent(value ?? '')}
+                  onMount={(editorInstance, monaco) => {
+                    // onMount は非同期に発火するため、素早く切り替えたときに
+                    // 破棄済みの古いファイルの callback が後から届くことがある。
+                    // 現在のファイルのものだけを保持する
+                    if (openFilePathRef.current !== openFile.path) return
+                    // 破棄済みインスタンスの遅延 callback で現在の参照を壊さない
+                    if (editorInstance.getModel() === null) return
+                    editorRef.current = editorInstance
+                    mountedPathRef.current = openFile.path
+                    registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
+                    focusEditorIfPending()
+                  }}
+                />
+              )
+            )}
           </div>
         </>
       )}

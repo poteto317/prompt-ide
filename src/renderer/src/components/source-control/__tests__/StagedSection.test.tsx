@@ -87,8 +87,16 @@ describe('StagedSection', () => {
       render(
         <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={onOpenDiff} />
       )
-      await userEvent.click(screen.getByText('src/index.ts'))
+      await userEvent.click(screen.getByRole('button', { name: 'src/index.ts の差分を表示' }))
       expect(onOpenDiff).toHaveBeenCalledWith('src/index.ts')
+    })
+
+    it('ファイルパスがキーボードで到達可能なボタンとして表示される', () => {
+      const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
+      render(
+        <StagedSection files={files} stagingPaths={new Set()} onUnstage={vi.fn()} onOpenDiff={vi.fn()} />
+      )
+      expect(screen.getByRole('button', { name: 'src/index.ts の差分を表示' })).toBeInTheDocument()
     })
 
     it('アンステージボタンをクリックしても onOpenDiff は呼ばれない', async () => {

@@ -202,6 +202,19 @@ describe('getDiff', () => {
     mockDiff.mockRejectedValue(new Error('diff failed'))
     await expect(getDiff('/project', 'src/index.ts', false)).rejects.toThrow('diff failed')
   })
+
+  it('未追跡の空ファイルの場合、余分な空行を追加しない', async () => {
+    mockStatus.mockResolvedValue({ files: [{ path: 'empty.txt', index: '?', working_dir: '?' }] })
+    mockReadFile.mockResolvedValue('')
+    const result = await getDiff('/project', 'empty.txt', false)
+    expect(result).toBe(
+      'diff --git a/empty.txt b/empty.txt\n' +
+        'new file mode 100644\n' +
+        '--- /dev/null\n' +
+        '+++ b/empty.txt\n' +
+        '@@ -0,0 +1,0 @@\n'
+    )
+  })
 })
 
 import { EventEmitter } from 'node:events'
@@ -264,7 +277,7 @@ describe('unstageHunk', () => {
 })
 
 describe('getLog', () => {
-  it('git log を --max-count/--skip/--pretty オプションで呼び、レコードをパースして返す', async () => {
+  it('git log を --max-count/--skip/--pretty オプションで呼び、レコードをパースして返す（%B で単一行 subject も取得できる）', async () => {
     const record =
       'abc123\x1ffeat: 新機能\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e' +
       'def456\x1ffix: バグ修正\x1f2026-09-02T10:00:00+09:00\x1fBob\x1e'
@@ -274,11 +287,27 @@ describe('getLog', () => {
       'log',
       '--max-count=20',
       '--skip=0',
-      '--pretty=format:%H%x1f%s%x1f%aI%x1f%an%x1e',
+      '--pretty=format:%H%x1f%B%x1f%aI%x1f%an%x1e',
     ])
     expect(result).toEqual([
       { hash: 'abc123', message: 'feat: 新機能', date: '2026-09-03T10:00:00+09:00', authorName: 'Alice' },
       { hash: 'def456', message: 'fix: バグ修正', date: '2026-09-02T10:00:00+09:00', authorName: 'Bob' },
+    ])
+  })
+
+  it('%B で取得した複数行のコミット本文を、内部の改行を保ったまま message として返す', async () => {
+    // amend 時にこの message をそのままメッセージ欄へ入れるため、%s（subject 1行のみ）
+    // ではなく %B（本文全体）で取得できていることを検証する
+    const record = 'abc123\x1ffeat: 新機能\n\n詳細な説明文\n2行目\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e'
+    mockRaw.mockResolvedValue(record)
+    const result = await getLog('/project', 20, 0)
+    expect(result).toEqual([
+      {
+        hash: 'abc123',
+        message: 'feat: 新機能\n\n詳細な説明文\n2行目',
+        date: '2026-09-03T10:00:00+09:00',
+        authorName: 'Alice',
+      },
     ])
   })
 

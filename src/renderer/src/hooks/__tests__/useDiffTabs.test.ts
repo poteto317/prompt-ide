@@ -66,6 +66,22 @@ describe('useDiffTabs', () => {
     })
     expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', staged: false })
   })
+
+  it('deactivateDiffTab で activeDiffTab が null になり、diffTabs 配列自体は変わらない', () => {
+    const { result } = renderHook(() => useDiffTabs())
+    act(() => {
+      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'b.ts', staged: false })
+    })
+    act(() => {
+      result.current.deactivateDiffTab()
+    })
+    expect(result.current.activeDiffTab).toBeNull()
+    expect(result.current.diffTabs).toEqual([
+      { path: 'a.ts', staged: false },
+      { path: 'b.ts', staged: false },
+    ])
+  })
 })
 
 describe('encodeDiffTabPath / isDiffTabPath / decodeDiffTabPath', () => {

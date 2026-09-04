@@ -152,6 +152,29 @@ describe('useGitHistory', () => {
     expect(mockGetLog).toHaveBeenLastCalledWith(20, 20)
   })
 
+  it('getBranches が reject しても unhandled rejection にならず、isLoading が false に戻る', async () => {
+    // git 管理外のフォルダを開くと getBranches/getTags は throw するが、
+    // fetchData に catch が無いと unhandled rejection になる
+    mockGetLog.mockResolvedValue([])
+    mockGetBranches.mockRejectedValue(new Error('fatal: not a git repository'))
+    mockGetTags.mockResolvedValue([])
+    const { result } = renderHook(() => useGitHistory('/not-a-repo'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.log).toEqual([])
+  })
+
+  it('refresh 中に getTags が reject しても unhandled rejection にならず、isLoading が false に戻る', async () => {
+    mockGetLog.mockResolvedValue([])
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    mockGetTags.mockRejectedValue(new Error('fatal: not a git repository'))
+    await result.current.refresh()
+    expect(result.current.isLoading).toBe(false)
+  })
+
   it('folderPath が非null→null に遷移する際、fetch中でも isLoading は false に戻る', async () => {
     // fetch が遅延するように設定
     let resolveFetch: (value: any) => void

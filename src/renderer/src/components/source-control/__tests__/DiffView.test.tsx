@@ -70,4 +70,28 @@ describe('DiffView', () => {
     render(<DiffView diffText="" staged={false} onStageHunk={vi.fn()} onUnstageHunk={vi.fn()} />)
     expect(screen.queryByRole('button', { name: 'このハンクをステージ' })).not.toBeInTheDocument()
   })
+
+  it('disabled=true のとき、ハンク操作ボタンが無効化される（多重実行防止）', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        disabled
+      />
+    )
+    for (const button of screen.getAllByRole('button', { name: 'このハンクをステージ' })) {
+      expect(button).toBeDisabled()
+    }
+  })
+
+  it('disabled を渡さない場合、ハンク操作ボタンは有効', () => {
+    render(
+      <DiffView diffText={SAMPLE_DIFF} staged={false} onStageHunk={vi.fn()} onUnstageHunk={vi.fn()} />
+    )
+    for (const button of screen.getAllByRole('button', { name: 'このハンクをステージ' })) {
+      expect(button).toBeEnabled()
+    }
+  })
 })

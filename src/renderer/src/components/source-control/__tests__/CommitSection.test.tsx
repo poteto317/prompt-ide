@@ -196,6 +196,40 @@ describe('CommitSection', () => {
       expect(onCommit).not.toHaveBeenCalled()
     })
 
+    it('amend成功後、amendチェックボックスがオフに戻る', async () => {
+      // オンのまま残ると、次に新しいメッセージで押したときにユーザーが新規コミットの
+      // つもりで直前のコミットを再度 amend してしまう事故が起きる
+      const onAmend = vi.fn().mockResolvedValue(true)
+      render(
+        <CommitSection
+          stagedCount={0}
+          isCommitting={false}
+          onCommit={vi.fn()}
+          lastCommitMessage="feat: 直前のコミット"
+          onAmend={onAmend}
+        />
+      )
+      await userEvent.click(screen.getByLabelText('amend'))
+      await userEvent.click(screen.getByRole('button', { name: /コミット/ }))
+      expect(screen.getByLabelText('amend')).not.toBeChecked()
+    })
+
+    it('amend失敗時はamendチェックボックスをオンのまま保持する', async () => {
+      const onAmend = vi.fn().mockResolvedValue(false)
+      render(
+        <CommitSection
+          stagedCount={0}
+          isCommitting={false}
+          onCommit={vi.fn()}
+          lastCommitMessage="feat: 直前のコミット"
+          onAmend={onAmend}
+        />
+      )
+      await userEvent.click(screen.getByLabelText('amend'))
+      await userEvent.click(screen.getByRole('button', { name: /コミット/ }))
+      expect(screen.getByLabelText('amend')).toBeChecked()
+    })
+
     it('amendチェックを外すとメッセージ欄はクリアされない（引き続き通常コミット可）', async () => {
       render(
         <CommitSection

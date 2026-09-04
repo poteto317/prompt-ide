@@ -29,7 +29,12 @@ export default function CommitSection({
 
   const handleCommit = async (): Promise<void> => {
     const succeeded = isAmend ? await onAmend(message) : await onCommit(message)
-    if (succeeded) setMessage('')
+    if (succeeded) {
+      setMessage('')
+      // amend 成功後もチェックがオンのまま残ると、次に新しいメッセージで押したときに
+      // ユーザーが新規コミットのつもりで直前のコミットを再度amendしてしまう事故が起きる
+      setIsAmend(false)
+    }
   }
 
   return (

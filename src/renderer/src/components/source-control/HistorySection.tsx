@@ -1,4 +1,5 @@
 import type { GitBranch, GitLogEntry } from '@shared/types'
+import { formatRelativeDate } from '../../lib/gitUtils'
 
 interface Props {
   log: GitLogEntry[]
@@ -45,7 +46,10 @@ export default function HistorySection({
         {log.map((entry) => (
           <li key={entry.hash} className="history-section__log-item">
             <span className="history-section__log-hash">{entry.hash.slice(0, 7)}</span>
-            <span className="history-section__log-message">{entry.message}</span>
+            {/* entry.message は %B（コミット本文全体）由来で複数行を含み得るため、
+                一覧には subject に相当する最初の行だけを表示する */}
+            <span className="history-section__log-message">{entry.message.split('\n')[0]}</span>
+            <span className="history-section__log-date">{formatRelativeDate(entry.date)}</span>
           </li>
         ))}
       </ul>
