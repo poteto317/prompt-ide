@@ -1,4 +1,4 @@
-import { sep as nodeSep } from 'node:path'
+import { sep as nodeSep, relative } from 'node:path'
 
 /**
  * OS 固有の区切り文字で表現された相対パスを、フォワードスラッシュ区切りへ正規化する。
@@ -13,4 +13,12 @@ import { sep as nodeSep } from 'node:path'
  */
 export function toPosixRelativePath(relativePath: string, separator: string = nodeSep): string {
   return relativePath.split(separator).join('/')
+}
+
+/**
+ * folderPath 配下の絶対パスを、simple-git や .gitignore が前提とする
+ * フォワードスラッシュ区切りの相対パスに変換する。
+ */
+export function toGitRelativePath(folderPath: string, absolutePath: string): string {
+  return toPosixRelativePath(relative(folderPath, absolutePath))
 }

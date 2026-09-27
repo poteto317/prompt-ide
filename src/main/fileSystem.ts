@@ -1,5 +1,5 @@
 import { join } from 'path'
-import { readdir, readFile, writeFile, mkdir, rename, rm, stat } from 'node:fs/promises'
+import { readdir, readFile, writeFile, mkdir, rename, rm, stat, lstat } from 'node:fs/promises'
 import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
 import { isEnoentError } from './fsErrors'
 import type { FileTreeNode } from '@shared/types'
@@ -10,8 +10,45 @@ export function readFileContent(filePath: string): Promise<string> {
   return readFile(filePath, 'utf-8')
 }
 
+// エンコーディングを指定せず生のバイト列を読む。バイナリファイル判定など、
+// utf-8 として解釈する前に内容を検査したい呼び出し元向け
+export function readFileBuffer(filePath: string): Promise<Buffer> {
+  return readFile(filePath)
+}
+
 export function writeFileContent(filePath: string, content: string): Promise<void> {
   return writeFile(filePath, content, 'utf-8')
+}
+
+// 未追跡ファイルの疑似diff生成(gitDiffFormatter.ts の buildUntrackedDiff)で
+// 実行ビットを保つために使う。git 自身(ce_mode_from_stat)は所有者の実行ビット
+// (S_IXUSR, 0o100)のみを見て実行可能ファイルかどうかを判定し、グループ/その他の
+// 実行ビットは無視する。owner/group/other のいずれかで判定すると、共有
+// ディレクトリでグループ実行ビットだけが立っているようなファイルを、実際の
+// git add とは異なる mode(100755)で index に記録してしまう。
+// Windows(NTFS)には POSIX 相当の実行ビットが無く、Node/libuv はこれを
+// 意味のある形で報告できない(多くの環境で全ファイルの mode に実行ビットが
+// 立って見える)。誤って 100755 と判定すると、新規作成した通常のテキスト
+// ファイルまで stage 時に誤った実行ビットが index に記録されてしまうため、
+// Windows では常に false を返す
+export async function isExecutableFile(filePath: string): Promise<boolean> {
+  if (process.platform === 'win32') return false
+  const stats = await stat(filePath)
+  return (stats.mode & 0o100) !== 0
+}
+
+// シンボリックリンクかどうかを stat ではなく lstat で判定する。stat はリンクを
+// 辿った先の実体の情報を返すため、シンボリックリンク自体の判定には使えない
+export async function isSymbolicLink(filePath: string): Promise<boolean> {
+  const stats = await lstat(filePath)
+  return stats.isSymbolicLink()
+}
+
+// 未追跡ファイルの疑似diff生成(gitService.ts の getDiff)で、readFileBuffer に
+// よる読み込み前にサイズ上限をチェックするために使う
+export async function getFileSize(filePath: string): Promise<number> {
+  const stats = await stat(filePath)
+  return stats.size
 }
 
 export async function createFile(filePath: string): Promise<void> {
@@ -54,21 +91,6 @@ export async function renameEntry(oldPath: string, newPath: string): Promise<voi
 
 export async function deleteEntry(targetPath: string): Promise<void> {
   await rm(targetPath, { recursive: true })
-}
-
-export async function addToGitignore(folderPath: string, relativePath: string): Promise<void> {
-  const gitignorePath = join(folderPath, '.gitignore')
-  let existingContent = ''
-  try {
-    existingContent = await readFile(gitignorePath, 'utf-8')
-  } catch (err) {
-    if (!isEnoentError(err)) throw err
-  }
-  const existingLines = existingContent.split('\n').map((line) => line.trim())
-  if (existingLines.includes(relativePath)) return
-  const needsNewline = existingContent.length > 0 && !existingContent.endsWith('\n')
-  const newContent = existingContent + (needsNewline ? '\n' : '') + relativePath + '\n'
-  await writeFile(gitignorePath, newContent, 'utf-8')
 }
 
 export async function readDirRecursive(dirPath: string, depth = 0): Promise<FileTreeNode[]> {

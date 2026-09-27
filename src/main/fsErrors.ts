@@ -11,3 +11,14 @@ export function isFsError(err: unknown, code?: string): err is NodeJS.ErrnoExcep
 export function isEnoentError(err: unknown): err is NodeJS.ErrnoException {
   return isFsError(err, 'ENOENT')
 }
+
+// 「対象が無い」ことを表す fs エラーは ENOENT だけではない。祖先パスの
+// コンポーネントがディレクトリではなくファイルに置き換わっていた場合
+// (例: git checkout でディレクトリだった箇所が同名ファイルになった)、
+// realpath は ENOENT ではなく ENOTDIR を投げる。削除済みパス向けの
+// フォールバック判定(fileAccessGuard.ts の assertFileWithinFolder、
+// gitHandlers.ts の resolveCanonicalPath)がこのケースを isEnoentError だけで
+// 判定すると、未変換の ENOTDIR がそのままユーザーへ伝播してしまう
+export function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
+  return isFsError(err, 'ENOENT') || isFsError(err, 'ENOTDIR')
+}

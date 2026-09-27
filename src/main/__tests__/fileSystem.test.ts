@@ -7,6 +7,7 @@ const mockMkdir = vi.hoisted(() => vi.fn())
 const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 const mockStat = vi.hoisted(() => vi.fn())
+const mockLstat = vi.hoisted(() => vi.fn())
 
 vi.mock('node:fs/promises', () => ({
   default: {
@@ -16,7 +17,8 @@ vi.mock('node:fs/promises', () => ({
     mkdir: mockMkdir,
     rename: mockRename,
     rm: mockRm,
-    stat: mockStat
+    stat: mockStat,
+    lstat: mockLstat
   },
   readdir: mockReaddir,
   readFile: mockReadFile,
@@ -24,18 +26,22 @@ vi.mock('node:fs/promises', () => ({
   mkdir: mockMkdir,
   rename: mockRename,
   rm: mockRm,
-  stat: mockStat
+  stat: mockStat,
+  lstat: mockLstat
 }))
 
 import { SKIP_DIRS } from '../traversalPolicy'
 import {
   readDirRecursive,
   readFileContent,
+  readFileBuffer,
+  isExecutableFile,
+  isSymbolicLink,
+  getFileSize,
   createFile,
   createDirectory,
   renameEntry,
-  deleteEntry,
-  addToGitignore
+  deleteEntry
 } from '../fileSystem'
 
 type MockDirent = {
@@ -139,6 +145,72 @@ describe('readFileContent', () => {
   })
 })
 
+describe('readFileBuffer', () => {
+  it('エンコーディング指定なしで readFile を呼び、生のバッファを返す', async () => {
+    const buf = Buffer.from([0x89, 0x50, 0x4e, 0x47])
+    mockReadFile.mockResolvedValue(buf)
+    const result = await readFileBuffer('/project/image.png')
+    expect(mockReadFile).toHaveBeenCalledWith('/project/image.png')
+    expect(result).toBe(buf)
+  })
+})
+
+describe('isExecutableFile', () => {
+  it('実行可能ビットが立っているファイルは true を返す', async () => {
+    mockStat.mockResolvedValue({ mode: 0o100755 })
+    expect(await isExecutableFile('/project/run.sh')).toBe(true)
+  })
+
+  it('実行可能ビットが立っていないファイルは false を返す', async () => {
+    mockStat.mockResolvedValue({ mode: 0o100644 })
+    expect(await isExecutableFile('/project/new.txt')).toBe(false)
+  })
+
+  it('所有者の実行ビットが立っていない場合、グループ/その他の実行ビットが立っていても false を返す(git 自身の判定基準に合わせる)', async () => {
+    // git の ce_mode_from_stat は所有者の実行ビット(S_IXUSR, 0o100)のみを見て
+    // 実行可能ファイルかどうかを判定し、グループ/その他の実行ビットは無視する。
+    // owner/group/other のいずれかで判定すると、共有ディレクトリで
+    // グループ実行ビットだけが立っているようなファイルを実際の git add とは
+    // 異なる mode(100755)で index に記録してしまう
+    mockStat.mockResolvedValue({ mode: 0o100610 })
+    expect(await isExecutableFile('/project/group-exec.sh')).toBe(false)
+  })
+
+  it('Windows(win32)では mode の実行ビットに意味が無いため、常に false を返す', async () => {
+    // Node/libuv は Windows(NTFS)上で POSIX 相当の実行ビットを報告できず、
+    // 多くの環境で全ファイルの mode に実行ビットが立って見える。これをそのまま
+    // 使うと、Windows で新規作成した通常のテキストファイルまで疑似diffの
+    // file mode が 100755 になり、stage 時に誤った実行ビットが index に記録される
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'win32' })
+    try {
+      mockStat.mockResolvedValue({ mode: 0o100755 })
+      expect(await isExecutableFile('/project/run.sh')).toBe(false)
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform })
+    }
+  })
+})
+
+describe('isSymbolicLink', () => {
+  it('シンボリックリンクなら true を返す', async () => {
+    mockLstat.mockResolvedValue({ isSymbolicLink: () => true })
+    expect(await isSymbolicLink('/project/link.txt')).toBe(true)
+  })
+
+  it('通常ファイルなら false を返す', async () => {
+    mockLstat.mockResolvedValue({ isSymbolicLink: () => false })
+    expect(await isSymbolicLink('/project/real.txt')).toBe(false)
+  })
+})
+
+describe('getFileSize', () => {
+  it('stat の size を返す', async () => {
+    mockStat.mockResolvedValue({ size: 1234 })
+    expect(await getFileSize('/project/big.log')).toBe(1234)
+  })
+})
+
 describe('createFile', () => {
   it('flag wx で空ファイルを作成する(既存を上書きしない)', async () => {
     mockWriteFile.mockResolvedValue(undefined)
@@ -232,36 +304,5 @@ describe('deleteEntry', () => {
     const err = Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
     mockRm.mockRejectedValue(err)
     await expect(deleteEntry('/project/gone')).rejects.toThrow('ENOENT')
-  })
-})
-
-describe('addToGitignore', () => {
-  it('.gitignore が存在しない場合、新規作成して相対パスを書き込む', async () => {
-    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
-    await addToGitignore('/project', 'dist/')
-    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'dist/\n', 'utf-8')
-  })
-
-  it('.gitignore が既存で末尾に改行がある場合、そのまま追記する', async () => {
-    mockReadFile.mockResolvedValue('node_modules/\n')
-    await addToGitignore('/project', 'dist/')
-    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'node_modules/\ndist/\n', 'utf-8')
-  })
-
-  it('.gitignore が既存で末尾に改行が無い場合、改行を補ってから追記する', async () => {
-    mockReadFile.mockResolvedValue('node_modules/')
-    await addToGitignore('/project', 'dist/')
-    expect(mockWriteFile).toHaveBeenCalledWith('/project/.gitignore', 'node_modules/\ndist/\n', 'utf-8')
-  })
-
-  it('同じ行が既に存在する場合、書き込みを行わない', async () => {
-    mockReadFile.mockResolvedValue('node_modules/\ndist/\n')
-    await addToGitignore('/project', 'dist/')
-    expect(mockWriteFile).not.toHaveBeenCalled()
-  })
-
-  it('ENOENT 以外のエラーは伝播する', async () => {
-    mockReadFile.mockRejectedValue(new Error('permission denied'))
-    await expect(addToGitignore('/project', 'dist/')).rejects.toThrow('permission denied')
   })
 })

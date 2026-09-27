@@ -27,10 +27,16 @@ export const api = {
   deleteEntry: (path: string): Promise<void> => ipcRenderer.invoke('fs:deleteEntry', path),
   getGitStatus: (): Promise<GitStatusResult> => ipcRenderer.invoke('git:getStatus'),
   stageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:stage', filePath),
-  unstageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:unstage', filePath),
+  unstageFile: (filePath: string, renamedFrom?: string): Promise<void> =>
+    ipcRenderer.invoke('git:unstage', filePath, renamedFrom),
   commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
-  getDiff: (filePath: string, staged: boolean): Promise<string> =>
-    ipcRenderer.invoke('git:getDiff', filePath, staged),
+  getDiff: (
+    filePath: string,
+    staged: boolean,
+    isUntracked: boolean,
+    renamedFrom?: string
+  ): Promise<string> =>
+    ipcRenderer.invoke('git:getDiff', filePath, staged, isUntracked, renamedFrom),
   stageHunk: (filePath: string, patch: string): Promise<void> =>
     ipcRenderer.invoke('git:stageHunk', filePath, patch),
   unstageHunk: (filePath: string, patch: string): Promise<void> =>

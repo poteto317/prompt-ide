@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sep } from 'node:path'
-import { toPosixRelativePath } from '../pathNormalize'
+import { toPosixRelativePath, toGitRelativePath } from '../pathNormalize'
 
 describe('toPosixRelativePath', () => {
   it('バックスラッシュ区切り(Windows想定)をフォワードスラッシュ区切りに変換する', () => {
@@ -20,5 +20,19 @@ describe('toPosixRelativePath', () => {
   it('separator を省略した場合、実行環境の path.sep が使われる', () => {
     const input = ['sub', 'dir', 'file.ts'].join(sep)
     expect(toPosixRelativePath(input)).toBe('sub/dir/file.ts')
+  })
+})
+
+describe('toGitRelativePath', () => {
+  it('folderPath 配下の絶対パスを、フォワードスラッシュ区切りの相対パスに変換する', () => {
+    const absolutePath = ['project', 'sub', 'dir', 'file.ts'].join(sep)
+    const folderPath = ['project'].join(sep)
+    expect(toGitRelativePath(folderPath, absolutePath)).toBe('sub/dir/file.ts')
+  })
+
+  it('folderPath 直下のファイルは、区切り無しのファイル名のみを返す', () => {
+    const absolutePath = ['project', 'file.ts'].join(sep)
+    const folderPath = ['project'].join(sep)
+    expect(toGitRelativePath(folderPath, absolutePath)).toBe('file.ts')
   })
 })

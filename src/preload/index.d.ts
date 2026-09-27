@@ -25,9 +25,14 @@ declare global {
       deleteEntry(path: string): Promise<void>
       getGitStatus(): Promise<GitStatusResult>
       stageFile(filePath: string): Promise<void>
-      unstageFile(filePath: string): Promise<void>
+      unstageFile(filePath: string, renamedFrom?: string): Promise<void>
       commitChanges(message: string): Promise<void>
-      getDiff(filePath: string, staged: boolean): Promise<string>
+      getDiff(
+        filePath: string,
+        staged: boolean,
+        isUntracked: boolean,
+        renamedFrom?: string
+      ): Promise<string>
       stageHunk(filePath: string, patch: string): Promise<void>
       unstageHunk(filePath: string, patch: string): Promise<void>
       getLog(limit: number, skip: number): Promise<GitLogEntry[]>

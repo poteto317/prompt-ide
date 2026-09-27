@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { resolve as resolvePath } from 'path'
+import { resolve as resolvePath, relative, sep } from 'path'
 import type { FolderAccessManager } from '../../folderAccessManager'
 
 const mockHandle = vi.hoisted(() => vi.fn())
@@ -13,7 +13,8 @@ const mockRenameEntry = vi.hoisted(() => vi.fn())
 const mockDeleteEntry = vi.hoisted(() => vi.fn())
 const mockAddToGitignore = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
-const mockToPosixRelativePath = vi.hoisted(() => vi.fn())
+const mockToGitRelativePath = vi.hoisted(() => vi.fn())
+const mockIsSymbolicLink = vi.hoisted(() => vi.fn())
 
 vi.mock('../../dialogService', () => ({ openFolderDialog: mockOpenFolderDialog }))
 vi.mock('../../fileSystem', () => ({
@@ -24,6 +25,9 @@ vi.mock('../../fileSystem', () => ({
   createDirectory: mockCreateDirectory,
   renameEntry: mockRenameEntry,
   deleteEntry: mockDeleteEntry,
+  isSymbolicLink: mockIsSymbolicLink
+}))
+vi.mock('../../gitignoreService', () => ({
   addToGitignore: mockAddToGitignore
 }))
 vi.mock('node:fs/promises', () => ({
@@ -31,7 +35,7 @@ vi.mock('node:fs/promises', () => ({
   realpath: mockRealpath
 }))
 vi.mock('../../pathNormalize', () => ({
-  toPosixRelativePath: mockToPosixRelativePath
+  toGitRelativePath: mockToGitRelativePath
 }))
 
 import { registerFileSystemHandlers } from '../../handlers/fileSystemHandlers'
@@ -61,7 +65,7 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
   return call[1] as (...args: unknown[]) => unknown
 }
 
-function makeEvent(senderId: number) {
+function makeEvent(senderId: number): { sender: { id: number } } {
   return { sender: { id: senderId } }
 }
 
@@ -76,9 +80,11 @@ function makeEnoentError(path: string): NodeJS.ErrnoException {
 beforeEach(() => {
   vi.clearAllMocks()
   mockRealpath.mockImplementation((p: string) => Promise.resolve(resolvePath(p)))
-  // 既存の fs:addToGitignore テストはこの正規化を素通し(恒等関数)として扱う。
+  // 既存の fs:addToGitignore テストは実際の相対パス変換と同じ結果を返すデフォルト実装で扱う。
   // 正規化そのものの変換ロジックは pathNormalize.test.ts で検証する
-  mockToPosixRelativePath.mockImplementation((p: string) => p)
+  mockToGitRelativePath.mockImplementation((folder: string, absolutePath: string) =>
+    relative(folder, absolutePath).split(sep).join('/')
+  )
 })
 
 describe('registerFileSystemHandlers', () => {
@@ -531,6 +537,93 @@ describe('registerFileSystemHandlers', () => {
       ).rejects.toThrow('No folder open')
     })
 
+    it('.gitignore がシンボリックリンクの場合、リンク先を辿らず書き込みを拒否する', async () => {
+      // realpath ベースの境界チェックには穴がある: リンク先がまだ存在しない
+      // 「壊れたシンボリックリンク」だと realpath が ENOENT を返し、
+      // assertFileWithinFolder の ENOENT フォールバックが親(= allowedFolder 自身)の
+      // 検証だけで通してしまう。その後 writeFileContent は symlink を辿って
+      // サンドボックス外にファイルを新規作成する(実機で再現確認済み)。
+      // lstat ベースで symlink 自体を弾く必要がある
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined),
+        assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockIsSymbolicLink.mockResolvedValue(true)
+      mockAddToGitignore.mockResolvedValue(undefined)
+
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      ).rejects.toThrow()
+      expect(mockAddToGitignore).not.toHaveBeenCalled()
+    })
+
+    it('.gitignore がまだ存在しない場合は書き込みを許可する(新規作成の経路を塞がない)', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined),
+        assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      // lstat は対象が存在しなければ ENOENT を投げる
+      mockIsSymbolicLink.mockRejectedValue(makeEnoentError('/project/.gitignore'))
+      mockAddToGitignore.mockResolvedValue(undefined)
+
+      await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'dist')
+    })
+
+    it('.gitignore の祖先がディレクトリではなくファイルに置き換わっていた場合(ENOTDIR)も、書き込みを許可する', async () => {
+      // git checkout 等で .gitignore の祖先ディレクトリが同名ファイルに
+      // 置き換わっていた場合、lstat は ENOENT ではなく ENOTDIR を投げる。
+      // isGitignoreSymlink が ENOENT だけを「対象なし」として扱っていると、
+      // このケースで未変換の ENOTDIR がそのまま fs:addToGitignore 全体を
+      // 失敗させてしまう(このファイル内の他のフォールバック
+      // (assertFileWithinFolder/resolveCanonicalPath)は ENOTDIR も同じ
+      // 「対象なし」として扱っているのと一貫性が無い)
+      const enotdir = Object.assign(new Error('ENOTDIR: not a directory'), {
+        code: 'ENOTDIR'
+      })
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined),
+        assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      // 後続のテストに影響しないよう、この1回限りの動作として設定する
+      // (mockIsSymbolicLink は各テストが個別に mockResolvedValue/mockRejectedValue で
+      // 上書きする前提で、vi.clearAllMocks() は実装まではクリアしないため)
+      mockIsSymbolicLink.mockRejectedValueOnce(enotdir)
+      mockAddToGitignore.mockResolvedValue(undefined)
+
+      await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'dist')
+    })
+
+    it('書き込み先の .gitignore 自体も境界チェックする(サンドボックス外へのシンボリックリンク対策)', async () => {
+      // .gitignore は readFileContent/writeFileContent で素に読み書きしており、
+      // これらはシンボリックリンクを辿る。悪意あるリポジトリで .gitignore が
+      // ~/.zshrc 等へのリンクだと、「.gitignore に追加」でサンドボックス外の
+      // ファイルが書き換えられてしまう。他の fs ハンドラは全て realpath ベースの
+      // 境界チェックを通しているのに、ここだけ通っていなかった
+      const assertWithinFolder = vi.fn().mockImplementation(async (_folder, path) => {
+        if (path === '/project/.gitignore') throw new Error('Access denied: /project/.gitignore')
+      })
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockAddToGitignore.mockResolvedValue(undefined)
+
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      ).rejects.toThrow('Access denied')
+      expect(mockAddToGitignore).not.toHaveBeenCalled()
+    })
+
     it('assertWithinFolder で境界チェックし、フォルダルートからの相対パスで addToGitignore を呼ぶ', async () => {
       const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
       const folderAccess = makeFolderAccess({
@@ -544,9 +637,9 @@ describe('registerFileSystemHandlers', () => {
       expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'dist')
     })
 
-    it('relative() の結果を toPosixRelativePath に通してから addToGitignore に渡す（Windows のバックスラッシュ区切りを正規化するため）', async () => {
+    it('folderPath と絶対パスを toGitRelativePath に通してから addToGitignore に渡す（Windows のバックスラッシュ区切りを正規化するため）', async () => {
       // path.relative は Windows では \ 区切りの文字列を返すが、.gitignore のパターンは
-      // / 区切りでなければ無効になる。toPosixRelativePath による正規化を経由することを
+      // / 区切りでなければ無効になる。toGitRelativePath による正規化を経由することを
       // 統合的に検証する。正規化関数自体の変換ロジックは pathNormalize.test.ts で単体テストする
       const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
       const folderAccess = makeFolderAccess({
@@ -555,12 +648,74 @@ describe('registerFileSystemHandlers', () => {
       })
       registerFileSystemHandlers(mockIpcMain, folderAccess)
       mockAddToGitignore.mockResolvedValue(undefined)
-      mockToPosixRelativePath.mockReturnValue('NORMALIZED_PATH')
+      mockToGitRelativePath.mockReturnValue('NORMALIZED_PATH')
 
       await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/sub/dir/generated')
 
-      expect(mockToPosixRelativePath).toHaveBeenCalledWith('sub/dir/generated')
+      expect(mockToGitRelativePath).toHaveBeenCalledWith('/project', '/project/sub/dir/generated')
       expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'NORMALIZED_PATH')
+    })
+
+    it('assertWithinFolder が ENOENT で失敗した場合（削除済みファイル）、assertParentWithinFolder で親ディレクトリを検証してから addToGitignore を呼ぶ', async () => {
+      // エクスプローラーのツリーが未更新のまま、ディスク上では既に削除された
+      // ファイルに対して「.gitignore に追加」した場合を想定する。git:stage 等の
+      // 他ハンドラと同じフォールバックが無いと、素の ENOENT がそのまま伝播してしまう
+      const enoent = Object.assign(new Error('ENOENT: no such file or directory'), {
+        code: 'ENOENT'
+      })
+      const assertWithinFolder = vi.fn().mockRejectedValue(enoent)
+      const assertParentWithinFolder = vi.fn().mockResolvedValue('/project')
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder,
+        assertParentWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockAddToGitignore.mockResolvedValue(undefined)
+      mockToGitRelativePath.mockReturnValue('deleted.txt')
+
+      await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/deleted.txt')
+
+      expect(assertParentWithinFolder).toHaveBeenCalledWith('/project', '/project')
+      expect(mockAddToGitignore).toHaveBeenCalledWith('/project', 'deleted.txt')
+    })
+
+    it('assertWithinFolder が ENOENT 以外のエラーで失敗した場合、汎用の日本語メッセージに変換して伝播する', async () => {
+      const assertWithinFolder = vi
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+        )
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/locked.txt')
+      ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/locked.txt')
+      expect(mockAddToGitignore).not.toHaveBeenCalled()
+    })
+
+    it('addToGitignore(.gitignore への書き込み)が失敗した場合、対象ファイルではなく .gitignore を指すメッセージに変換する', async () => {
+      // 境界チェック(targetPath)と .gitignore への書き込みは別の操作であり、
+      // 後者が失敗した原因は対象ファイル(例: dist)ではなく .gitignore 自体
+      // (書き込み権限やディスクフル等)にある。同じ targetPath に紐づけた
+      // メッセージにすると、無関係なファイルが問題であるかのように誤認させる
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockToGitRelativePath.mockReturnValue('dist')
+      mockAddToGitignore.mockRejectedValue(
+        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+      )
+
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/.gitignore')
     })
   })
 })
