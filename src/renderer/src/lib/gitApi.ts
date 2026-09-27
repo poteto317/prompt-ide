@@ -8,16 +8,21 @@ export function stageFile(filePath: string): Promise<void> {
   return window.api.stageFile(filePath)
 }
 
-export function unstageFile(filePath: string): Promise<void> {
-  return window.api.unstageFile(filePath)
+export function unstageFile(filePath: string, renamedFrom?: string): Promise<void> {
+  return window.api.unstageFile(filePath, renamedFrom)
 }
 
 export function commitChanges(message: string): Promise<void> {
   return window.api.commitChanges(message)
 }
 
-export function getDiff(filePath: string, staged: boolean): Promise<string> {
-  return window.api.getDiff(filePath, staged)
+export function getDiff(
+  filePath: string,
+  staged: boolean,
+  isUntracked: boolean,
+  renamedFrom?: string
+): Promise<string> {
+  return window.api.getDiff(filePath, staged, isUntracked, renamedFrom)
 }
 
 export function stageHunk(filePath: string, patch: string): Promise<void> {

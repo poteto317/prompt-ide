@@ -21,6 +21,7 @@ const defaultProps = {
   onOpenFolder: vi.fn(),
   onSelectFile: vi.fn(),
   error: null as Error | null,
+  gitignoreError: null as Error | null,
   onCreateFile: vi.fn(),
   onCreateDirectory: vi.fn(),
   onRenameEntry: vi.fn(),
@@ -80,6 +81,26 @@ describe('ExplorerPanel', () => {
   it('error が null のとき error メッセージは表示されない', () => {
     const { container } = render(<ExplorerPanel {...defaultProps} />)
     expect(container.querySelector('.explorer-panel__error')).toBeNull()
+  })
+
+  it('gitignoreError が渡されたとき error.message が表示される', () => {
+    render(<ExplorerPanel {...defaultProps} gitignoreError={new Error('gitignore書き込み失敗')} />)
+    expect(screen.getByText('gitignore書き込み失敗')).toBeInTheDocument()
+  })
+
+  it('error と gitignoreError が両方渡された場合、どちらも独立して表示される(互いに上書きしない)', () => {
+    // 同じ state を共有すると、フォルダ読み込みエラー表示中に別ファイルの
+    // gitignore 追加が失敗した場合(あるいはその逆)、片方のエラーが
+    // ユーザーに気づかれないまま消えてしまう
+    render(
+      <ExplorerPanel
+        {...defaultProps}
+        error={new Error('フォルダ読み込み失敗')}
+        gitignoreError={new Error('gitignore書き込み失敗')}
+      />
+    )
+    expect(screen.getByText('フォルダ読み込み失敗')).toBeInTheDocument()
+    expect(screen.getByText('gitignore書き込み失敗')).toBeInTheDocument()
   })
 
   describe('コンテキストメニュー', () => {

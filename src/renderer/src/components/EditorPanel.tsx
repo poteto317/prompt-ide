@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useRef } from 'react'
 import Editor from '@monaco-editor/react'
-import type { editor } from 'monaco-editor'
 import type { OpenedFileSignal } from '../hooks/useFileSystem'
 import { editorOptions } from '../lib/editorOptions'
 import { registerSaveCommand } from '../lib/editorShortcuts'
 import { useLatestRef } from '../hooks/useLatestRef'
+import { useEditorFocusManager } from '../hooks/useEditorFocusManager'
 import type { OpenFile } from '../types'
 import WelcomeView from './editor/WelcomeView'
 import EditorTabs from './editor/EditorTabs'
 import OutputPanel from './output/OutputPanel'
 import type { DiffTabKey } from '../hooks/useDiffTabs'
-import { encodeDiffTabPath, isDiffTabPath, decodeDiffTabPath } from '../hooks/useDiffTabs'
+import { useCombinedEditorTabs } from '../hooks/useCombinedEditorTabs'
 import DiffView from './source-control/DiffView'
 
 interface Props {
@@ -21,7 +20,9 @@ interface Props {
   saveError: Error | null
   onChangeContent: (content: string) => void
   onSave: () => void
-  onActivateTab: (path: string) => void
+  /** 実ファイルタブへ切り替える。戻り値は実際に切り替わったか
+   *  (useCombinedEditorTabs が diff タブの非アクティブ化を判断するために見る) */
+  onActivateTab: (path: string) => boolean
   onCloseTab: (path: string) => void
   onReorderTabs: (fromIndex: number, toIndex: number) => void
   isExecuting: boolean
@@ -47,15 +48,10 @@ interface Props {
   isHunkOperationInProgress: boolean
   onStageHunk: (patch: string) => void
   onUnstageHunk: (patch: string) => void
-}
-
-// 誰もフォーカスを保持していない状態か。ダイアログやツリーなど他の要素が
-// 持っているときに奪うと、入力中や操作中の場所からフォーカスが飛ぶ。
-// クイックオープンから開いた場合はダイアログが消えて body に落ちるため、
-// この条件で受け取れる
-const isFocusUnclaimed = (): boolean => {
-  const active = document.activeElement
-  return active === null || active === document.body
+  /** 開いている diff タブが未追跡ファイルか。DiffView に渡し、表示打ち切り時の
+   *  ハンク操作ボタン抑止を無効化する(未追跡ファイルの stageHunk は patch を
+   *  使わずファイル全体を git add するだけのため) */
+  isActiveFileUntracked: boolean
 }
 
 export default function EditorPanel({
@@ -87,143 +83,45 @@ export default function EditorPanel({
   diffError,
   isHunkOperationInProgress,
   onStageHunk,
-  onUnstageHunk
+  onUnstageHunk,
+  isActiveFileUntracked
 }: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
   // Ctrl/Cmd+S が常に最新の onSave を呼べるよう ref 経由で参照する。
   const onSaveRef = useLatestRef(onSave)
-  const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const openFilePath = openFile?.path ?? null
-  const hasOpenFile = openFilePath !== null
-  // ファイルを開いた直後にそのまま入力を始められるようにする。
-  // key={openFile.path} により切替のたびに再マウントされるため、ここで取らないと
-  // クイックオープン経由ではフォーカスが body に残ってしまう。
-  // フォーカス要求は「どのファイルに対する要求か」を保持する。持たないと、
-  // クイックオープンで A を開いた直後に別経路で B を開いたとき、A の要求が
-  // B のマウントで消費されて意図しない場所からフォーカスを奪う
-  const pendingFocusPathRef = useRef<string | null>(null)
-  // editorRef が保持しているインスタンスがどのファイルのものか。
-  // ファイル切替直後は前のファイルのインスタンスが残っているため、これを見ないと
-  // 古いインスタンスでフォーカス要求を消費してしまう
-  const mountedPathRef = useRef<string | null>(null)
-  // Monaco の onMount は非同期に発火するため、ハンドラ側から最新の値を読む
-  const isOverlayOpenRef = useLatestRef(isOverlayOpen)
-  const openFilePathRef = useLatestRef(openFilePath)
+  const { handleEditorMount, focusEditorIfPending } = useEditorFocusManager({
+    openFilePath,
+    openedFileSignal,
+    isOverlayOpen
+  })
 
-  // オーバーレイが開いている間はフォーカスを奪わない。読み込み中にクイックオープンを
-  // 開き直した場合に持っていくと、続けて打った文字がファイルへ入ってしまうため。
-  // エディタのマウントとオーバーレイが閉じるのはどちらが先になるか決まらないので、
-  // 両方から呼んで先に条件が揃ったほうで受け取る。
-  const focusEditorIfPending = useCallback((): void => {
-    const requestedPath = pendingFocusPathRef.current
-    // 要求したファイルと違うファイルが開かれていたら、その要求は捨てる
-    if (requestedPath === null || requestedPath !== openFilePathRef.current) {
-      pendingFocusPathRef.current = null
-      return
-    }
-    if (isOverlayOpenRef.current) return
-    if (!isFocusUnclaimed()) {
-      // 他へ譲った時点で要求は取り下げる。残しておくと、無関係な
-      // オーバーレイの開閉であとから消費され、フォーカスが飛ぶ
-      pendingFocusPathRef.current = null
-      return
-    }
-    const editorInstance = editorRef.current
-    if (editorInstance === null || mountedPathRef.current !== openFilePathRef.current) return
-    // 同じ path を閉じて開き直した場合、path の比較だけでは旧インスタンスと
-    // 区別できない。破棄済みの Monaco はモデルを失うため、生存確認で弾く
-    if (editorInstance.getModel() === null) return
-    pendingFocusPathRef.current = null
-    editorInstance.focus()
-  }, [isOverlayOpenRef, openFilePathRef])
-
-  // 「開いた」信号でのみ要求を立てる。openFilePath はリネームでも変わるため、
-  // path の変化を使うとエクスプローラーで作業中にフォーカスを奪ってしまう
-  // 信号はどの経路のオープンでも進む(履歴の更新に使うため)。フォーカス要求を
-  // 立てるかは各イベントの moveFocusToEditor で決める。エクスプローラー経由は
-  // false なので要求を立てず、逆に以前の要求が残っていれば取り下げる。
-  // ファイルの有無の変化で立てると、エクスプローラーで最初のファイルを開いた
-  // ときにも Monaco の遅延 onMount がツリーからフォーカスを奪う
-  // 依存は最新イベントの id だけにする。オブジェクトの同一性に依存すると、
-  // 値が同じでも再レンダーのたびに要求が立ち直り、取り下げた要求が復活する
-  const latestOpenedFile = openedFileSignal.events.at(-1) ?? null
-  const latestOpenedFileRef = useLatestRef(latestOpenedFile)
-  useEffect(() => {
-    // イベントが持つ対象パスを使う。処理時点の openFilePath を見ると、発生後に
-    // 別経路で開かれたファイルを要求対象として登録してしまう
-    const latest = latestOpenedFileRef.current
-    if (latest === null) return
-    // フォーカス移動を伴わないイベントでも、以前の要求は取り下げる。残しておくと
-    // 後着の onMount がその要求を消費し、別の場所からフォーカスを奪う
-    pendingFocusPathRef.current = latest.moveFocusToEditor ? latest.path : null
-  }, [latestOpenedFile?.id, latestOpenedFileRef])
-
-  // ファイルを閉じると Monaco はアンマウントされる。破棄済みのインスタンスを
-  // 掴んだままだと、同じパスを開き直したときに古い側でフォーカス要求を
-  // 消費してしまい、新しいエディタが入力を受け取れない
-  useEffect(() => {
-    if (!hasOpenFile) {
-      editorRef.current = null
-      mountedPathRef.current = null
-      pendingFocusPathRef.current = null
-      return
-    }
-    // 要求対象と違うファイルが開かれていたら、その要求は捨てる。信号を伴わない
-    // 経路(リネーム)でも path は変わるため、ここでも破棄しておく
-    if (pendingFocusPathRef.current !== null && pendingFocusPathRef.current !== openFilePath) {
-      pendingFocusPathRef.current = null
-    }
-  }, [hasOpenFile, openFilePath])
-
-  useEffect(() => {
-    focusEditorIfPending()
-  }, [openedFileSignal, isOverlayOpen, focusEditorIfPending])
-
-  const diffTabItems = diffTabs.map((tab) => ({
-    path: encodeDiffTabPath(tab),
-    name: `${tab.path.split('/').pop()} (差分)`,
-    isDirty: false
-  }))
-  const combinedTabs = [
-    ...openFiles.map((f) => ({
-      path: f.path,
-      name: f.name,
-      // アクティブなタブは呼び出し元(useFileEditing)が算出した isDirty を使う。
-      // 非アクティブなタブにはその算出値が無いため、同じ式で自前に求める
-      isDirty: f.path === activeFilePath ? isDirty : f.content !== f.savedContent
-    })),
-    ...diffTabItems
-  ]
-  const activeTabPath = activeDiffTab !== null ? encodeDiffTabPath(activeDiffTab) : activeFilePath
-  const handleActivateTab = (path: string): void => {
-    if (isDiffTabPath(path)) {
-      onActivateDiffTab(decodeDiffTabPath(path))
-    } else {
-      // 実ファイルタブへの切り替え時、diff タブを非アクティブ化する。しないと
-      // activeFilePath は更新されてもタブバーのハイライト・本文表示が diff タブの
-      // ままになり、実ファイルタブへ二度と戻れなくなる
-      onDeactivateDiffTab()
-      onActivateTab(path)
-    }
-  }
-  const handleCloseTab = (path: string): void => {
-    if (isDiffTabPath(path)) {
-      onCloseDiffTab(decodeDiffTabPath(path))
-    } else {
-      onCloseTab(path)
-    }
-  }
+  const { combinedTabs, activeTabPath, handleActivateTab, handleCloseTab } = useCombinedEditorTabs({
+    openFiles,
+    activeFilePath,
+    isDirty,
+    diffTabs,
+    activeDiffTab,
+    onActivateTab,
+    onCloseTab,
+    onActivateDiffTab,
+    onCloseDiffTab,
+    onDeactivateDiffTab
+  })
 
   return (
     <div className="editor-panel">
-      {openFile === null && activeDiffTab === null ? (
+      {/* diffTabs に非アクティブな diff タブが残っている場合、WelcomeView に
+          切り替えるとタブバーごと消えてそれらのタブへ二度とアクセスできなくなる */}
+      {openFile === null && activeDiffTab === null && diffTabs.length === 0 ? (
         <WelcomeView />
       ) : (
         <>
           <EditorTabs
             tabs={combinedTabs}
             activePath={activeTabPath}
+            saveTargetPath={activeFilePath}
             isSaving={isSaving}
             saveError={saveError}
             onSave={onSave}
@@ -231,10 +129,20 @@ export default function EditorPanel({
             onCloseTab={handleCloseTab}
             onReorderTabs={onReorderTabs}
           />
+          {/* 既知の挙動: diff タブをアクティブにすると下の <Editor> がアンマウントされ、
+              Monaco のモデルが破棄されるため、実ファイルタブへ戻したときに undo/redo
+              スタック・カーソル位置・スクロール位置が失われる(バッファの内容自体は
+              openFile.content に保持されるので失われない)。常時マウントして
+              display:none で切り替える方法はあるが、Monaco は非表示状態だと
+              レイアウト計算が狂うため復帰時の layout() 呼び出しが必要になり、
+              jsdom ベースのテストでは検証できない副作用を抱え込むことになる */}
           <div className="editor-body">
             {activeDiffTab !== null ? (
               <>
                 {diffError !== null && <p className="diff-view__error">{diffError.message}</p>}
+                {diffContent === null && diffError === null && (
+                  <p className="diff-view__loading">読み込み中...</p>
+                )}
                 {diffContent !== null && (
                   <DiffView
                     diffText={diffContent}
@@ -242,33 +150,32 @@ export default function EditorPanel({
                     onStageHunk={onStageHunk}
                     onUnstageHunk={onUnstageHunk}
                     disabled={isHunkOperationInProgress}
+                    isUntracked={isActiveFileUntracked}
                   />
                 )}
               </>
+            ) : openFile !== null ? (
+              <Editor
+                key={openFile.path}
+                height="100%"
+                language={openFile.language}
+                theme="vs-dark"
+                value={openFile.content}
+                options={editorOptions}
+                onChange={(value) => onChangeContent(value ?? '')}
+                onMount={(editorInstance, monaco) => {
+                  const isCurrent = handleEditorMount(editorInstance, openFile.path)
+                  if (!isCurrent) return
+                  registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
+                  focusEditorIfPending()
+                }}
+              />
             ) : (
-              openFile !== null && (
-                <Editor
-                  key={openFile.path}
-                  height="100%"
-                  language={openFile.language}
-                  theme="vs-dark"
-                  value={openFile.content}
-                  options={editorOptions}
-                  onChange={(value) => onChangeContent(value ?? '')}
-                  onMount={(editorInstance, monaco) => {
-                    // onMount は非同期に発火するため、素早く切り替えたときに
-                    // 破棄済みの古いファイルの callback が後から届くことがある。
-                    // 現在のファイルのものだけを保持する
-                    if (openFilePathRef.current !== openFile.path) return
-                    // 破棄済みインスタンスの遅延 callback で現在の参照を壊さない
-                    if (editorInstance.getModel() === null) return
-                    editorRef.current = editorInstance
-                    mountedPathRef.current = openFile.path
-                    registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
-                    focusEditorIfPending()
-                  }}
-                />
-              )
+              // 非アクティブな diff タブが残っているだけ(実ファイルタブも
+              // アクティブな diff タブも無い)場合、ここに来る。タブバーは表示
+              // されているので、何も描画しないと本文だけが空白のまま残り、
+              // ユーザーがタブを選び直すまで理由が分からない状態になる
+              <p className="editor-panel__placeholder">タブを選択してください</p>
             )}
           </div>
         </>

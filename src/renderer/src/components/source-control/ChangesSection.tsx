@@ -1,20 +1,39 @@
 import type { GitFileStatus } from '@shared/types'
-import { statusChar } from '../../lib/gitUtils'
+import { statusChar, isUntrackedFile, isUnstagedFile } from '../../lib/gitUtils'
+import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 
 interface Props {
   files: GitFileStatus[]
+  /** useGitOperations が「実行中」として持つパス集合。useGitOperations.ts の
+   *  runStageOperation は対象パスに関わらず、この集合が空でない間は新規の
+   *  stage/unstage を全てブロックする(同じ .git/index への同時書き込みを
+   *  避けるため)。判定は stagingPaths.has(f.path)(このファイル自身)ではなく
+   *  stagingPaths.size > 0(集合が空でないか)で行う必要がある。has(f.path) だけだと
+   *  別ファイルが stagingPaths に入っている間もこのボタンは押せるように見え、
+   *  押しても無言で弾かれるだけの状態になる */
   stagingPaths: ReadonlySet<string>
   onStage: (path: string) => void
   onOpenDiff: (path: string) => void
+  /** diff タブでのハンク操作(git apply --cached)と同じ .git/index への書き込みが
+   *  対象ファイルに対して実行中かどうか。stagingPaths(このセクション自身の
+   *  実行中状態)だけでは検知できない、別経路からの操作による競合を防ぐ */
+  isLocked?: (path: string) => boolean
+  /** 対象パスに関わらず、無関係な別ファイルの stage/unstage(useGitOperations)や
+   *  ハンク操作(useDiffOperations)が実行中かどうか。useGitOperations.runStageOperation
+   *  は対象パス単独の isLocked だけでなくこれも見て新規の stage をブロックするため、
+   *  ボタン側もここを見ないと「押せそうに見えるのに押しても無言で弾かれる」状態になる */
+  isAnyLocked?: () => boolean
 }
 
 export default function ChangesSection({
   files,
   stagingPaths,
   onStage,
-  onOpenDiff
+  onOpenDiff,
+  isLocked = alwaysUnlocked,
+  isAnyLocked = alwaysUnlocked
 }: Props): React.JSX.Element | null {
-  const changed = files.filter((f) => f.workingDir !== ' ' || f.index === '?')
+  const changed = files.filter(isUnstagedFile)
   if (changed.length === 0) return null
   return (
     <section className="source-control-panel__section">
@@ -23,13 +42,13 @@ export default function ChangesSection({
         {changed.map((f) => (
           <li key={f.path} className="source-control-panel__file-item">
             <span className="source-control-panel__file-status source-control-panel__file-status--changed">
-              {f.index === '?' ? statusChar(f.index) : statusChar(f.workingDir)}
+              {isUntrackedFile(f) ? statusChar(f.index) : statusChar(f.workingDir)}
             </span>
             <button
               type="button"
               className="source-control-panel__file-path"
               onClick={() => onOpenDiff(f.path)}
-              aria-label={`${f.path} の差分を表示`}
+              aria-label={`${f.path} の未ステージ差分を表示`}
             >
               {f.path}
             </button>
@@ -37,7 +56,7 @@ export default function ChangesSection({
               type="button"
               className="source-control-panel__stage-btn"
               onClick={() => onStage(f.path)}
-              disabled={stagingPaths.has(f.path)}
+              disabled={stagingPaths.size > 0 || isLocked(f.path) || isAnyLocked()}
               aria-label={`${f.path} をステージ`}
             >
               +

@@ -14,7 +14,7 @@ const mockResult: GitStatusResult = {
   branch: 'main',
   ahead: 0,
   behind: 0,
-  files: [],
+  files: []
 }
 
 beforeEach(() => {
@@ -62,7 +62,9 @@ describe('useGitStatus', () => {
 
     const updated: GitStatusResult = { ...mockResult, branch: 'feature/foo' }
     mockGetGitStatus.mockResolvedValue(updated)
-    await act(async () => { await result.current.refreshGitStatus() })
+    await act(async () => {
+      await result.current.refreshGitStatus()
+    })
     expect(result.current.gitStatus).toEqual(updated)
     expect(mockGetGitStatus).toHaveBeenCalledTimes(2)
   })
@@ -81,6 +83,41 @@ describe('useGitStatus', () => {
     rerender({ path: '/project-b' })
     await waitFor(() => expect(result.current.gitStatus).toEqual(updated))
     expect(mockGetGitStatus).toHaveBeenCalledTimes(2)
+  })
+
+  it('別フォルダへ切り替えた時点で、新しい取得が終わる前に前フォルダの gitStatus をクリアする', async () => {
+    // 残したままにすると、B の git status が返るまでの間、ソース管理パネルに
+    // A のブランチ名とファイル一覧が「操作可能な状態で」表示される。その間に
+    // 「+」を押すと、A のファイルパスが B の allowedFolder に対して解決され、
+    // B 側の同名ファイルをステージしてしまう(無ければエラー)
+    mockGetGitStatus.mockResolvedValue(mockResult)
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string | null }) => useGitStatus(path),
+      { initialProps: { path: '/project-a' as string | null } }
+    )
+    await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
+
+    // B の取得は未解決のまま止める
+    mockGetGitStatus.mockImplementation(() => new Promise<GitStatusResult>(() => {}))
+    rerender({ path: '/project-b' })
+
+    expect(result.current.gitStatus).toBeNull()
+  })
+
+  it('同じフォルダ内の再取得中は gitStatus を保持する(入力中のコミットメッセージを失わないため)', async () => {
+    // フォルダ切替と違い、同一フォルダの再取得(stage/unstage/保存のたびに走る)で
+    // クリアすると、SourceControlPanel が GitRepoView をアンマウントし、
+    // CommitSection のローカル state(入力中のメッセージ)が破棄されてしまう
+    mockGetGitStatus.mockResolvedValue(mockResult)
+    const { result } = renderHook(() => useGitStatus('/project-a'))
+    await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
+
+    mockGetGitStatus.mockImplementation(() => new Promise<GitStatusResult>(() => {}))
+    act(() => {
+      void result.current.refreshGitStatus()
+    })
+
+    expect(result.current.gitStatus).toEqual(mockResult)
   })
 
   it('folderPath が null に戻ると gitStatus / gitLoading / gitError が全てリセットされる', async () => {
@@ -125,7 +162,10 @@ describe('useGitStatus', () => {
 
     mockGetGitStatus
       .mockImplementationOnce(
-        () => new Promise<GitStatusResult>((resolve) => { resolveFirst = resolve })
+        () =>
+          new Promise<GitStatusResult>((resolve) => {
+            resolveFirst = resolve
+          })
       )
       .mockResolvedValueOnce(secondResult)
 

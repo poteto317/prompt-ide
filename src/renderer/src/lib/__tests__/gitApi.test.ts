@@ -25,7 +25,7 @@ const mockApi = {
   getLog: vi.fn(),
   getBranches: vi.fn(),
   getTags: vi.fn(),
-  amendCommit: vi.fn(),
+  amendCommit: vi.fn()
 }
 
 beforeEach(() => {
@@ -38,7 +38,7 @@ const mockResult: GitStatusResult = {
   branch: 'main',
   ahead: 0,
   behind: 0,
-  files: [],
+  files: []
 }
 
 describe('getGitStatus', () => {
@@ -69,7 +69,13 @@ describe('unstageFile', () => {
   it('window.api.unstageFile を filePath で呼び出す', async () => {
     mockApi.unstageFile.mockResolvedValue(undefined)
     await unstageFile('src/index.ts')
-    expect(mockApi.unstageFile).toHaveBeenCalledWith('src/index.ts')
+    expect(mockApi.unstageFile).toHaveBeenCalledWith('src/index.ts', undefined)
+  })
+
+  it('renamedFrom を渡すと window.api.unstageFile の第2引数にそのまま渡す', async () => {
+    mockApi.unstageFile.mockResolvedValue(undefined)
+    await unstageFile('new.txt', 'old.txt')
+    expect(mockApi.unstageFile).toHaveBeenCalledWith('new.txt', 'old.txt')
   })
 })
 
@@ -82,10 +88,10 @@ describe('commitChanges', () => {
 })
 
 describe('getDiff', () => {
-  it('window.api.getDiff を filePath/staged で呼ぶ', async () => {
+  it('window.api.getDiff を filePath/staged/isUntracked で呼ぶ', async () => {
     ;(mockApi.getDiff as ReturnType<typeof vi.fn>).mockResolvedValue('DIFF')
-    const result = await getDiff('src/index.ts', true)
-    expect(mockApi.getDiff).toHaveBeenCalledWith('src/index.ts', true)
+    const result = await getDiff('src/index.ts', true, false)
+    expect(mockApi.getDiff).toHaveBeenCalledWith('src/index.ts', true, false, undefined)
     expect(result).toBe('DIFF')
   })
 })

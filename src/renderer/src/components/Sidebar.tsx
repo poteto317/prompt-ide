@@ -16,6 +16,7 @@ import type {
   HistoryEntry
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
+import { alwaysUnlocked } from '../hooks/useFileOperationLock'
 
 interface Props {
   activePanel: Panel
@@ -25,6 +26,7 @@ interface Props {
   onOpenFolder: () => void
   onSelectFile: (node: FileTreeNode) => void
   error: Error | null
+  gitignoreError: Error | null
   onCreateFile: (parentPath: string, name: string) => void
   onCreateDirectory: (parentPath: string, name: string) => void
   onRenameEntry: (node: FileTreeNode, newName: string) => void
@@ -56,8 +58,10 @@ interface Props {
   gitError: Error | null
   onRefreshGitStatus: () => void
   stagingPaths: ReadonlySet<string>
+  isLocked?: (path: string) => boolean
+  isAnyLocked?: () => boolean
   onStageFile: (path: string) => void
-  onUnstageFile: (path: string) => void
+  onUnstageFile: (path: string, renamedFrom?: string) => void
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
   gitOperationError: Error | null
@@ -69,6 +73,8 @@ interface Props {
   tags: string[]
   hasMoreLog: boolean
   isLoadingLog: boolean
+  isLoadingFolder: boolean
+  historyError: Error | null
   onLoadMoreLog: () => void
   onAddToGitignore: (node: FileTreeNode) => void
   hasKey: boolean
@@ -88,6 +94,7 @@ export default function Sidebar({
   onOpenFolder,
   onSelectFile,
   error,
+  gitignoreError,
   onCreateFile,
   onCreateDirectory,
   onRenameEntry,
@@ -119,6 +126,8 @@ export default function Sidebar({
   gitError,
   onRefreshGitStatus,
   stagingPaths,
+  isLocked = alwaysUnlocked,
+  isAnyLocked = alwaysUnlocked,
   onStageFile,
   onUnstageFile,
   isCommitting,
@@ -132,6 +141,8 @@ export default function Sidebar({
   tags,
   hasMoreLog,
   isLoadingLog,
+  isLoadingFolder,
+  historyError,
   onLoadMoreLog,
   onAddToGitignore,
   hasKey,
@@ -153,6 +164,7 @@ export default function Sidebar({
           onOpenFolder={onOpenFolder}
           onSelectFile={onSelectFile}
           error={error}
+          gitignoreError={gitignoreError}
           onCreateFile={onCreateFile}
           onCreateDirectory={onCreateDirectory}
           onRenameEntry={onRenameEntry}
@@ -203,6 +215,8 @@ export default function Sidebar({
           gitError={gitError}
           onRefresh={onRefreshGitStatus}
           stagingPaths={stagingPaths}
+          isLocked={isLocked}
+          isAnyLocked={isAnyLocked}
           onStage={onStageFile}
           onUnstage={onUnstageFile}
           onOpenDiff={onOpenDiff}
@@ -215,6 +229,8 @@ export default function Sidebar({
           tags={tags}
           hasMoreLog={hasMoreLog}
           isLoadingLog={isLoadingLog}
+          isLoadingFolder={isLoadingFolder}
+          historyError={historyError}
           onLoadMoreLog={onLoadMoreLog}
           operationError={gitOperationError}
         />

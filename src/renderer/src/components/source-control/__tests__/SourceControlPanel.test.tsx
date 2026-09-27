@@ -22,8 +22,10 @@ const baseProps = {
   tags: [],
   hasMoreLog: false,
   isLoadingLog: false,
+  isLoadingFolder: false,
+  historyError: null as Error | null,
   onLoadMoreLog: vi.fn(),
-  operationError: null as Error | null,
+  operationError: null as Error | null
 }
 
 const repoStatus: GitStatusResult = {
@@ -31,7 +33,7 @@ const repoStatus: GitStatusResult = {
   branch: 'main',
   ahead: 0,
   behind: 0,
-  files: [],
+  files: []
 }
 
 describe('SourceControlPanel', () => {
@@ -50,6 +52,20 @@ describe('SourceControlPanel', () => {
     expect(screen.queryByText('フォルダを開いてください')).not.toBeInTheDocument()
   })
 
+  it('gitStatus を既に持っている状態での再取得中は、GitRepoView を保持したままにする', () => {
+    // アンマウントすると CommitSection のローカル state(入力中のコミット
+    // メッセージ・amend チェック)が破棄される。refreshGitStatus は stage/unstage/
+    // commit/ファイル保存のたびに呼ばれるため、「メッセージを書いている途中に
+    // ファイルを stage したら下書きが消えた」という事故になる
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} gitLoading={true} />)
+    expect(screen.getByLabelText('コミットメッセージ')).toBeInTheDocument()
+  })
+
+  it('gitStatus をまだ持っていない初回取得中だけ「読み込み中...」を表示する', () => {
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} gitLoading={true} />)
+    expect(screen.queryByText('読み込み中...')).not.toBeInTheDocument()
+  })
+
   it('isRepo: false のとき「Git リポジトリではありません」が表示される', () => {
     const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
     render(<SourceControlPanel {...baseProps} gitStatus={notRepo} />)
@@ -65,7 +81,7 @@ describe('SourceControlPanel', () => {
   it('ステージ済みファイルが「ステージ済み」セクションに表示される', () => {
     const status: GitStatusResult = {
       ...repoStatus,
-      files: [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }],
+      files: [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('ステージ済み (1)')).toBeInTheDocument()
@@ -75,7 +91,7 @@ describe('SourceControlPanel', () => {
   it('ステージ済みファイルのステータス文字が表示される（M）', () => {
     const status: GitStatusResult = {
       ...repoStatus,
-      files: [{ path: 'file.ts', index: 'A', workingDir: ' ' }],
+      files: [{ path: 'file.ts', index: 'A', workingDir: ' ' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('A')).toBeInTheDocument()
@@ -84,7 +100,7 @@ describe('SourceControlPanel', () => {
   it('変更ファイルが「変更」セクションに表示される', () => {
     const status: GitStatusResult = {
       ...repoStatus,
-      files: [{ path: 'README.md', index: ' ', workingDir: 'M' }],
+      files: [{ path: 'README.md', index: ' ', workingDir: 'M' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('変更 (1)')).toBeInTheDocument()
@@ -94,7 +110,7 @@ describe('SourceControlPanel', () => {
   it('未追跡ファイル（index="?", workingDir="?"）が「変更」セクションに U で表示される', () => {
     const status: GitStatusResult = {
       ...repoStatus,
-      files: [{ path: 'new-file.ts', index: '?', workingDir: '?' }],
+      files: [{ path: 'new-file.ts', index: '?', workingDir: '?' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('変更 (1)')).toBeInTheDocument()
@@ -107,8 +123,8 @@ describe('SourceControlPanel', () => {
       ...repoStatus,
       files: [
         { path: 'staged.ts', index: 'A', workingDir: ' ' },
-        { path: 'changed.ts', index: ' ', workingDir: 'M' },
-      ],
+        { path: 'changed.ts', index: ' ', workingDir: 'M' }
+      ]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
     expect(screen.getByText('ステージ済み (1)')).toBeInTheDocument()
@@ -151,7 +167,13 @@ describe('SourceControlPanel', () => {
   })
 
   it('operationError があれば表示する', () => {
-    const gitStatus: GitStatusResult = { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] }
+    const gitStatus: GitStatusResult = {
+      isRepo: true,
+      branch: 'main',
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     render(
       <SourceControlPanel
         gitStatus={gitStatus}
@@ -171,10 +193,23 @@ describe('SourceControlPanel', () => {
         tags={[]}
         hasMoreLog={false}
         isLoadingLog={false}
+        isLoadingFolder={false}
+        historyError={null}
         onLoadMoreLog={vi.fn()}
         operationError={new Error('ステージに失敗しました')}
       />
     )
     expect(screen.getByText('ステージに失敗しました')).toBeInTheDocument()
+  })
+
+  it('historyError が渡ると HistorySection にエラーメッセージが表示される', () => {
+    render(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        historyError={new Error('spawn git ENOENT')}
+      />
+    )
+    expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
   })
 })

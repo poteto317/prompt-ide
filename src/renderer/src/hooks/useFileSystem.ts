@@ -2,12 +2,14 @@ import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
+import { toError } from '../lib/errorUtils'
 import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing, DISCARD_CONFIRM_MESSAGE } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
 import { arrayMove } from '@dnd-kit/sortable'
+import { computeAdjacentItem } from './computeAdjacentItem'
 
 /**
  * 信号に保持するイベント数。消費側が同じレンダーまで処理できないことがあるため、
@@ -59,7 +61,8 @@ interface FileSystemState {
   /** ファイルを開けたら true。ディレクトリ・破棄確認のキャンセル・読み込み失敗では false */
   selectFile: (node: FileTreeNode, options?: SelectFileOptions) => Promise<boolean>
   closeFile: () => void
-  activateTab: (path: string) => void
+  /** 既存タブへ切り替える。戻り値は実際に切り替わったか(開いていないパスなら false) */
+  activateTab: (path: string) => boolean
   closeTab: (path: string) => void
   reorderTabs: (fromIndex: number, toIndex: number) => void
   updateFileContent: (content: string) => void
@@ -68,6 +71,9 @@ interface FileSystemState {
   createDirectory: (parentPath: string, name: string) => Promise<void>
   renameEntry: (node: FileTreeNode, newName: string) => Promise<void>
   deleteEntry: (node: FileTreeNode) => Promise<void>
+  /** ルートからファイルツリーを読み直す。アプリ外/このフック外の要因で
+   *  ディスク上のファイル構成が変わったとき(.gitignore の新規作成等)に使う */
+  refreshTree: () => Promise<boolean>
 }
 
 // getOpenFile はここで常に自前の同期ミラーへ差し替える。Options（公開型）には
@@ -177,7 +183,31 @@ export function useFileSystem(options?: Options): FileSystemState {
       const found = findFile(next, activePath)
       if (found === null) {
         const prevIndex = prev.findIndex((f) => isSamePath(f.path, activePath))
-        const fallback = computeAdjacentPath(prev, next, prevIndex)
+        // computeAdjacentItem は「1つの要素が削除された」ことを前提に、削除位置の
+        // 要素(1つ削除後にその位置へ来る要素 = 右隣)を返す設計。ディレクトリ削除
+        // (useFileTreeOperations.deleteEntry の isPathAtOrInside フィルタ)は配下の
+        // 複数タブを1回の setOpenFiles 呼び出しで同時に取り除くため、prevIndex を
+        // そのまま渡すと、本来隣接するはずの生き残りタブを飛び越して、さらに先の
+        // タブが選ばれてしまう。
+        // 要素数が変わっていない場合(リネームで自分自身の path が変わった等)は、
+        // 消えたように見えた要素があった位置にそのままリネーム後の自分自身等が
+        // 来ているはずなので、位置ベース(computeAdjacentItem)で返す。要素数が
+        // 減っている場合のみ(削除、特にディレクトリ削除で複数タブが同時に消える
+        // 場合)、prevIndex(削除された範囲の先頭)から prev を順に辿り、next に
+        // まだ存在する最初のファイルを探す内容ベースの探索に切り替える
+        const fallback = ((): string | null => {
+          if (next.length === prev.length) return computeAdjacentItem(next, prevIndex)?.path ?? null
+          if (prevIndex === -1) return next[0]?.path ?? null
+          for (let i = prevIndex; i < prev.length; i++) {
+            const candidate = findFile(next, prev[i].path)
+            if (candidate !== null) return candidate.path
+          }
+          for (let i = prevIndex - 1; i >= 0; i--) {
+            const candidate = findFile(next, prev[i].path)
+            if (candidate !== null) return candidate.path
+          }
+          return null
+        })()
         activeFilePathMirrorRef.current = fallback
         setActiveFilePath(fallback)
       } else if (found.path !== activePath) {
@@ -401,7 +431,7 @@ export function useFileSystem(options?: Options): FileSystemState {
           resetForFolderChange(pathsBeingCleared)
         }
       }
-      const failure = err instanceof Error ? err : new Error(String(err))
+      const failure = toError(err)
       setError(failure)
       // 走査まで到達していた失敗だけを走査エラーとして扱う
       if (selectedPath !== null) setFolderLoadError(failure)
@@ -419,7 +449,7 @@ export function useFileSystem(options?: Options): FileSystemState {
           const applied = await refreshTree()
           if (applied) setError(null)
         } catch (err) {
-          const failure = err instanceof Error ? err : new Error(String(err))
+          const failure = toError(err)
           setError(failure)
           // ツリーが空のままになるため、クイックオープン等が理由を案内できるよう
           // 走査エラーとしても扱う
@@ -531,20 +561,25 @@ export function useFileSystem(options?: Options): FileSystemState {
       return true
     } catch (err) {
       if (readId !== latestReadRef.current) return false
-      setError(err instanceof Error ? err : new Error(String(err)))
+      setError(toError(err))
       return false
     } finally {
       if (readId === latestReadRef.current) pendingReadPathRef.current = null
     }
   }
 
-  const activateTab = (path: string): void => {
-    if (findFile(openFilesMirrorRef.current, path) === null) return
+  // 戻り値は「実際に切り替わったか」。呼び出し元(useAppState の diff タブ
+  // 非アクティブ化ラッパー)がこれを見ないと、開いていないパスを渡されたときに
+  // 実ファイルタブは変わらないのに diff タブだけ非アクティブになり、
+  // どちらも表示されない状態になってしまう
+  const activateTab = (path: string): boolean => {
+    if (findFile(openFilesMirrorRef.current, path) === null) return false
     activeFilePathMirrorRef.current = path
     setActiveFilePath(path)
     // 既存タブ間の切り替えであり、バッファは破棄されないため generation は
     // 進めない(進行中の保存を誤って無効扱いにしないため)
     switchActiveFile()
+    return true
   }
 
   const closeTab = (path: string): void => {
@@ -581,6 +616,14 @@ export function useFileSystem(options?: Options): FileSystemState {
   // commitOpenFile/setOpenFilesAndFixActive と同じ理由(React の setState 更新関数は
   // 同じ tick 内で同期的に呼ばれるとは限らない)で、ミラーへの反映は updater の外で
   // 同期的に行い、setOpenFiles には確定済みの配列を渡す
+  //
+  // 呼び出し元(EditorTabs.tsx の handleDragEnd)が「並び替え可能なタブ
+  // (isReorderable=true の実ファイルタブ)だけ」のインデックス空間へ変換してから
+  // 渡してくるため、ここへ来る値は openFiles と同じ索引を指す。以前は結合
+  // タブバー上のインデックスがそのまま渡っており、diff タブが絡むドラッグが
+  // 下のガードで無言の no-op になっていた(ユーザーからは「ドラッグできるのに
+  // 何も起きない」だけが見えていた)。ガード自体は、呼び出し元の変換漏れで
+  // 範囲外の値が来ても配列を壊さないための最後の防波堤として残す
   const reorderTabs = (fromIndex: number, toIndex: number): void => {
     const prev = openFilesMirrorRef.current
     if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
@@ -620,20 +663,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     createFile,
     createDirectory,
     renameEntry,
-    deleteEntry
+    deleteEntry,
+    refreshTree
   }
-}
-
-// 配列から要素が消えたとき、消えた要素があった位置を基準に次にアクティブにする
-// タブの path を返す。右隣を優先し、無ければ左隣、どちらも無ければ null
-// (右優先はエディタタブの一般的な挙動に合わせる)
-function computeAdjacentPath(
-  _prev: OpenFile[],
-  next: OpenFile[],
-  removedIndex: number
-): string | null {
-  if (removedIndex === -1) return next[0]?.path ?? null
-  if (removedIndex < next.length) return next[removedIndex].path
-  if (removedIndex - 1 >= 0 && removedIndex - 1 < next.length) return next[removedIndex - 1].path
-  return next[next.length - 1]?.path ?? null
 }

@@ -63,7 +63,7 @@ const defaultProps = {
   saveError: null as Error | null,
   onChangeContent: vi.fn(),
   onSave: vi.fn(),
-  onActivateTab: vi.fn(),
+  onActivateTab: vi.fn().mockReturnValue(true),
   onCloseTab: vi.fn(),
   onReorderTabs: vi.fn(),
   isExecuting: false,
@@ -84,7 +84,8 @@ const defaultProps = {
   diffError: null as Error | null,
   isHunkOperationInProgress: false,
   onStageHunk: vi.fn(),
-  onUnstageHunk: vi.fn()
+  onUnstageHunk: vi.fn(),
+  isActiveFileUntracked: false
 }
 
 /** openFile 単体を渡す旧APIのテストをそのまま活かすためのヘルパー。
@@ -641,7 +642,7 @@ describe('EditorPanel — diff タブ', () => {
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
       />
     )
-    expect(screen.getByText('index.ts (差分)')).toBeInTheDocument()
+    expect(screen.getByText('src/index.ts (未ステージ差分)')).toBeInTheDocument()
   })
 
   it('diff タブをクリックすると onActivateDiffTab が呼ばれる', async () => {
@@ -658,15 +659,45 @@ describe('EditorPanel — diff タブ', () => {
         diffContent={null}
       />
     )
-    await userEvent.click(screen.getByText('index.ts (差分)'))
+    await userEvent.click(screen.getByText('src/index.ts (未ステージ差分)'))
     expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
+  })
+
+  it('実ファイルタブが無くても、非アクティブな diff タブが残っていれば WelcomeView ではなくタブバーを表示する', () => {
+    // openFile/activeDiffTab がどちらも無い状態を「タブが何も無い」とみなして
+    // WelcomeView を表示すると、diffTabs に残っている非アクティブな diff タブへ
+    // 二度とアクセスできなくなる(タブバー自体が消えるため)。
+    // 実ファイルタブに切り替えてから最後の実ファイルタブを閉じた場合に発生しうる
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={null}
+      />
+    )
+    expect(screen.queryByText('welcome.ts')).not.toBeInTheDocument()
+    expect(screen.getByText('src/index.ts (未ステージ差分)')).toBeInTheDocument()
+  })
+
+  it('実ファイルタブが無く、diff タブも非アクティブな場合、本文が完全な空白にならずプレースホルダーを表示する', () => {
+    // タブバーは表示されるようになったが、本文側(editor-body)は
+    // activeDiffTab !== null / openFile !== null のどちらも false のままで
+    // 何も描画しない分岐が残っており、ユーザーがタブを選び直すまで空白のままになる
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={null}
+      />
+    )
+    expect(screen.getByText('タブを選択してください')).toBeInTheDocument()
   })
 
   it('ファイルタブをクリックすると onDeactivateDiffTab が呼ばれ、diff タブが非アクティブになると Monaco Editor が表示される', async () => {
     // 以前は diff タブを開くとファイルタブへ戻る経路が無く、activeFilePath は
     // 更新されてもタブバー・本文表示が diff タブに固定されたままになっていた
     const onDeactivateDiffTab = vi.fn()
-    const onActivateTab = vi.fn()
+    const onActivateTab = vi.fn().mockReturnValue(true)
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
@@ -711,6 +742,22 @@ describe('EditorPanel — diff タブ', () => {
       />
     )
     expect(screen.getByText('diff の取得に失敗しました')).toBeInTheDocument()
+  })
+
+  it('diff タブがアクティブで diffContent も diffError も無いとき（取得中）、読み込み中の表示をする', () => {
+    // diffContent が null のまま何も表示しないと、取得完了までの間 diff エリアが
+    // 完全な空白になり、ユーザーはタブ切替が効いているのか固まっているのか
+    // 区別できない
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={null}
+        diffError={null}
+      />
+    )
+    expect(screen.getByText('読み込み中...')).toBeInTheDocument()
   })
 
   it('isHunkOperationInProgress のとき DiffView に disabled が渡り、ハンクボタンが無効化される', () => {

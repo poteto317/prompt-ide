@@ -1,5 +1,5 @@
 import type { GitBranch, GitLogEntry } from '@shared/types'
-import { formatRelativeDate } from '../../lib/gitUtils'
+import { formatRelativeDate } from '../../lib/dateFormat'
 
 interface Props {
   log: GitLogEntry[]
@@ -7,6 +7,8 @@ interface Props {
   tags: string[]
   hasMore: boolean
   isLoading: boolean
+  /** getLog が「コミット無し」以外の理由(git 未検出等)で失敗した場合のエラー */
+  error: Error | null
   onLoadMore: () => void
 }
 
@@ -16,11 +18,17 @@ export default function HistorySection({
   tags,
   hasMore,
   isLoading,
+  error,
   onLoadMore
 }: Props): React.JSX.Element {
   return (
     <section className="source-control-panel__section">
       <h3 className="source-control-panel__section-title">履歴</h3>
+      {error !== null && (
+        <p className="history-section__error" role="alert">
+          {error.message}
+        </p>
+      )}
       {(branches.length > 0 || tags.length > 0) && (
         <div className="history-section__badges">
           {branches.map((branch) => (

@@ -8,10 +8,14 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
-        branches={[{ name: 'main', current: true }, { name: 'dev', current: false }]}
+        branches={[
+          { name: 'main', current: true },
+          { name: 'dev', current: false }
+        ]}
         tags={['v1.0.0']}
         hasMore={false}
         isLoading={false}
+        error={null}
         onLoadMore={vi.fn()}
       />
     )
@@ -23,11 +27,19 @@ describe('HistorySection', () => {
   it('コミット一覧をハッシュ短縮形・メッセージで表示する', () => {
     render(
       <HistorySection
-        log={[{ hash: 'abcdef1234567', message: 'feat: 新機能', date: '2026-09-03T10:00:00+09:00', authorName: 'Alice' }]}
+        log={[
+          {
+            hash: 'abcdef1234567',
+            message: 'feat: 新機能',
+            date: '2026-09-03T10:00:00+09:00',
+            authorName: 'Alice'
+          }
+        ]}
         branches={[]}
         tags={[]}
         hasMore={false}
         isLoading={false}
+        error={null}
         onLoadMore={vi.fn()}
       />
     )
@@ -50,6 +62,7 @@ describe('HistorySection', () => {
         tags={[]}
         hasMore={false}
         isLoading={false}
+        error={null}
         onLoadMore={vi.fn()}
       />
     )
@@ -63,11 +76,14 @@ describe('HistorySection', () => {
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     render(
       <HistorySection
-        log={[{ hash: 'abcdef1234567', message: 'feat: 新機能', date: oneHourAgo, authorName: 'Alice' }]}
+        log={[
+          { hash: 'abcdef1234567', message: 'feat: 新機能', date: oneHourAgo, authorName: 'Alice' }
+        ]}
         branches={[]}
         tags={[]}
         hasMore={false}
         isLoading={false}
+        error={null}
         onLoadMore={vi.fn()}
       />
     )
@@ -76,14 +92,30 @@ describe('HistorySection', () => {
 
   it('hasMore が true のとき「もっと見る」ボタンを表示する', () => {
     render(
-      <HistorySection log={[]} branches={[]} tags={[]} hasMore={true} isLoading={false} onLoadMore={vi.fn()} />
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={true}
+        isLoading={false}
+        error={null}
+        onLoadMore={vi.fn()}
+      />
     )
     expect(screen.getByRole('button', { name: 'もっと見る' })).toBeInTheDocument()
   })
 
   it('hasMore が false のとき「もっと見る」ボタンを表示しない', () => {
     render(
-      <HistorySection log={[]} branches={[]} tags={[]} hasMore={false} isLoading={false} onLoadMore={vi.fn()} />
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={null}
+        onLoadMore={vi.fn()}
+      />
     )
     expect(screen.queryByRole('button', { name: 'もっと見る' })).not.toBeInTheDocument()
   })
@@ -91,7 +123,15 @@ describe('HistorySection', () => {
   it('「もっと見る」クリックで onLoadMore が呼ばれる', async () => {
     const onLoadMore = vi.fn()
     render(
-      <HistorySection log={[]} branches={[]} tags={[]} hasMore={true} isLoading={false} onLoadMore={onLoadMore} />
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={true}
+        isLoading={false}
+        error={null}
+        onLoadMore={onLoadMore}
+      />
     )
     await userEvent.click(screen.getByRole('button', { name: 'もっと見る' }))
     expect(onLoadMore).toHaveBeenCalled()
@@ -99,8 +139,48 @@ describe('HistorySection', () => {
 
   it('isLoading が true のとき「もっと見る」ボタンは無効化される', () => {
     render(
-      <HistorySection log={[]} branches={[]} tags={[]} hasMore={true} isLoading={true} onLoadMore={vi.fn()} />
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={true}
+        isLoading={true}
+        error={null}
+        onLoadMore={vi.fn()}
+      />
     )
     expect(screen.getByRole('button', { name: 'もっと見る' })).toBeDisabled()
+  })
+
+  it('error がある場合、エラーメッセージを表示する', () => {
+    // getLog が「コミット無し」以外の理由(git 未検出等)で失敗した場合、履歴パネルが
+    // 静かに「コミットなし」と表示されるだけでは実際の問題がユーザーに伝わらない
+    render(
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={new Error('spawn git ENOENT')}
+        onLoadMore={vi.fn()}
+      />
+    )
+    expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
+  })
+
+  it('error が null の場合、エラーメッセージを表示しない', () => {
+    render(
+      <HistorySection
+        log={[]}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={null}
+        onLoadMore={vi.fn()}
+      />
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

@@ -73,6 +73,39 @@ describe('CommitSection', () => {
     expect(screen.getByRole('button', { name: 'コミット' })).toBeEnabled()
   })
 
+  it('isBlockedByOtherOperation が true のときコミットボタンは無効(stage/unstage やハンク操作の実行中)', async () => {
+    // useGitOperations.ts の runCommitOperation は、stage/unstage(git add/reset)や
+    // ハンク操作(git apply --cached)の実行中は .git/index の競合を避けて
+    // サイレントに no-op する。ボタン側で disabled にしないと、押しても何も
+    // 起きない(エラーも出ない)状態にユーザーには見えてしまう
+    render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+        isBlockedByOtherOperation
+      />
+    )
+    await userEvent.type(screen.getByLabelText('コミットメッセージ'), 'feat: 新機能')
+    expect(screen.getByRole('button', { name: 'コミット' })).toBeDisabled()
+  })
+
+  it('isBlockedByOtherOperation を省略した場合は従来通りコミットボタンが有効になる', async () => {
+    render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage={null}
+        onAmend={vi.fn().mockResolvedValue(true)}
+      />
+    )
+    await userEvent.type(screen.getByLabelText('コミットメッセージ'), 'feat: 新機能')
+    expect(screen.getByRole('button', { name: 'コミット' })).toBeEnabled()
+  })
+
   it('コミットボタンをクリックすると onCommit がメッセージで呼ばれる', async () => {
     const onCommit = vi.fn().mockResolvedValue(true)
     render(
@@ -134,6 +167,97 @@ describe('CommitSection', () => {
       />
     )
     expect(screen.getByRole('button', { name: /コミット/ })).toBeDisabled()
+  })
+
+  it('isCommitting が true のときメッセージ欄とamendチェックボックスも無効化される', () => {
+    // 実行中も編集可能だと、完了時に無条件でメッセージ欄をクリアする処理と
+    // 競合し、実行中に打ち直した入力が黙って消えてしまう
+    render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={true}
+        onCommit={vi.fn()}
+        lastCommitMessage="feat: 直前のコミット"
+        onAmend={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('コミットメッセージ')).toBeDisabled()
+    expect(screen.getByLabelText('amend')).toBeDisabled()
+  })
+
+  it('isBlockedByOtherOperation が true のとき amend チェックボックスも無効(コミットボタンだけ揃えても、実行中に amend を仕込めてしまう)', () => {
+    // コミットボタンの isDisabled には isBlockedByOtherOperation が入っているが、
+    // amend チェックボックスの disabled には入っていなかった。stage/unstage や
+    // ハンク操作の実行中でも amend をチェックできてしまい、直前コミットメッセージが
+    // 自動入力される。その操作が完了して isBlockedByOtherOperation が false に
+    // 戻った瞬間、amend チェック済みのままコミットボタンが有効になり、ユーザーが
+    // 新規コミットのつもりで押すと直前コミットを意図せず書き換えてしまう
+    render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage="feat: 直前のコミット"
+        onAmend={vi.fn()}
+        isBlockedByOtherOperation
+      />
+    )
+    expect(screen.getByLabelText('amend')).toBeDisabled()
+  })
+
+  it('isLoadingFolder が true のとき amend チェックボックスは無効(lastCommitMessage が別フォルダの古い値の可能性があるため)', () => {
+    // フォルダを切り替えた直後、useGitHistory の log は新フォルダの取得が完了する
+    // まで前フォルダの値が残る。isLoadingFolder を見ずに lastCommitMessage だけで
+    // 判定すると、この間に amend を実行してしまい、無関係な別リポジトリの
+    // 直前コミットメッセージで意図しない amend が成立してしまう
+    render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage="feat: 別フォルダの直前コミット"
+        onAmend={vi.fn()}
+        isLoadingFolder={true}
+      />
+    )
+    expect(screen.getByLabelText('amend')).toBeDisabled()
+  })
+
+  it('isLoadingFolder が true になったら amend チェックとメッセージ入力欄をリセットする(フォルダ切替時に前フォルダの内容を残さない)', async () => {
+    // CommitSection はフォルダを切り替えても再マウントされない(App.tsx 側に
+    // key 等の仕組みが無い)ため、isAmend/message をローカル state のまま
+    // 放置すると、フォルダ A で amend にチェックしメッセージ欄に A の直前
+    // コミットメッセージが入った状態のまま無関係な B へ切り替わり、
+    // B でステージ済みファイルがあればそのままコミットボタンが有効になって
+    // しまい、A の古いメッセージで B の直前コミットを誤って amend してしまう
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage="feat: フォルダAの直前コミット"
+        onAmend={vi.fn()}
+        isLoadingFolder={false}
+      />
+    )
+    await user.click(screen.getByLabelText('amend'))
+    expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('feat: フォルダAの直前コミット')
+
+    // フォルダ B への切替により isLoadingFolder が true になる
+    rerender(
+      <CommitSection
+        stagedCount={1}
+        isCommitting={false}
+        onCommit={vi.fn()}
+        lastCommitMessage="feat: フォルダAの直前コミット"
+        onAmend={vi.fn()}
+        isLoadingFolder={true}
+      />
+    )
+
+    expect(screen.getByLabelText('amend')).not.toBeChecked()
+    expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('')
   })
 
   describe('amend', () => {
@@ -230,7 +354,26 @@ describe('CommitSection', () => {
       expect(screen.getByLabelText('amend')).toBeChecked()
     })
 
-    it('amendチェックを外すとメッセージ欄はクリアされない（引き続き通常コミット可）', async () => {
+    it('コミットが1件も無いリポジトリ(lastCommitMessage が null)では amend チェックボックスを無効化する', () => {
+      // amend の対象コミットが無い状態でチェックを入れられると、メッセージだけ
+      // 入力してコミットボタンが有効化されてしまい、実行してから初めて
+      // git の `fatal: you have nothing to amend` エラーに気づくことになる
+      render(
+        <CommitSection
+          stagedCount={1}
+          isCommitting={false}
+          onCommit={vi.fn()}
+          lastCommitMessage={null}
+          onAmend={vi.fn()}
+        />
+      )
+      expect(screen.getByLabelText('amend')).toBeDisabled()
+    })
+
+    it('amendチェックを外すと、amend 用にプリフィルした直前コミットのメッセージはクリアする', async () => {
+      // 残したままにすると、ステージ済みファイルがある状態でそのままコミットを
+      // 押せてしまい、「直前のコミットのメッセージ」を持つ新規コミットが
+      // 意図せず作られる
       render(
         <CommitSection
           stagedCount={1}
@@ -242,7 +385,44 @@ describe('CommitSection', () => {
       )
       const checkbox = screen.getByLabelText('amend')
       await userEvent.click(checkbox)
+      expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('feat: 直前のコミット')
       await userEvent.click(checkbox)
+      expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('')
+    })
+
+    it('プリフィル後にユーザーが編集した内容は、amendチェックを外しても残す', async () => {
+      // 自分で書き足した内容まで消すと、ユーザーの作業を失わせてしまう
+      render(
+        <CommitSection
+          stagedCount={1}
+          isCommitting={false}
+          onCommit={vi.fn()}
+          lastCommitMessage="feat: 直前のコミット"
+          onAmend={vi.fn()}
+        />
+      )
+      const checkbox = screen.getByLabelText('amend')
+      await userEvent.click(checkbox)
+      await userEvent.type(screen.getByLabelText('コミットメッセージ'), ' を修正')
+      await userEvent.click(checkbox)
+      expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('feat: 直前のコミット を修正')
+    })
+
+    it('自分で入力したメッセージは amendチェックの ON/OFF で消えない（引き続き通常コミット可）', async () => {
+      render(
+        <CommitSection
+          stagedCount={1}
+          isCommitting={false}
+          onCommit={vi.fn()}
+          lastCommitMessage="feat: 直前のコミット"
+          onAmend={vi.fn()}
+        />
+      )
+      await userEvent.type(screen.getByLabelText('コミットメッセージ'), 'feat: 新機能')
+      const checkbox = screen.getByLabelText('amend')
+      await userEvent.click(checkbox)
+      await userEvent.click(checkbox)
+      expect(screen.getByLabelText('コミットメッセージ')).toHaveValue('feat: 新機能')
       expect(screen.getByRole('button', { name: /コミット/ })).toBeEnabled()
     })
   })

@@ -13,6 +13,9 @@ interface Props {
   onOpenFolder: () => void
   onSelectFile: (node: FileTreeNode) => void
   error: Error | null
+  /** .gitignore への追加が失敗した場合のエラー。フォルダ/ファイル読み込みの
+   *  error とは別スロット(共有すると片方が他方の表示を上書きし消してしまう) */
+  gitignoreError: Error | null
   onCreateFile: (parentPath: string, name: string) => void
   onCreateDirectory: (parentPath: string, name: string) => void
   onRenameEntry: (node: FileTreeNode, newName: string) => void
@@ -37,6 +40,7 @@ export default function ExplorerPanel({
   onOpenFolder,
   onSelectFile,
   error,
+  gitignoreError,
   onCreateFile,
   onCreateDirectory,
   onRenameEntry,
@@ -61,6 +65,7 @@ export default function ExplorerPanel({
   return (
     <div className="explorer-panel">
       {error && <p className="explorer-panel__error">{error.message}</p>}
+      {gitignoreError && <p className="explorer-panel__error">{gitignoreError.message}</p>}
       {folderPath === null ? (
         <button type="button" className="explorer-panel__open-btn" onClick={onOpenFolder}>
           フォルダを開く

@@ -11,6 +11,11 @@ interface Props {
   /** 閉じるボタンを表示するか。既定は true。WelcomeView のプレースホルダタブは
    * 閉じる操作を持たないため false を渡し、押しても何も起きないボタンを見せない */
   closable?: boolean
+  /** ドラッグでの並び替え対象か。既定は true。false のタブ(diff タブ)は
+   * ドラッグ自体を無効化する。有効なままにすると、ドラッグはできるのに
+   * 並び替えの実体(実ファイルタブの配列)には反映されず、タブが元位置へ
+   * 戻るだけでフィードバックが無い状態になる */
+  isReorderable?: boolean
 }
 
 export default function EditorTab({
@@ -20,10 +25,12 @@ export default function EditorTab({
   isActive,
   onActivate,
   onClose,
-  closable = true
+  closable = true,
+  isReorderable = true
 }: Props): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: path
+    id: path,
+    disabled: !isReorderable
   })
 
   const style = {
@@ -45,8 +52,12 @@ export default function EditorTab({
     <div
       ref={setNodeRef}
       style={style}
-      {...attributes}
-      {...listeners}
+      // 並び替え対象外のタブには dnd-kit の属性・リスナーを付けない。
+      // useSortable の disabled だけではドラッグ起動は止まるものの、
+      // role="button" 等の属性が残り、支援技術にはドラッグ可能な要素として
+      // 見え続けてしまう
+      {...(isReorderable ? attributes : {})}
+      {...(isReorderable ? listeners : {})}
       role="tab"
       aria-selected={isActive}
       tabIndex={0}

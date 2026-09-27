@@ -2842,10 +2842,38 @@ describe('useFileSystem', () => {
         await result.current.selectFile(fileA)
       })
 
-      act(() => result.current.activateTab('/project/src/does-not-exist.ts'))
+      let activated: boolean | undefined
+      act(() => {
+        activated = result.current.activateTab('/project/src/does-not-exist.ts')
+      })
 
       expect(result.current.activeFilePath).toBe('/project/src/a.ts')
       expect(result.current.openFiles).toHaveLength(1)
+      // 呼び出し元(useAppState の diff タブ非アクティブ化ラッパー)が
+      // 「切り替えが起きなかった」ことを判別できないと、実ファイルタブは
+      // 変わらないのに diff タブだけ非アクティブになり、どちらも表示されない
+      // 状態になってしまう
+      expect(activated).toBe(false)
+    })
+
+    it('activateTab: 存在する path を渡した場合は true を返す', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValue('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+
+      let activated: boolean | undefined
+      act(() => {
+        activated = result.current.activateTab('/project/src/a.ts')
+      })
+      expect(activated).toBe(true)
     })
 
     it('activateTab: resetForFileChange により切り替え後に saveError がクリアされる', async () => {
@@ -3035,6 +3063,53 @@ describe('useFileSystem', () => {
       // 無関係な非アクティブファイルの削除で、アクティブタブ(a.ts)の saveError が
       // 誤ってクリアされてはいけない
       expect(result.current.saveError?.message).toBe('EACCES')
+    })
+
+    it('deleteEntry: ディレクトリ削除で複数タブが同時に消える場合、アクティブタブの直後に生き残ったタブへ移る(1つ飛び越えない)', async () => {
+      // computeAdjacentItem は「1つの要素が削除された」ことを前提に、削除位置の
+      // 要素(1つ削除後にその位置へ来る要素 = 右隣)を返す設計。ディレクトリ削除は
+      // 配下の複数タブ(b.ts と c.ts)を1回の setOpenFiles 呼び出しで同時に取り除くため、
+      // prevIndex(削除前の c.ts の位置)を基準に next へ素朴に適用すると、
+      // 本来隣接するはずの d.ts を飛び越して e.ts が選ばれてしまう
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent
+        .mockResolvedValueOnce('a')
+        .mockResolvedValueOnce('b')
+        .mockResolvedValueOnce('c')
+        .mockResolvedValueOnce('d')
+        .mockResolvedValueOnce('e')
+      mockDeleteEntry.mockResolvedValue(undefined)
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/dir/b.ts', type: 'file' }
+      const fileC: FileTreeNode = { name: 'c.ts', path: '/project/dir/c.ts', type: 'file' }
+      const fileD: FileTreeNode = { name: 'd.ts', path: '/project/d.ts', type: 'file' }
+      const fileE: FileTreeNode = { name: 'e.ts', path: '/project/e.ts', type: 'file' }
+      for (const file of [fileA, fileB, fileC, fileD, fileE]) {
+        await act(async () => {
+          await result.current.selectFile(file)
+        })
+      }
+      // c.ts をアクティブにする(dir 配下、削除される2ファイルのうち後ろ側)
+      act(() => result.current.activateTab('/project/dir/c.ts'))
+      expect(result.current.activeFilePath).toBe('/project/dir/c.ts')
+
+      // ディレクトリ 'dir' を削除する(b.ts と c.ts が1回の更新で同時に消える)
+      await act(async () => {
+        await result.current.deleteEntry({ name: 'dir', path: '/project/dir', type: 'directory' })
+      })
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual([
+        '/project/a.ts',
+        '/project/d.ts',
+        '/project/e.ts'
+      ])
+      // e.ts(1つ飛び越えた先)ではなく、直後に生き残った d.ts へ移る
+      expect(result.current.activeFilePath).toBe('/project/d.ts')
     })
 
     it('保存の書き込み中にタブを切り替えても、完了後に元タブの savedContent が更新される', async () => {

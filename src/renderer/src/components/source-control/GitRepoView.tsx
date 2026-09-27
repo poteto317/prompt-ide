@@ -3,6 +3,8 @@ import StagedSection from './StagedSection'
 import ChangesSection from './ChangesSection'
 import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
+import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
+import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
   branch: string | null
@@ -10,8 +12,10 @@ interface Props {
   behind: number
   files: GitFileStatus[]
   stagingPaths: ReadonlySet<string>
+  isLocked?: (path: string) => boolean
+  isAnyLocked?: () => boolean
   onStage: (path: string) => void
-  onUnstage: (path: string) => void
+  onUnstage: (path: string, renamedFrom?: string) => void
   onOpenDiff: (path: string, staged: boolean) => void
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
@@ -22,6 +26,11 @@ interface Props {
   tags: string[]
   hasMoreLog: boolean
   isLoadingLog: boolean
+  /** フォルダ切替による履歴の初回取得中のみ true(同一フォルダ内の refresh では
+   *  true にならない)。CommitSection の amend チェック/メッセージ欄リセットの
+   *  トリガーに使う。isLoadingLog(HistorySection 用、refresh 中も true)とは別 */
+  isLoadingFolder: boolean
+  historyError: Error | null
   onLoadMoreLog: () => void
 }
 
@@ -31,6 +40,8 @@ export default function GitRepoView({
   behind,
   files,
   stagingPaths,
+  isLocked = alwaysUnlocked,
+  isAnyLocked = alwaysUnlocked,
   onStage,
   onUnstage,
   onOpenDiff,
@@ -43,9 +54,16 @@ export default function GitRepoView({
   tags,
   hasMoreLog,
   isLoadingLog,
+  isLoadingFolder,
+  historyError,
   onLoadMoreLog
 }: Props): React.JSX.Element {
-  const stagedCount = files.filter((f) => f.index !== ' ' && f.index !== '?').length
+  const stagedCount = files.filter(isStagedFile).length
+  // stage/unstage(useGitOperations)実行中、またはハンク操作(useDiffOperations の
+  // git apply --cached)実行中は、runCommitOperation が .git/index の競合を避けて
+  // サイレントに no-op する(useGitOperations.ts 参照)。ボタン側でも揃えないと、
+  // 押しても何も起きない状態に見えてしまう
+  const isBlockedByOtherOperation = stagingPaths.size > 0 || isAnyLocked()
   return (
     <>
       <div className="source-control-panel__branch">
@@ -59,16 +77,22 @@ export default function GitRepoView({
         onCommit={onCommit}
         lastCommitMessage={lastCommitMessage}
         onAmend={onAmend}
+        isLoadingFolder={isLoadingFolder}
+        isBlockedByOtherOperation={isBlockedByOtherOperation}
       />
       <StagedSection
         files={files}
         stagingPaths={stagingPaths}
+        isLocked={isLocked}
+        isAnyLocked={isAnyLocked}
         onUnstage={onUnstage}
         onOpenDiff={(path) => onOpenDiff(path, true)}
       />
       <ChangesSection
         files={files}
         stagingPaths={stagingPaths}
+        isLocked={isLocked}
+        isAnyLocked={isAnyLocked}
         onStage={onStage}
         onOpenDiff={(path) => onOpenDiff(path, false)}
       />
@@ -79,6 +103,7 @@ export default function GitRepoView({
         tags={tags}
         hasMore={hasMoreLog}
         isLoading={isLoadingLog}
+        error={historyError}
         onLoadMore={onLoadMoreLog}
       />
     </>

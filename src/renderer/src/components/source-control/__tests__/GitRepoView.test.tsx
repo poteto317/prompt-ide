@@ -23,6 +23,8 @@ const baseProps = {
   tags: [],
   hasMoreLog: false,
   isLoadingLog: false,
+  isLoadingFolder: false,
+  historyError: null,
   onLoadMoreLog: vi.fn()
 }
 
@@ -78,9 +80,7 @@ describe('GitRepoView', () => {
   })
 
   it('changed ファイルが ChangesSection に委譲され「変更」セクションが表示される', () => {
-    render(
-      <GitRepoView branch="main" ahead={0} behind={0} files={[changedFile]} {...baseProps} />
-    )
+    render(<GitRepoView branch="main" ahead={0} behind={0} files={[changedFile]} {...baseProps} />)
     expect(screen.getByText('変更 (1)')).toBeInTheDocument()
     expect(screen.getByText('changed.ts')).toBeInTheDocument()
   })
@@ -88,7 +88,7 @@ describe('GitRepoView', () => {
   it('onStage/onUnstage/onCommit が ChangesSection/StagedSection/CommitSection に配線される', async () => {
     const files: GitFileStatus[] = [
       { path: 'staged.ts', index: 'M', workingDir: ' ' },
-      { path: 'changed.ts', index: ' ', workingDir: 'M' },
+      { path: 'changed.ts', index: ' ', workingDir: 'M' }
     ]
     const onStage = vi.fn()
     const onUnstage = vi.fn()
@@ -112,14 +112,30 @@ describe('GitRepoView', () => {
         tags={[]}
         hasMoreLog={false}
         isLoadingLog={false}
+        isLoadingFolder={false}
+        historyError={null}
         onLoadMoreLog={vi.fn()}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
     expect(onStage).toHaveBeenCalledWith('changed.ts')
     await userEvent.click(screen.getByLabelText('staged.ts をアンステージ'))
-    expect(onUnstage).toHaveBeenCalledWith('staged.ts')
+    expect(onUnstage).toHaveBeenCalledWith('staged.ts', undefined)
     expect(screen.getByLabelText('コミットメッセージ')).toBeInTheDocument()
+  })
+
+  it('historyError が HistorySection に渡りエラーメッセージが表示される', () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        historyError={new Error('spawn git ENOENT')}
+      />
+    )
+    expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
   })
 
   it('CommitSection と HistorySection に必要な props が渡る', () => {
@@ -142,6 +158,8 @@ describe('GitRepoView', () => {
         tags={[]}
         hasMoreLog={false}
         isLoadingLog={false}
+        isLoadingFolder={false}
+        historyError={null}
         onLoadMoreLog={vi.fn()}
       />
     )
@@ -172,6 +190,8 @@ describe('GitRepoView', () => {
         tags={[]}
         hasMoreLog={false}
         isLoadingLog={false}
+        isLoadingFolder={false}
+        historyError={null}
         onLoadMoreLog={vi.fn()}
       />
     )
@@ -200,6 +220,8 @@ describe('GitRepoView', () => {
         tags={[]}
         hasMoreLog={false}
         isLoadingLog={false}
+        isLoadingFolder={false}
+        historyError={null}
         onLoadMoreLog={vi.fn()}
       />
     )

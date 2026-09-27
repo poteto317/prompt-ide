@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { GitStatusResult } from '@shared/types'
 import * as gitApi from '../lib/gitApi'
+import { toError } from '../lib/errorUtils'
+import { useOnChange } from './useOnChange'
 
 interface GitStatusState {
   gitStatus: GitStatusResult | null
@@ -32,7 +34,7 @@ export function useGitStatus(folderPath: string | null): GitStatusState {
       }
     } catch (err) {
       if (requestId === latestRequestId.current) {
-        setGitError(err instanceof Error ? err : new Error(String(err)))
+        setGitError(toError(err))
       }
     } finally {
       if (requestId === latestRequestId.current) {
@@ -40,6 +42,18 @@ export function useGitStatus(folderPath: string | null): GitStatusState {
       }
     }
   }, [folderPath])
+
+  // フォルダが切り替わった時点で、前のフォルダの status を捨てる。
+  // 残したままにすると、新しいフォルダの取得が終わるまでの間、ソース管理パネルに
+  // 前のフォルダのブランチ名とファイル一覧が「操作可能な状態で」表示される。
+  // その間に「+」を押すと、前のフォルダのファイルパスが新しい allowedFolder に
+  // 対して解決され、切替先の同名ファイルをステージしてしまう。
+  // refreshGitStatus 内でクリアしないのは、同一フォルダの再取得
+  // (stage/unstage/保存のたびに走る)まで巻き込むと、SourceControlPanel が
+  // GitRepoView をアンマウントし、入力中のコミットメッセージが失われるため
+  useOnChange(folderPath, () => {
+    setGitStatus(null)
+  })
 
   useEffect(() => {
     refreshGitStatus()
