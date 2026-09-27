@@ -88,7 +88,12 @@
 ### エラーハンドリング
 
 既存方針を踏襲し、`simple-git` / `fs` が投げる例外のメッセージをそのまま表示する（個別のエラー種別
-ハンドリング・専用コンバータは作らない）。
+ハンドリング・専用コンバータは作らない）方針で開始したが、実装中に未追跡ファイルの疑似diff構築
+（`readFileBuffer`/`isExecutableFile`/`isSymbolicLink` の ENOENT 等）で OS 絶対パスを含む生の
+Node エラーがそのまま伝播する問題が見つかり、`src/main/fsErrorConverter.ts`（`convertFsAccessError`/
+`convertFsError`）を新設した。これは元々 `src/main/handlers/fileSystemHandlers.ts` 専用だった
+変換ロジックを、`gitService.ts`（サービス層）からも使えるよう handlers 配下から main 直下へ
+移したもの（`fsErrors.ts` と同じ理由）。
 
 ## アーキテクチャ
 
@@ -97,10 +102,21 @@
 `src/main/gitService.ts` に追加:
 
 ```ts
-export async function getDiff(folderPath: string, filePath: string, staged: boolean): Promise<string>
+// isUntracked は renderer 側が既に持つ git status 由来の情報をそのまま受け取り、
+// main 側で git.status() を再スキャンする無駄を避けるため後から追加した引数。
+// renamedFrom はステージ済みリネームの diff を取る際、旧パスも pathspec に
+// 併記してリネーム検出させるために後から追加した引数
+export async function getDiff(
+  folderPath: string,
+  filePath: string,
+  staged: boolean,
+  isUntracked: boolean,
+  renamedFrom?: string
+): Promise<string>
 export async function stageHunk(folderPath: string, filePath: string, hunkPatch: string): Promise<void>
 export async function unstageHunk(folderPath: string, filePath: string, hunkPatch: string): Promise<void>
-export async function getLog(folderPath: string, limit: number): Promise<GitLogEntry[]>
+// skip はページング（「もっと見る」)のために後から追加した引数
+export async function getLog(folderPath: string, limit: number, skip: number): Promise<GitLogEntry[]>
 export async function getBranches(folderPath: string): Promise<GitBranch[]>
 export async function getTags(folderPath: string): Promise<string[]>
 export async function amendCommit(folderPath: string, message: string): Promise<void>
@@ -111,8 +127,12 @@ export async function amendCommit(folderPath: string, message: string): Promise<
 ファイルパスを扱うものは既存の `resolve(allowedFolder, filePath)` → `assertFileWithinFolder` の
 パターン（削除済みファイル対応の ENOENT フォールバック込み）をそのまま踏襲する。
 
-`.gitignore` 追加は `src/main/fileSystem.ts` 側に `addToGitignore(folderPath, relativePath)` を追加し、
-既存の `fs:*` ハンドラ群と同様のパターンで `fileSystemHandlers.ts` に IPC チャンネルを追加する。
+`.gitignore` 追加は当初 `src/main/fileSystem.ts` に置く想定だったが、read-then-write の間の
+排他制御（フォルダごとに直列化するキュー）や gitignore パターンのエスケープなど、テキスト
+ファイルとしての読み書きに特化したロジックが増えたため、`src/main/gitignoreService.ts`（新規）に
+`addToGitignore(folderPath, relativePath)` として独立させた。simple-git 経由の git コマンドを
+一切使わない点で、git 呼び出しをラップする `gitService.ts` とも責務が異なる。IPC チャンネルは
+既存の `fs:*` ハンドラ群と同様のパターンで `fileSystemHandlers.ts` に追加する。
 
 ### preload / renderer lib
 

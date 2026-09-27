@@ -35,6 +35,15 @@
   未追跡ファイル（`git status` で `index === '?'`）の場合は `git diff` が空文字列を返すため、
   ファイル内容を読んで「全行追加」の疑似 unified diff テキストを組み立てて返す。
 
+  > **注記**: 以下のコード例は Task 1 実装時点のシグネチャのまま残している。当初は
+  > `getDiff` 自身が `git.status()` を呼んで未追跡かどうかを判定していたが、diff タブを
+  > 開くたびにリポジトリ全体を再スキャンする無駄があったため、呼び出し元（renderer）が
+  > 既に持っている `git status` 由来の情報をそのまま渡す方式に変更された。現在の実装
+  > (`src/main/gitService.ts`)は `getDiff(folderPath, filePath, staged, isUntracked)` の
+  > 4 引数で、IPC・preload・`renderer/lib/gitApi.ts` の `getDiff(filePath, staged)` も
+  > 同様に `isUntracked` を加えた 3 引数になっている。以降のコード例を実装リファレンス
+  > として使わないこと。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `src/main/__tests__/gitService.test.ts` の `mockSimpleGit` に `diff` と `status` のモックを追加する
@@ -1584,6 +1593,16 @@ EOF
   ```
   `encodeDiffTabPath`/`isDiffTabPath`/`decodeDiffTabPath` は Task 11 でタブバーが実ファイルタブと
   diff タブを 1 本の文字列キー空間で扱うために使う変換関数。
+
+  > **注記(コミット a65cc02 で修正済み)**: 以下のコード例は Task 11 実装時点の
+  > `diff:staged:`/`diff:unstaged:` プレフィックス方式のまま残している。この方式は
+  > `:` が POSIX で正当なファイル名文字であるため、実ファイルパスが偶然この
+  > プレフィックスから始まると diff タブと誤認し、「diff タブに一度切り替えると
+  > 実ファイルタブへ二度と戻れない」バグを実際に引き起こした。現在の実装
+  > (`src/renderer/src/hooks/diffTabPath.ts`)は、どの OS・ファイルシステムでも
+  > パスに使用できない NUL 文字(U+0000)をマーカー/セパレータに使うことで、
+  > 実ファイルパスとの衝突を原理的に排除する方式に変更されている。以降のコード例を
+  > 実装リファレンスとして使わないこと。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
