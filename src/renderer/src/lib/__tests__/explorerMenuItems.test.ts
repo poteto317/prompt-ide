@@ -28,7 +28,13 @@ describe('buildMenuItems', () => {
 
   it('node がディレクトリのとき5項目すべて返す', () => {
     const items = buildMenuItems('/project', dirNode, makeActions())
-    expect(items.map((i) => i.label)).toEqual(['新規ファイル', '新規フォルダ', 'リネーム', '削除', '.gitignore に追加'])
+    expect(items.map((i) => i.label)).toEqual([
+      '新規ファイル',
+      '新規フォルダ',
+      'リネーム',
+      '削除',
+      '.gitignore に追加'
+    ])
   })
 
   it('node がファイルのときリネーム・削除・.gitignore に追加が返される', () => {
