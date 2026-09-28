@@ -74,6 +74,15 @@ interface FileSystemState {
   /** ルートからファイルツリーを読み直す。アプリ外/このフック外の要因で
    *  ディスク上のファイル構成が変わったとき(.gitignore の新規作成等)に使う */
   refreshTree: () => Promise<boolean>
+  /** dirty なタブがあれば破棄確認ダイアログを出し、その結果を返す(無ければ
+   *  確認せず true)。checkout 等、working tree を書き換える操作の実行前に
+   *  呼び出し側が使う */
+  confirmDiscardAnyDirty: () => boolean
+  /** 開いている全タブのバッファをディスクの最新内容へ同期する。git checkout
+   *  等、このフック外の要因(gitコマンド)で working tree のファイルが
+   *  書き換わった後に呼ぶ想定。読み込みに失敗したタブ(対象ファイルが無く
+   *  なった等)は閉じる */
+  reloadOpenFiles: () => Promise<void>
 }
 
 // getOpenFile はここで常に自前の同期ミラーへ差し替える。Options（公開型）には
@@ -640,6 +649,37 @@ export function useFileSystem(options?: Options): FileSystemState {
     closeTab(activePath)
   }
 
+  // git checkout はこのフックを経由せず working tree のファイルを直接書き換える。
+  // 開いている全タブを対象に、失敗したものは除外(閉じる)しつつディスクの最新
+  // 内容へ揃える。content/savedContent を同じ値で更新することで dirty 状態も
+  // リセットする(呼び出し側が事前に confirmDiscardAnyDirty で破棄を確認する)。
+  // selectFile の保存待ち・世代管理のような厳密な競合制御は行わない
+  // (checkout 実行中は他の保存系操作もほぼ発生しない想定のため)
+  const reloadOpenFiles = async (): Promise<void> => {
+    const targets = openFilesMirrorRef.current
+    if (targets.length === 0) return
+    const results = await Promise.all(
+      targets.map(async (f) => {
+        try {
+          return {
+            path: f.path,
+            content: await fileSystemApi.readFileContent(f.path),
+            ok: true as const
+          }
+        } catch {
+          return { path: f.path, ok: false as const }
+        }
+      })
+    )
+    setOpenFilesAndFixActive((prev) =>
+      prev.flatMap((f) => {
+        const result = results.find((r) => isSamePath(r.path, f.path))
+        if (result === undefined || !result.ok) return []
+        return [{ ...f, content: result.content, savedContent: result.content }]
+      })
+    )
+  }
+
   return {
     folderPath,
     fileTree,
@@ -664,6 +704,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     createDirectory,
     renameEntry,
     deleteEntry,
-    refreshTree
+    refreshTree,
+    confirmDiscardAnyDirty,
+    reloadOpenFiles
   }
 }

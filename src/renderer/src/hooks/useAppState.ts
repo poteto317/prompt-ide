@@ -6,6 +6,7 @@ import { useProgressTasks } from './useProgressTasks'
 import { useGitStatus } from './useGitStatus'
 import { useGitOperations } from './useGitOperations'
 import { useGitRemoteOperations } from './useGitRemoteOperations'
+import { useGitBranchOperations } from './useGitBranchOperations'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
@@ -31,6 +32,11 @@ type AppState = {
    *  サイレントに no-op するため、ボタン側でも揃えないと押しても反応しない
    *  ように見えてしまう */
   isAnyLocked: () => boolean
+  /** gitBranchOperations.checkoutBranch(戻り値 Promise<boolean>、成功可否を
+   *  useAppState.ts 側の後続処理の分岐に使う)を、破棄確認 + 成功時のみ
+   *  reloadOpenFiles を行うラッパーに差し替えている。呼び出し元(UI)にとって
+   *  意味があるのは完了を待てることだけなので、公開する型は Promise<void> */
+  checkoutBranch: (branchName: string) => Promise<void>
 } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -38,6 +44,7 @@ type AppState = {
   ReturnType<typeof useGitStatus> &
   ReturnType<typeof useGitOperations> &
   ReturnType<typeof useGitRemoteOperations> &
+  Omit<ReturnType<typeof useGitBranchOperations>, 'checkoutBranch'> &
   ReturnType<typeof useSettings> &
   ReturnType<typeof usePromptExecution> &
   ReturnType<typeof useHistory> &
@@ -71,6 +78,14 @@ export function useAppState(): AppState {
     fileOperationLock
   )
   const gitHistory = useGitHistory(fileSystem.folderPath)
+  // ブランチ切替はブランチ一覧の再取得(gitHistory.refresh)に依存するため、
+  // gitHistory より後に配置する必要がある
+  const gitBranchOperations = useGitBranchOperations(
+    git.gitStatus,
+    git.refreshGitStatus,
+    gitHistory.refresh,
+    fileOperationLock
+  )
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
@@ -199,6 +214,33 @@ export function useAppState(): AppState {
     await fileSystem.deleteEntry(node)
     await git.refreshGitStatus()
   }
+  // checkout は working tree のファイルを直接書き換えるが、エディタのバッファは
+  // このフック外で保持されているため連動しない。確認なしに切り替えると、
+  // 切替前の内容を編集したまま保存した際に切替後のブランチのファイルを無警告で
+  // 上書きしてしまう(コードレビュー指摘)。dirty なタブが無くても、切替先の
+  // 内容を表示するためには全タブの再読込が必要になる(dirty でないタブも
+  // 古いブランチの内容を表示し続けてしまうため)。
+  // gitBranchOperations.checkoutBranch は git レベルの失敗(切替先ブランチと
+  // 衝突する未コミット変更がある等)でも例外を投げず false を返すだけなので、
+  // 戻り値を見ずに reloadOpenFiles を呼ぶと、切替に失敗したにもかかわらず
+  // 無関係な未保存編集がディスク内容(切替前のまま)でサイレントに上書きされて
+  // しまう(コードレビュー指摘、2周目)。成功時のみ再読込する。
+  //
+  // 既知の制約(コードレビュー指摘、2周目で検討・スコープ外と判断): checkout
+  // 実行中(IPC往復 + branchLocal + checkout + refreshGitStatus/refreshHistory、
+  // 通常は短時間)に、開いたままの対象ファイルへ saveFile が割り込むと、
+  // その保存内容が新ブランチのファイルへ反映され、reloadOpenFiles がそれを
+  // 「ディスクの最新内容」としてそのままクリーン扱いしてしまう(レースで
+  // 混在した内容が気づかれずに残る)。saveFile は lock.isAnyLocked() を見ておらず、
+  // pull(working tree/index を書き換える点は checkout と同じ)にも既に同種の
+  // レースがあり checkout 固有の問題ではないため、今回は特別扱いしない。
+  // 対応するには saveFile 側に lock 待ちを組み込む設計変更が必要で、
+  // ブランチ切替機能のスコープを超える
+  const checkoutBranch: (branchName: string) => Promise<void> = async (branchName) => {
+    if (!fileSystem.confirmDiscardAnyDirty()) return
+    const succeeded = await gitBranchOperations.checkoutBranch(branchName)
+    if (succeeded) await fileSystem.reloadOpenFiles()
+  }
   // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
   // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)
   const quickOpen = useQuickOpen({
@@ -223,6 +265,7 @@ export function useAppState(): AppState {
     ...diffTabs,
     ...diffOperations,
     ...gitHistory,
+    ...gitBranchOperations,
     ...settings,
     ...execution,
     ...history,
@@ -236,6 +279,7 @@ export function useAppState(): AppState {
     createDirectory,
     renameEntry,
     deleteEntry,
-    saveFile
+    saveFile,
+    checkoutBranch
   }
 }

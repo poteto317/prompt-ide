@@ -27,6 +27,8 @@ const mockUseFileSystem = vi.hoisted(() =>
       createDirectory: (parentPath: string, name: string) => Promise<void>
       renameEntry: (node: unknown, newName: string) => Promise<void>
       deleteEntry: (node: unknown) => Promise<void>
+      confirmDiscardAnyDirty?: () => boolean
+      reloadOpenFiles?: () => Promise<void>
     } => ({
       folderPath: null,
       fileTree: [],
@@ -912,6 +914,117 @@ describe('useAppState', () => {
         {} as unknown as Parameters<typeof result.current.deleteEntry>[0]
       )
       expect(refreshGitStatus).toHaveBeenCalled()
+    })
+  })
+
+  describe('checkoutBranch ラッパー', () => {
+    // checkout は working tree のファイルを直接書き換えるが、エディタのバッファは
+    // 別に保持しているため連動しない。確認なしに切り替えると、切替前の内容を
+    // 編集したまま保存した際に切替後のブランチのファイルを無警告で上書きして
+    // しまう(コードレビュー指摘)。confirmDiscardAnyDirty で破棄を確認し、
+    // 成功後は開いている全タブをディスクの最新内容へ同期する
+    function setup(options: {
+      confirmDiscardAnyDirty: () => boolean
+      reloadOpenFiles: () => Promise<void>
+    }): void {
+      mockUseFileSystem.mockReturnValue({
+        folderPath: '/project',
+        fileTree: [],
+        openFile: null,
+        openedFileSignal: { events: [] },
+        error: null,
+        openFolder: vi.fn(),
+        selectFile: vi.fn(),
+        activateTab: vi.fn(),
+        saveFile: vi.fn().mockResolvedValue(undefined),
+        createFile: vi.fn().mockResolvedValue(undefined),
+        createDirectory: vi.fn().mockResolvedValue(undefined),
+        renameEntry: vi.fn().mockResolvedValue(undefined),
+        deleteEntry: vi.fn().mockResolvedValue(undefined),
+        confirmDiscardAnyDirty: options.confirmDiscardAnyDirty,
+        reloadOpenFiles: options.reloadOpenFiles
+      })
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+      })
+    }
+
+    it('未保存編集が無ければ確認どおり checkout を実行し、成功後に開いているファイルを再読込する', async () => {
+      const mockConfirmDiscardAnyDirty = vi.fn(() => true)
+      const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      setup({
+        confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
+        reloadOpenFiles: mockReloadOpenFiles
+      })
+      const originalCheckoutBranch = window.api.checkoutBranch
+      window.api.checkoutBranch = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.checkoutBranch('feature/x')
+        })
+        expect(mockConfirmDiscardAnyDirty).toHaveBeenCalled()
+        expect(window.api.checkoutBranch).toHaveBeenCalledWith('feature/x')
+        expect(mockReloadOpenFiles).toHaveBeenCalled()
+      } finally {
+        window.api.checkoutBranch = originalCheckoutBranch
+      }
+    })
+
+    it('破棄確認でキャンセルされたら checkout も reloadOpenFiles も呼ばれない', async () => {
+      const mockConfirmDiscardAnyDirty = vi.fn(() => false)
+      const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      setup({
+        confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
+        reloadOpenFiles: mockReloadOpenFiles
+      })
+      const originalCheckoutBranch = window.api.checkoutBranch
+      window.api.checkoutBranch = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.checkoutBranch('feature/x')
+        })
+        expect(window.api.checkoutBranch).not.toHaveBeenCalled()
+        expect(mockReloadOpenFiles).not.toHaveBeenCalled()
+      } finally {
+        window.api.checkoutBranch = originalCheckoutBranch
+      }
+    })
+
+    // コードレビュー指摘(2周目): gitBranchOperations.checkoutBranch は
+    // useRunExclusiveGitOperation の設計上、checkout が git レベルで失敗しても
+    // 例外を rethrow せず branchOperationError にエラーを格納するだけで
+    // 正常終了する。このラッパーが戻り値を見ずに reloadOpenFiles() を呼んで
+    // いると、ブランチ切替に失敗したにもかかわらず、無関係な未保存編集を
+    // 含む全タブがディスク内容(切替前のまま)で上書きされ、ユーザーの編集が
+    // サイレントに失われる
+    it('checkout が失敗した場合、reloadOpenFiles は呼ばれない(無関係な未保存編集を保持する)', async () => {
+      const mockConfirmDiscardAnyDirty = vi.fn(() => true)
+      const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      setup({
+        confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
+        reloadOpenFiles: mockReloadOpenFiles
+      })
+      const originalCheckoutBranch = window.api.checkoutBranch
+      window.api.checkoutBranch = vi
+        .fn()
+        .mockRejectedValue(
+          new Error('Your local changes to the following files would be overwritten by checkout')
+        )
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.checkoutBranch('feature/x')
+        })
+        expect(window.api.checkoutBranch).toHaveBeenCalledWith('feature/x')
+        expect(mockReloadOpenFiles).not.toHaveBeenCalled()
+      } finally {
+        window.api.checkoutBranch = originalCheckoutBranch
+      }
     })
   })
 

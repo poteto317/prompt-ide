@@ -3552,4 +3552,135 @@ describe('useFileSystem', () => {
       expect(result.current.activeFilePath).toBe('/project/src/c.ts')
     })
   })
+
+  describe('reloadOpenFiles', () => {
+    // git checkout 等、アプリ外(gitコマンド)から working tree が書き換わった後、
+    // 開いている全タブのバッファをディスクの最新内容へ同期するために使う
+    // (useAppState.ts の checkoutBranch ラッパーが呼ぶ)
+
+    it('開いている全タブの content/savedContent をディスクの最新内容で更新する(dirty も解消する)', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const x = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(node)
+      })
+      act(() => result.current.updateFileContent('未保存の編集'))
+      expect(result.current.isDirty).toBe(true)
+
+      mockReadFileContent.mockResolvedValueOnce('feature/x 側の内容')
+      await act(async () => {
+        await result.current.reloadOpenFiles()
+      })
+
+      expect(result.current.openFile?.content).toBe('feature/x 側の内容')
+      expect(result.current.isDirty).toBe(false)
+    })
+
+    it('アクティブでないタブも更新する', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'App.tsx',
+          path: '/project/src/App.tsx',
+          type: 'file'
+        })
+      })
+      // 先に開いた index.ts が今は非アクティブ
+      expect(result.current.activeFilePath).toBe('/project/src/App.tsx')
+
+      mockReadFileContent.mockResolvedValueOnce('a 更新後').mockResolvedValueOnce('b 更新後')
+      await act(async () => {
+        await result.current.reloadOpenFiles()
+      })
+
+      const indexTab = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+      expect(indexTab?.content).toBe('a 更新後')
+    })
+
+    it('読み込みに失敗したタブ(checkout でファイル自体が無くなった等)は閉じる', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const x = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+
+      mockReadFileContent.mockRejectedValueOnce(new Error('ENOENT'))
+      await act(async () => {
+        await result.current.reloadOpenFiles()
+      })
+
+      expect(result.current.openFiles).toHaveLength(0)
+      expect(result.current.openFile).toBeNull()
+    })
+
+    it('開いているタブが無ければ何もしない(readFileContent を呼ばない)', async () => {
+      const { result } = renderHook(() => useFileSystem())
+      await act(async () => {
+        await result.current.reloadOpenFiles()
+      })
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('confirmDiscardAnyDirty', () => {
+    // checkout 前の破棄確認(useAppState.ts の checkoutBranch ラッパー)のために
+    // 公開する。closeTab 等が内部で使っている判定・確認ダイアログと同じもの
+
+    it('dirty なタブが無ければ true を返し、確認ダイアログは呼ばない', () => {
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      expect(result.current.confirmDiscardAnyDirty()).toBe(true)
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    it('dirty なタブがあれば確認ダイアログを呼び、その結果を返す', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValue('const x = 1')
+      const onConfirm = vi.fn(() => false)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('未保存の編集'))
+
+      expect(result.current.confirmDiscardAnyDirty()).toBe(false)
+      expect(onConfirm).toHaveBeenCalled()
+    })
+  })
 })
