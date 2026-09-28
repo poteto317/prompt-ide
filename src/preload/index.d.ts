@@ -42,6 +42,7 @@ declare global {
       push(): Promise<void>
       pull(): Promise<void>
       fetchRemote(): Promise<void>
+      checkoutBranch(branchName: string): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

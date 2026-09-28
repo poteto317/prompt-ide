@@ -353,6 +353,29 @@ export async function fetchRemote(folderPath: string): Promise<void> {
   }
 }
 
+// checkout はローカルの working tree/index/HEAD を書き換えるのみでネットワークI/O
+// を伴わないため、push/pull/fetch の simpleGitWithRemoteTimeout は不要。
+// 未コミットの変更が切り替え先ブランチと衝突する場合、simple-git は通常の
+// GitError(GitPluginError ではない)を投げる。gitコマンド自体が返す情報が
+// ユーザーにとって意味のある内容("Your local changes... would be overwritten"等)
+// なので、push/pull/fetch のタイムアウトエラーとは異なり変換せず素通しする
+//
+// branchName は checkout() の positional 引数として git へそのまま渡る。
+// simple-git はシェル経由で spawn しないためシェルインジェクションは起きないが、
+// '-' で始まる文字列は git 自身にオプションとして解釈されてしまう
+// (例: '--orphan' で意図しない孤立ブランチが作られる)。UI は必ず getBranches() が
+// 返した実在のローカルブランチ名からのみ選択させているため実害は無いが、
+// IPC 境界(gitHandlers.ts)は任意の文字列を受け付けてしまうため、ここで
+// 許可リスト方式(実在するローカルブランチ名のみ)で検証する
+export async function checkoutBranch(folderPath: string, branchName: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  const summary = await git.branchLocal()
+  if (!summary.all.includes(branchName)) {
+    throw new Error(`存在しないブランチです: ${branchName}`)
+  }
+  await git.checkout(branchName)
+}
+
 export async function amendCommit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
   // '--amend' は files ではなくオプション引数(第3)で渡す。simple-git の

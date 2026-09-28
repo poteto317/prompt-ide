@@ -14,7 +14,8 @@ import {
   isStagedRenameDiff,
   push,
   pull,
-  fetchRemote
+  fetchRemote,
+  checkoutBranch
 } from '../gitService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -231,5 +232,10 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:fetch', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await fetchRemote(allowedFolder)
+  })
+
+  ipcMain.handle('git:checkoutBranch', async (event: IpcMainInvokeEvent, branchName: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await checkoutBranch(allowedFolder, branchName)
   })
 }

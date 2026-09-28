@@ -17,6 +17,7 @@ const mockAmendCommit = vi.hoisted(() => vi.fn())
 const mockPush = vi.hoisted(() => vi.fn())
 const mockPull = vi.hoisted(() => vi.fn())
 const mockFetchRemote = vi.hoisted(() => vi.fn())
+const mockCheckoutBranch = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -33,6 +34,7 @@ vi.mock('../../gitService', () => ({
   push: mockPush,
   pull: mockPull,
   fetchRemote: mockFetchRemote,
+  checkoutBranch: mockCheckoutBranch,
   // gitHandlers.ts と gitService.ts が同じ条件を共有するために切り出した実体を
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
@@ -910,6 +912,33 @@ describe('registerGitHandlers', () => {
       registerGitHandlers(mockIpcMain, folderAccess)
       mockFetchRemote.mockRejectedValue(new Error('fetch failed'))
       await expect(getRegisteredHandler('git:fetch')(makeEvent(1))).rejects.toThrow('fetch failed')
+    })
+  })
+
+  describe('git:checkoutBranch', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:checkoutBranch')(makeEvent(1), 'feature/x')
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('folderAccess の allowedFolder と branchName を引数に checkoutBranch を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCheckoutBranch.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:checkoutBranch')(makeEvent(1), 'feature/x')
+      expect(mockCheckoutBranch).toHaveBeenCalledWith('/project', 'feature/x')
+    })
+
+    it('checkoutBranch が throw した場合エラーが伝播する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCheckoutBranch.mockRejectedValue(new Error('checkout failed'))
+      await expect(
+        getRegisteredHandler('git:checkoutBranch')(makeEvent(1), 'feature/x')
+      ).rejects.toThrow('checkout failed')
     })
   })
 })

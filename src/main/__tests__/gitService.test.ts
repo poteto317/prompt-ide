@@ -13,6 +13,7 @@ const mockEnv = vi.hoisted(() => vi.fn())
 const mockPush = vi.hoisted(() => vi.fn())
 const mockPull = vi.hoisted(() => vi.fn())
 const mockFetch = vi.hoisted(() => vi.fn())
+const mockCheckout = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => {
     const git = {
@@ -28,7 +29,8 @@ const mockSimpleGit = vi.hoisted(() =>
       env: mockEnv,
       push: mockPush,
       pull: mockPull,
-      fetch: mockFetch
+      fetch: mockFetch,
+      checkout: mockCheckout
     }
     // env() は simple-git 本来の挙動と同じくインスタンス自身を返す(チェーン用)
     mockEnv.mockReturnValue(git)
@@ -84,7 +86,8 @@ import {
   isStagedRenameDiff,
   push,
   pull,
-  fetchRemote
+  fetchRemote,
+  checkoutBranch
 } from '../gitService'
 
 beforeEach(() => {
@@ -786,5 +789,45 @@ describe('fetchRemote', () => {
     await expect(fetchRemote('/project')).rejects.toThrow(
       '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
     )
+  })
+})
+
+describe('checkoutBranch', () => {
+  it('simpleGit を folderPath で呼び、実在するブランチ名なら checkout を branchName で呼ぶ', async () => {
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    mockCheckout.mockResolvedValue(undefined)
+    await checkoutBranch('/project', 'feature/x')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockCheckout).toHaveBeenCalledWith('feature/x')
+  })
+
+  it('checkout が throw した場合エラーがそのまま伝播する', async () => {
+    // 未コミットの変更が切り替え先ブランチと衝突する場合など、simple-git は
+    // 通常の GitError(GitPluginError ではない)を投げる。これは push/pull/fetch の
+    // タイムアウトエラーとは異なり、gitコマンド自体が返す情報がユーザーにとって
+    // 意味のある内容(「ローカルの変更が上書きされる」等)なので、独自メッセージへの
+    // 変換はせず素通しする
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    mockCheckout.mockRejectedValue(
+      new Error('Your local changes to the following files would be overwritten by checkout')
+    )
+    await expect(checkoutBranch('/project', 'feature/x')).rejects.toThrow(
+      'Your local changes to the following files would be overwritten by checkout'
+    )
+  })
+
+  // コードレビュー指摘: branchName は checkout() の positional 引数として git へ
+  // そのまま渡る。simple-git はシェル経由で spawn しないためシェルインジェクションは
+  // 起きないが、'-' で始まる文字列は git 自身にオプションとして解釈されてしまう
+  // (例: '--orphan' で意図しない孤立ブランチが作られる)。UI は必ず getBranches() が
+  // 返した実在のローカルブランチ名からのみ選択させているため実害は無いが、
+  // IPC 境界(gitHandlers.ts)は任意の文字列を受け付けてしまうため、gitService 層で
+  // 許可リスト方式(実在するローカルブランチ名のみ)で検証する
+  it('存在しないブランチ名を渡すと checkout を呼ばずにエラーを投げる', async () => {
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    await expect(checkoutBranch('/project', '--orphan')).rejects.toThrow(
+      '存在しないブランチです: --orphan'
+    )
+    expect(mockCheckout).not.toHaveBeenCalled()
   })
 })

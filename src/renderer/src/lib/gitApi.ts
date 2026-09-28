@@ -60,3 +60,7 @@ export function pull(): Promise<void> {
 export function fetchRemote(): Promise<void> {
   return window.api.fetchRemote()
 }
+
+export function checkoutBranch(branchName: string): Promise<void> {
+  return window.api.checkoutBranch(branchName)
+}
