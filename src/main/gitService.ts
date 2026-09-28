@@ -1,7 +1,7 @@
 import { join } from 'path'
 import simpleGit, { GitError, GitPluginError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
-import type { GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
+import type { GitStatusResult, GitLogEntry, GitBranch, DeleteBranchResult } from '@shared/types'
 import {
   buildUntrackedDiff,
   isBinaryContent,
@@ -407,6 +407,69 @@ export async function createBranch(folderPath: string, branchName: string): Prom
     throw new Error(`同じ名前のブランチが既に存在します: ${branchName}`)
   }
   await git.checkoutLocalBranch(branchName)
+}
+
+// git worktree list --porcelain の `branch refs/heads/<name>` 行から、いずれかの
+// worktree(メインの作業ディレクトリ自身を含む)でチェックアウト中のブランチ名を集める。
+// porcelain 形式はロケールに依存しない
+async function getBranchesCheckedOutInWorktrees(git: SimpleGit): Promise<Set<string>> {
+  const output = await git.raw(['worktree', 'list', '--porcelain'])
+  const prefix = 'branch refs/heads/'
+  return new Set(
+    output
+      .split('\n')
+      .filter((line) => line.startsWith(prefix))
+      .map((line) => line.slice(prefix.length))
+  )
+}
+
+// git branch -d と同じ基準でマージ済みかを判定する。基準は「upstream が設定され、
+// その ref が実在すれば upstream、そうでなければ HEAD」(git 本体の branch_merged と同じ)。
+// 削除失敗のエラーから未マージを判定しないのは次の理由(spec 参照):
+// - simple-git が GitResponseError に変換するのは git の出力が英語の `error: ... '<name>'`
+//   形式のときだけで、日本語化された git では変換されない
+// - ロケールを固定する env() は blockUnsafeOperationsPlugin の地雷を踏む(getLog 参照)
+// 使うコマンドはいずれも「出力の有無」だけで判定でき、ロケールに依存しない。
+// rev-parse --verify --quiet は ref が無いと exit 1・stderr 空で終わるが、simple-git は
+// stderr が空なら reject しないため空文字で resolve する
+async function isBranchMerged(git: SimpleGit, branchName: string): Promise<boolean> {
+  const ref = `refs/heads/${branchName}`
+  const upstream = (await git.raw(['for-each-ref', '--format=%(upstream)', ref])).trim()
+  let base = 'HEAD'
+  if (upstream !== '') {
+    const resolved = (await git.raw(['rev-parse', '--verify', '--quiet', upstream])).trim()
+    if (resolved !== '') base = upstream
+  }
+  const merged = await git.raw(['for-each-ref', `--merged=${base}`, '--format=%(refname)', ref])
+  return merged.trim() === ref
+}
+
+// branchName は IPC 境界から届く任意の文字列のため、checkoutBranch と同じく許可リスト
+// (実在するローカルブランチ名)で検証してから git に渡す(パターン21)。
+// 事前チェックと削除の間に別プロセスがマージや worktree 追加を行う競合は対象外とする。
+// その場合は git 自身が削除を拒否してエラーになるだけで、コミットは失われない
+export async function deleteBranch(
+  folderPath: string,
+  branchName: string,
+  force: boolean
+): Promise<DeleteBranchResult> {
+  const git = simpleGit(folderPath)
+  const summary = await git.branchLocal()
+  if (!summary.all.includes(branchName)) {
+    throw new Error(`存在しないブランチです: ${branchName}`)
+  }
+  if (branchName === summary.current) {
+    throw new Error(`現在のブランチは削除できません: ${branchName}`)
+  }
+  const checkedOut = await getBranchesCheckedOutInWorktrees(git)
+  if (checkedOut.has(branchName)) {
+    throw new Error(`他のワークツリーで使用中のブランチは削除できません: ${branchName}`)
+  }
+  if (!force && !(await isBranchMerged(git, branchName))) {
+    return { deleted: false, reason: 'not-fully-merged' }
+  }
+  await git.deleteLocalBranch(branchName, force)
+  return { deleted: true }
 }
 
 export async function amendCommit(folderPath: string, message: string): Promise<void> {

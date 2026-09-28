@@ -92,7 +92,8 @@ import {
   pull,
   fetchRemote,
   checkoutBranch,
-  createBranch
+  createBranch,
+  deleteBranch
 } from '../gitService'
 
 beforeEach(() => {
@@ -898,5 +899,134 @@ describe('createBranch', () => {
     mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
     mockCheckoutLocalBranch.mockRejectedValue(new Error('checkout -b failed'))
     await expect(createBranch('/project', 'feature/new')).rejects.toThrow('checkout -b failed')
+  })
+})
+
+describe('deleteBranch', () => {
+  // raw() の呼び出しを「コマンドの先頭引数 → 戻り値」で振り分ける。
+  // 実機の出力形式は Task 2 冒頭の「前提」を参照
+  const setupRaw = (outputs: {
+    worktree?: string
+    upstream?: string
+    revParse?: string
+    merged?: string
+  }): void => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'worktree')
+        return outputs.worktree ?? 'worktree /project\nHEAD abc\nbranch refs/heads/main\n'
+      if (args[0] === 'for-each-ref' && args[1] === '--format=%(upstream)')
+        return outputs.upstream ?? '\n'
+      if (args[0] === 'rev-parse') return outputs.revParse ?? ''
+      if (args[0] === 'for-each-ref' && args[1].startsWith('--merged=')) return outputs.merged ?? ''
+      throw new Error(`unexpected raw: ${args.join(' ')}`)
+    })
+  }
+
+  beforeEach(() => {
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    mockDeleteLocalBranch.mockResolvedValue({ branch: 'feature/x', hash: 'abc', success: true })
+  })
+
+  it('存在しないブランチ名は git の削除を呼ばずに拒否する', async () => {
+    setupRaw({})
+    await expect(deleteBranch('/project', '--force', false)).rejects.toThrow(
+      '存在しないブランチです: --force'
+    )
+    expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('現在のブランチは拒否する', async () => {
+    setupRaw({})
+    await expect(deleteBranch('/project', 'main', true)).rejects.toThrow(
+      '現在のブランチは削除できません: main'
+    )
+    expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+  })
+
+  // 別 worktree で使用中のブランチの削除失敗は、未マージの失敗と同じ
+  // `error: ... '<name>'` 形式になり区別できない(実機で確認)。事前に弾かないと
+  // 「強制削除しますか？」と誤って聞いてしまう
+  it('別の worktree でチェックアウトされているブランチは拒否する', async () => {
+    setupRaw({
+      worktree:
+        'worktree /project\nHEAD abc\nbranch refs/heads/main\n\n' +
+        'worktree /other\nHEAD def\nbranch refs/heads/feature/x\n'
+    })
+    await expect(deleteBranch('/project', 'feature/x', true)).rejects.toThrow(
+      '他のワークツリーで使用中のブランチは削除できません: feature/x'
+    )
+    expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('upstream が無くマージ済み(HEAD 基準)なら安全削除して deleted: true を返す', async () => {
+    setupRaw({ upstream: '\n', merged: 'refs/heads/feature/x\n' })
+    await expect(deleteBranch('/project', 'feature/x', false)).resolves.toEqual({ deleted: true })
+    expect(mockRaw).toHaveBeenCalledWith([
+      'for-each-ref',
+      '--merged=HEAD',
+      '--format=%(refname)',
+      'refs/heads/feature/x'
+    ])
+    expect(mockDeleteLocalBranch).toHaveBeenCalledWith('feature/x', false)
+  })
+
+  it('未マージなら削除を呼ばずに not-fully-merged を返す', async () => {
+    setupRaw({ upstream: '\n', merged: '' })
+    await expect(deleteBranch('/project', 'feature/x', false)).resolves.toEqual({
+      deleted: false,
+      reason: 'not-fully-merged'
+    })
+    expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('upstream が設定され実在すれば、upstream を基準にマージ判定する', async () => {
+    setupRaw({
+      upstream: 'refs/remotes/origin/feature/x\n',
+      revParse: 'abc123\n',
+      merged: 'refs/heads/feature/x\n'
+    })
+    await deleteBranch('/project', 'feature/x', false)
+    expect(mockRaw).toHaveBeenCalledWith([
+      'rev-parse',
+      '--verify',
+      '--quiet',
+      'refs/remotes/origin/feature/x'
+    ])
+    expect(mockRaw).toHaveBeenCalledWith([
+      'for-each-ref',
+      '--merged=refs/remotes/origin/feature/x',
+      '--format=%(refname)',
+      'refs/heads/feature/x'
+    ])
+  })
+
+  // git 本体も upstream の ref が解決できなければ HEAD にフォールバックする
+  it('upstream が設定されていても ref が消えていれば HEAD を基準にする', async () => {
+    setupRaw({
+      upstream: 'refs/remotes/origin/gone\n',
+      revParse: '',
+      merged: 'refs/heads/feature/x\n'
+    })
+    await deleteBranch('/project', 'feature/x', false)
+    expect(mockRaw).toHaveBeenCalledWith([
+      'for-each-ref',
+      '--merged=HEAD',
+      '--format=%(refname)',
+      'refs/heads/feature/x'
+    ])
+  })
+
+  it('force が true ならマージ判定をせずに強制削除する', async () => {
+    setupRaw({})
+    await expect(deleteBranch('/project', 'feature/x', true)).resolves.toEqual({ deleted: true })
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['rev-parse']))
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['--format=%(upstream)']))
+    expect(mockDeleteLocalBranch).toHaveBeenCalledWith('feature/x', true)
+  })
+
+  it('削除コマンドが throw した場合エラーがそのまま伝播する', async () => {
+    setupRaw({ upstream: '\n', merged: 'refs/heads/feature/x\n' })
+    mockDeleteLocalBranch.mockRejectedValue(new Error('delete failed'))
+    await expect(deleteBranch('/project', 'feature/x', false)).rejects.toThrow('delete failed')
   })
 })
