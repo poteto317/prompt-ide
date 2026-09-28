@@ -40,6 +40,8 @@ interface Props {
   remoteOperationError: Error | null
   pendingBranchOperation: BranchOperationKind | null
   onCheckoutBranch: (branchName: string) => Promise<void>
+  onCreateBranch: (branchName: string) => Promise<boolean>
+  onDeleteBranch: (branchName: string) => Promise<boolean>
   branchOperationError: Error | null
 }
 
@@ -79,6 +81,8 @@ export default function SourceControlPanel({
   remoteOperationError,
   pendingBranchOperation,
   onCheckoutBranch,
+  onCreateBranch,
+  onDeleteBranch,
   branchOperationError
 }: Props): React.JSX.Element {
   return (
@@ -140,6 +144,8 @@ export default function SourceControlPanel({
             onLoadMoreLog={onLoadMoreLog}
             pendingBranchOperation={pendingBranchOperation}
             onCheckoutBranch={onCheckoutBranch}
+            onCreateBranch={onCreateBranch}
+            onDeleteBranch={onDeleteBranch}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

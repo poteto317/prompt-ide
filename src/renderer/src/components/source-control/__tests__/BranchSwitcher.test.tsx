@@ -15,7 +15,9 @@ const baseProps = {
   branches,
   pendingBranchOperation: null as BranchOperationKind | null,
   isBlocked: false,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined)
+  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  onCreateBranch: vi.fn().mockResolvedValue(true),
+  onDeleteBranch: vi.fn().mockResolvedValue(true)
 }
 
 describe('BranchSwitcher', () => {
@@ -144,5 +146,66 @@ describe('BranchSwitcher', () => {
       expect(outsideButton).toHaveFocus()
       expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).not.toHaveFocus()
     })
+  })
+
+  it('作成ボタンでメニューが閉じ、入力ダイアログが開く', async () => {
+    render(<BranchSwitcher {...baseProps} />)
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+    await userEvent.click(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' }))
+    expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '新しいブランチ名' })).toBeInTheDocument()
+  })
+
+  it('入力して OK を押すと onCreateBranch が呼ばれ、ダイアログが閉じてトリガーへフォーカスが戻る', async () => {
+    const onCreateBranch = vi.fn().mockResolvedValue(true)
+    render(<BranchSwitcher {...baseProps} onCreateBranch={onCreateBranch} />)
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '名前' }), 'feature/new')
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(onCreateBranch).toHaveBeenCalledWith('feature/new')
+    expect(screen.queryByRole('dialog', { name: '新しいブランチ名' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('既存のブランチ名はダイアログ内でエラーになり、onCreateBranch は呼ばれない', async () => {
+    const onCreateBranch = vi.fn().mockResolvedValue(true)
+    render(<BranchSwitcher {...baseProps} onCreateBranch={onCreateBranch} />)
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+    await userEvent.click(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' }))
+    await userEvent.type(screen.getByRole('textbox', { name: '名前' }), 'feature/x')
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('同じ名前のブランチが既に存在します')
+    expect(onCreateBranch).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [
+      'キャンセルボタン',
+      async () => userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    ],
+    ['Escape キー', async () => userEvent.keyboard('{Escape}')]
+  ])('%s でダイアログを閉じるとトリガーへフォーカスが戻る', async (_label, close) => {
+    const onCreateBranch = vi.fn().mockResolvedValue(true)
+    render(<BranchSwitcher {...baseProps} onCreateBranch={onCreateBranch} />)
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' }))
+    await close()
+    expect(screen.queryByRole('dialog', { name: '新しいブランチ名' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    expect(onCreateBranch).not.toHaveBeenCalled()
+  })
+
+  it('削除ボタンでメニューが閉じ、トリガーへフォーカスが戻り、onDeleteBranch が呼ばれる', async () => {
+    const onDeleteBranch = vi.fn().mockResolvedValue(true)
+    render(<BranchSwitcher {...baseProps} onDeleteBranch={onDeleteBranch} />)
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
+    expect(onDeleteBranch).toHaveBeenCalledWith('feature/x')
+    expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 })

@@ -59,6 +59,8 @@ const defaultProps = {
   gitRemoteOperationError: null as Error | null,
   pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  onCreateBranch: vi.fn().mockResolvedValue(true),
+  onDeleteBranch: vi.fn().mockResolvedValue(true),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),

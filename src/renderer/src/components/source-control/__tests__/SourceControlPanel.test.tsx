@@ -38,6 +38,8 @@ const baseProps = {
   remoteOperationError: null as Error | null,
   pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  onCreateBranch: vi.fn().mockResolvedValue(true),
+  onDeleteBranch: vi.fn().mockResolvedValue(true),
   branchOperationError: null as Error | null
 }
 
@@ -221,6 +223,8 @@ describe('SourceControlPanel', () => {
         remoteOperationError={null}
         pendingBranchOperation={null}
         onCheckoutBranch={vi.fn()}
+        onCreateBranch={vi.fn().mockResolvedValue(true)}
+        onDeleteBranch={vi.fn().mockResolvedValue(true)}
         branchOperationError={null}
       />
     )

@@ -101,6 +101,8 @@ export default function App(): React.JSX.Element {
     refresh: refreshHistory,
     pendingBranchOperation,
     checkoutBranch,
+    createBranch,
+    deleteBranch,
     branchOperationError,
     hasKey,
     apiKeyLoaded,
@@ -271,6 +273,8 @@ export default function App(): React.JSX.Element {
               gitRemoteOperationError={remoteOperationError}
               pendingBranchOperation={pendingBranchOperation}
               onCheckoutBranch={checkoutBranch}
+              onCreateBranch={createBranch}
+              onDeleteBranch={deleteBranch}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}

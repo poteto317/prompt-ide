@@ -78,6 +78,8 @@ interface Props {
   gitRemoteOperationError: Error | null
   pendingBranchOperation: BranchOperationKind | null
   onCheckoutBranch: (branchName: string) => Promise<void>
+  onCreateBranch: (branchName: string) => Promise<boolean>
+  onDeleteBranch: (branchName: string) => Promise<boolean>
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
@@ -159,6 +161,8 @@ export default function Sidebar({
   gitRemoteOperationError,
   pendingBranchOperation,
   onCheckoutBranch,
+  onCreateBranch,
+  onDeleteBranch,
   gitBranchOperationError,
   onOpenDiff,
   onAmend,
@@ -261,6 +265,8 @@ export default function Sidebar({
           remoteOperationError={gitRemoteOperationError}
           pendingBranchOperation={pendingBranchOperation}
           onCheckoutBranch={onCheckoutBranch}
+          onCreateBranch={onCreateBranch}
+          onDeleteBranch={onDeleteBranch}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}

@@ -27,7 +27,9 @@ const baseProps = {
   historyError: null,
   onLoadMoreLog: vi.fn(),
   pendingBranchOperation: null,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined)
+  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  onCreateBranch: vi.fn().mockResolvedValue(true),
+  onDeleteBranch: vi.fn().mockResolvedValue(true)
 }
 
 describe('GitRepoView', () => {
@@ -178,6 +180,8 @@ describe('GitRepoView', () => {
         onLoadMoreLog={vi.fn()}
         pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
+        onCreateBranch={vi.fn().mockResolvedValue(true)}
+        onDeleteBranch={vi.fn().mockResolvedValue(true)}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -226,6 +230,8 @@ describe('GitRepoView', () => {
         onLoadMoreLog={vi.fn()}
         pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
+        onCreateBranch={vi.fn().mockResolvedValue(true)}
+        onDeleteBranch={vi.fn().mockResolvedValue(true)}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -260,6 +266,8 @@ describe('GitRepoView', () => {
         onLoadMoreLog={vi.fn()}
         pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
+        onCreateBranch={vi.fn().mockResolvedValue(true)}
+        onDeleteBranch={vi.fn().mockResolvedValue(true)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -292,9 +300,32 @@ describe('GitRepoView', () => {
         onLoadMoreLog={vi.fn()}
         pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
+        onCreateBranch={vi.fn().mockResolvedValue(true)}
+        onDeleteBranch={vi.fn().mockResolvedValue(true)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
     expect(onOpenDiff).toHaveBeenCalledWith('a.ts', true)
+  })
+
+  it('BranchSwitcher の削除ボタンから onDeleteBranch が呼ばれる', async () => {
+    const onDeleteBranch = vi.fn().mockResolvedValue(true)
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        branches={[
+          { name: 'main', current: true },
+          { name: 'feature/x', current: false }
+        ]}
+        onDeleteBranch={onDeleteBranch}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
+    expect(onDeleteBranch).toHaveBeenCalledWith('feature/x')
   })
 })

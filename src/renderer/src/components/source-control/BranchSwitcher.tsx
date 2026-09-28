@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import type { GitBranch } from '@shared/types'
 import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
 import BranchSwitcherMenu from './BranchSwitcherMenu'
+import NameInputDialog from '../explorer/NameInputDialog'
+import { validateBranchName } from '../../lib/branchNameValidation'
 
 interface Props {
   currentBranch: string | null
@@ -14,6 +16,8 @@ interface Props {
    *  「他操作の完了待ち」のため) */
   isBlocked: boolean
   onCheckoutBranch: (branchName: string) => Promise<void>
+  onCreateBranch: (branchName: string) => Promise<boolean>
+  onDeleteBranch: (branchName: string) => Promise<boolean>
 }
 
 export default function BranchSwitcher({
@@ -21,9 +25,12 @@ export default function BranchSwitcher({
   branches,
   pendingBranchOperation,
   isBlocked,
-  onCheckoutBranch
+  onCheckoutBranch,
+  onCreateBranch,
+  onDeleteBranch
 }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const isDisabled = pendingBranchOperation !== null || isBlocked
   const triggerRef = useRef<HTMLButtonElement>(null)
 
@@ -45,6 +52,35 @@ export default function BranchSwitcher({
   const handleMenuClose = (restoreFocus: boolean): void => {
     setIsOpen(false)
     if (restoreFocus) triggerRef.current?.focus()
+  }
+
+  // メニューを閉じてから入力ダイアログを開く。作成ボタンのクリックは document の
+  // 外側クリック判定にもバブルして onClose(false) が重ねて呼ばれるが、setIsOpen(false)
+  // の重複なので害は無い
+  const handleCreateRequest = (): void => {
+    setIsOpen(false)
+    setIsCreateDialogOpen(true)
+  }
+
+  // ダイアログを閉じたら(OK・キャンセル・Escape・オーバーレイクリックのいずれも)
+  // トリガーへフォーカスを戻す(パターン22)。OK の場合は、トリガーが実行中に
+  // disabled になる前にフォーカスを戻すため、onCreateBranch より先に呼ぶ
+  const closeCreateDialog = (): void => {
+    setIsCreateDialogOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  const handleCreateSubmit = (branchName: string): void => {
+    closeCreateDialog()
+    void onCreateBranch(branchName)
+  }
+
+  // 確認ダイアログはフック側(useGitBranchOperations.deleteBranch)が出す。
+  // メニューは先に閉じてトリガーへフォーカスを戻しておく
+  const handleDelete = (branchName: string): void => {
+    setIsOpen(false)
+    triggerRef.current?.focus()
+    void onDeleteBranch(branchName)
   }
 
   // 実行中の操作に応じて表示とアクセシブルネームを同期させる(パターン17)
@@ -77,10 +113,21 @@ export default function BranchSwitcher({
           branches={branches}
           onSelect={handleSelect}
           onClose={handleMenuClose}
-          // Task 9 で作成ダイアログの表示に差し替える
-          onCreateRequest={() => {}}
-          // Task 9 で削除確認フローに差し替える
-          onDelete={() => {}}
+          onCreateRequest={handleCreateRequest}
+          onDelete={handleDelete}
+        />
+      )}
+      {isCreateDialogOpen && (
+        <NameInputDialog
+          title="新しいブランチ名"
+          validate={(name) =>
+            validateBranchName(
+              name,
+              branches.map((b) => b.name)
+            )
+          }
+          onSubmit={handleCreateSubmit}
+          onCancel={closeCreateDialog}
         />
       )}
     </div>
