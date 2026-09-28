@@ -997,7 +997,7 @@ describe('deleteBranch', () => {
       revParse: 'abc123\n',
       merged: 'refs/heads/feature/x\n'
     })
-    await deleteBranch('/project', 'feature/x', false)
+    await expect(deleteBranch('/project', 'feature/x', false)).resolves.toEqual({ deleted: true })
     expect(mockRaw).toHaveBeenCalledWith([
       'rev-parse',
       '--verify',
@@ -1010,6 +1010,25 @@ describe('deleteBranch', () => {
       '--format=%(refname)',
       'refs/heads/feature/x'
     ])
+  })
+
+  it('upstream が設定され実在しても、upstream 基準で未マージなら削除せず not-fully-merged を返す', async () => {
+    setupRaw({
+      upstream: 'refs/remotes/origin/feature/x\n',
+      revParse: 'abc123\n',
+      merged: ''
+    })
+    await expect(deleteBranch('/project', 'feature/x', false)).resolves.toEqual({
+      deleted: false,
+      reason: 'not-fully-merged'
+    })
+    expect(mockRaw).toHaveBeenCalledWith([
+      'for-each-ref',
+      '--merged=refs/remotes/origin/feature/x',
+      '--format=%(refname)',
+      'refs/heads/feature/x'
+    ])
+    expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
   })
 
   // git 本体も upstream の ref が解決できなければ HEAD にフォールバックする

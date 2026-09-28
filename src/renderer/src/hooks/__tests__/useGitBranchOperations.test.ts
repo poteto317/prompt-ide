@@ -649,4 +649,31 @@ describe('deleteBranch', () => {
     })
     expect(mockDeleteBranch).not.toHaveBeenCalled()
   })
+
+  // checkout/create と同じく、削除も他の操作(ハンク操作/commit/amend/pull)が
+  // lock を握っている間は開始しない(パターン23)
+  it('他の操作が file lock を握っている間は削除 API を呼ばない', async () => {
+    const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
+    const { result } = renderWithConfirm(vi.fn().mockReturnValue(true), lock)
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(false)
+    expect(mockDeleteBranch).not.toHaveBeenCalled()
+  })
+
+  it('未マージの強制削除が失敗したら false を返し、branchOperationError に反映する', async () => {
+    mockDeleteBranch
+      .mockResolvedValueOnce({ deleted: false, reason: 'not-fully-merged' })
+      .mockRejectedValueOnce(new Error('force failed'))
+    const onConfirm = vi.fn().mockReturnValue(true)
+    const { result } = renderWithConfirm(onConfirm)
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(false)
+    expect(result.current.branchOperationError?.message).toBe('force failed')
+  })
 })
