@@ -847,6 +847,16 @@ describe('createBranch', () => {
     })
   }
 
+  // 空文字は check-ref-format に渡す前に弾く(@shared/branchName の規則)
+  it('空文字は git を一切呼ばずに拒否する', async () => {
+    await expect(createBranch('/project', '')).rejects.toThrow(
+      'ブランチ名として使用できない名前です: '
+    )
+    expect(mockRaw).not.toHaveBeenCalled()
+    expect(mockBranchLocal).not.toHaveBeenCalled()
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
   it('検証を通過したら checkoutLocalBranch を branchName で呼ぶ', async () => {
     mockCheckRefFormatOk('feature/new')
     mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
@@ -879,11 +889,13 @@ describe('createBranch', () => {
     expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
   })
 
-  it('check-ref-format が失敗したら日本語エラーにして checkoutLocalBranch を呼ばない', async () => {
+  // 検証の順序: 形式(check-ref-format)が不正なら、重複チェック(branchLocal)にも作成にも進まない
+  it('check-ref-format が失敗したら日本語エラーにし、branchLocal も checkoutLocalBranch も呼ばない', async () => {
     mockRaw.mockRejectedValue(new MockGitError("fatal: 'a..b' is not a valid branch name"))
     await expect(createBranch('/project', 'a..b')).rejects.toThrow(
       'ブランチ名として使用できない名前です: a..b'
     )
+    expect(mockBranchLocal).not.toHaveBeenCalled()
     expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
   })
 
@@ -906,6 +918,23 @@ describe('createBranch', () => {
     expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
   })
 
+  // refs/heads 配下はディレクトリ構造のため親子になる名前は共存できない。checkout -b まで
+  // 進むと git の英語エラー(`cannot lock ref ...`)がそのままバナーに出てしまう
+  it.each([
+    ['main/sub', ['main'], 'main'],
+    ['feature', ['main', 'feature/x'], 'feature/x']
+  ])(
+    '%s は既存ブランチと階層が衝突するため日本語エラーにして作成しない',
+    async (name, all, conflicting) => {
+      mockCheckRefFormatOk(name)
+      mockBranchLocal.mockResolvedValue({ all, current: 'main' })
+      await expect(createBranch('/project', name)).rejects.toThrow(
+        `既存のブランチ ${conflicting} と名前が衝突します: ${name}`
+      )
+      expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+    }
+  )
+
   it('checkoutLocalBranch が throw した場合エラーがそのまま伝播する', async () => {
     mockCheckRefFormatOk('feature/new')
     mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
@@ -916,7 +945,8 @@ describe('createBranch', () => {
 
 describe('deleteBranch', () => {
   // raw() の呼び出しを「コマンドの先頭引数 → 戻り値」で振り分ける。
-  // 実機の出力形式は Task 2 冒頭の「前提」を参照
+  // 実機の出力形式(実機 git 2.50.1 で確認)の根拠は、gitService.ts の isBranchMerged と
+  // gitWorktreeParser.ts 冒頭のコメントを参照
   const setupRaw = (outputs: {
     worktree?: string
     upstream?: string
@@ -968,6 +998,12 @@ describe('deleteBranch', () => {
       '他のワークツリーで使用中のブランチは削除できません: feature/x'
     )
     expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('存在しないブランチなら worktree 一覧を取得しない', async () => {
+    setupRaw({})
+    await expect(deleteBranch('/project', 'nope', false)).rejects.toThrow()
+    expect(mockRaw).not.toHaveBeenCalledWith(['worktree', 'list', '--porcelain'])
   })
 
   it('upstream が無くマージ済み(HEAD 基準)なら安全削除して deleted: true を返す', async () => {

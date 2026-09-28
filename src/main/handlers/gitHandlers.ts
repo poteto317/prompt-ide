@@ -113,6 +113,17 @@ async function resolveCanonicalPath(resolvedPath: string): Promise<string> {
   }
 }
 
+// IPC 境界は任意の値を受け付けるため、service 層(startsWith 等)が TypeError で落ちる
+// 前に引数の型を検証する。値の中身(実在するブランチか等)の検証は service 層が行う
+function assertBranchNameArg(value: unknown): asserts value is string {
+  if (typeof value !== 'string') throw new Error('Invalid branch name')
+}
+
+// force は厳密に boolean だけを受け付ける('true' 等の truthy な値で強制削除されないため)
+function assertForceFlagArg(value: unknown): asserts value is boolean {
+  if (typeof value !== 'boolean') throw new Error('Invalid force flag')
+}
+
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:getStatus', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
@@ -243,17 +254,16 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
 
   ipcMain.handle('git:createBranch', async (event: IpcMainInvokeEvent, branchName: unknown) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    if (typeof branchName !== 'string') throw new Error('Invalid branch name')
+    assertBranchNameArg(branchName)
     await createBranch(allowedFolder, branchName)
   })
 
-  // force は厳密に boolean だけを受け付ける('true' 等の truthy な値で強制削除されないため)
   ipcMain.handle(
     'git:deleteBranch',
     async (event: IpcMainInvokeEvent, branchName: unknown, force: unknown) => {
       const allowedFolder = getAllowedFolder(folderAccess, event)
-      if (typeof branchName !== 'string') throw new Error('Invalid branch name')
-      if (typeof force !== 'boolean') throw new Error('Invalid force flag')
+      assertBranchNameArg(branchName)
+      assertForceFlagArg(force)
       return deleteBranch(allowedFolder, branchName, force)
     }
   )

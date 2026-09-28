@@ -973,6 +973,19 @@ describe('registerGitHandlers', () => {
       )
       expect(mockCreateBranch).not.toHaveBeenCalled()
     })
+
+    // 引数の渡し忘れ(undefined)やオブジェクト等も同様に弾く
+    it.each([undefined, null, { name: 'x' }, ['x']])(
+      'branchName が %s のとき createBranch を呼ばずに拒否する',
+      async (branchName) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler('git:createBranch')(makeEvent(1), branchName)
+        ).rejects.toThrow('Invalid branch name')
+        expect(mockCreateBranch).not.toHaveBeenCalled()
+      }
+    )
   })
 
   describe('git:deleteBranch', () => {
@@ -995,6 +1008,28 @@ describe('registerGitHandlers', () => {
         getRegisteredHandler('git:deleteBranch')(makeEvent(1), 'feature/x', 'true')
       ).rejects.toThrow('Invalid force flag')
       expect(mockDeleteBranch).not.toHaveBeenCalled()
+    })
+
+    // 省略(undefined)や 0/1 のような truthy/falsy な値も強制削除の指定として扱わない
+    it.each([undefined, 1, 0, null])(
+      'force が %s のとき deleteBranch を呼ばずに拒否する',
+      async (force) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler('git:deleteBranch')(makeEvent(1), 'feature/x', force)
+        ).rejects.toThrow('Invalid force flag')
+        expect(mockDeleteBranch).not.toHaveBeenCalled()
+      }
+    )
+
+    // 型検証より先にフォルダの許可を確認する(フォルダ未設定なら型に関わらず同じエラー)
+    it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:deleteBranch')(makeEvent(1), 123, 'true')
+      ).rejects.toThrow('No folder open')
     })
 
     it('branchName が文字列でなければ deleteBranch を呼ばずに拒否する', async () => {

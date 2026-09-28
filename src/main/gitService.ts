@@ -12,6 +12,8 @@ import {
   buildEmptyFileDiffMessage
 } from './gitDiffFormatter'
 import { parseGitLogOutput } from './gitLogFormatter'
+import { parseWorktreeBranches } from './gitWorktreeParser'
+import { findConflictingBranchName, getBranchNameRuleViolation } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
 
@@ -376,58 +378,73 @@ export async function checkoutBranch(folderPath: string, branchName: string): Pr
   await git.checkout(branchName)
 }
 
-// 現在の HEAD から新しいブランチを作り、そのブランチへ切り替える(git checkout -b)。
-// HEAD の指すコミットは変わらないため working tree/index は変化せず、未コミットの
-// 変更はそのまま新しいブランチへ持ち越される(renderer 側で未保存編集の破棄確認や
-// エディタの再読込が不要な理由)。
-//
-// branchName は IPC 境界から届く任意の文字列のため、次の順で検証する:
-// 1. '-' 始まりは git に渡す前に拒否する。check-ref-format 自体にもオプションとして
-//    解釈されてしまうため(docs/review-findings-patterns.md パターン21)
+// ブランチ名が不正なときのエラー。形式違反(アプリ独自の規則・git の check-ref-format)は
+// 原則この同じ文言にし、呼び出し元(エラーバナー)が違反の種類を区別する必要が無いように
+// する。例外は '-' 始まりで、直し方が明確なため assertCreatableBranchName が専用の文言を返す
+function invalidBranchNameError(branchName: string): Error {
+  return new Error(`ブランチ名として使用できない名前です: ${branchName}`)
+}
+
+// 新しいブランチ名として使えるかを検証する。branchName は IPC 境界から届く任意の文字列の
+// ため、次の順で検証する(前の検証に失敗したら後の git 呼び出しには進まない):
+// 1. アプリ独自の規則(@shared/branchName)。'-' 始まりは check-ref-format 自体にも
+//    オプションとして解釈されるため、git に渡す前に弾く(docs/review-findings-patterns.md
+//    パターン21)。'@' のみは `git checkout @` が HEAD と解釈され、作成後に切り替えられない
 // 2. git 本体の規則(`..`、空白、`~^:?*[\`、末尾の .lock 等)は check-ref-format --branch
 //    に委ねる。--branch は '@{-1}'(直前のブランチ)を実在のブランチ名へ展開して成功扱いに
 //    するため、出力(正規化後の名前)が入力と一致することも確認する
-// 3. 同名の既存ブランチは checkout -b の失敗(英語のエラー文)を見せる前に日本語で弾く
-export async function createBranch(folderPath: string, branchName: string): Promise<void> {
-  if (branchName.startsWith('-')) {
+// 3. 同名の既存ブランチ、および階層が衝突する既存ブランチ('main' に対する 'main/sub' 等)は、
+//    checkout -b の失敗(英語のエラー文)を見せる前に日本語で弾く
+async function assertCreatableBranchName(git: SimpleGit, branchName: string): Promise<void> {
+  const violation = getBranchNameRuleViolation(branchName)
+  if (violation === 'leading-dash') {
     throw new Error(`\`-\` で始まるブランチ名は使用できません: ${branchName}`)
   }
-  // '@' のみの名前は check-ref-format --branch では正規化後も '@' のまま成功するが、
-  // checkoutBranch は checkout に branchName をそのまま渡すため `git checkout @` となり、
-  // git はこれをブランチ名ではなく HEAD の別名として解釈する(実機 git 2.50.1 で確認)。
-  // その結果 exit 0 のまま何もせず現在のブランチに留まり、作成後に切り替えられない
-  if (branchName === '@') {
-    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
-  }
-  const git = simpleGit(folderPath)
+  if (violation !== null) throw invalidBranchNameError(branchName)
   let normalized: string
   try {
     normalized = (await git.raw(['check-ref-format', '--branch', branchName])).trim()
   } catch {
-    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
+    throw invalidBranchNameError(branchName)
   }
-  if (normalized !== branchName) {
-    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
-  }
+  if (normalized !== branchName) throw invalidBranchNameError(branchName)
   const summary = await git.branchLocal()
   if (summary.all.includes(branchName)) {
     throw new Error(`同じ名前のブランチが既に存在します: ${branchName}`)
   }
+  const conflicting = findConflictingBranchName(branchName, summary.all)
+  if (conflicting !== null) {
+    throw new Error(`既存のブランチ ${conflicting} と名前が衝突します: ${branchName}`)
+  }
+}
+
+// 現在の HEAD から新しいブランチを作り、そのブランチへ切り替える(git checkout -b)。
+// HEAD の指すコミットは変わらないため working tree/index は変化せず、未コミットの
+// 変更はそのまま新しいブランチへ持ち越される(renderer 側で未保存編集の破棄確認や
+// エディタの再読込が不要な理由)
+export async function createBranch(folderPath: string, branchName: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await assertCreatableBranchName(git, branchName)
   await git.checkoutLocalBranch(branchName)
 }
 
-// git worktree list --porcelain の `branch refs/heads/<name>` 行から、いずれかの
-// worktree(メインの作業ディレクトリ自身を含む)でチェックアウト中のブランチ名を集める。
-// porcelain 形式はロケールに依存しない
-async function getBranchesCheckedOutInWorktrees(git: SimpleGit): Promise<Set<string>> {
-  const output = await git.raw(['worktree', 'list', '--porcelain'])
-  const prefix = 'branch refs/heads/'
-  return new Set(
-    output
-      .split('\n')
-      .filter((line) => line.startsWith(prefix))
-      .map((line) => line.slice(prefix.length))
-  )
+// 削除してよいブランチかを検証する。branchName は IPC 境界から届く任意の文字列のため、
+// checkoutBranch と同じく許可リスト(実在するローカルブランチ名)で検証してから git に
+// 渡す(パターン21)。いずれかの worktree でチェックアウト中のブランチは、git 自身も
+// 削除を拒否するが、そのエラーは未マージの失敗と同じ `error: ... '<name>'` 形式で区別
+// できない(実機で確認)。事前に弾かないと「強制削除しますか？」と誤って聞いてしまう
+async function assertDeletableBranch(git: SimpleGit, branchName: string): Promise<void> {
+  const summary = await git.branchLocal()
+  if (!summary.all.includes(branchName)) {
+    throw new Error(`存在しないブランチです: ${branchName}`)
+  }
+  if (branchName === summary.current) {
+    throw new Error(`現在のブランチは削除できません: ${branchName}`)
+  }
+  const checkedOut = parseWorktreeBranches(await git.raw(['worktree', 'list', '--porcelain']))
+  if (checkedOut.has(branchName)) {
+    throw new Error(`他のワークツリーで使用中のブランチは削除できません: ${branchName}`)
+  }
 }
 
 // git branch -d と同じ基準でマージ済みかを判定する。基準は「upstream が設定され、
@@ -451,8 +468,6 @@ async function isBranchMerged(git: SimpleGit, branchName: string): Promise<boole
   return merged.trim() === ref
 }
 
-// branchName は IPC 境界から届く任意の文字列のため、checkoutBranch と同じく許可リスト
-// (実在するローカルブランチ名)で検証してから git に渡す(パターン21)。
 // 事前チェックと削除の間に別プロセスがマージや worktree 追加を行う競合は対象外とする。
 // その場合は git 自身が削除を拒否してエラーになるだけで、コミットは失われない
 export async function deleteBranch(
@@ -461,17 +476,7 @@ export async function deleteBranch(
   force: boolean
 ): Promise<DeleteBranchResult> {
   const git = simpleGit(folderPath)
-  const summary = await git.branchLocal()
-  if (!summary.all.includes(branchName)) {
-    throw new Error(`存在しないブランチです: ${branchName}`)
-  }
-  if (branchName === summary.current) {
-    throw new Error(`現在のブランチは削除できません: ${branchName}`)
-  }
-  const checkedOut = await getBranchesCheckedOutInWorktrees(git)
-  if (checkedOut.has(branchName)) {
-    throw new Error(`他のワークツリーで使用中のブランチは削除できません: ${branchName}`)
-  }
+  await assertDeletableBranch(git, branchName)
   if (!force && !(await isBranchMerged(git, branchName))) {
     return { deleted: false, reason: 'not-fully-merged' }
   }
