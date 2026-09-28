@@ -8,16 +8,23 @@ interface Props {
    *  戻すべきか。Escape(キーボード操作の一環)は true、外側クリック(ユーザーが
    *  別の要素へ自然にフォーカスを移そうとした操作)は false */
   onClose: (restoreFocus: boolean) => void
+  /** 「＋ 新しいブランチを作成…」が押された。入力ダイアログの表示は呼び出し元が行う */
+  onCreateRequest: () => void
+  /** 削除ボタン、または radio 上の Delete キー。確認ダイアログは呼び出し元(フック)が出す */
+  onDelete: (branchName: string) => void
 }
 
 export default function BranchSwitcherMenu({
   branches,
   onSelect,
-  onClose
+  onClose,
+  onCreateRequest,
+  onDelete
 }: Props): React.JSX.Element {
   // name → ボタン要素の参照。HistoryPanel.tsx の itemRefs と同じ理由
   // (DOM文字列セレクタでの検索を避けるため)
   const itemRefs = useRef(new Map<string, HTMLButtonElement>())
+  const createButtonRef = useRef<HTMLButtonElement>(null)
   const selectable = branches.filter((b) => !b.current)
   // roving tabindex(HistoryItem.tsx の tabIndex={isSelected ? 0 : -1} と同じ
   // ARIA APG の radiogroup パターン)。フォーカスされたことのあるブランチを
@@ -53,7 +60,9 @@ export default function BranchSwitcherMenu({
   // 実装済みの矢印キーナビゲーションがキーボードのみでは実質使えない
   // (もう一段 Tab を要求してしまう)
   useEffect(() => {
+    // 選択可能なブランチが無い(現在ブランチだけ)場合は、唯一の操作である作成ボタンへ
     if (tabbableName !== null) itemRefs.current.get(tabbableName)?.focus()
+    else createButtonRef.current?.focus()
     // マウント時の一度きりの副作用(tabbableName は選択のたびに変わるが、
     // その変化のたびに再フォーカスすると矢印キー操作中のフォーカスを奪ってしまう)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -79,29 +88,55 @@ export default function BranchSwitcherMenu({
   }
 
   return (
-    <div
-      role="radiogroup"
-      aria-label="ブランチ"
-      className="source-control-panel__branch-menu"
-      onKeyDown={handleListKeyDown}
-    >
-      {branches.map((branch) => (
-        <button
-          key={branch.name}
-          ref={(el) => registerItemRef(branch.name, el)}
-          type="button"
-          role="radio"
-          aria-checked={branch.current}
-          className="source-control-panel__branch-menu-item"
-          disabled={branch.current}
-          tabIndex={branch.name === tabbableName ? 0 : -1}
-          onFocus={() => setFocusedName(branch.name)}
-          onClick={() => onSelect(branch.name)}
-        >
-          {branch.current ? '✓ ' : ''}
-          {branch.name}
-        </button>
-      ))}
+    <div className="source-control-panel__branch-menu">
+      <button
+        ref={createButtonRef}
+        type="button"
+        className="source-control-panel__branch-menu-create"
+        onClick={onCreateRequest}
+      >
+        ＋ 新しいブランチを作成…
+      </button>
+      <div role="radiogroup" aria-label="ブランチ" onKeyDown={handleListKeyDown}>
+        {branches.map((branch) => (
+          <div key={branch.name} className="source-control-panel__branch-menu-row">
+            <button
+              ref={(el) => registerItemRef(branch.name, el)}
+              type="button"
+              role="radio"
+              aria-checked={branch.current}
+              aria-keyshortcuts={branch.current ? undefined : 'Delete'}
+              className="source-control-panel__branch-menu-item"
+              disabled={branch.current}
+              tabIndex={branch.name === tabbableName ? 0 : -1}
+              onFocus={() => setFocusedName(branch.name)}
+              onClick={() => onSelect(branch.name)}
+              onKeyDown={(e) => {
+                if (e.key === 'Delete' && !branch.current) {
+                  e.preventDefault()
+                  onDelete(branch.name)
+                }
+              }}
+            >
+              {branch.current ? '✓ ' : ''}
+              {branch.name}
+            </button>
+            {!branch.current && (
+              // roving tabindex を崩さないよう Tab 停止点にしない。キーボードでは
+              // radio 上の Delete キーで同じ操作ができる(aria-keyshortcuts で告知)
+              <button
+                type="button"
+                tabIndex={-1}
+                className="source-control-panel__branch-menu-delete"
+                aria-label={`ブランチ ${branch.name} を削除`}
+                onClick={() => onDelete(branch.name)}
+              >
+                🗑
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

@@ -73,7 +73,15 @@ export default function BranchSwitcher({
         {pending?.text ?? currentBranch ?? '(no branch)'}
       </button>
       {isOpen && (
-        <BranchSwitcherMenu branches={branches} onSelect={handleSelect} onClose={handleMenuClose} />
+        <BranchSwitcherMenu
+          branches={branches}
+          onSelect={handleSelect}
+          onClose={handleMenuClose}
+          // Task 9 で作成ダイアログの表示に差し替える
+          onCreateRequest={() => {}}
+          // Task 9 で削除確認フローに差し替える
+          onDelete={() => {}}
+        />
       )}
     </div>
   )

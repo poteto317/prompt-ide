@@ -1109,6 +1109,52 @@ body {
   cursor: default;
 }
 
+/* 作成ボタンはメニュー項目と同じ見た目で、区切り線でブランチ一覧と分ける */
+.source-control-panel__branch-menu-create {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #454545;
+  color: #cccccc;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-control-panel__branch-menu-create:hover {
+  background: #094771;
+  color: #ffffff;
+}
+
+.source-control-panel__branch-menu-row {
+  display: flex;
+  align-items: center;
+}
+
+.source-control-panel__branch-menu-row .source-control-panel__branch-menu-item {
+  flex: 1;
+  min-width: 0;
+}
+
+/* タッチ操作で押しやすいよう 32px 四方のタップ領域を確保する */
+.source-control-panel__branch-menu-delete {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.source-control-panel__branch-menu-delete:hover {
+  background: #5a1d1d;
+  color: #ffffff;
+}
+
 .source-control-panel__ahead {
   color: #4ec9b0;
   font-size: 11px;
