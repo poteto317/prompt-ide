@@ -201,7 +201,14 @@ describe('pull', () => {
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+    // isAnyLocked が常に false を返すモックロックを明示的に渡す。既定の
+    // useFileOperationLock() のままだと、1回目の呼び出しで lock.lockGlobal() が
+    // 実際に globallyLockedRef を立てて isAnyLocked() を true にするため、
+    // isPullingRef.current のチェック自体が機能しなくても isAnyLocked() 経由で
+    // たまたま2回目がブロックされてしまい、このテストが検証したい「自分自身の
+    // 多重発火防止」を検知できなくなる(レビュー指摘で発覚)
+    const lock = makeFileLock()
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus, lock))
 
     let first: Promise<void> = Promise.resolve()
     let second: Promise<void> = Promise.resolve()
