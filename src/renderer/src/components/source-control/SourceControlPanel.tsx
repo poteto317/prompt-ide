@@ -2,6 +2,7 @@ import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 import SourceControlToolbar from './SourceControlToolbar'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
+import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
 
 interface Props {
   gitStatus: GitStatusResult | null
@@ -37,7 +38,7 @@ interface Props {
   onPull: () => Promise<void>
   onFetch: () => Promise<void>
   remoteOperationError: Error | null
-  isCheckingOut: boolean
+  pendingBranchOperation: BranchOperationKind | null
   onCheckoutBranch: (branchName: string) => Promise<void>
   branchOperationError: Error | null
 }
@@ -76,7 +77,7 @@ export default function SourceControlPanel({
   onPull,
   onFetch,
   remoteOperationError,
-  isCheckingOut,
+  pendingBranchOperation,
   onCheckoutBranch,
   branchOperationError
 }: Props): React.JSX.Element {
@@ -137,7 +138,7 @@ export default function SourceControlPanel({
             isLoadingFolder={isLoadingFolder}
             historyError={historyError}
             onLoadMoreLog={onLoadMoreLog}
-            isCheckingOut={isCheckingOut}
+            pendingBranchOperation={pendingBranchOperation}
             onCheckoutBranch={onCheckoutBranch}
           />
         ))}

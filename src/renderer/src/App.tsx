@@ -99,7 +99,7 @@ export default function App(): React.JSX.Element {
     historyError,
     loadMore,
     refresh: refreshHistory,
-    isCheckingOut,
+    pendingBranchOperation,
     checkoutBranch,
     branchOperationError,
     hasKey,
@@ -269,7 +269,7 @@ export default function App(): React.JSX.Element {
               onPull={pull}
               onFetch={fetchRemote}
               gitRemoteOperationError={remoteOperationError}
-              isCheckingOut={isCheckingOut}
+              pendingBranchOperation={pendingBranchOperation}
               onCheckoutBranch={checkoutBranch}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}

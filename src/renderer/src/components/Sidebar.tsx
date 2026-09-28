@@ -17,6 +17,7 @@ import type {
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
+import type { BranchOperationKind } from '../hooks/useGitBranchOperations'
 
 interface Props {
   activePanel: Panel
@@ -75,7 +76,7 @@ interface Props {
   onPull: () => Promise<void>
   onFetch: () => Promise<void>
   gitRemoteOperationError: Error | null
-  isCheckingOut: boolean
+  pendingBranchOperation: BranchOperationKind | null
   onCheckoutBranch: (branchName: string) => Promise<void>
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
@@ -156,7 +157,7 @@ export default function Sidebar({
   onPull,
   onFetch,
   gitRemoteOperationError,
-  isCheckingOut,
+  pendingBranchOperation,
   onCheckoutBranch,
   gitBranchOperationError,
   onOpenDiff,
@@ -258,7 +259,7 @@ export default function Sidebar({
           onPull={onPull}
           onFetch={onFetch}
           remoteOperationError={gitRemoteOperationError}
-          isCheckingOut={isCheckingOut}
+          pendingBranchOperation={pendingBranchOperation}
           onCheckoutBranch={onCheckoutBranch}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}

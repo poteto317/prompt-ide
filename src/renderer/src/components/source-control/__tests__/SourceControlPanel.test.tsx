@@ -36,7 +36,7 @@ const baseProps = {
   onPull: vi.fn().mockResolvedValue(undefined),
   onFetch: vi.fn().mockResolvedValue(undefined),
   remoteOperationError: null as Error | null,
-  isCheckingOut: false,
+  pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   branchOperationError: null as Error | null
 }
@@ -219,7 +219,7 @@ describe('SourceControlPanel', () => {
         onPull={vi.fn()}
         onFetch={vi.fn()}
         remoteOperationError={null}
-        isCheckingOut={false}
+        pendingBranchOperation={null}
         onCheckoutBranch={vi.fn()}
         branchOperationError={null}
       />

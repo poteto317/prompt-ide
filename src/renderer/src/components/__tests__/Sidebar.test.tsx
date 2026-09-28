@@ -57,7 +57,7 @@ const defaultProps = {
   onPull: vi.fn().mockResolvedValue(undefined),
   onFetch: vi.fn().mockResolvedValue(undefined),
   gitRemoteOperationError: null as Error | null,
-  isCheckingOut: false,
+  pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),

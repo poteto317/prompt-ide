@@ -5,6 +5,7 @@ import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
 import BranchSwitcher from './BranchSwitcher'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
+import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
@@ -33,7 +34,7 @@ interface Props {
   isLoadingFolder: boolean
   historyError: Error | null
   onLoadMoreLog: () => void
-  isCheckingOut: boolean
+  pendingBranchOperation: BranchOperationKind | null
   onCheckoutBranch: (branchName: string) => Promise<void>
 }
 
@@ -60,7 +61,7 @@ export default function GitRepoView({
   isLoadingFolder,
   historyError,
   onLoadMoreLog,
-  isCheckingOut,
+  pendingBranchOperation,
   onCheckoutBranch
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
@@ -77,7 +78,7 @@ export default function GitRepoView({
         <BranchSwitcher
           currentBranch={branch}
           branches={branches}
-          isCheckingOut={isCheckingOut}
+          pendingBranchOperation={pendingBranchOperation}
           isBlocked={isBlockedByOtherOperation}
           onCheckoutBranch={onCheckoutBranch}
         />

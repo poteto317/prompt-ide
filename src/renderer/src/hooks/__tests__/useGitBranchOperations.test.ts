@@ -55,7 +55,7 @@ describe('checkoutBranch', () => {
     expect(refreshHistory).toHaveBeenCalledOnce()
   })
 
-  it('refreshGitStatus と refreshHistory を Promise.all で並列実行する(片方が先に解決しても isCheckingOut は両方完了するまで true のまま)', async () => {
+  it('refreshGitStatus と refreshHistory を Promise.all で並列実行する(片方が先に解決しても pendingBranchOperation は両方完了するまで checkout のまま)', async () => {
     mockCheckoutBranch.mockResolvedValue(undefined)
     let resolveGitStatus: () => void = () => {}
     const refreshGitStatus = vi.fn(
@@ -75,20 +75,20 @@ describe('checkoutBranch', () => {
     })
 
     // refreshHistory は即座に解決するが、refreshGitStatus がまだ pending のため
-    // 両方揃うまで isCheckingOut は true のまま
+    // 両方揃うまで pendingBranchOperation は checkout のまま
     await act(async () => {
       await Promise.resolve()
     })
-    expect(result.current.isCheckingOut).toBe(true)
+    expect(result.current.pendingBranchOperation).toBe('checkout')
 
     await act(async () => {
       resolveGitStatus()
       await checkoutPromise
     })
-    expect(result.current.isCheckingOut).toBe(false)
+    expect(result.current.pendingBranchOperation).toBeNull()
   })
 
-  it('実行中は isCheckingOut が true、完了後 false に戻る', async () => {
+  it('実行中は pendingBranchOperation が checkout、完了後 null に戻る', async () => {
     let resolveCheckout: () => void = () => {}
     mockCheckoutBranch.mockImplementation(
       () =>
@@ -106,13 +106,13 @@ describe('checkoutBranch', () => {
     act(() => {
       checkoutPromise = result.current.checkoutBranch('feature/x')
     })
-    expect(result.current.isCheckingOut).toBe(true)
+    expect(result.current.pendingBranchOperation).toBe('checkout')
 
     await act(async () => {
       resolveCheckout()
       await checkoutPromise
     })
-    expect(result.current.isCheckingOut).toBe(false)
+    expect(result.current.pendingBranchOperation).toBeNull()
   })
 
   it('実行中の多重呼び出しは gitApi.checkoutBranch を1回しか呼ばない', async () => {
@@ -195,7 +195,7 @@ describe('checkoutBranch', () => {
     })
 
     expect(result.current.branchOperationError?.message).toBe('checkout failed')
-    expect(result.current.isCheckingOut).toBe(false)
+    expect(result.current.pendingBranchOperation).toBeNull()
     expect(lock.unlockGlobal).toHaveBeenCalledOnce()
   })
 
@@ -227,7 +227,7 @@ describe('checkoutBranch', () => {
     })
 
     expect(result.current.branchOperationError).toBeNull()
-    expect(result.current.isCheckingOut).toBe(false)
+    expect(result.current.pendingBranchOperation).toBeNull()
   })
 
   it('gitStatus が null のとき checkoutBranch は実行されない(no-op)', async () => {

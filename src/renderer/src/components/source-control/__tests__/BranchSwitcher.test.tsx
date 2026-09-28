@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitBranch } from '@shared/types'
+import type { BranchOperationKind } from '../../../hooks/useGitBranchOperations'
 import BranchSwitcher from '../BranchSwitcher'
 
 const branches: GitBranch[] = [
@@ -12,7 +13,7 @@ const branches: GitBranch[] = [
 const baseProps = {
   currentBranch: 'main' as string | null,
   branches,
-  isCheckingOut: false,
+  pendingBranchOperation: null as BranchOperationKind | null,
   isBlocked: false,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined)
 }
@@ -51,26 +52,40 @@ describe('BranchSwitcher', () => {
     expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
   })
 
-  it('isCheckingOut が true のときトリガーボタンが disabled になり、表示テキストが「切り替え中...」になる', () => {
-    render(<BranchSwitcher {...baseProps} isCheckingOut={true} />)
+  it('pendingBranchOperation が checkout のときトリガーボタンが disabled になり、表示テキストが「切り替え中...」になる', () => {
+    render(<BranchSwitcher {...baseProps} pendingBranchOperation="checkout" />)
     const button = screen.getByRole('button', { name: 'ブランチ切り替え中' })
     expect(button).toBeDisabled()
     expect(button).toHaveTextContent('切り替え中...')
   })
 
-  it('isCheckingOut が true のとき aria-label も「ブランチ切り替え中」に変わる(旧ラベルではヒットしない)', () => {
-    render(<BranchSwitcher {...baseProps} isCheckingOut={true} />)
+  it('pendingBranchOperation が checkout のとき aria-label も「ブランチ切り替え中」に変わる(旧ラベルではヒットしない)', () => {
+    render(<BranchSwitcher {...baseProps} pendingBranchOperation="checkout" />)
     expect(screen.queryByRole('button', { name: 'ブランチを切り替え' })).not.toBeInTheDocument()
   })
 
-  it('isCheckingOut が true のときトリガーボタンをクリックしてもポップオーバーは開かない', async () => {
-    render(<BranchSwitcher {...baseProps} isCheckingOut={true} />)
+  it('pendingBranchOperation が checkout のときトリガーボタンをクリックしてもポップオーバーは開かない', async () => {
+    render(<BranchSwitcher {...baseProps} pendingBranchOperation="checkout" />)
     await userEvent.click(screen.getByRole('button', { name: 'ブランチ切り替え中' }))
     expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['create', '作成中...', 'ブランチ作成中'],
+    ['delete', '削除中...', 'ブランチ削除中']
+  ] as const)(
+    'pendingBranchOperation が %s のとき表示テキストと aria-label が同期し、disabled になる',
+    (kind, text, aria) => {
+      render(<BranchSwitcher {...baseProps} pendingBranchOperation={kind} />)
+      const trigger = screen.getByRole('button', { name: aria })
+      expect(trigger).toHaveTextContent(text)
+      expect(trigger).toBeDisabled()
+      expect(screen.queryByRole('button', { name: 'ブランチを切り替え' })).not.toBeInTheDocument()
+    }
+  )
+
   // コードレビュー指摘: push/pull ボタン(SourceControlToolbar)は他操作中に
-  // disabled になり押せないが、トリガーボタンは isCheckingOut のみで判定して
+  // disabled になり押せないが、トリガーボタンは pendingBranchOperation のみで判定して
   // いたため、他操作(pull/commit/ハンク操作等)中にクリックしても
   // useRunExclusiveGitOperation の isBusy() でサイレントに no-op になり、
   // ユーザーには「押したのに何も起きない」としか見えなかった
@@ -92,7 +107,7 @@ describe('BranchSwitcher', () => {
     expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
   })
 
-  it('isBlocked が false かつ isCheckingOut が false のときは通常どおり操作できる', () => {
+  it('isBlocked が false かつ pendingBranchOperation が null のときは通常どおり操作できる', () => {
     render(<BranchSwitcher {...baseProps} isBlocked={false} />)
     expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).not.toBeDisabled()
   })

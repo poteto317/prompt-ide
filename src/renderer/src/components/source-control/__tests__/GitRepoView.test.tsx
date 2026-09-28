@@ -26,7 +26,7 @@ const baseProps = {
   isLoadingFolder: false,
   historyError: null,
   onLoadMoreLog: vi.fn(),
-  isCheckingOut: false,
+  pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined)
 }
 
@@ -56,7 +56,7 @@ describe('GitRepoView', () => {
     expect(screen.getByRole('radio', { name: /feature\/x/ })).toBeInTheDocument()
   })
 
-  // コードレビュー指摘: BranchSwitcher のトリガーボタンが isCheckingOut のみで
+  // コードレビュー指摘: BranchSwitcher のトリガーボタンが pendingBranchOperation のみで
   // disabled 判定しており、stage/unstage・ハンク操作・commit・pull 実行中
   // (isAnyLocked)でもクリックできてしまい、実際には isBusy() でサイレントに
   // no-op になる無反応な操作に見えていた。isBlockedByOtherOperation
@@ -176,7 +176,7 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        isCheckingOut={false}
+        pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
@@ -224,7 +224,7 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        isCheckingOut={false}
+        pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
@@ -258,7 +258,7 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        isCheckingOut={false}
+        pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
@@ -290,7 +290,7 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        isCheckingOut={false}
+        pendingBranchOperation={null}
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
