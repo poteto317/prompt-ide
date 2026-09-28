@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import * as gitApi from '../lib/gitApi'
 import { useFileOperationLock } from './useFileOperationLock'
 import type { FileOperationLock } from './useFileOperationLock'
-import { toError } from '../lib/errorUtils'
+import { useRunExclusiveGitOperation } from './useRunExclusiveGitOperation'
+import { isGitOperationDisabled } from '../lib/gitUtils'
 import type { GitStatusResult } from '@shared/types'
 
 export interface GitRemoteOperationsState {
@@ -28,53 +29,6 @@ export interface GitRemoteOperationsState {
   remoteOperationError: Error | null
 }
 
-interface RemoteOperationOptions {
-  /** 開始条件。true を返す間は execute を呼ばずに no-op で返す */
-  isBusy: () => boolean
-  /** 実行中フラグ(ref と state の両方)の更新。開始時に true、終了時に false で呼ばれる */
-  setBusy: (busy: boolean) => void
-  /** 実行開始直後(execute の前)に呼ぶ副作用。ロック取得等 */
-  onStart?: () => void
-  /** 実行終了時(refreshGitStatus 完了後)に呼ぶ副作用。ロック解放等 */
-  onEnd?: () => void
-  execute: () => Promise<void>
-}
-
-// fetch/pull/push はいずれも「開始条件を満たすか判定 → busy 化(必要なら副作用も) →
-// 実行 → 成功/失敗を remoteOperationError へ反映 → refreshGitStatus(失敗は無視) →
-// busy 解除(副作用の後始末も)」という同じ手順を辿る。異なるのは開始条件・busy
-// フラグの実体・ロックの要否だけなので、手順そのものは1箇所にまとめ、各操作は
-// 「何を」「どの条件で」実行するかだけを渡す(useGitOperations.ts の
-// runStageOperation/runCommitOperation と同じ考え方)
-function useRunRemoteOperation(
-  refreshGitStatus: () => Promise<void>,
-  setRemoteOperationError: (err: Error | null) => void
-): (options: RemoteOperationOptions) => Promise<void> {
-  return async ({ isBusy, setBusy, onStart, onEnd, execute }) => {
-    if (isBusy()) return
-    setBusy(true)
-    onStart?.()
-    try {
-      await execute()
-      setRemoteOperationError(null)
-    } catch (err) {
-      setRemoteOperationError(toError(err))
-    } finally {
-      // 操作自体(execute)が成功していた場合、refreshGitStatus 自体の失敗理由で
-      // remoteOperationError を上書きしない(useGitOperations.ts の
-      // runStageOperation/runCommitOperation と同じ理由)
-      try {
-        await refreshGitStatus()
-      } catch {
-        // 握りつぶす(git status の取得エラーは useGitStatus 側が自前で扱う)
-      } finally {
-        setBusy(false)
-        onEnd?.()
-      }
-    }
-  }
-}
-
 export function useGitRemoteOperations(
   gitStatus: GitStatusResult | null,
   refreshGitStatus: () => Promise<void>,
@@ -89,15 +43,20 @@ export function useGitRemoteOperations(
   const [remoteOperationError, setRemoteOperationError] = useState<Error | null>(null)
   const localFileLock = useFileOperationLock()
   const lock = fileLock ?? localFileLock
-  const runRemoteOperation = useRunRemoteOperation(refreshGitStatus, setRemoteOperationError)
-  // 「リポジトリが無ければ push/pull/fetch は実行不可」という業務ルール。
-  // ここに一元化し、各操作の isBusy 判定と UI 向けの isRemoteOperationDisabled
-  // の両方がこの1つの値を参照する
-  const isRemoteOperationDisabled = gitStatus === null || !gitStatus.isRepo
+  const runRemoteOperation = useRunExclusiveGitOperation(refreshGitStatus, setRemoteOperationError)
+  // 「リポジトリが無ければ Git 操作は実行不可」という業務ルールは
+  // useGitBranchOperations.ts(ブランチ切替)とも共有するため gitUtils.ts の
+  // isGitOperationDisabled に一元化してある(片方だけ判定基準を変えると
+  // push/pull/fetch とブランチ切替とで disabled 判定が食い違ってしまうため)
+  const isRemoteOperationDisabled = isGitOperationDisabled(gitStatus)
 
   // fetch はリモート追跡ref のみ更新し working tree/index を変更しないため、
   // stage/unstage/commit/ハンク操作/pull のいずれとも排他不要。自身の多重発火
   // だけ防ぐ
+  // runRemoteOperation(useRunExclusiveGitOperation)は「実際に実行され成功したか」
+  // を呼び出し元(useGitBranchOperations.ts の checkoutBranch)が使えるよう
+  // Promise<boolean> を返す設計になっている。push/pull/fetch は戻り値を使わない
+  // ため、公開する型(Promise<void>)に合わせて捨てる
   const fetchRemote = (): Promise<void> =>
     runRemoteOperation({
       isBusy: () => isFetchingRef.current || isRemoteOperationDisabled,
@@ -106,13 +65,14 @@ export function useGitRemoteOperations(
         setIsFetching(busy)
       },
       execute: gitApi.fetchRemote
-    })
+    }).then(() => undefined)
 
   // pull は working tree・index を書き換えるため、stage/unstage/commit/
-  // ハンク操作(共有ロック経由)・push と同時に走らせると .git/index の競合や
-  // 意図しない内容の反映が起きる。commit と同様に共有ロックを全体ロックし、
-  // 開始条件で lock.isAnyLocked()(ハンク操作中 or commit 中。lockGlobal も
-  // isAnyLocked に含まれる、useFileOperationLock.ts 参照)を見る
+  // ハンク操作(共有ロック経由)・push・checkout(ブランチ切替、
+  // useGitBranchOperations.ts)と同時に走らせると .git/index の競合や意図しない
+  // 内容の反映が起きる。commit/checkout と同様に共有ロックを全体ロックし、
+  // 開始条件で lock.isAnyLocked()(ハンク操作中・commit 中・checkout 中。
+  // lockGlobal も isAnyLocked に含まれる、useFileOperationLock.ts 参照)を見る
   const pull = (): Promise<void> =>
     runRemoteOperation({
       isBusy: () =>
@@ -127,21 +87,23 @@ export function useGitRemoteOperations(
       onStart: lock.lockGlobal,
       onEnd: lock.unlockGlobal,
       execute: gitApi.pull
-    })
+    }).then(() => undefined)
 
   // push はローカルの index/working tree を変更しないため、stage/unstage
   // (git add/reset)自体とは理屈上同時実行しても壊れない。ただし
-  // lock.isAnyLocked() はハンク操作(git apply --cached)実行中と commit/amend
-  // 実行中(lockGlobal)の両方で true になり、後者は無視できない: HEAD を
-  // 書き換える途中に push が古い HEAD を読むと、ローカルは書き換え後を指す
-  // のにリモートには書き換え前が届く取り違えが起きる(「コミットしてすぐ
-  // プッシュ」は一般的な操作パターン)。ハンク操作中まで含めて待たせるのは
-  // 副次的な制約だが、commit/amend との区別を lock 側は提供しないため、
-  // pull と同じ条件で待たせる。加えて pull(working tree/index を書き換える)・
-  // 自分自身(push)の実行中に重ねて呼ぶと結果が曖昧になるため、それらの間も
-  // 待たせる。fetch とは非排他(fetch はリモート追跡ref のみ更新するため、
-  // fetchRemote() のコメントと同じ理由で待たせない。ref ロック競合による
-  // 一時的な失敗はあり得るが、既知のトレードオフとして許容する)
+  // lock.isAnyLocked() はハンク操作(git apply --cached)実行中、commit/amend
+  // 実行中(lockGlobal)、および checkout(ブランチ切替、
+  // useGitBranchOperations.ts が同じ理由で lockGlobal を呼ぶ)の3つで true に
+  // なり、いずれも無視できない: HEAD を書き換える途中に push が古い HEAD を
+  // 読むと、ローカルは書き換え後を指すのにリモートには書き換え前が届く取り
+  // 違えが起きる(「コミットしてすぐプッシュ」「ブランチを切り替えてすぐ
+  // プッシュ」はどちらも一般的な操作パターン)。ハンク操作中まで含めて
+  // 待たせるのは副次的な制約だが、commit/amend/checkout との区別を lock 側は
+  // 提供しないため、pull と同じ条件で待たせる。加えて pull(working tree/index
+  // を書き換える)・自分自身(push)の実行中に重ねて呼ぶと結果が曖昧になるため、
+  // それらの間も待たせる。fetch とは非排他(fetch はリモート追跡ref のみ更新
+  // するため、fetchRemote() のコメントと同じ理由で待たせない。ref ロック競合
+  // による一時的な失敗はあり得るが、既知のトレードオフとして許容する)
   const push = (): Promise<void> =>
     runRemoteOperation({
       isBusy: () =>
@@ -154,7 +116,7 @@ export function useGitRemoteOperations(
         setIsPushing(busy)
       },
       execute: gitApi.push
-    })
+    }).then(() => undefined)
 
   // isBusy() 内の判定(ref を見る、実行開始の可否そのもの)とは別に、レンダーに
   // 反映される state 値から「他操作起因で押せないか」を計算する。値の出所
