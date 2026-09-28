@@ -18,6 +18,8 @@ export interface GitBranchOperationsState {
    *  reloadOpenFiles 等「checkout が成功した前提」の後続処理を成功時だけ
    *  実行するために使う */
   checkoutBranch: (branchName: string) => Promise<boolean>
+  /** 現在の HEAD から作成して切り替える。戻り値は実行され成功したか */
+  createBranch: (branchName: string) => Promise<boolean>
   branchOperationError: Error | null
 }
 
@@ -74,5 +76,18 @@ export function useGitBranchOperations(
       execute: () => gitApi.checkoutBranch(branchName)
     })
 
-  return { pendingBranchOperation, checkoutBranch, branchOperationError }
+  // checkout -b は HEAD の参照先を変える(working tree/index は変えない)。checkout と
+  // 同じ理由で、作成中に push が始まると「どのブランチを送るか」が確定する前の HEAD を
+  // 読んでしまうため lockGlobal を取る(push 側の isAnyLocked() 判定で自動的に待つ)
+  const createBranch = (branchName: string): Promise<boolean> =>
+    runOperation({
+      isBusy: () =>
+        isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled,
+      setBusy: makeSetBusy('create'),
+      onStart: lock.lockGlobal,
+      onEnd: lock.unlockGlobal,
+      execute: () => gitApi.createBranch(branchName)
+    })
+
+  return { pendingBranchOperation, checkoutBranch, createBranch, branchOperationError }
 }

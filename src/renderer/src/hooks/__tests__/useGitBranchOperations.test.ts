@@ -11,6 +11,7 @@ import { useFileOperationLock } from '../useFileOperationLock'
 import type { FileOperationLock } from '../useFileOperationLock'
 
 const mockCheckoutBranch = vi.mocked(gitApi.checkoutBranch)
+const mockCreateBranch = vi.mocked(gitApi.createBranch)
 const mockPush = vi.mocked(gitApi.push)
 
 // useGitRemoteOperations.test.ts と同じパターン。デフォルト値(何もロックされて
@@ -389,5 +390,126 @@ describe('useGitRemoteOperations との相互作用', () => {
     await act(async () => {
       resolvePush()
     })
+  })
+})
+
+describe('createBranch', () => {
+  it('gitApi.createBranch を呼び、成功したら true を返して一覧を再取得する', async () => {
+    mockCreateBranch.mockResolvedValue(undefined)
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const refreshHistory = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() =>
+      useGitBranchOperations(repoStatus, refreshGitStatus, refreshHistory, makeFileLock())
+    )
+    let succeeded = false
+    await act(async () => {
+      succeeded = await result.current.createBranch('feature/new')
+    })
+    expect(succeeded).toBe(true)
+    expect(mockCreateBranch).toHaveBeenCalledWith('feature/new')
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+    expect(refreshHistory).toHaveBeenCalledOnce()
+  })
+
+  // HEAD の参照先を変えるため checkout と同じく全体ロックを取る。これにより
+  // push 側の既存の判定(lock.isAnyLocked())で「作成中の push」が自動的に防がれる
+  it('実行中は lockGlobal を取り、完了後に unlockGlobal する', async () => {
+    mockCreateBranch.mockResolvedValue(undefined)
+    const lock = makeFileLock()
+    const { result } = renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        lock
+      )
+    )
+    await act(async () => {
+      await result.current.createBranch('feature/new')
+    })
+    expect(lock.lockGlobal).toHaveBeenCalledOnce()
+    expect(lock.unlockGlobal).toHaveBeenCalledOnce()
+  })
+
+  it('実行中は pendingBranchOperation が create になり、完了後 null に戻る', async () => {
+    let resolveCreate: () => void = () => {}
+    mockCreateBranch.mockReturnValue(new Promise<void>((r) => (resolveCreate = r)))
+    const { result } = renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        makeFileLock()
+      )
+    )
+    let pending: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      pending = result.current.createBranch('feature/new')
+    })
+    expect(result.current.pendingBranchOperation).toBe('create')
+    await act(async () => {
+      resolveCreate()
+      await pending
+    })
+    expect(result.current.pendingBranchOperation).toBeNull()
+  })
+
+  it('失敗したら false を返し、branchOperationError に反映する', async () => {
+    mockCreateBranch.mockRejectedValue(new Error('同じ名前のブランチが既に存在します: main'))
+    const { result } = renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        makeFileLock()
+      )
+    )
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.createBranch('main')
+    })
+    expect(succeeded).toBe(false)
+    expect(result.current.branchOperationError?.message).toBe(
+      '同じ名前のブランチが既に存在します: main'
+    )
+  })
+
+  // 他の条件(isAnyLocked)が偶然真にならない固定モックで、ブランチ操作どうしの
+  // 排他だけを検証する(パターン16)
+  it('checkout の実行中は createBranch を呼ばない', async () => {
+    mockCheckoutBranch.mockReturnValue(new Promise<void>(() => {}))
+    const { result } = renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        makeFileLock()
+      )
+    )
+    act(() => {
+      void result.current.checkoutBranch('feature/x')
+    })
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.createBranch('feature/new')
+    })
+    expect(succeeded).toBe(false)
+    expect(mockCreateBranch).not.toHaveBeenCalled()
+  })
+
+  it('他操作中(lock.isAnyLocked())は createBranch を呼ばない', async () => {
+    const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
+    const { result } = renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        lock
+      )
+    )
+    await act(async () => {
+      await result.current.createBranch('feature/new')
+    })
+    expect(mockCreateBranch).not.toHaveBeenCalled()
   })
 })
