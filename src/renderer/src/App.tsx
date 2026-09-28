@@ -99,6 +99,9 @@ export default function App(): React.JSX.Element {
     historyError,
     loadMore,
     refresh: refreshHistory,
+    isCheckingOut,
+    checkoutBranch,
+    branchOperationError,
     hasKey,
     apiKeyLoaded,
     keyStoreError,
@@ -266,6 +269,9 @@ export default function App(): React.JSX.Element {
               onPull={pull}
               onFetch={fetchRemote}
               gitRemoteOperationError={remoteOperationError}
+              isCheckingOut={isCheckingOut}
+              onCheckoutBranch={checkoutBranch}
+              gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
               lastCommitMessage={log[0]?.message ?? null}

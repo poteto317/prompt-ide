@@ -37,6 +37,9 @@ interface Props {
   onPull: () => Promise<void>
   onFetch: () => Promise<void>
   remoteOperationError: Error | null
+  isCheckingOut: boolean
+  onCheckoutBranch: (branchName: string) => Promise<void>
+  branchOperationError: Error | null
 }
 
 export default function SourceControlPanel({
@@ -72,7 +75,10 @@ export default function SourceControlPanel({
   onPush,
   onPull,
   onFetch,
-  remoteOperationError
+  remoteOperationError,
+  isCheckingOut,
+  onCheckoutBranch,
+  branchOperationError
 }: Props): React.JSX.Element {
   return (
     <div className="source-control-panel">
@@ -93,6 +99,9 @@ export default function SourceControlPanel({
       {operationError && <p className="source-control-panel__error">{operationError.message}</p>}
       {remoteOperationError && (
         <p className="source-control-panel__error">{remoteOperationError.message}</p>
+      )}
+      {branchOperationError && (
+        <p className="source-control-panel__error">{branchOperationError.message}</p>
       )}
       {/* 「読み込み中」を出すのは、まだ表示できる内容が何も無い初回取得のときだけ。
           再取得(stage/unstage/commit/ファイル保存のたびに走る)でも出してしまうと、
@@ -128,6 +137,8 @@ export default function SourceControlPanel({
             isLoadingFolder={isLoadingFolder}
             historyError={historyError}
             onLoadMoreLog={onLoadMoreLog}
+            isCheckingOut={isCheckingOut}
+            onCheckoutBranch={onCheckoutBranch}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

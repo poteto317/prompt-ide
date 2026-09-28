@@ -75,6 +75,9 @@ interface Props {
   onPull: () => Promise<void>
   onFetch: () => Promise<void>
   gitRemoteOperationError: Error | null
+  isCheckingOut: boolean
+  onCheckoutBranch: (branchName: string) => Promise<void>
+  gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
   lastCommitMessage: string | null
@@ -153,6 +156,9 @@ export default function Sidebar({
   onPull,
   onFetch,
   gitRemoteOperationError,
+  isCheckingOut,
+  onCheckoutBranch,
+  gitBranchOperationError,
   onOpenDiff,
   onAmend,
   lastCommitMessage,
@@ -252,6 +258,9 @@ export default function Sidebar({
           onPull={onPull}
           onFetch={onFetch}
           remoteOperationError={gitRemoteOperationError}
+          isCheckingOut={isCheckingOut}
+          onCheckoutBranch={onCheckoutBranch}
+          branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}
           log={log}

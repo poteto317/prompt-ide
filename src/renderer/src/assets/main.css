@@ -1048,6 +1048,67 @@ body {
   flex-shrink: 0;
 }
 
+.source-control-panel__branch-switcher {
+  position: relative;
+}
+
+.source-control-panel__branch-trigger {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.source-control-panel__branch-trigger:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.source-control-panel__branch-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* ExplorerContextMenu(.explorer-context-menu)と同じ見た目のポップオーバー。
+   position は fixed ではなく absolute(親の .source-control-panel__branch-switcher
+   が position: relative) */
+.source-control-panel__branch-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  min-width: 160px;
+  margin-top: 4px;
+  padding: 4px 0;
+  background: #2d2d2d;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.source-control-panel__branch-menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-control-panel__branch-menu-item:hover:not(:disabled) {
+  background: #094771;
+  color: #ffffff;
+}
+
+.source-control-panel__branch-menu-item:disabled {
+  color: #4ec9b0;
+  cursor: default;
+}
+
 .source-control-panel__ahead {
   color: #4ec9b0;
   font-size: 11px;

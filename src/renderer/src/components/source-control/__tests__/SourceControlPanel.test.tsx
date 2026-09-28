@@ -35,7 +35,10 @@ const baseProps = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPull: vi.fn().mockResolvedValue(undefined),
   onFetch: vi.fn().mockResolvedValue(undefined),
-  remoteOperationError: null as Error | null
+  remoteOperationError: null as Error | null,
+  isCheckingOut: false,
+  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  branchOperationError: null as Error | null
 }
 
 const repoStatus: GitStatusResult = {
@@ -216,6 +219,9 @@ describe('SourceControlPanel', () => {
         onPull={vi.fn()}
         onFetch={vi.fn()}
         remoteOperationError={null}
+        isCheckingOut={false}
+        onCheckoutBranch={vi.fn()}
+        branchOperationError={null}
       />
     )
     expect(screen.getByText('ステージに失敗しました')).toBeInTheDocument()
@@ -265,5 +271,16 @@ describe('SourceControlPanel', () => {
       />
     )
     expect(screen.getByText('fatal: Authentication failed')).toBeInTheDocument()
+  })
+
+  it('branchOperationError があれば表示する', () => {
+    render(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        branchOperationError={new Error('checkout failed')}
+      />
+    )
+    expect(screen.getByText('checkout failed')).toBeInTheDocument()
   })
 })

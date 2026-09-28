@@ -25,13 +25,74 @@ const baseProps = {
   isLoadingLog: false,
   isLoadingFolder: false,
   historyError: null,
-  onLoadMoreLog: vi.fn()
+  onLoadMoreLog: vi.fn(),
+  isCheckingOut: false,
+  onCheckoutBranch: vi.fn().mockResolvedValue(undefined)
 }
 
 describe('GitRepoView', () => {
   it('branch 名が表示される', () => {
     render(<GitRepoView branch="main" ahead={0} behind={0} files={noFiles} {...baseProps} />)
     expect(screen.getByText('main')).toBeInTheDocument()
+  })
+
+  it('branch 名がブランチ切り替えボタン(BranchSwitcher)として描画され、クリックするとブランチ一覧が開く', async () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        branches={[
+          { name: 'main', current: true },
+          { name: 'feature/x', current: false }
+        ]}
+      />
+    )
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    expect(trigger).toHaveTextContent('main')
+    await userEvent.click(trigger)
+    expect(screen.getByRole('radio', { name: /feature\/x/ })).toBeInTheDocument()
+  })
+
+  // コードレビュー指摘: BranchSwitcher のトリガーボタンが isCheckingOut のみで
+  // disabled 判定しており、stage/unstage・ハンク操作・commit・pull 実行中
+  // (isAnyLocked)でもクリックできてしまい、実際には isBusy() でサイレントに
+  // no-op になる無反応な操作に見えていた。isBlockedByOtherOperation
+  // (CommitSection に渡しているものと同じ値)を BranchSwitcher にも渡す
+  it('isAnyLocked が true のとき、BranchSwitcher のトリガーボタンが disabled になる', () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        isAnyLocked={() => true}
+      />
+    )
+    const trigger = screen.getByRole('button', {
+      name: '他の操作が完了するまでブランチを切り替えられません'
+    })
+    expect(trigger).toBeDisabled()
+  })
+
+  it('stagingPaths が空でなく isAnyLocked が false のとき、BranchSwitcher のトリガーボタンが disabled になる', () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        stagingPaths={new Set(['a.ts'])}
+      />
+    )
+    const trigger = screen.getByRole('button', {
+      name: '他の操作が完了するまでブランチを切り替えられません'
+    })
+    expect(trigger).toBeDisabled()
   })
 
   it('branch が null のとき "(no branch)" が表示される', () => {
@@ -115,6 +176,8 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
+        isCheckingOut={false}
+        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -161,6 +224,8 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
+        isCheckingOut={false}
+        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -193,6 +258,8 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
+        isCheckingOut={false}
+        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -223,6 +290,8 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
+        isCheckingOut={false}
+        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))

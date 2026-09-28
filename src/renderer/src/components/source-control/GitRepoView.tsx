@@ -3,6 +3,7 @@ import StagedSection from './StagedSection'
 import ChangesSection from './ChangesSection'
 import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
+import BranchSwitcher from './BranchSwitcher'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import { isStagedFile } from '../../lib/gitUtils'
 
@@ -32,6 +33,8 @@ interface Props {
   isLoadingFolder: boolean
   historyError: Error | null
   onLoadMoreLog: () => void
+  isCheckingOut: boolean
+  onCheckoutBranch: (branchName: string) => Promise<void>
 }
 
 export default function GitRepoView({
@@ -56,7 +59,9 @@ export default function GitRepoView({
   isLoadingLog,
   isLoadingFolder,
   historyError,
-  onLoadMoreLog
+  onLoadMoreLog,
+  isCheckingOut,
+  onCheckoutBranch
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -69,7 +74,13 @@ export default function GitRepoView({
   return (
     <>
       <div className="source-control-panel__branch">
-        <span>{branch ?? '(no branch)'}</span>
+        <BranchSwitcher
+          currentBranch={branch}
+          branches={branches}
+          isCheckingOut={isCheckingOut}
+          isBlocked={isBlockedByOtherOperation}
+          onCheckoutBranch={onCheckoutBranch}
+        />
         {ahead > 0 && <span className="source-control-panel__ahead">↑{ahead}</span>}
         {behind > 0 && <span className="source-control-panel__behind">↓{behind}</span>}
       </div>
