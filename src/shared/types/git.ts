@@ -27,3 +27,7 @@ export type GitBranch = {
   name: string
   current: boolean
 }
+
+// 安全削除(git branch -d)の結果。未マージで削除しなかった場合を例外ではなく
+// 戻り値で返す(renderer 側が git のエラーメッセージ文字列で分岐しないため)
+export type DeleteBranchResult = { deleted: true } | { deleted: false; reason: 'not-fully-merged' }

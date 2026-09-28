@@ -14,6 +14,8 @@ const mockPush = vi.hoisted(() => vi.fn())
 const mockPull = vi.hoisted(() => vi.fn())
 const mockFetch = vi.hoisted(() => vi.fn())
 const mockCheckout = vi.hoisted(() => vi.fn())
+const mockCheckoutLocalBranch = vi.hoisted(() => vi.fn())
+const mockDeleteLocalBranch = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => {
     const git = {
@@ -30,7 +32,9 @@ const mockSimpleGit = vi.hoisted(() =>
       push: mockPush,
       pull: mockPull,
       fetch: mockFetch,
-      checkout: mockCheckout
+      checkout: mockCheckout,
+      checkoutLocalBranch: mockCheckoutLocalBranch,
+      deleteLocalBranch: mockDeleteLocalBranch
     }
     // env() は simple-git 本来の挙動と同じくインスタンス自身を返す(チェーン用)
     mockEnv.mockReturnValue(git)
@@ -87,7 +91,8 @@ import {
   push,
   pull,
   fetchRemote,
-  checkoutBranch
+  checkoutBranch,
+  createBranch
 } from '../gitService'
 
 beforeEach(() => {
@@ -829,5 +834,69 @@ describe('checkoutBranch', () => {
       '存在しないブランチです: --orphan'
     )
     expect(mockCheckout).not.toHaveBeenCalled()
+  })
+})
+
+describe('createBranch', () => {
+  // check-ref-format --branch は成功時に正規化後の名前を出力する(実機 git 2.50.1 で確認)
+  const mockCheckRefFormatOk = (name: string): void => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'check-ref-format') return `${name}\n`
+      throw new Error(`unexpected raw: ${args.join(' ')}`)
+    })
+  }
+
+  it('検証を通過したら checkoutLocalBranch を branchName で呼ぶ', async () => {
+    mockCheckRefFormatOk('feature/new')
+    mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
+    mockCheckoutLocalBranch.mockResolvedValue(undefined)
+    await createBranch('/project', 'feature/new')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockRaw).toHaveBeenCalledWith(['check-ref-format', '--branch', 'feature/new'])
+    expect(mockCheckoutLocalBranch).toHaveBeenCalledWith('feature/new')
+  })
+
+  // '-' 始まりは check-ref-format 自体にオプションとして解釈されるため、
+  // git に渡す前に弾く(docs/review-findings-patterns.md パターン21)
+  it("'-' で始まる名前は git を一切呼ばずに拒否する", async () => {
+    await expect(createBranch('/project', '--orphan')).rejects.toThrow(
+      '`-` で始まるブランチ名は使用できません: --orphan'
+    )
+    expect(mockRaw).not.toHaveBeenCalled()
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('check-ref-format が失敗したら日本語エラーにして checkoutLocalBranch を呼ばない', async () => {
+    mockRaw.mockRejectedValue(new MockGitError("fatal: 'a..b' is not a valid branch name"))
+    await expect(createBranch('/project', 'a..b')).rejects.toThrow(
+      'ブランチ名として使用できない名前です: a..b'
+    )
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
+  // check-ref-format --branch は '@{-1}' を直前のブランチ名へ展開して成功扱いにする
+  // (実機で '@{-1}' → 'topic' を確認)。出力が入力と一致しない名前は拒否する
+  it('check-ref-format の出力が入力と一致しない(@{-1} 等の展開)場合は拒否する', async () => {
+    mockRaw.mockResolvedValue('topic\n')
+    await expect(createBranch('/project', '@{-1}')).rejects.toThrow(
+      'ブランチ名として使用できない名前です: @{-1}'
+    )
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('同名のローカルブランチが既にあれば拒否する', async () => {
+    mockCheckRefFormatOk('main')
+    mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
+    await expect(createBranch('/project', 'main')).rejects.toThrow(
+      '同じ名前のブランチが既に存在します: main'
+    )
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
+  it('checkoutLocalBranch が throw した場合エラーがそのまま伝播する', async () => {
+    mockCheckRefFormatOk('feature/new')
+    mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
+    mockCheckoutLocalBranch.mockRejectedValue(new Error('checkout -b failed'))
+    await expect(createBranch('/project', 'feature/new')).rejects.toThrow('checkout -b failed')
   })
 })

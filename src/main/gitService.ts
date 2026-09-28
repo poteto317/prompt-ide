@@ -376,6 +376,39 @@ export async function checkoutBranch(folderPath: string, branchName: string): Pr
   await git.checkout(branchName)
 }
 
+// 現在の HEAD から新しいブランチを作り、そのブランチへ切り替える(git checkout -b)。
+// HEAD の指すコミットは変わらないため working tree/index は変化せず、未コミットの
+// 変更はそのまま新しいブランチへ持ち越される(renderer 側で未保存編集の破棄確認や
+// エディタの再読込が不要な理由)。
+//
+// branchName は IPC 境界から届く任意の文字列のため、次の順で検証する:
+// 1. '-' 始まりは git に渡す前に拒否する。check-ref-format 自体にもオプションとして
+//    解釈されてしまうため(docs/review-findings-patterns.md パターン21)
+// 2. git 本体の規則(`..`、空白、`~^:?*[\`、末尾の .lock 等)は check-ref-format --branch
+//    に委ねる。--branch は '@{-1}'(直前のブランチ)を実在のブランチ名へ展開して成功扱いに
+//    するため、出力(正規化後の名前)が入力と一致することも確認する
+// 3. 同名の既存ブランチは checkout -b の失敗(英語のエラー文)を見せる前に日本語で弾く
+export async function createBranch(folderPath: string, branchName: string): Promise<void> {
+  if (branchName.startsWith('-')) {
+    throw new Error(`\`-\` で始まるブランチ名は使用できません: ${branchName}`)
+  }
+  const git = simpleGit(folderPath)
+  let normalized: string
+  try {
+    normalized = (await git.raw(['check-ref-format', '--branch', branchName])).trim()
+  } catch {
+    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
+  }
+  if (normalized !== branchName) {
+    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
+  }
+  const summary = await git.branchLocal()
+  if (summary.all.includes(branchName)) {
+    throw new Error(`同じ名前のブランチが既に存在します: ${branchName}`)
+  }
+  await git.checkoutLocalBranch(branchName)
+}
+
 export async function amendCommit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
   // '--amend' は files ではなくオプション引数(第3)で渡す。simple-git の
