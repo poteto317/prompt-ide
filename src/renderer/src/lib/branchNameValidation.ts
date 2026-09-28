@@ -5,6 +5,9 @@
 export function validateBranchName(name: string, existingNames: readonly string[]): string | null {
   if (name.length === 0) return '名前を入力してください'
   if (name.startsWith('-')) return '`-` で始まる名前は使用できません'
+  // 'git checkout @' は HEAD の別名として解釈され、作成後に切り替えられない
+  // (main 側の createBranch の検証と対応する)
+  if (name === '@') return 'この名前は使用できません'
   if (existingNames.includes(name)) return '同じ名前のブランチが既に存在します'
   return null
 }

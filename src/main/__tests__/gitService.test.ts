@@ -867,6 +867,18 @@ describe('createBranch', () => {
     expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
   })
 
+  // git checkout @ は '@' をブランチ名ではなく HEAD の別名として解釈するため、
+  // checkoutBranch('@') は exit 0 のまま何もせず現在のブランチに留まる
+  // (実機 git 2.50.1 で確認)。check-ref-format --branch @ 自体は '@' を出力して
+  // 成功するため、check-ref-format 側の検証だけでは弾けない
+  it("'@' のみの名前は git を一切呼ばずに拒否する", async () => {
+    await expect(createBranch('/project', '@')).rejects.toThrow(
+      'ブランチ名として使用できない名前です: @'
+    )
+    expect(mockRaw).not.toHaveBeenCalled()
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
+
   it('check-ref-format が失敗したら日本語エラーにして checkoutLocalBranch を呼ばない', async () => {
     mockRaw.mockRejectedValue(new MockGitError("fatal: 'a..b' is not a valid branch name"))
     await expect(createBranch('/project', 'a..b')).rejects.toThrow(

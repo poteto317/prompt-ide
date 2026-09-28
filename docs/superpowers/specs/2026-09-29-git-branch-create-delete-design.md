@@ -48,6 +48,8 @@
   - 空文字（前後の空白は trim する）: 「名前を入力してください」
   - `-` で始まる: 「`-` で始まる名前は使用できません」
   - 既存のローカルブランチ名と一致する: 「同じ名前のブランチが既に存在します」
+  - `@` のみの名前: 「この名前は使用できません」（`git checkout @` が HEAD と解釈され、作成後に
+    切り替えられないため）
 - それ以外の形式上の検証（`..`、空白、`~^:?*[\`、末尾の `.lock` 等）は main 側の
   `git check-ref-format --branch` に任せ、失敗した場合は `branchOperationError` のバナーに表示する
 
@@ -109,7 +111,11 @@
 ### main プロセス（`src/main/gitService.ts`）
 
 - `createBranch(folderPath: string, branchName: string): Promise<void>`
-  1. `branchName` が `-` で始まれば拒否する（`check-ref-format` に渡す前に弾く。引数インジェクション対策）
+  1. `branchName` が `-` で始まれば拒否する（`check-ref-format` に渡す前に弾く。引数インジェクション対策）。
+     続けて `branchName` が `@` のみなら「ブランチ名として使用できない名前です: @」で拒否する
+     （`check-ref-format --branch @` は `@` のまま成功するが、`checkoutBranch` が実行する
+     `git checkout @` は `@` をブランチ名ではなく HEAD の別名として解釈し、exit 0 のまま
+     何もせず現在のブランチに留まってしまうため、check-ref-format の検証だけでは弾けない）
   2. `git check-ref-format --branch <branchName>` で検証する。失敗したら日本語エラーに変換する。
      成功時の出力（正規化後の名前）が入力と一致しない場合も拒否する（`--branch` は `@{-1}` の
      ような「直前のブランチ」記法を実在のブランチ名へ展開して成功扱いにするため）

@@ -10,6 +10,12 @@ describe('validateBranchName', () => {
     expect(validateBranchName('-x', ['main'])).toBe('`-` で始まる名前は使用できません')
   })
 
+  // git checkout @ は HEAD の別名として解釈され、作成後に切り替えられない
+  // (main 側の createBranch と同じ理由)
+  it("'@' のみの名前は拒否する", () => {
+    expect(validateBranchName('@', ['main'])).toBe('この名前は使用できません')
+  })
+
   it('既存のブランチ名と一致したら拒否する', () => {
     expect(validateBranchName('main', ['main'])).toBe('同じ名前のブランチが既に存在します')
   })

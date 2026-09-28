@@ -392,6 +392,13 @@ export async function createBranch(folderPath: string, branchName: string): Prom
   if (branchName.startsWith('-')) {
     throw new Error(`\`-\` で始まるブランチ名は使用できません: ${branchName}`)
   }
+  // '@' のみの名前は check-ref-format --branch では正規化後も '@' のまま成功するが、
+  // checkoutBranch は checkout に branchName をそのまま渡すため `git checkout @` となり、
+  // git はこれをブランチ名ではなく HEAD の別名として解釈する(実機 git 2.50.1 で確認)。
+  // その結果 exit 0 のまま何もせず現在のブランチに留まり、作成後に切り替えられない
+  if (branchName === '@') {
+    throw new Error(`ブランチ名として使用できない名前です: ${branchName}`)
+  }
   const git = simpleGit(folderPath)
   let normalized: string
   try {
