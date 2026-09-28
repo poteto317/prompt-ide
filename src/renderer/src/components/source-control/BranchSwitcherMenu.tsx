@@ -4,7 +4,10 @@ import type { GitBranch } from '@shared/types'
 interface Props {
   branches: GitBranch[]
   onSelect: (branchName: string) => void
-  onClose: () => void
+  /** restoreFocus: 呼び出し元(BranchSwitcher.tsx)がトリガーボタンへフォーカスを
+   *  戻すべきか。Escape(キーボード操作の一環)は true、外側クリック(ユーザーが
+   *  別の要素へ自然にフォーカスを移そうとした操作)は false */
+  onClose: (restoreFocus: boolean) => void
 }
 
 export default function BranchSwitcherMenu({
@@ -32,9 +35,9 @@ export default function BranchSwitcherMenu({
 
   // メニュー外のクリック・Escape で閉じる(ExplorerContextMenu.tsx と同じパターン)
   useEffect(() => {
-    const handleClose = (): void => onClose()
+    const handleClose = (): void => onClose(false)
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onClose(true)
     }
     document.addEventListener('click', handleClose)
     document.addEventListener('keydown', handleKeyDown)
@@ -43,6 +46,18 @@ export default function BranchSwitcherMenu({
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
+
+  // PRレビュー指摘: ExplorerContextMenu(右クリック起点、キーボードトリガー無し)
+  // とは異なり、このメニューはキーボードで開けるボタン(BranchSwitcher の
+  // トリガー)から開く。開いた直後にフォーカスがメニュー内へ移らないと、
+  // 実装済みの矢印キーナビゲーションがキーボードのみでは実質使えない
+  // (もう一段 Tab を要求してしまう)
+  useEffect(() => {
+    if (tabbableName !== null) itemRefs.current.get(tabbableName)?.focus()
+    // マウント時の一度きりの副作用(tabbableName は選択のたびに変わるが、
+    // その変化のたびに再フォーカスすると矢印キー操作中のフォーカスを奪ってしまう)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // HistoryPanel.tsx の radiogroup と同じ roving focus パターン(矢印キーで前後の
   // 項目へフォーカスを移動する)。現在ブランチのボタンは disabled(フォーカス

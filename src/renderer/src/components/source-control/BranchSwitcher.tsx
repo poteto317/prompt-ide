@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { GitBranch } from '@shared/types'
 import BranchSwitcherMenu from './BranchSwitcherMenu'
 
@@ -24,6 +24,7 @@ export default function BranchSwitcher({
 }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const isDisabled = isCheckingOut || isBlocked
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const handleSelect = (branchName: string): void => {
     // トリガーボタン自体は isDisabled で disabled になるため、実行中に
@@ -31,7 +32,18 @@ export default function BranchSwitcher({
     // パネル上部のエラーバナー(branchOperationError)で確認する、
     // push/pull ボタンと同じ「クリック→即座に実行開始」という一貫した挙動
     setIsOpen(false)
+    // 選択はキーボード操作(Enter/Space)でも起こりうるため、トリガーへ
+    // フォーカスを戻す(PRレビュー指摘)
+    triggerRef.current?.focus()
     void onCheckoutBranch(branchName)
+  }
+
+  // restoreFocus: BranchSwitcherMenu.tsx 参照。Escape(true)はトリガーへ戻し、
+  // 外側クリック(false)はユーザーが自然に移そうとしたフォーカス先を尊重して
+  // 奪わない
+  const handleMenuClose = (restoreFocus: boolean): void => {
+    setIsOpen(false)
+    if (restoreFocus) triggerRef.current?.focus()
   }
 
   const ariaLabel = isCheckingOut
@@ -43,6 +55,7 @@ export default function BranchSwitcher({
   return (
     <div className="source-control-panel__branch-switcher">
       <button
+        ref={triggerRef}
         type="button"
         className="source-control-panel__branch-trigger"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -54,11 +67,7 @@ export default function BranchSwitcher({
         {isCheckingOut ? '切り替え中...' : (currentBranch ?? '(no branch)')}
       </button>
       {isOpen && (
-        <BranchSwitcherMenu
-          branches={branches}
-          onSelect={handleSelect}
-          onClose={() => setIsOpen(false)}
-        />
+        <BranchSwitcherMenu branches={branches} onSelect={handleSelect} onClose={handleMenuClose} />
       )}
     </div>
   )

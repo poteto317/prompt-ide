@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitBranch } from '@shared/types'
@@ -95,5 +95,39 @@ describe('BranchSwitcher', () => {
   it('isBlocked が false かつ isCheckingOut が false のときは通常どおり操作できる', () => {
     render(<BranchSwitcher {...baseProps} isBlocked={false} />)
     expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).not.toBeDisabled()
+  })
+
+  // PRレビュー指摘: トリガーボタンはキーボードで開けるが、閉じたときに
+  // フォーカスがトリガーへ戻らずメニューの各ボタンごと消えて body に落ちて
+  // いたため、キーボードユーザーが操作の起点を見失っていた
+  describe('閉じたときのフォーカス復帰', () => {
+    it('現在以外のブランチを選択して閉じると、トリガーボタンへフォーカスが戻る', async () => {
+      render(<BranchSwitcher {...baseProps} />)
+      await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+      await userEvent.click(screen.getByRole('radio', { name: /feature\/x/ }))
+      expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).toHaveFocus()
+    })
+
+    it('Escape キーで閉じると、トリガーボタンへフォーカスが戻る', async () => {
+      render(<BranchSwitcher {...baseProps} />)
+      await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).toHaveFocus()
+    })
+
+    it('外側クリックで閉じた場合は、クリック先の要素からトリガーボタンへフォーカスを奪わない', async () => {
+      render(
+        <div>
+          <button type="button">外側の別ボタン</button>
+          <BranchSwitcher {...baseProps} />
+        </div>
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+      const outsideButton = screen.getByRole('button', { name: '外側の別ボタン' })
+      outsideButton.focus()
+      fireEvent.click(outsideButton)
+      expect(outsideButton).toHaveFocus()
+      expect(screen.getByRole('button', { name: 'ブランチを切り替え' })).not.toHaveFocus()
+    })
   })
 })

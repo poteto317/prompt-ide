@@ -53,11 +53,31 @@ describe('BranchSwitcherMenu', () => {
     expect(onClose).toHaveBeenCalledOnce()
   })
 
+  // PRレビュー指摘: 外側クリックはユーザーが別の要素へ自然にフォーカスを
+  // 移そうとした操作である可能性が高いため、呼び出し元(BranchSwitcher.tsx)が
+  // トリガーボタンへフォーカスを奪い返さないよう、Escapeキーとは区別して
+  // false(フォーカス復帰不要)を渡す
+  it('外側(document)をクリックすると onClose が false(フォーカス復帰不要)で呼ばれる', () => {
+    const onClose = vi.fn()
+    render(<BranchSwitcherMenu branches={branches} onSelect={vi.fn()} onClose={onClose} />)
+    fireEvent.click(document.body)
+    expect(onClose).toHaveBeenCalledWith(false)
+  })
+
   it('Escape キーを押すと onClose が呼ばれる', () => {
     const onClose = vi.fn()
     render(<BranchSwitcherMenu branches={branches} onSelect={vi.fn()} onClose={onClose} />)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  // PRレビュー指摘: Escapeキーで閉じた場合はキーボード操作の一環なので、
+  // トリガーボタンへフォーカスを戻す必要がある(true を渡す)
+  it('Escape キーを押すと onClose が true(フォーカス復帰要)で呼ばれる', () => {
+    const onClose = vi.fn()
+    render(<BranchSwitcherMenu branches={branches} onSelect={vi.fn()} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledWith(true)
   })
 
   it('アンマウント時に document のリスナーを解除する', () => {
@@ -84,12 +104,16 @@ describe('BranchSwitcherMenu', () => {
 
     it('何もフォーカスされていない状態で ArrowDown を押すと先頭の選択可能なブランチへフォーカスする', () => {
       render(<BranchSwitcherMenu branches={threeBranches} onSelect={vi.fn()} onClose={vi.fn()} />)
+      // マウント時の自動フォーカス(後続のPRレビュー対応で追加)をリセットし、
+      // このテストが検証したい「未フォーカス状態からのフォールバック」を作る
+      ;(document.activeElement as HTMLElement | null)?.blur()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveFocus()
     })
 
     it('何もフォーカスされていない状態で ArrowUp を押すと末尾の選択可能なブランチへフォーカスする', () => {
       render(<BranchSwitcherMenu branches={threeBranches} onSelect={vi.fn()} onClose={vi.fn()} />)
+      ;(document.activeElement as HTMLElement | null)?.blur()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowUp' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveFocus()
     })
@@ -153,6 +177,35 @@ describe('BranchSwitcherMenu', () => {
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveAttribute('tabIndex', '0')
       expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveAttribute('tabIndex', '-1')
+    })
+  })
+
+  // PRレビュー指摘: BranchSwitcher のトリガーボタンはキーボードで開ける button
+  // だが、開いた直後はフォーカスがトリガー側に残ったままで、実装済みの矢印キー
+  // ナビゲーションがキーボードのみでは実質使えなかった(もう一段 Tab が必要)。
+  // ExplorerContextMenu(右クリック起点、キーボードトリガー無し)とはフォーカス
+  // 管理の要求が異なるため、新規に対応する
+  describe('マウント時の初期フォーカス', () => {
+    it('マウントすると先頭の選択可能なブランチへ自動的にフォーカスする', () => {
+      const threeBranches: GitBranch[] = [
+        { name: 'main', current: true },
+        { name: 'feature/x', current: false },
+        { name: 'feature/y', current: false }
+      ]
+      render(<BranchSwitcherMenu branches={threeBranches} onSelect={vi.fn()} onClose={vi.fn()} />)
+      expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveFocus()
+    })
+
+    it('選択可能なブランチが無い(current のみ)場合、マウントしてもエラーにならない', () => {
+      expect(() =>
+        render(
+          <BranchSwitcherMenu
+            branches={[{ name: 'main', current: true }]}
+            onSelect={vi.fn()}
+            onClose={vi.fn()}
+          />
+        )
+      ).not.toThrow()
     })
   })
 })
