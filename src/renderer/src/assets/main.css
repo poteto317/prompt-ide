@@ -1109,23 +1109,11 @@ body {
   cursor: default;
 }
 
-/* 作成ボタンはメニュー項目と同じ見た目で、区切り線でブランチ一覧と分ける */
+/* 作成ボタンの見た目は .source-control-panel__branch-menu-item を併用して揃え、
+   ここでは区切り線(ブランチ一覧との境界)だけを足す。.branch-menu-item の border: none
+   より後に置くことで border-bottom が優先される */
 .source-control-panel__branch-menu-create {
-  display: block;
-  width: 100%;
-  padding: 6px 16px;
-  background: none;
-  border: none;
   border-bottom: 1px solid #454545;
-  color: #cccccc;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.source-control-panel__branch-menu-create:hover {
-  background: #094771;
-  color: #ffffff;
 }
 
 .source-control-panel__branch-menu-row {

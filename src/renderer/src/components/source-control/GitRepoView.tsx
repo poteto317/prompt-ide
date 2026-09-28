@@ -5,7 +5,7 @@ import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
 import BranchSwitcher from './BranchSwitcher'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
+import type { BranchOperationKind } from '../../types'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {

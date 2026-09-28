@@ -25,3 +25,8 @@ export type OpenFile = {
   savedContent: string
   language: string
 }
+
+// 実行中のブランチ操作の種類(useGitBranchOperations の pendingBranchOperation)。
+// フックと表示側(トリガーの文言を決める lib/branchTriggerLabel 等)の双方が使うため、
+// フックではなく renderer 共通の型として置く
+export type BranchOperationKind = 'checkout' | 'create' | 'delete'

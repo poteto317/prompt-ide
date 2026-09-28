@@ -4,9 +4,9 @@ import { useFileOperationLock } from './useFileOperationLock'
 import type { FileOperationLock } from './useFileOperationLock'
 import { useRunExclusiveGitOperation } from './useRunExclusiveGitOperation'
 import { isGitOperationDisabled } from '../lib/gitUtils'
+import { buildDeleteConfirmMessage, deleteBranchConfirmingForce } from '../lib/branchDeletion'
 import type { GitStatusResult } from '@shared/types'
-
-export type BranchOperationKind = 'checkout' | 'create' | 'delete'
+import type { BranchOperationKind } from '../types'
 
 export interface GitBranchOperationsState {
   /** 実行中のブランチ操作。checkout/作成/削除は1つの busy ref で相互に排他にする
@@ -47,7 +47,8 @@ export function useGitBranchOperations(
   // 「リポジトリが無ければ Git 操作は実行不可」という業務ルールは
   // useGitRemoteOperations.ts(push/pull/fetch)とも共有するため gitUtils.ts の
   // isGitOperationDisabled に一元化してある(片方だけ判定基準を変えると
-  // push/pull/fetch とブランチ切替とで disabled 判定が食い違ってしまうため)
+  // push/pull/fetch とブランチ操作(checkout/作成/削除)とで disabled 判定が
+  // 食い違ってしまうため)
   const isBranchOperationDisabled = isGitOperationDisabled(gitStatus)
 
   // refreshGitStatus(ブランチ名・ahead/behind)と refreshHistory(ログ・ブランチ
@@ -57,6 +58,11 @@ export function useGitBranchOperations(
     () => Promise.all([refreshGitStatus(), refreshHistory()]).then(() => undefined),
     setBranchOperationError
   )
+
+  // checkout/作成/削除に共通の開始条件。ブランチ操作どうしは busy ref で排他にし、
+  // 他の Git 操作がロックを持っている間(lock.isAnyLocked())やリポジトリが無い間も待つ
+  const isBranchOperationBusy = (): boolean =>
+    isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled
 
   // 操作ごとの setBusy を作る。ref(同期判定用)と state(表示用)を同時に更新する
   const makeSetBusy =
@@ -76,8 +82,7 @@ export function useGitBranchOperations(
   // 書き換えないため安全と判断し、isBusyにpush実行中判定を含めない
   const checkoutBranch = (branchName: string): Promise<boolean> =>
     runOperation({
-      isBusy: () =>
-        isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled,
+      isBusy: isBranchOperationBusy,
       setBusy: makeSetBusy('checkout'),
       onStart: lock.lockGlobal,
       onEnd: lock.unlockGlobal,
@@ -89,8 +94,7 @@ export function useGitBranchOperations(
   // 読んでしまうため lockGlobal を取る(push 側の isAnyLocked() 判定で自動的に待つ)
   const createBranch = (branchName: string): Promise<boolean> =>
     runOperation({
-      isBusy: () =>
-        isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled,
+      isBusy: isBranchOperationBusy,
       setBusy: makeSetBusy('create'),
       onStart: lock.lockGlobal,
       onEnd: lock.unlockGlobal,
@@ -103,27 +107,21 @@ export function useGitBranchOperations(
   // 一方、削除中に checkout/作成が始まると、切替先や一覧の再取得結果が食い違うため、
   // ブランチ操作どうしは busy ref で排他にし、開始条件は checkout と同じく他操作中も待つ
   // (docs/review-findings-patterns.md パターン23)。
-  // 安全削除と強制削除は1回の排他実行の中で行い、間に他の操作が割り込まないようにする。
-  // 2回目の確認でキャンセルされた場合は execute を正常終了させる(エラーは出さない)
+  // 安全削除と強制削除(lib/branchDeletion.ts)は1回の排他実行の中で行い、間に他の操作が
+  // 割り込まないようにする。2回目の確認でキャンセルされた場合は execute を正常終了させる
+  // (エラーは出さない)
   const deleteBranch = async (branchName: string): Promise<boolean> => {
-    if (!onConfirm(`ブランチ ${branchName} を削除しますか？`)) return false
+    if (!onConfirm(buildDeleteConfirmMessage(branchName))) return false
     let deleted = false
     const succeeded = await runOperation({
-      isBusy: () =>
-        isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled,
+      isBusy: isBranchOperationBusy,
       setBusy: makeSetBusy('delete'),
       execute: async () => {
-        const result = await gitApi.deleteBranch(branchName, false)
-        if (result.deleted) {
-          deleted = true
-          return
-        }
-        const confirmed = onConfirm(
-          `ブランチ ${branchName} にはマージされていないコミットがあります。強制削除するとこれらのコミットは失われます。削除しますか？`
-        )
-        if (!confirmed) return
-        const forced = await gitApi.deleteBranch(branchName, true)
-        deleted = forced.deleted
+        deleted = await deleteBranchConfirmingForce({
+          branchName,
+          deleteBranch: gitApi.deleteBranch,
+          confirm: onConfirm
+        })
       }
     })
     return succeeded && deleted

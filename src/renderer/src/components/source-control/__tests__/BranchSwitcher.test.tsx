@@ -2,7 +2,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitBranch } from '@shared/types'
-import type { BranchOperationKind } from '../../../hooks/useGitBranchOperations'
+import type { BranchOperationKind } from '../../../types'
 import BranchSwitcher from '../BranchSwitcher'
 
 const branches: GitBranch[] = [

@@ -677,3 +677,60 @@ describe('deleteBranch', () => {
     expect(result.current.branchOperationError?.message).toBe('force failed')
   })
 })
+
+// checkout/作成/削除は同じ開始条件(isBranchOperationBusy)を共有する。リポジトリが無い
+// 状態(gitStatus が null)では、どの操作も git API を呼ばずに false を返すこと
+describe('共通の開始条件', () => {
+  it.each([
+    ['checkoutBranch', () => mockCheckoutBranch],
+    ['createBranch', () => vi.mocked(gitApi.createBranch)],
+    ['deleteBranch', () => vi.mocked(gitApi.deleteBranch)]
+  ] as const)(
+    'リポジトリが無いとき %s は git API を呼ばずに false を返す',
+    async (method, getApiMock) => {
+      const { result } = renderHook(() =>
+        useGitBranchOperations(
+          null,
+          vi.fn().mockResolvedValue(undefined),
+          vi.fn().mockResolvedValue(undefined),
+          makeFileLock(),
+          { onConfirm: vi.fn().mockReturnValue(true) }
+        )
+      )
+      let succeeded = true
+      await act(async () => {
+        succeeded = await result.current[method]('feature/x')
+      })
+      expect(succeeded).toBe(false)
+      expect(getApiMock()).not.toHaveBeenCalled()
+      expect(result.current.pendingBranchOperation).toBeNull()
+    }
+  )
+
+  it.each(['checkoutBranch', 'createBranch', 'deleteBranch'] as const)(
+    '作成の実行中は %s を呼んでも git API を呼ばない',
+    async (method) => {
+      vi.mocked(gitApi.createBranch).mockReturnValue(new Promise<void>(() => {}))
+      const { result } = renderHook(() =>
+        useGitBranchOperations(
+          repoStatus,
+          vi.fn().mockResolvedValue(undefined),
+          vi.fn().mockResolvedValue(undefined),
+          makeFileLock(),
+          { onConfirm: vi.fn().mockReturnValue(true) }
+        )
+      )
+      act(() => {
+        void result.current.createBranch('feature/busy')
+      })
+      vi.mocked(gitApi.createBranch).mockClear()
+      await act(async () => {
+        await result.current[method]('feature/x')
+      })
+      expect(mockCheckoutBranch).not.toHaveBeenCalled()
+      expect(gitApi.createBranch).not.toHaveBeenCalled()
+      expect(gitApi.deleteBranch).not.toHaveBeenCalled()
+      expect(result.current.pendingBranchOperation).toBe('create')
+    }
+  )
+})

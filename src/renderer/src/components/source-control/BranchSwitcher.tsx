@@ -1,9 +1,9 @@
 import { useRef, useState } from 'react'
 import type { GitBranch } from '@shared/types'
-import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
+import type { BranchOperationKind } from '../../types'
 import BranchSwitcherMenu from './BranchSwitcherMenu'
-import NameInputDialog from '../explorer/NameInputDialog'
-import { validateBranchName } from '../../lib/branchNameValidation'
+import CreateBranchDialog from './CreateBranchDialog'
+import { getBranchTriggerLabel } from '../../lib/branchTriggerLabel'
 
 interface Props {
   currentBranch: string | null
@@ -83,16 +83,7 @@ export default function BranchSwitcher({
     void onDeleteBranch(branchName)
   }
 
-  // 実行中の操作に応じて表示とアクセシブルネームを同期させる(パターン17)
-  const pendingLabel: Record<BranchOperationKind, { text: string; aria: string }> = {
-    checkout: { text: '切り替え中...', aria: 'ブランチ切り替え中' },
-    create: { text: '作成中...', aria: 'ブランチ作成中' },
-    delete: { text: '削除中...', aria: 'ブランチ削除中' }
-  }
-  const pending = pendingBranchOperation !== null ? pendingLabel[pendingBranchOperation] : null
-  const ariaLabel =
-    pending?.aria ??
-    (isBlocked ? '他の操作が完了するまでブランチを切り替えられません' : 'ブランチを切り替え')
+  const label = getBranchTriggerLabel({ pendingBranchOperation, isBlocked, currentBranch })
 
   return (
     <div className="source-control-panel__branch-switcher">
@@ -104,9 +95,9 @@ export default function BranchSwitcher({
         disabled={isDisabled}
         aria-haspopup="true"
         aria-expanded={isOpen}
-        aria-label={ariaLabel}
+        aria-label={label.ariaLabel}
       >
-        {pending?.text ?? currentBranch ?? '(no branch)'}
+        {label.text}
       </button>
       {isOpen && (
         <BranchSwitcherMenu
@@ -118,14 +109,8 @@ export default function BranchSwitcher({
         />
       )}
       {isCreateDialogOpen && (
-        <NameInputDialog
-          title="新しいブランチ名"
-          validate={(name) =>
-            validateBranchName(
-              name,
-              branches.map((b) => b.name)
-            )
-          }
+        <CreateBranchDialog
+          branches={branches}
           onSubmit={handleCreateSubmit}
           onCancel={closeCreateDialog}
         />

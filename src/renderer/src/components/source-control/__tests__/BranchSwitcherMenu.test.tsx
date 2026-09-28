@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitBranch } from '@shared/types'
@@ -9,32 +10,39 @@ const branches: GitBranch[] = [
   { name: 'feature/x', current: false }
 ]
 
+// 矢印キー・roving tabindex・初期フォーカスの検証用(選択可能なブランチが複数ある)
+const threeBranches: GitBranch[] = [
+  { name: 'main', current: true },
+  { name: 'feature/x', current: false },
+  { name: 'feature/y', current: false }
+]
+
+type MenuProps = React.ComponentProps<typeof BranchSwitcherMenu>
+
+// 各テストは検証に関わる Props だけを overrides で渡す(Props が増えても、関係の無い
+// テストを書き換えずに済むようにする)。コールバックはテストごとに新しいモックを作る
+const renderMenu = (overrides: Partial<MenuProps> = {}): RenderResult =>
+  render(
+    <BranchSwitcherMenu
+      branches={branches}
+      onSelect={vi.fn()}
+      onClose={vi.fn()}
+      onCreateRequest={vi.fn()}
+      onDelete={vi.fn()}
+      {...overrides}
+    />
+  )
+
 describe('BranchSwitcherMenu', () => {
   it('role="radiogroup" のコンテナに各ブランチが role="radio" として表示される', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu()
     expect(screen.getByRole('radiogroup', { name: 'ブランチ' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /main/ })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: /feature\/x/ })).toBeInTheDocument()
   })
 
   it('現在のブランチだけ aria-checked が true になる', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu()
     expect(screen.getByRole('radio', { name: /main/ })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveAttribute(
       'aria-checked',
@@ -43,60 +51,28 @@ describe('BranchSwitcherMenu', () => {
   })
 
   it('現在のブランチのボタンは disabled になっている', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu()
     expect(screen.getByRole('radio', { name: /main/ })).toBeDisabled()
     expect(screen.getByRole('radio', { name: /feature\/x/ })).not.toBeDisabled()
   })
 
   it('現在以外のブランチをクリックすると onSelect がそのブランチ名で呼ばれる', async () => {
     const onSelect = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={onSelect}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onSelect })
     await userEvent.click(screen.getByRole('radio', { name: /feature\/x/ }))
     expect(onSelect).toHaveBeenCalledWith('feature/x')
   })
 
   it('現在のブランチをクリックしても onSelect は呼ばれない(disabled のため)', async () => {
     const onSelect = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={onSelect}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onSelect })
     await userEvent.click(screen.getByRole('radio', { name: /main/ }))
     expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('外側(document)をクリックすると onClose が呼ばれる', () => {
     const onClose = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onClose })
     fireEvent.click(document.body)
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -107,30 +83,14 @@ describe('BranchSwitcherMenu', () => {
   // false(フォーカス復帰不要)を渡す
   it('外側(document)をクリックすると onClose が false(フォーカス復帰不要)で呼ばれる', () => {
     const onClose = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onClose })
     fireEvent.click(document.body)
     expect(onClose).toHaveBeenCalledWith(false)
   })
 
   it('Escape キーを押すと onClose が呼ばれる', () => {
     const onClose = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onClose })
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
   })
@@ -139,30 +99,14 @@ describe('BranchSwitcherMenu', () => {
   // トリガーボタンへフォーカスを戻す必要がある(true を渡す)
   it('Escape キーを押すと onClose が true(フォーカス復帰要)で呼ばれる', () => {
     const onClose = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onClose })
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledWith(true)
   })
 
   it('アンマウント時に document のリスナーを解除する', () => {
     const onClose = vi.fn()
-    const { unmount } = render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={onClose}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
+    const { unmount } = renderMenu({ onClose })
     unmount()
     fireEvent.click(document.body)
     fireEvent.keyDown(document, { key: 'Escape' })
@@ -174,22 +118,8 @@ describe('BranchSwitcherMenu', () => {
   // BranchSwitcherMenu には無く、矢印キーが反応しない一貫性の欠如だった。
   // 現在ブランチのボタンは disabled(フォーカス不可)のため、移動対象からは除く
   describe('矢印キーでのフォーカス移動', () => {
-    const threeBranches: GitBranch[] = [
-      { name: 'main', current: true },
-      { name: 'feature/x', current: false },
-      { name: 'feature/y', current: false }
-    ]
-
     it('何もフォーカスされていない状態で ArrowDown を押すと先頭の選択可能なブランチへフォーカスする', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       // マウント時の自動フォーカス(後続のPRレビュー対応で追加)をリセットし、
       // このテストが検証したい「未フォーカス状態からのフォールバック」を作る
       ;(document.activeElement as HTMLElement | null)?.blur()
@@ -198,75 +128,35 @@ describe('BranchSwitcherMenu', () => {
     })
 
     it('何もフォーカスされていない状態で ArrowUp を押すと末尾の選択可能なブランチへフォーカスする', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       ;(document.activeElement as HTMLElement | null)?.blur()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowUp' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveFocus()
     })
 
     it('ArrowDown で次のブランチへフォーカスが移動する', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       screen.getByRole('radio', { name: /feature\/x/ }).focus()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveFocus()
     })
 
     it('末尾で ArrowDown を押すと先頭(current を除く)へ循環する', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       screen.getByRole('radio', { name: /feature\/y/ }).focus()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveFocus()
     })
 
     it('先頭で ArrowUp を押すと末尾(current を除く)へ循環する', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       screen.getByRole('radio', { name: /feature\/x/ }).focus()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowUp' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveFocus()
     })
 
     it('選択可能なブランチが無い(current のみ)場合、矢印キーを押してもエラーにならない', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={[{ name: 'main', current: true }]}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: [{ name: 'main', current: true }] })
       expect(() =>
         fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       ).not.toThrow()
@@ -279,36 +169,14 @@ describe('BranchSwitcherMenu', () => {
   // tabIndex の指定が無く、非 disabled な button のデフォルト(tabIndex=0)の
   // ままだったため、選択可能なブランチの数だけ Tab 停止点が生まれてしまっていた
   describe('roving tabindex(Tab の停止点を1つに絞る)', () => {
-    const threeBranches: GitBranch[] = [
-      { name: 'main', current: true },
-      { name: 'feature/x', current: false },
-      { name: 'feature/y', current: false }
-    ]
-
     it('初期状態では先頭の選択可能なブランチだけ tabIndex=0 で、他は -1', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveAttribute('tabIndex', '0')
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveAttribute('tabIndex', '-1')
     })
 
     it('矢印キーでフォーカスが移動すると、移動先だけ tabIndex=0 になる', () => {
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       screen.getByRole('radio', { name: /feature\/x/ }).focus()
       fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowDown' })
       expect(screen.getByRole('radio', { name: /feature\/y/ })).toHaveAttribute('tabIndex', '0')
@@ -323,154 +191,34 @@ describe('BranchSwitcherMenu', () => {
   // 管理の要求が異なるため、新規に対応する
   describe('マウント時の初期フォーカス', () => {
     it('マウントすると先頭の選択可能なブランチへ自動的にフォーカスする', () => {
-      const threeBranches: GitBranch[] = [
-        { name: 'main', current: true },
-        { name: 'feature/x', current: false },
-        { name: 'feature/y', current: false }
-      ]
-      render(
-        <BranchSwitcherMenu
-          branches={threeBranches}
-          onSelect={vi.fn()}
-          onClose={vi.fn()}
-          onCreateRequest={vi.fn()}
-          onDelete={vi.fn()}
-        />
-      )
+      renderMenu({ branches: threeBranches })
       expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveFocus()
     })
 
-    it('選択可能なブランチが無い(current のみ)場合、マウントしてもエラーにならない', () => {
-      expect(() =>
-        render(
-          <BranchSwitcherMenu
-            branches={[{ name: 'main', current: true }]}
-            onSelect={vi.fn()}
-            onClose={vi.fn()}
-            onCreateRequest={vi.fn()}
-            onDelete={vi.fn()}
-          />
-        )
-      ).not.toThrow()
+    // 選択可能なブランチが無い(現在ブランチだけ)ときは、唯一の操作である作成ボタンへ
+    it('選択可能なブランチが無いとき、初期フォーカスは作成ボタン', () => {
+      renderMenu({ branches: [{ name: 'main', current: true }] })
+      expect(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' })).toHaveFocus()
     })
   })
 })
 
 describe('BranchSwitcherMenu の作成・削除', () => {
-  const branches = [
-    { name: 'main', current: true },
-    { name: 'feature/x', current: false },
-    { name: 'feature/y', current: false }
-  ]
-
   it('作成ボタンを押すと onCreateRequest が呼ばれる', async () => {
     const onCreateRequest = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={onCreateRequest}
-        onDelete={vi.fn()}
-      />
-    )
+    renderMenu({ onCreateRequest })
     await userEvent.click(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' }))
     expect(onCreateRequest).toHaveBeenCalledOnce()
   })
 
-  it('現在ブランチ以外の行にだけ削除ボタンがある', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
-    expect(screen.getByRole('button', { name: 'ブランチ feature/x を削除' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'ブランチ feature/y を削除' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'ブランチ main を削除' })).not.toBeInTheDocument()
-  })
-
-  it('削除ボタンを押すと onDelete が呼ばれ、onSelect は呼ばれない', async () => {
+  // 1行分の表示・操作(削除ボタンの有無・tabIndex・Delete キー・aria-keyshortcuts)は
+  // BranchMenuItem.test.tsx で検証する。ここでは Menu が各行へ onDelete を配線していることだけを見る
+  it('行の削除ボタンから onDelete がブランチ名で呼ばれる(BranchMenuItem への配線)', async () => {
     const onDelete = vi.fn()
     const onSelect = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={onSelect}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={onDelete}
-      />
-    )
+    renderMenu({ onSelect, onDelete })
     await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
     expect(onDelete).toHaveBeenCalledWith('feature/x')
     expect(onSelect).not.toHaveBeenCalled()
-  })
-
-  // roving tabindex(radiogroup 内の Tab 停止点は1つ)を崩さない
-  it('削除ボタンは tabIndex=-1', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
-    expect(screen.getByRole('button', { name: 'ブランチ feature/x を削除' })).toHaveAttribute(
-      'tabindex',
-      '-1'
-    )
-  })
-
-  it('ブランチにフォーカスして Delete キーを押すと onDelete が呼ばれる', async () => {
-    const onDelete = vi.fn()
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={onDelete}
-      />
-    )
-    // マウント時に先頭の選択可能なブランチ(feature/x)へフォーカスする(既存の挙動)
-    expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveFocus()
-    await userEvent.keyboard('{Delete}')
-    expect(onDelete).toHaveBeenCalledWith('feature/x')
-  })
-
-  it('選択可能な radio に aria-keyshortcuts="Delete" が付く', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={branches}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
-    expect(screen.getByRole('radio', { name: /feature\/x/ })).toHaveAttribute(
-      'aria-keyshortcuts',
-      'Delete'
-    )
-    expect(screen.getByRole('radio', { name: /main/ })).not.toHaveAttribute('aria-keyshortcuts')
-  })
-
-  it('選択可能なブランチが無いとき、初期フォーカスは作成ボタン', () => {
-    render(
-      <BranchSwitcherMenu
-        branches={[{ name: 'main', current: true }]}
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        onCreateRequest={vi.fn()}
-        onDelete={vi.fn()}
-      />
-    )
-    expect(screen.getByRole('button', { name: '＋ 新しいブランチを作成…' })).toHaveFocus()
   })
 })

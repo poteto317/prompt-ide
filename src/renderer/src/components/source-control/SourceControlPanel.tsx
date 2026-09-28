@@ -2,7 +2,7 @@ import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 import SourceControlToolbar from './SourceControlToolbar'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind } from '../../hooks/useGitBranchOperations'
+import type { BranchOperationKind } from '../../types'
 
 interface Props {
   gitStatus: GitStatusResult | null

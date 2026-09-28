@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { GitBranch } from '@shared/types'
+import BranchMenuItem from './BranchMenuItem'
 
 interface Props {
   branches: GitBranch[]
@@ -92,49 +93,22 @@ export default function BranchSwitcherMenu({
       <button
         ref={createButtonRef}
         type="button"
-        className="source-control-panel__branch-menu-create"
+        className="source-control-panel__branch-menu-item source-control-panel__branch-menu-create"
         onClick={onCreateRequest}
       >
         ＋ 新しいブランチを作成…
       </button>
       <div role="radiogroup" aria-label="ブランチ" onKeyDown={handleListKeyDown}>
         {branches.map((branch) => (
-          <div key={branch.name} className="source-control-panel__branch-menu-row">
-            <button
-              ref={(el) => registerItemRef(branch.name, el)}
-              type="button"
-              role="radio"
-              aria-checked={branch.current}
-              aria-keyshortcuts={branch.current ? undefined : 'Delete'}
-              className="source-control-panel__branch-menu-item"
-              disabled={branch.current}
-              tabIndex={branch.name === tabbableName ? 0 : -1}
-              onFocus={() => setFocusedName(branch.name)}
-              onClick={() => onSelect(branch.name)}
-              onKeyDown={(e) => {
-                if (e.key === 'Delete' && !branch.current) {
-                  e.preventDefault()
-                  onDelete(branch.name)
-                }
-              }}
-            >
-              {branch.current ? '✓ ' : ''}
-              {branch.name}
-            </button>
-            {!branch.current && (
-              // roving tabindex を崩さないよう Tab 停止点にしない。キーボードでは
-              // radio 上の Delete キーで同じ操作ができる(aria-keyshortcuts で告知)
-              <button
-                type="button"
-                tabIndex={-1}
-                className="source-control-panel__branch-menu-delete"
-                aria-label={`ブランチ ${branch.name} を削除`}
-                onClick={() => onDelete(branch.name)}
-              >
-                🗑
-              </button>
-            )}
-          </div>
+          <BranchMenuItem
+            key={branch.name}
+            branch={branch}
+            isTabbable={branch.name === tabbableName}
+            registerRef={registerItemRef}
+            onFocus={setFocusedName}
+            onSelect={onSelect}
+            onDelete={onDelete}
+          />
         ))}
       </div>
     </div>

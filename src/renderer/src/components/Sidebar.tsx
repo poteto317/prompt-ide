@@ -13,11 +13,11 @@ import type {
   Prompt,
   Task,
   StageId,
-  HistoryEntry
+  HistoryEntry,
+  BranchOperationKind
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
-import type { BranchOperationKind } from '../hooks/useGitBranchOperations'
 
 interface Props {
   activePanel: Panel
