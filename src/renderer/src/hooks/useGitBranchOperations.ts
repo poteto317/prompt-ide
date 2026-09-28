@@ -20,14 +20,22 @@ export interface GitBranchOperationsState {
   checkoutBranch: (branchName: string) => Promise<boolean>
   /** 現在の HEAD から作成して切り替える。戻り値は実行され成功したか */
   createBranch: (branchName: string) => Promise<boolean>
+  /** 確認 → 安全削除 → 未マージなら再確認して強制削除。戻り値は実際に削除されたか */
+  deleteBranch: (branchName: string) => Promise<boolean>
   branchOperationError: Error | null
+}
+
+export interface GitBranchOperationsOptions {
+  /** 削除の確認ダイアログ。テストで差し替えるために注入できるようにする */
+  onConfirm?: (message: string) => boolean
 }
 
 export function useGitBranchOperations(
   gitStatus: GitStatusResult | null,
   refreshGitStatus: () => Promise<void>,
   refreshHistory: () => Promise<void>,
-  fileLock?: FileOperationLock
+  fileLock?: FileOperationLock,
+  { onConfirm = confirm }: GitBranchOperationsOptions = {}
 ): GitBranchOperationsState {
   const [pendingBranchOperation, setPendingBranchOperation] = useState<BranchOperationKind | null>(
     null
@@ -89,5 +97,43 @@ export function useGitBranchOperations(
       execute: () => gitApi.createBranch(branchName)
     })
 
-  return { pendingBranchOperation, checkoutBranch, createBranch, branchOperationError }
+  // 削除するのは現在ではないブランチの ref だけで、working tree/index/HEAD には
+  // 触れない(現在ブランチの削除は main 側で拒否する)。push/pull が読み書きする対象と
+  // 重ならないため lockGlobal は取らない(取ると削除中に push/pull が無意味に待たされる)。
+  // 一方、削除中に checkout/作成が始まると、切替先や一覧の再取得結果が食い違うため、
+  // ブランチ操作どうしは busy ref で排他にし、開始条件は checkout と同じく他操作中も待つ
+  // (docs/review-findings-patterns.md パターン23)。
+  // 安全削除と強制削除は1回の排他実行の中で行い、間に他の操作が割り込まないようにする。
+  // 2回目の確認でキャンセルされた場合は execute を正常終了させる(エラーは出さない)
+  const deleteBranch = async (branchName: string): Promise<boolean> => {
+    if (!onConfirm(`ブランチ ${branchName} を削除しますか？`)) return false
+    let deleted = false
+    const succeeded = await runOperation({
+      isBusy: () =>
+        isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled,
+      setBusy: makeSetBusy('delete'),
+      execute: async () => {
+        const result = await gitApi.deleteBranch(branchName, false)
+        if (result.deleted) {
+          deleted = true
+          return
+        }
+        const confirmed = onConfirm(
+          `ブランチ ${branchName} にはマージされていないコミットがあります。強制削除するとこれらのコミットは失われます。削除しますか？`
+        )
+        if (!confirmed) return
+        const forced = await gitApi.deleteBranch(branchName, true)
+        deleted = forced.deleted
+      }
+    })
+    return succeeded && deleted
+  }
+
+  return {
+    pendingBranchOperation,
+    checkoutBranch,
+    createBranch,
+    deleteBranch,
+    branchOperationError
+  }
 }

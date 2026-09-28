@@ -6,12 +6,14 @@ vi.mock('../../lib/gitApi')
 
 import * as gitApi from '../../lib/gitApi'
 import { useGitBranchOperations } from '../useGitBranchOperations'
+import type { GitBranchOperationsState } from '../useGitBranchOperations'
 import { useGitRemoteOperations } from '../useGitRemoteOperations'
 import { useFileOperationLock } from '../useFileOperationLock'
 import type { FileOperationLock } from '../useFileOperationLock'
 
 const mockCheckoutBranch = vi.mocked(gitApi.checkoutBranch)
 const mockCreateBranch = vi.mocked(gitApi.createBranch)
+const mockDeleteBranch = vi.mocked(gitApi.deleteBranch)
 const mockPush = vi.mocked(gitApi.push)
 
 // useGitRemoteOperations.test.ts と同じパターン。デフォルト値(何もロックされて
@@ -511,5 +513,140 @@ describe('createBranch', () => {
       await result.current.createBranch('feature/new')
     })
     expect(mockCreateBranch).not.toHaveBeenCalled()
+  })
+})
+
+describe('deleteBranch', () => {
+  const FIRST = 'ブランチ feature/x を削除しますか？'
+  const SECOND =
+    'ブランチ feature/x にはマージされていないコミットがあります。強制削除するとこれらのコミットは失われます。削除しますか？'
+
+  const renderWithConfirm = (
+    onConfirm: (message: string) => boolean,
+    lock = makeFileLock()
+  ): ReturnType<typeof renderHook<GitBranchOperationsState, never>> =>
+    renderHook(() =>
+      useGitBranchOperations(
+        repoStatus,
+        vi.fn().mockResolvedValue(undefined),
+        vi.fn().mockResolvedValue(undefined),
+        lock,
+        { onConfirm }
+      )
+    )
+
+  it('1回目の確認でキャンセルしたら削除 API を呼ばずに false を返す', async () => {
+    const onConfirm = vi.fn().mockReturnValue(false)
+    const { result } = renderWithConfirm(onConfirm)
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(false)
+    expect(onConfirm).toHaveBeenCalledWith(FIRST)
+    expect(mockDeleteBranch).not.toHaveBeenCalled()
+  })
+
+  it('マージ済みなら安全削除だけで完了し、2回目の確認は出さない', async () => {
+    mockDeleteBranch.mockResolvedValue({ deleted: true })
+    const onConfirm = vi.fn().mockReturnValue(true)
+    const { result } = renderWithConfirm(onConfirm)
+    let deleted = false
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(true)
+    expect(mockDeleteBranch).toHaveBeenCalledExactlyOnceWith('feature/x', false)
+    expect(onConfirm).toHaveBeenCalledOnce()
+  })
+
+  it('未マージなら2回目の確認を出し、承諾されたら強制削除する', async () => {
+    mockDeleteBranch
+      .mockResolvedValueOnce({ deleted: false, reason: 'not-fully-merged' })
+      .mockResolvedValueOnce({ deleted: true })
+    const onConfirm = vi.fn().mockReturnValue(true)
+    const { result } = renderWithConfirm(onConfirm)
+    let deleted = false
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(true)
+    expect(onConfirm).toHaveBeenNthCalledWith(1, FIRST)
+    expect(onConfirm).toHaveBeenNthCalledWith(2, SECOND)
+    expect(mockDeleteBranch).toHaveBeenNthCalledWith(1, 'feature/x', false)
+    expect(mockDeleteBranch).toHaveBeenNthCalledWith(2, 'feature/x', true)
+  })
+
+  it('未マージで2回目の確認をキャンセルしたら強制削除せず、エラーも出さずに false を返す', async () => {
+    mockDeleteBranch.mockResolvedValue({ deleted: false, reason: 'not-fully-merged' })
+    const onConfirm = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false)
+    const { result } = renderWithConfirm(onConfirm)
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(false)
+    expect(mockDeleteBranch).toHaveBeenCalledExactlyOnceWith('feature/x', false)
+    expect(result.current.branchOperationError).toBeNull()
+  })
+
+  // 削除するのは現在ではないブランチの ref だけで、working tree/index/HEAD に
+  // 触れないため、push/pull を待たせる必要はない(パターン23)
+  it('lockGlobal を取らない', async () => {
+    mockDeleteBranch.mockResolvedValue({ deleted: true })
+    const lock = makeFileLock()
+    const { result } = renderWithConfirm(vi.fn().mockReturnValue(true), lock)
+    await act(async () => {
+      await result.current.deleteBranch('feature/x')
+    })
+    expect(lock.lockGlobal).not.toHaveBeenCalled()
+  })
+
+  // 安全削除と強制削除の間に他のブランチ操作が割り込まないこと。onConfirm の中で
+  // result.current を読む方式は act 外での state 反映タイミングに依存し実装に
+  // 関係なく成否が決まってしまうため、代わりに「2回目の確認中に checkoutBranch を
+  // 呼んでも無視される(busy ref が真のまま)」ことで排他中であることを検証する
+  it('安全削除と強制削除の間も他のブランチ操作は割り込めない', async () => {
+    mockDeleteBranch
+      .mockResolvedValueOnce({ deleted: false, reason: 'not-fully-merged' })
+      .mockResolvedValueOnce({ deleted: true })
+    const onConfirm = vi.fn((message: string) => {
+      if (message === SECOND) {
+        void result.current.checkoutBranch('feature/y')
+      }
+      return true
+    })
+    const { result } = renderWithConfirm(onConfirm)
+    await act(async () => {
+      await result.current.deleteBranch('feature/x')
+    })
+    expect(mockCheckoutBranch).not.toHaveBeenCalled()
+  })
+
+  it('削除 API が失敗したら false を返し、branchOperationError に反映する', async () => {
+    mockDeleteBranch.mockRejectedValue(
+      new Error('他のワークツリーで使用中のブランチは削除できません: feature/x')
+    )
+    const { result } = renderWithConfirm(vi.fn().mockReturnValue(true))
+    let deleted = true
+    await act(async () => {
+      deleted = await result.current.deleteBranch('feature/x')
+    })
+    expect(deleted).toBe(false)
+    expect(result.current.branchOperationError?.message).toBe(
+      '他のワークツリーで使用中のブランチは削除できません: feature/x'
+    )
+  })
+
+  it('他のブランチ操作の実行中は削除 API を呼ばない', async () => {
+    mockCheckoutBranch.mockReturnValue(new Promise<void>(() => {}))
+    const { result } = renderWithConfirm(vi.fn().mockReturnValue(true))
+    act(() => {
+      void result.current.checkoutBranch('feature/y')
+    })
+    await act(async () => {
+      await result.current.deleteBranch('feature/x')
+    })
+    expect(mockDeleteBranch).not.toHaveBeenCalled()
   })
 })
