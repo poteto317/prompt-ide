@@ -4,6 +4,9 @@ import { isSafeEntryName } from '@shared/entryName'
 interface Props {
   title: string
   initialValue?: string
+  /** 入力値(trim 済み)を検証し、エラー文言か null を返す。省略時はファイル名の検証
+   *  (isSafeEntryName)。ブランチ名のように '/' を含められる名前に流用するため */
+  validate?: (name: string) => string | null
   onSubmit: (name: string) => void
   onCancel: () => void
 }
@@ -24,6 +27,7 @@ function validateName(name: string): string | null {
 export default function NameInputDialog({
   title,
   initialValue = '',
+  validate = validateName,
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
@@ -33,7 +37,7 @@ export default function NameInputDialog({
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
     const trimmed = value.trim()
-    const validationError = validateName(trimmed)
+    const validationError = validate(trimmed)
     if (validationError !== null) {
       setError(validationError)
       return

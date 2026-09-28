@@ -92,4 +92,51 @@ describe('NameInputDialog', () => {
     render(<NameInputDialog {...defaultProps} />)
     expect(screen.getByLabelText('名前')).toHaveFocus()
   })
+
+  it('validate を渡すと、その結果でエラーを表示し onSubmit を呼ばない', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <NameInputDialog
+        title="新しいブランチ名"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        validate={(name) => (name === 'main' ? '同じ名前のブランチが既に存在します' : null)}
+      />
+    )
+    await userEvent.type(screen.getByRole('textbox', { name: '名前' }), 'main')
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('同じ名前のブランチが既に存在します')
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  // ブランチ名に '/' は使えるが、ファイル名検証(isSafeEntryName)では拒否される
+  it('validate を渡すと従来のファイル名検証は使わない', async () => {
+    const onSubmit = vi.fn()
+    render(
+      <NameInputDialog
+        title="新しいブランチ名"
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+        validate={() => null}
+      />
+    )
+    await userEvent.type(screen.getByRole('textbox', { name: '名前' }), 'feature/x')
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(onSubmit).toHaveBeenCalledWith('feature/x')
+  })
+
+  it('validate に渡す名前は前後の空白を trim したもの', async () => {
+    const validate = vi.fn().mockReturnValue(null)
+    render(
+      <NameInputDialog
+        title="新しいブランチ名"
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        validate={validate}
+      />
+    )
+    await userEvent.type(screen.getByRole('textbox', { name: '名前' }), '  feature/x  ')
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(validate).toHaveBeenCalledWith('feature/x')
+  })
 })
