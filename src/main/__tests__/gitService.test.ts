@@ -10,6 +10,9 @@ const mockRaw = vi.hoisted(() => vi.fn())
 const mockBranchLocal = vi.hoisted(() => vi.fn())
 const mockTags = vi.hoisted(() => vi.fn())
 const mockEnv = vi.hoisted(() => vi.fn())
+const mockPush = vi.hoisted(() => vi.fn())
+const mockPull = vi.hoisted(() => vi.fn())
+const mockFetch = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() =>
   vi.fn(() => {
     const git = {
@@ -22,7 +25,10 @@ const mockSimpleGit = vi.hoisted(() =>
       raw: mockRaw,
       branchLocal: mockBranchLocal,
       tags: mockTags,
-      env: mockEnv
+      env: mockEnv,
+      push: mockPush,
+      pull: mockPull,
+      fetch: mockFetch
     }
     // env() は simple-git 本来の挙動と同じくインスタンス自身を返す(チェーン用)
     mockEnv.mockReturnValue(git)
@@ -40,7 +46,24 @@ const mockGetFileSize = vi.hoisted(() => vi.fn())
 // と判定してよい。GitError でない失敗(git バイナリ不在等の spawn レベルの異常)は
 // log の失敗と同じ根本原因である可能性が高いため区別する
 const MockGitError = vi.hoisted(() => class MockGitError extends Error {})
-vi.mock('simple-git', () => ({ default: mockSimpleGit, GitError: MockGitError }))
+// GitPluginError は simple-git のプラグイン(timeout プラグイン等)が独自に
+// throw するエラー型。実際の GitPluginError と同様 plugin プロパティ
+// ('timeout' 等)を持つ最小限のモック
+const MockGitPluginError = vi.hoisted(
+  () =>
+    class MockGitPluginError extends MockGitError {
+      plugin?: string
+      constructor(_task?: unknown, plugin?: string, message?: string) {
+        super(message)
+        this.plugin = plugin
+      }
+    }
+)
+vi.mock('simple-git', () => ({
+  default: mockSimpleGit,
+  GitError: MockGitError,
+  GitPluginError: MockGitPluginError
+}))
 vi.mock('../fileSystem', () => ({
   readFileBuffer: mockReadFileBuffer,
   isExecutableFile: mockIsExecutableFile,
@@ -58,7 +81,10 @@ import {
   getBranches,
   getTags,
   amendCommit,
-  isStagedRenameDiff
+  isStagedRenameDiff,
+  push,
+  pull,
+  fetchRemote
 } from '../gitService'
 
 beforeEach(() => {
@@ -658,5 +684,107 @@ describe('amendCommit', () => {
   it('commit が throw した場合エラーが伝播する', async () => {
     mockCommit.mockRejectedValue(new Error('amend failed'))
     await expect(amendCommit('/project', 'msg')).rejects.toThrow('amend failed')
+  })
+})
+
+// push/pull/fetch はネットワークI/Oを伴う。認証プロンプト待ち(認証情報未設定で
+// 端末から起動した場合、git が /dev/tty を開いてプロンプトを出し誰も応答しない)や
+// 到達不能なホストへの接続では、タイムアウトが無いと simple-git の Promise が
+// 永久に解決せず、useGitRemoteOperations.ts の isPushing/isPulling/isFetching が
+// true のまま戻らずボタンが恒久的に disabled のまま固まる(pull の場合は
+// lock.lockGlobal() も解除されず commit/ハンク操作まで巻き添えになる)。
+// simple-git 標準の timeout プラグイン(stdout/stderr に一定時間データが来ないと
+// 強制終了する)を使う。env() 経由で GIT_TERMINAL_PROMPT 等を渡す方式は、
+// blockUnsafeOperationsPlugin が GIT_SSH_COMMAND 等の継承環境変数を検査して
+// GitPluginError を投げる既存の地雷(getLog 参照)を再び踏むため採用しない。
+// progress オプション(no-op)も必須で渡す。渡さないと --progress が付与されず、
+// 実際に転送中の正常な操作でも stderr に進捗が流れないため誤ってタイムアウトする
+const GIT_REMOTE_TIMEOUT_MS = 30_000
+
+describe('push', () => {
+  it('simpleGit を folderPath とタイムアウト設定で呼び、push を引数なしで呼ぶ', async () => {
+    mockPush.mockResolvedValue(undefined)
+    await push('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      timeout: { block: GIT_REMOTE_TIMEOUT_MS },
+      progress: expect.any(Function)
+    })
+    expect(mockPush).toHaveBeenCalledWith()
+  })
+
+  it('push が throw した場合エラーが伝播する', async () => {
+    mockPush.mockRejectedValue(new Error('push failed'))
+    await expect(push('/project')).rejects.toThrow('push failed')
+  })
+
+  it('push がタイムアウト(GitPluginError, plugin: timeout)で失敗した場合、わかりやすい日本語メッセージに変換される', async () => {
+    // 実際の timeoutPlugin は plugin: 'timeout' の GitPluginError を投げる
+    // ("block timeout reached" という固定の英語メッセージ)。ユーザーには
+    // 内部実装の文字列ではなく、原因の推測とセットの日本語メッセージを見せる
+    mockPush.mockRejectedValue(
+      new MockGitPluginError(undefined, 'timeout', 'block timeout reached')
+    )
+    await expect(push('/project')).rejects.toThrow(
+      '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
+    )
+  })
+
+  it('push が GitPluginError(timeout 以外の plugin)で失敗した場合、元のエラーをそのまま伝播する', async () => {
+    mockPush.mockRejectedValue(
+      new MockGitPluginError(undefined, 'spawn.after', 'some other plugin error')
+    )
+    await expect(push('/project')).rejects.toThrow('some other plugin error')
+  })
+})
+
+describe('pull', () => {
+  it('simpleGit を folderPath とタイムアウト設定で呼び、pull を引数なしで呼ぶ', async () => {
+    mockPull.mockResolvedValue(undefined)
+    await pull('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      timeout: { block: GIT_REMOTE_TIMEOUT_MS },
+      progress: expect.any(Function)
+    })
+    expect(mockPull).toHaveBeenCalledWith()
+  })
+
+  it('pull が throw した場合エラーが伝播する', async () => {
+    mockPull.mockRejectedValue(new Error('pull failed'))
+    await expect(pull('/project')).rejects.toThrow('pull failed')
+  })
+
+  it('pull がタイムアウト(GitPluginError, plugin: timeout)で失敗した場合、わかりやすい日本語メッセージに変換される', async () => {
+    mockPull.mockRejectedValue(
+      new MockGitPluginError(undefined, 'timeout', 'block timeout reached')
+    )
+    await expect(pull('/project')).rejects.toThrow(
+      '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
+    )
+  })
+})
+
+describe('fetchRemote', () => {
+  it('simpleGit を folderPath とタイムアウト設定で呼び、fetch を引数なしで呼ぶ', async () => {
+    mockFetch.mockResolvedValue(undefined)
+    await fetchRemote('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      timeout: { block: GIT_REMOTE_TIMEOUT_MS },
+      progress: expect.any(Function)
+    })
+    expect(mockFetch).toHaveBeenCalledWith()
+  })
+
+  it('fetch が throw した場合エラーが伝播する', async () => {
+    mockFetch.mockRejectedValue(new Error('fetch failed'))
+    await expect(fetchRemote('/project')).rejects.toThrow('fetch failed')
+  })
+
+  it('fetch がタイムアウト(GitPluginError, plugin: timeout)で失敗した場合、わかりやすい日本語メッセージに変換される', async () => {
+    mockFetch.mockRejectedValue(
+      new MockGitPluginError(undefined, 'timeout', 'block timeout reached')
+    )
+    await expect(fetchRemote('/project')).rejects.toThrow(
+      '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
+    )
   })
 })

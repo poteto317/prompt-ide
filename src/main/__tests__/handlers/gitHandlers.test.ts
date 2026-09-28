@@ -14,6 +14,9 @@ const mockGetLog = vi.hoisted(() => vi.fn())
 const mockGetBranches = vi.hoisted(() => vi.fn())
 const mockGetTags = vi.hoisted(() => vi.fn())
 const mockAmendCommit = vi.hoisted(() => vi.fn())
+const mockPush = vi.hoisted(() => vi.fn())
+const mockPull = vi.hoisted(() => vi.fn())
+const mockFetchRemote = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -27,6 +30,9 @@ vi.mock('../../gitService', () => ({
   getBranches: mockGetBranches,
   getTags: mockGetTags,
   amendCommit: mockAmendCommit,
+  push: mockPush,
+  pull: mockPull,
+  fetchRemote: mockFetchRemote,
   // gitHandlers.ts と gitService.ts が同じ条件を共有するために切り出した実体を
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
@@ -833,6 +839,77 @@ describe('registerGitHandlers', () => {
       mockAmendCommit.mockResolvedValue(undefined)
       await getRegisteredHandler('git:amendCommit')(makeEvent(1), 'feat: 修正後')
       expect(mockAmendCommit).toHaveBeenCalledWith('/project', 'feat: 修正後')
+    })
+  })
+
+  describe('git:push', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:push')(makeEvent(1))).rejects.toThrow('No folder open')
+    })
+
+    it('folderAccess の allowedFolder を引数に push を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPush.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:push')(makeEvent(1))
+      expect(mockPush).toHaveBeenCalledWith('/project')
+    })
+
+    it('push が throw した場合エラーが伝播する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPush.mockRejectedValue(new Error('push failed'))
+      await expect(getRegisteredHandler('git:push')(makeEvent(1))).rejects.toThrow('push failed')
+    })
+  })
+
+  describe('git:pull', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:pull')(makeEvent(1))).rejects.toThrow('No folder open')
+    })
+
+    it('folderAccess の allowedFolder を引数に pull を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPull.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:pull')(makeEvent(1))
+      expect(mockPull).toHaveBeenCalledWith('/project')
+    })
+
+    it('pull が throw した場合エラーが伝播する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPull.mockRejectedValue(new Error('pull failed'))
+      await expect(getRegisteredHandler('git:pull')(makeEvent(1))).rejects.toThrow('pull failed')
+    })
+  })
+
+  describe('git:fetch', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:fetch')(makeEvent(1))).rejects.toThrow(
+        'No folder open'
+      )
+    })
+
+    it('folderAccess の allowedFolder を引数に fetchRemote を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockFetchRemote.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:fetch')(makeEvent(1))
+      expect(mockFetchRemote).toHaveBeenCalledWith('/project')
+    })
+
+    it('fetchRemote が throw した場合エラーが伝播する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockFetchRemote.mockRejectedValue(new Error('fetch failed'))
+      await expect(getRegisteredHandler('git:fetch')(makeEvent(1))).rejects.toThrow('fetch failed')
     })
   })
 })

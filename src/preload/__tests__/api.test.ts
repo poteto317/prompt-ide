@@ -60,6 +60,9 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     () => api.getGitStatus(),
     ['git:getStatus']
   ],
+  ['push は git:push チャンネルを呼び出す', () => api.push(), ['git:push']],
+  ['pull は git:pull チャンネルを呼び出す', () => api.pull(), ['git:pull']],
+  ['fetchRemote は git:fetch チャンネルを呼び出す', () => api.fetchRemote(), ['git:fetch']],
   [
     'hasApiKey は settings:hasApiKey チャンネルを呼び出す',
     () => api.hasApiKey(),

@@ -11,7 +11,10 @@ import {
   getBranches,
   getTags,
   amendCommit,
-  isStagedRenameDiff
+  isStagedRenameDiff,
+  push,
+  pull,
+  fetchRemote
 } from '../gitService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -213,5 +216,20 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:amendCommit', async (event: IpcMainInvokeEvent, message: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await amendCommit(allowedFolder, message)
+  })
+
+  ipcMain.handle('git:push', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await push(allowedFolder)
+  })
+
+  ipcMain.handle('git:pull', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await pull(allowedFolder)
+  })
+
+  ipcMain.handle('git:fetch', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await fetchRemote(allowedFolder)
   })
 }

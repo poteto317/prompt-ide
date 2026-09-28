@@ -1,5 +1,6 @@
 import { join } from 'path'
-import simpleGit, { GitError } from 'simple-git'
+import simpleGit, { GitError, GitPluginError } from 'simple-git'
+import type { SimpleGit } from 'simple-git'
 import type { GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
 import {
   buildUntrackedDiff,
@@ -278,6 +279,78 @@ export async function getTags(folderPath: string): Promise<string[]> {
   const git = simpleGit(folderPath)
   const result = await git.tags()
   return result.all
+}
+
+// push/pull/fetch はネットワークI/Oを伴う。認証プロンプト待ち(認証情報未設定で
+// 端末から起動した場合、git が /dev/tty を開いてプロンプトを出し誰も応答しない)や
+// 到達不能なホストへの接続では、タイムアウトが無いと simple-git の Promise が
+// 永久に解決せず、呼び出し元(useGitRemoteOperations.ts)の実行中フラグが true の
+// まま戻らずボタンが恒久的に disabled のまま固まる(pull の場合は共有ロックも
+// 解除されず commit/ハンク操作まで巻き添えになる、runGitApply の
+// GIT_APPLY_TIMEOUT_MS と同じ理由)。simple-git 標準の timeout プラグイン
+// (stdout/stderr に一定時間データが来ないと強制終了する)を使う。
+// env() 経由で GIT_TERMINAL_PROMPT 等を渡す方式は、blockUnsafeOperationsPlugin が
+// GIT_SSH_COMMAND 等の継承環境変数を検査して GitPluginError を投げる既存の地雷
+// (getLog 参照)を再び踏むため採用しない
+const GIT_REMOTE_TIMEOUT_MS = 30_000
+
+function simpleGitWithRemoteTimeout(folderPath: string): SimpleGit {
+  return simpleGit(folderPath, {
+    timeout: { block: GIT_REMOTE_TIMEOUT_MS },
+    // git は stderr が tty に接続されていないと既定で進捗行を出力しない。
+    // simple-git は progress オプションを渡した場合のみ push/pull/fetch に
+    // --progress を自動付与する(渡さないと timeout プラグインが見ている
+    // stdout/stderr に実際の転送中(圧縮・送受信)も何も流れず、正常に進行中の
+    // 操作まで誤ってタイムアウトしてしまう)。コールバックの中身は使わないため
+    // no-op
+    progress: () => {}
+  })
+}
+
+// timeout プラグインが投げる GitPluginError のメッセージは "block timeout
+// reached" という固定の英語の内部文字列で、ユーザーに見せても原因が伝わらない
+// (アプリの他の文言はすべて日本語)。plugin === 'timeout' のときだけ、原因の
+// 推測もセットにした日本語メッセージへ差し替える。それ以外の GitPluginError
+// (timeout プラグイン以外が投げたもの)は素通しする
+function toRemoteOperationError(err: unknown): unknown {
+  if (err instanceof GitPluginError && err.plugin === 'timeout') {
+    return new Error(
+      '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
+    )
+  }
+  return err
+}
+
+// 既に origin が設定され、現在のブランチに upstream が設定済みであることを前提に
+// 引数なしで呼ぶ(git 自身のデフォルト解決に委ねる)。remote の追加・作成・
+// upstream の設定は別スコープ(ROADMAP 上も別項目)
+export async function push(folderPath: string): Promise<void> {
+  const git = simpleGitWithRemoteTimeout(folderPath)
+  try {
+    await git.push()
+  } catch (err) {
+    throw toRemoteOperationError(err)
+  }
+}
+
+export async function pull(folderPath: string): Promise<void> {
+  const git = simpleGitWithRemoteTimeout(folderPath)
+  try {
+    await git.pull()
+  } catch (err) {
+    throw toRemoteOperationError(err)
+  }
+}
+
+// グローバルの fetch() と名前が衝突するため関数名は fetchRemote にする
+// (IPC チャンネル名・preload 側のメソッド名は 'git:fetch' のまま)
+export async function fetchRemote(folderPath: string): Promise<void> {
+  const git = simpleGitWithRemoteTimeout(folderPath)
+  try {
+    await git.fetch()
+  } catch (err) {
+    throw toRemoteOperationError(err)
+  }
 }
 
 export async function amendCommit(folderPath: string, message: string): Promise<void> {

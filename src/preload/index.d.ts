@@ -39,6 +39,9 @@ declare global {
       getBranches(): Promise<GitBranch[]>
       getTags(): Promise<string[]>
       amendCommit(message: string): Promise<void>
+      push(): Promise<void>
+      pull(): Promise<void>
+      fetchRemote(): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

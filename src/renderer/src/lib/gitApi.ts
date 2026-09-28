@@ -48,3 +48,15 @@ export function getTags(): Promise<string[]> {
 export function amendCommit(message: string): Promise<void> {
   return window.api.amendCommit(message)
 }
+
+export function push(): Promise<void> {
+  return window.api.push()
+}
+
+export function pull(): Promise<void> {
+  return window.api.pull()
+}
+
+export function fetchRemote(): Promise<void> {
+  return window.api.fetchRemote()
+}

@@ -46,6 +46,9 @@ export const api = {
   getBranches: (): Promise<GitBranch[]> => ipcRenderer.invoke('git:getBranches'),
   getTags: (): Promise<string[]> => ipcRenderer.invoke('git:getTags'),
   amendCommit: (message: string): Promise<void> => ipcRenderer.invoke('git:amendCommit', message),
+  push: (): Promise<void> => ipcRenderer.invoke('git:push'),
+  pull: (): Promise<void> => ipcRenderer.invoke('git:pull'),
+  fetchRemote: (): Promise<void> => ipcRenderer.invoke('git:fetch'),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
