@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   CLIOnlyToolId,
+  DeleteBranchResult,
   FileTreeNode,
   GitStatusResult,
   GitLogEntry,
@@ -43,6 +44,8 @@ declare global {
       pull(): Promise<void>
       fetchRemote(): Promise<void>
       checkoutBranch(branchName: string): Promise<void>
+      createBranch(branchName: string): Promise<void>
+      deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

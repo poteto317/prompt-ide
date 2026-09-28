@@ -1,4 +1,4 @@
-import type { GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
+import type { DeleteBranchResult, GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
 
 export function getGitStatus(): Promise<GitStatusResult> {
   return window.api.getGitStatus()
@@ -63,4 +63,12 @@ export function fetchRemote(): Promise<void> {
 
 export function checkoutBranch(branchName: string): Promise<void> {
   return window.api.checkoutBranch(branchName)
+}
+
+export function createBranch(branchName: string): Promise<void> {
+  return window.api.createBranch(branchName)
+}
+
+export function deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult> {
+  return window.api.deleteBranch(branchName, force)
 }

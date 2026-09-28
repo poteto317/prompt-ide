@@ -18,6 +18,8 @@ const mockPush = vi.hoisted(() => vi.fn())
 const mockPull = vi.hoisted(() => vi.fn())
 const mockFetchRemote = vi.hoisted(() => vi.fn())
 const mockCheckoutBranch = vi.hoisted(() => vi.fn())
+const mockCreateBranch = vi.hoisted(() => vi.fn())
+const mockDeleteBranch = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -35,6 +37,8 @@ vi.mock('../../gitService', () => ({
   pull: mockPull,
   fetchRemote: mockFetchRemote,
   checkoutBranch: mockCheckoutBranch,
+  createBranch: mockCreateBranch,
+  deleteBranch: mockDeleteBranch,
   // gitHandlers.ts と gitService.ts が同じ条件を共有するために切り出した実体を
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
@@ -939,6 +943,67 @@ describe('registerGitHandlers', () => {
       await expect(
         getRegisteredHandler('git:checkoutBranch')(makeEvent(1), 'feature/x')
       ).rejects.toThrow('checkout failed')
+    })
+  })
+
+  describe('git:createBranch', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:createBranch')(makeEvent(1), 'feature/new')
+      ).rejects.toThrow('No folder open')
+    })
+
+    it('allowedFolder と branchName を引数に createBranch を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCreateBranch.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:createBranch')(makeEvent(1), 'feature/new')
+      expect(mockCreateBranch).toHaveBeenCalledWith('/project', 'feature/new')
+    })
+
+    // IPC 境界は任意の値を受け付けるため、service の startsWith 等が TypeError で
+    // 落ちる前に型を検証する
+    it('branchName が文字列でなければ createBranch を呼ばずに拒否する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:createBranch')(makeEvent(1), 123)).rejects.toThrow(
+        'Invalid branch name'
+      )
+      expect(mockCreateBranch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('git:deleteBranch', () => {
+    it('allowedFolder・branchName・force を引数に deleteBranch を呼び、結果を返す', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDeleteBranch.mockResolvedValue({ deleted: false, reason: 'not-fully-merged' })
+      await expect(
+        getRegisteredHandler('git:deleteBranch')(makeEvent(1), 'feature/x', false)
+      ).resolves.toEqual({ deleted: false, reason: 'not-fully-merged' })
+      expect(mockDeleteBranch).toHaveBeenCalledWith('/project', 'feature/x', false)
+    })
+
+    // force は真偽値だけを受け付ける。'true' 等の truthy な値で意図せず強制削除
+    // されるのを防ぐ
+    it('force が boolean でなければ deleteBranch を呼ばずに拒否する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:deleteBranch')(makeEvent(1), 'feature/x', 'true')
+      ).rejects.toThrow('Invalid force flag')
+      expect(mockDeleteBranch).not.toHaveBeenCalled()
+    })
+
+    it('branchName が文字列でなければ deleteBranch を呼ばずに拒否する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:deleteBranch')(makeEvent(1), null, false)
+      ).rejects.toThrow('Invalid branch name')
+      expect(mockDeleteBranch).not.toHaveBeenCalled()
     })
   })
 })

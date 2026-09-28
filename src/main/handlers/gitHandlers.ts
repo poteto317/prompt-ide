@@ -15,7 +15,9 @@ import {
   push,
   pull,
   fetchRemote,
-  checkoutBranch
+  checkoutBranch,
+  createBranch,
+  deleteBranch
 } from '../gitService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -238,4 +240,21 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await checkoutBranch(allowedFolder, branchName)
   })
+
+  ipcMain.handle('git:createBranch', async (event: IpcMainInvokeEvent, branchName: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    if (typeof branchName !== 'string') throw new Error('Invalid branch name')
+    await createBranch(allowedFolder, branchName)
+  })
+
+  // force は厳密に boolean だけを受け付ける('true' 等の truthy な値で強制削除されないため)
+  ipcMain.handle(
+    'git:deleteBranch',
+    async (event: IpcMainInvokeEvent, branchName: unknown, force: unknown) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      if (typeof branchName !== 'string') throw new Error('Invalid branch name')
+      if (typeof force !== 'boolean') throw new Error('Invalid force flag')
+      return deleteBranch(allowedFolder, branchName, force)
+    }
+  )
 }

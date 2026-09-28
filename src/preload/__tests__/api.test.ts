@@ -69,6 +69,16 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:checkoutBranch', 'feature/x']
   ],
   [
+    'createBranch は git:createBranch チャンネルに branchName を渡す',
+    () => api.createBranch('feature/new'),
+    ['git:createBranch', 'feature/new']
+  ],
+  [
+    'deleteBranch は git:deleteBranch チャンネルに branchName と force を渡す',
+    () => api.deleteBranch('feature/x', true),
+    ['git:deleteBranch', 'feature/x', true]
+  ],
+  [
     'hasApiKey は settings:hasApiKey チャンネルを呼び出す',
     () => api.hasApiKey(),
     ['settings:hasApiKey']

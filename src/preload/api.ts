@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type {
   CLIOnlyToolId,
+  DeleteBranchResult,
   FileTreeNode,
   GitStatusResult,
   GitLogEntry,
@@ -51,6 +52,10 @@ export const api = {
   fetchRemote: (): Promise<void> => ipcRenderer.invoke('git:fetch'),
   checkoutBranch: (branchName: string): Promise<void> =>
     ipcRenderer.invoke('git:checkoutBranch', branchName),
+  createBranch: (branchName: string): Promise<void> =>
+    ipcRenderer.invoke('git:createBranch', branchName),
+  deleteBranch: (branchName: string, force: boolean): Promise<DeleteBranchResult> =>
+    ipcRenderer.invoke('git:deleteBranch', branchName, force),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
