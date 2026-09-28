@@ -1,4 +1,4 @@
-import type { GitFileStatus } from '@shared/types'
+import type { GitFileStatus, GitStatusResult } from '@shared/types'
 
 export function statusChar(code: string): string {
   if (code === '?') return 'U'
@@ -43,4 +43,12 @@ export function isUntrackedFile(f: GitFileStatus): boolean {
 // 一覧の表示と自動クローズの判定が食い違うため共有する
 export function isUnstagedFile(f: GitFileStatus): boolean {
   return f.workingDir !== ' ' || isUntrackedFile(f)
+}
+
+// 「リポジトリが無ければ Git 操作は実行不可」という判定は useGitRemoteOperations.ts
+// (push/pull/fetch)と useGitBranchOperations.ts(ブランチ切替)がそれぞれ独立に
+// 同じ式を書いていた。isStagedFile 等と同じ理由(片方だけ判定基準を変えると
+// 操作間で disabled 判定が食い違う)で共有ヘルパーに統一する
+export function isGitOperationDisabled(gitStatus: GitStatusResult | null): boolean {
+  return gitStatus === null || !gitStatus.isRepo
 }

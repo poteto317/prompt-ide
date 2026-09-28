@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { statusChar, isStagedFile, isUntrackedFile, isUnstagedFile } from '../gitUtils'
+import type { GitStatusResult } from '@shared/types'
+import {
+  statusChar,
+  isStagedFile,
+  isUntrackedFile,
+  isUnstagedFile,
+  isGitOperationDisabled
+} from '../gitUtils'
 
 describe('statusChar', () => {
   it('"?" → "U"（未追跡ファイル）', () => {
@@ -99,5 +106,32 @@ describe('isUnstagedFile', () => {
 
   it('workingDir が変更なし(" ")かつ追跡済みの場合 false を返す(ステージ済みのみの変更)', () => {
     expect(isUnstagedFile({ path: 'a.ts', index: 'M', workingDir: ' ' })).toBe(false)
+  })
+})
+
+describe('isGitOperationDisabled', () => {
+  // 「リポジトリが無ければ Git 操作(push/pull/fetch/ブランチ切替等)は実行不可」
+  // という判定は useGitRemoteOperations.ts と useGitBranchOperations.ts が
+  // それぞれ独立に `gitStatus === null || !gitStatus.isRepo` と書いていた。
+  // 将来この判定条件が変わったときに片方だけ直し忘れると、push/pull/fetch と
+  // ブランチ切替とで disabled 判定が食い違ってしまうため共有ヘルパーに統一する
+  const repoStatus: GitStatusResult = {
+    isRepo: true,
+    branch: 'main',
+    ahead: 0,
+    behind: 0,
+    files: []
+  }
+
+  it('gitStatus が null のとき true を返す', () => {
+    expect(isGitOperationDisabled(null)).toBe(true)
+  })
+
+  it('isRepo: false のとき true を返す', () => {
+    expect(isGitOperationDisabled({ ...repoStatus, isRepo: false })).toBe(true)
+  })
+
+  it('isRepo: true のとき false を返す', () => {
+    expect(isGitOperationDisabled(repoStatus)).toBe(false)
   })
 })
