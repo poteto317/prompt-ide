@@ -48,6 +48,7 @@
   - 空文字（前後の空白は trim する）: 「名前を入力してください」
   - `-` で始まる: 「`-` で始まる名前は使用できません」
   - 既存のローカルブランチ名と一致する: 「同じ名前のブランチが既に存在します」
+  - 既存のローカルブランチと階層が衝突する（`main` に対する `main/sub`、`feature/x` に対する `feature`）: 「既存のブランチ <衝突するブランチ名> と名前が衝突します」（refs/heads 配下はディレクトリ構造のため共存できず、git は英語の `cannot lock ref` エラーで失敗するため。レビュー指摘で追加）
   - `@` のみの名前: 「この名前は使用できません」（`git checkout @` が HEAD と解釈され、作成後に
     切り替えられないため）
 - それ以外の形式上の検証（`..`、空白、`~^:?*[\`、末尾の `.lock` 等）は main 側の
@@ -100,6 +101,7 @@
   - 名前が `-` で始まる: 「`-` で始まるブランチ名は使用できません: <name>」
   - `git check-ref-format --branch` で不正: 「ブランチ名として使用できない名前です: <name>」
   - 同名ブランチが既に存在する: 「同じ名前のブランチが既に存在します: <name>」
+  - 既存ブランチと階層が衝突する: 「既存のブランチ <衝突するブランチ名> と名前が衝突します: <name>」（判定は `@shared/branchName` の `findConflictingBranchName` を main/renderer で共有）
   - 削除対象が存在しない: 「存在しないブランチです: <name>」（既存の checkout と同じ文言）
   - 削除対象が現在ブランチ: 「現在のブランチは削除できません: <name>」
   - 削除対象が別の worktree で使用中: 「他のワークツリーで使用中のブランチは削除できません: <name>」
@@ -119,7 +121,7 @@
   2. `git check-ref-format --branch <branchName>` で検証する。失敗したら日本語エラーに変換する。
      成功時の出力（正規化後の名前）が入力と一致しない場合も拒否する（`--branch` は `@{-1}` の
      ような「直前のブランチ」記法を実在のブランチ名へ展開して成功扱いにするため）
-  3. `branchLocal()` の一覧に同名があれば拒否する
+  3. `branchLocal()` の一覧に同名、または階層が衝突する既存ブランチ（`main` に対する `main/sub` 等。`@shared/branchName` の `findConflictingBranchName` で判定）があれば拒否する
   4. `checkout -b <branchName>`（`checkoutLocalBranch`）を実行する
 - `deleteBranch(folderPath: string, branchName: string, force: boolean): Promise<DeleteBranchResult>`
   1. `branchLocal()` の一覧に無ければ拒否する（許可リスト。checkout と同じ方式）
@@ -216,7 +218,7 @@ export type DeleteBranchResult = { deleted: true } | { deleted: false; reason: '
 ## テスト方針
 
 - `gitService.test.ts`
-  - `createBranch`: `-` 始まりの拒否、`check-ref-format` 失敗時の日本語エラー、同名の拒否、
+  - `createBranch`: `-` 始まりの拒否、`check-ref-format` 失敗時の日本語エラー、同名の拒否、階層が衝突する名前の拒否（両方向）、
     正常時に `checkout -b` 相当が呼ばれること、検証失敗時は `checkout` が呼ばれないこと
   - `deleteBranch`: 実在しない名前・現在ブランチ・別 worktree で使用中の拒否、`force` による
     `-d` / `-D` の切り替え、マージ判定の基準（upstream が実在すれば upstream、無い・消えていれば
@@ -250,3 +252,21 @@ export type DeleteBranchResult = { deleted: true } | { deleted: false; reason: '
 4. `NameInputDialog` の `validate` 追加
 5. `BranchSwitcherMenu` / `BranchSwitcher` の UI と配線
 6. ROADMAP の更新（「ブランチの作成・削除」を実装済みへ移し、未実装側は「ブランチのマージ」に絞る）
+
+## 実装後のリファクタリング（単一責任への分割）
+
+実装完了後、origin/main からの変更箇所を単一責任の観点で見直し、次のように分割した。
+振る舞いは変えていない（worktree 一覧の CRLF 対応と、空文字の事前拒否を除く）。
+
+| 分割先                                                                   | 責務                                                                                                                                                                            | 分割元                                                                        |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `src/shared/branchName.ts`                                               | アプリ独自のブランチ名規則（空文字・`-` 始まり・`@` のみ）を違反の種類として返す。既存ブランチとの階層衝突の検出（`findConflictingBranchName`）も持つ。文言への変換は呼び出し側 | main の `createBranch` と renderer の `validateBranchName` に重複していた判定 |
+| `src/main/gitWorktreeParser.ts`                                          | `git worktree list --porcelain` の出力からチェックアウト中のブランチ名を集める（純粋関数。CRLF にも対応）                                                                       | `gitService.deleteBranch` 内の git 呼び出しと一体だった解析                   |
+| `gitService.ts` の `assertCreatableBranchName` / `assertDeletableBranch` | 作成・削除できるかの検証だけを担う。`createBranch` / `deleteBranch` は検証と実行を順に呼ぶだけにした                                                                            | `createBranch` / `deleteBranch`                                               |
+| `gitHandlers.ts` の `assertBranchNameArg` / `assertForceFlagArg`         | IPC 引数の型検証                                                                                                                                                                | 2つのハンドラーに重複していた `typeof` 判定                                   |
+| `src/renderer/src/lib/branchDeletion.ts`                                 | 安全削除 → 未マージなら強制削除の確認 → 強制削除、の手順と確認文言                                                                                                              | `useGitBranchOperations.deleteBranch`                                         |
+| `useGitBranchOperations.ts` の `isBranchOperationBusy`                   | checkout/作成/削除に共通の開始条件                                                                                                                                              | 3か所に重複していた `isBusy` の式                                             |
+| `src/renderer/src/lib/branchTriggerLabel.ts`                             | 状態からトリガーの表示テキストと `aria-label` を決める                                                                                                                          | `BranchSwitcher`                                                              |
+| `CreateBranchDialog.tsx`                                                 | `NameInputDialog` にブランチ名用の検証を差し込む                                                                                                                                | `BranchSwitcher`                                                              |
+| `BranchMenuItem.tsx`                                                     | ブランチ一覧の1行（radio・削除ボタン・`Delete` キー）                                                                                                                           | `BranchSwitcherMenu`                                                          |
+| `src/renderer/src/types.ts` の `BranchOperationKind`                     | フックと表示側（lib）の双方が使う型                                                                                                                                             | `useGitBranchOperations.ts`                                                   |
