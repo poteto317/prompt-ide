@@ -93,4 +93,27 @@ describe('useFileOperationLock', () => {
     })
     expect(result.current.isLocked('a.ts')).toBe(false)
   })
+
+  it('lockGlobal すると isAnyLocked が true を返す(個別パスのロックが無くても)', () => {
+    // 新規の useGitRemoteOperations の pull は「commit 実行中かどうか」を
+    // path 非依存に判定する必要がある。isAnyLocked が個別パスのロック(ハンク
+    // 操作)しか見ないと、lockGlobal(commit 実行中)を検知できず、
+    // commit と pull が同時に .git/index を書き換えてしまう
+    const { result } = renderHook(() => useFileOperationLock())
+    act(() => {
+      result.current.lockGlobal()
+    })
+    expect(result.current.isAnyLocked()).toBe(true)
+  })
+
+  it('unlockGlobal すると isAnyLocked が false に戻る', () => {
+    const { result } = renderHook(() => useFileOperationLock())
+    act(() => {
+      result.current.lockGlobal()
+    })
+    act(() => {
+      result.current.unlockGlobal()
+    })
+    expect(result.current.isAnyLocked()).toBe(false)
+  })
 })

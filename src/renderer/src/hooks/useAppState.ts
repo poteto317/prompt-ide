@@ -5,6 +5,7 @@ import { usePrompts } from './usePrompts'
 import { useProgressTasks } from './useProgressTasks'
 import { useGitStatus } from './useGitStatus'
 import { useGitOperations } from './useGitOperations'
+import { useGitRemoteOperations } from './useGitRemoteOperations'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
@@ -36,6 +37,7 @@ type AppState = {
   ReturnType<typeof useProgressTasks> &
   ReturnType<typeof useGitStatus> &
   ReturnType<typeof useGitOperations> &
+  ReturnType<typeof useGitRemoteOperations> &
   ReturnType<typeof useSettings> &
   ReturnType<typeof usePromptExecution> &
   ReturnType<typeof useHistory> &
@@ -56,6 +58,11 @@ export function useAppState(): AppState {
   // 実行中でももう片方の操作が弾かれず、index への同時書き込みが競合してしまう
   const fileOperationLock = useFileOperationLock()
   const gitOperations = useGitOperations(git.refreshGitStatus, fileOperationLock)
+  const gitRemoteOperations = useGitRemoteOperations(
+    git.gitStatus,
+    git.refreshGitStatus,
+    fileOperationLock
+  )
   const diffTabs = useDiffTabs()
   const diffOperations = useDiffOperations(
     diffTabs.activeDiffTab,
@@ -212,6 +219,7 @@ export function useAppState(): AppState {
     ...progress,
     ...git,
     ...gitOperations,
+    ...gitRemoteOperations,
     ...diffTabs,
     ...diffOperations,
     ...gitHistory,

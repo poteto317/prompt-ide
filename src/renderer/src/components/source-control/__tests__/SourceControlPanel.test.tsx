@@ -25,7 +25,17 @@ const baseProps = {
   isLoadingFolder: false,
   historyError: null as Error | null,
   onLoadMoreLog: vi.fn(),
-  operationError: null as Error | null
+  operationError: null as Error | null,
+  isPushing: false,
+  isPulling: false,
+  isFetching: false,
+  isPushBlocked: false,
+  isPullBlocked: false,
+  isRemoteOperationDisabled: false,
+  onPush: vi.fn().mockResolvedValue(undefined),
+  onPull: vi.fn().mockResolvedValue(undefined),
+  onFetch: vi.fn().mockResolvedValue(undefined),
+  remoteOperationError: null as Error | null
 }
 
 const repoStatus: GitStatusResult = {
@@ -143,16 +153,15 @@ describe('SourceControlPanel', () => {
     expect(screen.getByText('↓2')).toBeInTheDocument()
   })
 
+  // 更新ボタンのクリックで onRefresh が呼ばれること自体は、Panel が受け取った
+  // props を SourceControlToolbar へ正しく橋渡ししているかの確認。ボタンの
+  // disabled 判定など Toolbar 内部の表示ロジックは SourceControlToolbar.test.tsx
+  // 側の責務であり、ここでは重複させない
   it('更新ボタンをクリックすると onRefresh が呼ばれる', async () => {
     const onRefresh = vi.fn()
     render(<SourceControlPanel {...baseProps} onRefresh={onRefresh} />)
     await userEvent.click(screen.getByRole('button', { name: '更新' }))
     expect(onRefresh).toHaveBeenCalledOnce()
-  })
-
-  it('gitLoading が true のとき更新ボタンが disabled になる', () => {
-    render(<SourceControlPanel {...baseProps} gitLoading={true} />)
-    expect(screen.getByRole('button', { name: '更新' })).toBeDisabled()
   })
 
   it('gitError が渡されたとき error.message が表示される', () => {
@@ -197,6 +206,16 @@ describe('SourceControlPanel', () => {
         historyError={null}
         onLoadMoreLog={vi.fn()}
         operationError={new Error('ステージに失敗しました')}
+        isPushing={false}
+        isPulling={false}
+        isFetching={false}
+        isPushBlocked={false}
+        isPullBlocked={false}
+        isRemoteOperationDisabled={false}
+        onPush={vi.fn()}
+        onPull={vi.fn()}
+        onFetch={vi.fn()}
+        remoteOperationError={null}
       />
     )
     expect(screen.getByText('ステージに失敗しました')).toBeInTheDocument()
@@ -211,5 +230,40 @@ describe('SourceControlPanel', () => {
       />
     )
     expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
+  })
+
+  // 更新ボタンと同じ理由(Panel → Toolbar への橋渡し確認)。disabled 判定の
+  // 全パターン(gitStatus null・isRepo false・isPulling/isPushing 相互排他等)は
+  // SourceControlToolbar.test.tsx 側で検証済みのため、ここでは重複させない
+  it('フェッチボタンをクリックすると onFetch が呼ばれる', async () => {
+    const onFetch = vi.fn().mockResolvedValue(undefined)
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onFetch={onFetch} />)
+    await userEvent.click(screen.getByRole('button', { name: 'フェッチ' }))
+    expect(onFetch).toHaveBeenCalledOnce()
+  })
+
+  it('プルボタンをクリックすると onPull が呼ばれる', async () => {
+    const onPull = vi.fn().mockResolvedValue(undefined)
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onPull={onPull} />)
+    await userEvent.click(screen.getByRole('button', { name: 'プル' }))
+    expect(onPull).toHaveBeenCalledOnce()
+  })
+
+  it('プッシュボタンをクリックすると onPush が呼ばれる', async () => {
+    const onPush = vi.fn().mockResolvedValue(undefined)
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onPush={onPush} />)
+    await userEvent.click(screen.getByRole('button', { name: 'プッシュ' }))
+    expect(onPush).toHaveBeenCalledOnce()
+  })
+
+  it('remoteOperationError があれば表示する', () => {
+    render(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        remoteOperationError={new Error('fatal: Authentication failed')}
+      />
+    )
+    expect(screen.getByText('fatal: Authentication failed')).toBeInTheDocument()
   })
 })

@@ -988,7 +988,10 @@ body {
   flex-shrink: 0;
 }
 
-.source-control-panel__refresh-btn {
+.source-control-panel__refresh-btn,
+.source-control-panel__fetch-btn,
+.source-control-panel__pull-btn,
+.source-control-panel__push-btn {
   background: none;
   color: #969696;
   border: 1px solid #555555;
@@ -997,12 +1000,18 @@ body {
   cursor: pointer;
 }
 
-.source-control-panel__refresh-btn:hover:not(:disabled) {
+.source-control-panel__refresh-btn:hover:not(:disabled),
+.source-control-panel__fetch-btn:hover:not(:disabled),
+.source-control-panel__pull-btn:hover:not(:disabled),
+.source-control-panel__push-btn:hover:not(:disabled) {
   color: #cccccc;
   border-color: #888888;
 }
 
-.source-control-panel__refresh-btn:disabled {
+.source-control-panel__refresh-btn:disabled,
+.source-control-panel__fetch-btn:disabled,
+.source-control-panel__pull-btn:disabled,
+.source-control-panel__push-btn:disabled {
   opacity: 0.4;
   cursor: default;
 }
@@ -1011,6 +1020,10 @@ body {
   margin: 8px 12px;
   font-size: 12px;
   color: #f48771;
+  /* push 拒否時の複数行ヒント(non-fast-forward 等)や認証エラーメッセージは
+     改行を含むことが多い。white-space の既定(normal)は改行を潰して1行に
+     詰めてしまい、ヒントが読めなくなる */
+  white-space: pre-wrap;
 }
 
 .source-control-panel__loading,

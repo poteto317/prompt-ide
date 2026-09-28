@@ -1,5 +1,6 @@
 import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
+import SourceControlToolbar from './SourceControlToolbar'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 
 interface Props {
@@ -26,6 +27,16 @@ interface Props {
   historyError: Error | null
   onLoadMoreLog: () => void
   operationError: Error | null
+  isPushing: boolean
+  isPulling: boolean
+  isFetching: boolean
+  isPushBlocked: boolean
+  isPullBlocked: boolean
+  isRemoteOperationDisabled: boolean
+  onPush: () => Promise<void>
+  onPull: () => Promise<void>
+  onFetch: () => Promise<void>
+  remoteOperationError: Error | null
 }
 
 export default function SourceControlPanel({
@@ -51,23 +62,38 @@ export default function SourceControlPanel({
   isLoadingFolder,
   historyError,
   onLoadMoreLog,
-  operationError
+  operationError,
+  isPushing,
+  isPulling,
+  isFetching,
+  isPushBlocked,
+  isPullBlocked,
+  isRemoteOperationDisabled,
+  onPush,
+  onPull,
+  onFetch,
+  remoteOperationError
 }: Props): React.JSX.Element {
   return (
     <div className="source-control-panel">
-      <div className="source-control-panel__toolbar">
-        <button
-          type="button"
-          className="source-control-panel__refresh-btn"
-          onClick={onRefresh}
-          disabled={gitLoading}
-          aria-label="更新"
-        >
-          更新
-        </button>
-      </div>
+      <SourceControlToolbar
+        gitLoading={gitLoading}
+        onRefresh={onRefresh}
+        isPushing={isPushing}
+        isPulling={isPulling}
+        isFetching={isFetching}
+        isPushBlocked={isPushBlocked}
+        isPullBlocked={isPullBlocked}
+        isRemoteOperationDisabled={isRemoteOperationDisabled}
+        onPush={onPush}
+        onPull={onPull}
+        onFetch={onFetch}
+      />
       {gitError && <p className="source-control-panel__error">{gitError.message}</p>}
       {operationError && <p className="source-control-panel__error">{operationError.message}</p>}
+      {remoteOperationError && (
+        <p className="source-control-panel__error">{remoteOperationError.message}</p>
+      )}
       {/* 「読み込み中」を出すのは、まだ表示できる内容が何も無い初回取得のときだけ。
           再取得(stage/unstage/commit/ファイル保存のたびに走る)でも出してしまうと、
           下の GitRepoView がアンマウントされ、CommitSection のローカル state

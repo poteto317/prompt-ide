@@ -59,10 +59,12 @@ export default function GitRepoView({
   onLoadMoreLog
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
-  // stage/unstage(useGitOperations)実行中、またはハンク操作(useDiffOperations の
-  // git apply --cached)実行中は、runCommitOperation が .git/index の競合を避けて
-  // サイレントに no-op する(useGitOperations.ts 参照)。ボタン側でも揃えないと、
-  // 押しても何も起きない状態に見えてしまう
+  // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
+  // git apply --cached)実行中、または pull(useGitRemoteOperations が working
+  // tree/index を書き換える間 lockGlobal で isAnyLocked() を true にする)実行中は、
+  // runCommitOperation が .git/index の競合を避けてサイレントに no-op する
+  // (useGitOperations.ts 参照)。ボタン側でも揃えないと、押しても何も起きない
+  // 状態に見えてしまう
   const isBlockedByOtherOperation = stagingPaths.size > 0 || isAnyLocked()
   return (
     <>

@@ -65,6 +65,16 @@ interface Props {
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
   gitOperationError: Error | null
+  isPushing: boolean
+  isPulling: boolean
+  isFetching: boolean
+  isPushBlocked: boolean
+  isPullBlocked: boolean
+  isRemoteOperationDisabled: boolean
+  onPush: () => Promise<void>
+  onPull: () => Promise<void>
+  onFetch: () => Promise<void>
+  gitRemoteOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
   lastCommitMessage: string | null
@@ -133,6 +143,16 @@ export default function Sidebar({
   isCommitting,
   onCommit,
   gitOperationError,
+  isPushing,
+  isPulling,
+  isFetching,
+  isPushBlocked,
+  isPullBlocked,
+  isRemoteOperationDisabled,
+  onPush,
+  onPull,
+  onFetch,
+  gitRemoteOperationError,
   onOpenDiff,
   onAmend,
   lastCommitMessage,
@@ -222,6 +242,16 @@ export default function Sidebar({
           onOpenDiff={onOpenDiff}
           isCommitting={isCommitting}
           onCommit={onCommit}
+          isPushing={isPushing}
+          isPulling={isPulling}
+          isFetching={isFetching}
+          isPushBlocked={isPushBlocked}
+          isPullBlocked={isPullBlocked}
+          isRemoteOperationDisabled={isRemoteOperationDisabled}
+          onPush={onPush}
+          onPull={onPull}
+          onFetch={onFetch}
+          remoteOperationError={gitRemoteOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}
           log={log}

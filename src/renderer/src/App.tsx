@@ -66,6 +66,16 @@ export default function App(): React.JSX.Element {
     isCommitting,
     commit,
     operationError,
+    isPushing,
+    isPulling,
+    isFetching,
+    isPushBlocked,
+    isPullBlocked,
+    isRemoteOperationDisabled,
+    push,
+    pull,
+    fetchRemote,
+    remoteOperationError,
     diffTabs,
     activeDiffTab,
     openDiffTab,
@@ -246,6 +256,16 @@ export default function App(): React.JSX.Element {
               isCommitting={isCommitting}
               onCommit={handleCommit}
               gitOperationError={operationError}
+              isPushing={isPushing}
+              isPulling={isPulling}
+              isFetching={isFetching}
+              isPushBlocked={isPushBlocked}
+              isPullBlocked={isPullBlocked}
+              isRemoteOperationDisabled={isRemoteOperationDisabled}
+              onPush={push}
+              onPull={pull}
+              onFetch={fetchRemote}
+              gitRemoteOperationError={remoteOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
               lastCommitMessage={log[0]?.message ?? null}

@@ -57,7 +57,11 @@ export function useFileOperationLock(): FileOperationLock {
     forceRender((n) => n + 1)
   }
 
-  const isAnyLocked = (): boolean => lockedPathsRef.current.size > 0
+  // グローバルロック(commit 実行中)も「何かがロックされている」に含める。
+  // 含めないと、push/pull(useGitRemoteOperations.ts)が commit 実行中かどうかを
+  // path 非依存に判定する手段が無くなり、commit と pull が同時に .git/index を
+  // 書き換えてしまう
+  const isAnyLocked = (): boolean => lockedPathsRef.current.size > 0 || globallyLockedRef.current
 
   const lockGlobal = (): void => {
     globallyLockedRef.current = true
