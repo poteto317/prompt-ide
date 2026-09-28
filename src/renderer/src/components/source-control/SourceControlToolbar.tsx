@@ -48,7 +48,7 @@ export default function SourceControlToolbar({
         className="source-control-panel__fetch-btn"
         onClick={onFetch}
         disabled={isRemoteOperationDisabled || isFetching}
-        aria-label="フェッチ"
+        aria-label={isFetching ? 'フェッチ中' : 'フェッチ'}
       >
         {isFetching ? 'フェッチ中...' : 'フェッチ'}
       </button>
@@ -57,7 +57,7 @@ export default function SourceControlToolbar({
         className="source-control-panel__pull-btn"
         onClick={onPull}
         disabled={isRemoteOperationDisabled || isPulling || isPullBlocked}
-        aria-label="プル"
+        aria-label={isPulling ? 'プル中' : 'プル'}
       >
         {isPulling ? 'プル中...' : 'プル'}
       </button>
@@ -66,7 +66,7 @@ export default function SourceControlToolbar({
         className="source-control-panel__push-btn"
         onClick={onPush}
         disabled={isRemoteOperationDisabled || isPushing || isPushBlocked}
-        aria-label="プッシュ"
+        aria-label={isPushing ? 'プッシュ中' : 'プッシュ'}
       >
         {isPushing ? 'プッシュ中...' : 'プッシュ'}
       </button>

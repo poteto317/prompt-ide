@@ -63,22 +63,29 @@ describe('SourceControlToolbar', () => {
     expect(screen.getByRole('button', { name: 'プッシュ' })).toBeDisabled()
   })
 
-  it('isFetching が true のときフェッチボタンは「フェッチ中...」表示になり disabled になる', () => {
+  // aria-label は表示テキストと同期させる。固定のまま("フェッチ"等)にすると、
+  // 視覚的には「フェッチ中...」に変わっているのにスクリーンリーダーには
+  // 変化が伝わらず、状態表現が支援技術で追えなくなる(CLAUDE.md の
+  // 「選択状態のARIA」原則と同じ理由)
+  it('isFetching が true のときフェッチボタンは「フェッチ中...」表示・aria-label になり disabled になる', () => {
     render(<SourceControlToolbar {...baseProps} isFetching={true} />)
-    expect(screen.getByRole('button', { name: 'フェッチ' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'フェッチ中' })).toBeDisabled()
     expect(screen.getByText('フェッチ中...')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'フェッチ' })).not.toBeInTheDocument()
   })
 
-  it('isPulling が true のときプルボタンは「プル中...」表示になる', () => {
+  it('isPulling が true のときプルボタンは「プル中...」表示・aria-label になる', () => {
     render(<SourceControlToolbar {...baseProps} isPulling={true} />)
-    expect(screen.getByRole('button', { name: 'プル' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'プル中' })).toBeDisabled()
     expect(screen.getByText('プル中...')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'プル' })).not.toBeInTheDocument()
   })
 
-  it('isPushing が true のときプッシュボタンは「プッシュ中...」表示になる', () => {
+  it('isPushing が true のときプッシュボタンは「プッシュ中...」表示・aria-label になる', () => {
     render(<SourceControlToolbar {...baseProps} isPushing={true} />)
-    expect(screen.getByRole('button', { name: 'プッシュ' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'プッシュ中' })).toBeDisabled()
     expect(screen.getByText('プッシュ中...')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'プッシュ' })).not.toBeInTheDocument()
   })
 
   // push/pull が同時実行不可という業務ルールの判定自体は useGitRemoteOperations

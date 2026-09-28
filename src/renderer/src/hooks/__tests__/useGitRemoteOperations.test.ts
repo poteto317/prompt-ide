@@ -187,6 +187,36 @@ describe('pull', () => {
     expect(refreshGitStatus).toHaveBeenCalledOnce()
   })
 
+  // fetchRemote の「実行中の多重呼び出しは1回しか呼ばない」と同じ観点。
+  // isBusy() は同期的に ref を見るため、fetchRemote と同じ useRunRemoteOperation
+  // を経由する pull/push でも同様に保証されるはずだが、fetchRemote にしか
+  // 専用テストが無いとカバレッジが非対称になり、将来 push/pull だけ別実装に
+  // リファクタされた場合の回帰を検知できない
+  it('実行中の多重呼び出しは gitApi.pull を1回しか呼ばない', async () => {
+    let resolvePull: () => void = () => {}
+    mockPull.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePull = resolve
+        })
+    )
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    let first: Promise<void> = Promise.resolve()
+    let second: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.pull()
+      second = result.current.pull()
+    })
+
+    await act(async () => {
+      resolvePull()
+      await Promise.all([first, second])
+    })
+    expect(mockPull).toHaveBeenCalledTimes(1)
+  })
+
   it('実行中は isPulling が true、完了後 false に戻る', async () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
@@ -319,6 +349,33 @@ describe('push', () => {
 
     expect(mockPush).toHaveBeenCalledOnce()
     expect(refreshGitStatus).toHaveBeenCalledOnce()
+  })
+
+  // fetchRemote/pull の「実行中の多重呼び出しは1回しか呼ばない」と同じ観点。
+  // カバレッジの非対称性を無くす
+  it('実行中の多重呼び出しは gitApi.push を1回しか呼ばない', async () => {
+    let resolvePush: () => void = () => {}
+    mockPush.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve
+        })
+    )
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    let first: Promise<void> = Promise.resolve()
+    let second: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.push()
+      second = result.current.push()
+    })
+
+    await act(async () => {
+      resolvePush()
+      await Promise.all([first, second])
+    })
+    expect(mockPush).toHaveBeenCalledTimes(1)
   })
 
   it('実行中は isPushing が true、完了後 false に戻る', async () => {
