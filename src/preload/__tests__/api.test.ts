@@ -60,6 +60,11 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     () => api.getGitStatus(),
     ['git:getStatus']
   ],
+  [
+    'discardChanges は git:discardChanges チャンネルに filePath を渡す',
+    () => api.discardChanges('src/a.ts'),
+    ['git:discardChanges', 'src/a.ts']
+  ],
   ['push は git:push チャンネルを呼び出す', () => api.push(), ['git:push']],
   ['pull は git:pull チャンネルを呼び出す', () => api.pull(), ['git:pull']],
   ['fetchRemote は git:fetch チャンネルを呼び出す', () => api.fetchRemote(), ['git:fetch']],

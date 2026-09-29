@@ -5,6 +5,7 @@ import {
   getGitStatus,
   stageFile,
   unstageFile,
+  discardFileChanges,
   commit,
   getDiff,
   getLog,
@@ -20,6 +21,7 @@ import {
   deleteBranch
 } from '../gitService'
 import { stageHunk, unstageHunk } from '../gitApply'
+import { moveToTrash } from '../trash'
 import type { FolderAccessManager } from '../folderAccessManager'
 import { toGitRelativePath } from '../pathNormalize'
 import { getAllowedFolder, assertFileWithinFolder } from './fileAccessGuard'
@@ -138,6 +140,13 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     // 理由で相対パス化する
     const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
     await stageFile(allowedFolder, relativePath)
+  })
+
+  ipcMain.handle('git:discardChanges', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    // git:stage と同じ理由(失敗時のエラーに OS 絶対パスを乗せない)で相対パス化する
+    const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
+    await discardFileChanges(allowedFolder, relativePath, moveToTrash)
   })
 
   ipcMain.handle(

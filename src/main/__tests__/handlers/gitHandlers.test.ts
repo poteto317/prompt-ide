@@ -6,6 +6,8 @@ const mockHandle = vi.hoisted(() => vi.fn())
 const mockGetGitStatus = vi.hoisted(() => vi.fn())
 const mockStageFile = vi.hoisted(() => vi.fn())
 const mockUnstageFile = vi.hoisted(() => vi.fn())
+const mockDiscardFileChanges = vi.hoisted(() => vi.fn())
+const mockMoveToTrash = vi.hoisted(() => vi.fn())
 const mockCommit = vi.hoisted(() => vi.fn())
 const mockGetDiff = vi.hoisted(() => vi.fn())
 const mockStageHunk = vi.hoisted(() => vi.fn())
@@ -27,6 +29,7 @@ vi.mock('../../gitService', () => ({
   getGitStatus: mockGetGitStatus,
   stageFile: mockStageFile,
   unstageFile: mockUnstageFile,
+  discardFileChanges: mockDiscardFileChanges,
   commit: mockCommit,
   getDiff: mockGetDiff,
   getLog: mockGetLog,
@@ -49,6 +52,8 @@ vi.mock('../../gitApply', () => ({
   stageHunk: mockStageHunk,
   unstageHunk: mockUnstageHunk
 }))
+
+vi.mock('../../trash', () => ({ moveToTrash: mockMoveToTrash }))
 
 vi.mock('../../pathNormalize', () => ({
   toGitRelativePath: mockToGitRelativePath
@@ -209,6 +214,84 @@ describe('registerGitHandlers', () => {
       ).rejects.toThrow('Access denied')
       expect(assertParentWithinFolder).not.toHaveBeenCalled()
       expect(mockStageFile).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('git:discardChanges', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:discardChanges')(makeEvent(1), 'src/index.ts')
+      ).rejects.toThrow('No folder open')
+    })
+
+    // stage と同じく、失敗時のエラーに OS 絶対パスが乗らないよう相対パスで渡す。
+    // ゴミ箱への移動は Electron に依存するため main/trash.ts の関数を注入する
+    it('境界チェック後、リポジトリ相対パスと moveToTrash を渡して discardFileChanges を呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardFileChanges.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'src/index.ts')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockDiscardFileChanges).toHaveBeenCalledWith(
+        '/project',
+        'src/index.ts',
+        mockMoveToTrash
+      )
+    })
+
+    it('フォルダ外のパスは discardFileChanges を呼ばずにエラーを伝播する', async () => {
+      const assertWithinFolder = vi.fn().mockRejectedValue(new Error('Access denied'))
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:discardChanges')(makeEvent(1), '/outside/file.ts')
+      ).rejects.toThrow('Access denied')
+      expect(mockDiscardFileChanges).not.toHaveBeenCalled()
+    })
+
+    // git status は未追跡ディレクトリを 'newdir/' の形で返す
+    it('末尾が / の未追跡ディレクトリも相対パスへ変換して渡す', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardFileChanges.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'newdir/')
+      expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', 'newdir', mockMoveToTrash)
+    })
+
+    // シンボリックリンクの祖先ディレクトリ(linkd -> d)を経由したパスは、
+    // realpath 解決前の 'linkd/t.txt' のまま discardFileChanges に渡すと
+    // untracked(ls-files が空)と誤判定され、git の追跡下にある実体
+    // (d/t.txt)がゴミ箱へ移動されてしまう。resolveAndAssertRelativePath は
+    // 親ディレクトリを realpath 解決するため、正規化後の 'd/t.txt' が
+    // 渡ることを確認する
+    it('シンボリックリンクの祖先ディレクトリを経由したパスは正規化後の相対パスで渡す(未追跡誤判定によるゴミ箱送りを防ぐ)', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardFileChanges.mockResolvedValue(undefined)
+      // linkd -> d のシンボリックリンク。親ディレクトリ(/project/linkd)の
+      // realpath 解決結果が /project/d になる
+      mockRealpath.mockImplementation((p: string) =>
+        Promise.resolve(p === '/project/linkd' ? '/project/d' : p)
+      )
+      await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'linkd/t.txt')
+      expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', 'd/t.txt', mockMoveToTrash)
     })
   })
 

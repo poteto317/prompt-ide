@@ -12,6 +12,10 @@ export function unstageFile(filePath: string, renamedFrom?: string): Promise<voi
   return window.api.unstageFile(filePath, renamedFrom)
 }
 
+export function discardChanges(filePath: string): Promise<void> {
+  return window.api.discardChanges(filePath)
+}
+
 export function commitChanges(message: string): Promise<void> {
   return window.api.commitChanges(message)
 }

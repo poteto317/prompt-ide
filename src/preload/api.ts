@@ -30,6 +30,8 @@ export const api = {
   stageFile: (filePath: string): Promise<void> => ipcRenderer.invoke('git:stage', filePath),
   unstageFile: (filePath: string, renamedFrom?: string): Promise<void> =>
     ipcRenderer.invoke('git:unstage', filePath, renamedFrom),
+  discardChanges: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('git:discardChanges', filePath),
   commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
   getDiff: (
     filePath: string,

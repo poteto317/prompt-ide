@@ -27,6 +27,7 @@ declare global {
       getGitStatus(): Promise<GitStatusResult>
       stageFile(filePath: string): Promise<void>
       unstageFile(filePath: string, renamedFrom?: string): Promise<void>
+      discardChanges(filePath: string): Promise<void>
       commitChanges(message: string): Promise<void>
       getDiff(
         filePath: string,
