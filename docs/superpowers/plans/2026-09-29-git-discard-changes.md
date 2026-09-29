@@ -563,10 +563,12 @@ git commit -m "feat: 変更の取り消しをステージ操作と同じ直列�
 > 実行時の補足: 実装はユーザー承認済みのレビュー指摘を受け、上記に加えて
 > `deleteEntry`（`useFileTreeOperations`）と同じタブ保護を行うよう拡張されている。影響を受けた
 > 各タブについて、アクティブなタブなら `resetForFileChange`（保存世代を進め、古い `saveError` /
-> 保存中止通知もクリア）、そうでなければ `invalidatePath`（保存世代のみ）を呼び、
-> `closeTabsAtOrInside` はさらに早期リターン前に `invalidatePendingReads` で保留中の読み込みも
-> 無効化する。詳細は設計書（`docs/superpowers/specs/2026-09-29-git-discard-changes-design.md`）を
-> 参照。以降の Step 3 のコード例はこの拡張前のもので、最終的な実装とは一致しない。
+> 保存中止通知もクリア）、そうでなければ `invalidatePath`（保存世代のみ）を呼ぶ。また
+> `reloadOpenFile` / `closeTabsAtOrInside` はいずれも `invalidatePendingReads` で保留中の読み込みを
+> 無効化するが、呼ぶ位置が異なる（`reloadOpenFile` は対象タブが開いていない場合の早期リターンより
+> 後・読み込み完了後、`closeTabsAtOrInside` は影響タブが 0 件の場合の早期リターンより前）。詳細は
+> 設計書（`docs/superpowers/specs/2026-09-29-git-discard-changes-design.md`）を参照。以降の Step 3 の
+> コード例はこの拡張前のもので、最終的な実装とは一致しない。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
