@@ -667,3 +667,72 @@ describe('commit と共有 fileLock(ハンク操作)の排他制御', () => {
     expect(fileLock.unlockGlobal).toHaveBeenCalledOnce()
   })
 })
+
+describe('discardFile', () => {
+  it('gitApi.discardChanges を呼び、成功したら true を返して git status を再取得する', async () => {
+    vi.mocked(gitApi.discardChanges).mockResolvedValue(undefined)
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitOperations(refreshGitStatus, makeFileLock()))
+    let succeeded = false
+    await act(async () => {
+      succeeded = await result.current.discardFile('src/a.ts')
+    })
+    expect(succeeded).toBe(true)
+    expect(gitApi.discardChanges).toHaveBeenCalledWith('src/a.ts')
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+  })
+
+  it('失敗したら false を返し、operationError に反映する', async () => {
+    vi.mocked(gitApi.discardChanges).mockRejectedValue(
+      new Error('コンフリクト中のファイルは取り消せません: c.txt')
+    )
+    const { result } = renderHook(() =>
+      useGitOperations(vi.fn().mockResolvedValue(undefined), makeFileLock())
+    )
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.discardFile('c.txt')
+    })
+    expect(succeeded).toBe(false)
+    expect(result.current.operationError?.message).toBe(
+      'コンフリクト中のファイルは取り消せません: c.txt'
+    )
+  })
+
+  // restore は index の stat 情報を更新しうるため、.git/index を書き換える他の操作と
+  // 同時に走らせない(stage/unstage と同じ直列化に乗せる)
+  it('他の操作がロックを持っている間は呼ばずに false を返す', async () => {
+    const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
+    const { result } = renderHook(() =>
+      useGitOperations(vi.fn().mockResolvedValue(undefined), lock)
+    )
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.discardFile('src/a.ts')
+    })
+    expect(succeeded).toBe(false)
+    expect(gitApi.discardChanges).not.toHaveBeenCalled()
+  })
+
+  it('実行中は stagingPaths に対象パスが入り、同時の stageFile は呼ばれない', async () => {
+    let resolveDiscard: () => void = () => {}
+    vi.mocked(gitApi.discardChanges).mockReturnValue(new Promise<void>((r) => (resolveDiscard = r)))
+    const { result } = renderHook(() =>
+      useGitOperations(vi.fn().mockResolvedValue(undefined), makeFileLock())
+    )
+    let pending: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      pending = result.current.discardFile('src/a.ts')
+    })
+    expect(result.current.stagingPaths.has('src/a.ts')).toBe(true)
+    await act(async () => {
+      await result.current.stageFile('src/b.ts')
+    })
+    expect(gitApi.stageFile).not.toHaveBeenCalled()
+    await act(async () => {
+      resolveDiscard()
+      await pending
+    })
+    expect(result.current.stagingPaths.size).toBe(0)
+  })
+})

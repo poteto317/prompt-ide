@@ -5,7 +5,8 @@ import {
   isStagedFile,
   isUntrackedFile,
   isUnstagedFile,
-  isGitOperationDisabled
+  isGitOperationDisabled,
+  isConflictedFile
 } from '../gitUtils'
 
 describe('statusChar', () => {
@@ -133,5 +134,28 @@ describe('isGitOperationDisabled', () => {
 
   it('isRepo: true のとき false を返す', () => {
     expect(isGitOperationDisabled(repoStatus)).toBe(false)
+  })
+})
+
+describe('isConflictedFile', () => {
+  it.each([
+    ['U', 'U'],
+    ['A', 'A'],
+    ['D', 'D'],
+    ['A', 'U'],
+    ['U', 'A'],
+    ['D', 'U'],
+    ['U', 'D']
+  ])('index=%s workingDir=%s はコンフリクト中', (index, workingDir) => {
+    expect(isConflictedFile({ path: 'c.txt', index, workingDir })).toBe(true)
+  })
+
+  it.each([
+    [' ', 'M'],
+    ['M', 'M'],
+    ['?', '?'],
+    ['A', ' ']
+  ])('index=%s workingDir=%s はコンフリクトではない', (index, workingDir) => {
+    expect(isConflictedFile({ path: 'a.txt', index, workingDir })).toBe(false)
   })
 })

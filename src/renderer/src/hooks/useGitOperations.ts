@@ -8,6 +8,7 @@ export interface GitOperationsState {
   stagingPaths: ReadonlySet<string>
   stageFile: (path: string) => Promise<void>
   unstageFile: (path: string, renamedFrom?: string) => Promise<void>
+  discardFile: (path: string) => Promise<boolean>
   isCommitting: boolean
   commit: (message: string, extraRefresh?: () => Promise<void>) => Promise<boolean>
   amend: (message: string, extraRefresh?: () => Promise<void>) => Promise<boolean>
@@ -35,7 +36,7 @@ export function useGitOperations(
     path: string,
     operation: (path: string, renamedFrom?: string) => Promise<void>,
     renamedFrom?: string
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     // commit(git commit)と stageFile/unstageFile(git add/reset)はどちらも
     // .git/index を書き換える。git 自体は .git/index.lock で排他するためデータ
     // 破損はしないが、同時に走らせると片方が「Unable to create
@@ -53,11 +54,12 @@ export function useGitOperations(
       lock.isLocked(path) ||
       isCommittingRef.current
     ) {
-      return
+      return false
     }
     stagingPathsRef.current.add(path)
     setStagingPaths(new Set(stagingPathsRef.current))
     lock.lock(path)
+    let succeeded = false
     try {
       // renamedFrom が undefined のときも第2引数として明示的に渡すと、
       // stageFile(gitApi.stageFile はそもそも renamedFrom という概念を持たない)
@@ -68,6 +70,7 @@ export function useGitOperations(
         await operation(path, renamedFrom)
       }
       setOperationError(null)
+      succeeded = true
     } catch (err) {
       setOperationError(toError(err))
     } finally {
@@ -96,11 +99,21 @@ export function useGitOperations(
         lock.unlock(path)
       }
     }
+    return succeeded
   }
 
-  const stageFile = (path: string): Promise<void> => runStageOperation(path, gitApi.stageFile)
-  const unstageFile = (path: string, renamedFrom?: string): Promise<void> =>
-    runStageOperation(path, gitApi.unstageFile, renamedFrom)
+  const stageFile = async (path: string): Promise<void> => {
+    await runStageOperation(path, gitApi.stageFile)
+  }
+  const unstageFile = async (path: string, renamedFrom?: string): Promise<void> => {
+    await runStageOperation(path, gitApi.unstageFile, renamedFrom)
+  }
+  // 取り消しは working tree を書き換えるが、git restore は index の stat 情報も更新しうる。
+  // stage/unstage と同じ直列化(runStageOperation)に乗せ、.git/index を書き換える他の操作と
+  // 同時に走らせない。戻り値(成功したか)は、呼び出し元がエディタのタブを成功時だけ
+  // 再読込するために使う(docs/review-findings-patterns.md パターン20)
+  const discardFile = (path: string): Promise<boolean> =>
+    runStageOperation(path, gitApi.discardChanges)
 
   const runCommitOperation = async (
     message: string,
@@ -166,5 +179,14 @@ export function useGitOperations(
   const amend = (message: string, extraRefresh?: () => Promise<void>): Promise<boolean> =>
     runCommitOperation(message, gitApi.amendCommit, extraRefresh)
 
-  return { stagingPaths, stageFile, unstageFile, isCommitting, commit, amend, operationError }
+  return {
+    stagingPaths,
+    stageFile,
+    unstageFile,
+    discardFile,
+    isCommitting,
+    commit,
+    amend,
+    operationError
+  }
 }

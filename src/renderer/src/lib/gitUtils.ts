@@ -11,8 +11,9 @@ export function statusChar(code: string): string {
 // 「ステージ済み・コミット可能」として StagedSection やコミットボタンに
 // 表示されてしまう。実際には git add で明示的に「解決済み」とするまで
 // 通常の意味でのステージ済みではなく、git commit 自体は拒否するが、
-// アプリの表示だけが未解決のコンフリクトを見落とす原因になる
-function isConflictedFile(f: GitFileStatus): boolean {
+// アプリの表示だけが未解決のコンフリクトを見落とす原因になる。
+// ChangesSection の取り消しボタンの表示判定でも使う(main 側の ls-files -u による拒否と表示を揃える)
+export function isConflictedFile(f: GitFileStatus): boolean {
   if (f.index === 'U' || f.workingDir === 'U') return true
   if (f.index === 'A' && f.workingDir === 'A') return true
   if (f.index === 'D' && f.workingDir === 'D') return true
