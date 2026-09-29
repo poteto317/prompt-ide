@@ -560,6 +560,14 @@ git commit -m "feat: 変更の取り消しをステージ操作と同じ直列�
   - `closeTabsAtOrInside(absolutePath: string): void` — そのパス自身と配下のタブを確認なしで閉じる
   - `hasDirtyTabAtOrInside(absolutePath: string): boolean` — そのパス自身か配下に未保存の編集があるタブがあるか
 
+> 実行時の補足: 実装はユーザー承認済みのレビュー指摘を受け、上記に加えて
+> `deleteEntry`（`useFileTreeOperations`）と同じタブ保護を行うよう拡張されている。影響を受けた
+> 各タブについて、アクティブなタブなら `resetForFileChange`（保存世代を進め、古い `saveError` /
+> 保存中止通知もクリア）、そうでなければ `invalidatePath`（保存世代のみ）を呼び、
+> `closeTabsAtOrInside` はさらに早期リターン前に `invalidatePendingReads` で保留中の読み込みも
+> 無効化する。詳細は設計書（`docs/superpowers/specs/2026-09-29-git-discard-changes-design.md`）を
+> 参照。以降の Step 3 のコード例はこの拡張前のもので、最終的な実装とは一致しない。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 既存の `describe('reloadOpenFiles')` のテストと同じ手順（`openFolder` → `selectFile` → `updateFileContent`）でタブを用意する。追加するテスト:

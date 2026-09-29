@@ -113,6 +113,17 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - `useFileSystem` に `reloadOpenFile(path: string): Promise<void>`、
   `closeTabsAtOrInside(path: string): void`、`hasDirtyTabAtOrInside(path: string): boolean` を
   追加する（引数は絶対パス。全タブを対象にする既存の `reloadOpenFiles` と異なり、対象のパスだけを扱う）
+  - `reloadOpenFile` / `closeTabsAtOrInside` は、影響を受けた各タブについて、アクティブなタブなら
+    `resetForFileChange`（保存世代を進めて待機中の保存を無効化し、古い `saveError` / 保存中止通知も
+    クリアする）、そうでなければ `invalidatePath`（保存世代のみ進める）を呼ぶ。`closeTabsAtOrInside`
+    はさらに、早期リターンより前に `invalidatePendingReads` で対象パス配下への保留中の読み込みも
+    無効化する。これはエクスプローラーの `deleteEntry` と同じ保護をタブ単位の取り消しにも適用する
+    もので、（1）取り消し対象のタブに残っていた古い `saveError` が隣接する別のクリーンなタブへ誤って
+    表示され続けること、（2）ロック待ちだった保存が取り消し後に解決し、復元・削除した内容を
+    書き込みで上書きしてしまうこと、（3）ゴミ箱へ移したディレクトリ配下を選択中だった保留読み込みが
+    後から解決し、ゴミ箱の中身をタブとして開き直してしまうこと、をそれぞれ防ぐ。既知の制約として、
+    ブランチ切り替え（`reloadOpenFiles`）時と同じく、これらの無効化は取り消し実行前に既に発行済み
+    （await 中）の書き込みまでは止められず、取り消し後もディスクへ到達しうる
 - 確認・取り消し・タブ同期の組み立ては新設の `useDiscardFileChanges`（`hooks/useDiscardFileChanges.ts`）
   が担い、`useAppState` は依存を渡して `discardFile` として公開するだけにする:
   1. 対象が未追跡か（`gitStatus.files` の状態）と、対象（未追跡ディレクトリなら配下）のタブに
