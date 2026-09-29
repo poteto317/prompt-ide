@@ -64,7 +64,7 @@
 **前提（2026-09-29 に git 2.50.1 の実機で確認済み）:**
 
 - `git restore --worktree -- :(literal)<path>` はステージ済みの内容を残し、working tree で削除したファイルも復元する
-- 未追跡ファイルは `git ls-files -- :(literal)<path>` の出力が空。未追跡ディレクトリ（status では `newdir/`）も空
+- 未追跡ファイルは `git ls-files -- :(literal)<path>` の出力が空。`/` で終わるパス（status は `-u` で取得するため、ネストした git リポジトリのときだけ `sub/` の形で現れる。最終レビューで訂正）も空
 - コンフリクト中のファイルは `git ls-files -u -- :(literal)<path>` が空でない（`git restore` は `path '...' is unmerged` で失敗する）
 
 **最終レビューでの追加:** intent-to-add（`git add -N`、status は ` A`）は `ls-files` に出るが、`restore --worktree` はファイルを空にするだけで内容が失われる。`restore` の前に `git diff --name-only --diff-filter=A -- :(literal)<path>` で判定し、空でなければ `git rm --cached -q` → ゴミ箱への移動の順で行う。renderer 側は `lib/gitUtils.ts` の `isIntentToAddFile` で未追跡と同じ扱いにする。以下のコード例はこの追加前の内容で、現行コードは `src/main/gitService.ts` を参照すること。

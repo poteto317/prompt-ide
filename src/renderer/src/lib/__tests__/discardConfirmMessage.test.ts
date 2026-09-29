@@ -14,6 +14,22 @@ describe('buildDiscardConfirmMessage', () => {
     ).toBe('new.txt をゴミ箱へ移動しますか？')
   })
 
+  // status は untracked-files=all のため、'/' で終わるパスはネストした git リポジトリだけ。
+  // その .git(未 push のコミットを含む)ごと移動することを伝える(最終レビューで追加)
+  it('末尾が / のパスはフォルダとその中身がすべて移動すると伝える', () => {
+    expect(
+      buildDiscardConfirmMessage({ path: 'sub/', isUntracked: true, hasUnsavedEdits: false })
+    ).toBe('sub/ をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。')
+  })
+
+  it('末尾が / のパスでも未保存の編集の追記は保つ', () => {
+    expect(
+      buildDiscardConfirmMessage({ path: 'sub/', isUntracked: true, hasUnsavedEdits: true })
+    ).toBe(
+      'sub/ をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。\n\nエディタの未保存の編集も破棄されます。'
+    )
+  })
+
   it.each([false, true])(
     '未保存の編集がある場合はエディタの編集も破棄されることを追記する(未追跡=%s)',
     (isUntracked) => {

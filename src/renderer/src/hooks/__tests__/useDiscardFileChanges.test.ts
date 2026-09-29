@@ -59,7 +59,9 @@ describe('useDiscardFileChanges', () => {
     await act(async () => {
       await discard('newdir/')
     })
-    expect(options.onConfirm).toHaveBeenCalledWith('newdir/ をゴミ箱へ移動しますか？')
+    expect(options.onConfirm).toHaveBeenCalledWith(
+      'newdir/ をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。'
+    )
     expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/newdir/')
     expect(options.reloadOpenFile).not.toHaveBeenCalled()
   })
@@ -73,6 +75,24 @@ describe('useDiscardFileChanges', () => {
     })
     expect(options.onConfirm).toHaveBeenCalledWith('ita.txt をゴミ箱へ移動しますか？')
     expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/ita.txt')
+    expect(options.reloadOpenFile).not.toHaveBeenCalled()
+  })
+
+  // git rm --cached の直後などは同じパスが 'D ' と '??' の 2 件で現れる。先頭の 'D ' を
+  // 拾うと、main はゴミ箱へ移すのに「元に戻せません」の文言を出してしまう。
+  // 「変更」セクションに出るのは未ステージのエントリなので、それだけから探す(最終レビューで追加)
+  it('同じパスがステージ済みの削除と未追跡の 2 件あるときは未追跡として扱う', async () => {
+    const { discard, options } = setup({
+      files: [
+        { path: 't', index: 'D', workingDir: ' ' },
+        { path: 't', index: '?', workingDir: '?' }
+      ]
+    })
+    await act(async () => {
+      await discard('t')
+    })
+    expect(options.onConfirm).toHaveBeenCalledWith('t をゴミ箱へ移動しますか？')
+    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/t')
     expect(options.reloadOpenFile).not.toHaveBeenCalled()
   })
 

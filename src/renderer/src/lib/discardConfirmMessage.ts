@@ -14,8 +14,14 @@ export function buildDiscardConfirmMessage({
   isUntracked,
   hasUnsavedEdits
 }: DiscardConfirmMessageOptions): string {
+  // status は untracked-files=all のため、'/' で終わるパスはネストした git リポジトリだけに
+  // 現れる。移動するとその .git(未 push のコミットを含む)ごとゴミ箱へ行くため、
+  // フォルダ全体が対象であることを明示する(最終レビューで追加)
+  const trashMessage = path.endsWith('/')
+    ? `${path} をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。`
+    : `${path} をゴミ箱へ移動しますか？`
   const base = isUntracked
-    ? `${path} をゴミ箱へ移動しますか？`
+    ? trashMessage
     : `${path} の変更を取り消しますか？この操作は元に戻せません。`
   return hasUnsavedEdits ? `${base}\n\nエディタの未保存の編集も破棄されます。` : base
 }

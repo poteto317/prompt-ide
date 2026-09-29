@@ -1,5 +1,5 @@
 import type { GitFileStatus } from '@shared/types'
-import { isIntentToAddFile, isUntrackedFile } from '../lib/gitUtils'
+import { isIntentToAddFile, isUnstagedFile, isUntrackedFile } from '../lib/gitUtils'
 import { joinPath } from '../lib/pathUtils'
 import { buildDiscardConfirmMessage } from '../lib/discardConfirmMessage'
 
@@ -37,7 +37,10 @@ export function useDiscardFileChanges({
   return async (path) => {
     if (folderPath === null) return false
     const absolutePath = joinPath(folderPath, path)
-    const file = files.find((f) => f.path === path)
+    // 同じパスが 'D '(ステージ済みの削除)と '??' の 2 件で現れることがある
+    // (git rm --cached の直後など)。取り消しボタンは「変更」セクション(未ステージ)の
+    // 行にしか無いため、未ステージのエントリだけから探す(最終レビューで追加)
+    const file = files.find((f) => f.path === path && isUnstagedFile(f))
     // intent-to-add も main 側でゴミ箱へ移すため、未追跡と同じ文言・タブの扱いにする
     const movesToTrash = file !== undefined && (isUntrackedFile(file) || isIntentToAddFile(file))
     const message = buildDiscardConfirmMessage({

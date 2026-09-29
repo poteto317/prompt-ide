@@ -40,6 +40,9 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - 押すと確認ダイアログを出す。文言は対象の種類で変える
   - 追跡済み: 「<path> の変更を取り消しますか？この操作は元に戻せません。」
   - 未追跡: 「<path> をゴミ箱へ移動しますか？」
+  - 未追跡で `<path>` が `/` で終わる（ネストした git リポジトリ）: 「<path> をゴミ箱へ移動しますか？
+    フォルダとその中身がすべて移動します。」（その `.git` も未 push のコミットごと移動するため、
+    フォルダ全体が対象であることを明示する。最終レビューで追加）
 - 承諾されたら取り消しを実行する。キャンセルなら何もしない
 
 ### エディタのバッファ同期
@@ -91,7 +94,9 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
     Electron への依存を gitService から切り離し、単体テストで差し替えられるようにする
   1. `git ls-files -u -- :(literal)<path>` の出力が空でなければコンフリクト中として拒否する
   2. `git ls-files -- :(literal)<path>` の出力が空なら未追跡として `trash(<絶対パス>)` を呼ぶ
-     （未追跡ディレクトリは status に `newdir/` の形で現れ、`ls-files` も空になる）
+     （status は simple-git の `git status -u`（untracked-files=all）で取得するため、未追跡の
+     ディレクトリは配下のファイル単位で現れる。`/` で終わるパス（`sub/`）として現れるのは
+     ネストした git リポジトリだけで、その `ls-files` も空になる。最終レビューで訂正）
   3. `git diff --name-only --diff-filter=A -- :(literal)<path>` の出力が空でなければ intent-to-add
      （`git add -N`、status は ` A`）として、`git rm --cached -q -- :(literal)<path>` で index から
      外した**後で** `trash(<絶対パス>)` を呼ぶ（ゴミ箱への移動の失敗も未追跡と同じ日本語エラーにする）。
@@ -102,6 +107,8 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
   4. それ以外は `git restore --worktree -- :(literal)<path>` を実行する
   - pathspec は既存の `toLiteralPathspec` でリテラル化する（`a[1].txt` が `a1.txt` に一致する
     グロブ展開を防ぐ）
+- 必要な git のバージョン: `git restore` は git 2.23 以降でしか使えない（それより古い git では
+  追跡済みファイルの取り消しが失敗し、git のエラーがそのまま表示される。最終レビューで明記）
 - 前提（2026-09-29 に git 2.50.1 の実機で確認）
   - `git restore --worktree` は index の内容へ戻すため、ステージ済みの内容は残る
   - working tree で削除したファイル（`D`）も復元できる
@@ -155,7 +162,9 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - 確認・取り消し・タブ同期の組み立ては新設の `useDiscardFileChanges`（`hooks/useDiscardFileChanges.ts`）
   が担い、`useAppState` は依存を渡して `discardFile` として公開するだけにする:
   1. 対象が未追跡か（`gitStatus.files` の状態。intent-to-add は `lib/gitUtils.ts` の
-     `isIntentToAddFile` で判定し、未追跡と同じ扱いにする。最終レビューで追加）と、対象（未追跡ディレクトリなら配下）のタブに
+     `isIntentToAddFile` で判定し、未追跡と同じ扱いにする。同じパスが `D `（ステージ済みの削除）と
+     `??` の 2 件で現れる場合があるため、未ステージのエントリ（`isUnstagedFile`）だけから探す。
+     いずれも最終レビューで追加）と、対象（未追跡ディレクトリなら配下）のタブに
      未保存の編集があるかから確認文言を組み立てて確認する。キャンセルなら何もしない
   2. `gitOperations.discardFile(path)` を呼ぶ
   3. 成功時のみ、追跡済みなら `reloadOpenFile`、未追跡なら `closeTabsAtOrInside` を呼ぶ
