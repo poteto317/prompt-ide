@@ -83,6 +83,17 @@ interface FileSystemState {
    *  書き換わった後に呼ぶ想定。読み込みに失敗したタブ(対象ファイルが無く
    *  なった等)は閉じる */
   reloadOpenFiles: () => Promise<void>
+  /** 変更の取り消し(git restore)のように、特定のファイルだけが working tree 上で
+   *  書き換わった後に、そのタブだけをディスクの内容へ揃える。reloadOpenFiles と
+   *  違い対象外のタブには触れない(その未保存の編集を保持するため)。呼び出し側が
+   *  事前に破棄を確認する前提で、dirty も解消する。読み込みに失敗したら閉じる。
+   *  開いていなければ何もしない */
+  reloadOpenFile: (absolutePath: string) => Promise<void>
+  /** 未追跡ファイル・ディレクトリをゴミ箱へ移した後に、そのパス自身と配下のタブを
+   *  閉じる。呼び出し側が事前に破棄を確認する前提で、ここでは確認しない */
+  closeTabsAtOrInside: (absolutePath: string) => void
+  /** そのパス自身か配下に未保存の編集があるタブがあるか */
+  hasDirtyTabAtOrInside: (absolutePath: string) => boolean
 }
 
 // getOpenFile はここで常に自前の同期ミラーへ差し替える。Options（公開型）には
@@ -680,6 +691,37 @@ export function useFileSystem(options?: Options): FileSystemState {
     )
   }
 
+  // 変更の取り消し(git restore)のように、特定のファイルだけが working tree 上で
+  // 書き換わった後に、そのタブだけをディスクの内容へ揃える。reloadOpenFiles と
+  // 違い対象外のタブには触れない(その未保存の編集を保持するため)。
+  // 呼び出し側が事前に破棄を確認する前提で、dirty も解消する
+  const reloadOpenFile = async (absolutePath: string): Promise<void> => {
+    if (!openFilesMirrorRef.current.some((f) => isSamePath(f.path, absolutePath))) return
+    let content: string | null = null
+    try {
+      content = await fileSystemApi.readFileContent(absolutePath)
+    } catch {
+      content = null
+    }
+    setOpenFilesAndFixActive((prev) =>
+      prev.flatMap((f) => {
+        if (!isSamePath(f.path, absolutePath)) return [f]
+        return content === null ? [] : [{ ...f, content, savedContent: content }]
+      })
+    )
+  }
+
+  // 未追跡ファイル・ディレクトリをゴミ箱へ移した後に、そのパス自身と配下のタブを閉じる。
+  // 呼び出し側が事前に破棄を確認する前提で、ここでは確認しない
+  const closeTabsAtOrInside = (absolutePath: string): void => {
+    setOpenFilesAndFixActive((prev) => prev.filter((f) => !isPathAtOrInside(f.path, absolutePath)))
+  }
+
+  const hasDirtyTabAtOrInside = (absolutePath: string): boolean =>
+    openFilesMirrorRef.current.some(
+      (f) => isPathAtOrInside(f.path, absolutePath) && f.content !== f.savedContent
+    )
+
   return {
     folderPath,
     fileTree,
@@ -706,6 +748,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     deleteEntry,
     refreshTree,
     confirmDiscardAnyDirty,
-    reloadOpenFiles
+    reloadOpenFiles,
+    reloadOpenFile,
+    closeTabsAtOrInside,
+    hasDirtyTabAtOrInside
   }
 }

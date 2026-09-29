@@ -3650,6 +3650,90 @@ describe('useFileSystem', () => {
     })
   })
 
+  describe('reloadOpenFile / closeTabsAtOrInside / hasDirtyTabAtOrInside', () => {
+    // 変更の取り消し(useDiscardFileChanges)が、対象ファイルのタブだけを同期するために使う。
+    // 全タブを対象にする reloadOpenFiles と違い、対象外のタブの未保存の編集を保持する
+    const openTwoFiles = async (result: {
+      current: ReturnType<typeof useFileSystem>
+    }): Promise<void> => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('{}')
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('index の未保存の編集'))
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'package.json',
+          path: '/project/package.json',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('package の未保存の編集'))
+    }
+
+    it('reloadOpenFile は対象のタブだけをディスクの内容で更新し、他のタブの編集は残す', async () => {
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await openTwoFiles(result)
+      mockReadFileContent.mockResolvedValueOnce('const a = 0 // 取り消し後')
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/index.ts')
+      })
+      const index = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+      const pkg = result.current.openFiles.find((f) => f.path === '/project/package.json')
+      expect(index?.content).toBe('const a = 0 // 取り消し後')
+      expect(index?.savedContent).toBe('const a = 0 // 取り消し後')
+      expect(pkg?.content).toBe('package の未保存の編集')
+      expect(mockReadFileContent).toHaveBeenLastCalledWith('/project/src/index.ts')
+    })
+
+    it('reloadOpenFile で読み込みに失敗したら、そのタブを閉じる', async () => {
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await openTwoFiles(result)
+      mockReadFileContent.mockRejectedValueOnce(new Error('ENOENT'))
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/index.ts')
+      })
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/package.json'])
+    })
+
+    it('reloadOpenFile は開いていないパスでは何も読み込まない', async () => {
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await openTwoFiles(result)
+      mockReadFileContent.mockClear()
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/other.ts')
+      })
+      expect(mockReadFileContent).not.toHaveBeenCalled()
+    })
+
+    it('closeTabsAtOrInside はそのパス自身と配下のタブを確認なしで閉じる', async () => {
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
+      await openTwoFiles(result)
+      onConfirm.mockClear()
+      act(() => result.current.closeTabsAtOrInside('/project/src'))
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/package.json'])
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    it('hasDirtyTabAtOrInside はそのパス自身か配下の未保存の編集を検出する', async () => {
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await openTwoFiles(result)
+      expect(result.current.hasDirtyTabAtOrInside('/project/src/index.ts')).toBe(true)
+      expect(result.current.hasDirtyTabAtOrInside('/project/src')).toBe(true)
+      expect(result.current.hasDirtyTabAtOrInside('/project/other.ts')).toBe(false)
+    })
+  })
+
   describe('confirmDiscardAnyDirty', () => {
     // checkout 前の破棄確認(useAppState.ts の checkoutBranch ラッパー)のために
     // 公開する。closeTab 等が内部で使っている判定・確認ダイアログと同じもの
