@@ -714,6 +714,37 @@ describe('discardFile', () => {
     expect(gitApi.discardChanges).not.toHaveBeenCalled()
   })
 
+  // restore / ゴミ箱への移動の後に commit が走ると、取り消し前後どちらの内容を
+  // コミットしたか分からなくなる。stageFile と同じく commit 実行中は弾く(最終レビューで追加)
+  it('コミット実行中は呼ばずに false を返す', async () => {
+    let resolveCommit: () => void = () => {}
+    mockCommitChanges.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCommit = resolve
+        })
+    )
+    vi.mocked(gitApi.discardChanges).mockResolvedValue(undefined)
+    // 共有ロックは常に「未ロック」を返すモックにし、commit 実行中の判定だけで弾かれることを確かめる
+    const { result } = renderHook(() =>
+      useGitOperations(vi.fn().mockResolvedValue(undefined), makeFileLock())
+    )
+    let commitPromise: Promise<boolean> = Promise.resolve(false)
+    let discardPromise: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      commitPromise = result.current.commit('msg')
+      discardPromise = result.current.discardFile('src/a.ts')
+    })
+    let succeeded = true
+    await act(async () => {
+      resolveCommit()
+      await commitPromise
+      succeeded = await discardPromise
+    })
+    expect(succeeded).toBe(false)
+    expect(gitApi.discardChanges).not.toHaveBeenCalled()
+  })
+
   it('実行中は stagingPaths に対象パスが入り、同時の stageFile は呼ばれない', async () => {
     let resolveDiscard: () => void = () => {}
     vi.mocked(gitApi.discardChanges).mockReturnValue(new Promise<void>((r) => (resolveDiscard = r)))
