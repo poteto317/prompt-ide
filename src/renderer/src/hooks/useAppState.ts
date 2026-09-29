@@ -7,6 +7,7 @@ import { useGitStatus } from './useGitStatus'
 import { useGitOperations } from './useGitOperations'
 import { useGitRemoteOperations } from './useGitRemoteOperations'
 import { useGitBranchOperations } from './useGitBranchOperations'
+import { useDiscardFileChanges } from './useDiscardFileChanges'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
@@ -241,6 +242,16 @@ export function useAppState(): AppState {
     const succeeded = await gitBranchOperations.checkoutBranch(branchName)
     if (succeeded) await fileSystem.reloadOpenFiles()
   }
+  // 変更の取り消しは、確認・取り消し・エディタのタブ同期の組み立てを
+  // useDiscardFileChanges に任せ、ここでは依存を渡すだけにする
+  const discardFile = useDiscardFileChanges({
+    folderPath: fileSystem.folderPath,
+    files: git.gitStatus?.files ?? [],
+    discardFile: gitOperations.discardFile,
+    hasDirtyTabAtOrInside: fileSystem.hasDirtyTabAtOrInside,
+    reloadOpenFile: fileSystem.reloadOpenFile,
+    closeTabsAtOrInside: fileSystem.closeTabsAtOrInside
+  })
   // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
   // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)
   const quickOpen = useQuickOpen({
@@ -280,6 +291,7 @@ export function useAppState(): AppState {
     renameEntry,
     deleteEntry,
     saveFile,
-    checkoutBranch
+    checkoutBranch,
+    discardFile
   }
 }

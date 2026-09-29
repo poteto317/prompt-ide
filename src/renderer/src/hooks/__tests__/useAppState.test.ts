@@ -29,6 +29,9 @@ const mockUseFileSystem = vi.hoisted(() =>
       deleteEntry: (node: unknown) => Promise<void>
       confirmDiscardAnyDirty?: () => boolean
       reloadOpenFiles?: () => Promise<void>
+      hasDirtyTabAtOrInside?: (absolutePath: string) => boolean
+      reloadOpenFile?: (absolutePath: string) => Promise<void>
+      closeTabsAtOrInside?: (absolutePath: string) => void
     } => ({
       folderPath: null,
       fileTree: [],
@@ -1024,6 +1027,46 @@ describe('useAppState', () => {
         expect(mockReloadOpenFiles).not.toHaveBeenCalled()
       } finally {
         window.api.checkoutBranch = originalCheckoutBranch
+      }
+    })
+  })
+
+  describe('discardFile ラッパー', () => {
+    it('確認後に取り消し、成功したら対象タブを絶対パスで再読込する', async () => {
+      const reloadOpenFile = vi.fn().mockResolvedValue(undefined)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        hasDirtyTabAtOrInside: vi.fn().mockReturnValue(false),
+        reloadOpenFile,
+        closeTabsAtOrInside: vi.fn()
+      })
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: {
+          isRepo: true,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: [{ path: 'src/a.ts', index: ' ', workingDir: 'M' }]
+        },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+      })
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const original = window.api.discardChanges
+      window.api.discardChanges = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.discardFile('src/a.ts')
+        })
+        expect(confirmSpy).toHaveBeenCalled()
+        expect(window.api.discardChanges).toHaveBeenCalledWith('src/a.ts')
+        expect(reloadOpenFile).toHaveBeenCalledWith('/project/src/a.ts')
+      } finally {
+        window.api.discardChanges = original
+        confirmSpy.mockRestore()
       }
     })
   })
