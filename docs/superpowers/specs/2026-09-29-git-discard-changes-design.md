@@ -80,6 +80,7 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 
 - main 側のエラーは日本語メッセージにして投げ、既存の Git 操作エラーの表示箇所に出す
   - コンフリクト中: 「コンフリクト中のファイルは取り消せません: <path>」
+  - 未追跡のファイルと重なる: 「未追跡のファイルと重なるため取り消せません: <path>」
   - フォルダ外のパス: 既存の `assertFileWithinFolder` のエラー
   - ゴミ箱への移動の失敗: 「ゴミ箱へ移動できませんでした: <path>」（`shell.trashItem` の
     reject を変換する。OS やファイルシステムによってはゴミ箱が使えないため）
@@ -92,19 +93,45 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - `src/main/gitService.ts` に `discardFileChanges(folderPath, filePath, trash)` を追加する
   - `trash` は `(absolutePath: string) => Promise<void>`（本番では `shell.trashItem`）。
     Electron への依存を gitService から切り離し、単体テストで差し替えられるようにする
-  1. `git ls-files -u -- :(literal)<path>` の出力が空でなければコンフリクト中として拒否する
-  2. `git ls-files -- :(literal)<path>` の出力が空なら未追跡として `trash(<絶対パス>)` を呼ぶ
+  - 以下の問い合わせはすべて `-z`（NUL 区切り）で出力させ、**対象のパスと完全に一致するエントリがあるか**で
+    判定する。pathspec はディレクトリの前方一致として働く（`:(literal)foo` は `foo/a.ts` にも一致する）ため、
+    出力の有無で判定すると、追跡済みの `foo/a.ts` を消して同名のファイル `foo` を作った場合に未追跡の `foo` を
+    追跡済みと誤判定し、restore が `foo` を置き換えて内容がゴミ箱も経由せず失われる（コードレビューで修正）
+  1. `git ls-files -u -z -- :(literal)<path>` に一致するエントリがあればコンフリクト中として拒否する
+  2. `git ls-files -z -- :(literal)<path>` に一致するエントリが無ければ未追跡として `trash(<絶対パス>)` を呼ぶ
      （status は simple-git の `git status -u`（untracked-files=all）で取得するため、未追跡の
      ディレクトリは配下のファイル単位で現れる。`/` で終わるパス（`sub/`）として現れるのは
      ネストした git リポジトリだけで、その `ls-files` も空になる。最終レビューで訂正）
-  3. `git diff --name-only --diff-filter=A -- :(literal)<path>` の出力が空でなければ intent-to-add
+  3. `git diff --name-only -z --diff-filter=A -- :(literal)<path>` に一致するエントリがあれば intent-to-add
      （`git add -N`、status は ` A`）として、`git rm --cached -q -- :(literal)<path>` で index から
      外した**後で** `trash(<絶対パス>)` を呼ぶ（ゴミ箱への移動の失敗も未追跡と同じ日本語エラーにする）。
      順序を逆にすると、ゴミ箱への移動の後で `rm --cached` が失敗したとき、ゴミ箱にあるファイルを指す
      index エントリが残るため、先に index から外して「失敗しても通常の未追跡ファイルが残る」ようにする。
      intent-to-add は `ls-files` に出るため手順 2 では判定できず、`git restore --worktree` は
      ファイルを空にするだけで ` A` のまま残り、履歴の無い内容が失われる（最終レビューで追加）
-  4. それ以外は `git restore --worktree -- :(literal)<path>` を実行する
+  4. `git ls-files -z --others -k --directory -- :(literal,icase)<path> :(literal,icase)<親1> ...`（対象と、その親パスを
+     すべて渡して 1 回で問い合わせる）の出力に、親そのもの・対象自身・対象の配下のいずれかと一致するものが
+     あれば、「未追跡のファイルと重なるため取り消せません: <path>」で拒否する。restore がそれらの未追跡
+     ファイルを確認なしで消すため。いずれも実機で再現した（コードレビューで追加）
+     - 配下: 追跡済みのファイル `foo` を消して同名のディレクトリ `foo/` を作ると ` D foo` と `?? foo/x` に
+       なり、`foo` の restore が `foo/x` を消す
+     - 親: 追跡済みの `foo/a.ts` を消して同名のファイル `foo` を作ると ` D foo/a.ts` と `?? foo` になり、
+       `foo/a.ts` の restore が `foo` を中身ごと消してディレクトリにする（親が外部を指すシンボリック
+       リンクの場合もリンク自体が消える。git はリンクを 1 エントリとして扱うため同じ問い合わせで検出できる）
+     - 親の pathspec は、親が通常のディレクトリなら配下の無関係な未追跡ファイルにも一致するため、
+       それだけでは拒否しない
+     - ignored のファイルも restore で消えるため `--exclude-standard` は付けない
+     - pathspec は `:(literal,icase)` で渡し、出力も大文字小文字を無視して比べる。大文字小文字を区別しない
+       ファイルシステム（macOS・Windows の既定）では、restore が大文字小文字だけ違う既存のエントリも
+       置き換えて消す（` D Foo/a.ts` と `?? foo` で `foo` が消える。実機で再現）。`core.ignorecase` は
+       読まず常に icase にする（区別するファイルシステムでは拒否が増えるだけで、データを失う側には倒れない）
+     - 削除した追跡済みファイルの位置にネストした git リポジトリがあると `--others` には出ない（status は
+       ` T bar` / ` D bar` のみ）が、restore はそれを `.git` ごと消す（実機で再現）。`-k`（checkout のために
+       消す必要があるもの）を併用すると `bar/` として出るため、同じ 1 回の問い合わせで検出する
+     - `--directory` で未追跡のディレクトリを 1 行（`<dir>/`）にまとめる。親の pathspec は配下の無関係な未追跡
+       ファイルにも一致するため、付けないと親の下の大きな ignored のディレクトリ（`node_modules` 等）を全件
+       列挙してしまう（レビュー指摘）。まとめた `<dir>/` も「対象の配下」と同じ前方一致で判定できる
+  5. それ以外は `git restore --worktree -- :(literal)<path>` を実行する
   - pathspec は既存の `toLiteralPathspec` でリテラル化する（`a[1].txt` が `a1.txt` に一致する
     グロブ展開を防ぐ）
 - 必要な git のバージョン: `git restore` は git 2.23 以降でしか使えない（それより古い git では
@@ -144,18 +171,19 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
   追加する（引数は絶対パス。全タブを対象にする既存の `reloadOpenFiles` と異なり、対象のパスだけを扱う）
   - `reloadOpenFile` / `closeTabsAtOrInside` は、影響を受けた各タブについて、アクティブなタブなら
     `resetForFileChange`（保存世代を進めて待機中の保存を無効化し、古い `saveError` / 保存中止通知も
-    クリアする）、そうでなければ `invalidatePath`（保存世代のみ進める）を呼ぶ。いずれの関数も
-    保留中の読み込みを `invalidatePendingReads` で無効化するが、呼ぶ位置が異なる。`reloadOpenFile`
-    は「対象タブが開いていない」場合の早期リターンより後、`readFileContent` の完了後（状態更新の
-    直前）に呼ぶ（自身の待機中に `selectFile` 経由でそのパスへ新たな読み込みが始まっていた場合、
-    それが後から解決して取り消し後の内容や読み込み失敗によるクローズを上書きしないようにするため）。
+    クリアする）、そうでなければ `invalidatePath`（保存世代のみ進める）を呼ぶ。保留中の読み込みの
+    無効化（`invalidatePendingReads`）は `closeTabsAtOrInside` だけが行う。`reloadOpenFile` は開いている
+    タブが対象で、`selectFile` が保留中の読み込みを立てるのは未オープンのパスを開くときだけのため、呼び出した
+    時点では同じパスの保留中の読み込みは無い。一方、待機中にユーザーがタブを閉じて開き直すと正当な読み込みが
+    立ち、以前の実装（待機後に `invalidatePendingReads` を呼んでいた）はそれを無効化して、開き直したファイルが
+    開かない不具合を起こしていた。単一責任のリファクタリングでこの呼び出しを削除し、`useFileSystem.test.ts` の
+    回帰テスト（待機中に閉じて開き直しても再オープンが取り消されない）で固定した。
     `closeTabsAtOrInside` は「影響タブが 0 件」の早期リターンより前に呼ぶ（まだタブとして確定して
     いない選択中の読み込みも取りこぼさないようにするため）。これはエクスプローラーの `deleteEntry`
     と同じ保護をタブ単位の取り消しにも適用するもので、（1）取り消し対象のタブに残っていた古い
     `saveError` が隣接する別のクリーンなタブへ誤って表示され続けること、（2）ロック待ちだった保存が
     取り消し後に解決し、復元・削除した内容を書き込みで上書きしてしまうこと、（3）保留中だった読み込み
-    （`reloadOpenFile` では自身の待機中に新たに始まった読み込み、`closeTabsAtOrInside` ではゴミ箱へ
-    移したディレクトリ配下を選択中だった読み込み）が後から解決し、取り消し後の内容やゴミ箱の中身を
+    （`closeTabsAtOrInside` でゴミ箱へ移したディレクトリ配下を選択中だった読み込み）が後から解決し、取り消し後の内容やゴミ箱の中身を
     上書き・再表示してしまうこと、をそれぞれ防ぐ。既知の制約として、ブランチ切り替え
     （`reloadOpenFiles`）時と同じく、これらの無効化は取り消し実行前に既に発行済み（await 中）の
     書き込みまでは止められず、取り消し後もディスクへ到達しうる
@@ -186,8 +214,9 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 
 - `gitService.test.ts`（`discardFileChanges`）
   - 追跡済みなら `restore --worktree` をリテラル pathspec で呼び、`trash` を呼ばないこと
-  - 未追跡（`ls-files` が空）なら絶対パスで `trash` を呼び、`restore` を呼ばないこと
-  - コンフリクト中（`ls-files -u` が空でない）なら日本語エラーで拒否し、何も実行しないこと
+  - 未追跡（`ls-files` に一致するエントリが無い。配下のファイルだけが出力される場合を含む）なら絶対パスで `trash` を呼び、`restore` を呼ばないこと
+  - コンフリクト中（`ls-files -u` に一致するエントリがある）なら日本語エラーで拒否し、何も実行しないこと
+  - restore の対象と未追跡ファイルが重なる（配下・親のどちらでも）なら日本語エラーで拒否し、親ディレクトリ内の無関係な未追跡ファイルだけなら restore すること。大文字小文字だけ違う未追跡ファイルやネストした git リポジトリとの重なりも拒否すること。これらの判定は simple-git をモックした単体テストに加え、実 git を使う統合テスト（`gitService.discard.integration.test.ts`。グローバル・システムの git 設定から切り離して実行する）でも固定する
   - `trash` の失敗を日本語エラーに変換すること
   - `a[1].txt` のようなグロブ文字を含むパスがリテラル化されていること
   - intent-to-add（`diff --diff-filter=A` が空でない）なら `rm --cached` の後で `trash` を呼び、
@@ -215,3 +244,16 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 5. 確認文言の純粋関数と `useAppState` のラッパー
 6. `ChangesSection` の UI と配線
 7. ROADMAP の更新
+
+## 実装後のリファクタリング（単一責任への分割）
+
+実装完了後、変更箇所を単一責任の観点で見直し、次のように分割した。振る舞いは変えていない。
+
+| 分割先                                           | 責務                                                                                                                                     | 分割元                                                                                  |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `gitService.ts` の `classifyDiscardTarget`       | 取り消し対象の状態（コンフリクト中・未追跡・intent-to-add・追跡済み）を git に問い合わせて判定する。先に決まれば後の問い合わせは行わない | `discardFileChanges`（判定と状態ごとの手段が混在していた）                              |
+| `src/renderer/src/lib/discardTarget.ts`          | ゴミ箱へ移すかの判定（`movesToTrashOnDiscard`）と、取り消し対象の絶対パス・扱いの解決（`resolveDiscardTarget`）                          | `useDiscardFileChanges`（対象の解決と、確認 → 取り消し → 同期の順序制御が混在していた） |
+| `useFileSystem.ts` の `invalidateSaveStateOfTab` | アクティブなら `resetForFileChange`、それ以外は `invalidatePath` という保存状態の無効化                                                  | `reloadOpenFile` と `closeTabsAtOrInside` に重複していた分岐                            |
+| `ChangesFileItem.tsx`                            | 「変更」セクションの 1 行（ステータス・差分を開くパス・取り消し/ステージボタン）                                                         | `ChangesSection`（一覧の絞り込み・見出しと 1 行分の描画が混在していた）                 |
+
+あわせて、確認文言の引数名を `isUntracked` から `movesToTrash` に改めた（intent-to-add も含むため）。

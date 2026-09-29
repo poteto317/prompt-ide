@@ -258,15 +258,19 @@ describe('unstageFile', () => {
 })
 
 describe('discardFileChanges', () => {
-  // raw() の呼び出しを先頭の引数で振り分ける。出力形式は Task 1 冒頭の前提を参照
+  // raw() の呼び出しを種類で振り分ける。出力は -z(NUL 区切り)の形式。
+  // ls-files -u は「mode sha stage<TAB>path」、それ以外はパスそのものが NUL 区切りで並ぶ
+  // (実機 git 2.50.1 で確認)
   const setupRaw = (outputs: {
     unmerged?: string
     tracked?: string
     intentToAdd?: string
+    others?: string
     rmCachedError?: Error
   }): void => {
     mockRaw.mockImplementation(async (args: string[]) => {
-      if (args[0] === 'ls-files' && args[1] === '-u') return outputs.unmerged ?? ''
+      if (args[0] === 'ls-files' && args.includes('-u')) return outputs.unmerged ?? ''
+      if (args[0] === 'ls-files' && args.includes('--others')) return outputs.others ?? ''
       if (args[0] === 'ls-files') return outputs.tracked ?? ''
       if (args[0] === 'diff') return outputs.intentToAdd ?? ''
       if (args[0] === 'rm') {
@@ -278,8 +282,21 @@ describe('discardFileChanges', () => {
     })
   }
 
+  // 状態の判定は先に決まったものから順に行い、不要な git の問い合わせをしない
+  it('コンフリクト中と判定したら、それ以降の問い合わせをしない', async () => {
+    setupRaw({ unmerged: '100644 abc 1\tc.txt\0' })
+    await expect(discardFileChanges('/project', 'c.txt', vi.fn())).rejects.toThrow()
+    expect(mockRaw).toHaveBeenCalledTimes(1)
+  })
+
+  it('未追跡と判定したら、intent-to-add の問い合わせをしない', async () => {
+    setupRaw({ tracked: '' })
+    await discardFileChanges('/project', 'new.txt', vi.fn().mockResolvedValue(undefined))
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['diff']))
+  })
+
   it('追跡済みなら restore --worktree をリテラル pathspec で呼び、ゴミ箱へは移動しない', async () => {
-    setupRaw({ tracked: 'src/a.ts\n' })
+    setupRaw({ tracked: 'src/a.ts\0' })
     const trash = vi.fn()
     await discardFileChanges('/project', 'src/a.ts', trash)
     expect(mockSimpleGit).toHaveBeenCalledWith('/project')
@@ -290,10 +307,10 @@ describe('discardFileChanges', () => {
   // git は `--` の後ろでも [ ] * ? をグロブとして解釈するため、リテラル化しないと
   // 'a[1].txt' の取り消しで無関係な 'a1.txt' の変更まで消えてしまう
   it('グロブ文字を含むパスもリテラル化して渡す', async () => {
-    setupRaw({ tracked: 'a[1].txt\n' })
+    setupRaw({ tracked: 'a[1].txt\0' })
     await discardFileChanges('/project', 'a[1].txt', vi.fn())
-    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-u', '--', ':(literal)a[1].txt'])
-    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '--', ':(literal)a[1].txt'])
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-u', '-z', '--', ':(literal)a[1].txt'])
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-z', '--', ':(literal)a[1].txt'])
     expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)a[1].txt'])
   })
 
@@ -302,6 +319,18 @@ describe('discardFileChanges', () => {
     const trash = vi.fn().mockResolvedValue(undefined)
     await discardFileChanges('/project', 'new/file.txt', trash)
     expect(trash).toHaveBeenCalledWith('/project/new/file.txt')
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+  })
+
+  // pathspec はディレクトリの前方一致として働くため、追跡済みの 'foo/a.ts' を消して同名の
+  // ファイル 'foo' を作ると、ls-files -- foo は 'foo/a.ts' を返す(実機で確認)。出力の有無で
+  // 判定すると未追跡の 'foo' を追跡済みと誤判定し、restore が 'foo' を 'foo/a.ts' で
+  // 置き換えて、履歴に無い内容がゴミ箱も経由せずに消える(レビュー指摘)
+  it('配下の追跡済みファイルしか出力されない場合は未追跡としてゴミ箱へ移す', async () => {
+    setupRaw({ tracked: 'foo/a.ts\0' })
+    const trash = vi.fn().mockResolvedValue(undefined)
+    await discardFileChanges('/project', 'foo', trash)
+    expect(trash).toHaveBeenCalledWith('/project/foo')
     expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
   })
 
@@ -314,8 +343,11 @@ describe('discardFileChanges', () => {
   })
 
   // git restore は 'is unmerged' で失敗するが、その英語エラーを見せる前に日本語で拒否する
-  it('コンフリクト中(ls-files -u が空でない)なら日本語エラーで拒否し、何も実行しない', async () => {
-    setupRaw({ unmerged: '100644 abc 1\tc.txt\n100644 def 2\tc.txt\n', tracked: 'c.txt\nc.txt\n' })
+  it('コンフリクト中(ls-files -u に一致するパスがある)なら日本語エラーで拒否し、何も実行しない', async () => {
+    setupRaw({
+      unmerged: '100644 abc 1\tc.txt\x00100644 def 2\tc.txt\x00',
+      tracked: 'c.txt\0c.txt\0'
+    })
     const trash = vi.fn()
     await expect(discardFileChanges('/project', 'c.txt', trash)).rejects.toThrow(
       'コンフリクト中のファイルは取り消せません: c.txt'
@@ -324,14 +356,138 @@ describe('discardFileChanges', () => {
     expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
   })
 
+  // 配下のファイルのコンフリクトは、このパス自身のコンフリクトではない
+  it('配下のファイルだけがコンフリクト中なら、このパスはコンフリクト扱いしない', async () => {
+    setupRaw({ unmerged: '100644 abc 1\tfoo/c.txt\0', tracked: '' })
+    const trash = vi.fn().mockResolvedValue(undefined)
+    await discardFileChanges('/project', 'foo', trash)
+    expect(trash).toHaveBeenCalledWith('/project/foo')
+  })
+
   it('restore が失敗したら git のエラーをそのまま伝播する', async () => {
     mockRaw.mockImplementation(async (args: string[]) => {
-      if (args[0] === 'ls-files' && args[1] === '-u') return ''
-      if (args[0] === 'ls-files') return 'a.ts\n'
+      if (args[0] === 'ls-files' && args.includes('-u')) return ''
+      if (args[0] === 'ls-files' && args.includes('--others')) return ''
+      if (args[0] === 'ls-files') return 'a.ts\0'
       if (args[0] === 'diff') return ''
       throw new Error('restore failed')
     })
     await expect(discardFileChanges('/project', 'a.ts', vi.fn())).rejects.toThrow('restore failed')
+  })
+
+  // 追跡済みのファイル 'foo' を消して同名のディレクトリ 'foo/' を作ると、status は ' D foo' と
+  // '?? foo/x' になる。' D foo' を restore すると、未追跡(や ignored)の 'foo/x' がゴミ箱も
+  // 経由せず確認なしで消える(実機で確認、レビュー指摘)。重なる未追跡ファイルがあれば拒否する
+  describe('restore の対象と未追跡ファイルが重なる場合', () => {
+    it('ls-files --others に出力があれば日本語エラーで拒否し、restore は呼ばない', async () => {
+      setupRaw({ tracked: 'foo\0', others: 'foo/x\0' })
+      await expect(discardFileChanges('/project', 'foo', vi.fn())).rejects.toThrow(
+        '未追跡のファイルと重なるため取り消せません: foo'
+      )
+      expect(mockRaw).toHaveBeenCalledWith([
+        'ls-files',
+        '-z',
+        '--others',
+        '-k',
+        '--directory',
+        '--',
+        ':(literal,icase)foo'
+      ])
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+    })
+
+    // 親(祖先)のパスが未追跡のファイルに置き換わっている場合も同じく restore で消える。
+    // 追跡済みの 'foo/a.ts' を消して同名のファイル 'foo' を作ると ' D foo/a.ts' と '?? foo' になり、
+    // 'foo/a.ts' を restore すると 'foo' が中身ごと消えてディレクトリになる(実機で確認、レビュー指摘)
+    it('親のパスが未追跡のファイルなら拒否する(親も pathspec に含めて 1 回で問い合わせる)', async () => {
+      setupRaw({ tracked: 'foo/a.ts\0', others: 'foo\0' })
+      await expect(discardFileChanges('/project', 'foo/a.ts', vi.fn())).rejects.toThrow(
+        '未追跡のファイルと重なるため取り消せません: foo/a.ts'
+      )
+      expect(mockRaw).toHaveBeenCalledWith([
+        'ls-files',
+        '-z',
+        '--others',
+        '-k',
+        '--directory',
+        '--',
+        ':(literal,icase)foo/a.ts',
+        ':(literal,icase)foo'
+      ])
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+    })
+
+    it('2 階層以上上の親が未追跡のファイルでも拒否する', async () => {
+      setupRaw({ tracked: 'a/b/c.txt\0', others: 'a\0' })
+      await expect(discardFileChanges('/project', 'a/b/c.txt', vi.fn())).rejects.toThrow(
+        '未追跡のファイルと重なるため取り消せません: a/b/c.txt'
+      )
+      expect(mockRaw).toHaveBeenCalledWith([
+        'ls-files',
+        '-z',
+        '--others',
+        '-k',
+        '--directory',
+        '--',
+        ':(literal,icase)a/b/c.txt',
+        ':(literal,icase)a',
+        ':(literal,icase)a/b'
+      ])
+    })
+
+    // 親が通常のディレクトリなら、pathspec の親は配下の無関係な未追跡ファイルにも一致する。
+    // 親そのもの・対象自身と配下以外の出力で拒否してはならない
+    it('親ディレクトリ内の無関係な未追跡ファイルだけなら restore する', async () => {
+      setupRaw({ tracked: 'd/e.txt\0', others: 'd/new.txt\0dd/x\0' })
+      await discardFileChanges('/project', 'd/e.txt', vi.fn())
+      expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)d/e.txt'])
+    })
+
+    // 大文字小文字を区別しないファイルシステム(macOS・Windows の既定)では、restore が
+    // 大文字小文字だけ違う既存のエントリも置き換える。' D Foo/a.ts' と '?? foo' で 'Foo/a.ts' を
+    // restore すると 'foo' が消え、' D Bar' と '?? bar/' で 'Bar' を restore すると 'bar/x' が消える
+    // (実機で確認、レビュー指摘)。icase で問い合わせ、出力も大文字小文字を無視して比べる
+    it.each([
+      ['親', 'Foo/a.ts', 'foo\0'],
+      ['配下', 'Bar', 'bar/x\0'],
+      ['対象自身', 'Baz.txt', 'baz.txt\0'],
+      ['親(出力側が大文字)', 'foo/a.ts', 'FOO\0'],
+      ['配下(出力側が大文字)', 'bar', 'BAR/x\0']
+    ])(
+      '大文字小文字だけ違う未追跡の%sも重なりとみなして拒否する',
+      async (_label, target, others) => {
+        setupRaw({ tracked: `${target}\0`, others })
+        await expect(discardFileChanges('/project', target, vi.fn())).rejects.toThrow(
+          `未追跡のファイルと重なるため取り消せません: ${target}`
+        )
+        expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+      }
+    )
+
+    it('大文字小文字だけ違う親ディレクトリ内の無関係な未追跡ファイルだけなら restore する', async () => {
+      setupRaw({ tracked: 'D/e.txt\0', others: 'd/new.txt\0' })
+      await discardFileChanges('/project', 'D/e.txt', vi.fn())
+      expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)D/e.txt'])
+    })
+
+    // 削除した追跡済みファイルの位置にネストした git リポジトリがあると、--others には出ない
+    // (' T bar' / ' D bar' だけになる)が、restore はそれを .git ごと消す(実機で確認、レビュー指摘)。
+    // -k(checkout のために消す必要があるもの)を併用すると 'bar/' として出る。
+    // 問い合わせに -k を含めること自体は上の引数の検証と実 git の統合テストで固定する
+    it('ネストした git リポジトリ(-k の出力 bar/)と重なる場合も拒否する', async () => {
+      setupRaw({ tracked: 'bar\0', others: 'bar/\0' })
+      await expect(discardFileChanges('/project', 'bar', vi.fn())).rejects.toThrow(
+        '未追跡のファイルと重なるため取り消せません: bar'
+      )
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+    })
+
+    // ignored のファイルも restore で消えるため、--exclude-standard は付けない
+    it('ignored のファイルも対象に含める(--exclude-standard を付けない)', async () => {
+      setupRaw({ tracked: 'foo\0', others: '' })
+      await discardFileChanges('/project', 'foo', vi.fn())
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['--exclude-standard']))
+    })
   })
 
   // intent-to-add(git add -N、status は ' A')は ls-files に出るが、restore --worktree は
@@ -342,9 +498,9 @@ describe('discardFileChanges', () => {
       // 呼び出し順を記録するため、setupRaw ではなく個別に差し替える
       const order: string[] = []
       mockRaw.mockImplementation(async (args: string[]) => {
-        if (args[0] === 'ls-files' && args[1] === '-u') return ''
-        if (args[0] === 'ls-files') return 'x.txt\n'
-        if (args[0] === 'diff') return 'x.txt\n'
+        if (args[0] === 'ls-files' && args.includes('-u')) return ''
+        if (args[0] === 'ls-files') return 'dir/x.txt\0'
+        if (args[0] === 'diff') return 'dir/x.txt\0'
         order.push(args[0])
         return ''
       })
@@ -355,6 +511,7 @@ describe('discardFileChanges', () => {
       expect(mockRaw).toHaveBeenCalledWith([
         'diff',
         '--name-only',
+        '-z',
         '--diff-filter=A',
         '--',
         ':(literal)dir/x.txt'
@@ -368,8 +525,8 @@ describe('discardFileChanges', () => {
 
     it('rm --cached が失敗したらゴミ箱へは移さず、エラーを伝播する', async () => {
       setupRaw({
-        tracked: 'x.txt\n',
-        intentToAdd: 'x.txt\n',
+        tracked: 'x.txt\0',
+        intentToAdd: 'x.txt\0',
         rmCachedError: new Error('rm failed')
       })
       const trash = vi.fn()
@@ -379,7 +536,7 @@ describe('discardFileChanges', () => {
     })
 
     it('ゴミ箱への移動に失敗したら未追跡と同じ日本語エラーにする', async () => {
-      setupRaw({ tracked: 'x.txt\n', intentToAdd: 'x.txt\n' })
+      setupRaw({ tracked: 'x.txt\0', intentToAdd: 'x.txt\0' })
       const trash = vi.fn().mockRejectedValue(new Error('trash unavailable'))
       await expect(discardFileChanges('/project', 'x.txt', trash)).rejects.toThrow(
         'ゴミ箱へ移動できませんでした: x.txt'
@@ -387,12 +544,20 @@ describe('discardFileChanges', () => {
     })
 
     it('通常の追跡済み(diff --diff-filter=A が空)なら従来どおり restore する', async () => {
-      setupRaw({ tracked: 'a.ts\n', intentToAdd: '' })
+      setupRaw({ tracked: 'a.ts\0', intentToAdd: '' })
       const trash = vi.fn()
       await discardFileChanges('/project', 'a.ts', trash)
       expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)a.ts'])
       expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['rm']))
       expect(trash).not.toHaveBeenCalled()
+    })
+
+    // 配下の intent-to-add は、このパス自身の intent-to-add ではない
+    it('配下のファイルだけが diff --diff-filter=A に出る場合は intent-to-add 扱いしない', async () => {
+      setupRaw({ tracked: 'foo\0', intentToAdd: 'foo/new.txt\0' })
+      await discardFileChanges('/project', 'foo', vi.fn())
+      expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)foo'])
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['rm']))
     })
   })
 })
