@@ -3929,6 +3929,48 @@ describe('useFileSystem', () => {
       expect(result.current.saveError?.message).toBe('EACCES')
     })
 
+    it('reloadOpenFile: アクティブなタブの読み込みが失敗して閉じても、隣接タブへ移った後に saveError がクリアされる', async () => {
+      // activePath は setOpenFilesAndFixActive を呼ぶ前(=対象タブがまだアクティブな
+      // 時点)で捕まえる必要がある。呼んだ後だと、読み込み失敗でタブが閉じられて
+      // activeFilePathMirrorRef が隣接タブ(b.ts)へ既に書き換わっており、
+      // invalidateSaveStateOfTab が「非アクティブなタブへの操作」と誤判定して
+      // resetForFileChange(clearStaleSaveState を伴う)を呼ばず、saveError が
+      // 残ってしまう
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // a.ts をアクティブに戻し、保存を失敗させて saveError を立てておく
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      // アクティブな a.ts の取り消し読み込みを失敗させる
+      mockReadFileContent.mockRejectedValueOnce(new Error('ENOENT'))
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/a.ts')
+      })
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/b.ts'])
+      expect(result.current.activeFilePath).toBe('/project/src/b.ts')
+      expect(result.current.saveError).toBeNull()
+    })
+
     it('reloadOpenFile: 保存の書き込み中に取り消しても、完了後に古い内容で savedContent が上書きされない', async () => {
       // generation を進めずに取り消すと、待たされていた古い保存が後から解決した際、
       // 取り消しで復元した savedContent を保存しようとしていた古い内容で
@@ -3979,6 +4021,64 @@ describe('useFileSystem', () => {
       })
       const afterWrite = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
       expect(afterWrite?.savedContent).toBe('取り消し後の内容')
+    })
+
+    it('reloadOpenFile の待機中に閉じて開き直しても、正当な再オープンは取り消されない', async () => {
+      // reloadOpenFile は pendingReadPathRef を無効化しない(上の reloadOpenFile 実装の
+      // コメント参照)。待機中にタブを閉じて同じパスを開き直した場合、その再オープンの
+      // 読み込みは正当なものであり、reload の完了に巻き込まれて破棄されてはならない
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+
+      let resolveReload: (content: string) => void = () => {}
+      mockReadFileContent.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveReload = resolve
+          })
+      )
+      let reloadPromise: Promise<void> = Promise.resolve()
+      act(() => {
+        reloadPromise = result.current.reloadOpenFile('/project/src/a.ts')
+      })
+
+      act(() => result.current.closeTab('/project/src/a.ts'))
+
+      let resolveReopen: (content: string) => void = () => {}
+      mockReadFileContent.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveReopen = resolve
+          })
+      )
+      let reopenPromise: Promise<boolean> = Promise.resolve(false)
+      act(() => {
+        reopenPromise = result.current.selectFile(fileA)
+      })
+
+      await act(async () => {
+        resolveReload('reload で読み込んだ内容')
+        await reloadPromise
+      })
+
+      let reopened: boolean = false
+      await act(async () => {
+        resolveReopen('再オープンで読み込んだ内容')
+        reopened = await reopenPromise
+      })
+
+      expect(reopened).toBe(true)
+      const reopenedFile = result.current.openFiles.find((f) => f.path === '/project/src/a.ts')
+      expect(reopenedFile?.content).toBe('再オープンで読み込んだ内容')
     })
   })
 

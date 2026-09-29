@@ -87,15 +87,11 @@ interface FileSystemState {
    *  書き換わった後に、そのタブだけをディスクの内容へ揃える。reloadOpenFiles と
    *  違い対象外のタブには触れない(その未保存の編集を保持するため)。呼び出し側が
    *  事前に破棄を確認する前提で、dirty も解消する。読み込みに失敗したら閉じる。
-   *  開いていなければ何もしない。deleteEntry/closeTab と同様、対象タブの
-   *  generation を進め、待機中だった保存を無効化する(アクティブなタブなら
-   *  saveError/中止通知もクリアする)。保留中の読み込みも無効化する */
+   *  開いていなければ何もしない。保存状態も無効化する(invalidateSaveStateOfTab) */
   reloadOpenFile: (absolutePath: string) => Promise<void>
-  /** 未追跡ファイル・ディレクトリをゴミ箱へ移した後に、そのパス自身と配下のタブを
-   *  閉じる。呼び出し側が事前に破棄を確認する前提で、ここでは確認しない。
-   *  deleteEntry と同様、影響を受けたタブの generation を進め、待機中だった
-   *  保存を無効化する(アクティブなタブなら saveError/中止通知もクリアする)。
-   *  保留中の読み込みも無効化する */
+  /** 指定パス自身と配下のタブを確認なしで閉じ、保存状態と保留中の読み込みを
+   *  無効化する(例: 変更の取り消しでファイルをゴミ箱へ移した後)。
+   *  呼び出し側が事前に破棄を確認する前提 */
   closeTabsAtOrInside: (absolutePath: string) => void
   /** そのパス自身か配下に未保存の編集があるタブがあるか */
   hasDirtyTabAtOrInside: (absolutePath: string) => boolean
@@ -302,8 +298,8 @@ export function useFileSystem(options?: Options): FileSystemState {
   }
 
   // 指定パス配下を対象とする保留中のファイル読み込みを無効化する。リネーム・削除
-  // (useFileTreeOperations)に加えて、reloadOpenFile/closeTabsAtOrInside(変更の
-  // 取り消し)からも同じ理由で呼ぶため、ここで一度だけ定義して両方から参照する
+  // (useFileTreeOperations)に加えて、closeTabsAtOrInside(変更の取り消し)からも
+  // 同じ理由で呼ぶため、ここで一度だけ定義して両方から参照する
   const invalidatePendingReads = (affectedPath: string): void => {
     const pending = pendingReadPathRef.current
     if (pending === null) return
@@ -701,10 +697,26 @@ export function useFileSystem(options?: Options): FileSystemState {
     )
   }
 
-  // 変更の取り消し(git restore)のように、特定のファイルだけが working tree 上で
-  // 書き換わった後に、そのタブだけをディスクの内容へ揃える。reloadOpenFiles と
-  // 違い対象外のタブには触れない(その未保存の編集を保持するため)。
-  // 呼び出し側が事前に破棄を確認する前提で、dirty も解消する。
+  // 外部要因(変更の取り消し)でバッファが置き換わった、または閉じられたタブの保存状態を
+  // 無効化する。deleteEntry/closeTab と同じゲートを reloadOpenFile/closeTabsAtOrInside で
+  // 共有するために切り出した:
+  // - アクティブなタブだった場合だけ resetForFileChange(generation に加えて
+  //   saveError/saveAbortNoticeRef のクリア = clearStaleSaveState を伴う)を呼ぶ
+  // - それ以外は invalidatePath(generation のみ)にとどめる。非アクティブなタブへの操作で
+  //   clearStaleSaveState まで呼ぶと、今アクティブな別タブに表示中のエラー・中止通知を
+  //   無関係な取り消しで誤って消してしまう
+  // generation を進めないと、この path を対象に待機中だった保存(lockPathForFileOperation
+  // 待ち等)が取り消し後に解決し、復元した内容を上書きしたり、ゴミ箱へ移したファイルを
+  // 書き込みで作り直したりしてしまう
+  const invalidateSaveStateOfTab = (path: string, activePath: string | null): void => {
+    if (activePath !== null && isSamePath(path, activePath)) {
+      resetForFileChange(path)
+    } else {
+      invalidatePath(path)
+    }
+  }
+
+  // 契約は FileSystemState の JSDoc を参照。
   // 読み込み中(readFileContent の await 中)にエディタへ入力された編集は、
   // 完了時にディスクの内容で上書きされる(reloadOpenFiles と同じ、許容している
   // トレードオフ。selectFile のような世代付き排他制御までは行わない)
@@ -716,15 +728,16 @@ export function useFileSystem(options?: Options): FileSystemState {
     } catch {
       content = null
     }
-    // wasActive は setOpenFilesAndFixActive を呼ぶ前の状態で判定する(closeTab と
+    // アクティブかどうかは setOpenFilesAndFixActive を呼ぶ前の状態で判定する(closeTab と
     // 同じ理由)。呼んだ後だと、読み込み失敗でタブが閉じられてアクティブが隣接
     // タブへ移った場合に、対象タブがアクティブだったかどうかを判定できなくなる
-    const wasActive = isSamePath(activeFilePathMirrorRef.current ?? '', absolutePath)
-    // 読み込み中(await)に selectFile 経由でこのパスへの読み込みが新たに始まって
-    // いれば、それが後から解決してこのタブの内容(ディスクの最新内容 or 閉じた
-    // こと)を上書きしないよう無効化する(deleteEntry の invalidatePendingReads と
-    // 同じ理由)
-    invalidatePendingReads(absolutePath)
+    const activePath = activeFilePathMirrorRef.current
+    // 保留中の読み込み(pendingReadPathRef)は無効化しない。selectFile がそれを
+    // 立てるのは「まだ開いていないパス」を開くときだけで、このタブは開いているため
+    // 同じパスの保留中の読み込みは存在しない。reload の待機中にユーザーがタブを閉じて
+    // 開き直した場合、その読み込みは正当なものなので無効化してはならない
+    // (closeTabsAtOrInside はタブを閉じるため、閉じたパス配下を開こうとしている
+    // 読み込みを無効化する必要がある点で異なる)
     setOpenFilesAndFixActive((prev) =>
       prev.flatMap((f) => {
         if (!isSamePath(f.path, absolutePath)) return [f]
@@ -732,33 +745,14 @@ export function useFileSystem(options?: Options): FileSystemState {
       })
     )
     // このタブのバッファ実体はディスクの内容で置き換わった(読み込み失敗時は
-    // 閉じられ、元のバッファはもう存在しない)。deleteEntry/closeTab と同じ
-    // ゲート: アクティブなタブだった場合だけ resetForFileChange(generation に
-    // 加えて saveError/saveAbortNoticeRef のクリア = clearStaleSaveState を伴う)
-    // を呼び、そうでなければ invalidatePath(generation のみ)にとどめる。
-    // 非アクティブなタブへの操作で clearStaleSaveState まで呼ぶと、今アクティブな
-    // 別タブに表示中のエラー・中止通知を無関係な取り消しで誤って消してしまう。
-    // generation を進めない場合、この path を対象に待機中だった保存
-    // (lockPathForFileOperation 待ち等)が取り消し後に解決し、復元した内容を
-    // 上書きしたり、削除された(はずの)ファイルを書き込みで作り直してしまう
-    if (wasActive) {
-      resetForFileChange(absolutePath)
-    } else {
-      invalidatePath(absolutePath)
-    }
+    // 閉じられ、元のバッファはもう存在しない)ため、保存状態を無効化する
+    invalidateSaveStateOfTab(absolutePath, activePath)
   }
 
-  // 未追跡ファイル・ディレクトリをゴミ箱へ移した後に、そのパス自身と配下のタブを閉じる。
-  // 呼び出し側が事前に破棄を確認する前提で、ここでは確認しない。
-  // deleteEntry と同じ理由で、影響を受けたタブの generation を進め(古い保存を
-  // 無効化する)、保留中の読み込み(selectFile 経由でこのパス配下を開こうとして
-  // いるもの)も無効化する。これを怠ると、ゴミ箱へ移したディレクトリ配下を
-  // 選択していた読み込みが後から解決し、ゴミ箱の中身をタブとして開き直して
-  // しまう。
   // invalidatePendingReads は「まだタブとして確定していない、進行中の読み込み」を
   // 対象にするため、affected(既に開いているタブ)が 0 件でも必ず呼ぶ。ここを
   // affected.length === 0 の早期リターンより後に置くと、選択中(未確定)の読み込みを
-  // 取りこぼし、正にこの関数が防ぐべき「ゴミ箱の中身を開き直す」動作を許してしまう
+  // 取りこぼし、対象パス配下を後から開き直してしまう
   const closeTabsAtOrInside = (absolutePath: string): void => {
     const activePath = activeFilePathMirrorRef.current
     const affected = openFilesMirrorRef.current.filter((f) =>
@@ -767,18 +761,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     invalidatePendingReads(absolutePath)
     if (affected.length === 0) return
     setOpenFilesAndFixActive((prev) => prev.filter((f) => !isPathAtOrInside(f.path, absolutePath)))
-    // アクティブなタブが含まれる場合だけ resetForFileChange(clearStaleSaveState を
-    // 伴う)を呼び、それ以外の影響ファイルは invalidatePath(generation のみ)に
-    // とどめる(deleteEntry の同名ロジックと同じ理由: 非アクティブなタブへの
-    // 操作で clearStaleSaveState まで呼ぶと、今アクティブな別タブに表示中の
-    // エラー・中止通知を誤って消してしまう)
-    affected.forEach((f) => {
-      if (activePath !== null && isSamePath(f.path, activePath)) {
-        resetForFileChange(f.path)
-      } else {
-        invalidatePath(f.path)
-      }
-    })
+    affected.forEach((f) => invalidateSaveStateOfTab(f.path, activePath))
   }
 
   const hasDirtyTabAtOrInside = (absolutePath: string): boolean =>

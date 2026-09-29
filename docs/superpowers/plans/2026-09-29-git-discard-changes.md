@@ -566,9 +566,10 @@ git commit -m "feat: 変更の取り消しをステージ操作と同じ直列�
 > `deleteEntry`（`useFileTreeOperations`）と同じタブ保護を行うよう拡張されている。影響を受けた
 > 各タブについて、アクティブなタブなら `resetForFileChange`（保存世代を進め、古い `saveError` /
 > 保存中止通知もクリア）、そうでなければ `invalidatePath`（保存世代のみ）を呼ぶ。また
-> `reloadOpenFile` / `closeTabsAtOrInside` はいずれも `invalidatePendingReads` で保留中の読み込みを
-> 無効化するが、呼ぶ位置が異なる（`reloadOpenFile` は対象タブが開いていない場合の早期リターンより
-> 後・読み込み完了後、`closeTabsAtOrInside` は影響タブが 0 件の場合の早期リターンより前）。詳細は
+> `closeTabsAtOrInside` は影響タブが 0 件の場合の早期リターンより前に `invalidatePendingReads` で
+> 保留中の読み込みを無効化する（`reloadOpenFile` にも待機後の同じ呼び出しがあったが、待機中に
+> タブを閉じて開き直した正当な読み込みまで無効化してしまうため、単一責任のリファクタリングで削除し、
+> 回帰テストで固定した）。詳細は
 > 設計書（`docs/superpowers/specs/2026-09-29-git-discard-changes-design.md`）を参照。以降の Step 3 の
 > コード例はこの拡張前のもので、最終的な実装とは一致しない。
 
