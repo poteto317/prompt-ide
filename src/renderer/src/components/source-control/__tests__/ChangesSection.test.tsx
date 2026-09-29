@@ -12,6 +12,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -28,6 +29,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -41,6 +43,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -54,6 +57,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -68,6 +72,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -82,6 +87,7 @@ describe('ChangesSection', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onOpenDiff={vi.fn()}
       />
     )
@@ -96,6 +102,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
         />
       )
@@ -110,6 +117,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={onStage}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
         />
       )
@@ -124,6 +132,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set(['src/index.ts'])}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
         />
       )
@@ -141,6 +150,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
           isLocked={(path) => path === 'src/index.ts'}
         />
@@ -160,6 +170,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
           isLocked={() => false}
           isAnyLocked={() => true}
@@ -181,6 +192,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set(['other.ts'])}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
         />
       )
@@ -197,6 +209,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={onOpenDiff}
         />
       )
@@ -215,6 +228,7 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={vi.fn()}
         />
       )
@@ -231,11 +245,76 @@ describe('ChangesSection', () => {
           files={files}
           stagingPaths={new Set()}
           onStage={vi.fn()}
+          onDiscard={vi.fn()}
           onOpenDiff={onOpenDiff}
         />
       )
       await userEvent.click(screen.getByLabelText('src/index.ts をステージ'))
       expect(onOpenDiff).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('取り消しボタン', () => {
+    it('各行に取り消しボタンがあり、押すと onDiscard がパスで呼ばれる', async () => {
+      const onDiscard = vi.fn()
+      render(
+        <ChangesSection
+          files={[{ path: 'src/a.ts', index: ' ', workingDir: 'M' }]}
+          stagingPaths={new Set()}
+          onStage={vi.fn()}
+          onDiscard={onDiscard}
+          onOpenDiff={vi.fn()}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' }))
+      expect(onDiscard).toHaveBeenCalledWith('src/a.ts')
+    })
+
+    it('未追跡ファイルにも取り消しボタンがある', () => {
+      render(
+        <ChangesSection
+          files={[{ path: 'new.txt', index: '?', workingDir: '?' }]}
+          stagingPaths={new Set()}
+          onStage={vi.fn()}
+          onDiscard={vi.fn()}
+          onOpenDiff={vi.fn()}
+        />
+      )
+      expect(screen.getByRole('button', { name: 'new.txt の変更を取り消し' })).toBeInTheDocument()
+    })
+
+    // main 側も ls-files -u で拒否するが、押せるのに必ず失敗するボタンを出さない
+    it('コンフリクト中の行には取り消しボタンを出さない', () => {
+      render(
+        <ChangesSection
+          files={[{ path: 'c.txt', index: 'U', workingDir: 'U' }]}
+          stagingPaths={new Set()}
+          onStage={vi.fn()}
+          onDiscard={vi.fn()}
+          onOpenDiff={vi.fn()}
+        />
+      )
+      expect(
+        screen.queryByRole('button', { name: 'c.txt の変更を取り消し' })
+      ).not.toBeInTheDocument()
+    })
+
+    it.each([
+      ['他の stage/unstage/取り消しの実行中', { stagingPaths: new Set(['other.ts']) }],
+      ['他の操作がロック中', { isAnyLocked: () => true }],
+      ['対象パスがロック中', { isLocked: (p: string) => p === 'src/a.ts' }]
+    ] as const)('%s は disabled になる', (_label, props) => {
+      render(
+        <ChangesSection
+          files={[{ path: 'src/a.ts', index: ' ', workingDir: 'M' }]}
+          stagingPaths={new Set()}
+          onStage={vi.fn()}
+          onDiscard={vi.fn()}
+          onOpenDiff={vi.fn()}
+          {...props}
+        />
+      )
+      expect(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' })).toBeDisabled()
     })
   })
 })

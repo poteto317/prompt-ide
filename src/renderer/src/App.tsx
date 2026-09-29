@@ -62,6 +62,7 @@ export default function App(): React.JSX.Element {
     isLocked,
     isAnyLocked,
     stageFile,
+    discardFile,
     unstageFile,
     isCommitting,
     commit,
@@ -257,6 +258,7 @@ export default function App(): React.JSX.Element {
               isLocked={isLocked}
               isAnyLocked={isAnyLocked}
               onStageFile={stageFile}
+              onDiscardFile={(path) => void discardFile(path)}
               onUnstageFile={unstageFile}
               isCommitting={isCommitting}
               onCommit={handleCommit}

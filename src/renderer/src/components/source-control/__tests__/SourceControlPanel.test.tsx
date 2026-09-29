@@ -11,6 +11,7 @@ const baseProps = {
   onRefresh: vi.fn(),
   stagingPaths: new Set<string>(),
   onStage: vi.fn(),
+  onDiscard: vi.fn(),
   onUnstage: vi.fn(),
   onOpenDiff: vi.fn(),
   isCommitting: false,
@@ -196,6 +197,7 @@ describe('SourceControlPanel', () => {
         onRefresh={vi.fn()}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onUnstage={vi.fn()}
         onOpenDiff={vi.fn()}
         isCommitting={false}

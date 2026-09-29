@@ -43,6 +43,7 @@ const defaultProps = {
   onRefreshGitStatus: vi.fn(),
   stagingPaths: new Set<string>(),
   onStageFile: vi.fn(),
+  onDiscardFile: vi.fn(),
   onUnstageFile: vi.fn(),
   isCommitting: false,
   onCommit: vi.fn(),

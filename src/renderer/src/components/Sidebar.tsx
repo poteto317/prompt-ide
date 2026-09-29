@@ -62,6 +62,7 @@ interface Props {
   isLocked?: (path: string) => boolean
   isAnyLocked?: () => boolean
   onStageFile: (path: string) => void
+  onDiscardFile: (path: string) => void
   onUnstageFile: (path: string, renamedFrom?: string) => void
   isCommitting: boolean
   onCommit: (message: string) => Promise<boolean>
@@ -145,6 +146,7 @@ export default function Sidebar({
   isLocked = alwaysUnlocked,
   isAnyLocked = alwaysUnlocked,
   onStageFile,
+  onDiscardFile,
   onUnstageFile,
   isCommitting,
   onCommit,
@@ -249,6 +251,7 @@ export default function Sidebar({
           isLocked={isLocked}
           isAnyLocked={isAnyLocked}
           onStage={onStageFile}
+          onDiscard={onDiscardFile}
           onUnstage={onUnstageFile}
           onOpenDiff={onOpenDiff}
           isCommitting={isCommitting}

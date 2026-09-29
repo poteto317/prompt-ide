@@ -1192,7 +1192,8 @@ body {
 }
 
 .source-control-panel__stage-btn,
-.source-control-panel__unstage-btn {
+.source-control-panel__unstage-btn,
+.source-control-panel__discard-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -1211,19 +1212,35 @@ body {
 }
 
 .source-control-panel__file-item:hover .source-control-panel__stage-btn,
-.source-control-panel__file-item:hover .source-control-panel__unstage-btn {
+.source-control-panel__file-item:hover .source-control-panel__unstage-btn,
+.source-control-panel__file-item:hover .source-control-panel__discard-btn {
   display: flex;
 }
 
 .source-control-panel__stage-btn:hover,
-.source-control-panel__unstage-btn:hover {
+.source-control-panel__unstage-btn:hover,
+.source-control-panel__discard-btn:hover {
   background: #454545;
 }
 
 .source-control-panel__stage-btn:disabled,
-.source-control-panel__unstage-btn:disabled {
+.source-control-panel__unstage-btn:disabled,
+.source-control-panel__discard-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* 行の右端に操作ボタン(取り消し・ステージ)を並べる。ボタン自身の margin-left: auto は
+   ボタンが 1 つだけの前提だったため、並べる場合は外側の列で右寄せする */
+.source-control-panel__file-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.source-control-panel__file-actions .source-control-panel__stage-btn,
+.source-control-panel__file-actions .source-control-panel__discard-btn {
+  margin-left: 0;
 }
 
 .source-control-panel__commit {

@@ -13,6 +13,7 @@ interface Props {
   isLocked?: (path: string) => boolean
   isAnyLocked?: () => boolean
   onStage: (path: string) => void
+  onDiscard: (path: string) => void
   onUnstage: (path: string, renamedFrom?: string) => void
   onOpenDiff: (path: string, staged: boolean) => void
   isCommitting: boolean
@@ -54,6 +55,7 @@ export default function SourceControlPanel({
   isLocked = alwaysUnlocked,
   isAnyLocked = alwaysUnlocked,
   onStage,
+  onDiscard,
   onUnstage,
   onOpenDiff,
   isCommitting,
@@ -128,6 +130,7 @@ export default function SourceControlPanel({
             isLocked={isLocked}
             isAnyLocked={isAnyLocked}
             onStage={onStage}
+            onDiscard={onDiscard}
             onUnstage={onUnstage}
             onOpenDiff={onOpenDiff}
             isCommitting={isCommitting}

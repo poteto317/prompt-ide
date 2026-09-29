@@ -12,6 +12,7 @@ const changedFile: GitFileStatus = { path: 'changed.ts', index: ' ', workingDir:
 const baseProps = {
   stagingPaths: new Set<string>(),
   onStage: vi.fn(),
+  onDiscard: vi.fn(),
   onUnstage: vi.fn(),
   onOpenDiff: vi.fn(),
   isCommitting: false,
@@ -164,6 +165,7 @@ describe('GitRepoView', () => {
         files={files}
         stagingPaths={new Set()}
         onStage={onStage}
+        onDiscard={vi.fn()}
         onUnstage={onUnstage}
         onOpenDiff={vi.fn()}
         isCommitting={false}
@@ -191,6 +193,22 @@ describe('GitRepoView', () => {
     expect(screen.getByLabelText('コミットメッセージ')).toBeInTheDocument()
   })
 
+  it('ChangesSection の取り消しボタンから onDiscard が呼ばれる', async () => {
+    const onDiscard = vi.fn()
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        {...baseProps}
+        files={[{ path: 'src/a.ts', index: ' ', workingDir: 'M' }]}
+        onDiscard={onDiscard}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' }))
+    expect(onDiscard).toHaveBeenCalledWith('src/a.ts')
+  })
+
   it('historyError が HistorySection に渡りエラーメッセージが表示される', () => {
     render(
       <GitRepoView
@@ -214,6 +232,7 @@ describe('GitRepoView', () => {
         files={[]}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onUnstage={vi.fn()}
         onOpenDiff={vi.fn()}
         isCommitting={false}
@@ -250,6 +269,7 @@ describe('GitRepoView', () => {
         files={[{ path: 'a.ts', index: ' ', workingDir: 'M' }]}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onUnstage={vi.fn()}
         onOpenDiff={onOpenDiff}
         isCommitting={false}
@@ -284,6 +304,7 @@ describe('GitRepoView', () => {
         files={[{ path: 'a.ts', index: 'M', workingDir: ' ' }]}
         stagingPaths={new Set()}
         onStage={vi.fn()}
+        onDiscard={vi.fn()}
         onUnstage={vi.fn()}
         onOpenDiff={onOpenDiff}
         isCommitting={false}

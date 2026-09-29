@@ -1,5 +1,5 @@
 import type { GitFileStatus } from '@shared/types'
-import { statusChar, isUntrackedFile, isUnstagedFile } from '../../lib/gitUtils'
+import { statusChar, isUntrackedFile, isUnstagedFile, isConflictedFile } from '../../lib/gitUtils'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
    *  押しても無言で弾かれるだけの状態になる */
   stagingPaths: ReadonlySet<string>
   onStage: (path: string) => void
+  /** 取り消しボタン。確認・タブの同期は呼び出し元(useDiscardFileChanges)が行う */
+  onDiscard: (path: string) => void
   onOpenDiff: (path: string) => void
   /** diff タブでのハンク操作(git apply --cached)と同じ .git/index への書き込みが
    *  対象ファイルに対して実行中かどうか。stagingPaths(このセクション自身の
@@ -29,6 +31,7 @@ export default function ChangesSection({
   files,
   stagingPaths,
   onStage,
+  onDiscard,
   onOpenDiff,
   isLocked = alwaysUnlocked,
   isAnyLocked = alwaysUnlocked
@@ -39,30 +42,48 @@ export default function ChangesSection({
     <section className="source-control-panel__section">
       <h3 className="source-control-panel__section-title">変更 ({changed.length})</h3>
       <ul className="source-control-panel__file-list">
-        {changed.map((f) => (
-          <li key={f.path} className="source-control-panel__file-item">
-            <span className="source-control-panel__file-status source-control-panel__file-status--changed">
-              {isUntrackedFile(f) ? statusChar(f.index) : statusChar(f.workingDir)}
-            </span>
-            <button
-              type="button"
-              className="source-control-panel__file-path"
-              onClick={() => onOpenDiff(f.path)}
-              aria-label={`${f.path} の未ステージ差分を表示`}
-            >
-              {f.path}
-            </button>
-            <button
-              type="button"
-              className="source-control-panel__stage-btn"
-              onClick={() => onStage(f.path)}
-              disabled={stagingPaths.size > 0 || isLocked(f.path) || isAnyLocked()}
-              aria-label={`${f.path} をステージ`}
-            >
-              +
-            </button>
-          </li>
-        ))}
+        {changed.map((f) => {
+          // 取り消しもステージと同じ直列化(useGitOperations.runStageOperation)で実行される
+          // ため、ボタンの disabled 条件も共有する(パターン14)
+          const isOperationBlocked = stagingPaths.size > 0 || isLocked(f.path) || isAnyLocked()
+          return (
+            <li key={f.path} className="source-control-panel__file-item">
+              <span className="source-control-panel__file-status source-control-panel__file-status--changed">
+                {isUntrackedFile(f) ? statusChar(f.index) : statusChar(f.workingDir)}
+              </span>
+              <button
+                type="button"
+                className="source-control-panel__file-path"
+                onClick={() => onOpenDiff(f.path)}
+                aria-label={`${f.path} の未ステージ差分を表示`}
+              >
+                {f.path}
+              </button>
+              <div className="source-control-panel__file-actions">
+                {!isConflictedFile(f) && (
+                  <button
+                    type="button"
+                    className="source-control-panel__discard-btn"
+                    onClick={() => onDiscard(f.path)}
+                    disabled={isOperationBlocked}
+                    aria-label={`${f.path} の変更を取り消し`}
+                  >
+                    ↶
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="source-control-panel__stage-btn"
+                  onClick={() => onStage(f.path)}
+                  disabled={isOperationBlocked}
+                  aria-label={`${f.path} をステージ`}
+                >
+                  +
+                </button>
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )
