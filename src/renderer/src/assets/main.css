@@ -1111,9 +1111,12 @@ body {
 
 /* 作成ボタンの見た目は .source-control-panel__branch-menu-item を併用して揃え、
    ここでは区切り線(ブランチ一覧との境界)だけを足す。.branch-menu-item の border: none
-   より後に置くことで border-bottom が優先される */
+   より後に置くことで border-bottom が優先される。
+   メニューは shrink-to-fit で、短いブランチ名しか無いと min-width まで縮む。日本語の文言は
+   文字間で改行できるため、nowrap で文言の幅をメニュー幅の下限にして1行に収める(PRレビュー指摘) */
 .source-control-panel__branch-menu-create {
   border-bottom: 1px solid #454545;
+  white-space: nowrap;
 }
 
 .source-control-panel__branch-menu-row {
