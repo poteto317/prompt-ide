@@ -67,6 +67,8 @@
 - 未追跡ファイルは `git ls-files -- :(literal)<path>` の出力が空。未追跡ディレクトリ（status では `newdir/`）も空
 - コンフリクト中のファイルは `git ls-files -u -- :(literal)<path>` が空でない（`git restore` は `path '...' is unmerged` で失敗する）
 
+**最終レビューでの追加:** intent-to-add（`git add -N`、status は ` A`）は `ls-files` に出るが、`restore --worktree` はファイルを空にするだけで内容が失われる。`restore` の前に `git diff --name-only --diff-filter=A -- :(literal)<path>` で判定し、空でなければ `git rm --cached -q` → ゴミ箱への移動の順で行う。renderer 側は `lib/gitUtils.ts` の `isIntentToAddFile` で未追跡と同じ扱いにする。以下のコード例はこの追加前の内容で、現行コードは `src/main/gitService.ts` を参照すること。
+
 - [ ] **Step 1: `trash.ts` のテストを書く**
 
 `src/main/__tests__/trash.test.ts`:

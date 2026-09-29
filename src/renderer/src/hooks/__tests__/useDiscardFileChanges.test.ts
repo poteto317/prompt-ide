@@ -7,7 +7,8 @@ import type { DiscardFileChangesOptions } from '../useDiscardFileChanges'
 const files: GitFileStatus[] = [
   { path: 'src/a.ts', index: ' ', workingDir: 'M' },
   { path: 'new.txt', index: '?', workingDir: '?' },
-  { path: 'newdir/', index: '?', workingDir: '?' }
+  { path: 'newdir/', index: '?', workingDir: '?' },
+  { path: 'ita.txt', index: ' ', workingDir: 'A' }
 ]
 
 const setup = (
@@ -60,6 +61,18 @@ describe('useDiscardFileChanges', () => {
     })
     expect(options.onConfirm).toHaveBeenCalledWith('newdir/ をゴミ箱へ移動しますか？')
     expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/newdir/')
+    expect(options.reloadOpenFile).not.toHaveBeenCalled()
+  })
+
+  // intent-to-add(git add -N)は main 側で index から外してゴミ箱へ移すため、
+  // 未追跡と同じ文言・タブの扱いにする(最終レビューで追加)
+  it('intent-to-add は未追跡と同じくゴミ箱への移動として確認し、成功後にタブを閉じる', async () => {
+    const { discard, options } = setup()
+    await act(async () => {
+      await discard('ita.txt')
+    })
+    expect(options.onConfirm).toHaveBeenCalledWith('ita.txt をゴミ箱へ移動しますか？')
+    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/ita.txt')
     expect(options.reloadOpenFile).not.toHaveBeenCalled()
   })
 

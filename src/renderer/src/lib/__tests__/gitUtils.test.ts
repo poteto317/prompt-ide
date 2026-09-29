@@ -4,6 +4,7 @@ import {
   statusChar,
   isStagedFile,
   isUntrackedFile,
+  isIntentToAddFile,
   isUnstagedFile,
   isGitOperationDisabled,
   isConflictedFile
@@ -88,6 +89,24 @@ describe('isUntrackedFile', () => {
 
   it('index が "M"（追跡済み・ステージ済み）は false を返す', () => {
     expect(isUntrackedFile({ path: 'a.ts', index: 'M', workingDir: ' ' })).toBe(false)
+  })
+})
+
+describe('isIntentToAddFile', () => {
+  // git add -N のファイルは status が ' A'(index ' '、workingDir 'A')になる。
+  // 変更の取り消しで未追跡と同じ扱い(ゴミ箱へ移す)にするための判定(最終レビューで追加)
+  it('index が " " で workingDir が "A"(intent-to-add)は true を返す', () => {
+    expect(isIntentToAddFile({ path: 'x.txt', index: ' ', workingDir: 'A' })).toBe(true)
+  })
+
+  it.each([
+    { index: 'A', workingDir: ' ' },
+    { index: 'A', workingDir: 'M' },
+    { index: 'A', workingDir: 'A' },
+    { index: ' ', workingDir: 'M' },
+    { index: '?', workingDir: '?' }
+  ])('index "$index" / workingDir "$workingDir" は false を返す', ({ index, workingDir }) => {
+    expect(isIntentToAddFile({ path: 'x.txt', index, workingDir })).toBe(false)
   })
 })
 

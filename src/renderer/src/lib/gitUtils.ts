@@ -37,6 +37,14 @@ export function isUntrackedFile(f: GitFileStatus): boolean {
   return f.index === '?'
 }
 
+// intent-to-add(git add -N)のファイルは status が ' A'(index ' '、workingDir 'A')になる。
+// index には空のエントリしか無く、git restore --worktree はファイルを空にするだけで
+// 内容が失われるため、変更の取り消しでは main 側(gitService.ts の discardFileChanges)と
+// 揃えて未追跡と同じくゴミ箱への移動として扱う(最終レビューで追加)
+export function isIntentToAddFile(f: GitFileStatus): boolean {
+  return f.index === ' ' && f.workingDir === 'A'
+}
+
 // 「未ステージの変更を持つか」は ChangesSection.tsx の一覧フィルタと
 // useAppState.ts の diffTab 自動クローズ判定の両方が必要とし、それぞれが
 // この条件を独立に書いていた(コメントでのみ「揃える」ことが保証されていた)。

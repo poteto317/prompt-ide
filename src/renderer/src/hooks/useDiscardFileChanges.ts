@@ -1,11 +1,11 @@
 import type { GitFileStatus } from '@shared/types'
-import { isUntrackedFile } from '../lib/gitUtils'
+import { isIntentToAddFile, isUntrackedFile } from '../lib/gitUtils'
 import { joinPath } from '../lib/pathUtils'
 import { buildDiscardConfirmMessage } from '../lib/discardConfirmMessage'
 
 export interface DiscardFileChangesOptions {
   folderPath: string | null
-  /** git status のファイル一覧(未追跡かどうかの判定に使う) */
+  /** git status のファイル一覧(未追跡・intent-to-add かどうかの判定に使う) */
   files: GitFileStatus[]
   /** useGitOperations.discardFile。実行され成功したら true */
   discardFile: (path: string) => Promise<boolean>
@@ -38,16 +38,17 @@ export function useDiscardFileChanges({
     if (folderPath === null) return false
     const absolutePath = joinPath(folderPath, path)
     const file = files.find((f) => f.path === path)
-    const isUntracked = file !== undefined && isUntrackedFile(file)
+    // intent-to-add も main 側でゴミ箱へ移すため、未追跡と同じ文言・タブの扱いにする
+    const movesToTrash = file !== undefined && (isUntrackedFile(file) || isIntentToAddFile(file))
     const message = buildDiscardConfirmMessage({
       path,
-      isUntracked,
+      isUntracked: movesToTrash,
       hasUnsavedEdits: hasDirtyTabAtOrInside(absolutePath)
     })
     if (!onConfirm(message)) return false
     const succeeded = await discardFile(path)
     if (!succeeded) return false
-    if (isUntracked) closeTabsAtOrInside(absolutePath)
+    if (movesToTrash) closeTabsAtOrInside(absolutePath)
     else await reloadOpenFile(absolutePath)
     // ファイルウォッチャーが無いため、ゴミ箱へ移した未追跡ファイルがツリーに残り
     // (クリックすると開けない)、復元された削除済みファイルもツリーに現れない。

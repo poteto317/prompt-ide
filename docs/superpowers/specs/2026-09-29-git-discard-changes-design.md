@@ -92,7 +92,14 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
   1. `git ls-files -u -- :(literal)<path>` の出力が空でなければコンフリクト中として拒否する
   2. `git ls-files -- :(literal)<path>` の出力が空なら未追跡として `trash(<絶対パス>)` を呼ぶ
      （未追跡ディレクトリは status に `newdir/` の形で現れ、`ls-files` も空になる）
-  3. それ以外は `git restore --worktree -- :(literal)<path>` を実行する
+  3. `git diff --name-only --diff-filter=A -- :(literal)<path>` の出力が空でなければ intent-to-add
+     （`git add -N`、status は ` A`）として、`git rm --cached -q -- :(literal)<path>` で index から
+     外した**後で** `trash(<絶対パス>)` を呼ぶ（ゴミ箱への移動の失敗も未追跡と同じ日本語エラーにする）。
+     順序を逆にすると、ゴミ箱への移動の後で `rm --cached` が失敗したとき、ゴミ箱にあるファイルを指す
+     index エントリが残るため、先に index から外して「失敗しても通常の未追跡ファイルが残る」ようにする。
+     intent-to-add は `ls-files` に出るため手順 2 では判定できず、`git restore --worktree` は
+     ファイルを空にするだけで ` A` のまま残り、履歴の無い内容が失われる（最終レビューで追加）
+  4. それ以外は `git restore --worktree -- :(literal)<path>` を実行する
   - pathspec は既存の `toLiteralPathspec` でリテラル化する（`a[1].txt` が `a1.txt` に一致する
     グロブ展開を防ぐ）
 - 前提（2026-09-29 に git 2.50.1 の実機で確認）
@@ -101,6 +108,10 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
   - 未追跡ファイルに `git restore` を使うと `pathspec ... did not match` で失敗する
   - コンフリクト中のファイルは `git restore` が `path '...' is unmerged` で失敗し、
     `git ls-files` では同じパスが複数回出力される（`ls-files -u` で判定できる）
+  - intent-to-add（` A`）のファイルは `git ls-files` に出力され、`git restore --worktree` は
+    rc=0 でファイルを空にし、status は ` A` のまま残る。`git diff --name-only --diff-filter=A` は
+    intent-to-add のときだけパスを出力し、通常の追跡済み（` M` / `AM` / ` D`）では空になる。
+    `git rm --cached` 後は `??`（未追跡）になり、ファイルの内容は残る（最終レビューで確認）
 
 ### IPC（`src/main/handlers/gitHandlers.ts`）
 
@@ -143,7 +154,8 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
     書き込みまでは止められず、取り消し後もディスクへ到達しうる
 - 確認・取り消し・タブ同期の組み立ては新設の `useDiscardFileChanges`（`hooks/useDiscardFileChanges.ts`）
   が担い、`useAppState` は依存を渡して `discardFile` として公開するだけにする:
-  1. 対象が未追跡か（`gitStatus.files` の状態）と、対象（未追跡ディレクトリなら配下）のタブに
+  1. 対象が未追跡か（`gitStatus.files` の状態。intent-to-add は `lib/gitUtils.ts` の
+     `isIntentToAddFile` で判定し、未追跡と同じ扱いにする。最終レビューで追加）と、対象（未追跡ディレクトリなら配下）のタブに
      未保存の編集があるかから確認文言を組み立てて確認する。キャンセルなら何もしない
   2. `gitOperations.discardFile(path)` を呼ぶ
   3. 成功時のみ、追跡済みなら `reloadOpenFile`、未追跡なら `closeTabsAtOrInside` を呼ぶ
@@ -169,6 +181,9 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
   - コンフリクト中（`ls-files -u` が空でない）なら日本語エラーで拒否し、何も実行しないこと
   - `trash` の失敗を日本語エラーに変換すること
   - `a[1].txt` のようなグロブ文字を含むパスがリテラル化されていること
+  - intent-to-add（`diff --diff-filter=A` が空でない）なら `rm --cached` の後で `trash` を呼び、
+    `restore` を呼ばないこと。`rm --cached` が失敗したら `trash` を呼ばずにエラーを伝播すること
+    （最終レビューで追加）
 - `gitHandlers.test.ts`: フォルダ外のパスの拒否、相対パスへの変換、`shell.trashItem` の受け渡し
 - `useGitOperations.test.ts`: 排他（他操作中は呼ばない）、戻り値、エラー state への反映
 - `useFileSystem.test.ts`: `reloadOpenFile` が対象タブだけを再読込すること、

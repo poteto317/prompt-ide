@@ -94,13 +94,29 @@ export async function discardFileChanges(
   if (unmerged.trim() !== '') {
     throw new Error(`コンフリクト中のファイルは取り消せません: ${filePath}`)
   }
-  const tracked = await git.raw(['ls-files', '--', pathspec])
-  if (tracked.trim() === '') {
+  const moveToTrash = async (): Promise<void> => {
     try {
       await trash(join(folderPath, filePath))
     } catch {
       throw new Error(`ゴミ箱へ移動できませんでした: ${filePath}`)
     }
+  }
+  const tracked = await git.raw(['ls-files', '--', pathspec])
+  if (tracked.trim() === '') {
+    await moveToTrash()
+    return
+  }
+  // intent-to-add(git add -N、status は ' A')は ls-files に出るが、index には空の
+  // エントリしか無い。restore --worktree はファイルを空にするだけで ' A' のまま残り、
+  // 履歴の無い内容が失われる(git 2.50.1 の実機で確認)。未追跡と同じくゴミ箱へ移す。
+  // working tree と index の差分が「追加」になるのは intent-to-add だけなので
+  // diff --diff-filter=A で判定する(最終レビューで追加)
+  const intentToAdd = await git.raw(['diff', '--name-only', '--diff-filter=A', '--', pathspec])
+  if (intentToAdd.trim() !== '') {
+    // 先に index から外す。ゴミ箱への移動が失敗しても、ゴミ箱にあるファイルを指す
+    // 宙ぶらりんの index エントリではなく、通常の未追跡ファイルが残るようにする
+    await git.raw(['rm', '--cached', '-q', '--', pathspec])
+    await moveToTrash()
     return
   }
   await git.raw(['restore', '--worktree', '--', pathspec])

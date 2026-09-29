@@ -259,10 +259,20 @@ describe('unstageFile', () => {
 
 describe('discardFileChanges', () => {
   // raw() の呼び出しを先頭の引数で振り分ける。出力形式は Task 1 冒頭の前提を参照
-  const setupRaw = (outputs: { unmerged?: string; tracked?: string }): void => {
+  const setupRaw = (outputs: {
+    unmerged?: string
+    tracked?: string
+    intentToAdd?: string
+    rmCachedError?: Error
+  }): void => {
     mockRaw.mockImplementation(async (args: string[]) => {
       if (args[0] === 'ls-files' && args[1] === '-u') return outputs.unmerged ?? ''
       if (args[0] === 'ls-files') return outputs.tracked ?? ''
+      if (args[0] === 'diff') return outputs.intentToAdd ?? ''
+      if (args[0] === 'rm') {
+        if (outputs.rmCachedError !== undefined) throw outputs.rmCachedError
+        return ''
+      }
       if (args[0] === 'restore') return ''
       throw new Error(`unexpected raw: ${args.join(' ')}`)
     })
@@ -318,9 +328,72 @@ describe('discardFileChanges', () => {
     mockRaw.mockImplementation(async (args: string[]) => {
       if (args[0] === 'ls-files' && args[1] === '-u') return ''
       if (args[0] === 'ls-files') return 'a.ts\n'
+      if (args[0] === 'diff') return ''
       throw new Error('restore failed')
     })
     await expect(discardFileChanges('/project', 'a.ts', vi.fn())).rejects.toThrow('restore failed')
+  })
+
+  // intent-to-add(git add -N、status は ' A')は ls-files に出るが、restore --worktree は
+  // ファイルを空にするだけで ' A' のまま残る(履歴が無いので内容が失われる)。
+  // 未追跡と同じくゴミ箱へ移す(最終レビューで追加)
+  describe('intent-to-add のファイル', () => {
+    it('diff --diff-filter=A で判定し、rm --cached の後でゴミ箱へ移し、restore は呼ばない', async () => {
+      // 呼び出し順を記録するため、setupRaw ではなく個別に差し替える
+      const order: string[] = []
+      mockRaw.mockImplementation(async (args: string[]) => {
+        if (args[0] === 'ls-files' && args[1] === '-u') return ''
+        if (args[0] === 'ls-files') return 'x.txt\n'
+        if (args[0] === 'diff') return 'x.txt\n'
+        order.push(args[0])
+        return ''
+      })
+      const trash = vi.fn(async () => {
+        order.push('trash')
+      })
+      await discardFileChanges('/project', 'dir/x.txt', trash)
+      expect(mockRaw).toHaveBeenCalledWith([
+        'diff',
+        '--name-only',
+        '--diff-filter=A',
+        '--',
+        ':(literal)dir/x.txt'
+      ])
+      expect(mockRaw).toHaveBeenCalledWith(['rm', '--cached', '-q', '--', ':(literal)dir/x.txt'])
+      expect(trash).toHaveBeenCalledWith('/project/dir/x.txt')
+      // ゴミ箱への移動に失敗しても、index に宙ぶらりんのエントリを残さず
+      // 通常の未追跡ファイルに戻っているよう、rm --cached を先に行う
+      expect(order).toEqual(['rm', 'trash'])
+    })
+
+    it('rm --cached が失敗したらゴミ箱へは移さず、エラーを伝播する', async () => {
+      setupRaw({
+        tracked: 'x.txt\n',
+        intentToAdd: 'x.txt\n',
+        rmCachedError: new Error('rm failed')
+      })
+      const trash = vi.fn()
+      await expect(discardFileChanges('/project', 'x.txt', trash)).rejects.toThrow('rm failed')
+      expect(trash).not.toHaveBeenCalled()
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+    })
+
+    it('ゴミ箱への移動に失敗したら未追跡と同じ日本語エラーにする', async () => {
+      setupRaw({ tracked: 'x.txt\n', intentToAdd: 'x.txt\n' })
+      const trash = vi.fn().mockRejectedValue(new Error('trash unavailable'))
+      await expect(discardFileChanges('/project', 'x.txt', trash)).rejects.toThrow(
+        'ゴミ箱へ移動できませんでした: x.txt'
+      )
+    })
+
+    it('通常の追跡済み(diff --diff-filter=A が空)なら従来どおり restore する', async () => {
+      setupRaw({ tracked: 'a.ts\n', intentToAdd: '' })
+      const trash = vi.fn()
+      await discardFileChanges('/project', 'a.ts', trash)
+      expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)a.ts'])
+      expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['rm']))
+      expect(trash).not.toHaveBeenCalled()
+    })
   })
 })
 
