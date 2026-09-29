@@ -3732,6 +3732,254 @@ describe('useFileSystem', () => {
       expect(result.current.hasDirtyTabAtOrInside('/project/src')).toBe(true)
       expect(result.current.hasDirtyTabAtOrInside('/project/other.ts')).toBe(false)
     })
+
+    it('hasDirtyTabAtOrInside は未保存の編集が無いタブでは false を返す', async () => {
+      // f.content !== f.savedContent の判定を外して isPathAtOrInside だけの判定に
+      // 弱めても、上の「未保存の編集を検出する」テストは dirty なタブしか見ていない
+      // ため気づけない。開いているが編集していない(クリーンな)タブで検出する
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      expect(result.current.hasDirtyTabAtOrInside('/project/src/index.ts')).toBe(false)
+      expect(result.current.hasDirtyTabAtOrInside('/project/src')).toBe(false)
+    })
+
+    it('closeTabsAtOrInside: アクティブなタブを閉じると残りのタブへアクティブが移る', async () => {
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await openTwoFiles(result)
+      // openTwoFiles は package.json を最後に選択するため、それがアクティブになっている
+      expect(result.current.activeFilePath).toBe('/project/package.json')
+
+      act(() => result.current.closeTabsAtOrInside('/project/package.json'))
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/index.ts'])
+      expect(result.current.activeFilePath).toBe('/project/src/index.ts')
+    })
+
+    it('closeTabsAtOrInside: アクティブなタブを閉じると saveError がクリアされる', async () => {
+      // resetForFileChange(clearStaleSaveState を伴う)を呼ばずに閉じるだけだと、
+      // 別ファイルの保存失敗で立った saveError が古いまま残り続けてしまう
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('編集済み'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      act(() => result.current.closeTabsAtOrInside('/project/src'))
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('closeTabsAtOrInside: 非アクティブなタブを閉じても、アクティブなタブの saveError は残る', async () => {
+      // wasActive 相当のゲートが無いと、無関係な非アクティブファイルを閉じただけで
+      // アクティブタブの saveError まで誤ってクリアされてしまう(closeTab の
+      // wasActive ゲートと同じ懸念)
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // a.ts をアクティブに戻し、保存を失敗させて saveError を立てておく
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      // 非アクティブな b.ts だけを閉じる
+      act(() => result.current.closeTabsAtOrInside('/project/src/b.ts'))
+
+      expect(result.current.openFiles.map((f) => f.path)).toEqual(['/project/src/a.ts'])
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.saveError?.message).toBe('EACCES')
+    })
+
+    it('closeTabsAtOrInside: 読み込み中だったファイルを閉じたら、その結果を表示しない', async () => {
+      // 選択(selectFile)がまだタブとして確定していない段階でも、保留中の読み込みを
+      // 無効化しないと、ゴミ箱へ移した後に読み込みが解決してタブとして開いてしまう
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      let resolveRead: (content: string) => void = () => {}
+      mockReadFileContent.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveRead = resolve
+          })
+      )
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const node: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
+      let readPromise: Promise<boolean> = Promise.resolve(false)
+      act(() => {
+        readPromise = result.current.selectFile(node)
+      })
+
+      act(() => result.current.closeTabsAtOrInside('/project/src'))
+
+      await act(async () => {
+        resolveRead('const x = 1')
+        await readPromise
+      })
+      expect(result.current.openFile).toBeNull()
+      expect(result.current.openFiles).toEqual([])
+    })
+
+    it('reloadOpenFile: アクティブなタブを取り消すと saveError がクリアされる', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('編集済み'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      mockReadFileContent.mockResolvedValueOnce('const a = 0 // 取り消し後')
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/index.ts')
+      })
+
+      expect(result.current.saveError).toBeNull()
+    })
+
+    it('reloadOpenFile: 非アクティブなタブを取り消しても、アクティブなタブの saveError は残る', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1').mockResolvedValueOnce('const b = 2')
+      mockWriteFileContent.mockRejectedValue(new Error('EACCES'))
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      const fileA: FileTreeNode = { name: 'a.ts', path: '/project/src/a.ts', type: 'file' }
+      const fileB: FileTreeNode = { name: 'b.ts', path: '/project/src/b.ts', type: 'file' }
+      await act(async () => {
+        await result.current.selectFile(fileA)
+      })
+      await act(async () => {
+        await result.current.selectFile(fileB)
+      })
+      // a.ts をアクティブに戻し、保存を失敗させて saveError を立てておく
+      act(() => result.current.activateTab('/project/src/a.ts'))
+      act(() => result.current.updateFileContent('編集済みA'))
+      await act(async () => {
+        await result.current.saveFile()
+      })
+      expect(result.current.saveError?.message).toBe('EACCES')
+
+      // 非アクティブな b.ts だけを取り消す
+      mockReadFileContent.mockResolvedValueOnce('b 取り消し後')
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/b.ts')
+      })
+
+      expect(result.current.activeFilePath).toBe('/project/src/a.ts')
+      expect(result.current.saveError?.message).toBe('EACCES')
+    })
+
+    it('reloadOpenFile: 保存の書き込み中に取り消しても、完了後に古い内容で savedContent が上書きされない', async () => {
+      // generation を進めずに取り消すと、待たされていた古い保存が後から解決した際、
+      // 取り消しで復元した savedContent を保存しようとしていた古い内容で
+      // 上書きしてしまう(ディスクへも書き込まれ、復元した内容を消してしまう)
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('const a = 1')
+      const { result } = renderHook(() => useFileSystem({ onConfirm: () => true }))
+      await act(async () => {
+        await result.current.openFolder()
+      })
+      await act(async () => {
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+      act(() => result.current.updateFileContent('保存しようとしていた内容'))
+
+      let resolveWrite: () => void = () => {}
+      mockWriteFileContent.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      let firstSave: Promise<void> = Promise.resolve()
+      act(() => {
+        firstSave = result.current.saveFile()
+      })
+      expect(result.current.isSaving).toBe(true)
+
+      // 保存の書き込みが完了する前に、取り消しでディスクの内容へ揃える
+      mockReadFileContent.mockResolvedValueOnce('取り消し後の内容')
+      await act(async () => {
+        await result.current.reloadOpenFile('/project/src/index.ts')
+      })
+      const reloaded = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+      expect(reloaded?.content).toBe('取り消し後の内容')
+      expect(reloaded?.savedContent).toBe('取り消し後の内容')
+
+      // 待たされていた書き込みが遅れて解決しても、取り消し後の savedContent を
+      // 古い保存結果で上書きしない(generation が進んでいることで無効化される)
+      await act(async () => {
+        resolveWrite()
+        await firstSave
+      })
+      const afterWrite = result.current.openFiles.find((f) => f.path === '/project/src/index.ts')
+      expect(afterWrite?.savedContent).toBe('取り消し後の内容')
+    })
   })
 
   describe('confirmDiscardAnyDirty', () => {
