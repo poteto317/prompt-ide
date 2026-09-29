@@ -76,6 +76,36 @@ export async function unstageFile(
   await git.reset(['--', ...pathspecs])
 }
 
+// 「変更」セクションのファイル単位の取り消し。filePath はリポジトリ相対パス。
+// - コンフリクト中は git restore が 'is unmerged' の英語エラーで失敗するため、
+//   ls-files -u で先に判定して日本語で拒否する(解決 UI とセットで別対応)
+// - 未追跡(ls-files が空。未追跡ディレクトリも同じ)は git の履歴に内容が無く、
+//   完全に削除すると復元できないため、OS のゴミ箱へ移動する
+// - 追跡済みは restore --worktree で index の内容へ戻す(ステージ済みの内容は残る)
+// いずれの問い合わせも出力の有無だけで判定でき、ロケールに依存しない
+export async function discardFileChanges(
+  folderPath: string,
+  filePath: string,
+  trash: (absolutePath: string) => Promise<void>
+): Promise<void> {
+  const git = simpleGit(folderPath)
+  const pathspec = toLiteralPathspec(filePath)
+  const unmerged = await git.raw(['ls-files', '-u', '--', pathspec])
+  if (unmerged.trim() !== '') {
+    throw new Error(`コンフリクト中のファイルは取り消せません: ${filePath}`)
+  }
+  const tracked = await git.raw(['ls-files', '--', pathspec])
+  if (tracked.trim() === '') {
+    try {
+      await trash(join(folderPath, filePath))
+    } catch {
+      throw new Error(`ゴミ箱へ移動できませんでした: ${filePath}`)
+    }
+    return
+  }
+  await git.raw(['restore', '--worktree', '--', pathspec])
+}
+
 export async function commit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
   await git.commit(message)

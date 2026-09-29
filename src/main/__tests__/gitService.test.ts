@@ -81,6 +81,7 @@ import {
   getGitStatus,
   stageFile,
   unstageFile,
+  discardFileChanges,
   commit,
   getDiff,
   getLog,
@@ -253,6 +254,73 @@ describe('unstageFile', () => {
     mockReset.mockResolvedValue(undefined)
     await unstageFile('/project', 'src/index.ts')
     expect(mockReset).toHaveBeenCalledWith(['--', ':(literal)src/index.ts'])
+  })
+})
+
+describe('discardFileChanges', () => {
+  // raw() の呼び出しを先頭の引数で振り分ける。出力形式は Task 1 冒頭の前提を参照
+  const setupRaw = (outputs: { unmerged?: string; tracked?: string }): void => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'ls-files' && args[1] === '-u') return outputs.unmerged ?? ''
+      if (args[0] === 'ls-files') return outputs.tracked ?? ''
+      if (args[0] === 'restore') return ''
+      throw new Error(`unexpected raw: ${args.join(' ')}`)
+    })
+  }
+
+  it('追跡済みなら restore --worktree をリテラル pathspec で呼び、ゴミ箱へは移動しない', async () => {
+    setupRaw({ tracked: 'src/a.ts\n' })
+    const trash = vi.fn()
+    await discardFileChanges('/project', 'src/a.ts', trash)
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)src/a.ts'])
+    expect(trash).not.toHaveBeenCalled()
+  })
+
+  // git は `--` の後ろでも [ ] * ? をグロブとして解釈するため、リテラル化しないと
+  // 'a[1].txt' の取り消しで無関係な 'a1.txt' の変更まで消えてしまう
+  it('グロブ文字を含むパスもリテラル化して渡す', async () => {
+    setupRaw({ tracked: 'a[1].txt\n' })
+    await discardFileChanges('/project', 'a[1].txt', vi.fn())
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-u', '--', ':(literal)a[1].txt'])
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '--', ':(literal)a[1].txt'])
+    expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)a[1].txt'])
+  })
+
+  it('未追跡(ls-files が空)なら絶対パスでゴミ箱へ移動し、restore は呼ばない', async () => {
+    setupRaw({ tracked: '' })
+    const trash = vi.fn().mockResolvedValue(undefined)
+    await discardFileChanges('/project', 'new/file.txt', trash)
+    expect(trash).toHaveBeenCalledWith('/project/new/file.txt')
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+  })
+
+  it('ゴミ箱への移動に失敗したら日本語エラーにする', async () => {
+    setupRaw({ tracked: '' })
+    const trash = vi.fn().mockRejectedValue(new Error('trash unavailable'))
+    await expect(discardFileChanges('/project', 'new.txt', trash)).rejects.toThrow(
+      'ゴミ箱へ移動できませんでした: new.txt'
+    )
+  })
+
+  // git restore は 'is unmerged' で失敗するが、その英語エラーを見せる前に日本語で拒否する
+  it('コンフリクト中(ls-files -u が空でない)なら日本語エラーで拒否し、何も実行しない', async () => {
+    setupRaw({ unmerged: '100644 abc 1\tc.txt\n100644 def 2\tc.txt\n', tracked: 'c.txt\nc.txt\n' })
+    const trash = vi.fn()
+    await expect(discardFileChanges('/project', 'c.txt', trash)).rejects.toThrow(
+      'コンフリクト中のファイルは取り消せません: c.txt'
+    )
+    expect(trash).not.toHaveBeenCalled()
+    expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+  })
+
+  it('restore が失敗したら git のエラーをそのまま伝播する', async () => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'ls-files' && args[1] === '-u') return ''
+      if (args[0] === 'ls-files') return 'a.ts\n'
+      throw new Error('restore failed')
+    })
+    await expect(discardFileChanges('/project', 'a.ts', vi.fn())).rejects.toThrow('restore failed')
   })
 })
 
