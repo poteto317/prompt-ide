@@ -250,7 +250,8 @@ export function useAppState(): AppState {
     discardFile: gitOperations.discardFile,
     hasDirtyTabAtOrInside: fileSystem.hasDirtyTabAtOrInside,
     reloadOpenFile: fileSystem.reloadOpenFile,
-    closeTabsAtOrInside: fileSystem.closeTabsAtOrInside
+    closeTabsAtOrInside: fileSystem.closeTabsAtOrInside,
+    refreshTree: fileSystem.refreshTree
   })
   // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
   // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)

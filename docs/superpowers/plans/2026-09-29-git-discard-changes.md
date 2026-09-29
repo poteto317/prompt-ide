@@ -735,6 +735,8 @@ git commit -m "feat: 特定パスのタブだけを再読込・クローズす�
 - Consumes: `discardFile`（Task 3）、`reloadOpenFile` / `closeTabsAtOrInside` / `hasDirtyTabAtOrInside`（Task 4）、`isUntrackedFile`（既存 `lib/gitUtils`）、`joinPath`（既存 `lib/pathUtils`）
 - Produces: `buildDiscardConfirmMessage({ path, isUntracked, hasUnsavedEdits }): string`、`useDiscardFileChanges(options): (path: string) => Promise<boolean>`、`AppState.discardFile: (path: string) => Promise<boolean>`（`useAppState` で `gitOperations.discardFile` を上書きして公開する）
 
+**最終レビューでの追加:** 取り消しの成功後にファイルツリーを読み直すため、`useDiscardFileChanges` に `refreshTree: () => Promise<unknown>`（`useAppState` から `fileSystem.refreshTree` を渡す。実際の戻り値は `Promise<boolean>`）を注入し、成功時だけ呼ぶ（reject は握り潰す）。以下のコード例はこの追加前の内容で、現行コードは `src/renderer/src/hooks/useDiscardFileChanges.ts` を参照すること。
+
 - [ ] **Step 1: 確認文言のテストを書く**
 
 `src/renderer/src/lib/__tests__/discardConfirmMessage.test.ts`:

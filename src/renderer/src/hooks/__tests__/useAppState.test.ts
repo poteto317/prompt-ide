@@ -32,6 +32,7 @@ const mockUseFileSystem = vi.hoisted(() =>
       hasDirtyTabAtOrInside?: (absolutePath: string) => boolean
       reloadOpenFile?: (absolutePath: string) => Promise<void>
       closeTabsAtOrInside?: (absolutePath: string) => void
+      refreshTree?: () => Promise<boolean>
     } => ({
       folderPath: null,
       fileTree: [],
@@ -1034,12 +1035,14 @@ describe('useAppState', () => {
   describe('discardFile ラッパー', () => {
     it('確認後に取り消し、成功したら対象タブを絶対パスで再読込する', async () => {
       const reloadOpenFile = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
       mockUseFileSystem.mockReturnValue({
         ...mockUseFileSystem(),
         folderPath: '/project',
         hasDirtyTabAtOrInside: vi.fn().mockReturnValue(false),
         reloadOpenFile,
-        closeTabsAtOrInside: vi.fn()
+        closeTabsAtOrInside: vi.fn(),
+        refreshTree
       })
       mockUseGitStatus.mockReturnValue({
         gitStatus: {
@@ -1064,6 +1067,8 @@ describe('useAppState', () => {
         expect(confirmSpy).toHaveBeenCalled()
         expect(window.api.discardChanges).toHaveBeenCalledWith('src/a.ts')
         expect(reloadOpenFile).toHaveBeenCalledWith('/project/src/a.ts')
+        // ファイルウォッチャーが無いため、成功後にツリーを読み直す(最終レビューで追加)
+        expect(refreshTree).toHaveBeenCalledTimes(1)
       } finally {
         window.api.discardChanges = original
         confirmSpy.mockRestore()

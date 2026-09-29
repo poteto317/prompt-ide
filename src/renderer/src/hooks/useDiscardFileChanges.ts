@@ -12,6 +12,8 @@ export interface DiscardFileChangesOptions {
   hasDirtyTabAtOrInside: (absolutePath: string) => boolean
   reloadOpenFile: (absolutePath: string) => Promise<void>
   closeTabsAtOrInside: (absolutePath: string) => void
+  /** useFileSystem.refreshTree。ファイルツリーをルートから読み直す(戻り値は使わない) */
+  refreshTree: () => Promise<unknown>
   onConfirm?: (message: string) => boolean
 }
 
@@ -29,6 +31,7 @@ export function useDiscardFileChanges({
   hasDirtyTabAtOrInside,
   reloadOpenFile,
   closeTabsAtOrInside,
+  refreshTree,
   onConfirm = confirm
 }: DiscardFileChangesOptions): (path: string) => Promise<boolean> {
   return async (path) => {
@@ -46,6 +49,12 @@ export function useDiscardFileChanges({
     if (!succeeded) return false
     if (isUntracked) closeTabsAtOrInside(absolutePath)
     else await reloadOpenFile(absolutePath)
+    // ファイルウォッチャーが無いため、ゴミ箱へ移した未追跡ファイルがツリーに残り
+    // (クリックすると開けない)、復元された削除済みファイルもツリーに現れない。
+    // 追跡済み・未追跡のどちらでもツリーの構成が変わり得るため、成功時は常に読み直す。
+    // 読み直しの失敗は refreshTree 自身がツリーのエラー表示へ報告するため、ここでは
+    // 握り潰して取り消しの成功を返す(最終レビューで追加)
+    await refreshTree().catch(() => undefined)
     return true
   }
 }

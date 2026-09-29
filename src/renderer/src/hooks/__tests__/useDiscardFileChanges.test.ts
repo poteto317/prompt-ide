@@ -20,6 +20,7 @@ const setup = (
     hasDirtyTabAtOrInside: vi.fn().mockReturnValue(false),
     reloadOpenFile: vi.fn().mockResolvedValue(undefined),
     closeTabsAtOrInside: vi.fn(),
+    refreshTree: vi.fn().mockResolvedValue(true),
     onConfirm: vi.fn().mockReturnValue(true),
     ...overrides
   }
@@ -93,5 +94,40 @@ describe('useDiscardFileChanges', () => {
     })
     expect(options.onConfirm).not.toHaveBeenCalled()
     expect(options.discardFile).not.toHaveBeenCalled()
+  })
+
+  // ファイルウォッチャーが無いため、ゴミ箱へ移した未追跡ファイルがツリーに残り、
+  // 復元された削除済みファイルがツリーに現れない(最終レビューで追加)
+  it.each(['src/a.ts', 'new.txt'])(
+    '取り消しが成功したらファイルツリーを読み直す(%s)',
+    async (path) => {
+      const { discard, options } = setup()
+      await act(async () => {
+        await discard(path)
+      })
+      expect(options.refreshTree).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it('キャンセル・失敗のときはファイルツリーを読み直さない', async () => {
+    const cancelled = setup({ onConfirm: vi.fn().mockReturnValue(false) })
+    const failed = setup({ discardFile: vi.fn().mockResolvedValue(false) })
+    await act(async () => {
+      await cancelled.discard('src/a.ts')
+      await failed.discard('src/a.ts')
+    })
+    expect(cancelled.options.refreshTree).not.toHaveBeenCalled()
+    expect(failed.options.refreshTree).not.toHaveBeenCalled()
+  })
+
+  // ツリーの読み直しの失敗はツリー側が自身のエラー表示へ報告するため、
+  // 取り消し自体の成功は変えない
+  it('ファイルツリーの読み直しが失敗しても取り消しは成功として返す', async () => {
+    const { discard } = setup({ refreshTree: vi.fn().mockRejectedValue(new Error('read failed')) })
+    let result = false
+    await act(async () => {
+      result = await discard('new.txt')
+    })
+    expect(result).toBe(true)
   })
 })
