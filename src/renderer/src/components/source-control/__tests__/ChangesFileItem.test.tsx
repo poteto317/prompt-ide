@@ -1,0 +1,73 @@
+import { render, screen, fireEvent } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import type { GitFileStatus } from '@shared/types'
+import ChangesFileItem from '../ChangesFileItem'
+
+type ItemProps = React.ComponentProps<typeof ChangesFileItem>
+
+// ボタンは行の hover でのみ表示される(main.css)が、このテストでは CSS を読み込まないため
+// 常に表示され、role と name で取得できる
+const renderItem = (overrides: Partial<ItemProps> = {}): RenderResult =>
+  render(
+    <ul>
+      <ChangesFileItem
+        file={{ path: 'src/a.ts', index: ' ', workingDir: 'M' }}
+        isOperationBlocked={false}
+        onStage={vi.fn()}
+        onDiscard={vi.fn()}
+        onOpenDiff={vi.fn()}
+        {...overrides}
+      />
+    </ul>
+  )
+
+describe('ChangesFileItem', () => {
+  it.each([
+    ['変更', { path: 'a.ts', index: ' ', workingDir: 'M' }, 'M'],
+    ['削除', { path: 'a.ts', index: ' ', workingDir: 'D' }, 'D'],
+    ['未追跡', { path: 'a.ts', index: '?', workingDir: '?' }, 'U']
+  ] as const)('%s のステータス文字を表示する', (_label, file: GitFileStatus, char) => {
+    renderItem({ file })
+    expect(screen.getByText(char)).toBeInTheDocument()
+  })
+
+  it('パスを押すと onOpenDiff、+ で onStage、↶ で onDiscard がパスで呼ばれる', () => {
+    const onOpenDiff = vi.fn()
+    const onStage = vi.fn()
+    const onDiscard = vi.fn()
+    renderItem({ onOpenDiff, onStage, onDiscard })
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts の未ステージ差分を表示' }))
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts をステージ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' }))
+    expect(onOpenDiff).toHaveBeenCalledWith('src/a.ts')
+    expect(onStage).toHaveBeenCalledWith('src/a.ts')
+    expect(onDiscard).toHaveBeenCalledWith('src/a.ts')
+  })
+
+  // 取り消しもステージと同じ直列化で実行されるため、disabled 条件を共有する
+  it('isOperationBlocked のとき、ステージと取り消しの両方が disabled になる', () => {
+    renderItem({ isOperationBlocked: true })
+    expect(screen.getByRole('button', { name: 'src/a.ts をステージ' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' })).toBeDisabled()
+  })
+
+  it('isOperationBlocked のときも、差分の表示は押せる', () => {
+    renderItem({ isOperationBlocked: true })
+    expect(
+      screen.getByRole('button', { name: 'src/a.ts の未ステージ差分を表示' })
+    ).not.toBeDisabled()
+  })
+
+  // main 側も ls-files -u で拒否するが、押せるのに必ず失敗するボタンを出さない
+  it('コンフリクト中は取り消しボタンを出さず、ステージボタンは出す', () => {
+    renderItem({ file: { path: 'c.txt', index: 'U', workingDir: 'U' } })
+    expect(screen.queryByRole('button', { name: 'c.txt の変更を取り消し' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'c.txt をステージ' })).toBeInTheDocument()
+  })
+
+  it('未追跡ファイルにも取り消しボタンがある', () => {
+    renderItem({ file: { path: 'new.txt', index: '?', workingDir: '?' } })
+    expect(screen.getByRole('button', { name: 'new.txt の変更を取り消し' })).toBeInTheDocument()
+  })
+})

@@ -1,8 +1,9 @@
 interface DiscardConfirmMessageOptions {
   /** リポジトリ相対パス(git status の表記) */
   path: string
-  /** 未追跡ならゴミ箱への移動、追跡済みなら index の内容への復元 */
-  isUntracked: boolean
+  /** true ならゴミ箱への移動(未追跡・intent-to-add)、false なら index の内容への復元。
+   *  判定は lib/discardTarget.ts の movesToTrashOnDiscard */
+  movesToTrash: boolean
   /** 対象(未追跡ディレクトリなら配下)のタブに未保存の編集があるか */
   hasUnsavedEdits: boolean
 }
@@ -11,7 +12,7 @@ interface DiscardConfirmMessageOptions {
 // (確認を 2 回に分けると、片方だけ承諾された中途半端な状態の扱いが必要になるため)
 export function buildDiscardConfirmMessage({
   path,
-  isUntracked,
+  movesToTrash,
   hasUnsavedEdits
 }: DiscardConfirmMessageOptions): string {
   // status は untracked-files=all のため、'/' で終わるパスはネストした git リポジトリだけに
@@ -20,7 +21,7 @@ export function buildDiscardConfirmMessage({
   const trashMessage = path.endsWith('/')
     ? `${path} をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。`
     : `${path} をゴミ箱へ移動しますか？`
-  const base = isUntracked
+  const base = movesToTrash
     ? trashMessage
     : `${path} の変更を取り消しますか？この操作は元に戻せません。`
   return hasUnsavedEdits ? `${base}\n\nエディタの未保存の編集も破棄されます。` : base

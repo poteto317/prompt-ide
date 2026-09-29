@@ -94,7 +94,7 @@ describe('isUntrackedFile', () => {
 
 describe('isIntentToAddFile', () => {
   // git add -N のファイルは status が ' A'(index ' '、workingDir 'A')になる。
-  // 変更の取り消しで未追跡と同じ扱い(ゴミ箱へ移す)にするための判定(最終レビューで追加)
+  // 変更の取り消しでこれをどう扱うかは lib/discardTarget.ts の movesToTrashOnDiscard を参照
   it('index が " " で workingDir が "A"(intent-to-add)は true を返す', () => {
     expect(isIntentToAddFile({ path: 'x.txt', index: ' ', workingDir: 'A' })).toBe(true)
   })

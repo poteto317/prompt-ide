@@ -6,9 +6,7 @@ import type { DiscardFileChangesOptions } from '../useDiscardFileChanges'
 
 const files: GitFileStatus[] = [
   { path: 'src/a.ts', index: ' ', workingDir: 'M' },
-  { path: 'new.txt', index: '?', workingDir: '?' },
-  { path: 'newdir/', index: '?', workingDir: '?' },
-  { path: 'ita.txt', index: ' ', workingDir: 'A' }
+  { path: 'new.txt', index: '?', workingDir: '?' }
 ]
 
 const setup = (
@@ -54,45 +52,15 @@ describe('useDiscardFileChanges', () => {
     expect(options.closeTabsAtOrInside).not.toHaveBeenCalled()
   })
 
-  it('未追跡は成功後に対象と配下のタブを閉じる', async () => {
+  // 取り消し対象の分類(未追跡・intent-to-add・重複パスの扱い)は lib/discardTarget.ts の
+  // 責務のため discardTarget.test.ts で検証する。ここでは movesToTrash が true のとき
+  // フックが closeTabsAtOrInside を呼び、reloadOpenFile を呼ばないことだけを確認する
+  it('ゴミ箱へ移す対象は成功後に対象のタブを閉じる(reloadOpenFile は呼ばない)', async () => {
     const { discard, options } = setup()
     await act(async () => {
-      await discard('newdir/')
+      await discard('new.txt')
     })
-    expect(options.onConfirm).toHaveBeenCalledWith(
-      'newdir/ をゴミ箱へ移動しますか？フォルダとその中身がすべて移動します。'
-    )
-    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/newdir/')
-    expect(options.reloadOpenFile).not.toHaveBeenCalled()
-  })
-
-  // intent-to-add(git add -N)は main 側で index から外してゴミ箱へ移すため、
-  // 未追跡と同じ文言・タブの扱いにする(最終レビューで追加)
-  it('intent-to-add は未追跡と同じくゴミ箱への移動として確認し、成功後にタブを閉じる', async () => {
-    const { discard, options } = setup()
-    await act(async () => {
-      await discard('ita.txt')
-    })
-    expect(options.onConfirm).toHaveBeenCalledWith('ita.txt をゴミ箱へ移動しますか？')
-    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/ita.txt')
-    expect(options.reloadOpenFile).not.toHaveBeenCalled()
-  })
-
-  // git rm --cached の直後などは同じパスが 'D ' と '??' の 2 件で現れる。先頭の 'D ' を
-  // 拾うと、main はゴミ箱へ移すのに「元に戻せません」の文言を出してしまう。
-  // 「変更」セクションに出るのは未ステージのエントリなので、それだけから探す(最終レビューで追加)
-  it('同じパスがステージ済みの削除と未追跡の 2 件あるときは未追跡として扱う', async () => {
-    const { discard, options } = setup({
-      files: [
-        { path: 't', index: 'D', workingDir: ' ' },
-        { path: 't', index: '?', workingDir: '?' }
-      ]
-    })
-    await act(async () => {
-      await discard('t')
-    })
-    expect(options.onConfirm).toHaveBeenCalledWith('t をゴミ箱へ移動しますか？')
-    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/t')
+    expect(options.closeTabsAtOrInside).toHaveBeenCalledWith('/project/new.txt')
     expect(options.reloadOpenFile).not.toHaveBeenCalled()
   })
 

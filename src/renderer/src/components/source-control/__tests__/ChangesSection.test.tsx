@@ -255,7 +255,10 @@ describe('ChangesSection', () => {
   })
 
   describe('取り消しボタン', () => {
-    it('各行に取り消しボタンがあり、押すと onDiscard がパスで呼ばれる', async () => {
+    // 取り消しボタンの表示条件(未追跡ファイル・コンフリクト時の非表示)は ChangesFileItem の
+    // 責務のため ChangesFileItem.test.tsx で検証する。ここでは ChangesSection が
+    // onDiscard を ChangesFileItem まで配線していることだけを確認する
+    it('取り消しボタンを押すと onDiscard がパスで呼ばれる(配線の確認)', async () => {
       const onDiscard = vi.fn()
       render(
         <ChangesSection
@@ -268,35 +271,6 @@ describe('ChangesSection', () => {
       )
       await userEvent.click(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' }))
       expect(onDiscard).toHaveBeenCalledWith('src/a.ts')
-    })
-
-    it('未追跡ファイルにも取り消しボタンがある', () => {
-      render(
-        <ChangesSection
-          files={[{ path: 'new.txt', index: '?', workingDir: '?' }]}
-          stagingPaths={new Set()}
-          onStage={vi.fn()}
-          onDiscard={vi.fn()}
-          onOpenDiff={vi.fn()}
-        />
-      )
-      expect(screen.getByRole('button', { name: 'new.txt の変更を取り消し' })).toBeInTheDocument()
-    })
-
-    // main 側も ls-files -u で拒否するが、押せるのに必ず失敗するボタンを出さない
-    it('コンフリクト中の行には取り消しボタンを出さない', () => {
-      render(
-        <ChangesSection
-          files={[{ path: 'c.txt', index: 'U', workingDir: 'U' }]}
-          stagingPaths={new Set()}
-          onStage={vi.fn()}
-          onDiscard={vi.fn()}
-          onOpenDiff={vi.fn()}
-        />
-      )
-      expect(
-        screen.queryByRole('button', { name: 'c.txt の変更を取り消し' })
-      ).not.toBeInTheDocument()
     })
 
     it.each([

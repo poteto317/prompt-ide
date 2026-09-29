@@ -1074,6 +1074,89 @@ describe('useAppState', () => {
         confirmSpy.mockRestore()
       }
     })
+
+    it('未追跡ファイルの取り消しに成功したら closeTabsAtOrInside を呼び、reloadOpenFile は呼ばない', async () => {
+      const reloadOpenFile = vi.fn().mockResolvedValue(undefined)
+      const closeTabsAtOrInside = vi.fn()
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        hasDirtyTabAtOrInside: vi.fn().mockReturnValue(false),
+        reloadOpenFile,
+        closeTabsAtOrInside,
+        refreshTree
+      })
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: {
+          isRepo: true,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: [{ path: 'new.txt', index: '?', workingDir: '?' }]
+        },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+      })
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const original = window.api.discardChanges
+      window.api.discardChanges = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.discardFile('new.txt')
+        })
+        expect(window.api.discardChanges).toHaveBeenCalledWith('new.txt')
+        expect(closeTabsAtOrInside).toHaveBeenCalledWith('/project/new.txt')
+        expect(reloadOpenFile).not.toHaveBeenCalled()
+      } finally {
+        window.api.discardChanges = original
+        confirmSpy.mockRestore()
+      }
+    })
+
+    it('対象タブに未保存の編集があれば、確認文言にエディタの編集も破棄される旨を含める', async () => {
+      const hasDirtyTabAtOrInside = vi.fn().mockReturnValue(true)
+      const reloadOpenFile = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        hasDirtyTabAtOrInside,
+        reloadOpenFile,
+        closeTabsAtOrInside: vi.fn(),
+        refreshTree
+      })
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: {
+          isRepo: true,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: [{ path: 'src/a.ts', index: ' ', workingDir: 'M' }]
+        },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+      })
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+      const original = window.api.discardChanges
+      window.api.discardChanges = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.discardFile('src/a.ts')
+        })
+        expect(confirmSpy).toHaveBeenCalledWith(
+          expect.stringContaining('エディタの未保存の編集も破棄されます。')
+        )
+        expect(hasDirtyTabAtOrInside).toHaveBeenCalledWith('/project/src/a.ts')
+      } finally {
+        window.api.discardChanges = original
+        confirmSpy.mockRestore()
+      }
+    })
   })
 
   it('gitStatus が null(フォルダ未読み込み等)の間は diffTab を閉じない', () => {

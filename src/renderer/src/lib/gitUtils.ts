@@ -12,7 +12,7 @@ export function statusChar(code: string): string {
 // 表示されてしまう。実際には git add で明示的に「解決済み」とするまで
 // 通常の意味でのステージ済みではなく、git commit 自体は拒否するが、
 // アプリの表示だけが未解決のコンフリクトを見落とす原因になる。
-// ChangesSection の取り消しボタンの表示判定でも使う(main 側の ls-files -u による拒否と表示を揃える)
+// ChangesFileItem の取り消しボタンの表示判定でも使う(main 側の ls-files -u による拒否と表示を揃える)
 export function isConflictedFile(f: GitFileStatus): boolean {
   if (f.index === 'U' || f.workingDir === 'U') return true
   if (f.index === 'A' && f.workingDir === 'A') return true
@@ -38,9 +38,8 @@ export function isUntrackedFile(f: GitFileStatus): boolean {
 }
 
 // intent-to-add(git add -N)のファイルは status が ' A'(index ' '、workingDir 'A')になる。
-// index には空のエントリしか無く、git restore --worktree はファイルを空にするだけで
-// 内容が失われるため、変更の取り消しでは main 側(gitService.ts の discardFileChanges)と
-// 揃えて未追跡と同じくゴミ箱への移動として扱う(最終レビューで追加)
+// index には空のエントリしか無い。変更の取り消しでこれをどう扱うかは
+// lib/discardTarget.ts の movesToTrashOnDiscard を参照
 export function isIntentToAddFile(f: GitFileStatus): boolean {
   return f.index === ' ' && f.workingDir === 'A'
 }
