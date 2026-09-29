@@ -266,11 +266,13 @@ describe('discardFileChanges', () => {
     tracked?: string
     intentToAdd?: string
     others?: string
+    untracked?: string
     rmCachedError?: Error
   }): void => {
     mockRaw.mockImplementation(async (args: string[]) => {
       if (args[0] === 'ls-files' && args.includes('-u')) return outputs.unmerged ?? ''
-      if (args[0] === 'ls-files' && args.includes('--others')) return outputs.others ?? ''
+      if (args[0] === 'ls-files' && args.includes('-k')) return outputs.others ?? ''
+      if (args[0] === 'ls-files' && args.includes('--others')) return outputs.untracked ?? ''
       if (args[0] === 'ls-files') return outputs.tracked ?? ''
       if (args[0] === 'diff') return outputs.intentToAdd ?? ''
       if (args[0] === 'rm') {
@@ -290,7 +292,7 @@ describe('discardFileChanges', () => {
   })
 
   it('未追跡と判定したら、intent-to-add の問い合わせをしない', async () => {
-    setupRaw({ tracked: '' })
+    setupRaw({ tracked: '', untracked: 'new.txt\0' })
     await discardFileChanges('/project', 'new.txt', vi.fn().mockResolvedValue(undefined))
     expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['diff']))
   })
@@ -314,8 +316,8 @@ describe('discardFileChanges', () => {
     expect(mockRaw).toHaveBeenCalledWith(['restore', '--worktree', '--', ':(literal)a[1].txt'])
   })
 
-  it('未追跡(ls-files が空)なら絶対パスでゴミ箱へ移動し、restore は呼ばない', async () => {
-    setupRaw({ tracked: '' })
+  it('未追跡(ls-files --others に完全一致)なら絶対パスでゴミ箱へ移動し、restore は呼ばない', async () => {
+    setupRaw({ tracked: '', untracked: 'new/file.txt\0' })
     const trash = vi.fn().mockResolvedValue(undefined)
     await discardFileChanges('/project', 'new/file.txt', trash)
     expect(trash).toHaveBeenCalledWith('/project/new/file.txt')
@@ -327,15 +329,61 @@ describe('discardFileChanges', () => {
   // 判定すると未追跡の 'foo' を追跡済みと誤判定し、restore が 'foo' を 'foo/a.ts' で
   // 置き換えて、履歴に無い内容がゴミ箱も経由せずに消える(レビュー指摘)
   it('配下の追跡済みファイルしか出力されない場合は未追跡としてゴミ箱へ移す', async () => {
-    setupRaw({ tracked: 'foo/a.ts\0' })
+    setupRaw({ tracked: 'foo/a.ts\0', untracked: 'foo\0' })
     const trash = vi.fn().mockResolvedValue(undefined)
     await discardFileChanges('/project', 'foo', trash)
     expect(trash).toHaveBeenCalledWith('/project/foo')
     expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
   })
 
+  // 追跡済みに完全一致しないことは「未追跡」の根拠にならない。IPC から渡るパスの表記が
+  // index とずれていると(NFD の日本語ディレクトリ名や大文字小文字だけ違うディレクトリ名)、
+  // 追跡済みの変更ファイルが「変更の取り消し」の確認のままゴミ箱へ移っていた(PR レビュー指摘)。
+  // ls-files --others で未追跡であることを肯定的に確かめたときだけゴミ箱へ移す
+  describe('未追跡であることの確認', () => {
+    it('ls-files --others を icase・--directory で問い合わせる(-k は付けない)', async () => {
+      setupRaw({ tracked: '', untracked: 'new.txt\0' })
+      await discardFileChanges('/project', 'new.txt', vi.fn().mockResolvedValue(undefined))
+      expect(mockRaw).toHaveBeenCalledWith([
+        'ls-files',
+        '-z',
+        '--others',
+        '--directory',
+        '--',
+        ':(literal,icase)new.txt'
+      ])
+    })
+
+    // git status は未追跡ディレクトリを 'newdir/' で返し、IPC 側で末尾の / が落ちる
+    it('未追跡ディレクトリ(出力が path/)もゴミ箱へ移す', async () => {
+      setupRaw({ tracked: '', untracked: 'newdir/\0' })
+      const trash = vi.fn().mockResolvedValue(undefined)
+      await discardFileChanges('/project', 'newdir', trash)
+      expect(trash).toHaveBeenCalledWith('/project/newdir')
+    })
+
+    it.each([
+      ['追跡済みにも未追跡にも一致しない', ''],
+      // 大文字小文字を区別しない FS で 'Src' を 'src' に変えた場合など。icase で問い合わせるため
+      // 出力は index 側の表記になり、渡されたパスとは一致しない
+      ['大文字小文字だけ違うエントリしか無い', 'Src/a.ts\0'],
+      ['配下のエントリしか無い', 'src/a.ts/x\0']
+    ])(
+      '%s場合は日本語エラーで拒否し、ゴミ箱へも restore へも進まない',
+      async (_label, untracked) => {
+        setupRaw({ tracked: '', untracked })
+        const trash = vi.fn()
+        await expect(discardFileChanges('/project', 'src/a.ts', trash)).rejects.toThrow(
+          '状態を判定できないため取り消せません: src/a.ts'
+        )
+        expect(trash).not.toHaveBeenCalled()
+        expect(mockRaw).not.toHaveBeenCalledWith(expect.arrayContaining(['restore']))
+      }
+    )
+  })
+
   it('ゴミ箱への移動に失敗したら日本語エラーにする', async () => {
-    setupRaw({ tracked: '' })
+    setupRaw({ tracked: '', untracked: 'new.txt\0' })
     const trash = vi.fn().mockRejectedValue(new Error('trash unavailable'))
     await expect(discardFileChanges('/project', 'new.txt', trash)).rejects.toThrow(
       'ゴミ箱へ移動できませんでした: new.txt'
@@ -358,7 +406,7 @@ describe('discardFileChanges', () => {
 
   // 配下のファイルのコンフリクトは、このパス自身のコンフリクトではない
   it('配下のファイルだけがコンフリクト中なら、このパスはコンフリクト扱いしない', async () => {
-    setupRaw({ unmerged: '100644 abc 1\tfoo/c.txt\0', tracked: '' })
+    setupRaw({ unmerged: '100644 abc 1\tfoo/c.txt\0', tracked: '', untracked: 'foo/\0' })
     const trash = vi.fn().mockResolvedValue(undefined)
     await discardFileChanges('/project', 'foo', trash)
     expect(trash).toHaveBeenCalledWith('/project/foo')

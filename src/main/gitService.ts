@@ -80,6 +80,7 @@ export async function unstageFile(
 type DiscardTargetKind =
   | 'conflicted'
   | 'untracked'
+  | 'unknown'
   | 'intent-to-add'
   | 'overlaps-untracked'
   | 'tracked'
@@ -136,6 +137,30 @@ async function overlapsUntracked(git: SimpleGit, filePath: string): Promise<bool
     )
 }
 
+// 追跡済みに完全一致しないことは「未追跡」の根拠にならない。渡されたパスの表記が index と
+// ずれていると(NFD の日本語ディレクトリ名、大文字小文字だけ違うディレクトリ名)、追跡済みの
+// 変更ファイルを未追跡と誤判定してゴミ箱へ移してしまう(PR レビュー指摘、実機で再現)。
+// ls-files --others で未追跡であることを肯定的に確かめる。
+// - icase で問い合わせる: 大文字小文字を区別しない FS で index が 'Src/a.ts' のとき、
+//   ':(literal)src/a.ts' は --others に 'src/a.ts' を返してしまう。icase なら index の
+//   エントリと突き合わされて出力されない(実機で確認)
+// - 出力とは大文字小文字も区別して完全一致で比べる(表記のずれは判定不能として拒否する側に倒す)
+// - --directory: 未追跡ディレクトリは '<dir>/' の 1 行で出る(IPC 側で末尾の / は落ちている)
+// - --exclude-standard は付けない(ignored も未追跡として扱う。status には出ないため実害は無い)
+async function isUntracked(git: SimpleGit, filePath: string): Promise<boolean> {
+  const output = await git.raw([
+    'ls-files',
+    '-z',
+    '--others',
+    '--directory',
+    '--',
+    `:(literal,icase)${filePath}`
+  ])
+  return parseNulSeparatedPaths(output).some(
+    (entry) => entry === filePath || entry === `${filePath}/`
+  )
+}
+
 // 取り消し対象の状態を git に問い合わせて判定する。先の判定で決まれば後の問い合わせは行わない。
 // pathspec はディレクトリの前方一致として働く(':(literal)foo' は 'foo/a.ts' にも一致する)ため、
 // 出力の有無ではなく、対象のパスと完全に一致するエントリがあるかで判定する。出力の有無で
@@ -143,7 +168,8 @@ async function overlapsUntracked(git: SimpleGit, filePath: string): Promise<bool
 // 'foo' を追跡済みと誤判定し、restore が 'foo' を置き換えて内容が失われる(レビュー指摘)。
 // パスに改行等が含まれても区切りを誤らないよう -z を使う。
 // - コンフリクト中: ls-files -u に一致するエントリがある
-// - 未追跡: ls-files に一致するエントリが無い(未追跡ディレクトリも同じ)
+// - 未追跡: ls-files に一致するエントリが無く、ls-files --others に一致するエントリがある
+//   (isUntracked。どちらにも一致しなければ判定不能 'unknown')
 // - intent-to-add(git add -N、status は ' A'): ls-files には出るが index には空の
 //   エントリしか無い。working tree と index の差分が「追加」になるのは intent-to-add
 //   だけなので diff --diff-filter=A で判定する
@@ -157,7 +183,9 @@ async function classifyDiscardTarget(
   const unmerged = await git.raw(['ls-files', '-u', '-z', '--', pathspec])
   if (parseNulSeparatedPaths(unmerged, true).includes(filePath)) return 'conflicted'
   const tracked = await git.raw(['ls-files', '-z', '--', pathspec])
-  if (!parseNulSeparatedPaths(tracked).includes(filePath)) return 'untracked'
+  if (!parseNulSeparatedPaths(tracked).includes(filePath)) {
+    return (await isUntracked(git, filePath)) ? 'untracked' : 'unknown'
+  }
   const added = await git.raw(['diff', '--name-only', '-z', '--diff-filter=A', '--', pathspec])
   if (parseNulSeparatedPaths(added).includes(filePath)) return 'intent-to-add'
   if (await overlapsUntracked(git, filePath)) return 'overlaps-untracked'
@@ -169,6 +197,7 @@ async function classifyDiscardTarget(
 // - コンフリクト中は git restore が 'is unmerged' の英語エラーで失敗するため、
 //   日本語で拒否する(解決 UI とセットで別対応)
 // - 未追跡は git の履歴に内容が無く、完全に削除すると復元できないため、OS のゴミ箱へ移す
+// - 判定不能(追跡済みにも未追跡にも一致しない)は、どちらの手段も誤った対象に働きうるため拒否する
 // - intent-to-add は restore --worktree がファイルを空にするだけで ' A' のまま残り、
 //   履歴の無い内容が失われる(git 2.50.1 の実機で確認)。先に index から外してから
 //   ゴミ箱へ移す(ゴミ箱への移動が失敗しても、ゴミ箱にあるファイルを指す宙ぶらりんの
@@ -195,6 +224,8 @@ export async function discardFileChanges(
     case 'untracked':
       await moveToTrash()
       return
+    case 'unknown':
+      throw new Error(`状態を判定できないため取り消せません: ${filePath}`)
     case 'intent-to-add':
       await git.raw(['rm', '--cached', '-q', '--', pathspec])
       await moveToTrash()

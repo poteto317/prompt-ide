@@ -271,27 +271,74 @@ describe('registerGitHandlers', () => {
       expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', 'newdir', mockMoveToTrash)
     })
 
-    // シンボリックリンクの祖先ディレクトリ(linkd -> d)を経由したパスは、
-    // realpath 解決前の 'linkd/t.txt' のまま discardFileChanges に渡すと
-    // untracked(ls-files が空)と誤判定され、git の追跡下にある実体
-    // (d/t.txt)がゴミ箱へ移動されてしまう。resolveAndAssertRelativePath は
-    // 親ディレクトリを realpath 解決するため、正規化後の 'd/t.txt' が
-    // 渡ることを確認する
-    it('シンボリックリンクの祖先ディレクトリを経由したパスは正規化後の相対パスで渡す(未追跡誤判定によるゴミ箱送りを防ぐ)', async () => {
-      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
-      const folderAccess = makeFolderAccess({
-        get: vi.fn().mockReturnValue('/project'),
-        assertWithinFolder
+    // discard は git status のパス(index の表記)のまま渡す。親を realpath してディスク上の
+    // 表記に作り直すと、NFD の日本語ディレクトリ名や大文字小文字だけ違うディレクトリ名で
+    // index と一致しなくなり、追跡済みの変更ファイルがゴミ箱へ移っていた(PR レビュー指摘)
+    describe('パスの表記', () => {
+      const setupDiscard = (): void => {
+        const folderAccess = makeFolderAccess({
+          get: vi.fn().mockReturnValue('/project'),
+          assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+        })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        mockDiscardFileChanges.mockResolvedValue(undefined)
+      }
+
+      it('親の realpath が大文字小文字だけ違う表記を返しても、status の表記のまま渡す', async () => {
+        setupDiscard()
+        mockRealpath.mockImplementation((p: string) =>
+          Promise.resolve(p === '/project/Src' ? '/project/src' : p)
+        )
+        await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'Src/a.ts')
+        expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', 'Src/a.ts', mockMoveToTrash)
       })
-      registerGitHandlers(mockIpcMain, folderAccess)
-      mockDiscardFileChanges.mockResolvedValue(undefined)
-      // linkd -> d のシンボリックリンク。親ディレクトリ(/project/linkd)の
-      // realpath 解決結果が /project/d になる
-      mockRealpath.mockImplementation((p: string) =>
-        Promise.resolve(p === '/project/linkd' ? '/project/d' : p)
-      )
-      await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'linkd/t.txt')
-      expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', 'd/t.txt', mockMoveToTrash)
+
+      it('親の realpath が NFD を返しても、NFC(status の表記)のまま渡す', async () => {
+        setupDiscard()
+        const nfc = 'プロンプト'.normalize('NFC')
+        const nfd = nfc.normalize('NFD')
+        mockRealpath.mockImplementation((p: string) =>
+          Promise.resolve(p === `/project/${nfc}` ? `/project/${nfd}` : p)
+        )
+        await getRegisteredHandler('git:discardChanges')(makeEvent(1), `${nfc}/a.md`)
+        expect(mockDiscardFileChanges).toHaveBeenCalledWith(
+          '/project',
+          `${nfc}/a.md`,
+          mockMoveToTrash
+        )
+      })
+
+      // 以前は realpath で 'd/t.txt' に作り直していた(ls-files が空で未追跡と誤判定され、
+      // 実体の d/t.txt がゴミ箱へ移るのを防ぐため)。現在は discardFileChanges が未追跡を
+      // ls-files --others で肯定的に確かめ、'linkd/t.txt' は判定不能として拒否する
+      // (gitService.discard.integration.test.ts で実 git により固定)
+      it('シンボリックリンクの祖先ディレクトリを経由したパスも、そのまま渡す', async () => {
+        setupDiscard()
+        mockRealpath.mockImplementation((p: string) =>
+          Promise.resolve(p === '/project/linkd' ? '/project/d' : p)
+        )
+        await getRegisteredHandler('git:discardChanges')(makeEvent(1), 'linkd/t.txt')
+        expect(mockDiscardFileChanges).toHaveBeenCalledWith(
+          '/project',
+          'linkd/t.txt',
+          mockMoveToTrash
+        )
+      })
+
+      // 境界チェックが通っても、相対パスが許可フォルダの外を指すなら git へ渡さない(fail-safe)
+      it('相対パスが許可フォルダの外を指すなら discardFileChanges を呼ばずに拒否する', async () => {
+        setupDiscard()
+        await expect(
+          getRegisteredHandler('git:discardChanges')(makeEvent(1), '../outside.txt')
+        ).rejects.toThrow('Access denied')
+        expect(mockDiscardFileChanges).not.toHaveBeenCalled()
+      })
+
+      it("'..' で始まる名前のファイル('..env' 等)はフォルダ外とみなさずに渡す", async () => {
+        setupDiscard()
+        await getRegisteredHandler('git:discardChanges')(makeEvent(1), '..env')
+        expect(mockDiscardFileChanges).toHaveBeenCalledWith('/project', '..env', mockMoveToTrash)
+      })
     })
   })
 

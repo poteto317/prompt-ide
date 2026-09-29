@@ -81,6 +81,7 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - main 側のエラーは日本語メッセージにして投げ、既存の Git 操作エラーの表示箇所に出す
   - コンフリクト中: 「コンフリクト中のファイルは取り消せません: <path>」
   - 未追跡のファイルと重なる: 「未追跡のファイルと重なるため取り消せません: <path>」
+  - 追跡済みにも未追跡にも一致しない: 「状態を判定できないため取り消せません: <path>」
   - フォルダ外のパス: 既存の `assertFileWithinFolder` のエラー
   - ゴミ箱への移動の失敗: 「ゴミ箱へ移動できませんでした: <path>」（`shell.trashItem` の
     reject を変換する。OS やファイルシステムによってはゴミ箱が使えないため）
@@ -98,7 +99,15 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
     出力の有無で判定すると、追跡済みの `foo/a.ts` を消して同名のファイル `foo` を作った場合に未追跡の `foo` を
     追跡済みと誤判定し、restore が `foo` を置き換えて内容がゴミ箱も経由せず失われる（コードレビューで修正）
   1. `git ls-files -u -z -- :(literal)<path>` に一致するエントリがあればコンフリクト中として拒否する
-  2. `git ls-files -z -- :(literal)<path>` に一致するエントリが無ければ未追跡として `trash(<絶対パス>)` を呼ぶ
+  2. `git ls-files -z -- :(literal)<path>` に一致するエントリが無ければ、
+     `git ls-files -z --others --directory -- :(literal,icase)<path>` に `<path>` か `<path>/` と完全一致する
+     エントリがあるときだけ未追跡として `trash(<絶対パス>)` を呼ぶ。どちらにも一致しなければ
+     「状態を判定できないため取り消せません: <path>」で拒否する（PR レビューで修正）。追跡済みに一致しない
+     ことだけで未追跡とみなすと、渡されたパスの表記が index とずれていたとき（macOS の NFD の日本語
+     ディレクトリ名、大文字小文字だけ違うディレクトリ名、シンボリックリンクを経由したパス）に、追跡済みの
+     変更ファイルを「変更の取り消し」の確認のままゴミ箱へ移してしまう（実機で再現）。icase で問い合わせるのは、
+     大文字小文字を区別しない FS で index が `Src/a.ts` のとき `:(literal)src/a.ts` が `--others` に
+     `src/a.ts` を返してしまうため。出力とは大文字小文字も区別して比べ、表記のずれは拒否する側に倒す
      （status は simple-git の `git status -u`（untracked-files=all）で取得するため、未追跡の
      ディレクトリは配下のファイル単位で現れる。`/` で終わるパス（`sub/`）として現れるのは
      ネストした git リポジトリだけで、その `ls-files` も空になる。最終レビューで訂正）
@@ -152,6 +161,11 @@ diff の表示とステージ（`+`）の操作がある。しかし、作業中
 - `git:discardChanges`（引数 `filePath: string`）
   - 既存の `git:stage` と同じく、フォルダの許可確認 → 絶対パスへの解決 → 境界チェック →
     リポジトリ相対パスへの変換を行ってから service を呼ぶ
+  - ただし `git:stage` 等が使う `resolveAndAssertRelativePath` と違い、相対パスは親を realpath して
+    作り直さず、renderer が渡した git status のパス（index の表記）のまま渡す
+    （`resolveAndAssertStatusRelativePath`、PR レビューで修正）。realpath するとディスク上の表記
+    （NFD・大文字小文字違い）に化けて index と一致しなくなる。境界チェックを通っても相対パスが
+    `..` または `../` で始まる、または絶対パスなら service を呼ばずに拒否する
   - `trash` には `shell.trashItem` を渡す
 
 ### preload / renderer lib

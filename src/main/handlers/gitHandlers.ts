@@ -1,4 +1,4 @@
-import { resolve, dirname, basename, join } from 'path'
+import { resolve, dirname, basename, join, isAbsolute } from 'path'
 import { realpath } from 'node:fs/promises'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import {
@@ -82,6 +82,33 @@ export async function resolveAndAssertRelativePath(
   return toGitRelativePath(allowedFolder, canonicalPath)
 }
 
+// git:discardChanges 用。境界チェックは resolveAndAssertPath と同じく行うが、相対パスは
+// realpath で作り直さず、renderer が渡した git status のパス(index の表記)のまま返す。
+// 親を realpath するとディスク上の表記(macOS の NFD の日本語ディレクトリ名、大文字小文字を
+// 区別しない FS で大文字小文字だけ違うディレクトリ名)に化け、index と一致しなくなる。
+// stage 等は表記がずれても何もしないかエラーで止まるだけだが、discard は「追跡済みに一致
+// しない」ことから未追跡と誤判定し、追跡済みの変更ファイルをゴミ箱へ移していた(PR レビュー
+// 指摘、実機で再現)。シンボリックリンクを経由したパスは、discardFileChanges が未追跡を
+// ls-files --others で肯定的に確かめるため、判定不能として拒否される。
+// 境界チェックを通っても相対パスが許可フォルダの外を指す場合は、git へ渡さずに拒否する
+async function resolveAndAssertStatusRelativePath(
+  folderAccess: FolderAccessManager,
+  allowedFolder: string,
+  filePath: string
+): Promise<string> {
+  const resolvedPath = await resolveAndAssertPath(folderAccess, allowedFolder, filePath)
+  const relativePath = toGitRelativePath(allowedFolder, resolvedPath)
+  if (
+    relativePath === '' ||
+    relativePath === '..' ||
+    relativePath.startsWith('../') ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error('Access denied')
+  }
+  return relativePath
+}
+
 // 直近の親(dirname)だけを realpath してダメなら未解決のままフォールバックする
 // 実装だと、祖先ディレクトリごと削除されている場合(dirname 自体が存在しない)に
 // 対応できない。fileAccessGuard.assertFileWithinFolder と同様、実在する祖先が
@@ -144,8 +171,13 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
 
   ipcMain.handle('git:discardChanges', async (event: IpcMainInvokeEvent, filePath: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    // git:stage と同じ理由(失敗時のエラーに OS 絶対パスを乗せない)で相対パス化する
-    const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
+    // git:stage と同じ理由(失敗時のエラーに OS 絶対パスを乗せない)で相対パス化する。
+    // ただし表記は index に合わせたまま渡す(resolveAndAssertStatusRelativePath 参照)
+    const relativePath = await resolveAndAssertStatusRelativePath(
+      folderAccess,
+      allowedFolder,
+      filePath
+    )
     await discardFileChanges(allowedFolder, relativePath, moveToTrash)
   })
 
