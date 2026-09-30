@@ -1,6 +1,6 @@
 import { join } from 'path'
 import simpleGit, { GitError, GitPluginError } from 'simple-git'
-import type { SimpleGit } from 'simple-git'
+import type { BranchSummary, SimpleGit } from 'simple-git'
 import type { GitStatusResult, GitLogEntry, GitBranch, DeleteBranchResult } from '@shared/types'
 import {
   buildUntrackedDiff,
@@ -16,6 +16,7 @@ import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName, getBranchNameRuleViolation } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
+import { buildMergeAbortMessage } from './gitMergeMessages'
 
 // この上限を超える未追跡ファイルは、全文読み込んで疑似diff化する処理そのものを
 // スキップする。Electron のメインプロセスは全ウィンドウで共有されているため、
@@ -517,6 +518,16 @@ export async function fetchRemote(folderPath: string): Promise<void> {
   }
 }
 
+// 許可リスト検証(パターン21)の境界: branchName は IPC 境界から届く任意の文字列のため、
+// 実在するローカルブランチ名だけを通す。checkout・削除・マージで共通。
+// '-' で始まる名前('--force' 等)がオプションとして git に渡るのをここで止める。
+// current の判定には同じ summary を使うため、branchLocal() は呼び出し元で取得する
+function assertLocalBranchExists(summary: Pick<BranchSummary, 'all'>, branchName: string): void {
+  if (!summary.all.includes(branchName)) {
+    throw new Error(`存在しないブランチです: ${branchName}`)
+  }
+}
+
 // checkout はローカルの working tree/index/HEAD を書き換えるのみでネットワークI/O
 // を伴わないため、push/pull/fetch の simpleGitWithRemoteTimeout は不要。
 // 未コミットの変更が切り替え先ブランチと衝突する場合、simple-git は通常の
@@ -534,9 +545,7 @@ export async function fetchRemote(folderPath: string): Promise<void> {
 export async function checkoutBranch(folderPath: string, branchName: string): Promise<void> {
   const git = simpleGit(folderPath)
   const summary = await git.branchLocal()
-  if (!summary.all.includes(branchName)) {
-    throw new Error(`存在しないブランチです: ${branchName}`)
-  }
+  assertLocalBranchExists(summary, branchName)
   await git.checkout(branchName)
 }
 
@@ -597,9 +606,7 @@ export async function createBranch(folderPath: string, branchName: string): Prom
 // できない(実機で確認)。事前に弾かないと「強制削除しますか？」と誤って聞いてしまう
 async function assertDeletableBranch(git: SimpleGit, branchName: string): Promise<void> {
   const summary = await git.branchLocal()
-  if (!summary.all.includes(branchName)) {
-    throw new Error(`存在しないブランチです: ${branchName}`)
-  }
+  assertLocalBranchExists(summary, branchName)
   if (branchName === summary.current) {
     throw new Error(`現在のブランチは削除できません: ${branchName}`)
   }
@@ -644,6 +651,119 @@ export async function deleteBranch(
   }
   await git.deleteLocalBranch(branchName, force)
   return { deleted: true }
+}
+
+// マージ中か(MERGE_HEAD があるか)。rev-parse -q --verify は ref が無いと終了コード 1・
+// stderr 空で終わり、simple-git は reject せず空文字で resolve する(isBranchMerged と同じ)
+async function hasMergeInProgress(git: SimpleGit): Promise<boolean> {
+  const head = await git.raw(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+  return head.trim() !== ''
+}
+
+// HEAD がブランチを指しているか。simple-git の branchLocal() の summary.detached は使わない:
+// `git branch -v` の先頭行が `(HEAD detached at X)` / `(HEAD detached from X)` の形のときしか
+// detached と認識せず、rebase 中の `(no branch, rebasing main)` や bisect 中の
+// `(no branch, bisect started on main)` は current: "(no"・detached: false と解析されるため、
+// rebase を edit で止めている間などに検証をすり抜けてしまう(実機で確認)。
+// symbolic-ref -q HEAD はブランチ上なら `refs/heads/<name>` を返し、ブランチ上にいなければ
+// (detached・rebase 中・bisect 中)終了コード 1・stderr 空で終わる。simple-git は reject せず
+// 空文字で resolve する(hasMergeInProgress と同じ)
+async function isOnBranch(git: SimpleGit): Promise<boolean> {
+  const ref = await git.raw(['symbolic-ref', '-q', 'HEAD'])
+  return ref.trim() !== ''
+}
+
+// 同名のタグ等があると git は refs/tags を優先し、警告だけで終了コード 0 のまま別のコミットを
+// マージする(実機で確認)。名前の解決先がブランチの先端と食い違えば、選んでいないコミットを
+// マージしないよう拒否する。同じコミットを指すタグは無害なので拒否しない。
+// ブランチの先端は rev-parse ではなく for-each-ref で取る: 大文字小文字を区別しない FS
+// (macOS・Windows の既定)で `feat`(packed-refs)と `Feat`(loose ref のファイル)が共存すると、
+// rev-parse は両方とも loose の `Feat` のファイルへ解決して同じ値になり、検証を素通りする
+// (実機で確認)。for-each-ref は ref 名で返すので `feat` の正しい SHA を得られ、解決先との
+// 食い違いで検出できる。出力は `<refname> <objectname>` の行で、git の refname は空白を含められない
+// ため空白で分割できる。パターンは配下(refs/heads/<name>/x)にも一致しうるので、refname が
+// 完全一致する行だけを先端とする
+async function assertBranchRefUnambiguous(git: SimpleGit, branchName: string): Promise<void> {
+  const ref = `refs/heads/${branchName}`
+  const [resolved, listing] = await Promise.all([
+    git.raw(['rev-parse', '--verify', '-q', `${branchName}^{commit}`]),
+    git.raw(['for-each-ref', '--format=%(refname) %(objectname)', ref])
+  ])
+  const tip = listing
+    .split('\n')
+    .map((line) => line.trim().split(' '))
+    .find(([refname]) => refname === ref)?.[1]
+  if (tip === undefined || resolved.trim() === '' || resolved.trim() !== tip) {
+    throw new Error(`同名のタグ等があり、ブランチを特定できないためマージできません: ${branchName}`)
+  }
+}
+
+// マージ対象のブランチを特定できるかを検証する。branchName は IPC 境界から届く任意の文字列のため、
+// checkoutBranch と同じく許可リスト(実在するローカルブランチ名)で検証してから git に渡す
+// (パターン21)。前の検証に失敗したら後の git 呼び出しには進まない。
+// 曖昧さの判定は実在確認(許可リスト)の後、マージ中・未コミットの判定(assertMergeStartable)の
+// 前に置く: ブランチを特定できない状態では、以降の判定結果をユーザーに見せても意味がないため
+async function assertMergeTargetBranch(git: SimpleGit, branchName: string): Promise<void> {
+  const summary = await git.branchLocal()
+  assertLocalBranchExists(summary, branchName)
+  if (!(await isOnBranch(git))) {
+    throw new Error('ブランチをチェックアウトしてからマージしてください')
+  }
+  // ブランチ上にいることが確定した後なので、current は実在のブランチ名になる
+  if (branchName === summary.current) {
+    throw new Error(`現在のブランチ自身はマージできません: ${branchName}`)
+  }
+  await assertBranchRefUnambiguous(git, branchName)
+}
+
+// リポジトリの状態がマージを始められるかを検証する。
+// 追跡済みファイルに未コミットの変更があるときは開始しない: 重ならない変更なら git は
+// そのままマージを始めるが、その後 git merge --abort が未コミットの変更を元に戻せない場合が
+// あると git の公式ドキュメントが警告している。未追跡ファイルだけなら開始できる
+// (マージで上書きされる未追跡ファイル(ignored を除く)があれば git が拒否する。ignored の
+// ファイルは git の既定どおり黙って上書きされ、コンフリクトで自動中止しても復元されない)
+async function assertMergeStartable(git: SimpleGit): Promise<void> {
+  if (await hasMergeInProgress(git)) {
+    throw new Error('マージ中のため実行できません')
+  }
+  const dirty = await git.raw(['status', '--porcelain', '-z', '--untracked-files=no'])
+  if (dirty !== '') {
+    throw new Error('未コミットの変更があるためマージできません。先にコミットしてください')
+  }
+}
+
+// 途中で止まったマージを元に戻し、日本語のエラーを投げる。未解決のファイルは中止すると
+// 取れなくなるため、必ず中止より前に取得する。未解決のファイルが無いのに MERGE_HEAD が
+// 残るのは、pre-merge-commit フックの失敗等(実機で確認)。mergeError はその git のエラー
+async function abortFailedMerge(git: SimpleGit, mergeError: unknown): Promise<never> {
+  const conflicted = parseNulSeparatedPaths(
+    await git.raw(['diff', '--name-only', '-z', '--diff-filter=U'])
+  )
+  await git.raw(['merge', '--abort'])
+  const detail = mergeError instanceof Error ? mergeError.message : String(mergeError ?? '')
+  throw new Error(buildMergeAbortMessage(conflicted, detail))
+}
+
+// 指定したローカルブランチを現在のブランチへマージする(git merge --no-edit。早送りできれば
+// 早送りし、できなければマージコミットを作る。git の既定)。
+// コンフリクトはアプリ内に解決手段が無いため、自動で中止して元に戻す。中止するかは
+// エラー文ではなく MERGE_HEAD の有無で判定する(パターン28): コンフリクトでは git が
+// 終了コード 1・stderr 空で終わり simple-git が resolve するため、例外の有無も当てにならない。
+// MERGE_HEAD が無いまま失敗した場合は git が何も変えていない(無関係な履歴の拒否、
+// 上書きされる未追跡ファイル、コミッター情報なし等)ので、checkout と同じく git のエラーを
+// そのまま投げる。ローカルの操作でネットワーク I/O を伴わないため、リモート用のタイムアウトは使わない
+export async function mergeBranch(folderPath: string, branchName: string): Promise<void> {
+  const git = simpleGit(folderPath)
+  await assertMergeTargetBranch(git, branchName)
+  await assertMergeStartable(git)
+  let mergeError: unknown = null
+  try {
+    await git.raw(['merge', '--no-edit', branchName])
+  } catch (err) {
+    mergeError = err
+  }
+  if (await hasMergeInProgress(git)) await abortFailedMerge(git, mergeError)
+  if (mergeError !== null) throw mergeError
 }
 
 export async function amendCommit(folderPath: string, message: string): Promise<void> {

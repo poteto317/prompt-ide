@@ -47,6 +47,7 @@ declare global {
       checkoutBranch(branchName: string): Promise<void>
       createBranch(branchName: string): Promise<void>
       deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult>
+      mergeBranch(branchName: string): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

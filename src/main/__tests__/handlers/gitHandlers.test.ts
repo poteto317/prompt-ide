@@ -22,6 +22,7 @@ const mockFetchRemote = vi.hoisted(() => vi.fn())
 const mockCheckoutBranch = vi.hoisted(() => vi.fn())
 const mockCreateBranch = vi.hoisted(() => vi.fn())
 const mockDeleteBranch = vi.hoisted(() => vi.fn())
+const mockMergeBranch = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -42,6 +43,7 @@ vi.mock('../../gitService', () => ({
   checkoutBranch: mockCheckoutBranch,
   createBranch: mockCreateBranch,
   deleteBranch: mockDeleteBranch,
+  mergeBranch: mockMergeBranch,
   // gitHandlers.ts と gitService.ts が同じ条件を共有するために切り出した実体を
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
@@ -1169,6 +1171,34 @@ describe('registerGitHandlers', () => {
         getRegisteredHandler('git:deleteBranch')(makeEvent(1), null, false)
       ).rejects.toThrow('Invalid branch name')
       expect(mockDeleteBranch).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('git:mergeBranch', () => {
+    it('allowedFolder と branchName を引数に mergeBranch を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockMergeBranch.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:mergeBranch')(makeEvent(1), 'feature/x')
+      expect(mockMergeBranch).toHaveBeenCalledWith('/project', 'feature/x')
+    })
+
+    it('branchName が文字列でなければ mergeBranch を呼ばずに拒否する', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:mergeBranch')(makeEvent(1), null)).rejects.toThrow(
+        'Invalid branch name'
+      )
+      expect(mockMergeBranch).not.toHaveBeenCalled()
+    })
+
+    // 型検証より先にフォルダの許可を確認する(フォルダ未設定なら型に関わらず同じエラー)
+    it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:mergeBranch')(makeEvent(1), 123)).rejects.toThrow(
+        'No folder open'
+      )
     })
   })
 })

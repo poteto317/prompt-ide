@@ -76,3 +76,7 @@ export function createBranch(branchName: string): Promise<void> {
 export function deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult> {
   return window.api.deleteBranch(branchName, force)
 }
+
+export function mergeBranch(branchName: string): Promise<void> {
+  return window.api.mergeBranch(branchName)
+}

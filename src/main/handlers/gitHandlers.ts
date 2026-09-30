@@ -18,7 +18,8 @@ import {
   fetchRemote,
   checkoutBranch,
   createBranch,
-  deleteBranch
+  deleteBranch,
+  mergeBranch
 } from '../gitService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
@@ -308,4 +309,10 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
       return deleteBranch(allowedFolder, branchName, force)
     }
   )
+
+  ipcMain.handle('git:mergeBranch', async (event: IpcMainInvokeEvent, branchName: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertBranchNameArg(branchName)
+    await mergeBranch(allowedFolder, branchName)
+  })
 }

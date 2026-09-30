@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { execFileSync } from 'child_process'
 import {
   mkdtempSync,
   mkdirSync,
@@ -10,9 +9,16 @@ import {
   renameSync,
   symlinkSync
 } from 'fs'
-import { devNull, tmpdir } from 'os'
+import { tmpdir } from 'os'
 import { join } from 'path'
 import { discardFileChanges } from '../gitService'
+import {
+  commitAll,
+  initRepo,
+  isCaseInsensitiveFs,
+  runGit,
+  stubIsolatedGitEnv
+} from './helpers/realGitRepo'
 
 // gitService.test.ts は simple-git をモックするため、「実際の git がこの pathspec で何を出力し、
 // restore が何を消すか」は検証できない(大文字小文字だけ違う未追跡ファイルの見落としは
@@ -21,37 +27,25 @@ import { discardFileChanges } from '../gitService'
 describe('discardFileChanges(実 git)', () => {
   let repo: string
 
-  // 開発者のグローバル・システムの git 設定(commit.gpgsign、core.hooksPath 等)に左右されないよう、
-  // テスト側で実行する git と discardFileChanges(simple-git が子プロセスとして起動する git)の
-  // 両方から切り離す
-  const isolatedEnv = { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' }
-  const git = (cwd: string, ...args: string[]): void => {
-    execFileSync('git', args, { cwd, stdio: 'ignore', env: { ...process.env, ...isolatedEnv } })
-  }
+  // 実行する git は helpers の runGit(グローバル設定・リポジトリ位置の環境変数から切り離し済み)
   const write = (path: string, content: string): void => {
     mkdirSync(join(repo, path, '..'), { recursive: true })
     writeFileSync(join(repo, path), content)
   }
   const commitFiles = (files: Record<string, string>): void => {
     Object.entries(files).forEach(([path, content]) => write(path, content))
-    git(repo, 'add', '.')
-    commit(repo)
+    commitAll(repo, 'init')
   }
-  const gitOutput = (...args: string[]): string =>
-    execFileSync('git', args, { cwd: repo, env: { ...process.env, ...isolatedEnv } }).toString()
   // index / status の表記(macOS は NFC に揃い、Linux はディスク上の表記のまま)
   const indexPaths = (...args: string[]): string[] =>
-    gitOutput('ls-files', '-z', ...args)
+    runGit(repo, 'ls-files', '-z', ...args)
       .split('\0')
       .filter((entry) => entry !== '')
-  const commit = (cwd: string): void => {
-    git(cwd, '-c', 'user.email=test@example.com', '-c', 'user.name=test', 'commit', '-qm', 'init')
-  }
 
   beforeEach(() => {
-    Object.entries(isolatedEnv).forEach(([key, value]) => vi.stubEnv(key, value))
+    stubIsolatedGitEnv()
     repo = mkdtempSync(join(tmpdir(), 'discard-integration-'))
-    git(repo, 'init', '-q')
+    initRepo(repo)
   })
 
   afterEach(() => {
@@ -116,11 +110,22 @@ describe('discardFileChanges(実 git)', () => {
       rmSync(join(repo, 'bar'))
       const nested = join(repo, 'bar')
       mkdirSync(nested)
-      git(nested, 'init', '-q')
+      runGit(nested, 'init', '-q')
       write('bar/x', 'PRECIOUS')
       if (withCommit) {
-        git(nested, 'add', 'x')
-        commit(nested)
+        // ネスト側は initRepo していないため commitAll では identity が無い。この 1 箇所だけ
+        // コミッター情報を -c で渡す(グローバル設定は切り離し済みで他から補われない)
+        runGit(nested, 'add', 'x')
+        runGit(
+          nested,
+          '-c',
+          'user.email=test@example.com',
+          '-c',
+          'user.name=test',
+          'commit',
+          '-qm',
+          'nested'
+        )
       }
       await expect(discardFileChanges(repo, 'bar', vi.fn())).rejects.toThrow(
         '未追跡のファイルと重なるため取り消せません: bar'
@@ -172,15 +177,7 @@ describe('discardFileChanges(実 git)', () => {
     })
 
     // 大文字小文字を区別する FS では 'Src' と 'src' が別物になり、この配置自体が作れない
-    const caseInsensitive = ((): boolean => {
-      const probe = mkdtempSync(join(tmpdir(), 'case-probe-'))
-      try {
-        writeFileSync(join(probe, 'a'), '')
-        return existsSync(join(probe, 'A'))
-      } finally {
-        rmSync(probe, { recursive: true, force: true })
-      }
-    })()
+    const caseInsensitive = isCaseInsensitiveFs()
 
     it.skipIf(!caseInsensitive)(
       '大文字小文字だけ違うディレクトリ名に変えた追跡済みファイルは、index の表記でだけ restore する',
@@ -221,7 +218,7 @@ describe('discardFileChanges(実 git)', () => {
   it('ネストした未追跡のリポジトリはゴミ箱へ移す関数に渡す', async () => {
     commitFiles({ 'a.ts': 'x' })
     mkdirSync(join(repo, 'sub'))
-    git(join(repo, 'sub'), 'init', '-q')
+    runGit(join(repo, 'sub'), 'init', '-q')
     write('sub/x', 'x')
     const trash = vi.fn().mockResolvedValue(undefined)
     await discardFileChanges(repo, 'sub', trash)

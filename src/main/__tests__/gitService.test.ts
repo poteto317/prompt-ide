@@ -94,7 +94,8 @@ import {
   fetchRemote,
   checkoutBranch,
   createBranch,
-  deleteBranch
+  deleteBranch,
+  mergeBranch
 } from '../gitService'
 
 beforeEach(() => {
@@ -1450,4 +1451,308 @@ describe('deleteBranch', () => {
     mockDeleteLocalBranch.mockRejectedValue(new Error('delete failed'))
     await expect(deleteBranch('/project', 'feature/x', false)).rejects.toThrow('delete failed')
   })
+})
+
+describe('mergeBranch', () => {
+  // raw() の呼び出しを種類で振り分ける。MERGE_HEAD の問い合わせは呼ばれるたびに
+  // mergeHead の先頭から順に返す(1 回目: 事前検証、2 回目: マージ後の判定)。
+  // simple-git は終了コードが非 0 でも stderr が空なら reject しないため、
+  // コンフリクト時の merge は空文字で resolve する(実機で確認)
+  const setupRaw = (opts: {
+    mergeHead?: string[]
+    dirty?: string
+    conflicted?: string
+    merge?: () => Promise<string>
+    abortError?: Error
+    // `<name>^{commit}` の解決先と、for-each-ref で得るブランチ先端。
+    // 既定は同じ SHA(同名のタグ等が無い状態)
+    resolved?: string
+    branchTip?: string
+    // for-each-ref の出力そのもの(指定すると branchTip より優先)
+    forEachRef?: string
+    // `symbolic-ref -q HEAD` の出力。既定はブランチ上。ブランチ上にいない状態(detached・rebase 中・
+    // bisect 中)は、-q により終了コード 1・stderr 空で終わり simple-git が空文字で resolve する
+    headRef?: string
+  }): void => {
+    const mergeHead = [...(opts.mergeHead ?? ['', ''])]
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'symbolic-ref') return opts.headRef ?? 'refs/heads/main\n'
+      if (args[0] === 'for-each-ref') {
+        const refName = args[args.length - 1]
+        return opts.forEachRef ?? `${refName} ${(opts.branchTip ?? 'sha1\n').trim()}\n`
+      }
+      if (args[0] === 'rev-parse' && args.some((a) => a.endsWith('^{commit}'))) {
+        return opts.resolved ?? 'sha1\n'
+      }
+      if (args[0] === 'rev-parse') return mergeHead.shift() ?? ''
+      if (args[0] === 'status') return opts.dirty ?? ''
+      if (args[0] === 'diff') return opts.conflicted ?? ''
+      if (args[0] === 'merge' && args[1] === '--abort') {
+        if (opts.abortError !== undefined) throw opts.abortError
+        return ''
+      }
+      if (args[0] === 'merge') return opts.merge !== undefined ? opts.merge() : ''
+      throw new Error(`unexpected raw: ${args.join(' ')}`)
+    })
+  }
+  const rawCalls = (): string[][] => mockRaw.mock.calls.map((call) => call[0] as string[])
+  const mergeWasCalled = (): boolean =>
+    rawCalls().some((a) => a[0] === 'merge' && a[1] !== '--abort')
+  const abortWasCalled = (): boolean =>
+    rawCalls().some((a) => a[0] === 'merge' && a[1] === '--abort')
+
+  beforeEach(() => {
+    mockBranchLocal.mockResolvedValue({
+      all: ['main', 'feature/x'],
+      current: 'main'
+    })
+  })
+
+  // simple-git の summary.detached は rebase・bisect 中を検出しないため使わず、
+  // symbolic-ref が空(ブランチ上にいない)かで判定する
+  it('symbolic-ref が空を返したら(ブランチ上にいない)拒否し、merge を呼ばない', async () => {
+    setupRaw({ headRef: '' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'ブランチをチェックアウトしてからマージしてください'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('ブランチ上にいるかを git symbolic-ref -q HEAD で問い合わせる', async () => {
+    setupRaw({})
+    await mergeBranch('/project', 'feature/x')
+    expect(rawCalls()).toContainEqual(['symbolic-ref', '-q', 'HEAD'])
+  })
+
+  // 検証の順序を固定する: ブランチ上にいない状態では、以降の判定には進まない
+  it('ブランチ上にいない状態と自身のマージが同時に真なら、ブランチ上にいないエラーで拒否する', async () => {
+    setupRaw({ headRef: '' })
+    await expect(mergeBranch('/project', 'main')).rejects.toThrow(
+      'ブランチをチェックアウトしてからマージしてください'
+    )
+    expect(rawCalls().some((a) => a[0] === 'for-each-ref')).toBe(false)
+  })
+
+  it('現在のブランチ自身は拒否する', async () => {
+    setupRaw({})
+    await expect(mergeBranch('/project', 'main')).rejects.toThrow(
+      '現在のブランチ自身はマージできません: main'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('マージ中(MERGE_HEAD がある)なら拒否する', async () => {
+    setupRaw({ mergeHead: ['0123abcd\n'] })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'マージ中のため実行できません'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('追跡済みファイルに未コミットの変更があれば拒否する(--untracked-files=no で問い合わせる)', async () => {
+    setupRaw({ dirty: ' M a.txt\0' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '未コミットの変更があるためマージできません。先にコミットしてください'
+    )
+    expect(rawCalls()).toContainEqual(['status', '--porcelain', '-z', '--untracked-files=no'])
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  // 検証の順序を固定する: 前の検証に失敗したら後の git 呼び出しには進まない
+  it('同名のタグの曖昧さとマージ中が同時に真なら、同名タグのエラーで MERGE_HEAD の問い合わせより先に拒否する', async () => {
+    setupRaw({ mergeHead: ['0123abcd\n'], resolved: 'tagsha\n', branchTip: 'sha1\n' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(rawCalls()).not.toContainEqual(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('マージ中と未コミットの変更が同時に真なら、マージ中のエラーで status を呼ばずに拒否する', async () => {
+    setupRaw({ mergeHead: ['0123abcd\n'], dirty: ' M a.txt\0' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'マージ中のため実行できません'
+    )
+    expect(rawCalls().some((a) => a[0] === 'status')).toBe(false)
+  })
+
+  it('成功したら merge --no-edit をブランチ名で呼び、中止はしない', async () => {
+    setupRaw({})
+    await mergeBranch('/project', 'feature/x')
+    expect(rawCalls()).toContainEqual(['merge', '--no-edit', 'feature/x'])
+    expect(abortWasCalled()).toBe(false)
+  })
+
+  // git が何も変えずに失敗した場合(無関係な履歴の拒否、上書きされる未追跡ファイル、
+  // コミッター情報なし等)は MERGE_HEAD が残らない。中止はせず、git のエラーをそのまま投げる
+  it('merge が失敗し MERGE_HEAD が無ければ、中止せずに git のエラーをそのまま投げる', async () => {
+    const gitError = new Error('fatal: refusing to merge unrelated histories')
+    setupRaw({
+      merge: async () => {
+        throw gitError
+      }
+    })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toBe(gitError)
+    expect(abortWasCalled()).toBe(false)
+  })
+
+  // コンフリクトでは git は終了コード 1 で stderr が空のため、simple-git は reject せず
+  // resolve する。例外の有無ではなく MERGE_HEAD の有無で判定する(パターン28)
+  it('merge が resolve しても MERGE_HEAD が残っていれば、未解決ファイルを取得してから中止する', async () => {
+    setupRaw({ mergeHead: ['', 'abc123\n'], conflicted: 'a.txt\0b.txt\0' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'コンフリクトしたため中止しました: a.txt, b.txt'
+    )
+    const calls = rawCalls()
+    const diffIndex = calls.findIndex((a) => a[0] === 'diff')
+    const abortIndex = calls.findIndex((a) => a[0] === 'merge' && a[1] === '--abort')
+    expect(calls[diffIndex]).toEqual(['diff', '--name-only', '-z', '--diff-filter=U'])
+    // 中止すると未解決の状態が消えて取れなくなるため、必ず中止より前に取得する
+    expect(diffIndex).toBeGreaterThanOrEqual(0)
+    expect(abortIndex).toBeGreaterThan(diffIndex)
+  })
+
+  it('merge が reject しても MERGE_HEAD が残っていれば、同じくコンフリクトとして中止する', async () => {
+    setupRaw({
+      mergeHead: ['', 'abc123\n'],
+      conflicted: 'a.txt\0',
+      merge: async () => {
+        throw new Error('CONFLICT')
+      }
+    })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'コンフリクトしたため中止しました: a.txt'
+    )
+    expect(abortWasCalled()).toBe(true)
+  })
+
+  // pre-merge-commit フックの失敗等、コンフリクト以外でも MERGE_HEAD が残る(実機で確認)。
+  // 未解決のファイルは無いが、途中の状態を残さないよう中止する
+  it('未解決ファイルが無いまま MERGE_HEAD が残っていれば、中止して git のエラーを添える', async () => {
+    setupRaw({
+      mergeHead: ['', 'abc123\n'],
+      conflicted: '',
+      merge: async () => {
+        throw new Error('hook failed')
+      }
+    })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      'マージを完了できなかったため中止しました: hook failed'
+    )
+    expect(abortWasCalled()).toBe(true)
+  })
+
+  it('中止自体が失敗したら、その git のエラーをそのまま投げる', async () => {
+    const abortError = new Error('abort failed')
+    setupRaw({ mergeHead: ['', 'abc123\n'], conflicted: 'a.txt\0', abortError })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toBe(abortError)
+    // 中止に失敗しても、中止の前に未解決ファイルは取得している
+    expect(rawCalls().some((a) => a[0] === 'diff')).toBe(true)
+    expect(abortWasCalled()).toBe(true)
+  })
+
+  // 同名のタグがあると git は refs/tags を優先し、警告だけで終了コード 0 になる(実機で確認)。
+  // 選んでいないコミットをマージして成功扱いにしないよう、名前の解決先がブランチの先端と
+  // 食い違えば git のマージを呼ばずに拒否する
+  it('名前の解決先がブランチの先端と違えば(同名のタグ等)、マージを呼ばずに拒否する', async () => {
+    setupRaw({ resolved: 'tag-sha\n', branchTip: 'branch-sha\n' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('名前が何にも解決できなければ拒否する', async () => {
+    setupRaw({ resolved: '', branchTip: 'branch-sha\n' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('解決先とブランチの先端が同じなら通る', async () => {
+    setupRaw({ resolved: 'same\n', branchTip: 'same\n' })
+    await mergeBranch('/project', 'feature/x')
+    expect(mergeWasCalled()).toBe(true)
+  })
+
+  it('名前の解決先を ^{commit} で、ブランチの先端を for-each-ref で問い合わせる', async () => {
+    setupRaw({})
+    await mergeBranch('/project', 'feature/x')
+    expect(rawCalls()).toContainEqual(['rev-parse', '--verify', '-q', 'feature/x^{commit}'])
+    expect(rawCalls()).toContainEqual([
+      'for-each-ref',
+      '--format=%(refname) %(objectname)',
+      'refs/heads/feature/x'
+    ])
+  })
+
+  // for-each-ref のパターンは配下(refs/heads/feature/x/y)にも一致しうる。
+  // refname が完全一致する行だけを先端とする
+  it('for-each-ref に完全一致する行が無ければ(配下の行だけ)拒否する', async () => {
+    setupRaw({ forEachRef: 'refs/heads/feature/x/y sha1\n' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('for-each-ref の出力が空なら拒否する', async () => {
+    setupRaw({ forEachRef: '' })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+
+  it('完全一致の行が複数の行の中にあっても、その行の SHA を先端とする', async () => {
+    setupRaw({
+      resolved: 'right\n',
+      forEachRef:
+        'refs/heads/feature/x/y wrong\nrefs/heads/feature/x right\nrefs/heads/feature/x/z wrong2\n'
+    })
+    await mergeBranch('/project', 'feature/x')
+    expect(mergeWasCalled()).toBe(true)
+  })
+
+  it('完全一致の行が複数の行の中にあり、SHA が解決先と違えば拒否する', async () => {
+    setupRaw({
+      resolved: 'wrong\n',
+      forEachRef: 'refs/heads/feature/x/y wrong\nrefs/heads/feature/x right\n'
+    })
+    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
+      '同名のタグ等があり、ブランチを特定できないためマージできません: feature/x'
+    )
+    expect(mergeWasCalled()).toBe(false)
+  })
+})
+
+// 許可リスト検証(assertLocalBranchExists)は checkout・削除・マージで共通。
+// 3 操作すべてが同じ文言で拒否し、git のコマンドを呼ばないことを固定する(パターン21)
+describe('許可リストに無いブランチ名の拒否(checkout・削除・マージ共通)', () => {
+  beforeEach(() => {
+    mockBranchLocal.mockResolvedValue({
+      all: ['main', 'feature/x'],
+      current: 'main',
+      detached: false
+    })
+  })
+
+  const operations: Record<string, (name: string) => Promise<unknown>> = {
+    checkout: (name) => checkoutBranch('/project', name),
+    delete: (name) => deleteBranch('/project', name, false),
+    merge: (name) => mergeBranch('/project', name)
+  }
+
+  it.each(['checkout', 'delete', 'merge'])(
+    '%s は許可リストに無い名前を同じ文言で拒否し、git の操作を呼ばない',
+    async (operation) => {
+      await expect(operations[operation]('--force')).rejects.toThrow(
+        '存在しないブランチです: --force'
+      )
+      expect(mockCheckout).not.toHaveBeenCalled()
+      expect(mockDeleteLocalBranch).not.toHaveBeenCalled()
+      expect(mockRaw).not.toHaveBeenCalled()
+    }
+  )
 })

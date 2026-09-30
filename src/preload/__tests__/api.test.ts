@@ -84,6 +84,11 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:deleteBranch', 'feature/x', true]
   ],
   [
+    'mergeBranch は git:mergeBranch チャンネルに branchName を渡す',
+    () => api.mergeBranch('feature/x'),
+    ['git:mergeBranch', 'feature/x']
+  ],
+  [
     'hasApiKey は settings:hasApiKey チャンネルを呼び出す',
     () => api.hasApiKey(),
     ['settings:hasApiKey']

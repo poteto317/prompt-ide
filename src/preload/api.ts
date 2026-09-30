@@ -58,6 +58,8 @@ export const api = {
     ipcRenderer.invoke('git:createBranch', branchName),
   deleteBranch: (branchName: string, force: boolean): Promise<DeleteBranchResult> =>
     ipcRenderer.invoke('git:deleteBranch', branchName, force),
+  mergeBranch: (branchName: string): Promise<void> =>
+    ipcRenderer.invoke('git:mergeBranch', branchName),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
