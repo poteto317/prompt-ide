@@ -13,6 +13,8 @@ interface Props {
   onCreateRequest: () => void
   /** 削除ボタン、または radio 上の Delete キー。確認ダイアログは呼び出し元(フック)が出す */
   onDelete: (branchName: string) => void
+  /** マージボタン、または radio 上の M キー。確認ダイアログは呼び出し元(フック)が出す */
+  onMerge: (branchName: string) => void
 }
 
 export default function BranchSwitcherMenu({
@@ -20,7 +22,8 @@ export default function BranchSwitcherMenu({
   onSelect,
   onClose,
   onCreateRequest,
-  onDelete
+  onDelete,
+  onMerge
 }: Props): React.JSX.Element {
   // name → ボタン要素の参照。HistoryPanel.tsx の itemRefs と同じ理由
   // (DOM文字列セレクタでの検索を避けるため)
@@ -108,6 +111,7 @@ export default function BranchSwitcherMenu({
             onFocus={setFocusedName}
             onSelect={onSelect}
             onDelete={onDelete}
+            onMerge={onMerge}
           />
         ))}
       </div>

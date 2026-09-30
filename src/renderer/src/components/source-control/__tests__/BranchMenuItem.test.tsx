@@ -9,7 +9,8 @@ const baseProps = {
   registerRef: vi.fn(),
   onFocus: vi.fn(),
   onSelect: vi.fn(),
-  onDelete: vi.fn()
+  onDelete: vi.fn(),
+  onMerge: vi.fn()
 }
 
 // radiogroup の子として描画される前提のため、テストでも radiogroup で包む
@@ -68,9 +69,57 @@ describe('BranchMenuItem(現在以外のブランチ)', () => {
     expect(onDelete).not.toHaveBeenCalled()
   })
 
-  it('aria-keyshortcuts="Delete" で削除ショートカットを告知する', () => {
+  it('aria-keyshortcuts="Delete M" で削除・マージのショートカットを告知する', () => {
     renderItem()
-    expect(screen.getByRole('radio')).toHaveAttribute('aria-keyshortcuts', 'Delete')
+    expect(screen.getByRole('radio')).toHaveAttribute('aria-keyshortcuts', 'Delete M')
+  })
+
+  it('マージボタンを tabIndex=-1 で描画し、クリックで onMerge だけを呼ぶ', async () => {
+    const onMerge = vi.fn()
+    const onSelect = vi.fn()
+    renderItem({ onMerge, onSelect })
+    const button = screen.getByRole('button', {
+      name: 'ブランチ feature/x を現在のブランチにマージ'
+    })
+    expect(button).toHaveAttribute('tabindex', '-1')
+    await userEvent.click(button)
+    expect(onMerge).toHaveBeenCalledWith('feature/x')
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it.each(['m', 'M'])('radio 上の %s キーで onMerge を呼び、既定動作を止める', (key) => {
+    const onMerge = vi.fn()
+    renderItem({ onMerge })
+    const notCanceled = fireEvent.keyDown(screen.getByRole('radio'), { key })
+    expect(onMerge).toHaveBeenCalledWith('feature/x')
+    expect(notCanceled).toBe(false)
+  })
+
+  it.each(['Enter', 'ArrowDown', 'Delete', 'a'])('%s キーでは onMerge を呼ばない', (key) => {
+    const onMerge = vi.fn()
+    renderItem({ onMerge })
+    fireEvent.keyDown(screen.getByRole('radio'), { key })
+    expect(onMerge).not.toHaveBeenCalled()
+  })
+
+  // Cmd+M(ウィンドウを最小化)等、ブラウザ・OS のショートカットを奪わない
+  it.each([{ ctrlKey: true }, { metaKey: true }, { altKey: true }])(
+    '修飾キー付きの M では onMerge を呼ばない (%o)',
+    (modifier) => {
+      const onMerge = vi.fn()
+      renderItem({ onMerge })
+      fireEvent.keyDown(screen.getByRole('radio'), { key: 'm', ...modifier })
+      expect(onMerge).not.toHaveBeenCalled()
+    }
+  )
+
+  it('Delete キーは従来どおり onDelete を呼び、onMerge は呼ばない', () => {
+    const onDelete = vi.fn()
+    const onMerge = vi.fn()
+    renderItem({ onDelete, onMerge })
+    fireEvent.keyDown(screen.getByRole('radio'), { key: 'Delete' })
+    expect(onDelete).toHaveBeenCalledWith('feature/x')
+    expect(onMerge).not.toHaveBeenCalled()
   })
 
   it('フォーカスされたら onFocus を branch 名で呼ぶ', () => {
@@ -112,5 +161,13 @@ describe('BranchMenuItem(現在のブランチ)', () => {
     renderItem({ branch: current, onDelete })
     fireEvent.keyDown(screen.getByRole('radio'), { key: 'Delete' })
     expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it('マージボタンを持たず、M キーのイベントが届いても onMerge を呼ばない', () => {
+    const onMerge = vi.fn()
+    renderItem({ branch: current, onMerge })
+    expect(screen.queryByRole('button', { name: /現在のブランチにマージ/ })).not.toBeInTheDocument()
+    fireEvent.keyDown(screen.getByRole('radio'), { key: 'm' })
+    expect(onMerge).not.toHaveBeenCalled()
   })
 })

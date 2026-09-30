@@ -81,6 +81,7 @@ interface Props {
   onCheckoutBranch: (branchName: string) => Promise<void>
   onCreateBranch: (branchName: string) => Promise<boolean>
   onDeleteBranch: (branchName: string) => Promise<boolean>
+  onMergeBranch: (branchName: string) => Promise<void>
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
@@ -165,6 +166,7 @@ export default function Sidebar({
   onCheckoutBranch,
   onCreateBranch,
   onDeleteBranch,
+  onMergeBranch,
   gitBranchOperationError,
   onOpenDiff,
   onAmend,
@@ -270,6 +272,7 @@ export default function Sidebar({
           onCheckoutBranch={onCheckoutBranch}
           onCreateBranch={onCreateBranch}
           onDeleteBranch={onDeleteBranch}
+          onMergeBranch={onMergeBranch}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}

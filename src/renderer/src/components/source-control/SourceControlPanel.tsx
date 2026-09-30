@@ -43,6 +43,7 @@ interface Props {
   onCheckoutBranch: (branchName: string) => Promise<void>
   onCreateBranch: (branchName: string) => Promise<boolean>
   onDeleteBranch: (branchName: string) => Promise<boolean>
+  onMergeBranch: (branchName: string) => Promise<void>
   branchOperationError: Error | null
 }
 
@@ -85,6 +86,7 @@ export default function SourceControlPanel({
   onCheckoutBranch,
   onCreateBranch,
   onDeleteBranch,
+  onMergeBranch,
   branchOperationError
 }: Props): React.JSX.Element {
   return (
@@ -149,6 +151,7 @@ export default function SourceControlPanel({
             onCheckoutBranch={onCheckoutBranch}
             onCreateBranch={onCreateBranch}
             onDeleteBranch={onDeleteBranch}
+            onMergeBranch={onMergeBranch}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

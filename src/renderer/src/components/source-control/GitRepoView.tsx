@@ -39,6 +39,7 @@ interface Props {
   onCheckoutBranch: (branchName: string) => Promise<void>
   onCreateBranch: (branchName: string) => Promise<boolean>
   onDeleteBranch: (branchName: string) => Promise<boolean>
+  onMergeBranch: (branchName: string) => Promise<void>
 }
 
 export default function GitRepoView({
@@ -68,7 +69,8 @@ export default function GitRepoView({
   pendingBranchOperation,
   onCheckoutBranch,
   onCreateBranch,
-  onDeleteBranch
+  onDeleteBranch,
+  onMergeBranch
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -89,6 +91,7 @@ export default function GitRepoView({
           onCheckoutBranch={onCheckoutBranch}
           onCreateBranch={onCreateBranch}
           onDeleteBranch={onDeleteBranch}
+          onMergeBranch={onMergeBranch}
         />
         {ahead > 0 && <span className="source-control-panel__ahead">↑{ahead}</span>}
         {behind > 0 && <span className="source-control-panel__behind">↓{behind}</span>}

@@ -41,6 +41,7 @@ const baseProps = {
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   onCreateBranch: vi.fn().mockResolvedValue(true),
   onDeleteBranch: vi.fn().mockResolvedValue(true),
+  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   branchOperationError: null as Error | null
 }
 
@@ -227,6 +228,7 @@ describe('SourceControlPanel', () => {
         onCheckoutBranch={vi.fn()}
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
+        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         branchOperationError={null}
       />
     )

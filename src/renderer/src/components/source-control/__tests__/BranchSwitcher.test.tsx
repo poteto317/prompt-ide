@@ -17,7 +17,8 @@ const baseProps = {
   isBlocked: false,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true)
+  onDeleteBranch: vi.fn().mockResolvedValue(true),
+  onMergeBranch: vi.fn().mockResolvedValue(undefined)
 }
 
 describe('BranchSwitcher', () => {
@@ -198,6 +199,17 @@ describe('BranchSwitcher', () => {
     expect(onCreateBranch).not.toHaveBeenCalled()
   })
 
+  it('選択でメニューが閉じ、トリガーへフォーカスが戻り、onCheckoutBranch が呼ばれる', async () => {
+    const onCheckoutBranch = vi.fn().mockResolvedValue(undefined)
+    render(<BranchSwitcher {...baseProps} onCheckoutBranch={onCheckoutBranch} />)
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('radio', { name: /feature\/x/ }))
+    expect(onCheckoutBranch).toHaveBeenCalledWith('feature/x')
+    expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
   it('削除ボタンでメニューが閉じ、トリガーへフォーカスが戻り、onDeleteBranch が呼ばれる', async () => {
     const onDeleteBranch = vi.fn().mockResolvedValue(true)
     render(<BranchSwitcher {...baseProps} onDeleteBranch={onDeleteBranch} />)
@@ -207,5 +219,25 @@ describe('BranchSwitcher', () => {
     expect(onDeleteBranch).toHaveBeenCalledWith('feature/x')
     expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+  })
+
+  it('マージボタンでメニューが閉じ、トリガーへフォーカスが戻り、onMergeBranch が呼ばれる', async () => {
+    const onMergeBranch = vi.fn().mockResolvedValue(undefined)
+    render(<BranchSwitcher {...baseProps} onMergeBranch={onMergeBranch} />)
+    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
+    await userEvent.click(trigger)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'ブランチ feature/x を現在のブランチにマージ' })
+    )
+    expect(onMergeBranch).toHaveBeenCalledWith('feature/x')
+    expect(screen.queryByRole('radiogroup', { name: 'ブランチ' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('マージ実行中はトリガーが「マージ中...」になり、aria-label が「ブランチのマージ中」になる', () => {
+    render(<BranchSwitcher {...baseProps} pendingBranchOperation="merge" />)
+    const trigger = screen.getByRole('button', { name: 'ブランチのマージ中' })
+    expect(trigger).toHaveTextContent('マージ中...')
+    expect(trigger).toBeDisabled()
   })
 })

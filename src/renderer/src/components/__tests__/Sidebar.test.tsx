@@ -62,6 +62,7 @@ const defaultProps = {
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   onCreateBranch: vi.fn().mockResolvedValue(true),
   onDeleteBranch: vi.fn().mockResolvedValue(true),
+  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),

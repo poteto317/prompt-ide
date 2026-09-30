@@ -1129,8 +1129,9 @@ body {
   min-width: 0;
 }
 
-/* タッチ操作で押しやすいよう 32px 四方のタップ領域を確保する */
-.source-control-panel__branch-menu-delete {
+/* 削除・マージボタンの基本宣言(タッチ操作で押しやすい 32px 四方・色・フォント・カーソル等)を共有する */
+.source-control-panel__branch-menu-delete,
+.source-control-panel__branch-menu-merge {
   flex: none;
   width: 32px;
   height: 32px;
@@ -1143,6 +1144,12 @@ body {
 
 .source-control-panel__branch-menu-delete:hover {
   background: #5a1d1d;
+  color: #ffffff;
+}
+
+/* ホバーは破壊的でない操作なので、削除の赤ではなく青系にする */
+.source-control-panel__branch-menu-merge:hover {
+  background: #094771;
   color: #ffffff;
 }
 

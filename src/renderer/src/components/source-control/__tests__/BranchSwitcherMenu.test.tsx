@@ -29,6 +29,7 @@ const renderMenu = (overrides: Partial<MenuProps> = {}): RenderResult =>
       onClose={vi.fn()}
       onCreateRequest={vi.fn()}
       onDelete={vi.fn()}
+      onMerge={vi.fn()}
       {...overrides}
     />
   )
@@ -220,5 +221,14 @@ describe('BranchSwitcherMenu の作成・削除', () => {
     await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
     expect(onDelete).toHaveBeenCalledWith('feature/x')
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('行のマージボタンから onMerge がブランチ名で呼ばれる(BranchMenuItem への配線)', async () => {
+    const onMerge = vi.fn()
+    renderMenu({ onMerge })
+    await userEvent.click(
+      screen.getByRole('button', { name: 'ブランチ feature/x を現在のブランチにマージ' })
+    )
+    expect(onMerge).toHaveBeenCalledWith('feature/x')
   })
 })

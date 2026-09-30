@@ -18,6 +18,7 @@ interface Props {
   onCheckoutBranch: (branchName: string) => Promise<void>
   onCreateBranch: (branchName: string) => Promise<boolean>
   onDeleteBranch: (branchName: string) => Promise<boolean>
+  onMergeBranch: (branchName: string) => Promise<void>
 }
 
 export default function BranchSwitcher({
@@ -27,24 +28,30 @@ export default function BranchSwitcher({
   isBlocked,
   onCheckoutBranch,
   onCreateBranch,
-  onDeleteBranch
+  onDeleteBranch,
+  onMergeBranch
 }: Props): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const isDisabled = pendingBranchOperation !== null || isBlocked
   const triggerRef = useRef<HTMLButtonElement>(null)
 
-  const handleSelect = (branchName: string): void => {
-    // トリガーボタン自体は isDisabled で disabled になるため、実行中に
-    // 誤って別ブランチへ多重に切り替えを試みることはできない。結果は
-    // パネル上部のエラーバナー(branchOperationError)で確認する、
-    // push/pull ボタンと同じ「クリック→即座に実行開始」という一貫した挙動
-    setIsOpen(false)
-    // 選択はキーボード操作(Enter/Space)でも起こりうるため、トリガーへ
-    // フォーカスを戻す(PRレビュー指摘)
-    triggerRef.current?.focus()
-    void onCheckoutBranch(branchName)
-  }
+  // メニューを閉じ、トリガーへフォーカスを戻してから操作を呼ぶ。選択・削除・マージは
+  // キーボード操作(Enter/Space/Delete/M)でも起こりうるため、メニューごとフォーカスが
+  // body に落ちないよう、閉じるのと同時にトリガーへ戻す(PRレビュー指摘)
+  const closeMenuThen =
+    (action: (branchName: string) => Promise<unknown>) =>
+    (branchName: string): void => {
+      setIsOpen(false)
+      triggerRef.current?.focus()
+      void action(branchName)
+    }
+
+  // トリガーボタン自体は isDisabled で disabled になるため、実行中に
+  // 誤って別ブランチへ多重に切り替えを試みることはできない。結果は
+  // パネル上部のエラーバナー(branchOperationError)で確認する、
+  // push/pull ボタンと同じ「クリック→即座に実行開始」という一貫した挙動
+  const handleSelect = closeMenuThen(onCheckoutBranch)
 
   // restoreFocus: BranchSwitcherMenu.tsx 参照。Escape(true)はトリガーへ戻し、
   // 外側クリック(false)はユーザーが自然に移そうとしたフォーカス先を尊重して
@@ -75,13 +82,11 @@ export default function BranchSwitcher({
     void onCreateBranch(branchName)
   }
 
-  // 確認ダイアログはフック側(useGitBranchOperations.deleteBranch)が出す。
-  // メニューは先に閉じてトリガーへフォーカスを戻しておく
-  const handleDelete = (branchName: string): void => {
-    setIsOpen(false)
-    triggerRef.current?.focus()
-    void onDeleteBranch(branchName)
-  }
+  // 確認ダイアログはフック側(useGitBranchOperations.deleteBranch)が出す
+  const handleDelete = closeMenuThen(onDeleteBranch)
+
+  // 確認ダイアログはフック側(useGitBranchOperations.mergeBranch)が出す(削除と同じ)
+  const handleMerge = closeMenuThen(onMergeBranch)
 
   const label = getBranchTriggerLabel({ pendingBranchOperation, isBlocked, currentBranch })
 
@@ -106,6 +111,7 @@ export default function BranchSwitcher({
           onClose={handleMenuClose}
           onCreateRequest={handleCreateRequest}
           onDelete={handleDelete}
+          onMerge={handleMerge}
         />
       )}
       {isCreateDialogOpen && (

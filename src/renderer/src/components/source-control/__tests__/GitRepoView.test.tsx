@@ -30,7 +30,8 @@ const baseProps = {
   pendingBranchOperation: null,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true)
+  onDeleteBranch: vi.fn().mockResolvedValue(true),
+  onMergeBranch: vi.fn().mockResolvedValue(undefined)
 }
 
 describe('GitRepoView', () => {
@@ -184,6 +185,7 @@ describe('GitRepoView', () => {
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
+        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -251,6 +253,7 @@ describe('GitRepoView', () => {
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
+        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -288,6 +291,7 @@ describe('GitRepoView', () => {
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
+        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -323,6 +327,7 @@ describe('GitRepoView', () => {
         onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
+        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -348,5 +353,28 @@ describe('GitRepoView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
     await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
     expect(onDeleteBranch).toHaveBeenCalledWith('feature/x')
+  })
+
+  it('BranchSwitcher のマージボタンから onMergeBranch が呼ばれる', async () => {
+    const onMergeBranch = vi.fn().mockResolvedValue(undefined)
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        branches={[
+          { name: 'main', current: true },
+          { name: 'feature/x', current: false }
+        ]}
+        onMergeBranch={onMergeBranch}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'ブランチ feature/x を現在のブランチにマージ' })
+    )
+    expect(onMergeBranch).toHaveBeenCalledWith('feature/x')
   })
 })
