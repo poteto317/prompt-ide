@@ -921,45 +921,47 @@ describe('useAppState', () => {
     })
   })
 
+  // checkout・マージのラッパーで共通の前提: リポジトリが開かれていて、
+  // 未保存編集の破棄確認と全タブの再読込だけを差し替える
+  function setupEditorSyncedGitOperation(options: {
+    confirmDiscardAnyDirty: () => boolean
+    reloadOpenFiles: () => Promise<void>
+  }): void {
+    mockUseFileSystem.mockReturnValue({
+      folderPath: '/project',
+      fileTree: [],
+      openFile: null,
+      openedFileSignal: { events: [] },
+      error: null,
+      openFolder: vi.fn(),
+      selectFile: vi.fn(),
+      activateTab: vi.fn(),
+      saveFile: vi.fn().mockResolvedValue(undefined),
+      createFile: vi.fn().mockResolvedValue(undefined),
+      createDirectory: vi.fn().mockResolvedValue(undefined),
+      renameEntry: vi.fn().mockResolvedValue(undefined),
+      deleteEntry: vi.fn().mockResolvedValue(undefined),
+      confirmDiscardAnyDirty: options.confirmDiscardAnyDirty,
+      reloadOpenFiles: options.reloadOpenFiles
+    })
+    mockUseGitStatus.mockReturnValue({
+      gitStatus: { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] },
+      gitLoading: false,
+      gitError: null,
+      refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+    })
+  }
+
   describe('checkoutBranch ラッパー', () => {
     // checkout は working tree のファイルを直接書き換えるが、エディタのバッファは
     // 別に保持しているため連動しない。確認なしに切り替えると、切替前の内容を
     // 編集したまま保存した際に切替後のブランチのファイルを無警告で上書きして
     // しまう(コードレビュー指摘)。confirmDiscardAnyDirty で破棄を確認し、
     // 成功後は開いている全タブをディスクの最新内容へ同期する
-    function setup(options: {
-      confirmDiscardAnyDirty: () => boolean
-      reloadOpenFiles: () => Promise<void>
-    }): void {
-      mockUseFileSystem.mockReturnValue({
-        folderPath: '/project',
-        fileTree: [],
-        openFile: null,
-        openedFileSignal: { events: [] },
-        error: null,
-        openFolder: vi.fn(),
-        selectFile: vi.fn(),
-        activateTab: vi.fn(),
-        saveFile: vi.fn().mockResolvedValue(undefined),
-        createFile: vi.fn().mockResolvedValue(undefined),
-        createDirectory: vi.fn().mockResolvedValue(undefined),
-        renameEntry: vi.fn().mockResolvedValue(undefined),
-        deleteEntry: vi.fn().mockResolvedValue(undefined),
-        confirmDiscardAnyDirty: options.confirmDiscardAnyDirty,
-        reloadOpenFiles: options.reloadOpenFiles
-      })
-      mockUseGitStatus.mockReturnValue({
-        gitStatus: { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] },
-        gitLoading: false,
-        gitError: null,
-        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
-      })
-    }
-
     it('未保存編集が無ければ確認どおり checkout を実行し、成功後に開いているファイルを再読込する', async () => {
       const mockConfirmDiscardAnyDirty = vi.fn(() => true)
       const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      setup({
+      setupEditorSyncedGitOperation({
         confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
         reloadOpenFiles: mockReloadOpenFiles
       })
@@ -981,7 +983,7 @@ describe('useAppState', () => {
     it('破棄確認でキャンセルされたら checkout も reloadOpenFiles も呼ばれない', async () => {
       const mockConfirmDiscardAnyDirty = vi.fn(() => false)
       const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      setup({
+      setupEditorSyncedGitOperation({
         confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
         reloadOpenFiles: mockReloadOpenFiles
       })
@@ -1009,7 +1011,7 @@ describe('useAppState', () => {
     it('checkout が失敗した場合、reloadOpenFiles は呼ばれない(無関係な未保存編集を保持する)', async () => {
       const mockConfirmDiscardAnyDirty = vi.fn(() => true)
       const mockReloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      setup({
+      setupEditorSyncedGitOperation({
         confirmDiscardAnyDirty: mockConfirmDiscardAnyDirty,
         reloadOpenFiles: mockReloadOpenFiles
       })
@@ -1029,6 +1031,71 @@ describe('useAppState', () => {
       } finally {
         window.api.checkoutBranch = originalCheckoutBranch
       }
+    })
+  })
+
+  describe('mergeBranch ラッパー', () => {
+    // マージも working tree のファイルを直接書き換えるが、エディタのバッファは別に保持して
+    // いるため連動しない。checkout と同じく、未保存編集の破棄を確認し、成功後だけ開いている
+    // 全タブをディスクの最新内容へ同期する。失敗時に再読込すると、無関係な未保存編集が
+    // マージが行われていないディスクの現在の内容で上書きされて失われる
+    const runMerge = async (
+      apiMerge: typeof window.api.mergeBranch,
+      options: { confirmDiscardAnyDirty: () => boolean; reloadOpenFiles: () => Promise<void> },
+      mergeConfirm = true
+    ): Promise<void> => {
+      setupEditorSyncedGitOperation(options)
+      const originalMergeBranch = window.api.mergeBranch
+      window.api.mergeBranch = apiMerge
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(mergeConfirm)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.mergeBranch('feature/x')
+        })
+      } finally {
+        window.api.mergeBranch = originalMergeBranch
+        confirmSpy.mockRestore()
+      }
+    }
+
+    it('確認どおりマージを実行し、成功後に開いているファイルを再読込する', async () => {
+      const confirmDiscardAnyDirty = vi.fn(() => true)
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      await runMerge(apiMerge, { confirmDiscardAnyDirty, reloadOpenFiles })
+      expect(confirmDiscardAnyDirty).toHaveBeenCalled()
+      expect(apiMerge).toHaveBeenCalledWith('feature/x')
+      expect(reloadOpenFiles).toHaveBeenCalled()
+    })
+
+    it('未保存編集の破棄確認でキャンセルされたら、マージも再読込もしない', async () => {
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      await runMerge(apiMerge, { confirmDiscardAnyDirty: () => false, reloadOpenFiles })
+      expect(apiMerge).not.toHaveBeenCalled()
+      expect(reloadOpenFiles).not.toHaveBeenCalled()
+    })
+
+    it('マージの確認でキャンセルされたら、マージも再読込もしない', async () => {
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      await runMerge(apiMerge, { confirmDiscardAnyDirty: () => true, reloadOpenFiles }, false)
+      expect(apiMerge).not.toHaveBeenCalled()
+      expect(reloadOpenFiles).not.toHaveBeenCalled()
+    })
+
+    // gitBranchOperations.mergeBranch は git レベルの失敗(コンフリクトで中止した等)でも
+    // 例外を投げず false を返すだけ。戻り値を見ずに再読込すると、マージが行われていないのに
+    // 無関係な未保存編集がディスク内容で上書きされる
+    it('マージが失敗した場合、reloadOpenFiles は呼ばれない(未保存編集を保持する)', async () => {
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi
+        .fn()
+        .mockRejectedValue(new Error('コンフリクトしたため中止しました: a.txt'))
+      await runMerge(apiMerge, { confirmDiscardAnyDirty: () => true, reloadOpenFiles })
+      expect(apiMerge).toHaveBeenCalledWith('feature/x')
+      expect(reloadOpenFiles).not.toHaveBeenCalled()
     })
   })
 

@@ -10,7 +10,8 @@ export interface BranchTriggerLabel {
 const PENDING_LABELS: Record<BranchOperationKind, BranchTriggerLabel> = {
   checkout: { text: '切り替え中...', ariaLabel: 'ブランチ切り替え中' },
   create: { text: '作成中...', ariaLabel: 'ブランチ作成中' },
-  delete: { text: '削除中...', ariaLabel: 'ブランチ削除中' }
+  delete: { text: '削除中...', ariaLabel: 'ブランチ削除中' },
+  merge: { text: 'マージ中...', ariaLabel: 'ブランチのマージ中' }
 }
 
 interface BranchTriggerState {

@@ -5,11 +5,12 @@ import type { FileOperationLock } from './useFileOperationLock'
 import { useRunExclusiveGitOperation } from './useRunExclusiveGitOperation'
 import { isGitOperationDisabled } from '../lib/gitUtils'
 import { buildDeleteConfirmMessage, deleteBranchConfirmingForce } from '../lib/branchDeletion'
+import { buildMergeConfirmMessage } from '../lib/branchMerge'
 import type { GitStatusResult } from '@shared/types'
 import type { BranchOperationKind } from '../types'
 
 export interface GitBranchOperationsState {
-  /** 実行中のブランチ操作。checkout/作成/削除は1つの busy ref で相互に排他にする
+  /** 実行中のブランチ操作。checkout/作成/削除/マージは1つの busy ref で相互に排他にする
    *  (どれも refs/heads や HEAD を変えるため、並行すると一覧の再取得結果や
    *  切替先の存在が食い違う) */
   pendingBranchOperation: BranchOperationKind | null
@@ -22,6 +23,10 @@ export interface GitBranchOperationsState {
   createBranch: (branchName: string) => Promise<boolean>
   /** 確認 → 安全削除 → 未マージなら再確認して強制削除。戻り値は実際に削除されたか */
   deleteBranch: (branchName: string) => Promise<boolean>
+  /** 確認 → 現在のブランチへマージ。戻り値は実行され成功したか(確認のキャンセル・
+   *  isBusy による no-op・git レベルの失敗では false)。呼び出し元(useAppState.ts)が
+   *  reloadOpenFiles 等「マージが成功した前提」の後続処理を成功時だけ実行するために使う */
+  mergeBranch: (branchName: string) => Promise<boolean>
   branchOperationError: Error | null
 }
 
@@ -47,7 +52,7 @@ export function useGitBranchOperations(
   // 「リポジトリが無ければ Git 操作は実行不可」という業務ルールは
   // useGitRemoteOperations.ts(push/pull/fetch)とも共有するため gitUtils.ts の
   // isGitOperationDisabled に一元化してある(片方だけ判定基準を変えると
-  // push/pull/fetch とブランチ操作(checkout/作成/削除)とで disabled 判定が
+  // push/pull/fetch とブランチ操作(checkout/作成/削除/マージ)とで disabled 判定が
   // 食い違ってしまうため)
   const isBranchOperationDisabled = isGitOperationDisabled(gitStatus)
 
@@ -59,7 +64,7 @@ export function useGitBranchOperations(
     setBranchOperationError
   )
 
-  // checkout/作成/削除に共通の開始条件。ブランチ操作どうしは busy ref で排他にし、
+  // checkout/作成/削除/マージに共通の開始条件。ブランチ操作どうしは busy ref で排他にし、
   // 他の Git 操作がロックを持っている間(lock.isAnyLocked())やリポジトリが無い間も待つ
   const isBranchOperationBusy = (): boolean =>
     isBranchOperationRunningRef.current || lock.isAnyLocked() || isBranchOperationDisabled
@@ -127,11 +132,30 @@ export function useGitBranchOperations(
     return succeeded && deleted
   }
 
+  // マージは working tree/index/HEAD を書き換えるため、checkout と同じ理由で lockGlobal を
+  // 取る(マージ中に push が始まると、確定前の HEAD を送ってしまう)。開始条件も checkout と
+  // 同じく他操作中を待つ。現在のブランチ名が分からない状態(リポジトリが無い)は
+  // isBranchOperationDisabled で弾かれる操作のため、確認も出さずに終える。
+  // コンフリクトは main 側が自動で中止し、日本語のエラーを投げる(branchOperationError に出る)
+  const mergeBranch = async (branchName: string): Promise<boolean> => {
+    const currentBranch = gitStatus?.branch
+    if (currentBranch === null || currentBranch === undefined) return false
+    if (!onConfirm(buildMergeConfirmMessage(branchName, currentBranch))) return false
+    return runOperation({
+      isBusy: isBranchOperationBusy,
+      setBusy: makeSetBusy('merge'),
+      onStart: lock.lockGlobal,
+      onEnd: lock.unlockGlobal,
+      execute: () => gitApi.mergeBranch(branchName)
+    })
+  }
+
   return {
     pendingBranchOperation,
     checkoutBranch,
     createBranch,
     deleteBranch,
+    mergeBranch,
     branchOperationError
   }
 }

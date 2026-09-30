@@ -68,11 +68,11 @@ export function useGitRemoteOperations(
     }).then(() => undefined)
 
   // pull は working tree・index を書き換えるため、stage/unstage/commit/
-  // ハンク操作(共有ロック経由)・push・checkout(ブランチ切替、
-  // useGitBranchOperations.ts)と同時に走らせると .git/index の競合や意図しない
+  // ハンク操作(共有ロック経由)・push・checkout/ブランチ作成/マージ
+  // (useGitBranchOperations.ts)と同時に走らせると .git/index の競合や意図しない
   // 内容の反映が起きる。commit/checkout と同様に共有ロックを全体ロックし、
-  // 開始条件で lock.isAnyLocked()(ハンク操作中・commit 中・checkout 中。
-  // lockGlobal も isAnyLocked に含まれる、useFileOperationLock.ts 参照)を見る
+  // 開始条件で lock.isAnyLocked()(ハンク操作中・commit 中・checkout/ブランチ作成/
+  // マージ中。lockGlobal も isAnyLocked に含まれる、useFileOperationLock.ts 参照)を見る
   const pull = (): Promise<void> =>
     runRemoteOperation({
       isBusy: () =>
@@ -92,13 +92,14 @@ export function useGitRemoteOperations(
   // push はローカルの index/working tree を変更しないため、stage/unstage
   // (git add/reset)自体とは理屈上同時実行しても壊れない。ただし
   // lock.isAnyLocked() はハンク操作(git apply --cached)実行中、commit/amend
-  // 実行中(lockGlobal)、および checkout(ブランチ切替、
-  // useGitBranchOperations.ts が同じ理由で lockGlobal を呼ぶ)の3つで true に
+  // 実行中(lockGlobal)、および checkout/ブランチ作成/マージ
+  // (useGitBranchOperations.ts が同じ理由で lockGlobal を呼ぶ。削除は取らない)の
+  // 5つで true に
   // なり、いずれも無視できない: HEAD を書き換える途中に push が古い HEAD を
   // 読むと、ローカルは書き換え後を指すのにリモートには書き換え前が届く取り
   // 違えが起きる(「コミットしてすぐプッシュ」「ブランチを切り替えてすぐ
   // プッシュ」はどちらも一般的な操作パターン)。ハンク操作中まで含めて
-  // 待たせるのは副次的な制約だが、commit/amend/checkout との区別を lock 側は
+  // 待たせるのは副次的な制約だが、commit/amend/checkout/作成/マージ との区別を lock 側は
   // 提供しないため、pull と同じ条件で待たせる。加えて pull(working tree/index
   // を書き換える)・自分自身(push)の実行中に重ねて呼ぶと結果が曖昧になるため、
   // それらの間も待たせる。fetch とは非排他(fetch はリモート追跡ref のみ更新

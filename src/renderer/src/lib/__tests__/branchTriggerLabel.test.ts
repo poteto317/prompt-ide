@@ -32,7 +32,8 @@ describe('getBranchTriggerLabel', () => {
   it.each([
     ['checkout', '切り替え中...', 'ブランチ切り替え中'],
     ['create', '作成中...', 'ブランチ作成中'],
-    ['delete', '削除中...', 'ブランチ削除中']
+    ['delete', '削除中...', 'ブランチ削除中'],
+    ['merge', 'マージ中...', 'ブランチのマージ中']
   ] as const)('%s 実行中は表示テキストと aria-label を同期させる', (kind, text, ariaLabel) => {
     expect(
       getBranchTriggerLabel({

@@ -18,6 +18,7 @@ import { useDiffOperations } from './useDiffOperations'
 import { useGitHistory } from './useGitHistory'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
+import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isSamePath } from '../lib/pathUtils'
 import { isStagedFile, isUnstagedFile } from '../lib/gitUtils'
 
@@ -38,6 +39,10 @@ type AppState = {
    *  reloadOpenFiles を行うラッパーに差し替えている。呼び出し元(UI)にとって
    *  意味があるのは完了を待てることだけなので、公開する型は Promise<void> */
   checkoutBranch: (branchName: string) => Promise<void>
+  /** gitBranchOperations.mergeBranch(戻り値 Promise<boolean>)を、未保存編集の破棄確認 +
+   *  成功時のみ reloadOpenFiles を行うラッパーに差し替えている(checkoutBranch と同じ)。
+   *  公開する型は Promise<void> */
+  mergeBranch: (branchName: string) => Promise<void>
 } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -45,7 +50,7 @@ type AppState = {
   ReturnType<typeof useGitStatus> &
   ReturnType<typeof useGitOperations> &
   ReturnType<typeof useGitRemoteOperations> &
-  Omit<ReturnType<typeof useGitBranchOperations>, 'checkoutBranch'> &
+  Omit<ReturnType<typeof useGitBranchOperations>, 'checkoutBranch' | 'mergeBranch'> &
   ReturnType<typeof useSettings> &
   ReturnType<typeof usePromptExecution> &
   ReturnType<typeof useHistory> &
@@ -223,9 +228,9 @@ export function useAppState(): AppState {
   // 古いブランチの内容を表示し続けてしまうため)。
   // gitBranchOperations.checkoutBranch は git レベルの失敗(切替先ブランチと
   // 衝突する未コミット変更がある等)でも例外を投げず false を返すだけなので、
-  // 戻り値を見ずに reloadOpenFiles を呼ぶと、切替に失敗したにもかかわらず
-  // 無関係な未保存編集がディスク内容(切替前のまま)でサイレントに上書きされて
-  // しまう(コードレビュー指摘、2周目)。成功時のみ再読込する。
+  // 失敗時に再読込すると無関係な未保存編集がディスク内容でサイレントに上書きされる
+  // (コードレビュー指摘、2周目)。確認・成功時のみ再読込の手順は
+  // runEditorSyncedOperation に集約している。
   //
   // 既知の制約(コードレビュー指摘、2周目で検討・スコープ外と判断): checkout
   // 実行中(IPC往復 + branchLocal + checkout + refreshGitStatus/refreshHistory、
@@ -237,11 +242,22 @@ export function useAppState(): AppState {
   // レースがあり checkout 固有の問題ではないため、今回は特別扱いしない。
   // 対応するには saveFile 側に lock 待ちを組み込む設計変更が必要で、
   // ブランチ切替機能のスコープを超える
-  const checkoutBranch: (branchName: string) => Promise<void> = async (branchName) => {
-    if (!fileSystem.confirmDiscardAnyDirty()) return
-    const succeeded = await gitBranchOperations.checkoutBranch(branchName)
-    if (succeeded) await fileSystem.reloadOpenFiles()
-  }
+  const checkoutBranch: (branchName: string) => Promise<void> = (branchName) =>
+    runEditorSyncedOperation({
+      confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+      reloadOpenFiles: fileSystem.reloadOpenFiles,
+      operation: () => gitBranchOperations.checkoutBranch(branchName)
+    })
+  // マージも checkout と同じく working tree を書き換えるため、同じ手順
+  // (runEditorSyncedOperation)で扱う。gitBranchOperations.mergeBranch は失敗
+  // (コンフリクトの自動中止等)でも例外を投げず false を返すため、失敗時は再読込されない。
+  // ファイルツリーの再読込は checkout と同じく行わない(ブランチ操作の既存の制約)
+  const mergeBranch: (branchName: string) => Promise<void> = (branchName) =>
+    runEditorSyncedOperation({
+      confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+      reloadOpenFiles: fileSystem.reloadOpenFiles,
+      operation: () => gitBranchOperations.mergeBranch(branchName)
+    })
   // 変更の取り消しは、確認・取り消し・エディタのタブ同期の組み立てを
   // useDiscardFileChanges に任せ、ここでは依存を渡すだけにする
   const discardFile = useDiscardFileChanges({
@@ -293,6 +309,7 @@ export function useAppState(): AppState {
     deleteEntry,
     saveFile,
     checkoutBranch,
+    mergeBranch,
     discardFile
   }
 }
