@@ -21,7 +21,7 @@
 
 含む:
 
-- ローカルブランチを、現在のブランチへマージする（`git merge --no-edit <branch>`）
+- ローカルブランチを、現在のブランチへマージする（`git merge --no-edit --commit --no-squash <branch>`）
 - ブランチスイッチャーのメニューの各行（現在ブランチ以外）に置くマージボタンと、`M` キー
 - 実行前の確認ダイアログ（未保存のエディタ編集がある場合は、その破棄の確認も含む）
 - コンフリクトが起きたときの自動中止（`git merge --abort`）と、対象ファイルを示すエラー表示
@@ -29,7 +29,7 @@
 
 含まない（別スコープ）:
 
-- マージ方式の選択（`--no-ff` / `--squash` / `--ff-only`）。git の既定に任せる
+- マージ方式をユーザーが選ぶ UI は作らない。ただし `--commit --no-squash` で「コミットする・squash しない」を固定し、ff の方針（`merge.ff` / `--ff-only` / `--no-ff`）と戦略（`-s` / `-X`）は git の設定に従う
 - コンフリクトの解決 UI（ROADMAP の「マージコンフリクトの解決 UI」。今回は自動で中止する）
 - リモートブランチのマージ、マージコミットのメッセージ編集
 - マージ済みかどうかの表示（メニューにマージ済みの印を付ける等）
@@ -54,7 +54,7 @@
    checkout と同じ理由）
 
 「すでに最新」（マージするコミットが無い）は git が成功で終わるため、通常の成功として扱う。
-早送り可能なら早送りし、できなければマージコミットを作る（git の既定）。
+早送り可能なら早送りし、できなければマージコミットを作る（ff の方針が git の既定のとき）。
 
 ### main の判定
 
@@ -87,7 +87,7 @@
    判定は `git status --porcelain -z --untracked-files=no` に出力があるか。未追跡ファイルだけなら
    開始できる（マージで上書きされる未追跡ファイル（ignored を除く）があれば git が拒否する。
    ignored のファイルは拒否されず上書きされる。下記「実機で確認した git の挙動」と既知の制約を参照）
-4. `git merge --no-edit <branch>` を実行する。merge の成否（resolve か reject か）にかかわらず、
+4. `git merge --no-edit --commit --no-squash <branch>` を実行する。`branch.<現在のブランチ>.mergeoptions` は CLI 引数より先に適用され CLI 引数が優先されるため、`--squash`（コンフリクトでも `MERGE_HEAD` が作られず、下の中止の判定をすり抜けて成功扱いになる）と `--no-commit`（毎回未完了で止まる）の影響を引数で固定して避ける。`--ff` / `-s` / `-X` は固定しない（ユーザーの ff の方針・戦略の設定を尊重する。`--ff` を付けると `merge.ff=only` 等まで上書きしてしまう）。merge の成否（resolve か reject か）にかかわらず、
    実行後に `MERGE_HEAD` が残っていれば中止する（エラー文から原因を判定しない。パターン 28。
    コンフリクトでは git が終了コード 1・stderr 空で終わるため simple-git は reject せず resolve する）
    - `MERGE_HEAD` が無いまま reject した: git が何も変えずに失敗している（無関係な履歴の拒否、
@@ -135,6 +135,14 @@
 - `rev-parse -q --verify MERGE_HEAD` は、無いと終了コード 1・stderr 空で終わり、simple-git は
   reject せず空文字で resolve する（`deleteBranch` の `isBranchMerged` と同じ扱い）
 - コンフリクトでは git が終了コード 1・stderr 空で終わるため、simple-git は reject せず resolve する
+- `branch.<現在のブランチ>.mergeoptions` は CLI 引数より先に適用され、CLI 引数が優先される。
+  `--squash` が設定されていると、コンフリクトしても `MERGE_HEAD` は作られず、終了コード 1・stderr 空で
+  終わる（simple-git は resolve する）。index は UU のまま残り、`git merge --abort` は
+  `There is no merge to abort` で戻せない。コンフリクトしなくても変更がステージされるだけで HEAD は
+  動かない。`--no-commit` が設定されていると、分岐したマージは毎回 `MERGE_HEAD` が残り未完了で止まる。
+  引数の `--commit --no-squash` は mergeoptions の `--squash` / `--no-commit` を打ち消す
+- `merge.ff=only`（または mergeoptions の `--ff-only`）では、分岐しているとき終了コード 128 で
+  何も変えずに失敗し、`MERGE_HEAD` も残らない。git の英語のエラーがそのまま表示される
 - 相手のブランチで追跡されているファイル（例 `ign.txt`）が、こちらでは `.gitignore` 対象でローカルに
   独自の内容があるとき、`git merge` はそれを黙って上書きする（`--no-overwrite-ignore` は早送りの
   ときしか効かない）。コンフリクトで自動中止すると `git merge --abort` がそのファイルごと消し、
@@ -184,6 +192,11 @@
 
 ### 既知の制約
 
+- mergeoptions の `-s ours` / `-X theirs|ours` は CLI 引数で打ち消せず有効なままになる。コンフリクトに
+  ならずマージコミットが作られる（`-s ours` は相手の変更を取り込まない）。ユーザーが意図して設定する
+  ものであり、コミットは戻せるため対応しない。
+- `merge.ff=only` で分岐しているブランチをマージすると、git の英語のエラー
+  （`fatal: Not possible to fast-forward, aborting.`）がそのまま表示される。
 - `git update-index --assume-unchanged` を付けたファイルの未コミットの変更は、`git status` に
   出ないため「未コミットの変更がある間は開始しない」の検証をすり抜ける。分岐していて相手の
   ブランチがそのファイルを変更していると、git 自身が `Your local changes … would be overwritten`
@@ -267,7 +280,7 @@
 
 - `gitService.test.ts`（simple-git をモック）
   - `mergeBranch`: `symbolic-ref -q HEAD` が空（ブランチ上にいない）・現在ブランチ自身・マージ中・未コミットの変更の各拒否、拒否時に `merge` が呼ばれないこと
-  - 成功時に `merge --no-edit <branch>` が呼ばれること、`-` 始まりの名前は許可リストで弾かれること
+  - 成功時に `merge --no-edit --commit --no-squash <branch>` が呼ばれること、`-` 始まりの名前は許可リストで弾かれること
   - 失敗時の分岐: `MERGE_HEAD` なしはそのまま再 throw、コンフリクトは未解決ファイルを取得して
     `merge --abort` を呼び日本語エラー、未解決なしは別の日本語エラー、中止の前に未解決ファイルを
     取得していること（中止後は取れない）、中止自体の失敗はそのまま投げ直すこと。
@@ -277,7 +290,7 @@
     （`--force` 等）を同じ文言で拒否し、git の操作（merge・abort・rev-parse・status を含む
     `raw` 全般）を一切呼ばないこと（`it.each`。検証順序の固定も兼ねる）
   - 未コミットの判定は `--untracked-files=no` で、未追跡のみなら拒否しないこと
-- `gitService.merge.integration.test.ts`（新規、実 git）: 早送り、マージコミット、「すでに最新」、
+- `gitService.merge.integration.test.ts`（新規、実 git）: `branch.<現在のブランチ>.mergeoptions` に `--squash` / `--no-commit` を設定しても、コンフリクトで中止して元に戻ること・マージコミットが作られること・早送りされること(`--squash` のコンフリクトが本命)、`merge.ff=only` の分岐は拒否され何も変わらないこと、早送り、マージコミット、「すでに最新」、
   コンフリクトで中止して working tree と `MERGE_HEAD` が元に戻ること、未コミットの変更で
   拒否されて変更が残ること、マージ中の拒否、フックの失敗で中止して元に戻ること、
   未追跡のファイルだけなら開始できること、対話的 rebase を `edit` で止めている間と bisect の途中

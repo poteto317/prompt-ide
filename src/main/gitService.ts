@@ -744,8 +744,9 @@ async function abortFailedMerge(git: SimpleGit, mergeError: unknown): Promise<ne
   throw new Error(buildMergeAbortMessage(conflicted, detail))
 }
 
-// 指定したローカルブランチを現在のブランチへマージする(git merge --no-edit。早送りできれば
-// 早送りし、できなければマージコミットを作る。git の既定)。
+// 指定したローカルブランチを現在のブランチへマージする(git merge --no-edit --commit
+// --no-squash。「コミットする・squash しない」は引数で固定し、早送りするかは git の設定
+// (merge.ff 等)に従う。既定では早送りできれば早送りし、できなければマージコミットを作る)。
 // コンフリクトはアプリ内に解決手段が無いため、自動で中止して元に戻す。中止するかは
 // エラー文ではなく MERGE_HEAD の有無で判定する(パターン28): コンフリクトでは git が
 // 終了コード 1・stderr 空で終わり simple-git が resolve するため、例外の有無も当てにならない。
@@ -758,7 +759,14 @@ export async function mergeBranch(folderPath: string, branchName: string): Promi
   await assertMergeStartable(git)
   let mergeError: unknown = null
   try {
-    await git.raw(['merge', '--no-edit', branchName])
+    // branch.<現在のブランチ>.mergeoptions は CLI 引数より先に適用され、CLI 引数が優先される。
+    // --commit --no-squash で固定する理由:
+    // - --squash: コンフリクトしても MERGE_HEAD が作られず、下の中止の判定をすり抜けて
+    //   コンフリクトマーカー入りのまま成功扱いになる(merge --abort でも戻せない)
+    // - --no-commit: 分岐したマージは MERGE_HEAD が残り、毎回「完了できなかった」で止まる
+    // --ff / -s / -X は固定しない: ユーザーの ff の方針(merge.ff / --ff-only / --no-ff)と
+    // 戦略の設定を尊重する(--ff を付けると merge.ff=only 等まで上書きしてしまう)
+    await git.raw(['merge', '--no-edit', '--commit', '--no-squash', branchName])
   } catch (err) {
     mergeError = err
   }

@@ -1576,10 +1576,16 @@ describe('mergeBranch', () => {
     expect(rawCalls().some((a) => a[0] === 'status')).toBe(false)
   })
 
-  it('成功したら merge --no-edit をブランチ名で呼び、中止はしない', async () => {
+  it('方式を固定して呼ぶ(branch.<name>.mergeoptions の --squash / --no-commit に左右されない)。成功したら中止はしない', async () => {
     setupRaw({})
     await mergeBranch('/project', 'feature/x')
-    expect(rawCalls()).toContainEqual(['merge', '--no-edit', 'feature/x'])
+    expect(rawCalls()).toContainEqual([
+      'merge',
+      '--no-edit',
+      '--commit',
+      '--no-squash',
+      'feature/x'
+    ])
     expect(abortWasCalled()).toBe(false)
   })
 

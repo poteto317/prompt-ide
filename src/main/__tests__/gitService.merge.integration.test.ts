@@ -312,4 +312,68 @@ describe('mergeBranch(実 git)', () => {
       expect(head()).toBe(before)
     }
   )
+
+  // branch.<name>.mergeoptions は CLI 引数より先に適用される。--squash / --no-commit が
+  // 設定されていても、mergeBranch は「コミットする・squash しない」を引数で固定する
+  describe('branch.<現在のブランチ>.mergeoptions の影響', () => {
+    it('--squash でも分岐・コンフリクトなら中止して元に戻る(MERGE_HEAD が作られない squash をすり抜けない)', async () => {
+      setupDiverged(true)
+      runGit(repo, 'config', 'branch.main.mergeoptions', '--squash')
+      const before = head()
+      await expect(mergeBranch(repo, 'feature')).rejects.toThrow(
+        'コンフリクトしたため中止しました: a.txt'
+      )
+      expect(head()).toBe(before)
+      expect(status()).toBe('')
+      expect(hasMergeHead()).toBe(false)
+      expect(read('a.txt')).toBe('main')
+    })
+
+    it('--squash でも分岐していればマージコミットを作る(変更がステージされるだけにならない)', async () => {
+      setupDiverged(false)
+      runGit(repo, 'config', 'branch.main.mergeoptions', '--squash')
+      await mergeBranch(repo, 'feature')
+      expect(
+        runGit(repo, 'rev-list', '--parents', '-n', '1', 'HEAD').trim().split(' ')
+      ).toHaveLength(3)
+      expect(read('f.txt')).toBe('feature')
+      expect(read('m.txt')).toBe('main')
+      expect(status()).toBe('')
+    })
+
+    it('--squash でも早送りできるときは早送りする(HEAD が feature の先端に進む)', async () => {
+      commit({ 'a.txt': 'base' }, 'base')
+      runGit(repo, 'checkout', '-q', '-b', 'feature')
+      commit({ 'f.txt': 'feature' }, 'feature')
+      const featureHead = head()
+      runGit(repo, 'checkout', '-q', 'main')
+      runGit(repo, 'config', 'branch.main.mergeoptions', '--squash')
+      await mergeBranch(repo, 'feature')
+      expect(head()).toBe(featureHead)
+      expect(status()).toBe('')
+    })
+
+    it('--no-commit でも分岐していればマージコミットを作る(毎回未完了で止まらない)', async () => {
+      setupDiverged(false)
+      runGit(repo, 'config', 'branch.main.mergeoptions', '--no-commit')
+      await mergeBranch(repo, 'feature')
+      expect(
+        runGit(repo, 'rev-list', '--parents', '-n', '1', 'HEAD').trim().split(' ')
+      ).toHaveLength(3)
+      expect(hasMergeHead()).toBe(false)
+      expect(status()).toBe('')
+    })
+  })
+
+  // 引数で固定しない ff の方針はユーザーの設定に従う。--ff は付けないので merge.ff=only が
+  // 有効なまま(固定しても ff の拒否が変わらないことの確認。修正前も通る)
+  it('merge.ff=only の設定では分岐時に拒否され、何も変わらない(--commit --no-squash の固定で ff の方針は変わらない)', async () => {
+    setupDiverged(false)
+    runGit(repo, 'config', 'merge.ff', 'only')
+    const before = head()
+    await expect(mergeBranch(repo, 'feature')).rejects.toThrow()
+    expect(head()).toBe(before)
+    expect(status()).toBe('')
+    expect(hasMergeHead()).toBe(false)
+  })
 })

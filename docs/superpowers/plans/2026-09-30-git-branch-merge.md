@@ -15,6 +15,7 @@
 > `src/main/gitMergeMessages.ts` へ切り出した。Task 4・5 の `useAppState` のラッパー、`BranchMenuItem` のキー判定、
 > `BranchSwitcher` のハンドラー、`main.css` の重複も整理した。現在の構成は設計書の「実装後のリファクタリング」の表を参照。
 > 以降のコード例は分割前の記録で、現行の実装とは一致しない箇所がある。
+> レビュー対応で、merge の引数を `--no-edit --commit --no-squash` に固定した（`branch.<name>.mergeoptions` の `--squash` / `--no-commit` に左右されないため）。
 > 同名のタグ等の検証（`assertBranchRefUnambiguous`）も、大文字小文字を区別しない FS での問題の修正で、
 > ブランチの先端を `rev-parse refs/heads/<name>^{commit}` ではなく `for-each-ref` で取る方式に変わった。
 > detached の判定も `summary.detached` から `git symbolic-ref -q HEAD` の結果（空ならブランチ上にいない）に変わった（simple-git の `detached` は rebase・bisect 中を検出しないため）。
