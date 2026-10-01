@@ -11,6 +11,7 @@ const mockGetGitStatus = vi.mocked(gitApi.getGitStatus)
 
 const mockResult: GitStatusResult = {
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -149,7 +150,14 @@ describe('useGitStatus', () => {
   })
 
   it('isRepo: false の結果もそのまま gitStatus にセットされる', async () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     mockGetGitStatus.mockResolvedValue(notRepo)
     const { result } = renderHook(() => useGitStatus('/not-a-repo'))
     await waitFor(() => expect(result.current.gitStatus).toEqual(notRepo))

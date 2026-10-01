@@ -137,6 +137,7 @@ describe('isGitOperationDisabled', () => {
   // ブランチ切替とで disabled 判定が食い違ってしまうため共有ヘルパーに統一する
   const repoStatus: GitStatusResult = {
     isRepo: true,
+    mergeInProgress: false,
     branch: 'main',
     ahead: 0,
     behind: 0,

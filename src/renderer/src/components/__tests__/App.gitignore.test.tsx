@@ -32,6 +32,7 @@ describe('App: .gitignore への追加後の Changes 一覧反映', () => {
     window.api.addToGitignore = vi.fn().mockResolvedValue(undefined)
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
+      mergeInProgress: false,
       branch: 'main',
       ahead: 0,
       behind: 0,
@@ -57,6 +58,7 @@ describe('App: .gitignore への追加後の Changes 一覧反映', () => {
     // .gitignore 追加後、そのファイルはもう Changes 一覧に出てこない
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
+      mergeInProgress: false,
       branch: 'main',
       ahead: 0,
       behind: 0,

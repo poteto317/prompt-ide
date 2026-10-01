@@ -1,7 +1,10 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   CLIOnlyToolId,
+  ConflictChoice,
+  ConflictFile,
   DeleteBranchResult,
+  MergeBranchResult,
   DiscardAllEntry,
   DiscardAllResult,
   FileTreeNode,
@@ -34,6 +37,18 @@ declare global {
       discardChanges(filePath: string): Promise<void>
       discardHunk(filePath: string, patch: string): Promise<void>
       discardAll(expected: DiscardAllEntry[]): Promise<DiscardAllResult>
+      getConflictFile(filePath: string): Promise<ConflictFile>
+      resolveConflictBlocks(
+        filePath: string,
+        expectedDigests: string[],
+        choices: Record<number, ConflictChoice>
+      ): Promise<void>
+      resolveConflictWholeFile(filePath: string, side: 'ours' | 'theirs'): Promise<void>
+      keepConflictFile(filePath: string): Promise<void>
+      removeConflictFile(filePath: string): Promise<void>
+      markConflictResolved(filePath: string): Promise<void>
+      completeMerge(): Promise<void>
+      abortMerge(): Promise<void>
       commitChanges(message: string): Promise<void>
       getDiff(
         filePath: string,
@@ -53,7 +68,7 @@ declare global {
       checkoutBranch(branchName: string): Promise<void>
       createBranch(branchName: string): Promise<void>
       deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult>
-      mergeBranch(branchName: string): Promise<void>
+      mergeBranch(branchName: string): Promise<MergeBranchResult>
       getStashes(): Promise<GitStashEntry[]>
       stashPush(message: string): Promise<void>
       stashPop(sha: string): Promise<StashPopResult>

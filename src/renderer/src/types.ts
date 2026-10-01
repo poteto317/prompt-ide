@@ -57,3 +57,20 @@ export interface DiscardAllState {
   /** 確認 → 取り消し → 成功時のタブ・ツリーの再読込 */
   onDiscardAll: () => Promise<void>
 }
+
+// マージ中の状態(バナー)が受け取る状態と操作。App → Sidebar → SourceControlPanel へ 1 つの props で渡す
+export interface MergeStatePanelState {
+  /** マージ中か(MERGE_HEAD がある) */
+  inProgress: boolean
+  /** 未解決(コンフリクト中)のファイル数 */
+  unresolvedCount: number
+  /** 実行中の操作(完了 / 中止)。何も実行していなければ null */
+  pendingOperation: 'complete' | 'abort' | null
+  error: Error | null
+  /** マージを完了できるか(マージ中で未解決が 0 件) */
+  canComplete: boolean
+  /** 未保存編集の破棄確認 → マージを完了 → 成功時のタブ・ツリーの再読込 */
+  onComplete: () => Promise<void>
+  /** 中止の確認 → 未保存編集の破棄確認 → マージを中止 → 成功時のタブ・ツリーの再読込 */
+  onAbort: () => Promise<void>
+}

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   MAX_LISTED_CONFLICT_FILES,
   buildMergeAbortMessage,
+  buildMergeConflictMessage,
   formatConflictFiles
 } from '../gitMergeMessages'
 
@@ -34,37 +35,33 @@ describe('formatConflictFiles', () => {
 })
 
 describe('buildMergeAbortMessage', () => {
-  it('コンフリクトがあればファイル名を示す', () => {
-    expect(buildMergeAbortMessage(['a.txt', 'b.txt'], '')).toBe(
-      'コンフリクトしたため中止しました: a.txt, b.txt'
-    )
-  })
-
-  it('コンフリクトがあれば detail は無視する', () => {
-    expect(buildMergeAbortMessage(['a.txt'], 'hook failed')).toBe(
-      'コンフリクトしたため中止しました: a.txt'
-    )
-  })
-
-  it('コンフリクトが多ければ「ほか N 件」にまとめる', () => {
-    expect(buildMergeAbortMessage(files(6), '')).toBe(
-      'コンフリクトしたため中止しました: f1.txt, f2.txt, f3.txt, f4.txt, f5.txt ほか 1 件'
-    )
-  })
-
-  it('コンフリクトが無く detail があれば添える', () => {
-    expect(buildMergeAbortMessage([], 'hook failed')).toBe(
+  it('detail があれば添える', () => {
+    expect(buildMergeAbortMessage('hook failed')).toBe(
       'マージを完了できなかったため中止しました: hook failed'
     )
   })
 
-  it('コンフリクトが無く detail も空なら詳細を添えない', () => {
-    expect(buildMergeAbortMessage([], '')).toBe('マージを完了できなかったため中止しました')
+  it('detail が空なら詳細を添えない', () => {
+    expect(buildMergeAbortMessage('')).toBe('マージを完了できなかったため中止しました')
+  })
+})
+
+describe('buildMergeConflictMessage', () => {
+  it('1 件はそのままファイル名を示し、解決か中止を促す', () => {
+    expect(buildMergeConflictMessage(['a.txt'])).toBe(
+      'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    )
   })
 
-  it('ファイル名にカンマや空白が含まれても文言が崩れない', () => {
-    expect(buildMergeAbortMessage(['a, b.txt', 'my file.txt'], '')).toBe(
-      'コンフリクトしたため中止しました: a, b.txt, my file.txt'
+  it('複数件は ", " 区切りで並べる', () => {
+    expect(buildMergeConflictMessage(['a.txt', 'b.txt'])).toBe(
+      'コンフリクトしました（a.txt, b.txt）。解決するか、マージを中止してください'
+    )
+  })
+
+  it('5 件を超えたら「ほか N 件」にまとめる', () => {
+    expect(buildMergeConflictMessage(files(6))).toBe(
+      'コンフリクトしました（f1.txt, f2.txt, f3.txt, f4.txt, f5.txt ほか 1 件）。解決するか、マージを中止してください'
     )
   })
 })

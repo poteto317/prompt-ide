@@ -3,7 +3,7 @@ import type { SimpleGit } from 'simple-git'
 import type { GitStashEntry, StashPopResult } from '@shared/types'
 import { findStashIndex, parseStashList } from './gitStashParser'
 import { buildStashRestoreFailureMessage } from './gitStashMessages'
-import { parseNulSeparatedPaths } from './gitPathParsing'
+import { listUnresolvedFiles } from './gitMergeState'
 import { assertRestorable, assertStashable } from './gitStashGuards'
 
 // 退避(git stash)。退避の識別には番号(stash@{n})ではなく退避コミットの SHA を使う。番号は他の操作
@@ -65,7 +65,7 @@ async function findExistingStash(
 // 巻き戻すと未解決の状態は取れなくなるので、巻き戻しより前に呼ぶ
 async function readConflictedPaths(git: SimpleGit): Promise<string[]> {
   try {
-    return parseNulSeparatedPaths(await git.raw(['diff', '--name-only', '-z', '--diff-filter=U']))
+    return await listUnresolvedFiles(git)
   } catch {
     return []
   }

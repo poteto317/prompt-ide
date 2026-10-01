@@ -75,6 +75,42 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     () => api.discardAll([{ path: 'a.txt', status: ' M' }]),
     ['git:discardAll', [{ path: 'a.txt', status: ' M' }]]
   ],
+  [
+    'getConflictFile は git:getConflictFile チャンネルに filePath を渡す',
+    () => api.getConflictFile('a.txt'),
+    ['git:getConflictFile', 'a.txt']
+  ],
+  [
+    'resolveConflictBlocks は git:resolveConflictBlocks チャンネルに filePath・digests・choices を渡す',
+    () => api.resolveConflictBlocks('a.txt', ['d'], { 0: 'ours' }),
+    ['git:resolveConflictBlocks', 'a.txt', ['d'], { 0: 'ours' }]
+  ],
+  [
+    'resolveConflictWholeFile は git:resolveConflictWholeFile チャンネルに filePath と side を渡す',
+    () => api.resolveConflictWholeFile('a.txt', 'theirs'),
+    ['git:resolveConflictWholeFile', 'a.txt', 'theirs']
+  ],
+  [
+    'keepConflictFile は git:keepConflictFile チャンネルに filePath を渡す',
+    () => api.keepConflictFile('a.txt'),
+    ['git:keepConflictFile', 'a.txt']
+  ],
+  [
+    'removeConflictFile は git:removeConflictFile チャンネルに filePath を渡す',
+    () => api.removeConflictFile('a.txt'),
+    ['git:removeConflictFile', 'a.txt']
+  ],
+  [
+    'markConflictResolved は git:markConflictResolved チャンネルに filePath を渡す',
+    () => api.markConflictResolved('a.txt'),
+    ['git:markConflictResolved', 'a.txt']
+  ],
+  [
+    'completeMerge は git:completeMerge チャンネルを呼び出す',
+    () => api.completeMerge(),
+    ['git:completeMerge']
+  ],
+  ['abortMerge は git:abortMerge チャンネルを呼び出す', () => api.abortMerge(), ['git:abortMerge']],
   ['push は git:push チャンネルを呼び出す', () => api.push(), ['git:push']],
   ['pull は git:pull チャンネルを呼び出す', () => api.pull(), ['git:pull']],
   ['fetchRemote は git:fetch チャンネルを呼び出す', () => api.fetchRemote(), ['git:fetch']],
@@ -195,6 +231,25 @@ describe('stashPop の戻り値', () => {
     mockInvoke.mockResolvedValue(result)
     await expect(api.stashPop('a'.repeat(40))).resolves.toBe(result)
   })
+})
+
+describe('mergeBranch の戻り値', () => {
+  it.each([
+    ['merged', { status: 'merged' }],
+    [
+      'conflict',
+      {
+        status: 'conflict',
+        message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+      }
+    ]
+  ])(
+    'git:mergeBranch の %s の結果をそのまま返す(作業ツリーが変わった結果を落とさない)',
+    async (_label, result) => {
+      mockInvoke.mockResolvedValue(result)
+      await expect(api.mergeBranch('feature/x')).resolves.toBe(result)
+    }
+  )
 })
 
 describe('onPromptStreamChunk', () => {

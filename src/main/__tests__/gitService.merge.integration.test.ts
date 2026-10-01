@@ -10,7 +10,15 @@ import {
 } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { mergeBranch } from '../gitService'
+import {
+  amendCommit,
+  checkoutBranch,
+  commit as commitStaged,
+  createBranch,
+  mergeBranch,
+  stageFile
+} from '../gitService'
+import { abortMerge } from '../gitConflictService'
 import {
   commitAll,
   initRepo,
@@ -70,7 +78,7 @@ describe('mergeBranch(実 git)', () => {
     commit({ 'f.txt': 'feature' }, 'feature')
     const featureHead = head()
     runGit(repo, 'checkout', '-q', 'main')
-    await mergeBranch(repo, 'feature')
+    await expect(mergeBranch(repo, 'feature')).resolves.toEqual({ status: 'merged' })
     expect(head()).toBe(featureHead)
     expect(read('f.txt')).toBe('feature')
   })
@@ -95,16 +103,158 @@ describe('mergeBranch(実 git)', () => {
     expect(head()).toBe(merged)
   })
 
-  it('コンフリクトしたら中止して、working tree・index・MERGE_HEAD が元に戻る', async () => {
+  it('コンフリクトしたら中止せず、MERGE_HEAD とマーカー入りの作業ツリーを残し、例外ではなく conflict の結果で返す', async () => {
+    setupDiverged(true)
+    await expect(mergeBranch(repo, 'feature')).resolves.toEqual({
+      status: 'conflict',
+      message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    })
+    expect(hasMergeHead()).toBe(true)
+    expect(read('a.txt')).toContain('<<<<<<< HEAD')
+    expect(read('a.txt')).toContain('>>>>>>> feature')
+    expect(status()).toContain('UU a.txt')
+  })
+
+  it('コンフリクト後に abortMerge で、working tree・index・MERGE_HEAD が元に戻る', async () => {
     setupDiverged(true)
     const before = head()
-    await expect(mergeBranch(repo, 'feature')).rejects.toThrow(
-      'コンフリクトしたため中止しました: a.txt'
-    )
+    await expect(mergeBranch(repo, 'feature')).resolves.toMatchObject({ status: 'conflict' })
+    await abortMerge(repo)
     expect(hasMergeHead()).toBe(false)
     expect(head()).toBe(before)
     expect(read('a.txt')).toBe('main')
     expect(status()).toBe('')
+  })
+
+  it('コンフリクトの途中の状態では、もう一度マージしようとしても拒否される', async () => {
+    setupDiverged(true)
+    await expect(mergeBranch(repo, 'feature')).resolves.toMatchObject({ status: 'conflict' })
+    await expect(mergeBranch(repo, 'feature')).rejects.toThrow('マージ中のため実行できません')
+    expect(hasMergeHead()).toBe(true)
+  })
+
+  // 解決済みにしたファイルが移動先と一致すると、git checkout は MERGE_HEAD ごとマージ中の状態を
+  // 黙って捨てる(実機で確認)。マージ中の切り替えは拒否して状態を残すこと
+  it('マージ中のブランチ切り替えは拒否され、MERGE_HEAD と解決済みの内容が残る', async () => {
+    commit({ 'a.txt': 'base', 'b.txt': 'base' }, 'base')
+    runGit(repo, 'checkout', '-q', '-b', 'feat')
+    commit({ 'a.txt': 'feat', 'b.txt': 'feat' }, 'feat')
+    runGit(repo, 'checkout', '-q', 'main')
+    commit({ 'a.txt': 'main', 'b.txt': 'main' }, 'main')
+    await expect(mergeBranch(repo, 'feat')).resolves.toMatchObject({ status: 'conflict' })
+    runGit(repo, 'checkout', '--ours', 'a.txt')
+    runGit(repo, 'checkout', '--theirs', 'b.txt')
+    runGit(repo, 'add', 'a.txt', 'b.txt')
+    await expect(checkoutBranch(repo, 'feat')).rejects.toThrow(
+      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+    )
+    expect(hasMergeHead()).toBe(true)
+    expect(runGit(repo, 'symbolic-ref', '--short', 'HEAD').trim()).toBe('main')
+    expect(read('a.txt')).toBe('main')
+  })
+
+  // マージ中のコミット欄・変更の + からの操作。+ (git add) はマーカー入りのまま解決済みにしてしまい、
+  // そのまま完了するとマーカー入りのマージコミットができる(実 git で再現済み)
+  describe('マージ中のステージ・コミット・amend', () => {
+    const setupTwoConflicts = async (): Promise<void> => {
+      commit({ 'a.txt': 'base', 'b.txt': 'base' }, 'base')
+      runGit(repo, 'checkout', '-q', '-b', 'feat')
+      commit({ 'a.txt': 'feat', 'b.txt': 'feat' }, 'feat')
+      runGit(repo, 'checkout', '-q', 'main')
+      commit({ 'a.txt': 'main', 'b.txt': 'main' }, 'main')
+      await expect(mergeBranch(repo, 'feat')).resolves.toMatchObject({ status: 'conflict' })
+    }
+
+    it('未解決のファイルは stageFile で拒否され、index は変わらずマーカーも残る', async () => {
+      await setupTwoConflicts()
+      const before = status()
+      await expect(stageFile(repo, 'a.txt')).rejects.toThrow(
+        'コンフリクト中のファイルはステージできません。コンフリクト解決ビューの「解決済みにする」を使ってください'
+      )
+      expect(status()).toBe(before)
+      expect(status()).toContain('UU a.txt')
+      expect(read('a.txt')).toContain('<<<<<<<')
+    })
+
+    it('通常のファイルは、マージ中でも stageFile でステージできる', async () => {
+      await setupTwoConflicts()
+      write('c.txt', 'new')
+      await stageFile(repo, 'c.txt')
+      expect(status()).toContain('A  c.txt')
+    })
+
+    it('未解決があるうちの commit は拒否され、コミットは作られず MERGE_HEAD が残る', async () => {
+      await setupTwoConflicts()
+      const before = head()
+      await expect(commitStaged(repo, 'msg')).rejects.toThrow(
+        '未解決のコンフリクトがあるためコミットできません。解決するか、マージを中止してください'
+      )
+      expect(head()).toBe(before)
+      expect(hasMergeHead()).toBe(true)
+    })
+
+    it('マージ中の amend は拒否され、HEAD は変わらず MERGE_HEAD が残る(未解決が無くても)', async () => {
+      await setupTwoConflicts()
+      runGit(repo, 'checkout', '--ours', 'a.txt', 'b.txt')
+      runGit(repo, 'add', 'a.txt', 'b.txt')
+      const before = head()
+      await expect(amendCommit(repo, 'msg')).rejects.toThrow(
+        'マージ中のためコミットを修正できません。マージを完了または中止してください'
+      )
+      expect(head()).toBe(before)
+      expect(hasMergeHead()).toBe(true)
+    })
+
+    it('未解決が無ければ、マージ中でも commit でマージコミットを作れる', async () => {
+      await setupTwoConflicts()
+      runGit(repo, 'checkout', '--ours', 'a.txt', 'b.txt')
+      runGit(repo, 'add', 'a.txt', 'b.txt')
+      await commitStaged(repo, 'merge done')
+      expect(hasMergeHead()).toBe(false)
+      expect(
+        runGit(repo, 'rev-list', '--parents', '-n', '1', 'HEAD').trim().split(' ')
+      ).toHaveLength(3)
+    })
+
+    it('通常(マージ中でない)の commit と amend は従来どおり成功する', async () => {
+      commit({ 'a.txt': 'base' }, 'base')
+      write('a.txt', 'edited')
+      runGit(repo, 'add', 'a.txt')
+      await commitStaged(repo, 'second')
+      expect(runGit(repo, 'log', '-1', '--format=%s').trim()).toBe('second')
+      await amendCommit(repo, 'second amended')
+      expect(runGit(repo, 'log', '-1', '--format=%s').trim()).toBe('second amended')
+    })
+  })
+
+  it('マージ中のブランチ作成も拒否され、MERGE_HEAD と未解決の状態が残り、ブランチは作られない', async () => {
+    commit({ 'a.txt': 'base', 'b.txt': 'base' }, 'base')
+    runGit(repo, 'checkout', '-q', '-b', 'feat')
+    commit({ 'a.txt': 'feat', 'b.txt': 'feat' }, 'feat')
+    runGit(repo, 'checkout', '-q', 'main')
+    commit({ 'a.txt': 'main', 'b.txt': 'main' }, 'main')
+    await expect(mergeBranch(repo, 'feat')).resolves.toMatchObject({ status: 'conflict' })
+    runGit(repo, 'checkout', '--ours', 'a.txt')
+    runGit(repo, 'add', 'a.txt')
+    await expect(createBranch(repo, 'new1')).rejects.toThrow(
+      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+    )
+    expect(hasMergeHead()).toBe(true)
+    expect(status()).toContain('UU b.txt')
+    expect(runGit(repo, 'symbolic-ref', '--short', 'HEAD').trim()).toBe('main')
+    expect(runGit(repo, 'branch', '--list', 'new1').trim()).toBe('')
+  })
+
+  it('マージ中でなければブランチを作成して切り替えられる', async () => {
+    setupDiverged(false)
+    await createBranch(repo, 'new1')
+    expect(runGit(repo, 'symbolic-ref', '--short', 'HEAD').trim()).toBe('new1')
+  })
+
+  it('マージ中でなければブランチを切り替えられる', async () => {
+    setupDiverged(false)
+    await checkoutBranch(repo, 'feature')
+    expect(runGit(repo, 'symbolic-ref', '--short', 'HEAD').trim()).toBe('feature')
   })
 
   it('追跡済みファイルに未コミットの変更があれば拒否し、変更を残す', async () => {
@@ -316,16 +466,34 @@ describe('mergeBranch(実 git)', () => {
   // branch.<name>.mergeoptions は CLI 引数より先に適用される。--squash / --no-commit が
   // 設定されていても、mergeBranch は「コミットする・squash しない」を引数で固定する
   describe('branch.<現在のブランチ>.mergeoptions の影響', () => {
-    it('--squash でも分岐・コンフリクトなら中止して元に戻る(MERGE_HEAD が作られない squash をすり抜けない)', async () => {
+    it('--squash でも分岐・コンフリクトなら MERGE_HEAD が残り、abortMerge で元に戻る(MERGE_HEAD が作られない squash をすり抜けない)', async () => {
       setupDiverged(true)
       runGit(repo, 'config', 'branch.main.mergeoptions', '--squash')
       const before = head()
-      await expect(mergeBranch(repo, 'feature')).rejects.toThrow(
-        'コンフリクトしたため中止しました: a.txt'
-      )
+      await expect(mergeBranch(repo, 'feature')).resolves.toEqual({
+        status: 'conflict',
+        message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+      })
+      expect(hasMergeHead()).toBe(true)
+      await abortMerge(repo)
       expect(head()).toBe(before)
       expect(status()).toBe('')
       expect(hasMergeHead()).toBe(false)
+      expect(read('a.txt')).toBe('main')
+    })
+
+    it('--no-commit でもコンフリクトなら MERGE_HEAD が残り、abortMerge で元に戻る', async () => {
+      setupDiverged(true)
+      runGit(repo, 'config', 'branch.main.mergeoptions', '--no-commit')
+      const before = head()
+      await expect(mergeBranch(repo, 'feature')).resolves.toMatchObject({
+        status: 'conflict',
+        message: expect.stringContaining('コンフリクトしました（a.txt）')
+      })
+      expect(hasMergeHead()).toBe(true)
+      await abortMerge(repo)
+      expect(head()).toBe(before)
+      expect(status()).toBe('')
       expect(read('a.txt')).toBe('main')
     })
 

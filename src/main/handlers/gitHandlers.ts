@@ -1,7 +1,8 @@
 import { resolve, dirname, basename, join, isAbsolute } from 'path'
 import { realpath } from 'node:fs/promises'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import type { DiscardAllEntry } from '@shared/types'
+import { CONFLICT_CHOICES } from '@shared/types'
+import type { ConflictChoice, DiscardAllEntry } from '@shared/types'
 import {
   getGitStatus,
   stageFile,
@@ -22,6 +23,7 @@ import {
   mergeBranch
 } from '../gitService'
 import { discardFileChanges, discardHunk, discardAllChanges } from '../gitDiscardService'
+import * as conflictService from '../gitConflictService'
 import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
@@ -186,6 +188,43 @@ function assertDiscardEntriesArg(value: unknown): asserts value is DiscardAllEnt
   if (!valid) throw new Error('Invalid entries')
 }
 
+const MAX_CONFLICT_ENTRIES = 1000
+
+// 値の一致(現在のブロックの構成と同じか)は service 層が確かめる。ここでは 40 桁の 16 進の
+// 文字列の配列(最大 1000 件)であることだけを検証する
+function assertConflictDigestsArg(value: unknown): asserts value is string[] {
+  const valid =
+    Array.isArray(value) &&
+    value.length <= MAX_CONFLICT_ENTRIES &&
+    value.every((v) => typeof v === 'string' && /^[0-9a-f]{40}$/i.test(v))
+  if (!valid) throw new Error('Invalid digests')
+}
+
+// 整数の番号(文字列キー)→ 'ours' | 'theirs' | 'both' のオブジェクト(最大 1000 件)。
+// 番号がブロック数の範囲内かは service 層が確かめる。キーは Object.keys で調べるため、
+// __proto__ / constructor / prototype などの特殊キーは整数でないものとして拒否される。
+// 値は Object.keys で得たキーから読むので、prototype チェーン上の値は見ない
+function assertConflictChoicesArg(value: unknown): asserts value is Record<number, ConflictChoice> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid choices')
+  }
+  const keys = Object.keys(value)
+  const record = value as Record<string, unknown>
+  const valid =
+    keys.length <= MAX_CONFLICT_ENTRIES &&
+    keys.every(
+      (key) =>
+        /^(0|[1-9]\d{0,8})$/.test(key) &&
+        typeof record[key] === 'string' &&
+        (CONFLICT_CHOICES as readonly string[]).includes(record[key] as string)
+    )
+  if (!valid) throw new Error('Invalid choices')
+}
+
+function assertConflictSideArg(value: unknown): asserts value is 'ours' | 'theirs' {
+  if (value !== 'ours' && value !== 'theirs') throw new Error('Invalid side')
+}
+
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:getStatus', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
@@ -233,6 +272,97 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = getAllowedFolder(folderAccess, event)
     assertDiscardEntriesArg(expected)
     return discardAllChanges(allowedFolder, expected, moveToTrash)
+  })
+
+  // コンフリクトの解決。順序は discard 系と同じ(許可フォルダ → 引数の型 → 相対パス化 → service)
+  ipcMain.handle('git:getConflictFile', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    const relativePath = await resolveAndAssertStatusRelativePath(
+      folderAccess,
+      allowedFolder,
+      filePath
+    )
+    return conflictService.getConflictFile(allowedFolder, relativePath)
+  })
+
+  ipcMain.handle(
+    'git:resolveConflictBlocks',
+    async (
+      event: IpcMainInvokeEvent,
+      filePath: string,
+      expectedDigests: unknown,
+      choices: unknown
+    ) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      assertConflictDigestsArg(expectedDigests)
+      assertConflictChoicesArg(choices)
+      const relativePath = await resolveAndAssertStatusRelativePath(
+        folderAccess,
+        allowedFolder,
+        filePath
+      )
+      await conflictService.resolveConflictBlocks(
+        allowedFolder,
+        relativePath,
+        expectedDigests,
+        choices
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'git:resolveConflictWholeFile',
+    async (event: IpcMainInvokeEvent, filePath: string, side: unknown) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      assertConflictSideArg(side)
+      const relativePath = await resolveAndAssertStatusRelativePath(
+        folderAccess,
+        allowedFolder,
+        filePath
+      )
+      await conflictService.resolveConflictWholeFile(allowedFolder, relativePath, side)
+    }
+  )
+
+  ipcMain.handle('git:keepConflictFile', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    const relativePath = await resolveAndAssertStatusRelativePath(
+      folderAccess,
+      allowedFolder,
+      filePath
+    )
+    await conflictService.keepConflictFile(allowedFolder, relativePath)
+  })
+
+  ipcMain.handle('git:removeConflictFile', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    const relativePath = await resolveAndAssertStatusRelativePath(
+      folderAccess,
+      allowedFolder,
+      filePath
+    )
+    await conflictService.removeConflictFile(allowedFolder, relativePath)
+  })
+
+  ipcMain.handle(
+    'git:markConflictResolved',
+    async (event: IpcMainInvokeEvent, filePath: string) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      const relativePath = await resolveAndAssertStatusRelativePath(
+        folderAccess,
+        allowedFolder,
+        filePath
+      )
+      await conflictService.markConflictResolved(allowedFolder, relativePath)
+    }
+  )
+
+  ipcMain.handle('git:completeMerge', async (event: IpcMainInvokeEvent) => {
+    await conflictService.completeMerge(getAllowedFolder(folderAccess, event))
+  })
+
+  ipcMain.handle('git:abortMerge', async (event: IpcMainInvokeEvent) => {
+    await conflictService.abortMerge(getAllowedFolder(folderAccess, event))
   })
 
   ipcMain.handle(
@@ -366,7 +496,7 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:mergeBranch', async (event: IpcMainInvokeEvent, branchName: unknown) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     assertBranchNameArg(branchName)
-    await mergeBranch(allowedFolder, branchName)
+    return mergeBranch(allowedFolder, branchName)
   })
 
   ipcMain.handle('git:getStashes', async (event: IpcMainInvokeEvent) => {

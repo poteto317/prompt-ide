@@ -1,5 +1,6 @@
 import type { SimpleGit } from 'simple-git'
 import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
+import { isUnmergedPath } from './gitMergeState'
 
 // 取り消し対象の状態。状態ごとに取り消しの手段が異なる(applyDiscard 参照)
 export type DiscardTargetKind =
@@ -106,8 +107,7 @@ export async function classifyDiscardTarget(
   filePath: string
 ): Promise<DiscardTargetKind> {
   const pathspec = toLiteralPathspec(filePath)
-  const unmerged = await git.raw(['ls-files', '-u', '-z', '--', pathspec])
-  if (parseNulSeparatedPaths(unmerged, true).includes(filePath)) return 'conflicted'
+  if (await isUnmergedPath(git, filePath)) return 'conflicted'
   const tracked = await git.raw(['ls-files', '-z', '--', pathspec])
   if (!parseNulSeparatedPaths(tracked).includes(filePath)) {
     return (await isUntracked(git, filePath)) ? 'untracked' : 'unknown'

@@ -53,6 +53,7 @@ describe('App: 通常コミット完了後の履歴反映', () => {
     window.api.readDirectory = vi.fn().mockResolvedValue([])
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
+      mergeInProgress: false,
       branch: 'main',
       ahead: 0,
       behind: 0,

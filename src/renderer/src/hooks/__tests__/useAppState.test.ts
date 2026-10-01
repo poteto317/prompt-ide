@@ -194,6 +194,36 @@ const mockUseDiscardAllChanges = vi.hoisted(() =>
   vi.fn((_options?: unknown) => mockDiscardAllState)
 )
 
+// マージ状態・解決ビューの組み立ても各フックのテストで検証する。ここでは配線だけを見る静的モックにする
+const mockMergeStatePanel = vi.hoisted(() => ({
+  inProgress: false,
+  unresolvedCount: 0,
+  pendingOperation: null,
+  error: null,
+  canComplete: false,
+  onComplete: vi.fn(),
+  onAbort: vi.fn()
+}))
+const mockUseMergeState = vi.hoisted(() =>
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  vi.fn((_options?: unknown) => mockMergeStatePanel)
+)
+const mockConflictFileState = vi.hoisted(() => ({
+  file: null,
+  isLoading: false,
+  error: null,
+  pendingOperation: null,
+  chooseBlock: vi.fn(),
+  resolveWholeFile: vi.fn(),
+  keepFile: vi.fn(),
+  removeFile: vi.fn(),
+  markResolved: vi.fn()
+}))
+const mockUseConflictFile = vi.hoisted(() =>
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  vi.fn((_options?: unknown) => mockConflictFileState)
+)
+
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
@@ -208,6 +238,8 @@ vi.mock('../useGitHistory', () => ({ useGitHistory: mockUseGitHistory }))
 vi.mock('../useStashPanel', () => ({ useStashPanel: mockUseStashPanel }))
 vi.mock('../useDiscardHunk', () => ({ useDiscardHunk: mockUseDiscardHunk }))
 vi.mock('../useDiscardAllChanges', () => ({ useDiscardAllChanges: mockUseDiscardAllChanges }))
+vi.mock('../useMergeState', () => ({ useMergeState: mockUseMergeState }))
+vi.mock('../useConflictFile', () => ({ useConflictFile: mockUseConflictFile }))
 
 import { useAppState } from '../useAppState'
 
@@ -378,7 +410,14 @@ describe('useAppState', () => {
       deactivateDiffTab: vi.fn()
     })
     mockUseGitStatus.mockReturnValue({
-      gitStatus: { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] },
+      gitStatus: {
+        isRepo: true,
+        mergeInProgress: false,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      },
       gitLoading: false,
       gitError: null,
       refreshGitStatus: vi.fn()
@@ -400,6 +439,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -426,6 +466,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -458,6 +499,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -485,6 +527,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -512,6 +555,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -541,6 +585,7 @@ describe('useAppState', () => {
     mockUseGitStatus.mockReturnValue({
       gitStatus: {
         isRepo: true,
+        mergeInProgress: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -976,7 +1021,14 @@ describe('useAppState', () => {
       reloadOpenFiles: options.reloadOpenFiles
     })
     mockUseGitStatus.mockReturnValue({
-      gitStatus: { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] },
+      gitStatus: {
+        isRepo: true,
+        mergeInProgress: false,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      },
       gitLoading: false,
       gitError: null,
       refreshGitStatus: vi.fn().mockResolvedValue(undefined)
@@ -1093,7 +1145,7 @@ describe('useAppState', () => {
     it('確認どおりマージを実行し、成功後に開いているファイルを再読込する', async () => {
       const confirmDiscardAnyDirty = vi.fn(() => true)
       const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue({ status: 'merged' })
       await runMerge(apiMerge, { confirmDiscardAnyDirty, reloadOpenFiles })
       expect(confirmDiscardAnyDirty).toHaveBeenCalled()
       expect(apiMerge).toHaveBeenCalledWith('feature/x')
@@ -1102,7 +1154,7 @@ describe('useAppState', () => {
 
     it('未保存編集の破棄確認でキャンセルされたら、マージも再読込もしない', async () => {
       const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue({ status: 'merged' })
       await runMerge(apiMerge, { confirmDiscardAnyDirty: () => false, reloadOpenFiles })
       expect(apiMerge).not.toHaveBeenCalled()
       expect(reloadOpenFiles).not.toHaveBeenCalled()
@@ -1110,24 +1162,89 @@ describe('useAppState', () => {
 
     it('マージの確認でキャンセルされたら、マージも再読込もしない', async () => {
       const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
-      const apiMerge = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue({ status: 'merged' })
       await runMerge(apiMerge, { confirmDiscardAnyDirty: () => true, reloadOpenFiles }, false)
       expect(apiMerge).not.toHaveBeenCalled()
       expect(reloadOpenFiles).not.toHaveBeenCalled()
     })
 
-    // gitBranchOperations.mergeBranch は git レベルの失敗(コンフリクトで中止した等)でも
-    // 例外を投げず false を返すだけ。戻り値を見ずに再読込すると、マージが行われていないのに
-    // 無関係な未保存編集がディスク内容で上書きされる
-    it('マージが失敗した場合、reloadOpenFiles は呼ばれない(未保存編集を保持する)', async () => {
+    // コンフリクトで止まったマージは作業ツリーを変えている(マーカー入りになる)。例外ではなく
+    // conflict の結果で返るので、成功と同じく開いているタブを再読込する。再読込しないと、古い
+    // 内容のタブを保存したときにマーカーと相手側の変更が消える(パターン52)
+    it('コンフリクトで止まった場合も、開いているファイルを再読込する', async () => {
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const apiMerge = vi.fn().mockResolvedValue({
+        status: 'conflict',
+        message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+      })
+      await runMerge(apiMerge, { confirmDiscardAnyDirty: () => true, reloadOpenFiles })
+      expect(apiMerge).toHaveBeenCalledWith('feature/x')
+      expect(reloadOpenFiles).toHaveBeenCalled()
+    })
+
+    // 事前検証の失敗等の例外は作業ツリーが変わっていない。戻り値を見ずに再読込すると、
+    // マージが行われていないのに無関係な未保存編集がディスク内容で上書きされる
+    it('マージが例外で失敗した場合、reloadOpenFiles は呼ばれない(未保存編集を保持する)', async () => {
       const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
       const apiMerge = vi
         .fn()
-        .mockRejectedValue(new Error('コンフリクトしたため中止しました: a.txt'))
+        .mockRejectedValue(
+          new Error('未コミットの変更があるためマージできません。先にコミットしてください')
+        )
       await runMerge(apiMerge, { confirmDiscardAnyDirty: () => true, reloadOpenFiles })
       expect(apiMerge).toHaveBeenCalledWith('feature/x')
       expect(reloadOpenFiles).not.toHaveBeenCalled()
     })
+  })
+
+  // コンフリクトで止まったときの「コンフリクトしました（…）」は branchOperationError に残る。
+  // マージを完了・中止しても残り続けると、解決済みなのにエラーが出たままになる。
+  // 完了・中止の経路(バナー・コミット欄・CLI)を問わず、マージ中(gitStatus.mergeInProgress)が
+  // 解除されたら消えることを確かめる(useMergeState はモックのため、状態の変化だけで消える)
+  it('コンフリクト後にマージ中でなくなると、コンフリクトで止まったときのエラー表示が消える', async () => {
+    setupEditorSyncedGitOperation({
+      confirmDiscardAnyDirty: () => true,
+      reloadOpenFiles: vi.fn().mockResolvedValue(undefined)
+    })
+    const status = (mergeInProgress: boolean): ReturnType<typeof mockUseGitStatus> => ({
+      gitStatus: {
+        isRepo: true,
+        mergeInProgress,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      },
+      gitLoading: false,
+      gitError: null,
+      refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+    })
+    const originalMerge = window.api.mergeBranch
+    window.api.mergeBranch = vi.fn().mockResolvedValue({
+      status: 'conflict',
+      message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      const { result, rerender } = renderHook(() => useAppState())
+      await act(async () => {
+        await result.current.mergeBranch('feature/x')
+      })
+      mockUseGitStatus.mockReturnValue(status(true))
+      rerender()
+      expect(result.current.branchOperationError?.message).toContain('コンフリクトしました')
+      mockUseGitStatus.mockReturnValue(status(false))
+      rerender()
+      expect(result.current.branchOperationError).toBeNull()
+    } finally {
+      window.api.mergeBranch = originalMerge
+      confirmSpy.mockRestore()
+    }
+  })
+
+  it('useMergeState に完了・中止の後始末のコールバック(onFinished)を渡さない', () => {
+    renderHook(() => useAppState())
+    expect(mockUseMergeState.mock.lastCall?.[0]).not.toHaveProperty('onFinished')
   })
 
   describe('discardFile ラッパー', () => {
@@ -1145,6 +1262,7 @@ describe('useAppState', () => {
       mockUseGitStatus.mockReturnValue({
         gitStatus: {
           isRepo: true,
+          mergeInProgress: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1188,6 +1306,7 @@ describe('useAppState', () => {
       mockUseGitStatus.mockReturnValue({
         gitStatus: {
           isRepo: true,
+          mergeInProgress: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1229,6 +1348,7 @@ describe('useAppState', () => {
       mockUseGitStatus.mockReturnValue({
         gitStatus: {
           isRepo: true,
+          mergeInProgress: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1280,6 +1400,7 @@ describe('useAppState', () => {
       mockUseGitStatus.mockReturnValue({
         gitStatus: {
           isRepo: true,
+          mergeInProgress: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1350,6 +1471,130 @@ describe('useAppState', () => {
         })
       )
       expect(result.current.discardAll).toBe(mockDiscardAllState)
+    })
+  })
+
+  describe('マージ状態と解決ビュー', () => {
+    const conflictedStatus = {
+      isRepo: true,
+      mergeInProgress: true,
+      branch: 'main',
+      ahead: 0,
+      behind: 0,
+      files: [
+        { path: 'a.txt', index: 'U', workingDir: 'U' },
+        { path: 'm.txt', index: ' ', workingDir: 'M' }
+      ]
+    }
+
+    it('useMergeState に依存を渡し、戻り値を mergeState として公開する', () => {
+      const confirmDiscardAnyDirty = vi.fn(() => true)
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        confirmDiscardAnyDirty,
+        reloadOpenFiles,
+        refreshTree
+      })
+      const refreshGitStatus = vi.fn()
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: conflictedStatus,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseMergeState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gitStatus: conflictedStatus,
+          refreshGitStatus,
+          refreshHistory: expect.any(Function),
+          fileLock: expect.anything(),
+          confirmDiscardAnyDirty,
+          reloadOpenFiles,
+          refreshTree
+        })
+      )
+      expect(result.current.mergeState).toBe(mockMergeStatePanel)
+    })
+
+    it('useConflictFile に依存を渡し、アクティブな diff タブがコンフリクト中ならそのパスを activePath にする', () => {
+      const hasDirtyTabAtOrInside = vi.fn()
+      const reloadOpenFile = vi.fn()
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        hasDirtyTabAtOrInside,
+        reloadOpenFile,
+        refreshTree
+      })
+      const refreshGitStatus = vi.fn()
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: conflictedStatus,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      mockUseDiffTabs.mockReturnValue({
+        ...mockUseDiffTabs(),
+        activeDiffTab: { path: 'a.txt', staged: false }
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseConflictFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          activePath: 'a.txt',
+          gitStatus: conflictedStatus,
+          refreshGitStatus,
+          fileLock: expect.anything(),
+          hasDirtyTabAtOrInside,
+          reloadOpenFile,
+          refreshTree,
+          folderPath: '/project'
+        })
+      )
+      expect(result.current.conflictFile).toBe(mockConflictFileState)
+      expect(result.current.isActiveFileConflicted).toBe(true)
+    })
+
+    it('アクティブな diff タブがコンフリクト中でなければ activePath は null', () => {
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: conflictedStatus,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn()
+      })
+      mockUseDiffTabs.mockReturnValue({
+        ...mockUseDiffTabs(),
+        activeDiffTab: { path: 'm.txt', staged: false }
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseConflictFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activePath: null })
+      )
+      expect(result.current.isActiveFileConflicted).toBe(false)
+    })
+
+    // CLI の rebase / cherry-pick 中(MERGE_HEAD が無い)は ours/theirs の意味が逆になるため、
+    // 未解決のファイルでも解決ビューを出さず(getConflictFile も呼ばせず)、通常の diff 表示にする
+    it('マージ中でなければ、未解決のファイルの diff タブでも activePath は null', () => {
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: { ...conflictedStatus, mergeInProgress: false },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn()
+      })
+      mockUseDiffTabs.mockReturnValue({
+        ...mockUseDiffTabs(),
+        activeDiffTab: { path: 'a.txt', staged: false }
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseConflictFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activePath: null })
+      )
+      expect(result.current.isActiveFileConflicted).toBe(false)
     })
   })
 

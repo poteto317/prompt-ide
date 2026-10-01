@@ -28,6 +28,7 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 // isRepo/gitStatus 自体の判定は別の describe ブロックでのみ検証する
 const repoStatus: GitStatusResult = {
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -618,7 +619,14 @@ describe('isRemoteOperationDisabled', () => {
   })
 
   it('isRepo: false なら true', () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useGitRemoteOperations(notRepo, refreshGitStatus))
 
@@ -648,7 +656,14 @@ describe('isRemoteOperationDisabled', () => {
   })
 
   it('isRepo: false のとき push/pull/fetch は実行されない(no-op)', async () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     mockPush.mockResolvedValue(undefined)
     mockPull.mockResolvedValue(undefined)
     mockFetchRemote.mockResolvedValue(undefined)

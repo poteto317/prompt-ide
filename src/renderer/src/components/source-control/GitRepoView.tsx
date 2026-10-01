@@ -5,8 +5,14 @@ import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
 import StashSection from './StashSection'
 import BranchSwitcher from './BranchSwitcher'
+import MergeBanner from './MergeBanner'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind, DiscardAllState, StashPanelState } from '../../types'
+import type {
+  BranchOperationKind,
+  DiscardAllState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../../types'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
@@ -43,6 +49,7 @@ interface Props {
   onMergeBranch: (branchName: string) => Promise<void>
   stash: StashPanelState
   discardAll: DiscardAllState
+  mergeState: MergeStatePanelState
 }
 
 export default function GitRepoView({
@@ -75,7 +82,8 @@ export default function GitRepoView({
   onDeleteBranch,
   onMergeBranch,
   stash,
-  discardAll
+  discardAll,
+  mergeState
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -101,6 +109,7 @@ export default function GitRepoView({
         {ahead > 0 && <span className="source-control-panel__ahead">↑{ahead}</span>}
         {behind > 0 && <span className="source-control-panel__behind">↓{behind}</span>}
       </div>
+      <MergeBanner mergeState={mergeState} isBlocked={isBlockedByOtherOperation} />
       <CommitSection
         stagedCount={stagedCount}
         isCommitting={isCommitting}

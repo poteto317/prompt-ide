@@ -59,6 +59,7 @@ describe('App: diffタブを開く操作', () => {
     window.api.readDirectory = vi.fn().mockResolvedValue([])
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
+      mergeInProgress: false,
       branch: 'main',
       ahead: 0,
       behind: 0,

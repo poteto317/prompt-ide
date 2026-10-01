@@ -29,6 +29,16 @@ const mockGetStashes = vi.hoisted(() => vi.fn())
 const mockStashPush = vi.hoisted(() => vi.fn())
 const mockStashPop = vi.hoisted(() => vi.fn())
 const mockStashDrop = vi.hoisted(() => vi.fn())
+const mockConflict = vi.hoisted(() => ({
+  getConflictFile: vi.fn(),
+  resolveConflictBlocks: vi.fn(),
+  resolveConflictWholeFile: vi.fn(),
+  keepConflictFile: vi.fn(),
+  removeConflictFile: vi.fn(),
+  markConflictResolved: vi.fn(),
+  completeMerge: vi.fn(),
+  abortMerge: vi.fn()
+}))
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -60,6 +70,8 @@ vi.mock('../../gitDiscardService', () => ({
   discardHunk: mockDiscardHunk,
   discardAllChanges: mockDiscardAllChanges
 }))
+
+vi.mock('../../gitConflictService', () => mockConflict)
 
 vi.mock('../../gitStashService', () => ({
   getStashes: mockGetStashes,
@@ -133,7 +145,14 @@ describe('registerGitHandlers', () => {
     it('folderAccess の allowedFolder を引数に getGitStatus を呼ぶ', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
       registerGitHandlers(mockIpcMain, folderAccess)
-      const mockResult = { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] }
+      const mockResult = {
+        isRepo: true,
+        mergeInProgress: false,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      }
       mockGetGitStatus.mockResolvedValue(mockResult)
       const result = await getRegisteredHandler('git:getStatus')(makeEvent(1))
       expect(mockGetGitStatus).toHaveBeenCalledWith('/project')
@@ -1313,13 +1332,27 @@ describe('registerGitHandlers', () => {
   })
 
   describe('git:mergeBranch', () => {
-    it('allowedFolder と branchName を引数に mergeBranch を呼ぶ', async () => {
-      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
-      registerGitHandlers(mockIpcMain, folderAccess)
-      mockMergeBranch.mockResolvedValue(undefined)
-      await getRegisteredHandler('git:mergeBranch')(makeEvent(1), 'feature/x')
-      expect(mockMergeBranch).toHaveBeenCalledWith('/project', 'feature/x')
-    })
+    it.each([
+      ['merged', { status: 'merged' }],
+      [
+        'conflict',
+        {
+          status: 'conflict',
+          message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+        }
+      ]
+    ])(
+      'allowedFolder と branchName を引数に mergeBranch を呼び、%s の結果をそのまま返す',
+      async (_label, result) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        mockMergeBranch.mockResolvedValue(result)
+        await expect(
+          getRegisteredHandler('git:mergeBranch')(makeEvent(1), 'feature/x')
+        ).resolves.toBe(result)
+        expect(mockMergeBranch).toHaveBeenCalledWith('/project', 'feature/x')
+      }
+    )
 
     it('branchName が文字列でなければ mergeBranch を呼ばずに拒否する', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
@@ -1428,6 +1461,162 @@ describe('registerGitHandlers', () => {
       await expect(getRegisteredHandler(channel)(makeEvent(1), 123)).rejects.toThrow(
         'No folder open'
       )
+    })
+  })
+
+  describe('コンフリクトの解決', () => {
+    const DIGEST = 'a'.repeat(40)
+
+    function allowedAccess(): FolderAccessManager {
+      return makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+      })
+    }
+
+    const pathChannels = [
+      ['git:getConflictFile', 'getConflictFile', []],
+      ['git:resolveConflictBlocks', 'resolveConflictBlocks', [[DIGEST], { 0: 'ours' }]],
+      ['git:resolveConflictWholeFile', 'resolveConflictWholeFile', ['ours']],
+      ['git:keepConflictFile', 'keepConflictFile', []],
+      ['git:removeConflictFile', 'removeConflictFile', []],
+      ['git:markConflictResolved', 'markConflictResolved', []]
+    ] as const
+
+    describe.each(pathChannels)('%s', (channel, fn, extra) => {
+      it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler(channel)(makeEvent(1), 'a.txt', ...extra.map(() => 123))
+        ).rejects.toThrow('No folder open')
+        expect(mockConflict[fn]).not.toHaveBeenCalled()
+      })
+
+      it('フォルダ外のパスは service を呼ばずに Access denied を伝播する', async () => {
+        const folderAccess = makeFolderAccess({
+          get: vi.fn().mockReturnValue('/project'),
+          assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied'))
+        })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler(channel)(makeEvent(1), '/outside/a.txt', ...extra)
+        ).rejects.toThrow('Access denied')
+        expect(mockConflict[fn]).not.toHaveBeenCalled()
+      })
+
+      it('境界チェック後、絶対パスをリポジトリ相対パスにして引数とともに service を呼ぶ', async () => {
+        registerGitHandlers(mockIpcMain, allowedAccess())
+        mockConflict[fn].mockResolvedValue(undefined)
+        await getRegisteredHandler(channel)(makeEvent(1), '/project/src/a.txt', ...extra)
+        expect(mockConflict[fn]).toHaveBeenCalledWith('/project', 'src/a.txt', ...extra)
+      })
+    })
+
+    it('git:getConflictFile は service の結果をそのまま返す', async () => {
+      registerGitHandlers(mockIpcMain, allowedAccess())
+      const file = { status: 'unparsable' }
+      mockConflict.getConflictFile.mockResolvedValue(file)
+      await expect(
+        getRegisteredHandler('git:getConflictFile')(makeEvent(1), 'a.txt')
+      ).resolves.toBe(file)
+    })
+
+    describe('git:resolveConflictBlocks の型検証', () => {
+      it.each([
+        ['配列でない', 'x'],
+        ['null', null],
+        ['要素が文字列でない', [1]],
+        ['長さ 40 でない', ['abc']],
+        ['16 進でない', ['g'.repeat(40)]],
+        ['1001 件', Array.from({ length: 1001 }, () => DIGEST)]
+      ])('expectedDigests が不正(%s)だと Invalid digests で拒否する', async (_n, bad) => {
+        registerGitHandlers(mockIpcMain, allowedAccess())
+        await expect(
+          getRegisteredHandler('git:resolveConflictBlocks')(makeEvent(1), 'a.txt', bad, {})
+        ).rejects.toThrow('Invalid digests')
+        expect(mockConflict.resolveConflictBlocks).not.toHaveBeenCalled()
+      })
+
+      it('digests の検証は choices より先、パス解決より先に行う', async () => {
+        const folderAccess = makeFolderAccess({
+          get: vi.fn().mockReturnValue('/project'),
+          assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied'))
+        })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler('git:resolveConflictBlocks')(makeEvent(1), '/x', 'bad', 'bad')
+        ).rejects.toThrow('Invalid digests')
+      })
+
+      const tooMany = Object.fromEntries(Array.from({ length: 1001 }, (_, i) => [i, 'ours']))
+      it.each([
+        ['null', null],
+        ['配列', ['ours']],
+        ['文字列', 'ours'],
+        ['列挙外の値', { 0: 'mine' }],
+        ['値が文字列でない', { 0: 1 }],
+        ['整数でないキー', { a: 'ours' }],
+        ['小数のキー', { '1.5': 'ours' }],
+        ['負数のキー', { '-1': 'ours' }],
+        ['先頭ゼロのキー', { '01': 'ours' }],
+        ['巨大な数のキー', { '9007199254740993': 'ours' }],
+        ['constructor', { constructor: 'ours' }],
+        ['prototype', { prototype: 'ours' }],
+        ['__proto__(own)', JSON.parse('{"__proto__":"ours"}')],
+        ['1001 件', tooMany]
+      ])('choices が不正(%s)だと Invalid choices で拒否する', async (_n, bad) => {
+        registerGitHandlers(mockIpcMain, allowedAccess())
+        await expect(
+          getRegisteredHandler('git:resolveConflictBlocks')(makeEvent(1), 'a.txt', [DIGEST], bad)
+        ).rejects.toThrow('Invalid choices')
+        expect(mockConflict.resolveConflictBlocks).not.toHaveBeenCalled()
+      })
+
+      it('空の choices と 1000 件ちょうどの digests は受け付ける', async () => {
+        registerGitHandlers(mockIpcMain, allowedAccess())
+        mockConflict.resolveConflictBlocks.mockResolvedValue(undefined)
+        const digests = Array.from({ length: 1000 }, () => DIGEST)
+        await getRegisteredHandler('git:resolveConflictBlocks')(makeEvent(1), 'a.txt', digests, {})
+        expect(mockConflict.resolveConflictBlocks).toHaveBeenCalledWith(
+          '/project',
+          'a.txt',
+          digests,
+          {}
+        )
+      })
+    })
+
+    describe('git:resolveConflictWholeFile の型検証', () => {
+      it.each([['both'], [null], [undefined], [1], ['OURS']])(
+        'side が不正(%s)だと Invalid side で拒否する',
+        async (bad) => {
+          registerGitHandlers(mockIpcMain, allowedAccess())
+          await expect(
+            getRegisteredHandler('git:resolveConflictWholeFile')(makeEvent(1), 'a.txt', bad)
+          ).rejects.toThrow('Invalid side')
+          expect(mockConflict.resolveConflictWholeFile).not.toHaveBeenCalled()
+        }
+      )
+    })
+
+    describe.each([
+      ['git:completeMerge', 'completeMerge'],
+      ['git:abortMerge', 'abortMerge']
+    ] as const)('%s', (channel, fn) => {
+      it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(getRegisteredHandler(channel)(makeEvent(1))).rejects.toThrow('No folder open')
+        expect(mockConflict[fn]).not.toHaveBeenCalled()
+      })
+
+      it('許可フォルダだけを渡して service を呼ぶ', async () => {
+        registerGitHandlers(mockIpcMain, allowedAccess())
+        mockConflict[fn].mockResolvedValue(undefined)
+        await getRegisteredHandler(channel)(makeEvent(1))
+        expect(mockConflict[fn]).toHaveBeenCalledWith('/project')
+      })
     })
   })
 })

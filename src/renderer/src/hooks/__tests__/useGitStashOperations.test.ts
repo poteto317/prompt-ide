@@ -23,7 +23,14 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
   unlockGlobal: vi.fn(),
   ...overrides
 })
-const repoStatus: GitStatusResult = { isRepo: true, branch: 'main', ahead: 0, behind: 0, files: [] }
+const repoStatus: GitStatusResult = {
+  isRepo: true,
+  mergeInProgress: false,
+  branch: 'main',
+  ahead: 0,
+  behind: 0,
+  files: []
+}
 const entry: GitStashEntry = {
   sha: 'a'.repeat(40),
   message: 'fix bug',

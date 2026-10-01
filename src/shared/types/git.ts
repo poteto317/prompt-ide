@@ -14,7 +14,51 @@ export type GitStatusResult = {
   ahead: number
   behind: number
   files: GitFileStatus[]
+  /** マージ中（`.git/MERGE_HEAD` がある）か。リポジトリでないときは false */
+  mergeInProgress: boolean
 }
+
+/** コンフリクトのブロックごとの解決方法（both は自分 → 相手の順） */
+export const CONFLICT_CHOICES = ['ours', 'theirs', 'both'] as const
+export type ConflictChoice = (typeof CONFLICT_CHOICES)[number]
+
+export type ConflictSegment =
+  | { kind: 'text'; lines: string[] }
+  | {
+      kind: 'conflict'
+      ours: string[]
+      theirs: string[]
+      base?: string[]
+      /** base がある（diff3 形式）ときの `|||||||` 行のラベル。書き戻しで復元する */
+      baseLabel?: string
+      oursLabel: string
+      theirsLabel: string
+    }
+
+/** コンフリクト中のファイルに、ステージ 2(自分)・3(相手)があるか。両方あれば内容の競合、
+ *  片方だけなら追加/削除型(ファイル単位で「残す」か「削除する」を選ぶ) */
+export type ConflictStages = { ours: boolean; theirs: boolean }
+
+/** ブロックを解析できない理由。binary=NUL を含む、markers=マーカーを解析できない/UTF-8 として不正、
+ *  not-regular=通常のファイルでない(リンク・ディレクトリ)、missing=作業ツリーにファイルが無い、
+ *  submodule=サブモジュール(gitlink, mode 160000)のコンフリクト。アプリでは解決せず、ターミナルへ案内する */
+export type ConflictUnparsableReason =
+  | 'binary'
+  | 'markers'
+  | 'not-regular'
+  | 'missing'
+  | 'submodule'
+
+export type ConflictFile =
+  | {
+      status: 'parsed'
+      stages: ConflictStages
+      segments: ConflictSegment[]
+      /** コンフリクトのブロックの順の SHA-1 ダイジェスト */
+      digests: string[]
+      eol: '\n' | '\r\n'
+    }
+  | { status: 'unparsable'; reason: ConflictUnparsableReason; stages: ConflictStages }
 
 export type GitLogEntry = {
   hash: string
@@ -58,6 +102,13 @@ export interface DiscardAllEntry {
 // ファイルを古いタブが上書きして変更を戻してしまう(パターン52)。1 件目で失敗した場合と、一覧の不一致・
 // 分類での拒否(何も変えていない)は従来どおり例外。cause は IPC を渡れないので含めない
 export type DiscardAllResult = { status: 'done' } | { status: 'partial'; message: string }
+
+// ブランチのマージの結果。コンフリクトで途中の状態(MERGE_HEAD と、マーカー入りの作業ツリー)を残して止まった
+// ときは、作業ツリーが変わっているため例外ではなく conflict で返す: renderer は例外のとき開いているタブを
+// 再読込しないため、返さないと古い内容のタブが保存でマーカーと相手側の変更を消してしまう(パターン52)。
+// 事前検証の失敗・MERGE_HEAD の無い失敗・未解決ファイルが無いまま中止した失敗(作業ツリーは元のまま)は例外。
+// message は `コンフリクトしました（<ファイル一覧>）。解決するか、マージを中止してください`
+export type MergeBranchResult = { status: 'merged' } | { status: 'conflict'; message: string }
 
 // 退避の復元(git stash pop 相当)の結果。事前検証の失敗と、巻き戻しに成功した apply 失敗は例外で返す
 // (作業ツリーは変わっていない)。作業ツリーが変わったうえで警告が要る場合だけ、例外ではなく結果で返す:

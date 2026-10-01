@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as gitApi from '../lib/gitApi'
 import { useFileOperationLock } from './useFileOperationLock'
 import type { FileOperationLock } from './useFileOperationLock'
@@ -23,10 +23,15 @@ export interface GitBranchOperationsState {
   createBranch: (branchName: string) => Promise<boolean>
   /** 確認 → 安全削除 → 未マージなら再確認して強制削除。戻り値は実際に削除されたか */
   deleteBranch: (branchName: string) => Promise<boolean>
-  /** 確認 → 現在のブランチへマージ。戻り値は実行され成功したか(確認のキャンセル・
-   *  isBusy による no-op・git レベルの失敗では false)。呼び出し元(useAppState.ts)が
-   *  reloadOpenFiles 等「マージが成功した前提」の後続処理を成功時だけ実行するために使う */
+  /** 確認 → 現在のブランチへマージ。戻り値は実行され、作業ツリーが変わったか(確認のキャンセル・
+   *  isBusy による no-op・git レベルの失敗では false)。コンフリクトで止まった場合も作業ツリーが
+   *  変わる(マーカー入りになる)ため true で、メッセージは branchOperationError に残る
+   *  (マージ中が解除されると消える)。
+   *  呼び出し元(useAppState.ts)が reloadOpenFiles 等「作業ツリーが変わった前提」の後続処理を
+   *  その場合だけ実行するために使う */
   mergeBranch: (branchName: string) => Promise<boolean>
+  /** ブランチ操作のエラー。マージがコンフリクトで止まったときの通知もここに入り、
+   *  マージ中(gitStatus.mergeInProgress)が解除されたら自動で消える */
   branchOperationError: Error | null
 }
 
@@ -47,6 +52,21 @@ export function useGitBranchOperations(
   )
   const isBranchOperationRunningRef = useRef(false)
   const [branchOperationError, setBranchOperationError] = useState<Error | null>(null)
+  // マージがコンフリクトで止まったときに出した通知(Error オブジェクトの同一性で他のエラーと区別する)
+  const conflictNoticeRef = useRef<Error | null>(null)
+  const mergeInProgress = gitStatus?.mergeInProgress ?? false
+
+  // マージ中が解除されたら(true → false。effect は値が変わったときだけ走る)、コンフリクトの通知を消す。
+  // 完了・中止の経路(バナー・コミット欄でのコミット・CLI の merge --abort)を問わず MERGE_HEAD が
+  // 無くなるため、状態に連動させる。通知が別の操作のエラーに置き換わっていれば、そのエラーは消さない
+  useEffect(() => {
+    if (mergeInProgress) return
+    const notice = conflictNoticeRef.current
+    if (notice === null) return
+    conflictNoticeRef.current = null
+    setBranchOperationError((current) => (current === notice ? null : current))
+  }, [mergeInProgress])
+
   const localFileLock = useFileOperationLock()
   const lock = fileLock ?? localFileLock
   // 「リポジトリが無ければ Git 操作は実行不可」という業務ルールは
@@ -136,18 +156,33 @@ export function useGitBranchOperations(
   // 取る(マージ中に push が始まると、確定前の HEAD を送ってしまう)。開始条件も checkout と
   // 同じく他操作中を待つ。現在のブランチ名が分からない状態(リポジトリが無い)は
   // isBranchOperationDisabled で弾かれる操作のため、確認も出さずに終える。
-  // コンフリクトは main 側が自動で中止し、日本語のエラーを投げる(branchOperationError に出る)
+  // コンフリクトしたら main 側はマージ中の状態を残して conflict の結果で返す(作業ツリーが
+  // マーカー入りに変わっているため例外にしない。例外だと呼び出し元がタブを再読込せず、古い内容の
+  // タブが保存でマーカーを消してしまう。パターン52)。runOperation は execute の成功時に
+  // setError(null) するため、メッセージは実行完了後(戻り値を得てから)にセットする。
+  // throw された失敗(事前検証の失敗・フック失敗の中止等)は作業ツリーが変わっていないので
+  // 従来どおり false + エラー
   const mergeBranch = async (branchName: string): Promise<boolean> => {
     const currentBranch = gitStatus?.branch
     if (currentBranch === null || currentBranch === undefined) return false
     if (!onConfirm(buildMergeConfirmMessage(branchName, currentBranch))) return false
-    return runOperation({
+    let conflictMessage: string | null = null
+    const succeeded = await runOperation({
       isBusy: isBranchOperationBusy,
       setBusy: makeSetBusy('merge'),
       onStart: lock.lockGlobal,
       onEnd: lock.unlockGlobal,
-      execute: () => gitApi.mergeBranch(branchName)
+      execute: async () => {
+        const result = await gitApi.mergeBranch(branchName)
+        if (result.status === 'conflict') conflictMessage = result.message
+      }
     })
+    if (succeeded && conflictMessage !== null) {
+      const notice = new Error(conflictMessage)
+      conflictNoticeRef.current = notice
+      setBranchOperationError(notice)
+    }
+    return succeeded
   }
 
   return {

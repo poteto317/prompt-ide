@@ -369,4 +369,19 @@ describe('ChangesSection — すべて取り消す', () => {
     const { container } = renderSection({ files: [], discardAll: makeDiscardAll() })
     expect(container.firstChild).toBeNull()
   })
+
+  it('未解決(コンフリクト中)のファイルのパスをタップすると onOpenDiff が呼ばれる(解決ビューを開く入口は従来の diff タブと同じ)', async () => {
+    const onOpenDiff = vi.fn()
+    render(
+      <ChangesSection
+        files={[{ path: 'c.txt', index: 'U', workingDir: 'U' }]}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onDiscard={vi.fn()}
+        onOpenDiff={onOpenDiff}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'c.txt の未ステージ差分を表示' }))
+    expect(onOpenDiff).toHaveBeenCalledWith('c.txt')
+  })
 })

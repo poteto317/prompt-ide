@@ -1153,9 +1153,7 @@ body {
   color: #ffffff;
 }
 
-/* 「退避」セクション。ボタンはタッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、
-   ホバー時だけ表示する作りにはしない。ホバー色は退避の戻す=青系・捨てる=赤系
-   (ブランチメニューのマージ・削除ボタンと同じ) */
+/* 「退避」セクション。ボタンの見た目は下の共通のボタン規則で、マージのバナー・コンフリクト解決ビューと共有する */
 .stash-section__header {
   display: flex;
   align-items: center;
@@ -1163,8 +1161,15 @@ body {
   padding-right: 12px;
 }
 
+/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・解決ビューのツールバー・ブロック)。
+   タッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、ホバー時だけ表示する作りにはしない。
+   ホバー色は破壊的でない操作=青系、危険系(--danger: 退避を捨てる・マージを中止・削除する)=赤系
+   (ブランチメニューのマージ・削除ボタンと同じ)。見た目を変えるときはここ 1 か所を直す */
 .stash-section__push,
-.stash-section__action {
+.stash-section__action,
+.merge-banner__button,
+.conflict-resolver__button,
+.conflict-block__button {
   flex: none;
   min-width: 32px;
   min-height: 32px;
@@ -1178,17 +1183,25 @@ body {
 }
 
 .stash-section__push:hover:not(:disabled),
-.stash-section__action:hover:not(:disabled) {
+.stash-section__action:hover:not(:disabled),
+.merge-banner__button:hover:not(:disabled),
+.conflict-resolver__button:hover:not(:disabled),
+.conflict-block__button:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
 }
 
-.stash-section__action--danger:hover:not(:disabled) {
+.stash-section__action--danger:hover:not(:disabled),
+.merge-banner__button--danger:hover:not(:disabled),
+.conflict-resolver__button--danger:hover:not(:disabled) {
   background: #5a1d1d;
 }
 
 .stash-section__push:disabled,
-.stash-section__action:disabled {
+.stash-section__action:disabled,
+.merge-banner__button:disabled,
+.conflict-resolver__button:disabled,
+.conflict-block__button:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -2444,4 +2457,161 @@ body {
 .history-section__load-more-btn:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+/* マージ中のバナー。ボタン(.merge-banner__button)の見た目は退避セクションの共通のボタン規則で共有する */
+.merge-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: 4px 12px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #333333;
+}
+
+.merge-banner__message {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: #d7ba7d;
+  font-size: 12px;
+}
+
+.merge-banner__actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.merge-banner__error {
+  flex-basis: 100%;
+  margin: 0;
+  color: #f48771;
+  font-size: 12px;
+}
+
+/* コンフリクト解決ビュー(未解決ファイルの diff タブの中身)。行は .diff-view__line を流用し、
+   長い行は white-space: pre のまま横スクロールで収める(コンテナ側の overflow-x) */
+.conflict-resolver {
+  padding: 8px;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: auto;
+  height: 100%;
+}
+
+.conflict-resolver__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+/* ボタンの見た目は退避セクションの共通のボタン規則で共有する。「解決済みにする」(--primary)だけは
+   コミットボタン(.source-control-panel__commit-btn)と同じ青で強調する。disabled のときは強調せず、
+   共通の disabled(半透明)の見た目にする */
+.conflict-resolver__button--primary:not(:disabled) {
+  background: #0e639c;
+  border-color: #0e639c;
+  color: #ffffff;
+}
+
+.conflict-resolver__button--primary:hover:not(:disabled) {
+  background: #1177bb;
+  border-color: #1177bb;
+}
+
+.conflict-resolver__error {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #f48771;
+  background: #2d2d2d;
+}
+
+.conflict-resolver__notice {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #d7ba7d;
+  background: #2d2d2d;
+}
+
+.conflict-resolver__loading {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #888888;
+}
+
+.conflict-block {
+  margin: 12px 0;
+  border: 1px solid #333333;
+  border-radius: 3px;
+}
+
+.conflict-block__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 4px 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #333333;
+}
+
+.conflict-block__title {
+  color: #8a8a8a;
+}
+
+.conflict-block__actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.conflict-block__side {
+  overflow-x: auto;
+  border-bottom: 1px solid #333333;
+}
+
+.conflict-block__side:last-child {
+  border-bottom: none;
+}
+
+.conflict-block__side-title {
+  padding: 2px 8px;
+  color: #8a8a8a;
+  font-size: 11px;
+}
+
+.conflict-block__side--ours .diff-view__line {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.conflict-block__side--theirs .diff-view__line {
+  background: rgba(56, 139, 253, 0.15);
+  color: #58a6ff;
+}
+
+.conflict-block__side--base .diff-view__line {
+  color: #cccccc;
+}
+
+.conflict-block__side .conflict-block__empty {
+  color: #6c6c6c;
+}
+
+/* ブロックを選んだ結果の読み上げ用(role="status")。空のときは高さを取らない */
+.conflict-resolver__status {
+  margin: 0;
+  color: #3fb950;
+  font-size: 12px;
+}
+
+.conflict-resolver__status:not(:empty) {
+  margin-bottom: 8px;
 }

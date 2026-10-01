@@ -1,7 +1,10 @@
 import { ipcRenderer } from 'electron'
 import type {
   CLIOnlyToolId,
+  ConflictChoice,
+  ConflictFile,
   DeleteBranchResult,
+  MergeBranchResult,
   DiscardAllEntry,
   DiscardAllResult,
   FileTreeNode,
@@ -40,6 +43,24 @@ export const api = {
     ipcRenderer.invoke('git:discardHunk', filePath, patch),
   discardAll: (expected: DiscardAllEntry[]): Promise<DiscardAllResult> =>
     ipcRenderer.invoke('git:discardAll', expected),
+  getConflictFile: (filePath: string): Promise<ConflictFile> =>
+    ipcRenderer.invoke('git:getConflictFile', filePath),
+  resolveConflictBlocks: (
+    filePath: string,
+    expectedDigests: string[],
+    choices: Record<number, ConflictChoice>
+  ): Promise<void> =>
+    ipcRenderer.invoke('git:resolveConflictBlocks', filePath, expectedDigests, choices),
+  resolveConflictWholeFile: (filePath: string, side: 'ours' | 'theirs'): Promise<void> =>
+    ipcRenderer.invoke('git:resolveConflictWholeFile', filePath, side),
+  keepConflictFile: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('git:keepConflictFile', filePath),
+  removeConflictFile: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('git:removeConflictFile', filePath),
+  markConflictResolved: (filePath: string): Promise<void> =>
+    ipcRenderer.invoke('git:markConflictResolved', filePath),
+  completeMerge: (): Promise<void> => ipcRenderer.invoke('git:completeMerge'),
+  abortMerge: (): Promise<void> => ipcRenderer.invoke('git:abortMerge'),
   commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
   getDiff: (
     filePath: string,
@@ -66,7 +87,7 @@ export const api = {
     ipcRenderer.invoke('git:createBranch', branchName),
   deleteBranch: (branchName: string, force: boolean): Promise<DeleteBranchResult> =>
     ipcRenderer.invoke('git:deleteBranch', branchName, force),
-  mergeBranch: (branchName: string): Promise<void> =>
+  mergeBranch: (branchName: string): Promise<MergeBranchResult> =>
     ipcRenderer.invoke('git:mergeBranch', branchName),
   getStashes: (): Promise<GitStashEntry[]> => ipcRenderer.invoke('git:getStashes'),
   stashPush: (message: string): Promise<void> => ipcRenderer.invoke('git:stashPush', message),

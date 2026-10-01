@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { GitStatusResult } from '@shared/types'
+import type { GitStatusResult, MergeBranchResult } from '@shared/types'
 
 vi.mock('../../lib/gitApi')
 
@@ -31,6 +31,7 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 
 const repoStatus: GitStatusResult = {
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -250,7 +251,14 @@ describe('checkoutBranch', () => {
   })
 
   it('isRepo: false のとき checkoutBranch は実行されない(no-op)', async () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     mockCheckoutBranch.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const refreshHistory = vi.fn().mockResolvedValue(undefined)
@@ -304,7 +312,14 @@ describe('checkoutBranch', () => {
   })
 
   it('isBusy による no-op(isRepo: false)の場合、false を返す', async () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     mockCheckoutBranch.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const refreshHistory = vi.fn().mockResolvedValue(undefined)
@@ -681,7 +696,7 @@ describe('deleteBranch', () => {
 
 describe('mergeBranch', () => {
   const MESSAGE =
-    'feature/x を main にマージしますか？\n\nコンフリクトした場合は自動で中止して元に戻します。'
+    'feature/x を main にマージしますか？\n\nコンフリクトした場合はマージ中の状態で止まります。解決するか、マージを中止できます。'
 
   const renderWithConfirm = (
     onConfirm: (message: string) => boolean,
@@ -726,7 +741,7 @@ describe('mergeBranch', () => {
   })
 
   it('確認後にマージ API を呼び、成功したら true を返して一覧を再取得する', async () => {
-    mockMergeBranch.mockResolvedValue(undefined)
+    mockMergeBranch.mockResolvedValue({ status: 'merged' })
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const refreshHistory = vi.fn().mockResolvedValue(undefined)
     const { result } = renderWithConfirm(
@@ -748,7 +763,7 @@ describe('mergeBranch', () => {
   // マージは working tree/index/HEAD を書き換えるため checkout と同じく全体ロックを取る。
   // これにより push 側の既存の判定(lock.isAnyLocked())で「マージ中の push」が自動的に防がれる
   it('実行中は lockGlobal を取り、完了後に unlockGlobal する', async () => {
-    mockMergeBranch.mockResolvedValue(undefined)
+    mockMergeBranch.mockResolvedValue({ status: 'merged' })
     const lock = makeFileLock()
     const { result } = renderWithConfirm(vi.fn().mockReturnValue(true), lock)
     await act(async () => {
@@ -760,7 +775,9 @@ describe('mergeBranch', () => {
 
   it('実行中は pendingBranchOperation が merge になり、完了後 null に戻る', async () => {
     let resolveMerge: () => void = () => {}
-    mockMergeBranch.mockReturnValue(new Promise<void>((r) => (resolveMerge = r)))
+    mockMergeBranch.mockReturnValue(
+      new Promise<MergeBranchResult>((r) => (resolveMerge = () => r({ status: 'merged' })))
+    )
     const { result } = renderWithConfirm(vi.fn().mockReturnValue(true))
     act(() => {
       void result.current.mergeBranch('feature/x')
@@ -772,8 +789,104 @@ describe('mergeBranch', () => {
     expect(result.current.pendingBranchOperation).toBeNull()
   })
 
+  // 作業ツリーが変わった(マーカー入りになった)ため、true を返して呼び出し元にタブの再読込をさせる。
+  // runOperation は execute の成功時に error を null にするため、メッセージは実行完了後にセットする
+  it('コンフリクトの結果は true を返し、branchOperationError にメッセージを残して一覧を再取得する', async () => {
+    const message = 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    mockMergeBranch.mockResolvedValue({ status: 'conflict', message })
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const lock = makeFileLock()
+    const { result } = renderWithConfirm(
+      vi.fn().mockReturnValue(true),
+      lock,
+      refreshGitStatus,
+      vi.fn().mockResolvedValue(undefined)
+    )
+    let succeeded = false
+    await act(async () => {
+      succeeded = await result.current.mergeBranch('feature/x')
+    })
+    expect(succeeded).toBe(true)
+    expect(result.current.branchOperationError?.message).toBe(message)
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+    expect(lock.unlockGlobal).toHaveBeenCalledOnce()
+  })
+
+  // コンフリクトの通知はマージ中(gitStatus.mergeInProgress)に連動して消える。バナーの完了・中止だけでなく、
+  // コミット欄でのマージの完了や CLI での merge --abort でも MERGE_HEAD が無くなるため
+  describe('マージ中の状態に連動したコンフリクト通知の消去', () => {
+    const conflictMessage = 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    const renderWithStatus = (
+      initial: GitStatusResult
+    ): ReturnType<typeof renderHook<GitBranchOperationsState, { status: GitStatusResult }>> =>
+      renderHook(
+        ({ status }: { status: GitStatusResult }) =>
+          useGitBranchOperations(
+            status,
+            vi.fn().mockResolvedValue(undefined),
+            vi.fn().mockResolvedValue(undefined),
+            makeFileLock(),
+            { onConfirm: vi.fn().mockReturnValue(true) }
+          ),
+        { initialProps: { status: initial } }
+      )
+    const merging: GitStatusResult = { ...repoStatus, mergeInProgress: true }
+
+    it('コンフリクト後にマージ中でなくなる(コミット欄での完了・外部の中止)と、通知が消える', async () => {
+      mockMergeBranch.mockResolvedValue({ status: 'conflict', message: conflictMessage })
+      const { result, rerender } = renderWithStatus(repoStatus)
+      await act(async () => {
+        await result.current.mergeBranch('feature/x')
+      })
+      rerender({ status: merging })
+      expect(result.current.branchOperationError?.message).toBe(conflictMessage)
+      rerender({ status: { ...repoStatus } })
+      expect(result.current.branchOperationError).toBeNull()
+    })
+
+    it('マージ中のまま(状態の再取得だけ)では、通知は消えない', async () => {
+      mockMergeBranch.mockResolvedValue({ status: 'conflict', message: conflictMessage })
+      const { result, rerender } = renderWithStatus(repoStatus)
+      await act(async () => {
+        await result.current.mergeBranch('feature/x')
+      })
+      rerender({ status: merging })
+      rerender({ status: { ...merging } })
+      expect(result.current.branchOperationError?.message).toBe(conflictMessage)
+    })
+
+    it('無関係なブランチ操作のエラーは、マージ中でなくなっても消えない', async () => {
+      mockCheckoutBranch.mockRejectedValue(new Error('checkout に失敗しました'))
+      const { result, rerender } = renderWithStatus(merging)
+      await act(async () => {
+        await result.current.checkoutBranch('feature/x')
+      })
+      expect(result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+      rerender({ status: repoStatus })
+      expect(result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+    })
+
+    it('コンフリクトの通知が別の操作のエラーに置き換わった後は、マージ中でなくなっても消えない', async () => {
+      mockMergeBranch.mockResolvedValue({ status: 'conflict', message: conflictMessage })
+      mockCheckoutBranch.mockRejectedValue(new Error('checkout に失敗しました'))
+      const { result, rerender } = renderWithStatus(repoStatus)
+      await act(async () => {
+        await result.current.mergeBranch('feature/x')
+      })
+      rerender({ status: merging })
+      await act(async () => {
+        await result.current.checkoutBranch('feature/y')
+      })
+      rerender({ status: repoStatus })
+      expect(result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+    })
+  })
+
+  // コンフリクトは例外ではなく { status: 'conflict' } で返る。throw されるのは事前検証の失敗等
   it('失敗したら false を返し、branchOperationError に反映してロックを解除する', async () => {
-    mockMergeBranch.mockRejectedValue(new Error('コンフリクトしたため中止しました: a.txt'))
+    mockMergeBranch.mockRejectedValue(
+      new Error('未コミットの変更があるためマージできません。先にコミットしてください')
+    )
     const lock = makeFileLock()
     const { result } = renderWithConfirm(vi.fn().mockReturnValue(true), lock)
     let succeeded = true
@@ -782,7 +895,7 @@ describe('mergeBranch', () => {
     })
     expect(succeeded).toBe(false)
     expect(result.current.branchOperationError?.message).toBe(
-      'コンフリクトしたため中止しました: a.txt'
+      '未コミットの変更があるためマージできません。先にコミットしてください'
     )
     expect(lock.unlockGlobal).toHaveBeenCalledOnce()
   })
@@ -860,7 +973,7 @@ describe('共通の開始条件', () => {
   it.each(['checkoutBranch', 'createBranch', 'deleteBranch'] as const)(
     'マージの実行中は %s を呼んでも git API を呼ばない',
     async (method) => {
-      vi.mocked(gitApi.mergeBranch).mockReturnValue(new Promise<void>(() => {}))
+      vi.mocked(gitApi.mergeBranch).mockReturnValue(new Promise<MergeBranchResult>(() => {}))
       const { result } = renderHook(() =>
         useGitBranchOperations(
           repoStatus,

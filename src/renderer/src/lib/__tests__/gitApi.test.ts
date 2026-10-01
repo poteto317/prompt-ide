@@ -13,8 +13,17 @@ import {
   getTags,
   amendCommit,
   stashPop,
+  mergeBranch,
   discardHunk,
-  discardAll
+  discardAll,
+  getConflictFile,
+  resolveConflictBlocks,
+  resolveConflictWholeFile,
+  keepConflictFile,
+  removeConflictFile,
+  markConflictResolved,
+  completeMerge,
+  abortMerge
 } from '../gitApi'
 
 const mockApi = {
@@ -30,8 +39,17 @@ const mockApi = {
   getTags: vi.fn(),
   amendCommit: vi.fn(),
   stashPop: vi.fn(),
+  mergeBranch: vi.fn(),
   discardHunk: vi.fn(),
-  discardAll: vi.fn()
+  discardAll: vi.fn(),
+  getConflictFile: vi.fn(),
+  resolveConflictBlocks: vi.fn(),
+  resolveConflictWholeFile: vi.fn(),
+  keepConflictFile: vi.fn(),
+  removeConflictFile: vi.fn(),
+  markConflictResolved: vi.fn(),
+  completeMerge: vi.fn(),
+  abortMerge: vi.fn()
 }
 
 beforeEach(() => {
@@ -41,6 +59,7 @@ beforeEach(() => {
 
 const mockResult: GitStatusResult = {
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -56,7 +75,14 @@ describe('getGitStatus', () => {
   })
 
   it('isRepo: false の結果もそのまま返す', async () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     mockApi.getGitStatus.mockResolvedValue(notRepo)
     const result = await getGitStatus()
     expect(result).toEqual(notRepo)
@@ -157,6 +183,26 @@ describe('stashPop', () => {
   })
 })
 
+describe('mergeBranch', () => {
+  it.each([
+    ['merged', { status: 'merged' }],
+    [
+      'conflict',
+      {
+        status: 'conflict',
+        message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+      }
+    ]
+  ])(
+    'window.api.mergeBranch をブランチ名で呼び、%s の結果をそのまま返す',
+    async (_label, result) => {
+      mockApi.mergeBranch.mockResolvedValue(result)
+      await expect(mergeBranch('feature/x')).resolves.toBe(result)
+      expect(mockApi.mergeBranch).toHaveBeenCalledWith('feature/x')
+    }
+  )
+})
+
 describe('discardHunk', () => {
   it('window.api.discardHunk に filePath と patch をそのまま渡す', async () => {
     mockApi.discardHunk.mockResolvedValue(undefined)
@@ -180,4 +226,44 @@ describe('discardAll', () => {
       await expect(discardAll([])).resolves.toEqual(result)
     }
   )
+})
+
+describe('コンフリクトの解決', () => {
+  it('getConflictFile は filePath を渡し、結果をそのまま返す', async () => {
+    const file = { status: 'unparsable' }
+    mockApi.getConflictFile.mockResolvedValue(file)
+    await expect(getConflictFile('a.txt')).resolves.toBe(file)
+    expect(mockApi.getConflictFile).toHaveBeenCalledWith('a.txt')
+  })
+
+  it('resolveConflictBlocks は filePath・digests・choices をそのまま渡す', async () => {
+    mockApi.resolveConflictBlocks.mockResolvedValue(undefined)
+    await resolveConflictBlocks('a.txt', ['d'], { 0: 'both' })
+    expect(mockApi.resolveConflictBlocks).toHaveBeenCalledWith('a.txt', ['d'], { 0: 'both' })
+  })
+
+  it('resolveConflictWholeFile は filePath と side をそのまま渡す', async () => {
+    mockApi.resolveConflictWholeFile.mockResolvedValue(undefined)
+    await resolveConflictWholeFile('a.txt', 'ours')
+    expect(mockApi.resolveConflictWholeFile).toHaveBeenCalledWith('a.txt', 'ours')
+  })
+
+  it.each([
+    ['keepConflictFile', keepConflictFile],
+    ['removeConflictFile', removeConflictFile],
+    ['markConflictResolved', markConflictResolved]
+  ] as const)('%s は filePath をそのまま渡す', async (name, fn) => {
+    mockApi[name].mockResolvedValue(undefined)
+    await fn('a.txt')
+    expect(mockApi[name]).toHaveBeenCalledWith('a.txt')
+  })
+
+  it.each([
+    ['completeMerge', completeMerge],
+    ['abortMerge', abortMerge]
+  ] as const)('%s は引数なしで呼ぶ', async (name, fn) => {
+    mockApi[name].mockResolvedValue(undefined)
+    await fn()
+    expect(mockApi[name]).toHaveBeenCalledWith()
+  })
 })

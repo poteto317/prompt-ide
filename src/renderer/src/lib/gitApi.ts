@@ -1,7 +1,10 @@
 import type {
+  ConflictChoice,
+  ConflictFile,
   DiscardAllEntry,
   DiscardAllResult,
   DeleteBranchResult,
+  MergeBranchResult,
   GitStatusResult,
   GitLogEntry,
   GitBranch,
@@ -31,6 +34,42 @@ export function discardHunk(filePath: string, patch: string): Promise<void> {
 
 export function discardAll(expected: DiscardAllEntry[]): Promise<DiscardAllResult> {
   return window.api.discardAll(expected)
+}
+
+export function getConflictFile(filePath: string): Promise<ConflictFile> {
+  return window.api.getConflictFile(filePath)
+}
+
+export function resolveConflictBlocks(
+  filePath: string,
+  expectedDigests: string[],
+  choices: Record<number, ConflictChoice>
+): Promise<void> {
+  return window.api.resolveConflictBlocks(filePath, expectedDigests, choices)
+}
+
+export function resolveConflictWholeFile(filePath: string, side: 'ours' | 'theirs'): Promise<void> {
+  return window.api.resolveConflictWholeFile(filePath, side)
+}
+
+export function keepConflictFile(filePath: string): Promise<void> {
+  return window.api.keepConflictFile(filePath)
+}
+
+export function removeConflictFile(filePath: string): Promise<void> {
+  return window.api.removeConflictFile(filePath)
+}
+
+export function markConflictResolved(filePath: string): Promise<void> {
+  return window.api.markConflictResolved(filePath)
+}
+
+export function completeMerge(): Promise<void> {
+  return window.api.completeMerge()
+}
+
+export function abortMerge(): Promise<void> {
+  return window.api.abortMerge()
 }
 
 export function commitChanges(message: string): Promise<void> {
@@ -94,7 +133,7 @@ export function deleteBranch(branchName: string, force: boolean): Promise<Delete
   return window.api.deleteBranch(branchName, force)
 }
 
-export function mergeBranch(branchName: string): Promise<void> {
+export function mergeBranch(branchName: string): Promise<MergeBranchResult> {
   return window.api.mergeBranch(branchName)
 }
 

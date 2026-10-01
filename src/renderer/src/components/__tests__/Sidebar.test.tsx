@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
-import type { DiscardAllState, StashPanelState } from '../../types'
+import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../types'
 import { sidebarTitles } from '../../config/sidebarTitles'
 
 const emptyStash: StashPanelState = {
@@ -11,6 +11,16 @@ const emptyStash: StashPanelState = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPop: vi.fn().mockResolvedValue(undefined),
   onDrop: vi.fn().mockResolvedValue(true)
+}
+
+const emptyMergeState: MergeStatePanelState = {
+  inProgress: false,
+  unresolvedCount: 0,
+  pendingOperation: null,
+  error: null,
+  canComplete: false,
+  onComplete: vi.fn().mockResolvedValue(undefined),
+  onAbort: vi.fn().mockResolvedValue(undefined)
 }
 
 const emptyDiscardAll: DiscardAllState = {
@@ -81,6 +91,7 @@ const defaultProps = {
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
+  mergeState: emptyMergeState,
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),
@@ -113,6 +124,25 @@ describe('Sidebar', () => {
   it('source-control: 正しいヘッダーが表示される', () => {
     render(<Sidebar activePanel="source-control" {...defaultProps} />)
     expect(screen.getByText(sidebarTitles['source-control'])).toBeInTheDocument()
+  })
+
+  it('source-control: mergeState がバナーまで届く(マージ中の件数が出る)', () => {
+    render(
+      <Sidebar
+        activePanel="source-control"
+        {...defaultProps}
+        gitStatus={{
+          isRepo: true,
+          mergeInProgress: true,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: []
+        }}
+        mergeState={{ ...emptyMergeState, inProgress: true, unresolvedCount: 4 }}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('マージ中（未解決 4 件）')
   })
 
   it('prompts: ヘッダーが表示され PromptsPanel が描画される', () => {

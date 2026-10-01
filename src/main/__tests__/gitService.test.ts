@@ -127,6 +127,12 @@ const baseStatusResult = {
 }
 
 describe('getGitStatus', () => {
+  beforeEach(() => {
+    // 既定はマージ中ではない(MERGE_HEAD が無いと rev-parse -q --verify は空文字で resolve する)
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
   it('simpleGit を folderPath を引数に呼ぶ', async () => {
     mockCheckIsRepo.mockResolvedValue(false)
     await getGitStatus('/project')
@@ -136,7 +142,14 @@ describe('getGitStatus', () => {
   it('Git リポジトリでない場合 isRepo: false を返す', async () => {
     mockCheckIsRepo.mockResolvedValue(false)
     const result = await getGitStatus('/project')
-    expect(result).toEqual({ isRepo: false, branch: null, ahead: 0, behind: 0, files: [] })
+    expect(result).toEqual({
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    })
     expect(mockStatus).not.toHaveBeenCalled()
   })
 
@@ -199,6 +212,29 @@ describe('getGitStatus', () => {
     expect(result.files).toEqual([{ path: 'a.ts', index: 'M', workingDir: ' ' }])
   })
 
+  it('MERGE_HEAD があれば mergeInProgress: true を返す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockStatus.mockResolvedValue(baseStatusResult)
+    mockRaw.mockResolvedValue('abc123\n')
+    const result = await getGitStatus('/project')
+    expect(result.mergeInProgress).toBe(true)
+    expect(mockRaw).toHaveBeenCalledWith(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+  })
+
+  it('MERGE_HEAD が無ければ mergeInProgress: false を返す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockStatus.mockResolvedValue(baseStatusResult)
+    const result = await getGitStatus('/project')
+    expect(result.mergeInProgress).toBe(false)
+  })
+
+  it('リポジトリでないときは MERGE_HEAD を問い合わせず mergeInProgress: false', async () => {
+    mockCheckIsRepo.mockResolvedValue(false)
+    const result = await getGitStatus('/project')
+    expect(result.mergeInProgress).toBe(false)
+    expect(mockRaw).not.toHaveBeenCalled()
+  })
+
   it('branch が null のとき null をそのまま返す', async () => {
     mockCheckIsRepo.mockResolvedValue(true)
     mockStatus.mockResolvedValue({ ...baseStatusResult, current: null })
@@ -214,6 +250,30 @@ describe('getGitStatus', () => {
 })
 
 describe('stageFile', () => {
+  const UNMERGED = '100644 aaa 2\ta.txt\0'
+
+  beforeEach(() => {
+    // 既定は未解決ではない(ls-files -u は何も出さない)
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
+  it('未解決(ls-files -u に一致)のファイルは add せずに日本語で拒否する', async () => {
+    mockRaw.mockResolvedValue(UNMERGED)
+    await expect(stageFile('/project', 'a.txt')).rejects.toThrow(
+      'コンフリクト中のファイルはステージできません。コンフリクト解決ビューの「解決済みにする」を使ってください'
+    )
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-u', '-z', '--', ':(literal)a.txt'])
+    expect(mockAdd).not.toHaveBeenCalled()
+  })
+
+  it('ls-files -u の結果に別のパスしか無ければ(完全一致しない)add する', async () => {
+    mockRaw.mockResolvedValue('100644 aaa 2\ta.txt.bak\0')
+    mockAdd.mockResolvedValue(undefined)
+    await stageFile('/project', 'a.txt')
+    expect(mockAdd).toHaveBeenCalledWith(':(literal)a.txt')
+  })
+
   it('simpleGit を folderPath で呼び、add を filePath で呼ぶ', async () => {
     mockAdd.mockResolvedValue(undefined)
     await stageFile('/project', 'src/index.ts')
@@ -258,6 +318,22 @@ describe('unstageFile', () => {
 })
 
 describe('commit', () => {
+  beforeEach(() => {
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
+  // 未解決があるまま git commit すると英語の生のエラー(Committing is not possible because you
+  // have unmerged files)になる。日本語で拒否し、何も実行しない
+  it('未解決のファイルがあるときは commit せずに日本語で拒否する', async () => {
+    mockRaw.mockResolvedValue('100644 aaa 2\ta.txt\0')
+    await expect(commit('/project', 'msg')).rejects.toThrow(
+      '未解決のコンフリクトがあるためコミットできません。解決するか、マージを中止してください'
+    )
+    expect(mockRaw).toHaveBeenCalledWith(['ls-files', '-u', '-z'])
+    expect(mockCommit).not.toHaveBeenCalled()
+  })
+
   it('simpleGit を folderPath で呼び、commit を message で呼ぶ', async () => {
     mockCommit.mockResolvedValue(undefined)
     await commit('/project', 'feat: 新機能を追加する')
@@ -676,6 +752,21 @@ describe('getTags', () => {
 })
 
 describe('amendCommit', () => {
+  beforeEach(() => {
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
+  // マージ中の amend は git が 'You are in the middle of a merge -- cannot amend.' の英語で失敗する
+  it('マージ中(MERGE_HEAD あり)は commit せずに日本語で拒否する', async () => {
+    mockRaw.mockResolvedValue('abc123\n')
+    await expect(amendCommit('/project', 'msg')).rejects.toThrow(
+      'マージ中のためコミットを修正できません。マージを完了または中止してください'
+    )
+    expect(mockRaw).toHaveBeenCalledWith(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    expect(mockCommit).not.toHaveBeenCalled()
+  })
+
   it("simpleGit を folderPath で呼び、'--amend' は files ではなくオプション引数で渡す", async () => {
     // simple-git の commit(message, files, options) は
     // ['commit', '-m', msg, ...files, ...options] を組み立てる。'--amend' を
@@ -800,6 +891,24 @@ describe('fetchRemote', () => {
 })
 
 describe('checkoutBranch', () => {
+  beforeEach(() => {
+    // 既定はマージ中ではない(MERGE_HEAD が無いと rev-parse -q --verify は空文字で resolve する)
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
+  // マージ中に切り替えると、解決済みの内容が切り替え先と一致するとき MERGE_HEAD ごと
+  // マージ中の状態が黙って失われる(実機で確認)。git に渡す前に拒否する
+  it('マージ中(MERGE_HEAD あり)は checkout を呼ばずに拒否する', async () => {
+    mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    mockRaw.mockResolvedValue('abc123\n')
+    await expect(checkoutBranch('/project', 'feature/x')).rejects.toThrow(
+      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+    )
+    expect(mockRaw).toHaveBeenCalledWith(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    expect(mockCheckout).not.toHaveBeenCalled()
+  })
+
   it('simpleGit を folderPath で呼び、実在するブランチ名なら checkout を branchName で呼ぶ', async () => {
     mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
     mockCheckout.mockResolvedValue(undefined)
@@ -844,9 +953,26 @@ describe('createBranch', () => {
   const mockCheckRefFormatOk = (name: string): void => {
     mockRaw.mockImplementation(async (args: string[]) => {
       if (args[0] === 'check-ref-format') return `${name}\n`
+      // MERGE_HEAD が無いと rev-parse -q --verify は空文字で resolve する
+      if (args[0] === 'rev-parse') return ''
       throw new Error(`unexpected raw: ${args.join(' ')}`)
     })
   }
+
+  // マージ中に作成して切り替えると MERGE_HEAD ごとマージ中の状態が黙って失われる(実機で確認)。
+  // ブランチ名の検証の後、ブランチを作る git 呼び出しの前に拒否する
+  it('マージ中(MERGE_HEAD あり)は checkoutLocalBranch を呼ばずに拒否する', async () => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'check-ref-format') return 'feature/new\n'
+      if (args[0] === 'rev-parse') return 'abc123\n'
+      throw new Error(`unexpected raw: ${args.join(' ')}`)
+    })
+    mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
+    await expect(createBranch('/project', 'feature/new')).rejects.toThrow(
+      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+    )
+    expect(mockCheckoutLocalBranch).not.toHaveBeenCalled()
+  })
 
   // 空文字は check-ref-format に渡す前に弾く(@shared/branchName の規則)
   it('空文字は git を一切呼ばずに拒否する', async () => {
@@ -1164,6 +1290,11 @@ describe('mergeBranch', () => {
     expect(mergeWasCalled()).toBe(false)
   })
 
+  it('マージに成功したら merged の結果を返す', async () => {
+    setupRaw({})
+    await expect(mergeBranch('/project', 'feature/x')).resolves.toEqual({ status: 'merged' })
+  })
+
   it('ブランチ上にいるかを git symbolic-ref -q HEAD で問い合わせる', async () => {
     setupRaw({})
     await mergeBranch('/project', 'feature/x')
@@ -1249,22 +1380,19 @@ describe('mergeBranch', () => {
   })
 
   // コンフリクトでは git は終了コード 1 で stderr が空のため、simple-git は reject せず
-  // resolve する。例外の有無ではなく MERGE_HEAD の有無で判定する(パターン28)
-  it('merge が resolve しても MERGE_HEAD が残っていれば、未解決ファイルを取得してから中止する', async () => {
+  // resolve する。例外の有無ではなく MERGE_HEAD の有無で判定する(パターン28)。
+  // 未解決ファイルがあるときは中止せず、解決か中止を促すエラーを投げて途中の状態を残す
+  it('merge が resolve しても MERGE_HEAD が残り未解決があれば、中止せずに未解決ファイルを示して投げる', async () => {
     setupRaw({ mergeHead: ['', 'abc123\n'], conflicted: 'a.txt\0b.txt\0' })
-    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
-      'コンフリクトしたため中止しました: a.txt, b.txt'
-    )
-    const calls = rawCalls()
-    const diffIndex = calls.findIndex((a) => a[0] === 'diff')
-    const abortIndex = calls.findIndex((a) => a[0] === 'merge' && a[1] === '--abort')
-    expect(calls[diffIndex]).toEqual(['diff', '--name-only', '-z', '--diff-filter=U'])
-    // 中止すると未解決の状態が消えて取れなくなるため、必ず中止より前に取得する
-    expect(diffIndex).toBeGreaterThanOrEqual(0)
-    expect(abortIndex).toBeGreaterThan(diffIndex)
+    await expect(mergeBranch('/project', 'feature/x')).resolves.toEqual({
+      status: 'conflict',
+      message: 'コンフリクトしました（a.txt, b.txt）。解決するか、マージを中止してください'
+    })
+    expect(rawCalls()).toContainEqual(['diff', '--name-only', '-z', '--diff-filter=U'])
+    expect(abortWasCalled()).toBe(false)
   })
 
-  it('merge が reject しても MERGE_HEAD が残っていれば、同じくコンフリクトとして中止する', async () => {
+  it('merge が reject しても MERGE_HEAD が残り未解決があれば、同じく中止せずに投げる', async () => {
     setupRaw({
       mergeHead: ['', 'abc123\n'],
       conflicted: 'a.txt\0',
@@ -1272,10 +1400,23 @@ describe('mergeBranch', () => {
         throw new Error('CONFLICT')
       }
     })
-    await expect(mergeBranch('/project', 'feature/x')).rejects.toThrow(
-      'コンフリクトしたため中止しました: a.txt'
-    )
-    expect(abortWasCalled()).toBe(true)
+    await expect(mergeBranch('/project', 'feature/x')).resolves.toEqual({
+      status: 'conflict',
+      message: 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    })
+    expect(abortWasCalled()).toBe(false)
+  })
+
+  it('未解決ファイルが 6 件以上なら「ほか N 件」にまとめる', async () => {
+    setupRaw({
+      mergeHead: ['', 'abc123\n'],
+      conflicted: Array.from({ length: 6 }, (_, i) => `f${i + 1}.txt\0`).join('')
+    })
+    await expect(mergeBranch('/project', 'feature/x')).resolves.toEqual({
+      status: 'conflict',
+      message:
+        'コンフリクトしました（f1.txt, f2.txt, f3.txt, f4.txt, f5.txt ほか 1 件）。解決するか、マージを中止してください'
+    })
   })
 
   // pre-merge-commit フックの失敗等、コンフリクト以外でも MERGE_HEAD が残る(実機で確認)。
@@ -1294,11 +1435,11 @@ describe('mergeBranch', () => {
     expect(abortWasCalled()).toBe(true)
   })
 
-  it('中止自体が失敗したら、その git のエラーをそのまま投げる', async () => {
+  it('未解決ファイルが無く、中止自体が失敗したら、その git のエラーをそのまま投げる', async () => {
     const abortError = new Error('abort failed')
-    setupRaw({ mergeHead: ['', 'abc123\n'], conflicted: 'a.txt\0', abortError })
+    setupRaw({ mergeHead: ['', 'abc123\n'], conflicted: '', abortError })
     await expect(mergeBranch('/project', 'feature/x')).rejects.toBe(abortError)
-    // 中止に失敗しても、中止の前に未解決ファイルは取得している
+    // 中止の前に未解決ファイルを取得して 0 件と判定している
     expect(rawCalls().some((a) => a[0] === 'diff')).toBe(true)
     expect(abortWasCalled()).toBe(true)
   })

@@ -9,13 +9,17 @@ export function formatConflictFiles(files: string[]): string {
   return rest > 0 ? `${shown} ほか ${rest} 件` : shown
 }
 
-// 中止したマージのエラー文言を組み立てる。未解決ファイルがあればそれを示し(detail は無視)、
-// 無ければ(pre-merge-commit フックの失敗等)git のエラー文 detail を添える。detail が空なら添えない
-export function buildMergeAbortMessage(conflicted: string[], detail: string): string {
-  if (conflicted.length > 0) {
-    return `コンフリクトしたため中止しました: ${formatConflictFiles(conflicted)}`
-  }
+// 中止したマージのエラー文言を組み立てる。対象は未解決ファイルが無いのに MERGE_HEAD が残った
+// マージ(pre-merge-commit フックの失敗等)で、git のエラー文 detail を添える。detail が空なら添えない
+// (未解決ファイルがあるコンフリクトは中止しないため、buildMergeConflictMessage を使う)
+export function buildMergeAbortMessage(detail: string): string {
   return detail === ''
     ? 'マージを完了できなかったため中止しました'
     : `マージを完了できなかったため中止しました: ${detail}`
+}
+
+// コンフリクトしたまま止めたマージのエラー文言。マージは中止せず途中の状態を残すため、
+// 解決するか中止するかをユーザーに促す
+export function buildMergeConflictMessage(conflicted: string[]): string {
+  return `コンフリクトしました（${formatConflictFiles(conflicted)}）。解決するか、マージを中止してください`
 }

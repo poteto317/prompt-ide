@@ -60,10 +60,17 @@ describe('ChangesFileItem', () => {
   })
 
   // main 側も ls-files -u で拒否するが、押せるのに必ず失敗するボタンを出さない
-  it('コンフリクト中は取り消しボタンを出さず、ステージボタンは出す', () => {
+  // + (git add) はマーカー入りのまま解決済みにしてしまう。解決ビューの「解決済みにする」へ誘導する
+  it('コンフリクト中は取り消しボタンもステージボタンも出さず、差分(解決ビュー)を開くパスは出す', () => {
     renderItem({ file: { path: 'c.txt', index: 'U', workingDir: 'U' } })
     expect(screen.queryByRole('button', { name: 'c.txt の変更を取り消し' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'c.txt をステージ' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'c.txt をステージ' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'c.txt の未ステージ差分を表示' })).toBeInTheDocument()
+  })
+
+  it('通常の変更の行にはステージボタンがある', () => {
+    renderItem({ file: { path: 'src/a.ts', index: ' ', workingDir: 'M' } })
+    expect(screen.getByRole('button', { name: 'src/a.ts をステージ' })).toBeInTheDocument()
   })
 
   it('未追跡ファイルにも取り消しボタンがある', () => {

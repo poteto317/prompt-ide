@@ -2,7 +2,12 @@ import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 import SourceControlToolbar from './SourceControlToolbar'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind, DiscardAllState, StashPanelState } from '../../types'
+import type {
+  BranchOperationKind,
+  DiscardAllState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../../types'
 
 interface Props {
   gitStatus: GitStatusResult | null
@@ -46,6 +51,7 @@ interface Props {
   onMergeBranch: (branchName: string) => Promise<void>
   stash: StashPanelState
   discardAll: DiscardAllState
+  mergeState: MergeStatePanelState
   branchOperationError: Error | null
 }
 
@@ -91,6 +97,7 @@ export default function SourceControlPanel({
   onMergeBranch,
   stash,
   discardAll,
+  mergeState,
   branchOperationError
 }: Props): React.JSX.Element {
   return (
@@ -158,6 +165,7 @@ export default function SourceControlPanel({
             onMergeBranch={onMergeBranch}
             stash={stash}
             discardAll={discardAll}
+            mergeState={mergeState}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

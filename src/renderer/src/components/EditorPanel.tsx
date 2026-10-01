@@ -11,6 +11,8 @@ import OutputPanel from './output/OutputPanel'
 import type { DiffTabKey } from '../hooks/useDiffTabs'
 import { useCombinedEditorTabs } from '../hooks/useCombinedEditorTabs'
 import DiffView from './source-control/DiffView'
+import ConflictResolver from './source-control/ConflictResolver'
+import type { ConflictFileState } from '../hooks/useConflictFile'
 
 interface Props {
   openFiles: OpenFile[]
@@ -56,6 +58,13 @@ interface Props {
    *  ハンク操作ボタン抑止を無効化する(未追跡ファイルの stageHunk は patch を
    *  使わずファイル全体を git add するだけのため) */
   isActiveFileUntracked: boolean
+  /** アクティブな diff タブのファイルが未解決のコンフリクト中か。真のとき DiffView の代わりに
+   *  解決ビューを表示する(判定は useAppState。EditorPanel 自身は状態を持たない) */
+  isActiveFileConflicted: boolean
+  /** 解決ビューの状態と操作(useConflictFile) */
+  conflictFile: ConflictFileState
+  /** 他の操作中(ロック中)か。解決ビューの全ボタンを無効化する(ハンク操作の isHunkOperationInProgress と同じ扱い) */
+  isConflictBlocked: boolean
 }
 
 export default function EditorPanel({
@@ -90,7 +99,10 @@ export default function EditorPanel({
   onUnstageHunk,
   onDiscardHunk,
   canDiscardHunk,
-  isActiveFileUntracked
+  isActiveFileUntracked,
+  isActiveFileConflicted,
+  conflictFile,
+  isConflictBlocked
 }: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
@@ -143,7 +155,10 @@ export default function EditorPanel({
               レイアウト計算が狂うため復帰時の layout() 呼び出しが必要になり、
               jsdom ベースのテストでは検証できない副作用を抱え込むことになる */}
           <div className="editor-body">
-            {activeDiffTab !== null ? (
+            {activeDiffTab !== null && isActiveFileConflicted ? (
+              // 未解決の間は結合 diff ではなく解決ビュー(内容は main から読み直す。diff の取得は待たない)
+              <ConflictResolver conflict={conflictFile} isBlocked={isConflictBlocked} />
+            ) : activeDiffTab !== null ? (
               <>
                 {diffError !== null && <p className="diff-view__error">{diffError.message}</p>}
                 {diffContent === null && diffError === null && (

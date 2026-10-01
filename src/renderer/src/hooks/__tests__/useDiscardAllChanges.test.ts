@@ -30,6 +30,7 @@ const staged: GitFileStatus = { path: 'd.ts', index: 'M', workingDir: ' ' }
 
 const makeStatus = (files: GitFileStatus[]): GitStatusResult => ({
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,

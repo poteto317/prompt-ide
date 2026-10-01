@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import {
@@ -10,6 +10,7 @@ import type { OpenedFileEvent } from '../../hooks/useFileSystem'
 import type { OpenFile } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import EditorPanel from '../EditorPanel'
+import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
 
 // dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
 // EditorTabs.test.tsx と同じ方針で DndContext/SortableContext/useSortable をモックする
@@ -87,7 +88,10 @@ const defaultProps = {
   onUnstageHunk: vi.fn(),
   onDiscardHunk: vi.fn(),
   canDiscardHunk: false,
-  isActiveFileUntracked: false
+  isActiveFileUntracked: false,
+  isActiveFileConflicted: false,
+  conflictFile: makeConflictFileState(),
+  isConflictBlocked: false
 }
 
 /** openFile 単体を渡す旧APIのテストをそのまま活かすためのヘルパー。
@@ -633,6 +637,95 @@ describe('EditorPanel — diff タブ', () => {
     )
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.getByText('-a')).toBeInTheDocument()
+  })
+
+  it('アクティブなファイルが未解決(isActiveFileConflicted)なら、DiffView の代わりに ConflictResolver を表示する', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'c.txt', staged: false }]}
+        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffContent={'diff --cc c.txt\n@@@ -1,1 -1,1 +1,1 @@@\n- a\n'}
+        isActiveFileConflicted
+        conflictFile={makeConflictFileState({
+          file: {
+            status: 'parsed',
+            stages: { ours: true, theirs: true },
+            eol: '\n',
+            digests: ['d'],
+            segments: [
+              {
+                kind: 'conflict',
+                ours: ['自分の行'],
+                theirs: ['相手の行'],
+                oursLabel: 'HEAD',
+                theirsLabel: 'feature'
+              }
+            ]
+          }
+        })}
+      />
+    )
+    expect(screen.getByText('自分の行')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('差分はありません')).not.toBeInTheDocument()
+    expect(document.querySelector('.diff-view')).toBeNull()
+  })
+
+  it('未解決でなければ(解決済み)DiffView を表示し、ConflictResolver は出さない', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'c.txt', staged: false }]}
+        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+        isActiveFileConflicted={false}
+      />
+    )
+    expect(screen.getByText('-a')).toBeInTheDocument()
+    expect(document.querySelector('.conflict-resolver')).toBeNull()
+  })
+
+  it('未解決のとき、diff の読み込み前(diffContent が null)でも解決ビューを出す', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'c.txt', staged: false }]}
+        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffContent={null}
+        isActiveFileConflicted
+        conflictFile={makeConflictFileState({ isLoading: true })}
+      />
+    )
+    expect(document.querySelector('.conflict-resolver')).not.toBeNull()
+    expect(screen.getByText('読み込み中...')).toBeInTheDocument()
+  })
+
+  it('isConflictBlocked のとき、解決ビューのボタンがすべて disabled になる', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'c.txt', staged: false }]}
+        activeDiffTab={{ path: 'c.txt', staged: false }}
+        isActiveFileConflicted
+        isConflictBlocked
+        conflictFile={makeConflictFileState({
+          file: {
+            status: 'parsed',
+            stages: { ours: true, theirs: true },
+            eol: '\n',
+            digests: [],
+            segments: []
+          }
+        })}
+      />
+    )
+    const buttons = within(
+      document.querySelector('.conflict-resolver') as HTMLElement
+    ).getAllByRole('button')
+    for (const button of buttons) expect(button).toBeDisabled()
   })
 
   it('diffTabs がある場合、タブバーに diff タブが表示される', () => {

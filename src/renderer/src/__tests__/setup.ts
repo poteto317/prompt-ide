@@ -18,7 +18,14 @@ Object.defineProperty(window, 'api', {
     renameEntry: () => Promise.resolve(),
     deleteEntry: () => Promise.resolve(),
     getGitStatus: () =>
-      Promise.resolve({ isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }),
+      Promise.resolve({
+        isRepo: false,
+        mergeInProgress: false,
+        branch: null,
+        ahead: 0,
+        behind: 0,
+        files: []
+      }),
     hasApiKey: () => Promise.resolve(false),
     setApiKey: () => Promise.resolve(),
     getModelSettings: () => Promise.resolve({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }),

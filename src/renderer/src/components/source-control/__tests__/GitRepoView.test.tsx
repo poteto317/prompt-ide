@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
-import type { DiscardAllState, StashPanelState } from '../../../types'
+import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
 import GitRepoView from '../GitRepoView'
 
 const emptyStash: StashPanelState = {
@@ -12,6 +12,16 @@ const emptyStash: StashPanelState = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPop: vi.fn().mockResolvedValue(undefined),
   onDrop: vi.fn().mockResolvedValue(true)
+}
+
+const emptyMergeState: MergeStatePanelState = {
+  inProgress: false,
+  unresolvedCount: 0,
+  pendingOperation: null,
+  error: null,
+  canComplete: false,
+  onComplete: vi.fn().mockResolvedValue(undefined),
+  onAbort: vi.fn().mockResolvedValue(undefined)
 }
 
 const emptyDiscardAll: DiscardAllState = {
@@ -49,7 +59,8 @@ const baseProps = {
   onDeleteBranch: vi.fn().mockResolvedValue(true),
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
-  discardAll: emptyDiscardAll
+  discardAll: emptyDiscardAll,
+  mergeState: emptyMergeState
 }
 
 describe('GitRepoView', () => {
@@ -206,6 +217,7 @@ describe('GitRepoView', () => {
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -276,6 +288,7 @@ describe('GitRepoView', () => {
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -316,6 +329,7 @@ describe('GitRepoView', () => {
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -354,6 +368,7 @@ describe('GitRepoView', () => {
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -397,6 +412,7 @@ describe('GitRepoView', () => {
         onMergeBranch={onMergeBranch}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
@@ -416,6 +432,7 @@ describe('GitRepoView', () => {
         files={noFiles}
         stash={{ ...emptyStash, entries: [] }}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     const headings = screen.getAllByRole('heading').map((h) => h.textContent)
@@ -434,6 +451,7 @@ describe('GitRepoView', () => {
         files={noFiles}
         stash={{ ...emptyStash, onPush }}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: '変更を退避する' }))
@@ -471,5 +489,50 @@ describe('GitRepoView', () => {
     await userEvent.click(screen.getByRole('button', { name: '変更をすべて取り消す' }))
     expect(onDiscardAll).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('alert')).toHaveTextContent('取り消せません')
+  })
+
+  it('mergeState.inProgress が偽ならバナーを出さない', () => {
+    render(<GitRepoView {...baseProps} branch="main" ahead={0} behind={0} files={noFiles} />)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'マージを中止' })).not.toBeInTheDocument()
+  })
+
+  it('マージ中ならバナーを、ブランチスイッチャーの後・コミット欄(変更セクション)の前に出す', async () => {
+    const onAbort = vi.fn().mockResolvedValue(undefined)
+    const { container } = render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={[changedFile]}
+        mergeState={{ ...emptyMergeState, inProgress: true, unresolvedCount: 2, onAbort }}
+      />
+    )
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('マージ中（未解決 2 件）')
+    const branch = container.querySelector('.source-control-panel__branch') as HTMLElement
+    const banner = container.querySelector('.merge-banner') as HTMLElement
+    const changes = screen.getByRole('button', { name: 'changed.ts の未ステージ差分を表示' })
+    expect(branch.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(banner.compareDocumentPosition(changes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: 'マージを中止' }))
+    expect(onAbort).toHaveBeenCalledTimes(1)
+  })
+
+  it('他の操作中(isAnyLocked)は、バナーの「マージを完了」「マージを中止」が disabled になる', () => {
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        isAnyLocked={() => true}
+        mergeState={{ ...emptyMergeState, inProgress: true, unresolvedCount: 0, canComplete: true }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'マージを完了' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'マージを中止' })).toBeDisabled()
   })
 })

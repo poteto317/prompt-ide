@@ -19,12 +19,15 @@ import { useDiffTabs } from './useDiffTabs'
 import { useDiffOperations } from './useDiffOperations'
 import { useGitHistory } from './useGitHistory'
 import { useStashPanel } from './useStashPanel'
+import { useMergeState } from './useMergeState'
+import { useConflictFile } from './useConflictFile'
+import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
 import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isSamePath } from '../lib/pathUtils'
-import type { DiscardAllState, StashPanelState } from '../types'
-import { isStagedFile, isUnstagedFile } from '../lib/gitUtils'
+import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../types'
+import { isConflictedFile, isStagedFile, isUnstagedFile } from '../lib/gitUtils'
 
 type AppState = {
   quickOpen: ReturnType<typeof useQuickOpen>
@@ -55,6 +58,13 @@ type AppState = {
   discardHunk: (patch: string, hunkHeader: string) => Promise<void>
   /** 未ステージの変更をすべて取り消す状態と操作(確認・排他・タブとツリーの再読込込み) */
   discardAll: DiscardAllState
+  /** マージ中バナーの状態と、マージの完了・中止の操作 */
+  mergeState: MergeStatePanelState
+  /** 未解決ファイルの解決ビューの状態と操作 */
+  conflictFile: ConflictFileState
+  /** アクティブな diff タブのファイルがコンフリクト中か(EditorPanel が解決ビューを出す条件。
+   *  conflictFile の対象と同じ導出) */
+  isActiveFileConflicted: boolean
 } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -261,8 +271,10 @@ export function useAppState(): AppState {
       operation: () => gitBranchOperations.checkoutBranch(branchName)
     })
   // マージも checkout と同じく working tree を書き換えるため、同じ手順
-  // (runEditorSyncedOperation)で扱う。gitBranchOperations.mergeBranch は失敗
-  // (コンフリクトの自動中止等)でも例外を投げず false を返すため、失敗時は再読込されない。
+  // (runEditorSyncedOperation)で扱う。gitBranchOperations.mergeBranch は、作業ツリーが変わったとき
+  // (成功と、コンフリクトでマージ中の状態を残して止まった場合)だけ true を返す。コンフリクトでも
+  // 再読込するのは、古い内容のタブを保存するとマーカーと相手側の変更が消えるため(パターン52)。
+  // 事前検証の失敗など作業ツリーが変わらない失敗は false で、再読込されない。
   // ファイルツリーの再読込は checkout と同じく行わない(ブランチ操作の既存の制約)
   const mergeBranch: (branchName: string) => Promise<void> = (branchName) =>
     runEditorSyncedOperation({
@@ -311,6 +323,41 @@ export function useAppState(): AppState {
     reloadOpenFiles: fileSystem.reloadOpenFiles,
     refreshTree: fileSystem.refreshTree
   })
+  // マージの完了・中止は、確認・排他・タブとツリーの再読込を useMergeState に任せる。
+  // マージを始めたときの通知「コンフリクトしました（…）」の消去は useMergeState には渡さず、
+  // useGitBranchOperations が gitStatus.mergeInProgress の解除に連動して行う
+  const mergeState = useMergeState({
+    gitStatus: git.gitStatus,
+    refreshGitStatus: git.refreshGitStatus,
+    refreshHistory: gitHistory.refresh,
+    fileLock: fileOperationLock,
+    confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+    reloadOpenFiles: fileSystem.reloadOpenFiles,
+    refreshTree: fileSystem.refreshTree
+  })
+  // 未解決ファイルの解決ビュー(diff タブ)の状態と操作は useConflictFile に任せる
+  // 解決ビューの対象は「マージ中で、アクティブな diff タブのファイルがコンフリクト中」のときだけ
+  // (解決済みになれば null)。CLI の rebase / cherry-pick 中(MERGE_HEAD が無い)は ours/theirs の
+  // 意味が違うため解決ビューを出さず(getConflictFile も呼ばない)、通常の diff 表示にする。
+  // main 側の解決操作もマージ中でなければ拒否する
+  const activeDiffPath = diffTabs.activeDiffTab?.path ?? null
+  const conflictActivePath =
+    activeDiffPath !== null &&
+    git.gitStatus?.mergeInProgress === true &&
+    (git.gitStatus?.files ?? []).some((f) => f.path === activeDiffPath && isConflictedFile(f))
+      ? activeDiffPath
+      : null
+  const isActiveFileConflicted = conflictActivePath !== null
+  const conflictFile = useConflictFile({
+    activePath: conflictActivePath,
+    gitStatus: git.gitStatus,
+    refreshGitStatus: git.refreshGitStatus,
+    fileLock: fileOperationLock,
+    hasDirtyTabAtOrInside: fileSystem.hasDirtyTabAtOrInside,
+    reloadOpenFile: fileSystem.reloadOpenFile,
+    refreshTree: fileSystem.refreshTree,
+    folderPath: fileSystem.folderPath
+  })
   // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
   // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)
   const quickOpen = useQuickOpen({
@@ -357,6 +404,9 @@ export function useAppState(): AppState {
     // ...diffOperations の生の discardHunk(boolean 版)を、確認・同期つきのもので上書きする。
     // spread の後に置く必要がある
     discardHunk,
-    discardAll
+    discardAll,
+    mergeState,
+    conflictFile,
+    isActiveFileConflicted
   }
 }

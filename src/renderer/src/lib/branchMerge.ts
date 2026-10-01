@@ -1,5 +1,5 @@
-// マージの確認文言。コンフリクトはアプリ内に解決手段が無いため自動で中止する旨を伝える
+// マージの確認文言。コンフリクトしたらマージ中の状態で止まり、解決するか中止できる旨を伝える
 // (lib/branchDeletion.ts と同じ位置づけの純粋関数)
 export function buildMergeConfirmMessage(branchName: string, currentBranch: string): string {
-  return `${branchName} を ${currentBranch} にマージしますか？\n\nコンフリクトした場合は自動で中止して元に戻します。`
+  return `${branchName} を ${currentBranch} にマージしますか？\n\nコンフリクトした場合はマージ中の状態で止まります。解決するか、マージを中止できます。`
 }

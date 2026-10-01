@@ -1,7 +1,13 @@
 import { join } from 'path'
 import simpleGit, { GitError, GitPluginError } from 'simple-git'
 import type { BranchSummary, SimpleGit } from 'simple-git'
-import type { GitStatusResult, GitLogEntry, GitBranch, DeleteBranchResult } from '@shared/types'
+import type {
+  GitStatusResult,
+  GitLogEntry,
+  GitBranch,
+  DeleteBranchResult,
+  MergeBranchResult
+} from '@shared/types'
 import {
   buildUntrackedDiff,
   isBinaryContent,
@@ -11,13 +17,19 @@ import {
   buildTooLargeDiffMessage,
   buildEmptyFileDiffMessage
 } from './gitDiffFormatter'
-import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
+import { toLiteralPathspec } from './gitPathParsing'
 import { parseGitLogOutput } from './gitLogFormatter'
 import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName, getBranchNameRuleViolation } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
-import { buildMergeAbortMessage } from './gitMergeMessages'
+import { buildMergeAbortMessage, buildMergeConflictMessage } from './gitMergeMessages'
+import {
+  hasMergeInProgress,
+  hasUnmergedFiles,
+  isUnmergedPath,
+  listUnresolvedFiles
+} from './gitMergeState'
 
 // この上限を超える未追跡ファイルは、全文読み込んで疑似diff化する処理そのものを
 // スキップする。Electron のメインプロセスは全ウィンドウで共有されているため、
@@ -28,14 +40,15 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
   const git = simpleGit(folderPath)
   const isRepo = await git.checkIsRepo()
   if (!isRepo) {
-    return { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    return { isRepo: false, branch: null, ahead: 0, behind: 0, files: [], mergeInProgress: false }
   }
-  const status = await git.status()
+  const [status, mergeInProgress] = await Promise.all([git.status(), hasMergeInProgress(git)])
   return {
     isRepo: true,
     branch: status.current,
     ahead: status.ahead,
     behind: status.behind,
+    mergeInProgress,
     files: status.files.map((f) => ({
       path: f.path,
       index: f.index,
@@ -50,6 +63,14 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
 
 export async function stageFile(folderPath: string, filePath: string): Promise<void> {
   const git = simpleGit(folderPath)
+  // 未解決のファイルを git add すると、マーカー入りのまま解決済みになり、そのまま完了すると
+  // マーカー入りのマージコミットができる(実 git で再現済み)。解決ビューの「解決済みにする」
+  // (マーカーを検査する)に誘導する。ChangesFileItem も未解決の行には + を出さない(二重防御)
+  if (await isUnmergedPath(git, filePath)) {
+    throw new Error(
+      'コンフリクト中のファイルはステージできません。コンフリクト解決ビューの「解決済みにする」を使ってください'
+    )
+  }
   await git.add(toLiteralPathspec(filePath))
 }
 
@@ -70,6 +91,12 @@ export async function unstageFile(
 
 export async function commit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
+  // 未解決のまま git commit すると英語の生のエラーになるため、日本語で拒否する(何も実行しない)
+  if (await hasUnmergedFiles(git)) {
+    throw new Error(
+      '未解決のコンフリクトがあるためコミットできません。解決するか、マージを中止してください'
+    )
+  }
   await git.commit(message)
 }
 
@@ -357,6 +384,16 @@ function assertLocalBranchExists(summary: Pick<BranchSummary, 'all'>, branchName
   }
 }
 
+// マージ中(MERGE_HEAD あり)のブランチの切り替えを拒否する。切り替えると、解決済みの内容が
+// 切り替え先と一致するとき MERGE_HEAD ごとマージ中の状態が黙って失われる(実機で確認)
+async function assertNotMerging(git: SimpleGit): Promise<void> {
+  if (await hasMergeInProgress(git)) {
+    throw new Error(
+      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+    )
+  }
+}
+
 // checkout はローカルの working tree/index/HEAD を書き換えるのみでネットワークI/O
 // を伴わないため、push/pull/fetch の simpleGitWithRemoteTimeout は不要。
 // 未コミットの変更が切り替え先ブランチと衝突する場合、simple-git は通常の
@@ -375,6 +412,9 @@ export async function checkoutBranch(folderPath: string, branchName: string): Pr
   const git = simpleGit(folderPath)
   const summary = await git.branchLocal()
   assertLocalBranchExists(summary, branchName)
+  // マージ中に切り替えると、解決済みの内容が切り替え先と一致するとき MERGE_HEAD ごと
+  // マージ中の状態が黙って失われる(実機で確認)。git に渡す前に拒否する
+  await assertNotMerging(git)
   await git.checkout(branchName)
 }
 
@@ -425,6 +465,8 @@ async function assertCreatableBranchName(git: SimpleGit, branchName: string): Pr
 export async function createBranch(folderPath: string, branchName: string): Promise<void> {
   const git = simpleGit(folderPath)
   await assertCreatableBranchName(git, branchName)
+  // checkoutBranch と同じ理由: マージ中に作成して切り替えると MERGE_HEAD ごとマージ中の状態が失われる
+  await assertNotMerging(git)
   await git.checkoutLocalBranch(branchName)
 }
 
@@ -480,13 +522,6 @@ export async function deleteBranch(
   }
   await git.deleteLocalBranch(branchName, force)
   return { deleted: true }
-}
-
-// マージ中か(MERGE_HEAD があるか)。rev-parse -q --verify は ref が無いと終了コード 1・
-// stderr 空で終わり、simple-git は reject せず空文字で resolve する(isBranchMerged と同じ)
-async function hasMergeInProgress(git: SimpleGit): Promise<boolean> {
-  const head = await git.raw(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
-  return head.trim() !== ''
 }
 
 // HEAD がブランチを指しているか。simple-git の branchLocal() の summary.detached は使わない:
@@ -550,7 +585,7 @@ async function assertMergeTargetBranch(git: SimpleGit, branchName: string): Prom
 // そのままマージを始めるが、その後 git merge --abort が未コミットの変更を元に戻せない場合が
 // あると git の公式ドキュメントが警告している。未追跡ファイルだけなら開始できる
 // (マージで上書きされる未追跡ファイル(ignored を除く)があれば git が拒否する。ignored の
-// ファイルは git の既定どおり黙って上書きされ、コンフリクトで自動中止しても復元されない)
+// ファイルは git の既定どおり黙って上書きされ、マージを中止しても復元されない)
 async function assertMergeStartable(git: SimpleGit): Promise<void> {
   if (await hasMergeInProgress(git)) {
     throw new Error('マージ中のため実行できません')
@@ -561,28 +596,33 @@ async function assertMergeStartable(git: SimpleGit): Promise<void> {
   }
 }
 
-// 途中で止まったマージを元に戻し、日本語のエラーを投げる。未解決のファイルは中止すると
-// 取れなくなるため、必ず中止より前に取得する。未解決のファイルが無いのに MERGE_HEAD が
-// 残るのは、pre-merge-commit フックの失敗等(実機で確認)。mergeError はその git のエラー
+// 未解決のファイルが無いのに MERGE_HEAD が残ったマージ(pre-merge-commit フックの失敗等。
+// 実機で確認)を元に戻し、日本語のエラーを投げる。解決する対象が無く、途中の状態を残しても
+// ユーザーにできることが無いため中止する。mergeError はその git のエラー。
+// 未解決のファイルがある場合(コンフリクト)は呼ばない: 中止せずに状態を残す
 async function abortFailedMerge(git: SimpleGit, mergeError: unknown): Promise<never> {
-  const conflicted = parseNulSeparatedPaths(
-    await git.raw(['diff', '--name-only', '-z', '--diff-filter=U'])
-  )
   await git.raw(['merge', '--abort'])
   const detail = mergeError instanceof Error ? mergeError.message : String(mergeError ?? '')
-  throw new Error(buildMergeAbortMessage(conflicted, detail))
+  throw new Error(buildMergeAbortMessage(detail))
 }
 
 // 指定したローカルブランチを現在のブランチへマージする(git merge --no-edit --commit
 // --no-squash。「コミットする・squash しない」は引数で固定し、早送りするかは git の設定
 // (merge.ff 等)に従う。既定では早送りできれば早送りし、できなければマージコミットを作る)。
-// コンフリクトはアプリ内に解決手段が無いため、自動で中止して元に戻す。中止するかは
-// エラー文ではなく MERGE_HEAD の有無で判定する(パターン28): コンフリクトでは git が
+// コンフリクトしたら(MERGE_HEAD が残り、未解決のファイルが 1 件以上)中止せず、途中の状態を
+// 残し、例外ではなく conflict の結果で返す(作業ツリーが変わったため。renderer が例外のときは
+// タブを再読込しないので、結果で返さないと古いタブが保存でマーカーを消す。パターン52)。
+// 解決・完了・中止はコンフリクト解決 UI(gitConflictService)が担う。
+// 未解決のファイルが無いのに MERGE_HEAD が残る場合(フックの失敗等)は従来どおり中止して元に戻す。
+// 判定はエラー文ではなく MERGE_HEAD の有無で行う(パターン28): コンフリクトでは git が
 // 終了コード 1・stderr 空で終わり simple-git が resolve するため、例外の有無も当てにならない。
 // MERGE_HEAD が無いまま失敗した場合は git が何も変えていない(無関係な履歴の拒否、
 // 上書きされる未追跡ファイル、コミッター情報なし等)ので、checkout と同じく git のエラーを
 // そのまま投げる。ローカルの操作でネットワーク I/O を伴わないため、リモート用のタイムアウトは使わない
-export async function mergeBranch(folderPath: string, branchName: string): Promise<void> {
+export async function mergeBranch(
+  folderPath: string,
+  branchName: string
+): Promise<MergeBranchResult> {
   const git = simpleGit(folderPath)
   await assertMergeTargetBranch(git, branchName)
   await assertMergeStartable(git)
@@ -599,12 +639,24 @@ export async function mergeBranch(folderPath: string, branchName: string): Promi
   } catch (err) {
     mergeError = err
   }
-  if (await hasMergeInProgress(git)) await abortFailedMerge(git, mergeError)
+  if (await hasMergeInProgress(git)) {
+    const conflicted = await listUnresolvedFiles(git)
+    if (conflicted.length > 0) {
+      return { status: 'conflict', message: buildMergeConflictMessage(conflicted) }
+    }
+    await abortFailedMerge(git, mergeError)
+  }
   if (mergeError !== null) throw mergeError
+  return { status: 'merged' }
 }
 
 export async function amendCommit(folderPath: string, message: string): Promise<void> {
   const git = simpleGit(folderPath)
+  // マージ中の amend は git が英語('You are in the middle of a merge -- cannot amend.')で失敗する。
+  // 日本語で拒否する(何も実行しない)
+  if (await hasMergeInProgress(git)) {
+    throw new Error('マージ中のためコミットを修正できません。マージを完了または中止してください')
+  }
   // '--amend' は files ではなくオプション引数(第3)で渡す。simple-git の
   // commit(message, files, options) は ['commit', '-m', msg, ...files, ...options] を
   // 組み立てるため、files スロットに渡しても今は git がオプションを位置に関係なく

@@ -16,7 +16,8 @@ import type {
   HistoryEntry,
   BranchOperationKind,
   StashPanelState,
-  DiscardAllState
+  DiscardAllState,
+  MergeStatePanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -86,6 +87,7 @@ interface Props {
   onMergeBranch: (branchName: string) => Promise<void>
   stash: StashPanelState
   discardAll: DiscardAllState
+  mergeState: MergeStatePanelState
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
@@ -173,6 +175,7 @@ export default function Sidebar({
   onMergeBranch,
   stash,
   discardAll,
+  mergeState,
   gitBranchOperationError,
   onOpenDiff,
   onAmend,
@@ -281,6 +284,7 @@ export default function Sidebar({
           onMergeBranch={onMergeBranch}
           stash={stash}
           discardAll={discardAll}
+          mergeState={mergeState}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}

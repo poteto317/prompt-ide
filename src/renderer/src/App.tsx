@@ -109,6 +109,9 @@ export default function App(): React.JSX.Element {
     mergeBranch,
     stash,
     discardAll,
+    mergeState,
+    conflictFile,
+    isActiveFileConflicted,
     branchOperationError,
     hasKey,
     apiKeyLoaded,
@@ -285,6 +288,7 @@ export default function App(): React.JSX.Element {
               onMergeBranch={mergeBranch}
               stash={stash}
               discardAll={discardAll}
+              mergeState={mergeState}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
@@ -336,6 +340,9 @@ export default function App(): React.JSX.Element {
             diffError={diffError}
             isHunkOperationInProgress={isHunkOperationInProgress}
             isActiveFileUntracked={isActiveFileUntracked}
+            isActiveFileConflicted={isActiveFileConflicted}
+            conflictFile={conflictFile}
+            isConflictBlocked={isAnyLocked()}
             onStageHunk={stageHunk}
             onUnstageHunk={unstageHunk}
             onDiscardHunk={discardHunk}

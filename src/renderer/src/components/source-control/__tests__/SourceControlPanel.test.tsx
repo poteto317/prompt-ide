@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
-import type { DiscardAllState, StashPanelState } from '../../../types'
+import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
 import SourceControlPanel from '../SourceControlPanel'
 
 const emptyStash: StashPanelState = {
@@ -12,6 +12,16 @@ const emptyStash: StashPanelState = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPop: vi.fn().mockResolvedValue(undefined),
   onDrop: vi.fn().mockResolvedValue(true)
+}
+
+const emptyMergeState: MergeStatePanelState = {
+  inProgress: false,
+  unresolvedCount: 0,
+  pendingOperation: null,
+  error: null,
+  canComplete: false,
+  onComplete: vi.fn().mockResolvedValue(undefined),
+  onAbort: vi.fn().mockResolvedValue(undefined)
 }
 
 const emptyDiscardAll: DiscardAllState = {
@@ -60,11 +70,13 @@ const baseProps = {
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
+  mergeState: emptyMergeState,
   branchOperationError: null as Error | null
 }
 
 const repoStatus: GitStatusResult = {
   isRepo: true,
+  mergeInProgress: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -102,7 +114,14 @@ describe('SourceControlPanel', () => {
   })
 
   it('isRepo: false のとき「Git リポジトリではありません」が表示される', () => {
-    const notRepo: GitStatusResult = { isRepo: false, branch: null, ahead: 0, behind: 0, files: [] }
+    const notRepo: GitStatusResult = {
+      isRepo: false,
+      mergeInProgress: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
     render(<SourceControlPanel {...baseProps} gitStatus={notRepo} />)
     expect(screen.getByText('Git リポジトリではありません')).toBeInTheDocument()
   })
@@ -203,6 +222,7 @@ describe('SourceControlPanel', () => {
   it('operationError があれば表示する', () => {
     const gitStatus: GitStatusResult = {
       isRepo: true,
+      mergeInProgress: false,
       branch: 'main',
       ahead: 0,
       behind: 0,
@@ -249,6 +269,7 @@ describe('SourceControlPanel', () => {
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
+        mergeState={emptyMergeState}
         branchOperationError={null}
       />
     )
@@ -310,5 +331,31 @@ describe('SourceControlPanel', () => {
       />
     )
     expect(screen.getByText('checkout failed')).toBeInTheDocument()
+  })
+
+  it('mergeState は GitRepoView のバナーまで届く(マージ中ならバナー、そうでなければ出ない)', async () => {
+    const onComplete = vi.fn().mockResolvedValue(undefined)
+    const { rerender } = render(
+      <SourceControlPanel {...baseProps} gitStatus={repoStatus} mergeState={emptyMergeState} />
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    rerender(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        mergeState={{
+          ...emptyMergeState,
+          inProgress: true,
+          unresolvedCount: 0,
+          canComplete: true,
+          onComplete
+        }}
+      />
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'マージ中（すべて解決済み。マージを完了できます）'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'マージを完了' }))
+    expect(onComplete).toHaveBeenCalledTimes(1)
   })
 })

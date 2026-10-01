@@ -37,27 +37,31 @@ export default function ChangesFileItem({
         {file.path}
       </button>
       <div className="source-control-panel__file-actions">
-        {/* main 側も ls-files -u で拒否するが、押せるのに必ず失敗するボタンは出さない */}
+        {/* 取り消しもステージも main 側が ls-files -u で拒否するが、押せるのに必ず失敗するボタンは
+            出さない。+ (git add) はマーカー入りのまま解決済みにしてしまうため、コンフリクト中の
+            ファイルはパスを押して開く解決ビューの「解決済みにする」(マーカーを検査する)へ誘導する */}
         {!isConflictedFile(file) && (
-          <button
-            type="button"
-            className="source-control-panel__discard-btn"
-            onClick={() => onDiscard(file.path)}
-            disabled={isOperationBlocked}
-            aria-label={`${file.path} の変更を取り消し`}
-          >
-            ↶
-          </button>
+          <>
+            <button
+              type="button"
+              className="source-control-panel__discard-btn"
+              onClick={() => onDiscard(file.path)}
+              disabled={isOperationBlocked}
+              aria-label={`${file.path} の変更を取り消し`}
+            >
+              ↶
+            </button>
+            <button
+              type="button"
+              className="source-control-panel__stage-btn"
+              onClick={() => onStage(file.path)}
+              disabled={isOperationBlocked}
+              aria-label={`${file.path} をステージ`}
+            >
+              +
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="source-control-panel__stage-btn"
-          onClick={() => onStage(file.path)}
-          disabled={isOperationBlocked}
-          aria-label={`${file.path} をステージ`}
-        >
-          +
-        </button>
       </div>
     </li>
   )
