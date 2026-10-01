@@ -75,6 +75,13 @@ describe('parseUnstagedStatusEntries', () => {
     ])
   })
 
+  it('先頭の空白も生のパスと path に残す', () => {
+    expect(parseUnstagedStatusEntries('?? \u3000zen\0AM  lead\0')).toEqual([
+      { path: '\u3000zen', rawPath: '\u3000zen', status: '??' },
+      { path: ' lead', rawPath: ' lead', status: 'AM' }
+    ])
+  })
+
   it('末尾の空白は生のパスに残す', () => {
     expect(parseUnstagedStatusEntries('?? trailsp \0')).toEqual([
       { path: 'trailsp ', rawPath: 'trailsp ', status: '??' }

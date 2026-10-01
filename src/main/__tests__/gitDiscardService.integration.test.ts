@@ -671,6 +671,36 @@ describe('discardAllChanges(実 git)', () => {
 
   // expected は renderer と同じ作り(simple-git の status)。表記のずれは常に「中止」になるため、
   // 実 git の出力で通ることを固定する
+  // simple-git は行の末尾の空白だけを削る(先頭の空白は残る)。main の照合キーを両端 trim にすると、
+  // 先頭が空白のパスは renderer と一致せず、一括取り消しが毎回中止された(このPRで修正)
+  it.each([
+    ['半角空白で始まる未追跡パス', ' lead.txt'],
+    ['全角空白で始まる未追跡パス', '\u3000zen.txt'],
+    ['先頭と末尾の両方が空白の未追跡パス', ' both '],
+    ['末尾が空白の未追跡パス', 'trail ']
+  ])('%s でも照合が通り、取り消しが実行される', async (_label, name) => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write(name, 'x\n')
+    const confirmed = await shown()
+    expect(confirmed).toHaveLength(1)
+    expect(confirmed[0].status).toBe('??')
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(trashed).toEqual([join(repo, name)])
+  })
+
+  it('先頭が空白でステージ済み + 作業ツリー変更(AM)のパスでも照合が通る', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write(' lead.txt', 'x\n')
+    runGit(repo, 'add', ' lead.txt')
+    write(' lead.txt', 'x\nmore\n')
+    const confirmed = await shown()
+    expect(confirmed).toEqual([{ path: ' lead.txt', status: 'AM' }])
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(read(' lead.txt')).toBe('x\n')
+  })
+
   it('ネストした git リポジトリ(sub/)と、末尾空白・日本語・空白入りのパスで照合が通る', async () => {
     write('a.txt', 'a\n')
     commitAll(repo, 'init')

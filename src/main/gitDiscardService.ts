@@ -133,9 +133,9 @@ export async function discardAllChanges(
   const entries = parseUnstagedStatusEntries(
     await git.raw(['status', '--porcelain', '-z', '--untracked-files=all'])
   )
-  // renderer の path は simple-git の表記なので、生のパスを同じ表記(trim)に寄せて比べる
+  // renderer の path は simple-git の表記(行の末尾の空白だけを削る。先頭は残る)なので、生のパスも trimEnd して比べる
   // (ネストした git リポジトリは 'sub/'、末尾空白は trim 済み)。ソート済みの配列で比べ、重複も区別する
-  const actualKeys = entries.map((e) => toMatchKey(e.status, e.rawPath.trim())).sort()
+  const actualKeys = entries.map((e) => toMatchKey(e.status, e.rawPath.trimEnd())).sort()
   const expectedKeys = expected.map((e) => toMatchKey(e.status, e.path)).sort()
   if (
     actualKeys.length !== expectedKeys.length ||
