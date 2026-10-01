@@ -13,7 +13,8 @@ export default defineConfig({
       'src/renderer/src/**/*.test.{ts,tsx}',
       'src/main/**/*.test.ts',
       'src/shared/**/*.test.ts',
-      'src/preload/**/*.test.ts'
+      'src/preload/**/*.test.ts',
+      'scripts/**/*.test.mjs'
     ],
     alias: {
       '@monaco-editor/react': resolve(
