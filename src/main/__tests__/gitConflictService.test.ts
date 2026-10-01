@@ -19,6 +19,8 @@ import {
   abortMerge,
   completeMerge,
   getConflictFile,
+  getConflictMarkerSize,
+  parseConflictMarkerSizeAttr,
   keepConflictFile,
   markConflictResolved,
   removeConflictFile,
@@ -36,6 +38,7 @@ const entry = (path: string, stage: number): string =>
 type GitState = {
   unmerged?: string // ls-files -u -z の出力
   mergeHead?: string // rev-parse -q --verify MERGE_HEAD の出力
+  markerSizeAttr?: string // check-attr の conflict-marker-size の値(既定 unspecified)
 }
 let state: GitState
 
@@ -79,6 +82,10 @@ beforeEach(() => {
   mockRaw.mockImplementation(async (args: string[]) => {
     if (args[0] === 'ls-files' && args.includes('-u')) return state.unmerged ?? ''
     if (args[0] === 'rev-parse') return state.mergeHead ?? ''
+    if (args[0] === 'check-attr') {
+      const path = args[args.length - 1]
+      return `${path}\0conflict-marker-size\0${state.markerSizeAttr ?? 'unspecified'}\0`
+    }
     return ''
   })
   mockFs.readFile.mockResolvedValue(Buffer.from(content))
@@ -644,5 +651,101 @@ describe('サブモジュール(gitlink, mode 160000)のコンフリクト', () 
     state.unmerged = gitlink('sub', 1) + gitlink('sub', 3)
     await expect(run()).rejects.toThrow(SUBMODULE_MESSAGE)
     expect(mutations()).toEqual([])
+  })
+})
+
+// .gitattributes の conflict-marker-size=N のファイルでは、git は N 文字のマーカーを書く
+describe('マーカーの長さ(conflict-marker-size)', () => {
+  // git(2.50)の ll-merge は値を 10 進の int として厳密に読み(strtol_i)、正でなければ既定の 7。
+  // set / unset / 値の後ろのごみ / int の範囲外は警告を出して 7(実 git で確認)
+  it.each([
+    ['unspecified', 7],
+    ['set', 7],
+    ['unset', 7],
+    ['abc', 7],
+    ['0', 7],
+    ['-5', 7],
+    ['', 7],
+    ['10abc', 7],
+    ['2147483648', 7],
+    ['10', 10],
+    ['3', 3],
+    ['1', 1],
+    ['010', 10],
+    ['+10', 10],
+    ['2147483647', 2147483647]
+  ])('属性の値 "%s" は %i 文字', (value, size) => {
+    expect(parseConflictMarkerSizeAttr(`f.txt\0conflict-marker-size\0${value}\0`)).toBe(size)
+  })
+
+  it('check-attr の出力が空・壊れていれば 7 文字', () => {
+    expect(parseConflictMarkerSizeAttr('')).toBe(7)
+    expect(parseConflictMarkerSizeAttr(['f.txt', 'other', '10', ''].join('\0'))).toBe(7)
+  })
+
+  it('check-attr を -z と -- の後ろのパスで呼ぶ(ハイフン始まりのパスもオプションにしない)', async () => {
+    state.markerSizeAttr = '10'
+    const git = { raw: mockRaw } as unknown as Parameters<typeof getConflictMarkerSize>[0]
+    await expect(getConflictMarkerSize(git, '-x.md')).resolves.toBe(10)
+    expect(gitCalls()).toContainEqual(['check-attr', '-z', 'conflict-marker-size', '--', '-x.md'])
+  })
+
+  it('check-attr が失敗したら 7 文字', async () => {
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'check-attr') throw new Error('fatal')
+      return ''
+    })
+    const git = { raw: mockRaw } as unknown as Parameters<typeof getConflictMarkerSize>[0]
+    await expect(getConflictMarkerSize(git, 'f.txt')).resolves.toBe(7)
+  })
+
+  const content10 = [
+    'a',
+    '<<<<<<<<<< HEAD',
+    'mine',
+    '==========',
+    'theirs',
+    '>>>>>>>>>> feat',
+    ''
+  ].join('\n')
+
+  it('getConflictFile は属性のサイズでブロックを解析する', async () => {
+    state.markerSizeAttr = '10'
+    mockFs.readFile.mockResolvedValue(Buffer.from(content10))
+    const r = await getConflictFile('/p', 'f.txt')
+    expect(r.status === 'parsed' && r.segments).toEqual([
+      { kind: 'text', lines: ['a'] },
+      {
+        kind: 'conflict',
+        ours: ['mine'],
+        theirs: ['theirs'],
+        oursLabel: 'HEAD',
+        theirsLabel: 'feat'
+      }
+    ])
+  })
+
+  it('resolveConflictBlocks は属性のサイズで解析し、未選択のブロックを同じ長さで書き戻す', async () => {
+    state.markerSizeAttr = '10'
+    const two = content10 + content10
+    mockFs.readFile.mockResolvedValue(Buffer.from(two))
+    const p = parseConflictFile(two, 10)
+    if (!p) throw new Error('解析できません')
+    await resolveConflictBlocks('/p', 'f.txt', digestConflictBlocks(p.segments), { 0: 'ours' })
+    expect(mockFs.writeFile.mock.calls[0][1]).toBe(['a', 'mine', content10].join('\n'))
+  })
+
+  it('markConflictResolved は属性のサイズのマーカーが残っていれば git add しない', async () => {
+    state.markerSizeAttr = '10'
+    mockFs.readFile.mockResolvedValue(Buffer.from('a\n>>>>>>>>>> feat\n'))
+    await expect(markConflictResolved('/p', 'f.txt')).rejects.toThrow('マーカーが残っています')
+    expect(mutations()).toEqual([])
+  })
+
+  it('markConflictResolved はサイズ 10 のとき 7 文字の行を本文として通す', async () => {
+    state.markerSizeAttr = '10'
+    mockFs.readFile.mockResolvedValue(Buffer.from('a\n<<<<<<< x\n'))
+    await markConflictResolved('/p', 'f.txt')
+    expect(mutations()).toEqual([['add', '--', ':(literal)f.txt']])
   })
 })

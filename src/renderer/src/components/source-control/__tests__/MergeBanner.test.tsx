@@ -3,6 +3,14 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { MergeStatePanelState } from '../../../types'
 import MergeBanner from '../MergeBanner'
+import { buildMergeBannerText } from '../../../lib/mergeStateMessage'
+
+// 文言は buildMergeBannerText と共有する(直書きで二重管理しない)。呼び出しを確かめるため、
+// 実装はそのまま使い、呼び出しだけ記録する
+vi.mock('../../../lib/mergeStateMessage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../lib/mergeStateMessage')>()
+  return { ...actual, buildMergeBannerText: vi.fn(actual.buildMergeBannerText) }
+})
 
 const makeMergeState = (overrides: Partial<MergeStatePanelState> = {}): MergeStatePanelState => ({
   inProgress: true,
@@ -16,6 +24,16 @@ const makeMergeState = (overrides: Partial<MergeStatePanelState> = {}): MergeSta
 })
 
 describe('MergeBanner', () => {
+  it.each([0, 1, 3])(
+    '未解決 %i 件のバナーの文言は buildMergeBannerText と一致する(共有して直書きしない)',
+    (n) => {
+      vi.mocked(buildMergeBannerText).mockClear()
+      render(<MergeBanner isBlocked={false} mergeState={makeMergeState({ unresolvedCount: n })} />)
+      expect(buildMergeBannerText).toHaveBeenCalledWith(n)
+      expect(screen.getByRole('status').textContent).toBe(buildMergeBannerText(n))
+    }
+  )
+
   it('マージ中でなければ何も描画しない', () => {
     const { container } = render(
       <MergeBanner isBlocked={false} mergeState={makeMergeState({ inProgress: false })} />

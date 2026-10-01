@@ -1,5 +1,4 @@
 import type { ConflictChoice, ConflictSegment } from '@shared/types'
-import { CHOICE_TARGET } from '../../lib/conflictChoice'
 import ConflictLines from './ConflictLines'
 
 type ConflictBlockSegment = Extract<ConflictSegment, { kind: 'conflict' }>
@@ -59,7 +58,8 @@ export default function ConflictBlock({
               key={choice}
               type="button"
               className="conflict-block__button"
-              aria-label={`ブロック ${number} を${CHOICE_TARGET[choice]}する`}
+              // 名前に表示文言を含める(WCAG 2.5.3 Label in Name。音声入力で表示文言を言えば押せる)
+              aria-label={`ブロック ${number} の${label}`}
               disabled={disabled}
               onClick={() => onChoose(choice)}
             >

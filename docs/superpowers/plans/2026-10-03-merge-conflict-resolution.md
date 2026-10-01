@@ -443,6 +443,7 @@ Expected: すべて成功。`git status` に、この機能に関係ないファ
 - `ConflictUnparsableReason` に `submodule` を足した。`getConflictFile` は `ls-files -u` のステージの mode が `160000`（gitlink）なら `reason: 'submodule'` を返し、書き換える 5 操作はすべて日本語で拒否する。`getConflictActions` はどのボタンも出さず、ビューはターミナルでの解決を案内する（コードレビュー指摘で追加。それまでは `not-regular` 扱いで、`相手をすべて採用`（実 git では何も変わらない）→ `解決済みにする` で自分側のコミットが黙って記録された）。
 - マージ中の拒否を追加した: `checkoutBranch` / `createBranch`（マージ中）、`stageFile`（未解決のファイル。`ChangesFileItem` も `+` を出さない）、`commit`（未解決あり）、`amendCommit`（マージ中）。いずれも日本語のエラーで、何も実行しない。
 - 確認ダイアログの文言は `コンフリクトした場合はマージ中の状態で止まります。解決するか、マージを中止できます。` に変えた。
+- PR レビュー指摘で次を変えた: `.gitattributes` の `conflict-marker-size` に対応した（`parseConflictFile` / `hasConflictMarker` にマーカーの長さの引数を足し、`gitConflictService` が `git check-attr` で長さを得る）。`pull` もマージ中は日本語で拒否する。`ConflictBlock` のボタンの `aria-label` を表示文言を含む `ブロック <i> の自分を採用` などにした。`MergeBanner` の文言を `buildMergeBannerText` に置き換えた。
 
 ## Self-Review
 

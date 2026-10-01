@@ -93,7 +93,7 @@ describe('ConflictResolver', () => {
   it('ブロックのボタンで chooseBlock にブロック番号(0 始まり)と選択が渡る', async () => {
     const conflict = makeConflictFileState({ file: twoBlocks })
     render(<ConflictResolver isBlocked={false} conflict={conflict} />)
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 2 を相手の内容にする' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 2 の相手を採用' }))
     expect(conflict.chooseBlock).toHaveBeenCalledWith(1, 'theirs')
   })
 
@@ -337,10 +337,10 @@ describe('ConflictResolver', () => {
       )
       return true
     })
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 の自分を採用' }))
     expect(screen.getByRole('status')).toHaveTextContent('ブロック 1 を自分の内容にしました')
     expect(document.activeElement).toBe(
-      screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' })
+      screen.getByRole('button', { name: 'ブロック 1 の自分を採用' })
     )
   })
 
@@ -366,7 +366,7 @@ describe('ConflictResolver', () => {
       )
       return true
     })
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 を相手の内容にする' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 の相手を採用' }))
     expect(screen.getByRole('status')).toHaveTextContent('ブロック 1 を相手の内容にしました')
     expect(document.activeElement).toBe(screen.getByRole('button', { name: '解決済みにする' }))
   })
@@ -406,8 +406,7 @@ describe('ConflictResolver', () => {
       return true
     })
     const status = screen.getByRole('status')
-    const first = (): HTMLElement =>
-      screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' })
+    const first = (): HTMLElement => screen.getByRole('button', { name: 'ブロック 1 の自分を採用' })
     await userEvent.click(first())
     const textAfterFirst = status.textContent
     expect(status).toHaveTextContent('ブロック 1 を自分の内容にしました')
@@ -428,7 +427,7 @@ describe('ConflictResolver', () => {
         conflict={makeConflictFileState({ file: twoBlocks, chooseBlock })}
       />
     )
-    const button = screen.getByRole('button', { name: 'ブロック 1 を両方にする' })
+    const button = screen.getByRole('button', { name: 'ブロック 1 の両方' })
     await userEvent.click(button)
     expect(screen.getByRole('status')).toBeEmptyDOMElement()
     expect(document.activeElement).toBe(button)

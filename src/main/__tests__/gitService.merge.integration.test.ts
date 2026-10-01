@@ -16,6 +16,7 @@ import {
   commit as commitStaged,
   createBranch,
   mergeBranch,
+  pull,
   stageFile
 } from '../gitService'
 import { abortMerge } from '../gitConflictService'
@@ -151,6 +152,20 @@ describe('mergeBranch(実 git)', () => {
     expect(hasMergeHead()).toBe(true)
     expect(runGit(repo, 'symbolic-ref', '--short', 'HEAD').trim()).toBe('main')
     expect(read('a.txt')).toBe('main')
+  })
+
+  // マージ中の pull は git が英語('You have not concluded your merge (MERGE_HEAD exists).')で
+  // 失敗する。ブランチの切り替えと同じく、git に渡す前に日本語で拒否する
+  it('マージ中の pull は日本語で拒否され、MERGE_HEAD と作業ツリーが残る', async () => {
+    setupDiverged(true)
+    await expect(mergeBranch(repo, 'feature')).resolves.toMatchObject({ status: 'conflict' })
+    const before = read('a.txt')
+    await expect(pull(repo)).rejects.toThrow(
+      'マージ中のため pull できません。マージを完了または中止してください'
+    )
+    expect(hasMergeHead()).toBe(true)
+    expect(read('a.txt')).toBe(before)
+    expect(status()).toContain('UU a.txt')
   })
 
   // マージ中のコミット欄・変更の + からの操作。+ (git add) はマーカー入りのまま解決済みにしてしまい、

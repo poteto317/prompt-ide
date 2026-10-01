@@ -839,6 +839,12 @@ describe('push', () => {
 })
 
 describe('pull', () => {
+  beforeEach(() => {
+    // 既定はマージ中ではない(MERGE_HEAD が無いと rev-parse -q --verify は空文字で resolve する)
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('')
+  })
+
   it('simpleGit を folderPath とタイムアウト設定で呼び、pull を引数なしで呼ぶ', async () => {
     mockPull.mockResolvedValue(undefined)
     await pull('/project')
@@ -847,6 +853,16 @@ describe('pull', () => {
       progress: expect.any(Function)
     })
     expect(mockPull).toHaveBeenCalledWith()
+  })
+
+  it('マージ中(MERGE_HEAD あり)は pull を呼ばずに日本語で拒否する', async () => {
+    mockRaw.mockReset()
+    mockRaw.mockResolvedValue('abc123\n')
+    await expect(pull('/project')).rejects.toThrow(
+      'マージ中のため pull できません。マージを完了または中止してください'
+    )
+    expect(mockRaw).toHaveBeenCalledWith(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
+    expect(mockPull).not.toHaveBeenCalled()
   })
 
   it('pull が throw した場合エラーが伝播する', async () => {

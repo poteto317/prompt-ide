@@ -681,3 +681,73 @@ describe('サブモジュール(gitlink)のコンフリクト(実 git)', () => {
     expect(status()).toEqual(['UU sub'])
   })
 })
+
+// .gitattributes の conflict-marker-size=10 のファイルでは、git は 10 文字のマーカーを書く
+describe('.gitattributes の conflict-marker-size(実 git)', () => {
+  const M10 = (ch: string, label = ''): string => ch.repeat(10) + (label ? ` ${label}` : '')
+  const unmerged = (): string => runGit(repo, 'ls-files', '-u')
+
+  // 2 ブロックのコンフリクトを起こす
+  function conflictWithSize10(path: string): void {
+    write('.gitattributes', '*.md conflict-marker-size=10\n')
+    write(path, BASE_F)
+    commitAll(repo, 'base')
+    runGit(repo, 'checkout', '-qb', 'feat')
+    write(path, lines('top', 'a-theirs', ...MID, 'b-theirs', 'bottom'))
+    commitAll(repo, 'feat')
+    runGit(repo, 'checkout', '-q', 'main')
+    write(path, lines('top', 'a-ours', ...MID, 'b-ours', 'bottom'))
+    commitAll(repo, 'main')
+    try {
+      runGit(repo, 'merge', '--no-edit', 'feat')
+    } catch {
+      // コンフリクト
+    }
+  }
+
+  it.each([['m.md'], ['-h.md'], ['a b.md']])(
+    '%s: 10 文字のマーカーを解析し、未選択のブロックは 10 文字のマーカーのまま残る',
+    async (path) => {
+      conflictWithSize10(path)
+      expect(read(path)).toContain(`${M10('<', 'HEAD')}\n`)
+      const r = await getConflictFile(repo, path)
+      if (r.status !== 'parsed') throw new Error('解析できません')
+      expect(r.digests).toHaveLength(2)
+      await resolveConflictBlocks(repo, path, r.digests, { 0: 'ours' })
+      expect(read(path)).toBe(
+        lines(
+          'top',
+          'a-ours',
+          ...MID,
+          M10('<', 'HEAD'),
+          'b-ours',
+          M10('='),
+          'b-theirs',
+          M10('>', 'feat'),
+          'bottom'
+        )
+      )
+      // 残ったマーカーで解決済みにはできない
+      await expect(markConflictResolved(repo, path)).rejects.toThrow('マーカーが残っています')
+      expect(unmerged()).not.toBe('')
+
+      const r2 = await getConflictFile(repo, path)
+      if (r2.status !== 'parsed') throw new Error('解析できません')
+      expect(r2.digests).toHaveLength(1)
+      await resolveConflictBlocks(repo, path, r2.digests, { 0: 'theirs' })
+      await markConflictResolved(repo, path)
+      expect(unmerged()).toBe('')
+      await completeMerge(repo)
+      expect(runGit(repo, 'show', `HEAD:${path}`)).toBe(
+        lines('top', 'a-ours', ...MID, 'b-theirs', 'bottom')
+      )
+    }
+  )
+
+  it('手でマーカーを残したファイルは markConflictResolved が拒否し、git add されない', async () => {
+    conflictWithSize10('m.md')
+    write('m.md', lines('top', M10('|', 'base'), 'bottom'))
+    await expect(markConflictResolved(repo, 'm.md')).rejects.toThrow('マーカーが残っています')
+    expect(unmerged()).not.toBe('')
+  })
+})

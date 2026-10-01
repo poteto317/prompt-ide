@@ -41,12 +41,13 @@
 - 事前検証（`assertMergeStartable` のマージ中の拒否）は変えない。マージ中に別のマージは始められない。
 - 確認ダイアログの文言は `コンフリクトした場合はマージ中の状態で止まります。解決するか、マージを中止できます。`（`branchMerge.ts`）。
 - `checkoutBranch` と `createBranch`（作成して切り替える）はマージ中（`MERGE_HEAD` あり）を拒否する: `マージ中のためブランチを切り替えられません。マージを完了または中止してください`。解決済みにしたファイルが切り替え先と一致すると、git が `MERGE_HEAD` ごとマージ中の状態を黙って捨てるため（実機で確認）。
+- `pull` もマージ中（`MERGE_HEAD` あり）を拒否する: `マージ中のため pull できません。マージを完了または中止してください`（git の英語の生のエラー `You have not concluded your merge (MERGE_HEAD exists).` を出さないため。何も実行しない）。`checkoutBranch` / `createBranch` と同じ `assertNotMerging` を使い、文言だけを変える。renderer の pull ボタンは、ブランチの切り替えと同じくマージ中でも disabled にせず、main の拒否のエラーを表示する（PR レビュー指摘で追加。それまでは git の英語のエラーがそのまま出ていた）。
 
 ### コンフリクト解決ビュー
 
 - 「変更」セクションの未解決ファイルをタップすると、従来どおり diff タブが開く。**そのファイルが未解決の間は、タブの中身を結合 diff ではなくコンフリクト解決ビューにする**（新しい種類のタブは作らない。diff タブの開閉・自動で閉じる挙動を流用する）。解決済みにしてステージ済みになると、未ステージの diff タブは既存の処理で自動で閉じる。
 - ビューはファイルを main から読み直して表示する。内容は、テキスト（そのまま表示）とコンフリクトのブロックの並び。ブロックには、自分側（`<<<<<<< <ラベル>` の内容）と相手側（`>>>>>>> <ラベル>` の内容）を並べて表示する。diff3 形式（`|||||||` の base）がある場合は、base も表示する（選択肢には含めない）。
-- ブロックごとのボタン: `自分を採用` / `相手を採用` / `両方`（自分 → 相手の順に連結）。`aria-label` は `ブロック <i> を自分の内容にする` / `…相手の内容にする` / `…両方にする`。
+- ブロックごとのボタン: `自分を採用` / `相手を採用` / `両方`（自分 → 相手の順に連結）。`aria-label` は表示文言を含めて `ブロック <i> の自分を採用` / `…の相手を採用` / `…の両方`（WCAG 2.5.3 Label in Name。音声入力で表示文言を言えば押せる。PR レビュー指摘で変更。それまでは `ブロック <i> を自分の内容にする` などで、表示文言を含んでいなかった）。
 - ファイル単位のボタン: `自分をすべて採用` / `相手をすべて採用`（`git checkout --ours/--theirs` 相当）。
 - ブロックを選ぶと、main がファイルを書き換える（そのブロックのマーカーと不採用側を取り除く）。書き換えた結果、ブロックが残っていなければ「解決済みにする」を押せるようになる。残りのブロックは続けて選べる。
 - 追加/削除が絡むコンフリクト（`UD` / `DU` / `AU` / `UA` / `DD`）と、バイナリのコンフリクトには、ブロックが無い。これらはファイル単位の操作だけを出す: 内容の競合なしで一方のファイルが残っている場合は `ファイルを残す`（残っている側を採用して `git add`）と `削除する`（`git rm`）、`UU`/`AA` のバイナリは `自分をすべて採用` / `相手をすべて採用` の後に `解決済みにする`（`checkout --ours/--theirs` はステージ 1/2/3 を残すため、`git add` するまで未解決のまま）。
@@ -59,13 +60,14 @@
 
 ### 解決済みにする
 
-- ファイルにコンフリクトマーカー（`<<<<<<<` `|||||||` `>>>>>>>` で始まる行。7 文字ちょうど）が残っていなければ `git add -- <file>` で解決済みにする。残っているときは、`コンフリクトのマーカーが残っています` で拒否する（手編集中に誤って確定しないため）。**`=======` は検査しない**: Markdown の見出し下線などの本文と区別できず、ブロックを解決した後も本文として残るため、検査すると解決済みにできなくなる。
+- ファイルにコンフリクトマーカー（`<<<<<<<` `|||||||` `>>>>>>>` で始まる行。マーカーの長さちょうど（既定 7 文字。`.gitattributes` の `conflict-marker-size` に従う）、または直後が半角スペース）が残っていなければ `git add -- <file>` で解決済みにする。残っているときは、`コンフリクトのマーカーが残っています` で拒否する（手編集中に誤って確定しないため）。**`=======` は検査しない**: Markdown の見出し下線などの本文と区別できず、ブロックを解決した後も本文として残るため、検査すると解決済みにできなくなる。
 - ファイルが存在しないときは、`ファイルが存在しないため解決済みにできません。「削除する」を使うか、ファイルを復元してください` で拒否する（削除として確定するのは「削除する」の役割）。シンボリックリンク・バイナリはマーカー検査を飛ばして `git add` する。
 - ブロックを選び終えたら自動でステージはしない（選択と確定を分ける）。
 
 ### マージ中の他の操作の制限（マーカー入りのまま確定しない）
 
 - 「変更」の `+`（`stageFile` = `git add`）は、未解決のファイルをマーカー入りのまま解決済み（`M `）にしてしまい、バナーが「すべて解決済み」になって、そのまま完了するとマーカー入りのマージコミットができる（実 git で再現済み）。二重に防ぐ: (a) `ChangesFileItem` は未解決（`isConflictedFile`）のファイルに `+` を出さない（取り消しボタンと同じ。ファイル名から解決ビューへ誘導する）。(b) main の `stageFile` は、`ls-files -u -z -- <literal pathspec>` にそのパスがあれば `コンフリクト中のファイルはステージできません。コンフリクト解決ビューの「解決済みにする」を使ってください` で拒否する。判定は `gitMergeState.isUnmergedPath` に切り出し、`gitDiscardClassifier` の `conflicted` 判定と共有する。ステージ済みや通常のファイルは従来どおり。
+- `pull` はマージ中なら `マージ中のため pull できません。マージを完了または中止してください` で拒否する（ブランチの切り替えと同じ `assertNotMerging`。PR レビュー指摘で追加）。
 - コミット欄から: `commit` は未解決のファイルがあれば `未解決のコンフリクトがあるためコミットできません。解決するか、マージを中止してください`、`amendCommit` はマージ中（`MERGE_HEAD` あり）なら `マージ中のためコミットを修正できません。マージを完了または中止してください` で拒否する（git の英語の生のエラー `Committing is not possible because you have unmerged files` / `You are in the middle of a merge -- cannot amend.` を出さないため。どちらも何も実行しない）。未解決が無いマージ中の通常のコミットと、マージ中でない通常のコミット・amend は変えない。
 
 ### マージを完了
@@ -82,8 +84,8 @@
 
 #### コンフリクトの解析（純粋関数）
 
-- `parseConflictFile(content)` が、ファイル内容を `Segment[]` に分ける: `{ kind: 'text', lines }` と `{ kind: 'conflict', ours, theirs, base?, oursLabel, theirsLabel }`。マーカーは行頭の `<<<<<<< ` / `||||||| ` / `=======` / `>>>>>>> ` で、7 文字ちょうど。改行コード（LF / CRLF）は**行ごとに**保って、書き戻しでも同じにする。解析時に行ごとの元の改行（`\r\n` / `\n` / 最終行で無ければ空）を `lineEnds` に記録し、`applyConflictChoices(parsed, choices)` は本文の行・選んだ側の行・残すマーカー行を、それぞれ元の改行のまま出力する（多数派の 1 種へ揃えない。LF と CRLF の混在や「CRLF のファイルで最終行だけ LF」でも、コンフリクトと無関係な行の改行は変わらない。コードレビュー指摘で変更。それまでは多数派の改行で結合していた）。選んだ側の行は直後にマーカー行が続くため必ず改行を持ち、`both` の境界で改行が欠けたり重なったりしない。ファイル末尾の改行の有無は元のとおりに保つ（元が改行なしで終わるなら、出力の最後の行の改行を除く。最終行が改行なしの終了マーカーの場合を含む）。ブロックのダイジェストは行の内容（`\r` を含まない）だけから作るため、改行コードでは変わらない（renderer との照合は従来どおり）。`ConflictFile.eol` は多数派の改行で、表示用の情報として残す。
-- 閉じていないマーカー、順序の崩れ（`=======` が無い、`>>>>>>>` が無い）、ネストは「解析不能」として扱い、ビューにはブロックを出さずに `コンフリクトのマーカーを解析できません。エディタで直接編集してください` を表示する。本文中にマーカーに見える文字列（インデント付き、7 文字でない）は本文として扱う。
+- `parseConflictFile(content)` が、ファイル内容を `Segment[]` に分ける: `{ kind: 'text', lines }` と `{ kind: 'conflict', ours, theirs, base?, oursLabel, theirsLabel }`。マーカーは行頭の `<<<<<<< ` / `||||||| ` / `=======` / `>>>>>>> ` で、マーカーの長さちょうど（既定 7 文字。`parseConflictFile(content, markerSize)` の第 2 引数。`.gitattributes` の `conflict-marker-size` に従う。「既知の制約」を参照）。改行コード（LF / CRLF）は**行ごとに**保って、書き戻しでも同じにする。解析時に行ごとの元の改行（`\r\n` / `\n` / 最終行で無ければ空）を `lineEnds` に記録し、`applyConflictChoices(parsed, choices)` は本文の行・選んだ側の行・残すマーカー行を、それぞれ元の改行のまま出力する（多数派の 1 種へ揃えない。LF と CRLF の混在や「CRLF のファイルで最終行だけ LF」でも、コンフリクトと無関係な行の改行は変わらない。コードレビュー指摘で変更。それまでは多数派の改行で結合していた）。選んだ側の行は直後にマーカー行が続くため必ず改行を持ち、`both` の境界で改行が欠けたり重なったりしない。ファイル末尾の改行の有無は元のとおりに保つ（元が改行なしで終わるなら、出力の最後の行の改行を除く。最終行が改行なしの終了マーカーの場合を含む）。ブロックのダイジェストは行の内容（`\r` を含まない）だけから作るため、改行コードでは変わらない（renderer との照合は従来どおり）。`ConflictFile.eol` は多数派の改行で、表示用の情報として残す。
+- 閉じていないマーカー、順序の崩れ（`=======` が無い、`>>>>>>>` が無い）、ネストは「解析不能」として扱い、ビューにはブロックを出さずに `コンフリクトのマーカーを解析できません。エディタで直接編集してください` を表示する。本文中にマーカーに見える文字列（インデント付き、マーカーの長さと違う）は本文として扱う。
 
 #### ブロックの解決（`resolveConflictBlocks(folderPath, filePath, expectedBlocks, choices)`）
 
@@ -135,6 +137,7 @@
 | ファイルが無いまま「解決済みにする」                     | `ファイルが存在しないため解決済みにできません。「削除する」を使うか、ファイルを復元してください`                                                                                                        |
 | 未解決が残ったまま「マージを完了」                       | ボタンは disabled。直接呼ばれたら main が拒否                                                                                                                                                           |
 | 未解決のファイルをステージ(`stageFile`)                  | ボタンを出さない。直接呼ばれたら main が `コンフリクト中のファイルはステージできません。…` で拒否                                                                                                       |
+| マージ中の `pull`                                        | main が `マージ中のため pull できません。マージを完了または中止してください` で拒否（何も実行しない）                                                                                                   |
 | 未解決があるまま `commit` / マージ中の `amendCommit`     | main が日本語のエラーで拒否（何も実行しない）                                                                                                                                                           |
 | 解析不能なマーカー                                       | ビューに `コンフリクトのマーカーを解析できません。エディタで直接編集してください`                                                                                                                       |
 | サブモジュール（gitlink）のコンフリクト                  | 解決のボタンを出さず、ビューに `サブモジュールのコンフリクトです。…ターミナルで git add して解決してください`。main の解決操作は `サブモジュールのコンフリクトはターミナルで解決してください(…)` で拒否 |
@@ -148,14 +151,15 @@
 - マーカーの検査は `<<<<<<<` / `|||||||` / `>>>>>>>` だけで、`=======` は検査しない。`<<<<<<<` と `>>>>>>>` を消して `=======` だけ残す手編集は見逃す。
 - サブモジュール（gitlink）のコンフリクトはアプリ内で解決できない（ターミナルで、サブモジュールの中で採用するコミットを選んでから `git add` する）。サブモジュールとファイルの衝突（片側だけ gitlink）も同じ扱い。片側が削除した衝突（`UD` / `DU`）では案内の末尾に `（削除する場合は git rm）` を足す（`git add` だけでは `.gitmodules` から消えたまま gitlink が残るため）。
 - `.gitattributes` の `working-tree-encoding=UTF-16` を明示したファイルは、マーカーも UTF-16（NUL を含む）になるため、バイナリ扱いで検査が飛ぶ。
+- `.gitattributes` の `conflict-marker-size=N` は対応済み（PR レビュー指摘で追加。それまでは 7 文字固定で、git が書いた N 文字のマーカーを素通りし、ブロック 0 件の解決ビューから「解決済みにする」でマーカー入りのマージコミットができた）。main が `git check-attr -z conflict-marker-size -- <path>`（パス名はリテラルとして読まれ、pathspec の魔法は効かない）でファイルごとの長さを得て、解析（`getConflictFile` / `resolveConflictBlocks`。未選択のブロックも同じ長さのマーカーで書き戻す）とマーカー検査（`markConflictResolved`）で同じ長さを使う。値は git（2.50 の ll-merge の `strtol_i`）と同じく 10 進の int として厳密に読み、`010` / `+10` は 10、`unspecified` / `set` / `unset` / `abc` / `10abc` / 0 以下 / int の範囲外とコマンドの失敗は既定の 7（実 git で確認）。マージの後に `.gitattributes` を書き換えると、git が書いた長さとずれる。
 - パネル上部の `コンフリクトしました（…）。解決するか、マージを中止してください` は、マージ中が解除されたときに消える（バナーの「マージを完了」「マージを中止」、コミット欄でのマージの完了、外部ターミナルの `merge --abort` のいずれでも消える）。当初はバナーの経路（`useMergeState.onFinished`）だけで消していたが、SRP レビューの対応で状態に連動させる形に変えた
 
 ## アーキテクチャ
 
 ### main プロセス
 
-- `src/main/gitConflictParser.ts`（新規）: `parseConflictFile`、ブロックの選択を適用する `applyConflictChoices`（ブロックの番号の範囲検査を含む。キーは 0 始まりの正規の 10 進表記だけ）、ブロックのダイジェスト（`digestConflictBlocks`）、マーカーの残りの判定 `hasConflictMarker`（解析と同じ「7 文字ちょうど、または直後が半角スペース」の規則を共有する）。純粋関数。
-- `src/main/gitConflictService.ts`（新規）: `getConflictFile`（読み取りと解析）、`resolveConflictBlocks`、`resolveConflictWholeFile`、`keepConflictFile`、`removeConflictFile`、`markConflictResolved`（マーカーの判定は parser の `hasConflictMarker`）、`completeMerge`、`abortMerge`。`resolveConflictBlocks` は選択の値（`CONFLICT_CHOICES`）だけを検査し（違反は `Invalid choices`）、番号の範囲は `applyConflictChoices` に任せる（違反は `ブロックの番号が範囲外です`）。分類・境界チェックは `gitDiscardClassifier` の考え方に揃え、未解決の判定は `gitMergeState.ts` の `getUnmergedStages` / `hasUnmergedFiles`（`ls-files -u`）を使う。
+- `src/main/gitConflictParser.ts`（新規）: `parseConflictFile`、ブロックの選択を適用する `applyConflictChoices`（ブロックの番号の範囲検査を含む。キーは 0 始まりの正規の 10 進表記だけ）、ブロックのダイジェスト（`digestConflictBlocks`）、マーカーの残りの判定 `hasConflictMarker`（解析と同じ「マーカーの長さちょうど、または直後が半角スペース」の規則を共有する。長さは引数で、既定 7）。純粋関数。
+- `src/main/gitConflictService.ts`（新規）: `getConflictFile`（読み取りと解析）、`resolveConflictBlocks`、`resolveConflictWholeFile`、`keepConflictFile`、`removeConflictFile`、`markConflictResolved`（マーカーの判定は parser の `hasConflictMarker`）、マーカーの長さの取得 `getConflictMarkerSize` / `parseConflictMarkerSizeAttr`、`completeMerge`、`abortMerge`。`resolveConflictBlocks` は選択の値（`CONFLICT_CHOICES`）だけを検査し（違反は `Invalid choices`）、番号の範囲は `applyConflictChoices` に任せる（違反は `ブロックの番号が範囲外です`）。分類・境界チェックは `gitDiscardClassifier` の考え方に揃え、未解決の判定は `gitMergeState.ts` の `getUnmergedStages` / `hasUnmergedFiles`（`ls-files -u`）を使う。
 - `src/main/gitService.ts`: `mergeBranch` の自動中止の分岐の変更（コンフリクトは `MergeBranchResult` の `conflict` で返す）、`getGitStatus` の `mergeInProgress`、`stageFile` / `commit` / `amendCommit` の拒否。`abortFailedMerge` は、未解決ファイルが 0 件のときだけ使う。
 - `src/main/gitMergeState.ts`: `hasMergeInProgress` に加え、未解決の判定（`ls-files -u`）を持つ。ステージ番号を返す `getUnmergedStages`、それを使う `isUnmergedPath`、`hasUnmergedFiles`、未解決のパスの一覧 `listUnresolvedFiles`（`diff --name-only -z --diff-filter=U`。`gitService.ts` のマージと `gitStashService.ts` の復元で共有する）。`gitConflictService.ts` はこれらを import して使い、判定を自前では実装しない。
 - `src/main/handlers/gitHandlers.ts`: IPC `git:getConflictFile` / `git:resolveConflictBlocks` / `git:resolveConflictWholeFile` / `git:keepConflictFile` / `git:removeConflictFile` / `git:markConflictResolved` / `git:completeMerge` / `git:abortMerge`。引数の型検証と、パスは取り消しと同じ境界チェック。
@@ -164,7 +168,7 @@
 ### preload / renderer lib
 
 - `src/preload/api.ts` / `index.d.ts` / `src/renderer/src/lib/gitApi.ts`: 上の IPC。
-- `src/renderer/src/lib/mergeStateMessage.ts`（新規）: バナーの件数の文言、中止の確認文言。
+- `src/renderer/src/lib/mergeStateMessage.ts`（新規）: バナーの件数の文言（`buildMergeBannerText`。`MergeBanner` が使う。PR レビュー指摘で、バナーの直書きをこれに置き換えた）、中止の確認文言。
 - `src/renderer/src/lib/conflictActions.ts`（新規）: `getConflictActions`。ファイルの `stages` と状態から、出す操作（すべて採用・残す・削除する・解決済みにする）を決める純関数。ボタンの出し分けと解析不能のときの案内文言が同じ規則を使う。
 - `src/renderer/src/lib/conflictChoice.ts`（新規）: 選択（`ours` / `theirs` / `both`）の表示用の文言。
 

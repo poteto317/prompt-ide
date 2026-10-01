@@ -5,6 +5,7 @@ import type { SimpleGit } from 'simple-git'
 import { CONFLICT_CHOICES } from '@shared/types'
 import type { ConflictChoice, ConflictFile, ConflictUnparsableReason } from '@shared/types'
 import {
+  DEFAULT_CONFLICT_MARKER_SIZE,
   applyConflictChoices,
   digestConflictBlocks,
   hasConflictMarker,
@@ -108,6 +109,36 @@ async function inspectWorkingFile(folderPath: string, filePath: string): Promise
   return text === null ? { reason: 'markers' } : { text }
 }
 
+// git の ll-merge は conflict-marker-size の値を 10 進の int として厳密に読み(strtol_i)、
+// 正でなければ既定の 7 を使う。set / unset / 後ろにごみ(10abc) / int の範囲外も 7。
+// 先頭ゼロ(010)と + 付き(+10)は git と同じく 10 として受け付ける(実 git 2.50 で確認)
+const INT_MAX = 2147483647
+
+/** `git check-attr -z conflict-marker-size -- <path>` の出力(path NUL 属性名 NUL 値 NUL)からマーカーの長さを得る */
+export function parseConflictMarkerSizeAttr(output: string): number {
+  const [, name, value] = output.split('\0')
+  if (name !== 'conflict-marker-size' || value === undefined) return DEFAULT_CONFLICT_MARKER_SIZE
+  if (!/^\+?\d+$/.test(value)) return DEFAULT_CONFLICT_MARKER_SIZE
+  const size = Number(value)
+  return size > 0 && size <= INT_MAX ? size : DEFAULT_CONFLICT_MARKER_SIZE
+}
+
+/**
+ * ファイルのマーカーの長さ(.gitattributes の conflict-marker-size)。git はこの長さのマーカーを書く。
+ * check-attr はパス名を pathspec ではなくリテラルとして読むため、`--` の後ろにそのまま渡す。
+ * 失敗したら既定の 7。解析(getConflictFile / resolveConflictBlocks)とマーカーの検査
+ * (markConflictResolved)は必ずこの長さを使う(get と resolve でずれるとダイジェストが合わない)
+ */
+export async function getConflictMarkerSize(git: SimpleGit, filePath: string): Promise<number> {
+  try {
+    return parseConflictMarkerSizeAttr(
+      await git.raw(['check-attr', '-z', 'conflict-marker-size', '--', filePath])
+    )
+  } catch {
+    return DEFAULT_CONFLICT_MARKER_SIZE
+  }
+}
+
 async function readText(folderPath: string, filePath: string): Promise<string | null> {
   const file = await inspectWorkingFile(folderPath, filePath)
   return 'text' in file ? file.text : null
@@ -121,7 +152,7 @@ export async function getConflictFile(folderPath: string, filePath: string): Pro
   if (unmerged.submodule) return { status: 'unparsable', reason: 'submodule', stages }
   const file = await inspectWorkingFile(folderPath, filePath)
   if (!('text' in file)) return { status: 'unparsable', reason: file.reason, stages }
-  const parsed = parseConflictFile(file.text)
+  const parsed = parseConflictFile(file.text, await getConflictMarkerSize(git, filePath))
   if (!parsed) return { status: 'unparsable', reason: 'markers', stages }
   return {
     status: 'parsed',
@@ -164,7 +195,8 @@ export async function resolveConflictBlocks(
   const git = simpleGit(folderPath)
   await assertUnmergedFile(git, filePath)
   const text = await readText(folderPath, filePath)
-  const parsed = text === null ? null : parseConflictFile(text)
+  const parsed =
+    text === null ? null : parseConflictFile(text, await getConflictMarkerSize(git, filePath))
   if (!parsed)
     throw new Error('コンフリクトのマーカーを解析できません。エディタで直接編集してください')
   // 確認時(画面に表示した時点)から構成が変わっていれば、別のブロックを解決してしまうため中止する
@@ -232,7 +264,8 @@ export async function markConflictResolved(folderPath: string, filePath: string)
   // マーカーの検査は通常ファイルだけ。シンボリックリンクは読まずに(リンクの先を見ずに)
   // そのまま add する(リンクのコンフリクトの解決)。バイナリ(NUL を含む)も検査を飛ばす。
   // マーカーは ASCII なので、UTF-8 として不正な本文(Shift_JIS など)は latin1 で読んで検査する。
-  // マーカーの判定規則は gitConflictParser の hasConflictMarker(解析と共有)
+  // マーカーの判定規則は gitConflictParser の hasConflictMarker(解析と共有)。
+  // 長さは解析と同じく .gitattributes の conflict-marker-size に従う
   const read = await readWorkingFileBuffer(folderPath, filePath)
   // ファイルが無いまま add すると削除として解決してしまう。削除して解決するのは「削除する」の役割
   if ('reason' in read && read.reason === 'missing') {
@@ -240,7 +273,10 @@ export async function markConflictResolved(folderPath: string, filePath: string)
       'ファイルが存在しないため解決済みにできません。「削除する」を使うか、ファイルを復元してください'
     )
   }
-  if ('buffer' in read && hasConflictMarker(read.buffer.toString('latin1'))) {
+  if (
+    'buffer' in read &&
+    hasConflictMarker(read.buffer.toString('latin1'), await getConflictMarkerSize(git, filePath))
+  ) {
     throw new Error('コンフリクトのマーカーが残っています')
   }
   await git.raw(['add', '--', toLiteralPathspec(filePath)])

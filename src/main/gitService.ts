@@ -356,6 +356,9 @@ export async function push(folderPath: string): Promise<void> {
 
 export async function pull(folderPath: string): Promise<void> {
   const git = simpleGitWithRemoteTimeout(folderPath)
+  // マージ中の pull は git が英語('You have not concluded your merge (MERGE_HEAD exists).')で
+  // 失敗する。ブランチの切り替えと同じく、git に渡す前に日本語で拒否する
+  await assertNotMerging(git, PULL_WHILE_MERGING_MESSAGE)
   try {
     await git.pull()
   } catch (err) {
@@ -384,14 +387,19 @@ function assertLocalBranchExists(summary: Pick<BranchSummary, 'all'>, branchName
   }
 }
 
-// マージ中(MERGE_HEAD あり)のブランチの切り替えを拒否する。切り替えると、解決済みの内容が
-// 切り替え先と一致するとき MERGE_HEAD ごとマージ中の状態が黙って失われる(実機で確認)
-async function assertNotMerging(git: SimpleGit): Promise<void> {
-  if (await hasMergeInProgress(git)) {
-    throw new Error(
-      'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
-    )
-  }
+const SWITCH_WHILE_MERGING_MESSAGE =
+  'マージ中のためブランチを切り替えられません。マージを完了または中止してください'
+const PULL_WHILE_MERGING_MESSAGE =
+  'マージ中のため pull できません。マージを完了または中止してください'
+
+// マージ中(MERGE_HEAD あり)の操作を拒否する。既定はブランチの切り替え: 切り替えると、
+// 解決済みの内容が切り替え先と一致するとき MERGE_HEAD ごとマージ中の状態が黙って失われる(実機で確認)。
+// pull も message を変えて使う
+async function assertNotMerging(
+  git: SimpleGit,
+  message: string = SWITCH_WHILE_MERGING_MESSAGE
+): Promise<void> {
+  if (await hasMergeInProgress(git)) throw new Error(message)
 }
 
 // checkout はローカルの working tree/index/HEAD を書き換えるのみでネットワークI/O

@@ -62,23 +62,32 @@ describe('ConflictBlock', () => {
   it('3 つのボタンを aria-label で取得でき、クリックで onChoose に選択が渡る', async () => {
     const onChoose = vi.fn()
     render(<ConflictBlock index={0} segment={makeSegment()} disabled={false} onChoose={onChoose} />)
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' }))
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 を相手の内容にする' }))
-    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 を両方にする' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 の自分を採用' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 の相手を採用' }))
+    await userEvent.click(screen.getByRole('button', { name: 'ブロック 1 の両方' }))
     expect(onChoose.mock.calls).toEqual([['ours'], ['theirs'], ['both']])
   })
 
   it('ボタンの表示文言は「自分を採用」「相手を採用」「両方」', () => {
     render(<ConflictBlock index={0} segment={makeSegment()} disabled={false} onChoose={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' })).toHaveTextContent(
+    expect(screen.getByRole('button', { name: 'ブロック 1 の自分を採用' })).toHaveTextContent(
       '自分を採用'
     )
-    expect(screen.getByRole('button', { name: 'ブロック 1 を相手の内容にする' })).toHaveTextContent(
+    expect(screen.getByRole('button', { name: 'ブロック 1 の相手を採用' })).toHaveTextContent(
       '相手を採用'
     )
-    expect(screen.getByRole('button', { name: 'ブロック 1 を両方にする' })).toHaveTextContent(
-      '両方'
-    )
+    expect(screen.getByRole('button', { name: 'ブロック 1 の両方' })).toHaveTextContent('両方')
+  })
+
+  // WCAG 2.5.3 Label in Name: 音声入力で表示文言を言えば押せるよう、名前に表示文言を含める
+  it('各ボタンの aria-label は表示文言を含む', () => {
+    render(<ConflictBlock index={1} segment={makeSegment()} disabled={false} onChoose={vi.fn()} />)
+    const buttons = screen.getAllByRole('button')
+    expect(buttons).toHaveLength(3)
+    for (const button of buttons) {
+      expect(button.getAttribute('aria-label')).toContain(button.textContent ?? '')
+      expect(button.getAttribute('aria-label')).toContain('ブロック 2')
+    }
   })
 
   it('空行も 1 行として描画する(行数が一致し、高さ 0 で消えない)', () => {

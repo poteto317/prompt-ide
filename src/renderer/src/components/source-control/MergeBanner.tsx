@@ -1,4 +1,5 @@
 import type { MergeStatePanelState } from '../../types'
+import { buildMergeBannerText } from '../../lib/mergeStateMessage'
 
 interface Props {
   mergeState: MergeStatePanelState
@@ -19,9 +20,7 @@ export default function MergeBanner({ mergeState, isBlocked }: Props): React.JSX
   return (
     <section className="merge-banner">
       <p className="merge-banner__message" role="status">
-        {mergeState.unresolvedCount === 0
-          ? 'マージ中（すべて解決済み。マージを完了できます）'
-          : `マージ中（未解決 ${mergeState.unresolvedCount} 件）`}
+        {buildMergeBannerText(mergeState.unresolvedCount)}
       </p>
       <div className="merge-banner__actions">
         <button

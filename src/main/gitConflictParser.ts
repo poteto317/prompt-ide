@@ -17,30 +17,59 @@ export type ParsedConflict = {
    * 終了マーカー の順。書き戻しで行ごとの改行コードを元のまま保つために使う
    */
   lineEnds: LineEnd[][]
+  /** マーカーの長さ(.gitattributes の conflict-marker-size。既定 7)。未選択のブロックの書き戻しに使う */
+  markerSize: number
 }
 
-// マーカーは行頭の 7 文字ちょうど。ラベルは半角スペースの後ろ（無い場合もある）。
-// インデント付き・6 文字・8 文字は本文として扱う
-const isMarker = (l: string, marker: string): boolean => l === marker || l.startsWith(`${marker} `)
-const isOpen = (l: string): boolean => isMarker(l, '<<<<<<<')
-const isBase = (l: string): boolean => isMarker(l, '|||||||')
-const isSep = (l: string): boolean => l === '======='
-const isClose = (l: string): boolean => isMarker(l, '>>>>>>>')
-const labelOf = (l: string): string => l.slice(8)
+/** git の既定のマーカーの長さ */
+export const DEFAULT_CONFLICT_MARKER_SIZE = 7
+
+// マーカーは行頭の markerSize 文字ちょうど(既定 7。.gitattributes の conflict-marker-size で変わる)。
+// ラベルは半角スペースの後ろ（無い場合もある）。インデント付き・長さの違う行は本文として扱う。
+// マーカーの文字列は repeat で作らずに 1 文字ずつ見る(属性の値が巨大でも文字列を確保しない)
+const isMarker = (l: string, ch: string, n: number): boolean => {
+  if (l.length < n || (l.length > n && l[n] !== ' ')) return false
+  for (let i = 0; i < n; i++) if (l[i] !== ch) return false
+  return true
+}
+
+type Markers = {
+  isOpen: (l: string) => boolean
+  isBase: (l: string) => boolean
+  isSep: (l: string) => boolean
+  isClose: (l: string) => boolean
+  labelOf: (l: string) => string
+}
+
+const markersOf = (n: number): Markers => ({
+  isOpen: (l: string): boolean => isMarker(l, '<', n),
+  isBase: (l: string): boolean => isMarker(l, '|', n),
+  isSep: (l: string): boolean => l.length === n && isMarker(l, '=', n),
+  isClose: (l: string): boolean => isMarker(l, '>', n),
+  labelOf: (l: string): string => l.slice(n + 1)
+})
 
 /**
  * 開始・基底（diff3）・終了のマーカーの行が残っているか。CR は除いて見る。
  * `=======` の単独行は検査しない: Markdown の見出し下線など本文にも現れ、ブロックを解決した後も
  * 残るため、検査すると解決済みにできなくなる（<<<<<<< と >>>>>>> を消して ======= だけ残す手編集は見逃す）
  */
-export function hasConflictMarker(text: string): boolean {
+export function hasConflictMarker(
+  text: string,
+  markerSize: number = DEFAULT_CONFLICT_MARKER_SIZE
+): boolean {
+  const { isOpen, isBase, isClose } = markersOf(markerSize)
   return text.split(/\r?\n/).some((l) => isOpen(l) || isBase(l) || isClose(l))
 }
 
 type State = 'text' | 'ours' | 'base' | 'theirs'
 
 /** コンフリクトのマーカーを解析する。解析できない形のときは null */
-export function parseConflictFile(content: string): ParsedConflict | null {
+export function parseConflictFile(
+  content: string,
+  markerSize: number = DEFAULT_CONFLICT_MARKER_SIZE
+): ParsedConflict | null {
+  const { isOpen, isBase, isSep, isClose, labelOf } = markersOf(markerSize)
   const crlf = (content.match(/\r\n/g) ?? []).length
   const lf = (content.match(/\n/g) ?? []).length - crlf
   const eol: Eol = crlf > lf ? '\r\n' : '\n'
@@ -143,7 +172,7 @@ export function parseConflictFile(content: string): ParsedConflict | null {
     segments.push({ kind: 'text', lines: text })
     lineEnds.push(segEnds)
   }
-  return { segments, eol, endsWithEol, lineEnds }
+  return { segments, eol, endsWithEol, lineEnds, markerSize }
 }
 
 /** コンフリクトのブロックごとの内容ダイジェスト（ブロックの順）。内容が変われば値が変わる */
@@ -171,7 +200,11 @@ export function applyConflictChoices(
   parsed: ParsedConflict,
   choices: Record<number, ConflictChoice>
 ): string {
-  const { segments, lineEnds, endsWithEol } = parsed
+  const { segments, lineEnds, endsWithEol, markerSize } = parsed
+  // 未選択のブロックのマーカー。マーカーが残っている(=ファイルに markerSize 文字の行がある)
+  // ときだけ作る
+  const marker = (ch: string, label = ''): string =>
+    ch.repeat(markerSize) + (label ? ` ${label}` : '')
   const blockCount = segments.filter((s) => s.kind === 'conflict').length
   // キーは 0 始まりの正規の 10 進表記だけ受け付ける（'' や '01' は Number では有効な番号になるが、
   // choices[index] の参照で見つからず、黙って未選択として扱われてしまう）
@@ -208,15 +241,15 @@ export function applyConflictChoices(
       emit(seg.ours, oursEnds)
       emit(seg.theirs, theirsEnds)
     } else {
-      out.push([seg.oursLabel ? `<<<<<<< ${seg.oursLabel}` : '<<<<<<<', ends[0]])
+      out.push([marker('<', seg.oursLabel), ends[0]])
       emit(seg.ours, oursEnds)
       if (seg.base) {
-        out.push([seg.baseLabel ? `||||||| ${seg.baseLabel}` : '|||||||', ends[baseStart]])
+        out.push([marker('|', seg.baseLabel), ends[baseStart]])
         emit(seg.base, ends.slice(baseStart + 1, sepIndex))
       }
-      out.push(['=======', ends[sepIndex]])
+      out.push([marker('='), ends[sepIndex]])
       emit(seg.theirs, theirsEnds)
-      out.push([seg.theirsLabel ? `>>>>>>> ${seg.theirsLabel}` : '>>>>>>>', closeEnd])
+      out.push([marker('>', seg.theirsLabel), closeEnd])
     }
   })
   if (out.length === 0) return ''

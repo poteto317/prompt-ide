@@ -667,9 +667,7 @@ describe('EditorPanel — diff タブ', () => {
       />
     )
     expect(screen.getByText('自分の行')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'ブロック 1 を自分の内容にする' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ブロック 1 の自分を採用' })).toBeInTheDocument()
     expect(screen.queryByText('差分はありません')).not.toBeInTheDocument()
     expect(document.querySelector('.diff-view')).toBeNull()
   })

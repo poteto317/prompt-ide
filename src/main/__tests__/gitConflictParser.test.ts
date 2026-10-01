@@ -453,3 +453,139 @@ describe('digestConflictBlocks', () => {
     expect(d[0]).toMatch(/^[0-9a-f]{40}$/)
   })
 })
+
+// .gitattributes の conflict-marker-size=N のファイルでは、git は N 文字のマーカーを書く
+describe('マーカーの長さ(conflict-marker-size)', () => {
+  const block = (n: number, withLabels = true): string[] => [
+    'a',
+    '<'.repeat(n) + (withLabels ? ' HEAD' : ''),
+    'mine',
+    '='.repeat(n),
+    'theirs',
+    '>'.repeat(n) + (withLabels ? ' feature' : ''),
+    'z',
+    ''
+  ]
+
+  it.each([3, 7, 10])('サイズ %i のマーカーを解析し、ラベルを取り出す', (n) => {
+    const r = parseConflictFile(block(n).join('\n'), n)
+    expect(r?.segments).toEqual([
+      { kind: 'text', lines: ['a'] },
+      {
+        kind: 'conflict',
+        ours: ['mine'],
+        theirs: ['theirs'],
+        oursLabel: 'HEAD',
+        theirsLabel: 'feature'
+      },
+      { kind: 'text', lines: ['z'] }
+    ])
+    expect(r?.markerSize).toBe(n)
+  })
+
+  it.each([3, 7, 10])('サイズ %i のラベルの無いマーカーも解析する', (n) => {
+    const r = parseConflictFile(block(n, false).join('\n'), n)
+    expect(r?.segments[1]).toEqual({
+      kind: 'conflict',
+      ours: ['mine'],
+      theirs: ['theirs'],
+      oursLabel: '',
+      theirsLabel: ''
+    })
+  })
+
+  it('省略時は 7 文字', () => {
+    expect(parseConflictFile(block(7).join('\n'))?.markerSize).toBe(7)
+    expect(parseConflictFile(block(10).join('\n'))?.segments).toEqual([
+      { kind: 'text', lines: block(10).slice(0, -1) }
+    ])
+  })
+
+  it('サイズ 10 のとき、7 文字のマーカーの行は本文として扱う', () => {
+    const c = [
+      '<<<<<<<<<< HEAD',
+      '<<<<<<< x',
+      '=======',
+      '==========',
+      '>>>>>>> y',
+      '>>>>>>>>>> feature',
+      ''
+    ].join('\n')
+    expect(parseConflictFile(c, 10)?.segments).toEqual([
+      {
+        kind: 'conflict',
+        ours: ['<<<<<<< x', '======='],
+        theirs: ['>>>>>>> y'],
+        oursLabel: 'HEAD',
+        theirsLabel: 'feature'
+      }
+    ])
+  })
+
+  it('サイズ 10 のとき、11 文字の行もマーカーではない', () => {
+    const c = ['<<<<<<<<<<<', 'x', ''].join('\n')
+    expect(parseConflictFile(c, 10)?.segments).toEqual([
+      { kind: 'text', lines: ['<<<<<<<<<<<', 'x'] }
+    ])
+  })
+
+  it('サイズ 10 の diff3 の基底マーカーを解析する', () => {
+    const c = [
+      '<<<<<<<<<< HEAD',
+      'mine',
+      '|||||||||| base',
+      'orig',
+      '==========',
+      'theirs',
+      '>>>>>>>>>> feature',
+      ''
+    ].join('\n')
+    expect(parseConflictFile(c, 10)?.segments).toEqual([
+      {
+        kind: 'conflict',
+        ours: ['mine'],
+        base: ['orig'],
+        baseLabel: 'base',
+        theirs: ['theirs'],
+        oursLabel: 'HEAD',
+        theirsLabel: 'feature'
+      }
+    ])
+  })
+
+  it.each([3, 10])('サイズ %i の未選択のブロックを同じ長さのマーカーで書き戻す', (n) => {
+    const c = [
+      '<'.repeat(n) + ' HEAD',
+      'mine',
+      '|'.repeat(n) + ' base',
+      'orig',
+      '='.repeat(n),
+      'theirs',
+      '>'.repeat(n) + ' feature',
+      '<'.repeat(n),
+      'm2',
+      '='.repeat(n),
+      't2',
+      '>'.repeat(n),
+      ''
+    ].join('\n')
+    const r = parseConflictFile(c, n)
+    if (!r) throw new Error('解析できませんでした')
+    expect(applyConflictChoices(r, {})).toBe(c)
+    expect(applyConflictChoices(r, { 0: 'theirs' })).toBe(
+      ['theirs', '<'.repeat(n), 'm2', '='.repeat(n), 't2', '>'.repeat(n), ''].join('\n')
+    )
+  })
+
+  it('hasConflictMarker はサイズごとにマーカーを判定する', () => {
+    expect(hasConflictMarker('<<<<<<<<<< HEAD', 10)).toBe(true)
+    expect(hasConflictMarker('|||||||||| base', 10)).toBe(true)
+    expect(hasConflictMarker('>>>>>>>>>>', 10)).toBe(true)
+    expect(hasConflictMarker('<<<<<<< HEAD', 10)).toBe(false)
+    expect(hasConflictMarker('<<<<<<<<<< HEAD')).toBe(false)
+    expect(hasConflictMarker('<<<<<<< HEAD')).toBe(true)
+    expect(hasConflictMarker('<<< HEAD', 3)).toBe(true)
+    expect(hasConflictMarker('<<<<<<< HEAD', 3)).toBe(false)
+    expect(hasConflictMarker('==========', 10)).toBe(false)
+  })
+})
