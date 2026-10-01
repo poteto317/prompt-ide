@@ -11,6 +11,7 @@ import {
   buildTooLargeDiffMessage,
   buildEmptyFileDiffMessage
 } from './gitDiffFormatter'
+import { parseNulSeparatedPaths } from './gitPathParsing'
 import { parseGitLogOutput } from './gitLogFormatter'
 import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName, getBranchNameRuleViolation } from '@shared/branchName'
@@ -85,15 +86,6 @@ type DiscardTargetKind =
   | 'intent-to-add'
   | 'overlaps-untracked'
   | 'tracked'
-
-// -z(NUL 区切り)で出力されたパスの一覧。ls-files -u の行は「mode sha stage<TAB>path」の
-// 形式のため、withStageInfo のときは最初の TAB より後ろをパスとして取り出す
-function parseNulSeparatedPaths(output: string, withStageInfo = false): string[] {
-  return output
-    .split('\0')
-    .filter((entry) => entry !== '')
-    .map((entry) => (withStageInfo ? entry.slice(entry.indexOf('\t') + 1) : entry))
-}
 
 // restore --worktree が、対象と重なる未追跡(ignored を含む)のファイルを確認なしで消してしまう
 // 配置かを調べる。どちらも実機で再現した(レビュー指摘):

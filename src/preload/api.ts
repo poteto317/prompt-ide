@@ -6,6 +6,8 @@ import type {
   GitStatusResult,
   GitLogEntry,
   GitBranch,
+  GitStashEntry,
+  StashPopResult,
   HistoryEntry,
   ModelSettings,
   Prompt,
@@ -60,6 +62,10 @@ export const api = {
     ipcRenderer.invoke('git:deleteBranch', branchName, force),
   mergeBranch: (branchName: string): Promise<void> =>
     ipcRenderer.invoke('git:mergeBranch', branchName),
+  getStashes: (): Promise<GitStashEntry[]> => ipcRenderer.invoke('git:getStashes'),
+  stashPush: (message: string): Promise<void> => ipcRenderer.invoke('git:stashPush', message),
+  stashPop: (sha: string): Promise<StashPopResult> => ipcRenderer.invoke('git:stashPop', sha),
+  stashDrop: (sha: string): Promise<void> => ipcRenderer.invoke('git:stashDrop', sha),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),

@@ -88,6 +88,22 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     () => api.mergeBranch('feature/x'),
     ['git:mergeBranch', 'feature/x']
   ],
+  ['getStashes は git:getStashes チャンネルを呼び出す', () => api.getStashes(), ['git:getStashes']],
+  [
+    'stashPush は git:stashPush チャンネルにメッセージを渡す',
+    () => api.stashPush('msg'),
+    ['git:stashPush', 'msg']
+  ],
+  [
+    'stashPop は git:stashPop チャンネルに SHA を渡す',
+    () => api.stashPop('a'.repeat(40)),
+    ['git:stashPop', 'a'.repeat(40)]
+  ],
+  [
+    'stashDrop は git:stashDrop チャンネルに SHA を渡す',
+    () => api.stashDrop('a'.repeat(40)),
+    ['git:stashDrop', 'a'.repeat(40)]
+  ],
   [
     'hasApiKey は settings:hasApiKey チャンネルを呼び出す',
     () => api.hasApiKey(),
@@ -160,6 +176,14 @@ describe('api', () => {
   it.each(invokeCases)('%s', (_name, call, expectedArgs) => {
     call()
     expect(mockInvoke).toHaveBeenCalledWith(...expectedArgs)
+  })
+})
+
+describe('stashPop の戻り値', () => {
+  it('git:stashPop の結果をそのまま返す(警告つきの結果を落とさない)', async () => {
+    const result = { status: 'dropFailed', message: 'm' }
+    mockInvoke.mockResolvedValue(result)
+    await expect(api.stashPop('a'.repeat(40))).resolves.toBe(result)
   })
 })
 

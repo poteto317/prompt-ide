@@ -23,6 +23,10 @@ const mockCheckoutBranch = vi.hoisted(() => vi.fn())
 const mockCreateBranch = vi.hoisted(() => vi.fn())
 const mockDeleteBranch = vi.hoisted(() => vi.fn())
 const mockMergeBranch = vi.hoisted(() => vi.fn())
+const mockGetStashes = vi.hoisted(() => vi.fn())
+const mockStashPush = vi.hoisted(() => vi.fn())
+const mockStashPop = vi.hoisted(() => vi.fn())
+const mockStashDrop = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
@@ -48,6 +52,13 @@ vi.mock('../../gitService', () => ({
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
     staged && renamedFrom !== undefined
+}))
+
+vi.mock('../../gitStashService', () => ({
+  getStashes: mockGetStashes,
+  stashPush: mockStashPush,
+  stashPop: mockStashPop,
+  stashDrop: mockStashDrop
 }))
 
 vi.mock('../../gitApply', () => ({
@@ -1197,6 +1208,97 @@ describe('registerGitHandlers', () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
       registerGitHandlers(mockIpcMain, folderAccess)
       await expect(getRegisteredHandler('git:mergeBranch')(makeEvent(1), 123)).rejects.toThrow(
+        'No folder open'
+      )
+    })
+  })
+
+  describe('git:getStashes', () => {
+    it('allowedFolder を引数に getStashes を呼び、結果を返す', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetStashes.mockResolvedValue([{ sha: 'a'.repeat(40) }])
+      await expect(getRegisteredHandler('git:getStashes')(makeEvent(1))).resolves.toEqual([
+        { sha: 'a'.repeat(40) }
+      ])
+      expect(mockGetStashes).toHaveBeenCalledWith('/project')
+    })
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:getStashes')(makeEvent(1))).rejects.toThrow(
+        'No folder open'
+      )
+    })
+  })
+
+  describe('git:stashPush', () => {
+    it('allowedFolder とメッセージを引数に stashPush を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockStashPush.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:stashPush')(makeEvent(1), 'msg')
+      expect(mockStashPush).toHaveBeenCalledWith('/project', 'msg')
+    })
+    it.each([null, undefined, 123, {}])(
+      'メッセージが文字列でない(%s)と stashPush を呼ばずに拒否する',
+      async (bad) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(getRegisteredHandler('git:stashPush')(makeEvent(1), bad)).rejects.toThrow(
+          'Invalid stash message'
+        )
+        expect(mockStashPush).not.toHaveBeenCalled()
+      }
+    )
+    // 型検証より先にフォルダの許可を確認する
+    it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:stashPush')(makeEvent(1), 123)).rejects.toThrow(
+        'No folder open'
+      )
+    })
+  })
+
+  describe('git:stashPop の戻り値', () => {
+    it('service の結果をそのまま返す(dropFailed / rollbackFailed の警告も落とさない)', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      const result = { status: 'dropFailed', message: 'm' }
+      mockStashPop.mockResolvedValue(result)
+      await expect(
+        getRegisteredHandler('git:stashPop')(makeEvent(1), 'a'.repeat(40))
+      ).resolves.toBe(result)
+    })
+  })
+
+  describe.each([
+    ['git:stashPop', () => mockStashPop],
+    ['git:stashDrop', () => mockStashDrop]
+  ] as const)('%s', (channel, getMock) => {
+    it('allowedFolder と SHA を引数に service を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      getMock().mockResolvedValue(undefined)
+      await getRegisteredHandler(channel)(makeEvent(1), 'a'.repeat(40))
+      expect(getMock()).toHaveBeenCalledWith('/project', 'a'.repeat(40))
+    })
+    it.each([null, undefined, 123, {}])(
+      'SHA が文字列でない(%s)と service を呼ばずに拒否する',
+      async (bad) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(getRegisteredHandler(channel)(makeEvent(1), bad)).rejects.toThrow(
+          'Invalid stash id'
+        )
+        expect(getMock()).not.toHaveBeenCalled()
+      }
+    )
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler(channel)(makeEvent(1), 123)).rejects.toThrow(
         'No folder open'
       )
     })

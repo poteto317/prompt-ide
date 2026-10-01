@@ -21,6 +21,7 @@ import {
   deleteBranch,
   mergeBranch
 } from '../gitService'
+import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -152,6 +153,15 @@ function assertBranchNameArg(value: unknown): asserts value is string {
 // force は厳密に boolean だけを受け付ける('true' 等の truthy な値で強制削除されないため)
 function assertForceFlagArg(value: unknown): asserts value is boolean {
   if (typeof value !== 'boolean') throw new Error('Invalid force flag')
+}
+
+function assertStashMessageArg(value: unknown): asserts value is string {
+  if (typeof value !== 'string') throw new Error('Invalid stash message')
+}
+
+// 値の形式(40 桁の 16 進数)と、現在の一覧にあるかの検証は service 層が行う
+function assertStashIdArg(value: unknown): asserts value is string {
+  if (typeof value !== 'string') throw new Error('Invalid stash id')
 }
 
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
@@ -314,5 +324,28 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = getAllowedFolder(folderAccess, event)
     assertBranchNameArg(branchName)
     await mergeBranch(allowedFolder, branchName)
+  })
+
+  ipcMain.handle('git:getStashes', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    return getStashes(allowedFolder)
+  })
+
+  ipcMain.handle('git:stashPush', async (event: IpcMainInvokeEvent, message: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertStashMessageArg(message)
+    await stashPush(allowedFolder, message)
+  })
+
+  ipcMain.handle('git:stashPop', async (event: IpcMainInvokeEvent, sha: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertStashIdArg(sha)
+    return stashPop(allowedFolder, sha)
+  })
+
+  ipcMain.handle('git:stashDrop', async (event: IpcMainInvokeEvent, sha: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertStashIdArg(sha)
+    await stashDrop(allowedFolder, sha)
   })
 }

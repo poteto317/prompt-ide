@@ -6,6 +6,8 @@ import type {
   GitStatusResult,
   GitLogEntry,
   GitBranch,
+  GitStashEntry,
+  StashPopResult,
   HistoryEntry,
   ModelSettings,
   Prompt,
@@ -48,6 +50,10 @@ declare global {
       createBranch(branchName: string): Promise<void>
       deleteBranch(branchName: string, force: boolean): Promise<DeleteBranchResult>
       mergeBranch(branchName: string): Promise<void>
+      getStashes(): Promise<GitStashEntry[]>
+      stashPush(message: string): Promise<void>
+      stashPop(sha: string): Promise<StashPopResult>
+      stashDrop(sha: string): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>
