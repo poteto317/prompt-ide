@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { parseNulSeparatedPaths } from '../gitPathParsing'
+import {
+  parseNulSeparatedPaths,
+  parseUnstagedStatusPaths,
+  toLiteralPathspec
+} from '../gitPathParsing'
+import { isUnstagedFile } from '../../renderer/src/lib/gitUtils'
 
 describe('parseNulSeparatedPaths', () => {
   it('NUL 区切りのパスを配列にする', () => {
@@ -37,5 +42,135 @@ describe('parseNulSeparatedPaths', () => {
 
   it('withStageInfo で TAB の無い行は全体をパスとする', () => {
     expect(parseNulSeparatedPaths('plain.txt\0', true)).toEqual(['plain.txt'])
+  })
+})
+
+describe('toLiteralPathspec', () => {
+  it('パスに :(literal) 接頭辞を付ける', () => {
+    expect(toLiteralPathspec('src/index.ts')).toBe(':(literal)src/index.ts')
+  })
+
+  it('グロブとして解釈されうる文字を含むパスもそのまま後ろに続ける', () => {
+    expect(toLiteralPathspec('a[1].txt')).toBe(':(literal)a[1].txt')
+  })
+})
+
+// 出力形式は mktemp の一時リポジトリで git status --porcelain -z --untracked-files=all を実行して確認した:
+// ステージ済みのリネームは「R  新\0旧\0」、ステージ済み + 作業ツリーは「RM 新\0旧\0」、
+// ネストした git リポジトリは「?? nested/\0」、コンフリクトは UU / AA / UD / DU など
+describe('parseUnstagedStatusPaths', () => {
+  it.each([
+    [' M a.txt\0', ['a.txt']],
+    ['M  a.txt\0', []],
+    ['MM a.txt\0', ['a.txt']],
+    ['?? n.txt\0', ['n.txt']],
+    ['UU c.txt\0', ['c.txt']],
+    ['AA c.txt\0', ['c.txt']],
+    ['UD c.txt\0', ['c.txt']],
+    ['DU c.txt\0', ['c.txt']],
+    [' D d.txt\0', ['d.txt']],
+    [' A i.txt\0', ['i.txt']],
+    ['A  s.txt\0', []],
+    ['D  s.txt\0', []]
+  ])('%j を解釈する', (output, expected) => {
+    expect(parseUnstagedStatusPaths(output)).toEqual(expected)
+  })
+
+  it('ステージ済みのリネームは、旧パスを別のエントリとして読まない', () => {
+    expect(parseUnstagedStatusPaths('R  new.txt\0old.txt\0 M b.txt\0')).toEqual(['b.txt'])
+  })
+
+  it('ステージ済みのリネームに作業ツリーの変更があれば新パスだけ返す', () => {
+    expect(parseUnstagedStatusPaths('RM new.txt\0old.txt\0')).toEqual(['new.txt'])
+  })
+
+  it('ステージ済みのコピーも旧パスを読み飛ばす', () => {
+    expect(parseUnstagedStatusPaths('C  new.txt\0old.txt\0?? n.txt\0')).toEqual(['n.txt'])
+  })
+
+  it('旧パスが「XY 」で始まる形に見えても、リネームの直後なら読み飛ばす', () => {
+    expect(parseUnstagedStatusPaths('R  new.txt\0?? old.txt\0 M b.txt\0')).toEqual(['b.txt'])
+  })
+
+  // git add -N で新パスを intent-to-add にしたリネームは、index が ' ' で workingDir が 'R' で出る
+  // (実 git 2.50.1 で確認: ' R new-name.txt\0old-name.txt\0')。旧パスも読み飛ばさないと、
+  // 旧パスを別のエントリとして読んで件数がずれる
+  it.each([
+    [' R new-name.txt\0old-name.txt\0', ['new-name.txt']],
+    [' R new.txt\0old.txt\0', ['new.txt']],
+    [' R new.txt\0o\0 M b.txt\0', ['new.txt', 'b.txt']],
+    [' C new.txt\0old-name.txt\0 M b.txt\0', ['new.txt', 'b.txt']],
+    [' R new.txt\0 M old.txt\0 M b.txt\0', ['new.txt', 'b.txt']]
+  ])('workingDir が R / C のエントリは旧パスを読み飛ばす: %j', (output, expected) => {
+    expect(parseUnstagedStatusPaths(output)).toEqual(expected)
+  })
+
+  it('末尾の / (ネストした git リポジトリ)を削る', () => {
+    expect(parseUnstagedStatusPaths('?? sub/\0')).toEqual(['sub'])
+  })
+
+  it('日本語・空白・改行を含むパスをそのまま返す', () => {
+    expect(parseUnstagedStatusPaths(' M 日本語 a.txt\0?? x\ny.txt\0')).toEqual([
+      '日本語 a.txt',
+      'x\ny.txt'
+    ])
+  })
+
+  it('出力の順に返す', () => {
+    expect(parseUnstagedStatusPaths(' M b.txt\0?? a.txt\0 D c.txt\0')).toEqual([
+      'b.txt',
+      'a.txt',
+      'c.txt'
+    ])
+  })
+
+  it('空文字は空配列', () => {
+    expect(parseUnstagedStatusPaths('')).toEqual([])
+  })
+
+  // renderer の「変更」セクションの件数(isUnstagedFile)と main の件数がずれると、確認ダイアログで
+  // 見せた件数と実行時の件数が常に食い違い、一括の取り消しが動かなくなる(または見せていない
+  // 取り消しを実行する)。同じ表を両方向から固定する
+  describe('renderer の isUnstagedFile と件数の定義が一致する', () => {
+    const combos: [string, string][] = [
+      [' ', 'M'],
+      [' ', 'D'],
+      [' ', 'A'],
+      [' ', 'T'],
+      [' ', 'R'],
+      [' ', 'C'],
+      ['M', ' '],
+      ['A', ' '],
+      ['D', ' '],
+      ['R', ' '],
+      ['C', ' '],
+      ['M', 'M'],
+      ['M', 'D'],
+      ['A', 'M'],
+      ['R', 'M'],
+      ['A', 'D'],
+      ['?', '?'],
+      ['U', 'U'],
+      ['A', 'A'],
+      ['D', 'D'],
+      ['A', 'U'],
+      ['U', 'D'],
+      ['U', 'A'],
+      ['D', 'U']
+    ]
+
+    it.each(combos)('index=%j workingDir=%j: main が数えるなら renderer も数える', (i, w) => {
+      const rest = [i, w].some((c) => c === 'R' || c === 'C') ? 'old.txt\0' : ''
+      const countedByMain = parseUnstagedStatusPaths(`${i}${w} p.txt\0${rest}`).length === 1
+      expect(countedByMain).toBe(isUnstagedFile({ path: 'p.txt', index: i, workingDir: w }))
+    })
+
+    it.each(combos)('index=%j workingDir=%j: renderer が数えるなら main も数える', (i, w) => {
+      const rest = [i, w].some((c) => c === 'R' || c === 'C') ? 'old.txt\0' : ''
+      const file = { path: 'p.txt', index: i, workingDir: w }
+      expect(isUnstagedFile(file)).toBe(
+        parseUnstagedStatusPaths(`${i}${w} p.txt\0${rest}`).includes('p.txt')
+      )
+    })
   })
 })

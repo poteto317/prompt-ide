@@ -7,6 +7,9 @@ import { StringDecoder } from 'node:string_decoder'
 // 一定サイズで打ち切る
 const MAX_STDERR_BYTES = 64 * 1024
 
+// stdout の蓄積上限。--numstat -z の出力(パッチが触るパスの一覧)を受け取るために蓄積する
+const MAX_STDOUT_BYTES = 64 * 1024
+
 // git apply がハングした場合のタイムアウト。ファイルシステムのロック競合・
 // Windows のウイルス対策ソフトによる横取り・壊れた index 等で子プロセスが
 // 'close'/'error' のどちらも発火しないまま止まると、タイムアウトが無ければ
@@ -27,7 +30,7 @@ export function runGitApply(
   filePath: string,
   args: string[],
   input: string
-): Promise<void> {
+): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     // proc/stdin の 'error' と 'close' は組み合わせによっては両方発火しうる
     // (例: spawn 失敗後の EPIPE で stdin が 'error' を出した後に 'close' も来る)。
@@ -56,8 +59,17 @@ export function runGitApply(
     // stdout を誰も読まないと、Node の Readable はポーズ状態のままバッファし
     // 続け、OS のパイプバッファ(通常 64KB 程度)が満杯になった時点で子プロセス
     // 側の書き込みがブロックされる。git apply は通常成功時に何も出力しないが、
-    // reject 情報等で予期せず出力される可能性はゼロではないため、読み捨てて防ぐ
-    proc.stdout.on('data', () => {})
+    // reject 情報等で予期せず出力される可能性はゼロではないため、上限を超えた分は
+    // 読み捨てつつ、'data' を読み続けて防ぐ。--numstat のように stdout が結果になる
+    // 呼び出しのため、上限までは蓄積して resolve で返す
+    let stdout = ''
+    let stdoutBytes = 0
+    const stdoutDecoder = new StringDecoder('utf-8')
+    proc.stdout.on('data', (chunk: Buffer) => {
+      if (stdoutBytes >= MAX_STDOUT_BYTES) return
+      stdoutBytes += chunk.length
+      stdout += stdoutDecoder.write(chunk)
+    })
     let stderr = ''
     // 上限判定は stderr.length(UTF-16 コード単位数)ではなく chunk.length
     // (Buffer の実バイト数)の累計で行う。マルチバイト文字(日本語等)は
@@ -87,7 +99,7 @@ export function runGitApply(
       settled = true
       clearTimeout(timeoutId)
       if (code === 0) {
-        resolvePromise()
+        resolvePromise(stdout)
       } else {
         reject(new Error(`git apply failed for ${filePath}: ${stderr.trim()}`))
       }
@@ -100,11 +112,13 @@ export function runGitApply(
 // --no-ignore-whitespace は、ユーザーの gitconfig の apply.ignoreWhitespace を
 // 打ち消すために明示する。これが change に設定されていると --ignore-space-change
 // 相当となり、空白だけが異なる別の位置にハンクがマッチして、ユーザーが選んで
-// いない箇所が index に入り得る。getDiff 側でも同じ方針で diff.noprefix /
+// いない箇所が index / 作業ツリーに入り得る。getDiff 側でも同じ方針で diff.noprefix /
 // diff.external / textconv / color.ui を打ち消している。
-// stageHunk/unstageHunk は --reverse の有無だけが異なるため、共有フラグを
-// 一箇所にまとめる(将来もう1つフラグが必要になったとき、直し忘れで
-// 片方だけ古いフラグのまま残ることを防ぐ)
+// stageHunk / unstageHunk / discardHunkPatch は --cached と --reverse の組み合わせだけが
+// 異なるため、共有フラグを一箇所にまとめる(将来もう1つフラグが必要になったとき、
+// 直し忘れで片方だけ古いフラグのまま残ることを防ぐ)
+const HUNK_APPLY_COMMON_ARGS = ['--whitespace=nowarn', '--no-ignore-whitespace', '-']
+
 async function runHunkApply(
   folderPath: string,
   filePath: string,
@@ -113,7 +127,7 @@ async function runHunkApply(
 ): Promise<void> {
   const args = ['apply', '--cached']
   if (options.reverse) args.push('--reverse')
-  args.push('--whitespace=nowarn', '--no-ignore-whitespace', '-')
+  args.push(...HUNK_APPLY_COMMON_ARGS)
   await runGitApply(folderPath, filePath, args, patch)
 }
 
@@ -123,4 +137,34 @@ export function stageHunk(folderPath: string, filePath: string, patch: string): 
 
 export function unstageHunk(folderPath: string, filePath: string, patch: string): Promise<void> {
   return runHunkApply(folderPath, filePath, patch, { reverse: true })
+}
+
+// ハンクの取り消し。作業ツリーだけへ逆適用する(--cached を付けないので index は変わらない)
+export async function discardHunkPatch(
+  folderPath: string,
+  filePath: string,
+  patch: string
+): Promise<void> {
+  await runGitApply(folderPath, filePath, ['apply', '--reverse', ...HUNK_APPLY_COMMON_ARGS], patch)
+}
+
+// パッチが触るパスの一覧。--numstat -z は出力が NUL 区切りで、通常は `<追加>\t<削除>\t<パス>\0`
+// (バイナリは `-\t-\t<パス>\0`)になる。ファイルは書き換えない。
+// git 2.50.1 の実機では、git apply --numstat -z はリネームでも新しいパスだけを返す
+// (`git diff --numstat -z` は `<追加>\t<削除>\t\0<旧>\0<新>\0`)。どちらの形式でも空要素を除いて
+// 解釈できるようにしている
+// reverse: 逆適用したときの対象を調べる(--reverse では old / new が入れ替わり、順方向とは
+// 別のファイルを指しうる)
+export async function listPatchPaths(
+  folderPath: string,
+  patch: string,
+  options: { reverse: boolean } = { reverse: false }
+): Promise<string[]> {
+  const args = ['apply', '--numstat', '-z', ...(options.reverse ? ['--reverse'] : []), '-']
+  const output = await runGitApply(folderPath, '(patch)', args, patch)
+  return output
+    .split('\0')
+    .filter((token) => token !== '')
+    .map((token) => token.replace(/^\d+\t\d+\t|^-\t-\t/, ''))
+    .filter((path) => path !== '')
 }

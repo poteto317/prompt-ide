@@ -8,7 +8,7 @@ vi.mock('node:child_process', () => ({
   spawn: mockSpawn
 }))
 
-import { stageHunk, unstageHunk } from '../gitApply'
+import { stageHunk, unstageHunk, discardHunkPatch, listPatchPaths, runGitApply } from '../gitApply'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -249,5 +249,102 @@ describe('unstageHunk', () => {
       ['apply', '--cached', '--reverse', '--whitespace=nowarn', '--no-ignore-whitespace', '-'],
       { cwd: '/project' }
     )
+  })
+})
+
+describe('discardHunkPatch', () => {
+  it('作業ツリーへ逆適用する(--cached を付けず --reverse を付ける)', async () => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = discardHunkPatch('/project', 'src/index.ts', 'PATCH_TEXT')
+    emitClose(0)
+    await promise
+    expect(mockSpawn).toHaveBeenCalledWith(
+      'git',
+      ['apply', '--reverse', '--whitespace=nowarn', '--no-ignore-whitespace', '-'],
+      { cwd: '/project' }
+    )
+    expect(proc.stdin.write).toHaveBeenCalledWith('PATCH_TEXT')
+  })
+
+  it('git apply が失敗したら stderr を含むエラーで reject する', async () => {
+    const { proc, emitClose, emitStderr } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = discardHunkPatch('/project', 'src/index.ts', 'PATCH_TEXT')
+    emitStderr('patch does not apply')
+    emitClose(1)
+    await expect(promise).rejects.toThrow(/patch does not apply/)
+  })
+})
+
+describe('listPatchPaths', () => {
+  const run = async (stdout: string, options?: { reverse: boolean }): Promise<string[]> => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = listPatchPaths('/project', 'PATCH_TEXT', options)
+    proc.stdout.emit('data', Buffer.from(stdout))
+    emitClose(0)
+    return promise
+  }
+
+  it('git apply --numstat -z を実行する(ファイルは書き換えない)', async () => {
+    await run('')
+    expect(mockSpawn).toHaveBeenCalledWith('git', ['apply', '--numstat', '-z', '-'], {
+      cwd: '/project'
+    })
+  })
+
+  // 逆適用では old / new が入れ替わり、順方向とは別のファイルを指しうる
+  it('reverse を指定したら --reverse を付けて呼ぶ', async () => {
+    await run('', { reverse: true })
+    expect(mockSpawn).toHaveBeenCalledWith('git', ['apply', '--numstat', '-z', '--reverse', '-'], {
+      cwd: '/project'
+    })
+  })
+
+  it('通常の出力からパスを取り出す', async () => {
+    expect(await run('1\t1\tf.txt\0')).toEqual(['f.txt'])
+  })
+
+  it('バイナリ(-\t-\t)のパスも取り出す', async () => {
+    expect(await run('-\t-\tb.bin\0')).toEqual(['b.bin'])
+  })
+
+  it('複数ファイルのパッチは全部のパスを返す', async () => {
+    expect(await run('1\t0\tf.txt\0' + '2\t3\tsp ace.txt\0')).toEqual(['f.txt', 'sp ace.txt'])
+  })
+
+  // diff --numstat -z の形式。git apply --numstat -z は新しいパスだけを返す(実機で確認)が、
+  // 旧・新の 2 件を返す形式でも空要素を除いて解釈できるようにしておく
+  it('リネーム形式(空のパスの後に旧・新)は空要素を除いて 2 件返す', async () => {
+    expect(await run('0\t0\t\0old\0new\0')).toEqual(['old', 'new'])
+  })
+
+  it('空の出力は空配列を返す', async () => {
+    expect(await run('')).toEqual([])
+  })
+})
+
+describe('runGitApply の stdout', () => {
+  it('stdout を文字列で返す(マルチバイトがチャンク境界で分割されても壊れない)', async () => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = runGitApply('/project', 'f', ['apply', '-'], 'P')
+    const bytes = Buffer.from('あ')
+    proc.stdout.emit('data', bytes.subarray(0, 1))
+    proc.stdout.emit('data', bytes.subarray(1))
+    emitClose(0)
+    expect(await promise).toBe('あ')
+  })
+
+  it('stdout が上限(64KB)を超えても読み続け、蓄積は上限で打ち切る', async () => {
+    const { proc, emitClose } = createMockProcess()
+    mockSpawn.mockReturnValue(proc)
+    const promise = runGitApply('/project', 'f', ['apply', '-'], 'P')
+    for (let i = 0; i < 2000; i++) proc.stdout.emit('data', Buffer.from('a'.repeat(200)))
+    emitClose(0)
+    const out = await promise
+    expect(out.length).toBeGreaterThanOrEqual(64 * 1024)
+    expect(out.length).toBeLessThan(64 * 1024 + 1000)
   })
 })

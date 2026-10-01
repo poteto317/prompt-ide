@@ -5,7 +5,6 @@ import {
   getGitStatus,
   stageFile,
   unstageFile,
-  discardFileChanges,
   commit,
   getDiff,
   getLog,
@@ -21,6 +20,7 @@ import {
   deleteBranch,
   mergeBranch
 } from '../gitService'
+import { discardFileChanges, discardHunk, discardAllChanges } from '../gitDiscardService'
 import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
@@ -164,6 +164,18 @@ function assertStashIdArg(value: unknown): asserts value is string {
   if (typeof value !== 'string') throw new Error('Invalid stash id')
 }
 
+// パッチの中身(対象ファイルが 1 件だけか等)の検証は service 層が行う
+function assertPatchArg(value: unknown): asserts value is string {
+  if (typeof value !== 'string') throw new Error('Invalid patch')
+}
+
+// 実行時の件数との一致は service 層が確かめる。ここでは非負の整数だけを通す
+function assertCountArg(value: unknown): asserts value is number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error('Invalid count')
+  }
+}
+
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:getStatus', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
@@ -190,6 +202,27 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
       filePath
     )
     await discardFileChanges(allowedFolder, relativePath, moveToTrash)
+  })
+
+  ipcMain.handle(
+    'git:discardHunk',
+    async (event: IpcMainInvokeEvent, filePath: string, patch: unknown) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      assertPatchArg(patch)
+      // git:discardChanges と同じく、index の表記のまま相対パス化する
+      const relativePath = await resolveAndAssertStatusRelativePath(
+        folderAccess,
+        allowedFolder,
+        filePath
+      )
+      await discardHunk(allowedFolder, relativePath, patch)
+    }
+  )
+
+  ipcMain.handle('git:discardAll', async (event: IpcMainInvokeEvent, expectedCount: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertCountArg(expectedCount)
+    return discardAllChanges(allowedFolder, expectedCount, moveToTrash)
   })
 
   ipcMain.handle(

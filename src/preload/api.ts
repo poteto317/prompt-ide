@@ -2,6 +2,7 @@ import { ipcRenderer } from 'electron'
 import type {
   CLIOnlyToolId,
   DeleteBranchResult,
+  DiscardAllResult,
   FileTreeNode,
   GitStatusResult,
   GitLogEntry,
@@ -34,6 +35,10 @@ export const api = {
     ipcRenderer.invoke('git:unstage', filePath, renamedFrom),
   discardChanges: (filePath: string): Promise<void> =>
     ipcRenderer.invoke('git:discardChanges', filePath),
+  discardHunk: (filePath: string, patch: string): Promise<void> =>
+    ipcRenderer.invoke('git:discardHunk', filePath, patch),
+  discardAll: (expectedCount: number): Promise<DiscardAllResult> =>
+    ipcRenderer.invoke('git:discardAll', expectedCount),
   commitChanges: (message: string): Promise<void> => ipcRenderer.invoke('git:commit', message),
   getDiff: (
     filePath: string,

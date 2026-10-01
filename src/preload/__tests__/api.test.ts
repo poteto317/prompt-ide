@@ -65,6 +65,16 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     () => api.discardChanges('src/a.ts'),
     ['git:discardChanges', 'src/a.ts']
   ],
+  [
+    'discardHunk は git:discardHunk チャンネルに filePath と patch を渡す',
+    () => api.discardHunk('src/a.ts', 'PATCH'),
+    ['git:discardHunk', 'src/a.ts', 'PATCH']
+  ],
+  [
+    'discardAll は git:discardAll チャンネルに件数を渡す',
+    () => api.discardAll(3),
+    ['git:discardAll', 3]
+  ],
   ['push は git:push チャンネルを呼び出す', () => api.push(), ['git:push']],
   ['pull は git:pull チャンネルを呼び出す', () => api.pull(), ['git:pull']],
   ['fetchRemote は git:fetch チャンネルを呼び出す', () => api.fetchRemote(), ['git:fetch']],

@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process'
 import { vi } from 'vitest'
 import { devNull, tmpdir } from 'os'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 // 開発者のグローバル・システムの git 設定(commit.gpgsign、core.hooksPath 等)に左右されない
@@ -72,4 +72,14 @@ export function isCaseInsensitiveFs(): boolean {
   } finally {
     rmSync(probe, { recursive: true, force: true })
   }
+}
+
+// リポジトリ内の相対パスへ書く(親ディレクトリは作る)/ 読む
+export function writeRepoFile(repo: string, path: string, content: string): void {
+  mkdirSync(join(repo, path, '..'), { recursive: true })
+  writeFileSync(join(repo, path), content)
+}
+
+export function readRepoFile(repo: string, path: string): string {
+  return readFileSync(join(repo, path), 'utf8')
 }

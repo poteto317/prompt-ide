@@ -7,6 +7,8 @@ const mockGetGitStatus = vi.hoisted(() => vi.fn())
 const mockStageFile = vi.hoisted(() => vi.fn())
 const mockUnstageFile = vi.hoisted(() => vi.fn())
 const mockDiscardFileChanges = vi.hoisted(() => vi.fn())
+const mockDiscardHunk = vi.hoisted(() => vi.fn())
+const mockDiscardAllChanges = vi.hoisted(() => vi.fn())
 const mockMoveToTrash = vi.hoisted(() => vi.fn())
 const mockCommit = vi.hoisted(() => vi.fn())
 const mockGetDiff = vi.hoisted(() => vi.fn())
@@ -34,7 +36,6 @@ vi.mock('../../gitService', () => ({
   getGitStatus: mockGetGitStatus,
   stageFile: mockStageFile,
   unstageFile: mockUnstageFile,
-  discardFileChanges: mockDiscardFileChanges,
   commit: mockCommit,
   getDiff: mockGetDiff,
   getLog: mockGetLog,
@@ -52,6 +53,12 @@ vi.mock('../../gitService', () => ({
   // そのまま使う(モックで別ロジックを持つと、本番の判定とテストの前提がずれる)
   isStagedRenameDiff: (staged: boolean, renamedFrom: string | undefined): renamedFrom is string =>
     staged && renamedFrom !== undefined
+}))
+
+vi.mock('../../gitDiscardService', () => ({
+  discardFileChanges: mockDiscardFileChanges,
+  discardHunk: mockDiscardHunk,
+  discardAllChanges: mockDiscardAllChanges
 }))
 
 vi.mock('../../gitStashService', () => ({
@@ -230,6 +237,101 @@ describe('registerGitHandlers', () => {
     })
   })
 
+  describe('git:discardHunk', () => {
+    it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:discardHunk')(makeEvent(1), 'src/a.ts', 123)
+      ).rejects.toThrow('No folder open')
+      expect(mockDiscardHunk).not.toHaveBeenCalled()
+    })
+
+    it.each([null, undefined, 123, {}, ['x']])(
+      'patch が文字列でない(%s)と discardHunk を呼ばずに拒否する',
+      async (bad) => {
+        const folderAccess = makeFolderAccess({
+          get: vi.fn().mockReturnValue('/project'),
+          assertWithinFolder: vi.fn().mockResolvedValue(undefined)
+        })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(
+          getRegisteredHandler('git:discardHunk')(makeEvent(1), 'src/a.ts', bad)
+        ).rejects.toThrow('Invalid patch')
+        expect(mockDiscardHunk).not.toHaveBeenCalled()
+      }
+    )
+
+    it('境界チェック後、リポジトリ相対パスと patch を渡して discardHunk を呼ぶ', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardHunk.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:discardHunk')(makeEvent(1), 'src/index.ts', 'PATCH')
+      expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/src/index.ts')
+      expect(mockDiscardHunk).toHaveBeenCalledWith('/project', 'src/index.ts', 'PATCH')
+    })
+
+    it('フォルダ外のパスは discardHunk を呼ばずに Access denied を伝播する', async () => {
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied'))
+      })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(
+        getRegisteredHandler('git:discardHunk')(makeEvent(1), '/outside/file.ts', 'PATCH')
+      ).rejects.toThrow('Access denied')
+      expect(mockDiscardHunk).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('git:discardAll', () => {
+    it('folderAccess が未設定のとき、引数の型に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), 'x')).rejects.toThrow(
+        'No folder open'
+      )
+      expect(mockDiscardAllChanges).not.toHaveBeenCalled()
+    })
+
+    it.each(['3', -1, 1.5, NaN, Infinity, null, undefined])(
+      '件数が非負の整数でない(%s)と discardAllChanges を呼ばずに拒否する',
+      async (bad) => {
+        const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+        registerGitHandlers(mockIpcMain, folderAccess)
+        await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), bad)).rejects.toThrow(
+          'Invalid count'
+        )
+        expect(mockDiscardAllChanges).not.toHaveBeenCalled()
+      }
+    )
+
+    it.each([0, 3])('件数 %s のとき moveToTrash を渡して discardAllChanges を呼ぶ', async (n) => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardAllChanges.mockResolvedValue({ status: 'done' })
+      await getRegisteredHandler('git:discardAll')(makeEvent(1), n)
+      expect(mockDiscardAllChanges).toHaveBeenCalledWith('/project', n, mockMoveToTrash)
+    })
+
+    it.each([
+      { status: 'done' },
+      {
+        status: 'partial',
+        message: '一括の取り消しが途中で失敗しました（1 / 2 件を取り消し済み）: x'
+      }
+    ])('discardAllChanges の結果(%o)をそのまま返す', async (result) => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockDiscardAllChanges.mockResolvedValue(result)
+      await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), 2)).resolves.toEqual(result)
+    })
+  })
+
   describe('git:discardChanges', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
@@ -324,7 +426,7 @@ describe('registerGitHandlers', () => {
       // 以前は realpath で 'd/t.txt' に作り直していた(ls-files が空で未追跡と誤判定され、
       // 実体の d/t.txt がゴミ箱へ移るのを防ぐため)。現在は discardFileChanges が未追跡を
       // ls-files --others で肯定的に確かめ、'linkd/t.txt' は判定不能として拒否する
-      // (gitService.discard.integration.test.ts で実 git により固定)
+      // (gitDiscardService.integration.test.ts で実 git により固定)
       it('シンボリックリンクの祖先ディレクトリを経由したパスも、そのまま渡す', async () => {
         setupDiscard()
         mockRealpath.mockImplementation((p: string) =>
