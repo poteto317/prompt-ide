@@ -444,6 +444,7 @@ Expected: すべて成功。`git status` に、この機能に関係ないファ
 - マージ中の拒否を追加した: `checkoutBranch` / `createBranch`（マージ中）、`stageFile`（未解決のファイル。`ChangesFileItem` も `+` を出さない）、`commit`（未解決あり）、`amendCommit`（マージ中）。いずれも日本語のエラーで、何も実行しない。
 - 確認ダイアログの文言は `コンフリクトした場合はマージ中の状態で止まります。解決するか、マージを中止できます。` に変えた。
 - PR レビュー指摘で次を変えた: `.gitattributes` の `conflict-marker-size` に対応した（`parseConflictFile` / `hasConflictMarker` にマーカーの長さの引数を足し、`gitConflictService` が `git check-attr` で長さを得る）。`pull` もマージ中は日本語で拒否する。`ConflictBlock` のボタンの `aria-label` を表示文言を含む `ブロック <i> の自分を採用` などにした。`MergeBanner` の文言を `buildMergeBannerText` に置き換えた。
+- PR レビュー 2 周目の指摘で、マージ自体が `conflict-marker-size` を変える場合に対応した。マーカーの長さを現在の属性と HEAD の属性（`check-attr --source=HEAD`）の候補（長い順）にし、解析はブロックが取れる最初の候補（`parseConflictFileWithSizes`）を使い、`markConflictResolved` はどれかの候補でマーカーがあれば拒否する（`hasConflictMarkerOfSizes`）。設計書の「既知の制約」を参照。
 
 ## Self-Review
 

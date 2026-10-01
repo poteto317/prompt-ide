@@ -20,6 +20,7 @@ import {
   completeMerge,
   getConflictFile,
   getConflictMarkerSize,
+  getConflictMarkerSizes,
   parseConflictMarkerSizeAttr,
   keepConflictFile,
   markConflictResolved,
@@ -39,6 +40,8 @@ type GitState = {
   unmerged?: string // ls-files -u -z の出力
   mergeHead?: string // rev-parse -q --verify MERGE_HEAD の出力
   markerSizeAttr?: string // check-attr の conflict-marker-size の値(既定 unspecified)
+  // check-attr --source=HEAD の値(省略時は markerSizeAttr と同じ = マージで属性が変わっていない)
+  headMarkerSizeAttr?: string
 }
 let state: GitState
 
@@ -84,7 +87,10 @@ beforeEach(() => {
     if (args[0] === 'rev-parse') return state.mergeHead ?? ''
     if (args[0] === 'check-attr') {
       const path = args[args.length - 1]
-      return `${path}\0conflict-marker-size\0${state.markerSizeAttr ?? 'unspecified'}\0`
+      const value = args.includes('--source=HEAD')
+        ? (state.headMarkerSizeAttr ?? state.markerSizeAttr)
+        : state.markerSizeAttr
+      return `${path}\0conflict-marker-size\0${value ?? 'unspecified'}\0`
     }
     return ''
   })
@@ -748,4 +754,80 @@ describe('マーカーの長さ(conflict-marker-size)', () => {
     await markConflictResolved('/p', 'f.txt')
     expect(mutations()).toEqual([['add', '--', ':(literal)f.txt']])
   })
+})
+
+// マージ自体が .gitattributes の conflict-marker-size を変えると、git が書いたマーカー(マージ前の
+// 属性)とマージ後の check-attr の値がずれる。現在の属性と HEAD の属性の両方を候補にする
+describe('マーカーの長さの候補(マージで属性が変わる場合)', () => {
+  const git = (): Parameters<typeof getConflictMarkerSizes>[0] =>
+    ({ raw: mockRaw }) as unknown as Parameters<typeof getConflictMarkerSizes>[0]
+  const content7 = ['a', '<<<<<<< HEAD', 'mine', '=======', 'theirs', '>>>>>>> feat', ''].join('\n')
+  const content10 = [
+    'a',
+    '<<<<<<<<<< HEAD',
+    'mine',
+    '==========',
+    'theirs',
+    '>>>>>>>>>> feat',
+    ''
+  ].join('\n')
+
+  it('現在の属性と check-attr --source=HEAD の値を、重複を除いて長い順に返す', async () => {
+    state.markerSizeAttr = '10'
+    state.headMarkerSizeAttr = 'unspecified'
+    await expect(getConflictMarkerSizes(git(), '-x.md')).resolves.toEqual([10, 7])
+    expect(gitCalls()).toContainEqual([
+      'check-attr',
+      '--source=HEAD',
+      '-z',
+      'conflict-marker-size',
+      '--',
+      '-x.md'
+    ])
+    state.markerSizeAttr = '10'
+    state.headMarkerSizeAttr = '10'
+    await expect(getConflictMarkerSizes(git(), 'f.txt')).resolves.toEqual([10])
+  })
+
+  it('--source=HEAD が失敗する(未対応の git など)と、既定の 7 を候補にする', async () => {
+    state.markerSizeAttr = '10'
+    mockRaw.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'check-attr' && args.includes('--source=HEAD')) throw new Error('usage')
+      if (args[0] === 'check-attr') return ['f.txt', 'conflict-marker-size', '10', ''].join('\0')
+      return ''
+    })
+    await expect(getConflictMarkerSizes(git(), 'f.txt')).resolves.toEqual([10, 7])
+  })
+
+  it('getConflictFile: 相手側が size=10 を追加したマージ(git は 7 文字で書いた)でもブロックを解析する', async () => {
+    state.markerSizeAttr = '10'
+    state.headMarkerSizeAttr = 'unspecified'
+    mockFs.readFile.mockResolvedValue(Buffer.from(content7))
+    const r = await getConflictFile('/p', 'f.txt')
+    expect(r.status === 'parsed' && r.digests).toHaveLength(1)
+  })
+
+  it('resolveConflictBlocks: 属性を削除するマージ(git は 10 文字で書いた)でも解決できる', async () => {
+    state.markerSizeAttr = 'unspecified'
+    state.headMarkerSizeAttr = '10'
+    mockFs.readFile.mockResolvedValue(Buffer.from(content10))
+    const p = parseConflictFile(content10, 10)
+    if (!p) throw new Error('解析できません')
+    await resolveConflictBlocks('/p', 'f.txt', digestConflictBlocks(p.segments), { 0: 'theirs' })
+    expect(mockFs.writeFile.mock.calls[0][1]).toBe('a\ntheirs\n')
+  })
+
+  it.each([
+    ['10', 'unspecified', content7],
+    ['unspecified', '10', content10]
+  ])(
+    'markConflictResolved: 現在 %s・HEAD %s で、どちらかの長さのマーカーが残れば git add しない',
+    async (current, head, text) => {
+      state.markerSizeAttr = current
+      state.headMarkerSizeAttr = head
+      mockFs.readFile.mockResolvedValue(Buffer.from(text))
+      await expect(markConflictResolved('/p', 'f.txt')).rejects.toThrow('マーカーが残っています')
+      expect(mutations()).toEqual([])
+    }
+  )
 })

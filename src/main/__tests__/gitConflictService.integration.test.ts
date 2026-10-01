@@ -751,3 +751,84 @@ describe('.gitattributes の conflict-marker-size(実 git)', () => {
     expect(unmerged()).not.toBe('')
   })
 })
+
+// マージ自体が .gitattributes の conflict-marker-size を変える場合。git はマージ前の属性(作業ツリー
+// にある .gitattributes、無ければ HEAD のもの)の長さでマーカーを書くため、マージ後の check-attr
+// の値とずれる(実 git 2.50 で確認)
+describe('マージで conflict-marker-size が変わる場合(実 git)', () => {
+  const M = (n: number, ch: string, label = ''): string => ch.repeat(n) + (label ? ` ${label}` : '')
+  const unmerged = (): string => runGit(repo, 'ls-files', '-u', '--', 'f.txt')
+  const ATTR = '*.txt conflict-marker-size=10\n'
+
+  // f.txt を両側で変えてコンフリクトさせる。setup で各ブランチの .gitattributes を用意する
+  function conflict(setup: {
+    base?: () => void
+    feat?: () => void
+    beforeMerge?: () => void
+  }): void {
+    setup.base?.()
+    write('f.txt', lines('top', 'a', 'bottom'))
+    commitAll(repo, 'base')
+    runGit(repo, 'checkout', '-qb', 'feat')
+    setup.feat?.()
+    write('f.txt', lines('top', 'a-theirs', 'bottom'))
+    commitAll(repo, 'feat')
+    runGit(repo, 'checkout', '-q', 'main')
+    write('f.txt', lines('top', 'a-ours', 'bottom'))
+    commitAll(repo, 'main')
+    setup.beforeMerge?.()
+    try {
+      runGit(repo, 'merge', '--no-edit', 'feat')
+    } catch {
+      // コンフリクト
+    }
+  }
+
+  // マーカーが残ったままでは解決済みにできず、ブロックを解決すれば解決済み → 完了できる
+  async function expectRejectThenResolve(): Promise<void> {
+    await expect(markConflictResolved(repo, 'f.txt')).rejects.toThrow('マーカーが残っています')
+    expect(unmerged()).not.toBe('')
+    const r = await getConflictFile(repo, 'f.txt')
+    if (r.status !== 'parsed') throw new Error('解析できません')
+    expect(r.digests).toHaveLength(1)
+    await resolveConflictBlocks(repo, 'f.txt', r.digests, { 0: 'theirs' })
+    expect(read('f.txt')).toBe(lines('top', 'a-theirs', 'bottom'))
+    await markConflictResolved(repo, 'f.txt')
+    expect(unmerged()).toBe('')
+  }
+
+  it('① 相手側が size=10 を追加するマージ: git は 7 文字で書き、拒否・解析・解決できる', async () => {
+    conflict({ feat: () => write('.gitattributes', ATTR) })
+    expect(read('f.txt')).toContain(`${M(7, '<', 'HEAD')}\n`)
+    expect(runGit(repo, 'check-attr', 'conflict-marker-size', '--', 'f.txt')).toContain(': 10')
+    await expectRejectThenResolve()
+    await completeMerge(repo)
+    expect(runGit(repo, 'show', 'HEAD:f.txt')).toBe(lines('top', 'a-theirs', 'bottom'))
+  })
+
+  it('② 自分側の size=10 を相手が削除するマージ: git は 10 文字で書き、拒否・解析・解決できる', async () => {
+    conflict({
+      base: () => write('.gitattributes', ATTR),
+      feat: () => runGit(repo, 'rm', '-q', '.gitattributes')
+    })
+    expect(read('f.txt')).toContain(`${M(10, '<', 'HEAD')}\n`)
+    expect(runGit(repo, 'check-attr', 'conflict-marker-size', '--', 'f.txt')).toContain(
+      ': unspecified'
+    )
+    await expectRejectThenResolve()
+    await completeMerge(repo)
+  })
+
+  it('③ マージ前に未追跡の .gitattributes(size=10)がある: git は 10 文字で書き、拒否・解析・解決できる', async () => {
+    conflict({ beforeMerge: () => write('.gitattributes', ATTR) })
+    expect(read('f.txt')).toContain(`${M(10, '<', 'HEAD')}\n`)
+    expect(status()).toContain('?? .gitattributes')
+    await expectRejectThenResolve()
+  })
+
+  it('④ 属性の無い通常のマージ: 7 文字のマーカーを拒否・解析・解決できる', async () => {
+    conflict({})
+    expect(read('f.txt')).toContain(`${M(7, '<', 'HEAD')}\n`)
+    await expectRejectThenResolve()
+  })
+})

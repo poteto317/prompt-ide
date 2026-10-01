@@ -4,7 +4,9 @@ import {
   applyConflictChoices,
   digestConflictBlocks,
   hasConflictMarker,
-  parseConflictFile
+  hasConflictMarkerOfSizes,
+  parseConflictFile,
+  parseConflictFileWithSizes
 } from '../gitConflictParser'
 
 const simple = ['a', '<<<<<<< HEAD', 'mine', '=======', 'theirs', '>>>>>>> feature', 'z'].join('\n')
@@ -587,5 +589,67 @@ describe('マーカーの長さ(conflict-marker-size)', () => {
     expect(hasConflictMarker('<<< HEAD', 3)).toBe(true)
     expect(hasConflictMarker('<<<<<<< HEAD', 3)).toBe(false)
     expect(hasConflictMarker('==========', 10)).toBe(false)
+  })
+})
+
+// マージ自体が .gitattributes の conflict-marker-size を変えると、git が書いたマーカーの長さと
+// マージ後の属性の値がずれる。候補の長さ(長い順)を順に試す
+describe('候補の長さでの解析(parseConflictFileWithSizes / hasConflictMarkerOfSizes)', () => {
+  const block = (n: number): string[] => [
+    'a',
+    '<'.repeat(n) + ' HEAD',
+    'mine',
+    '='.repeat(n),
+    'theirs',
+    '>'.repeat(n) + ' feat',
+    ''
+  ]
+
+  it('ブロックが 1 件以上取れる最初の候補で解析する(長い候補でブロックが無ければ次へ)', () => {
+    const r = parseConflictFileWithSizes(block(7).join('\n'), [10, 7])
+    expect(r?.markerSize).toBe(7)
+    expect(digestConflictBlocks(r?.segments ?? [])).toHaveLength(1)
+  })
+
+  it('長い候補でブロックが取れれば、本文の短いマーカー風の行はそのまま本文', () => {
+    const c = [
+      '<<<<<<<<<< HEAD',
+      '<<<<<<< x',
+      '==========',
+      '>>>>>>> y',
+      '>>>>>>>>>> feat',
+      ''
+    ].join('\n')
+    const r = parseConflictFileWithSizes(c, [10, 7])
+    expect(r?.markerSize).toBe(10)
+    expect(r?.segments).toEqual([
+      {
+        kind: 'conflict',
+        ours: ['<<<<<<< x'],
+        theirs: ['>>>>>>> y'],
+        oursLabel: 'HEAD',
+        theirsLabel: 'feat'
+      }
+    ])
+  })
+
+  it('長い候補で解析できない(null)ときも次の候補を試す', () => {
+    const c = ['>>>>>>>>>> stray', ...block(7)].join('\n')
+    expect(parseConflictFileWithSizes(c, [10, 7])?.markerSize).toBe(7)
+  })
+
+  it('どの候補でもブロックが無ければ、すべて解析できるときだけ 0 件の結果を返す', () => {
+    expect(parseConflictFileWithSizes('a\nb\n', [10, 7])?.segments).toEqual([
+      { kind: 'text', lines: ['a', 'b'] }
+    ])
+    // 7 文字では壊れたマーカー(終了だけ)、10 文字では本文: マーカーが残っているので null
+    expect(parseConflictFileWithSizes('a\n>>>>>>> feat\n', [10, 7])).toBeNull()
+  })
+
+  it('hasConflictMarkerOfSizes はどれかの候補でマーカーがあれば true', () => {
+    expect(hasConflictMarkerOfSizes('<<<<<<< HEAD', [10, 7])).toBe(true)
+    expect(hasConflictMarkerOfSizes('>>>>>>>>>> feat', [10, 7])).toBe(true)
+    expect(hasConflictMarkerOfSizes('<<<<<<< HEAD', [10])).toBe(false)
+    expect(hasConflictMarkerOfSizes('a\n==========\n', [10, 7])).toBe(false)
   })
 })

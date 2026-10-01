@@ -175,6 +175,37 @@ export function parseConflictFile(
   return { segments, eol, endsWithEol, lineEnds, markerSize }
 }
 
+/**
+ * マーカーの長さの候補(長い順)で解析する。ブロックが 1 件以上取れる最初の候補の結果を返す。
+ * どの候補でもブロックが無いとき、すべての候補で解析できれば(=どの長さのマーカーも無い)
+ * 0 件の結果を、どれかの候補で解析できなければ(壊れたマーカーが残っている)null を返す。
+ * 長い順に試すのは、長い conflict-marker-size を設定するファイルは短いマーカー風の行を本文に
+ * 含むことが多く、短い候補から試すと本文をブロックと誤認しやすいため
+ */
+export function parseConflictFileWithSizes(
+  content: string,
+  markerSizes: readonly number[]
+): ParsedConflict | null {
+  let empty: ParsedConflict | null = null
+  let broken = false
+  for (const size of markerSizes) {
+    const parsed = parseConflictFile(content, size)
+    if (!parsed) {
+      broken = true
+    } else if (parsed.segments.some((s) => s.kind === 'conflict')) {
+      return parsed
+    } else {
+      empty ??= parsed
+    }
+  }
+  return broken ? null : empty
+}
+
+/** マーカーの長さの候補のどれかで、開始・基底・終了のマーカーの行が残っているか */
+export function hasConflictMarkerOfSizes(text: string, markerSizes: readonly number[]): boolean {
+  return markerSizes.some((size) => hasConflictMarker(text, size))
+}
+
 /** コンフリクトのブロックごとの内容ダイジェスト（ブロックの順）。内容が変われば値が変わる */
 export function digestConflictBlocks(segments: ConflictSegment[]): string[] {
   const digests: string[] = []

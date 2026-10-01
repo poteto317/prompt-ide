@@ -8,8 +8,8 @@ import {
   DEFAULT_CONFLICT_MARKER_SIZE,
   applyConflictChoices,
   digestConflictBlocks,
-  hasConflictMarker,
-  parseConflictFile
+  hasConflictMarkerOfSizes,
+  parseConflictFileWithSizes
 } from './gitConflictParser'
 import { getUnmergedEntries, hasMergeInProgress, hasUnmergedFiles } from './gitMergeState'
 import { toLiteralPathspec } from './gitPathParsing'
@@ -124,19 +124,48 @@ export function parseConflictMarkerSizeAttr(output: string): number {
 }
 
 /**
- * ファイルのマーカーの長さ(.gitattributes の conflict-marker-size)。git はこの長さのマーカーを書く。
+ * ファイルのマーカーの長さ(.gitattributes の conflict-marker-size)。
  * check-attr はパス名を pathspec ではなくリテラルとして読むため、`--` の後ろにそのまま渡す。
- * 失敗したら既定の 7。解析(getConflictFile / resolveConflictBlocks)とマーカーの検査
- * (markConflictResolved)は必ずこの長さを使う(get と resolve でずれるとダイジェストが合わない)
+ * source を渡すとその tree の .gitattributes だけで調べる(`--source`、git 2.40 以降)。
+ * 失敗したら既定の 7
  */
-export async function getConflictMarkerSize(git: SimpleGit, filePath: string): Promise<number> {
+export async function getConflictMarkerSize(
+  git: SimpleGit,
+  filePath: string,
+  source?: string
+): Promise<number> {
   try {
     return parseConflictMarkerSizeAttr(
-      await git.raw(['check-attr', '-z', 'conflict-marker-size', '--', filePath])
+      await git.raw([
+        'check-attr',
+        ...(source ? [`--source=${source}`] : []),
+        '-z',
+        'conflict-marker-size',
+        '--',
+        filePath
+      ])
     )
   } catch {
     return DEFAULT_CONFLICT_MARKER_SIZE
   }
+}
+
+/**
+ * マーカーの長さの候補(重複を除いて長い順)。git はマージを始めた時点の属性(作業ツリーの
+ * .gitattributes、無ければ HEAD のもの)の長さでマーカーを書くため、マージ自体が
+ * conflict-marker-size を変えると、マージ後の check-attr の値と書かれたマーカーの長さがずれる
+ * (相手側が size=10 を追加するマージでは、git は 7 文字で書くが check-attr は 10 を返す)。
+ * そこで現在の属性(マージ前に未追跡の .gitattributes があった場合に合う)と HEAD の属性
+ * (マージで .gitattributes が変わった場合に合う)の両方を候補にする。--source が使えない
+ * git では HEAD の側が既定の 7 になる。
+ * 解析(getConflictFile / resolveConflictBlocks)はブロックが取れる最初の候補を使い、
+ * マーカーの検査(markConflictResolved)はどれかの候補でマーカーがあれば拒否する。
+ * get と resolve は同じ候補の順で解析する(ずれるとダイジェストが合わない)
+ */
+export async function getConflictMarkerSizes(git: SimpleGit, filePath: string): Promise<number[]> {
+  const current = await getConflictMarkerSize(git, filePath)
+  const head = await getConflictMarkerSize(git, filePath, 'HEAD')
+  return [...new Set([current, head])].sort((a, b) => b - a)
 }
 
 async function readText(folderPath: string, filePath: string): Promise<string | null> {
@@ -152,7 +181,7 @@ export async function getConflictFile(folderPath: string, filePath: string): Pro
   if (unmerged.submodule) return { status: 'unparsable', reason: 'submodule', stages }
   const file = await inspectWorkingFile(folderPath, filePath)
   if (!('text' in file)) return { status: 'unparsable', reason: file.reason, stages }
-  const parsed = parseConflictFile(file.text, await getConflictMarkerSize(git, filePath))
+  const parsed = parseConflictFileWithSizes(file.text, await getConflictMarkerSizes(git, filePath))
   if (!parsed) return { status: 'unparsable', reason: 'markers', stages }
   return {
     status: 'parsed',
@@ -196,7 +225,9 @@ export async function resolveConflictBlocks(
   await assertUnmergedFile(git, filePath)
   const text = await readText(folderPath, filePath)
   const parsed =
-    text === null ? null : parseConflictFile(text, await getConflictMarkerSize(git, filePath))
+    text === null
+      ? null
+      : parseConflictFileWithSizes(text, await getConflictMarkerSizes(git, filePath))
   if (!parsed)
     throw new Error('コンフリクトのマーカーを解析できません。エディタで直接編集してください')
   // 確認時(画面に表示した時点)から構成が変わっていれば、別のブロックを解決してしまうため中止する
@@ -265,7 +296,7 @@ export async function markConflictResolved(folderPath: string, filePath: string)
   // そのまま add する(リンクのコンフリクトの解決)。バイナリ(NUL を含む)も検査を飛ばす。
   // マーカーは ASCII なので、UTF-8 として不正な本文(Shift_JIS など)は latin1 で読んで検査する。
   // マーカーの判定規則は gitConflictParser の hasConflictMarker(解析と共有)。
-  // 長さは解析と同じく .gitattributes の conflict-marker-size に従う
+  // 長さは .gitattributes の conflict-marker-size の候補(現在と HEAD)のどれでも検査する
   const read = await readWorkingFileBuffer(folderPath, filePath)
   // ファイルが無いまま add すると削除として解決してしまう。削除して解決するのは「削除する」の役割
   if ('reason' in read && read.reason === 'missing') {
@@ -275,7 +306,10 @@ export async function markConflictResolved(folderPath: string, filePath: string)
   }
   if (
     'buffer' in read &&
-    hasConflictMarker(read.buffer.toString('latin1'), await getConflictMarkerSize(git, filePath))
+    hasConflictMarkerOfSizes(
+      read.buffer.toString('latin1'),
+      await getConflictMarkerSizes(git, filePath)
+    )
   ) {
     throw new Error('コンフリクトのマーカーが残っています')
   }
