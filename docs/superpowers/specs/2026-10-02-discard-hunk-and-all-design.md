@@ -50,7 +50,9 @@
 - 「変更」セクションの見出し行に、「すべて取り消す」ボタンを置く（セクションが空のときはセクションごと出ない）
 - 押すと、件数を示す確認ダイアログを出す。承諾後、未保存の編集を持つタブがあれば、既存の破棄の確認（`confirmDiscardAnyDirty`）がもう一度出る
   （ブランチ操作・退避と同じ。ハンクと違い、全タブが対象になるため確認文言には未保存の編集の注記を入れない）。文言: `変更 <N> 件を取り消しますか？この操作は元に戻せません。` に、
-  ゴミ箱へ移すものがあれば `\nうち <M> 件の未追跡ファイルはゴミ箱へ移動します。` を足す
+  ゴミ箱へ移すものがあれば `\nうち <M> 件の未追跡ファイルはゴミ箱へ移動します。` を足し、
+  そのうちフォルダ（ネストした git リポジトリ。renderer のパスが `/` で終わる）が <K> 件あれば `\nうち <K> 件はフォルダ（git リポジトリ）で、フォルダとその中身がすべて移動します。` をさらに足す
+  （ファイル単位の確認文言と揃える）
 - 対象は「変更」セクションに表示されているファイル（`isUnstagedFile`: 作業ツリー側に変更がある、または未追跡）。
   ステージ済みの内容は触らない（ファイル単位の取り消しと同じ）
 - 追跡済みは index の内容へ戻し、未追跡・intent-to-add は OS のゴミ箱へ移す。
@@ -83,13 +85,18 @@
 4. 失敗（`patch does not apply` など）は、作業ツリーを変えずに、`ハンクを取り消せませんでした。ファイルが変更された可能性があります。diff を開き直してください`
    に変換して投げる（原因は `cause` に残す）
 
-#### 一括（`discardAllChanges(folderPath, expectedCount, trash)`）
+#### 一括（`discardAllChanges(folderPath, expected, trash)`）
 
 1. `git status --porcelain -z --untracked-files=all` から、「変更」セクション相当のファイル（作業ツリー側に変更がある、または
    未追跡）を、実行時に自分で一覧にする。renderer が持つパス一覧は信用しない
-2. 件数が `expectedCount`（確認ダイアログで見せた件数）と違えば、何も変えずに
-   `変更の状態が変わったため取り消しを中止しました。もう一度操作してください` で拒否する（位置や状態は、確認と実行の間に変わる。
-   パターン 53）
+2. 確認ダイアログで見せた一覧 `expected`（`DiscardAllEntry[]`: `path` と、index + workingDir の 2 文字の `status`）と、実行時の一覧を
+   **パスでソートした配列として完全一致**で照合し、違えば何も変えずに
+   `変更の状態が変わったため取り消しを中止しました。もう一度操作してください` で拒否する（分類の問い合わせより前。状態は確認と実行の間に変わる。
+   パターン 53）。件数だけを比べていたときは、確認していたファイルと別のファイルに入れ替わっても件数が同じなら通り、確認していない
+   ファイルの編集が `restore --worktree` で復元できない形で消えた（このPRで修正）。ステータスも照合に含めるのは、同じパスで `??` → `AM` に
+   変わると「ゴミ箱へ移す」から「restore で消す」に変わるため。照合キーは、renderer の `path`（simple-git の表記: ネストした git
+   リポジトリは `sub/`、末尾空白は trim 済み）に合わせ、main の生のパスから末尾 `/` は削らず `.trim()` したものを使う。
+   実行に使うパスは従来どおり（末尾 `/` を削った値）
 3. **全ファイルを先に分類**する。`conflicted` / `unknown` / `overlaps-untracked` が 1 件でもあれば、何も変えずに全体を拒否する
    （全か無か。エラーには対象のパスを最大 5 件まで含める）
 4. 分類が通ったら、ファイルごとに、ファイル単位の取り消しと同じ手段（追跡済みは `restore --worktree`、未追跡は
@@ -149,7 +156,11 @@
   何も変わらず、実行後も「変更」に残る（データは失われない。ファイル単位の取り消しと同じ既存の挙動。ROADMAP の見送りに記載）
 - リネームした新パスを `git add -N` している状態（` R new` / 旧パス `old`）を取り消すと、新パスはゴミ箱へ移り index から外れるが、
   旧パスの削除は作業ツリーに ` D old` として残る（元のファイルは作業ツリーで削除されたままのため）。復元するには続けて ` D old` も取り消す。
-  一括の件数は ` R` の旧パスを数えないので、確認時と実行時で件数がずれることはない
+  一括の一覧は ` R` の旧パスを数えないので、確認時と実行時で一覧がずれることはない
+- 先頭が空白のパス（` leadsp`）は simple-git の `trim()` でステータスがずれ、ステージ済みの `leadsp` と誤って解析されて「変更」に出ない。
+  main の一覧には出るため、一括取り消しは一覧の不一致で常に中止される（安全側。今回の範囲外）
+- ` R`（intent-to-add のリネーム）は main の分類ではゴミ箱へ移す扱いだが、renderer の確認文言ではゴミ箱へ移す件数に数えられない
+  （`movesToTrashOnDiscard` が ` A` だけを見るため。復元できる側のずれ。今回の範囲外）
 - 行単位の取り消し、ステージ済みのハンクの直接の取り消しは対象外（ROADMAP の見送りとして残す）
 - 追跡中のシンボリックリンクを作業ツリーで削除した場合、git の diff は `deleted file mode 120000` になる。ハンクの取り消しは削除モードを `100644` / `100755` に限る
   （任意のモードで復元できると、細工したパッチでシンボリックリンクを復元できてしまうため）ので、ボタンは出るが押すと
@@ -169,13 +180,13 @@
   引用符つきパスのデコード
 - `src/main/gitApply.ts`: `runGitApply` が stdout を返す。`discardHunkPatch(folderPath, filePath, patch)` は `runGitApply` を直接呼び（`--cached` なし、`--reverse`）、
   `listPatchPaths`（`git apply --numstat -z`）で対象のパスを列挙する。引数（`--whitespace=nowarn --no-ignore-whitespace -`）はステージ / アンステージと共通
-- `src/main/gitPathParsing.ts`: `toLiteralPathspec`・`parseNulSeparatedPaths`・`parseUnstagedStatusPaths`（一括の対象を status から作り直す）
-- `src/main/handlers/gitHandlers.ts`: IPC `git:discardHunk`（引数 `filePath` / `patch`）、`git:discardAll`（引数 `expectedCount`）。
-  `filePath` はファイル単位の取り消しと同じ境界チェック（`resolveAndAssertStatusRelativePath`）を通す。`patch` と `expectedCount` は型を検証する
+- `src/main/gitPathParsing.ts`: `toLiteralPathspec`・`parseNulSeparatedPaths`・`parseUnstagedStatusEntries`（パス・生のパス・ステータスを返す）/ `parseUnstagedStatusPaths`（一括の対象を status から作り直す）
+- `src/main/handlers/gitHandlers.ts`: IPC `git:discardHunk`（引数 `filePath` / `patch`）、`git:discardAll`（引数 `expected`: `DiscardAllEntry[]`）。
+  `filePath` はファイル単位の取り消しと同じ境界チェック（`resolveAndAssertStatusRelativePath`）を通す。`patch` は型を、`expected` は `{path: string; status: 2 文字の文字列}` の配列であること（`Invalid entries`）を検証する
 
 ### preload / renderer lib
 
-- `src/preload/api.ts` / `index.d.ts` / `src/renderer/src/lib/gitApi.ts`: `discardHunk(filePath, patch)` / `discardAll(expectedCount)` を追加
+- `src/preload/api.ts` / `index.d.ts` / `src/renderer/src/lib/gitApi.ts`: `discardHunk(filePath, patch)` / `discardAll(expected)` を追加
 - `src/renderer/src/lib/discardConfirmMessage.ts`: ハンクと一括の確認文言の組み立てを足す（`buildDiscardHunkConfirmMessage` /
   `buildDiscardAllConfirmMessage`）
 
@@ -185,9 +196,9 @@
   `canDiscardHunk` は未ステージの diff・アクティブなファイルの有無の判定と、`lib/discardTarget.ts` の `canDiscardHunkFor`（追跡済みの変更ファイルだけ。
   `movesToTrashOnDiscard` とコンフリクトを除く。main の `discardHunk` の分類と揃える）の呼び出しだけにする。
   確認ダイアログと未保存編集の扱いは `useDiscardHunk` が組み立てる
-- `src/renderer/src/hooks/useDiscardAllChanges.ts`（新規）: 一括取り消し。確認文言は件数（`count`）とゴミ箱へ移す件数（`trashCount`）から作る
+- `src/renderer/src/hooks/useDiscardAllChanges.ts`（新規）: 一括取り消し。確認文言は件数（`count`）、ゴミ箱へ移す件数（`trashCount`）、そのうちフォルダの件数（`folderCount`）から作る
   （未保存編集の有無は文言に入れず、`confirmDiscardAnyDirty` で別途確認する）。確認 → `confirmDiscardAnyDirty` → `lockGlobal` →
-  `gitApi.discardAll(expectedCount)` の流れ全体を `runEditorSyncedOperation` で包み、成功時のみ全タブとファイルツリーの再読込までフック内で行い、
+  `gitApi.discardAll(expected)`（確認時の一覧から作った path + status の配列）の流れ全体を `runEditorSyncedOperation` で包み、成功時のみ全タブとファイルツリーの再読込までフック内で行い、
   `refreshGitStatus` で status を取り直す。busy の判定は `useGitStashOperations` と同じ。`DiscardAllState`（`isDiscarding` / `error` / `onDiscardAll`）を返す
 - `src/renderer/src/hooks/useDiscardHunk.ts`（新規）: ハンクの取り消し（確認 → `useDiffOperations.discardHunk` → 成功時のみ、そのファイルの
   `reloadOpenFile` と `refreshTree`。全タブの再読込ではない）
@@ -208,18 +219,18 @@
 - `gitDiscardClassifier.test.ts`（simple-git の `raw` をスタブ）: `classifyDiscardTarget` の問い合わせ（unmerged / tracked / intent-to-add / overlaps の順序、icase、NFD、
   未追跡の肯定的確認、重なる配置）と `assertDiscardable` の 3 文言
 - `gitDiscardService.test.ts`（分類をモックして kind を直接返す）: kind ごとの実行（追跡済み → restore、未追跡 → ゴミ箱、intent-to-add → rm --cached → ゴミ箱）、
-  拒否の kind なら実行しない、`discardHunk` の untracked / intent-to-add 拒否、`discardAllChanges` の件数不一致、分類 1 件でも失敗したら何も実行しない、
+  拒否の kind なら実行しない、`discardHunk` の untracked / intent-to-add 拒否、`discardAllChanges` の一覧の不一致（件数違い・中身の入れ替わり・同じパスでステータス違い）、分類 1 件でも失敗したら何も実行しない、
   混在の実行、ゴミ箱の失敗での途中中止と件数の文言
 - `gitApply.test.ts`: 作業ツリー用の引数に `--cached` が無いこと、`--reverse` が付くこと、共通引数が揃っていること
 - `gitDiscardService.integration.test.ts`（新規、実 git。環境から切り離す）: 複数ハンクのうち 1 つだけを取り消し、他のハンクとステージ済みの内容が残る、
   古いパッチは失敗して何も変わらない、削除されたファイルのハンクで復元できる、CRLF、intent-to-add / 未追跡 / コンフリクトは拒否、
-  一括: 追跡済み + 未追跡の混在、ステージ済みと作業ツリーの両方に変更があるファイル（作業ツリー側だけが戻る）、件数不一致での拒否、
+  一括: 追跡済み + 未追跡の混在、ステージ済みと作業ツリーの両方に変更があるファイル（作業ツリー側だけが戻る）、一覧の不一致での拒否、`sub/`・末尾空白・` R`・`RM` の照合、
   コンフリクトが 1 件あれば何も変えない
 - `gitHandlers.test.ts` / `api.test.ts` / `gitApi.test.ts`: IPC の引数検証と素通し
 - `DiffView.test.tsx`: ボタンの表示条件（未ステージ・追跡済みのみ。ステージ済み / 未追跡 / 結合 diff / 打ち切りでは出ない）、`aria-label`、クリックで `onDiscardHunk` にパッチが渡る
 - `ChangesSection.test.tsx`: 「すべて取り消す」の表示・disabled・クリック
 - `useDiffOperations.test.ts`: `discardHunk` が `runHunkOperation` の排他に従う、成功時に diff を取り直す、失敗時のエラー
-- `useDiscardAllChanges.test.ts`: 確認の拒否で何もしない、`lockGlobal` の取得と解放（成功時・失敗時）、`expectedCount` の受け渡し、busy 判定、成功時の再取得
+- `useDiscardAllChanges.test.ts`: 確認の拒否で何もしない、`lockGlobal` の取得と解放（成功時・失敗時）、`expected`（path + status）の受け渡し、`sub/` を含むときの確認文言、busy 判定、成功時の再取得
 - `useAppState` 系: 未保存編集の確認、成功時だけ再読込、失敗時は再読込しない
 
 ## 実装順序

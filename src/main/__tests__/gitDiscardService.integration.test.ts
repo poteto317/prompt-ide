@@ -13,6 +13,8 @@ import {
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { discardAllChanges, discardFileChanges, discardHunk } from '../gitDiscardService'
+import { getGitStatus } from '../gitService'
+import { isUnstagedFile } from '../../renderer/src/lib/gitUtils'
 import {
   commitAll,
   initRepo,
@@ -545,6 +547,14 @@ describe('discardAllChanges(実 git)', () => {
     trashed = []
   })
 
+  // 確認ダイアログを出した時点の一覧。renderer(useDiscardAllChanges)と同じく simple-git の status の
+  // 「変更」セクション(isUnstagedFile)から path + (index + workingDir) を作る
+  const shown = async (): Promise<{ path: string; status: string }[]> =>
+    (await getGitStatus(repo)).files
+      .filter(isUnstagedFile)
+      .map((f) => ({ path: f.path, status: f.index + f.workingDir }))
+  const MISMATCH = '変更の状態が変わったため取り消しを中止しました。もう一度操作してください'
+
   it('追跡済み・未追跡・intent-to-add の混在を取り消し、ステージ済みの別ファイルは残す', async () => {
     write('a.txt', 'a\n')
     write('b.txt', 'b\n')
@@ -558,7 +568,7 @@ describe('discardAllChanges(実 git)', () => {
     write('ita.txt', 'ita\n')
     runGit(repo, 'add', '-N', 'ita.txt')
 
-    await expect(discardAllChanges(repo, 4, trash)).resolves.toEqual({ status: 'done' })
+    await expect(discardAllChanges(repo, await shown(), trash)).resolves.toEqual({ status: 'done' })
 
     expect(read('a.txt')).toBe('a\n')
     expect(read('b.txt')).toBe('b\n')
@@ -577,7 +587,7 @@ describe('discardAllChanges(実 git)', () => {
       throw new Error(`denied: ${absolutePath}`)
     }
 
-    const result = await discardAllChanges(repo, 2, failingTrash)
+    const result = await discardAllChanges(repo, await shown(), failingTrash)
 
     // 追跡済みの a.txt が先に取り消され(パス順)、未追跡の b-new.txt のゴミ箱移動で止まる
     expect(result).toEqual({
@@ -598,22 +608,121 @@ describe('discardAllChanges(実 git)', () => {
     const cachedBefore = runGit(repo, 'diff', '--cached')
     write('m.txt', 'staged\nworking\n')
 
-    await discardAllChanges(repo, 1, trash)
+    await discardAllChanges(repo, await shown(), trash)
 
     expect(read('m.txt')).toBe('staged\n')
     expect(runGit(repo, 'diff', '--cached')).toBe(cachedBefore)
   })
 
-  it('expectedCount が実際と違えば拒否し、何も変わらない', async () => {
+  it('件数が実際と違えば拒否し、何も変わらない', async () => {
     write('a.txt', 'a\n')
     commitAll(repo, 'init')
     write('a.txt', 'a-changed\n')
+    const confirmed = await shown()
     write('new.txt', 'new\n')
-    await expect(discardAllChanges(repo, 1, trash)).rejects.toThrow(
-      '変更の状態が変わったため取り消しを中止しました。もう一度操作してください'
-    )
+    await expect(discardAllChanges(repo, confirmed, trash)).rejects.toThrow(MISMATCH)
     expect(read('a.txt')).toBe('a-changed\n')
     expect(trashed).toEqual([])
+  })
+
+  // 再現: 確認時は未追跡の scratch.txt 1 件 → 間に git add scratch.txt と a.txt の編集 → 件数は 1 件のまま。
+  // 件数だけの照合では通り、a.txt の編集が restore で復元できない形で消えていた(このPRで修正)
+  it('件数が同じでも中身が入れ替わっていれば拒否し、確認していない編集を消さない', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('scratch.txt', 'scratch\n')
+    const confirmed = await shown()
+    expect(confirmed).toEqual([{ path: 'scratch.txt', status: '??' }])
+
+    runGit(repo, 'add', 'scratch.txt')
+    write('a.txt', 'a\nwork\n')
+
+    await expect(discardAllChanges(repo, confirmed, trash)).rejects.toThrow(MISMATCH)
+    expect(read('a.txt')).toBe('a\nwork\n')
+    expect(runGit(repo, 'diff', '--cached', '--name-only').trim()).toBe('scratch.txt')
+    expect(trashed).toEqual([])
+  })
+
+  it('同じパスでステータスだけが変わっていれば拒否し、内容を消さない(?? → AM)', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('x.txt', 'x\n')
+    const confirmed = await shown()
+
+    runGit(repo, 'add', 'x.txt')
+    write('x.txt', 'x\nmore\n')
+
+    await expect(discardAllChanges(repo, confirmed, trash)).rejects.toThrow(MISMATCH)
+    expect(read('x.txt')).toBe('x\nmore\n')
+    expect(trashed).toEqual([])
+  })
+
+  it('一覧の順序が違っても照合が通る', async () => {
+    write('a.txt', 'a\n')
+    write('b.txt', 'b\n')
+    commitAll(repo, 'init')
+    write('a.txt', 'a2\n')
+    write('b.txt', 'b2\n')
+    const confirmed = (await shown()).reverse()
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(read('a.txt')).toBe('a\n')
+    expect(read('b.txt')).toBe('b\n')
+  })
+
+  // expected は renderer と同じ作り(simple-git の status)。表記のずれは常に「中止」になるため、
+  // 実 git の出力で通ることを固定する
+  it('ネストした git リポジトリ(sub/)と、末尾空白・日本語・空白入りのパスで照合が通る', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    mkdirSync(join(repo, 'sub'))
+    runGit(join(repo, 'sub'), 'init', '-q')
+    write('sub/f.txt', 'f\n')
+    write('trailsp ', 'trail\n')
+    write('日本語 dir/ファイル.txt', 'j\n')
+
+    const confirmed = await shown()
+    expect(confirmed.map((e) => e.path)).toContain('sub/')
+    expect(confirmed.map((e) => e.path)).toContain('trailsp')
+
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(trashed.sort()).toEqual(
+      [join(repo, 'sub'), join(repo, 'trailsp '), join(repo, '日本語 dir/ファイル.txt')].sort()
+    )
+  })
+
+  it('intent-to-add のリネーム(` R`)でも照合が通る', async () => {
+    write('old.txt', 'one\ntwo\nthree\nfour\n')
+    commitAll(repo, 'init')
+    renameSync(join(repo, 'old.txt'), join(repo, 'new.txt'))
+    runGit(repo, 'add', '-N', 'new.txt')
+    const confirmed = await shown()
+    expect(confirmed.map((e) => e.status)).toContain(' R')
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(trashed).toEqual([join(repo, 'new.txt')])
+  })
+
+  it('ステージ済みリネーム + 変更(`RM`)でも照合が通る', async () => {
+    write('old1.txt', 'one\ntwo\nthree\nfour\n')
+    write('old2.txt', 'uno\ndos\ntres\ncuatro\n')
+    commitAll(repo, 'init')
+    runGit(repo, 'mv', 'old2.txt', 'new2.txt')
+    write('new2.txt', 'uno\ndos\ntres\ncuatro\nmas\n')
+    const confirmed = await shown()
+    expect(confirmed.map((e) => e.status)).toContain('RM')
+    await expect(discardAllChanges(repo, confirmed, trash)).resolves.toEqual({ status: 'done' })
+    expect(read('new2.txt')).toBe('uno\ndos\ntres\ncuatro\n')
+  })
+
+  it('status.renames=false でも照合が通る', async () => {
+    write('old.txt', 'one\ntwo\nthree\nfour\n')
+    commitAll(repo, 'init')
+    runGit(repo, 'config', 'status.renames', 'false')
+    runGit(repo, 'mv', 'old.txt', 'new.txt')
+    write('new.txt', 'one\ntwo\nthree\nfour\nfive\n')
+    await expect(discardAllChanges(repo, await shown(), trash)).resolves.toEqual({
+      status: 'done'
+    })
+    expect(read('new.txt')).toBe('one\ntwo\nthree\nfour\n')
   })
 
   it('コンフリクトのファイルが 1 件あれば、他の追跡済みの変更も含めて何も変わらない', async () => {
@@ -635,7 +744,7 @@ describe('discardAllChanges(実 git)', () => {
     write('new.txt', 'new\n')
     const conflicted = read('c.txt')
 
-    await expect(discardAllChanges(repo, 3, trash)).rejects.toThrow(
+    await expect(discardAllChanges(repo, await shown(), trash)).rejects.toThrow(
       '取り消せないファイルがあるため、何も取り消しませんでした（c.txt）'
     )
     expect(read('a.txt')).toBe('a-changed\n')
@@ -650,16 +759,16 @@ describe('discardAllChanges(実 git)', () => {
     runGit(repo, 'mv', 'old.txt', 'renamed.txt')
     write('日本語 dir/ファイル.txt', 'x-changed\n')
 
-    await discardAllChanges(repo, 1, trash)
+    await discardAllChanges(repo, await shown(), trash)
 
     expect(read('日本語 dir/ファイル.txt')).toBe('x\n')
     expect(existsSync(join(repo, 'renamed.txt'))).toBe(true)
   })
 
-  it('変更が 0 件で expectedCount が 0 なら何も起きない', async () => {
+  it('変更が 0 件で一覧も空なら何も起きない', async () => {
     write('a.txt', 'a\n')
     commitAll(repo, 'init')
-    await expect(discardAllChanges(repo, 0, trash)).resolves.toEqual({ status: 'done' })
+    await expect(discardAllChanges(repo, [], trash)).resolves.toEqual({ status: 'done' })
     expect(read('a.txt')).toBe('a\n')
     expect(trashed).toEqual([])
   })

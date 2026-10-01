@@ -260,23 +260,78 @@ describe('discardAllChanges', () => {
     })
     mockClassify.mockImplementation(async (_git, filePath) => states[filePath] ?? 'tracked')
   }
+  // 確認時に見せた一覧(renderer が simple-git の status から作る path + 2 文字のステータス)
+  const entry = (status: string, path: string): { path: string; status: string } => ({
+    path,
+    status
+  })
+  const MISMATCH = '変更の状態が変わったため取り消しを中止しました。もう一度操作してください'
+
   it('status を porcelain -z --untracked-files=all で問い合わせる', async () => {
     setup('', {})
-    await discardAllChanges('/project', 0, vi.fn())
+    await discardAllChanges('/project', [], vi.fn())
     expect(mockSimpleGit).toHaveBeenCalledWith('/project')
     expect(mockRaw).toHaveBeenCalledWith(['status', '--porcelain', '-z', '--untracked-files=all'])
   })
 
-  it('件数が expectedCount と違えば中止し、分類の問い合わせも取り消しもしない', async () => {
+  it('件数が違えば中止し、分類の問い合わせも取り消しもしない', async () => {
     setup(' M a.txt\0 M b.txt\0', { 'a.txt': 'tracked', 'b.txt': 'tracked' })
     const trash = vi.fn()
-    await expect(discardAllChanges('/project', 3, trash)).rejects.toThrow(
-      '変更の状態が変わったため取り消しを中止しました。もう一度操作してください'
-    )
+    await expect(
+      discardAllChanges(
+        '/project',
+        [entry(' M', 'a.txt'), entry(' M', 'b.txt'), entry(' M', 'c.txt')],
+        trash
+      )
+    ).rejects.toThrow(MISMATCH)
     expect(mockRaw).toHaveBeenCalledTimes(1)
     expect(mockClassify).not.toHaveBeenCalled()
     expect(mutations()).toEqual([])
     expect(trash).not.toHaveBeenCalled()
+  })
+
+  // 件数だけの照合では、確認後に中身が入れ替わっても通ってしまい、確認していないファイルの編集が消えた
+  it('件数が同じでもパスが入れ替わっていれば中止し、何も変えない', async () => {
+    setup('A  scratch.txt\0 M a.txt\0', { 'a.txt': 'tracked' })
+    const trash = vi.fn()
+    await expect(
+      discardAllChanges('/project', [entry('??', 'scratch.txt')], trash)
+    ).rejects.toThrow(MISMATCH)
+    expect(mockClassify).not.toHaveBeenCalled()
+    expect(mutations()).toEqual([])
+    expect(trash).not.toHaveBeenCalled()
+  })
+
+  it('同じパスでもステータスが変わっていれば中止し、何も変えない', async () => {
+    setup('AM x.txt\0', { 'x.txt': 'tracked' })
+    const trash = vi.fn()
+    await expect(discardAllChanges('/project', [entry('??', 'x.txt')], trash)).rejects.toThrow(
+      MISMATCH
+    )
+    expect(mockClassify).not.toHaveBeenCalled()
+    expect(mutations()).toEqual([])
+  })
+
+  it('一覧の順序が違っても(パスでソートして)照合が通る', async () => {
+    setup(' M b.txt\0?? a.txt\0', { 'b.txt': 'tracked', 'a.txt': 'untracked' })
+    const trash = vi.fn().mockResolvedValue(undefined)
+    await expect(
+      discardAllChanges('/project', [entry(' M', 'b.txt'), entry('??', 'a.txt')], trash)
+    ).resolves.toEqual({ status: 'done' })
+    await expect(
+      discardAllChanges('/project', [entry('??', 'a.txt'), entry(' M', 'b.txt')], trash)
+    ).resolves.toEqual({ status: 'done' })
+  })
+
+  // renderer の path は simple-git の表記(ネストしたリポジトリは末尾 '/'、末尾空白は trim 済み)。
+  // 実行に使うパスは従来どおり('/' を削った値)
+  it('renderer 表記の sub/ と trim 済みの末尾空白パスで照合が通り、実行は生のパスで行う', async () => {
+    setup('?? sub/\0?? trailsp \0', { sub: 'untracked', 'trailsp ': 'untracked' })
+    const trash = vi.fn().mockResolvedValue(undefined)
+    await expect(
+      discardAllChanges('/project', [entry('??', 'sub/'), entry('??', 'trailsp')], trash)
+    ).resolves.toEqual({ status: 'done' })
+    expect(trash.mock.calls.map((c) => c[0])).toEqual(['/project/sub', '/project/trailsp '])
   })
 
   it('1 件が conflicted なら、他の追跡済みも含めて何も取り消さない', async () => {
@@ -286,9 +341,13 @@ describe('discardAllChanges', () => {
       'n.txt': 'untracked'
     })
     const trash = vi.fn()
-    await expect(discardAllChanges('/project', 3, trash)).rejects.toThrow(
-      '取り消せないファイルがあるため、何も取り消しませんでした（c.txt）'
-    )
+    await expect(
+      discardAllChanges(
+        '/project',
+        [entry(' M', 'a.txt'), entry('UU', 'c.txt'), entry('??', 'n.txt')],
+        trash
+      )
+    ).rejects.toThrow('取り消せないファイルがあるため、何も取り消しませんでした（c.txt）')
     expect(mutations()).toEqual([])
     expect(trash).not.toHaveBeenCalled()
   })
@@ -300,9 +359,13 @@ describe('discardAllChanges', () => {
       'u.txt': 'unknown',
       'o.txt': 'overlaps-untracked'
     })
-    await expect(discardAllChanges('/project', 4, vi.fn())).rejects.toThrow(
-      '（c.txt、u.txt、o.txt）'
-    )
+    await expect(
+      discardAllChanges(
+        '/project',
+        [entry(' M', 'a.txt'), entry('UU', 'c.txt'), entry('??', 'u.txt'), entry(' D', 'o.txt')],
+        vi.fn()
+      )
+    ).rejects.toThrow('（c.txt、u.txt、o.txt）')
   })
 
   it('列挙は最大 5 件で、超えた分は「ほか n 件」にする', async () => {
@@ -311,9 +374,13 @@ describe('discardAllChanges', () => {
       names.map((n) => `UU ${n}\0`).join(''),
       Object.fromEntries(names.map((n) => [n, 'conflicted' as const]))
     )
-    await expect(discardAllChanges('/project', 7, vi.fn())).rejects.toThrow(
-      '何も取り消しませんでした（p1、p2、p3、p4、p5、ほか 2 件）'
-    )
+    await expect(
+      discardAllChanges(
+        '/project',
+        names.map((n) => entry('UU', n)),
+        vi.fn()
+      )
+    ).rejects.toThrow('何も取り消しませんでした（p1、p2、p3、p4、p5、ほか 2 件）')
   })
 
   it('ちょうど 5 件なら「ほか」を付けない', async () => {
@@ -322,9 +389,13 @@ describe('discardAllChanges', () => {
       names.map((n) => `UU ${n}\0`).join(''),
       Object.fromEntries(names.map((n) => [n, 'conflicted' as const]))
     )
-    await expect(discardAllChanges('/project', 5, vi.fn())).rejects.toThrow(
-      '何も取り消しませんでした（p1、p2、p3、p4、p5）'
-    )
+    await expect(
+      discardAllChanges(
+        '/project',
+        names.map((n) => entry('UU', n)),
+        vi.fn()
+      )
+    ).rejects.toThrow('何も取り消しませんでした（p1、p2、p3、p4、p5）')
   })
 
   it('追跡済みは restore、未追跡と intent-to-add はゴミ箱へ(intent-to-add は先に rm --cached)', async () => {
@@ -335,7 +406,13 @@ describe('discardAllChanges', () => {
       'i.txt': 'intent-to-add'
     })
     const trash = vi.fn().mockResolvedValue(undefined)
-    await expect(discardAllChanges('/project', 4, trash)).resolves.toEqual({ status: 'done' })
+    await expect(
+      discardAllChanges(
+        '/project',
+        [entry(' M', 'a.txt'), entry(' M', 'b.txt'), entry('??', 'n.txt'), entry(' A', 'i.txt')],
+        trash
+      )
+    ).resolves.toEqual({ status: 'done' })
     expect(mutations()).toEqual([
       ['restore', '--worktree', '--', ':(literal)a.txt'],
       ['restore', '--worktree', '--', ':(literal)b.txt'],
@@ -353,7 +430,11 @@ describe('discardAllChanges', () => {
     const trash = vi.fn().mockImplementation(async (path: string) => {
       if (path.endsWith('b.txt')) throw new Error('denied')
     })
-    const result = await discardAllChanges('/project', 3, trash)
+    const result = await discardAllChanges(
+      '/project',
+      [entry('??', 'a.txt'), entry('??', 'b.txt'), entry('??', 'c.txt')],
+      trash
+    )
     expect(result).toEqual({
       status: 'partial',
       message:
@@ -365,16 +446,18 @@ describe('discardAllChanges', () => {
   it('1 件目で失敗(済み 0 件)したら、作業ツリーは変わっていないので結果ではなく throw する', async () => {
     setup('?? a.txt\0?? b.txt\0', { 'a.txt': 'untracked', 'b.txt': 'untracked' })
     const trash = vi.fn().mockRejectedValue(new Error('denied'))
-    await expect(discardAllChanges('/project', 2, trash)).rejects.toThrow(
+    await expect(
+      discardAllChanges('/project', [entry('??', 'a.txt'), entry('??', 'b.txt')], trash)
+    ).rejects.toThrow(
       '一括の取り消しが途中で失敗しました（0 / 2 件を取り消し済み）: ゴミ箱へ移動できませんでした: a.txt'
     )
     expect(trash).toHaveBeenCalledTimes(1)
   })
 
-  it('対象が 0 件で expectedCount も 0 なら、何もせず成功する', async () => {
+  it('対象が 0 件で一覧も空なら、何もせず成功する', async () => {
     setup('M  staged.txt\0', {})
     const trash = vi.fn()
-    await expect(discardAllChanges('/project', 0, trash)).resolves.toEqual({ status: 'done' })
+    await expect(discardAllChanges('/project', [], trash)).resolves.toEqual({ status: 'done' })
     expect(mutations()).toEqual([])
     expect(trash).not.toHaveBeenCalled()
   })

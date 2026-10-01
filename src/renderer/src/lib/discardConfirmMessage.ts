@@ -47,15 +47,21 @@ export function buildDiscardHunkConfirmMessage({
 // 変更の一括取り消しの確認文言。未保存の編集の破棄確認は confirmDiscardAnyDirty が別に行う
 export function buildDiscardAllConfirmMessage({
   count,
-  trashCount
+  trashCount,
+  folderCount = 0
 }: {
   /** 取り消す変更(未ステージのファイル)の件数 */
   count: number
   /** そのうちゴミ箱へ移動する未追跡・intent-to-add ファイルの件数 */
   trashCount: number
+  /** trashCount のうち、フォルダ(ネストした git リポジトリ。'/' で終わるパス)の件数 */
+  folderCount?: number
 }): string {
   const base = `変更 ${count} 件を取り消しますか？この操作は元に戻せません。`
-  return trashCount > 0
-    ? `${base}\nうち ${trashCount} 件の未追跡ファイルはゴミ箱へ移動します。`
-    : base
+  if (trashCount === 0) return base
+  const trash = `${base}\nうち ${trashCount} 件の未追跡ファイルはゴミ箱へ移動します。`
+  // ネストした git リポジトリは .git ごとフォルダ全体が移る(ファイル単位の確認文言と揃える)
+  return folderCount > 0
+    ? `${trash}\nうち ${folderCount} 件はフォルダ（git リポジトリ）で、フォルダとその中身がすべて移動します。`
+    : trash
 }

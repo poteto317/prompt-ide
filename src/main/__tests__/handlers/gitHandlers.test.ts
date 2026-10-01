@@ -298,24 +298,47 @@ describe('registerGitHandlers', () => {
       expect(mockDiscardAllChanges).not.toHaveBeenCalled()
     })
 
-    it.each(['3', -1, 1.5, NaN, Infinity, null, undefined])(
-      '件数が非負の整数でない(%s)と discardAllChanges を呼ばずに拒否する',
+    it.each([
+      ['3'],
+      [3],
+      [null],
+      [undefined],
+      [{}],
+      [['a.txt']],
+      [[null]],
+      [[{ path: 'a.txt' }]],
+      [[{ status: ' M' }]],
+      [[{ path: 1, status: ' M' }]],
+      [[{ path: 'a.txt', status: 1 }]],
+      [[{ path: 'a.txt', status: ' ' }]],
+      [[{ path: 'a.txt', status: ' MM' }]],
+      [[{ path: 'a.txt', status: ' M' }, 'x']]
+    ])(
+      '一覧が {path, status(2 文字)} の配列でない(%j)と discardAllChanges を呼ばずに拒否する',
       async (bad) => {
         const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
         registerGitHandlers(mockIpcMain, folderAccess)
         await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), bad)).rejects.toThrow(
-          'Invalid count'
+          'Invalid entries'
         )
         expect(mockDiscardAllChanges).not.toHaveBeenCalled()
       }
     )
 
-    it.each([0, 3])('件数 %s のとき moveToTrash を渡して discardAllChanges を呼ぶ', async (n) => {
+    it.each([
+      [[]],
+      [
+        [
+          { path: 'a.txt', status: ' M' },
+          { path: 'sub/', status: '??' }
+        ]
+      ]
+    ])('一覧 %j のとき moveToTrash を渡して discardAllChanges を呼ぶ', async (entries) => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
       registerGitHandlers(mockIpcMain, folderAccess)
       mockDiscardAllChanges.mockResolvedValue({ status: 'done' })
-      await getRegisteredHandler('git:discardAll')(makeEvent(1), n)
-      expect(mockDiscardAllChanges).toHaveBeenCalledWith('/project', n, mockMoveToTrash)
+      await getRegisteredHandler('git:discardAll')(makeEvent(1), entries)
+      expect(mockDiscardAllChanges).toHaveBeenCalledWith('/project', entries, mockMoveToTrash)
     })
 
     it.each([
@@ -328,7 +351,9 @@ describe('registerGitHandlers', () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
       registerGitHandlers(mockIpcMain, folderAccess)
       mockDiscardAllChanges.mockResolvedValue(result)
-      await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), 2)).resolves.toEqual(result)
+      await expect(getRegisteredHandler('git:discardAll')(makeEvent(1), [])).resolves.toEqual(
+        result
+      )
     })
   })
 

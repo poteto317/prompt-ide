@@ -1,14 +1,14 @@
 import { join } from 'path'
 import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
-import type { DiscardAllResult } from '@shared/types'
+import type { DiscardAllEntry, DiscardAllResult } from '@shared/types'
 import { discardHunkPatch, listPatchPaths } from './gitApply'
 import {
   assertHunkPatchTargets,
   stripModeChangeLines,
   PATCH_MISMATCH_MESSAGE
 } from './gitHunkPatch'
-import { parseUnstagedStatusPaths, toLiteralPathspec } from './gitPathParsing'
+import { parseUnstagedStatusEntries, toLiteralPathspec } from './gitPathParsing'
 import {
   assertDiscardable,
   classifyDiscardTarget,
@@ -105,6 +105,9 @@ export async function discardHunk(
 
 const MAX_LISTED_PATHS = 5
 
+// 確認時の一覧との照合キー。パスは NUL を含められない(-z の区切り)ため、NUL で区切れば衝突しない
+const toMatchKey = (status: string, path: string): string => `${status}\0${path}`
+
 function listPathsForMessage(paths: string[]): string {
   const shown = paths.slice(0, MAX_LISTED_PATHS).join('、')
   const rest = paths.length - MAX_LISTED_PATHS
@@ -112,24 +115,35 @@ function listPathsForMessage(paths: string[]): string {
 }
 
 // 「変更」セクションの一括の取り消し。
-// - renderer が持つ一覧は信用せず、実行時の status から対象を作り直す。確認ダイアログで見せた件数と
-//   違えば、見せていない取り消しを実行してしまうため中止する(状態は確認と実行の間に変わりうる)
+// - renderer が持つ一覧は信用せず、実行時の status から対象を作り直す。確認ダイアログで見せた一覧
+//   (パス + 2 文字のステータス)と完全一致しなければ、見せていない取り消しを実行してしまうため中止する
+//   (状態は確認と実行の間に変わりうる)。件数だけを比べていたときは、中身が入れ替わっても通り、確認して
+//   いないファイルの編集が復元できない形で消えた(このPRで修正)。ステータスも含めるのは、同じパスで
+//   ?? → AM のように「ゴミ箱へ移す」から「restore で消す」へ変わるのを止めるため
 // - 全ファイルを先に分類し、1 件でも取り消せなければ何も変えずに全体を拒否する
 // - 実行中の失敗は元に戻せないため、そこで中断し済んだ件数を文言に含める。1 件以上済んでいれば作業ツリーが
 //   変わっているので例外ではなく partial で返す(renderer がタブ・ツリーを再読込できるように。パターン52)。
 //   1 件目で失敗したなら何も変わっていないので例外
 export async function discardAllChanges(
   folderPath: string,
-  expectedCount: number,
+  expected: DiscardAllEntry[],
   trash: (absolutePath: string) => Promise<void>
 ): Promise<DiscardAllResult> {
   const git = simpleGit(folderPath)
-  const paths = parseUnstagedStatusPaths(
+  const entries = parseUnstagedStatusEntries(
     await git.raw(['status', '--porcelain', '-z', '--untracked-files=all'])
   )
-  if (paths.length !== expectedCount) {
+  // renderer の path は simple-git の表記なので、生のパスを同じ表記(trim)に寄せて比べる
+  // (ネストした git リポジトリは 'sub/'、末尾空白は trim 済み)。ソート済みの配列で比べ、重複も区別する
+  const actualKeys = entries.map((e) => toMatchKey(e.status, e.rawPath.trim())).sort()
+  const expectedKeys = expected.map((e) => toMatchKey(e.status, e.path)).sort()
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, i) => key !== expectedKeys[i])
+  ) {
     throw new Error('変更の状態が変わったため取り消しを中止しました。もう一度操作してください')
   }
+  const paths = entries.map((e) => e.path)
   const targets: { path: string; kind: ApplicableDiscardKind }[] = []
   const blocked: string[] = []
   for (const path of paths) {

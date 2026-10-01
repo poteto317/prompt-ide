@@ -44,9 +44,18 @@ export type GitStashEntry = {
   createdAt: string
 }
 
+// 一括の取り消しで、確認ダイアログを出した時点で見せた対象 1 件。main は実行時の status から作った
+// 一覧とこの一覧を(パスでソートして)完全一致で照合し、違えば何も変えずに中止する。
+// path は simple-git の status の表記(ネストした git リポジトリは末尾 '/'、末尾空白は trim 済み)、
+// status は index + workingDir の 2 文字(例: ' M' / '??')。対象の決定には使わない
+export interface DiscardAllEntry {
+  path: string
+  status: string
+}
+
 // 一括の取り消しの結果。成功は done。途中で失敗したとき、1 件以上取り消し済み(作業ツリーが変わった)なら
 // 例外ではなく partial で返す: renderer は例外のとき開いているタブ・ツリーを再読込しないため、取り消し済みの
-// ファイルを古いタブが上書きして変更を戻してしまう(パターン52)。1 件目で失敗した場合と、件数の不一致・
+// ファイルを古いタブが上書きして変更を戻してしまう(パターン52)。1 件目で失敗した場合と、一覧の不一致・
 // 分類での拒否(何も変えていない)は従来どおり例外。cause は IPC を渡れないので含めない
 export type DiscardAllResult = { status: 'done' } | { status: 'partial'; message: string }
 

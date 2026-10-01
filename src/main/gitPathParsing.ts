@@ -17,14 +17,23 @@ export function toLiteralPathspec(filePath: string): string {
   return `:(literal)${filePath}`
 }
 
+export interface UnstagedStatusEntry {
+  /** 実行に使うパス(ネストした git リポジトリの末尾 '/' を削った値) */
+  path: string
+  /** porcelain の生のパス(末尾 '/' も空白もそのまま)。確認時の一覧との照合に使う */
+  rawPath: string
+  /** index + workingDir の 2 文字 */
+  status: string
+}
+
 // git status --porcelain -z --untracked-files=all の出力から、作業ツリー側に変更がある
-// (workingDir が ' ' 以外。コンフリクトも含む)か未追跡('??')のエントリのパスを、出力の順に返す。
+// (workingDir が ' ' 以外。コンフリクトも含む)か未追跡('??')のエントリを、出力の順に返す。
 // renderer の「変更」セクションの件数(isUnstagedFile)と定義を揃えること。
 // リネーム・コピー(ステージ済み、または intent-to-add の ' R')は「XY 新\0旧\0」と元のパスが続くため、別のエントリとして
-// 読まないよう読み飛ばす。ネストした git リポジトリは末尾が '/' で出るため削る
-export function parseUnstagedStatusPaths(output: string): string[] {
+// 読まないよう読み飛ばす。ネストした git リポジトリは末尾が '/' で出るため path からは削る
+export function parseUnstagedStatusEntries(output: string): UnstagedStatusEntry[] {
   const tokens = output.split('\0')
-  const paths: string[] = []
+  const entries: UnstagedStatusEntry[] = []
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i]
     if (token.length < 4) continue
@@ -33,7 +42,12 @@ export function parseUnstagedStatusPaths(output: string): string[] {
     // ' R'(git add -N した新パスのリネーム)のように workingDir 側が R / C の場合も旧パスが続く
     if (index === 'R' || index === 'C' || workingDir === 'R' || workingDir === 'C') i++
     if (workingDir === ' ' && index !== '?') continue
-    paths.push(token.slice(3).replace(/\/$/, ''))
+    const rawPath = token.slice(3)
+    entries.push({ path: rawPath.replace(/\/$/, ''), rawPath, status: index + workingDir })
   }
-  return paths
+  return entries
+}
+
+export function parseUnstagedStatusPaths(output: string): string[] {
+  return parseUnstagedStatusEntries(output).map((entry) => entry.path)
 }

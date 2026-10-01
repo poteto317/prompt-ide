@@ -2,6 +2,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   CLIOnlyToolId,
   DeleteBranchResult,
+  DiscardAllEntry,
   DiscardAllResult,
   FileTreeNode,
   GitStatusResult,
@@ -32,7 +33,7 @@ declare global {
       unstageFile(filePath: string, renamedFrom?: string): Promise<void>
       discardChanges(filePath: string): Promise<void>
       discardHunk(filePath: string, patch: string): Promise<void>
-      discardAll(expectedCount: number): Promise<DiscardAllResult>
+      discardAll(expected: DiscardAllEntry[]): Promise<DiscardAllResult>
       commitChanges(message: string): Promise<void>
       getDiff(
         filePath: string,

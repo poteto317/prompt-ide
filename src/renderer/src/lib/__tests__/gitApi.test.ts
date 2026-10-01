@@ -166,17 +166,18 @@ describe('discardHunk', () => {
 })
 
 describe('discardAll', () => {
-  it('window.api.discardAll に件数をそのまま渡す', async () => {
+  it('window.api.discardAll に確認時の一覧をそのまま渡す', async () => {
     mockApi.discardAll.mockResolvedValue({ status: 'done' })
-    await discardAll(3)
-    expect(mockApi.discardAll).toHaveBeenCalledWith(3)
+    const entries = [{ path: 'a.txt', status: ' M' }]
+    await discardAll(entries)
+    expect(mockApi.discardAll).toHaveBeenCalledWith(entries)
   })
 
   it.each([{ status: 'done' }, { status: 'partial', message: '途中で失敗しました' }] as const)(
     '結果(%o)をそのまま返す',
     async (result) => {
       mockApi.discardAll.mockResolvedValue(result)
-      await expect(discardAll(2)).resolves.toEqual(result)
+      await expect(discardAll([])).resolves.toEqual(result)
     }
   )
 })

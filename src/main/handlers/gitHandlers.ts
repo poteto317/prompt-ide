@@ -1,6 +1,7 @@
 import { resolve, dirname, basename, join, isAbsolute } from 'path'
 import { realpath } from 'node:fs/promises'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import type { DiscardAllEntry } from '@shared/types'
 import {
   getGitStatus,
   stageFile,
@@ -169,11 +170,20 @@ function assertPatchArg(value: unknown): asserts value is string {
   if (typeof value !== 'string') throw new Error('Invalid patch')
 }
 
-// 実行時の件数との一致は service 層が確かめる。ここでは非負の整数だけを通す
-function assertCountArg(value: unknown): asserts value is number {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
-    throw new Error('Invalid count')
-  }
+// 実行時の status との一致は service 層が確かめる。ここでは {path: string, status: 2 文字の文字列} の
+// 配列であることだけを検証する
+function assertDiscardEntriesArg(value: unknown): asserts value is DiscardAllEntry[] {
+  const valid =
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof entry.path === 'string' &&
+        typeof entry.status === 'string' &&
+        entry.status.length === 2
+    )
+  if (!valid) throw new Error('Invalid entries')
 }
 
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
@@ -219,10 +229,10 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     }
   )
 
-  ipcMain.handle('git:discardAll', async (event: IpcMainInvokeEvent, expectedCount: unknown) => {
+  ipcMain.handle('git:discardAll', async (event: IpcMainInvokeEvent, expected: unknown) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    assertCountArg(expectedCount)
-    return discardAllChanges(allowedFolder, expectedCount, moveToTrash)
+    assertDiscardEntriesArg(expected)
+    return discardAllChanges(allowedFolder, expected, moveToTrash)
   })
 
   ipcMain.handle(

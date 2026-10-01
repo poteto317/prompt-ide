@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   parseNulSeparatedPaths,
+  parseUnstagedStatusEntries,
   parseUnstagedStatusPaths,
   toLiteralPathspec
 } from '../gitPathParsing'
@@ -58,6 +59,29 @@ describe('toLiteralPathspec', () => {
 // 出力形式は mktemp の一時リポジトリで git status --porcelain -z --untracked-files=all を実行して確認した:
 // ステージ済みのリネームは「R  新\0旧\0」、ステージ済み + 作業ツリーは「RM 新\0旧\0」、
 // ネストした git リポジトリは「?? nested/\0」、コンフリクトは UU / AA / UD / DU など
+describe('parseUnstagedStatusEntries', () => {
+  it('パス・生のパス・2 文字のステータスを出力の順に返す', () => {
+    expect(parseUnstagedStatusEntries(' M a.txt\0?? sub/\0MM b.txt\0')).toEqual([
+      { path: 'a.txt', rawPath: 'a.txt', status: ' M' },
+      { path: 'sub', rawPath: 'sub/', status: '??' },
+      { path: 'b.txt', rawPath: 'b.txt', status: 'MM' }
+    ])
+  })
+
+  it('リネームは新パスだけを返し、旧パスは別のエントリにしない', () => {
+    expect(parseUnstagedStatusEntries('RM new.txt\0old.txt\0 R n2.txt\0o2.txt\0')).toEqual([
+      { path: 'new.txt', rawPath: 'new.txt', status: 'RM' },
+      { path: 'n2.txt', rawPath: 'n2.txt', status: ' R' }
+    ])
+  })
+
+  it('末尾の空白は生のパスに残す', () => {
+    expect(parseUnstagedStatusEntries('?? trailsp \0')).toEqual([
+      { path: 'trailsp ', rawPath: 'trailsp ', status: '??' }
+    ])
+  })
+})
+
 describe('parseUnstagedStatusPaths', () => {
   it.each([
     [' M a.txt\0', ['a.txt']],

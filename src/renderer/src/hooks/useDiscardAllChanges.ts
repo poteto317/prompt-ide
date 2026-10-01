@@ -51,8 +51,21 @@ export function useDiscardAllChanges({
   const onDiscardAll = async (): Promise<void> => {
     const files = gitStatus?.files.filter(isUnstagedFile) ?? []
     if (files.length === 0 || isBusy()) return
-    const trashCount = files.filter(movesToTrashOnDiscard).length
-    if (!onConfirm(buildDiscardAllConfirmMessage({ count: files.length, trashCount }))) return
+    const trashFiles = files.filter(movesToTrashOnDiscard)
+    // status は untracked-files=all のため、'/' で終わるパスはネストした git リポジトリだけ
+    const folderCount = trashFiles.filter((f) => f.path.endsWith('/')).length
+    // 確認で見せた一覧を固定して main へ渡す。実行時の status と完全一致しなければ main が中止する
+    const expected = files.map((f) => ({ path: f.path, status: f.index + f.workingDir }))
+    if (
+      !onConfirm(
+        buildDiscardAllConfirmMessage({
+          count: files.length,
+          trashCount: trashFiles.length,
+          folderCount
+        })
+      )
+    )
+      return
     await runEditorSyncedOperation({
       confirmDiscardAnyDirty,
       reloadOpenFiles,
@@ -66,9 +79,8 @@ export function useDiscardAllChanges({
           },
           onStart: fileLock.lockGlobal,
           onEnd: fileLock.unlockGlobal,
-          // 確認時点の件数を渡す。main 側が現在の件数と食い違えば中止する
           execute: async () => {
-            const result = await gitApi.discardAll(files.length)
+            const result = await gitApi.discardAll(expected)
             if (result.status === 'partial') warning = result.message
           }
         })

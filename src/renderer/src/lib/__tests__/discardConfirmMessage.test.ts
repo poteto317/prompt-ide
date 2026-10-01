@@ -83,4 +83,17 @@ describe('buildDiscardAllConfirmMessage', () => {
       '変更 5 件を取り消しますか？この操作は元に戻せません。\nうち 2 件の未追跡ファイルはゴミ箱へ移動します。'
     )
   })
+
+  it('folderCount が 0 なら、フォルダの注意は付けない', () => {
+    expect(buildDiscardAllConfirmMessage({ count: 5, trashCount: 2, folderCount: 0 })).toBe(
+      '変更 5 件を取り消しますか？この操作は元に戻せません。\nうち 2 件の未追跡ファイルはゴミ箱へ移動します。'
+    )
+  })
+
+  // ネストした git リポジトリ(sub/)は .git ごとフォルダ全体がゴミ箱へ移る
+  it('folderCount が 1 以上なら、フォルダとその中身がすべて移動すると伝える', () => {
+    expect(buildDiscardAllConfirmMessage({ count: 5, trashCount: 2, folderCount: 1 })).toBe(
+      '変更 5 件を取り消しますか？この操作は元に戻せません。\nうち 2 件の未追跡ファイルはゴミ箱へ移動します。\nうち 1 件はフォルダ（git リポジトリ）で、フォルダとその中身がすべて移動します。'
+    )
+  })
 })

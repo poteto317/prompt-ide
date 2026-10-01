@@ -69,6 +69,18 @@ describe('useDiscardAllChanges', () => {
     )
   })
 
+  it('ネストした git リポジトリ(sub/)があるときは、確認文言にフォルダ全体が移動する注意が入る', async () => {
+    mockDiscardAll.mockResolvedValue({ status: 'done' })
+    const nested: GitFileStatus = { path: 'sub/', index: '?', workingDir: '?' }
+    const { result, options } = setup({ gitStatus: makeStatus([modified, untracked, nested]) })
+    await act(async () => {
+      await result.current.onDiscardAll()
+    })
+    expect(options.onConfirm).toHaveBeenCalledWith(
+      '変更 3 件を取り消しますか？この操作は元に戻せません。\nうち 2 件の未追跡ファイルはゴミ箱へ移動します。\nうち 1 件はフォルダ（git リポジトリ）で、フォルダとその中身がすべて移動します。'
+    )
+  })
+
   it('確認で拒否すると、ロックを取らず discardAll も呼ばない', async () => {
     const { result, options } = setup({ onConfirm: vi.fn().mockReturnValue(false) })
     await act(async () => {
@@ -88,7 +100,7 @@ describe('useDiscardAllChanges', () => {
     expect(mockDiscardAll).not.toHaveBeenCalled()
   })
 
-  it('承諾すると lockGlobal → discardAll(件数) → unlockGlobal → 状態の再取得の順で行う', async () => {
+  it('承諾すると lockGlobal → discardAll(一覧) → unlockGlobal → 状態の再取得の順で行う', async () => {
     const order: string[] = []
     const fileLock = makeFileLock({
       lockGlobal: vi.fn(() => void order.push('lock')),
@@ -105,7 +117,11 @@ describe('useDiscardAllChanges', () => {
     await act(async () => {
       await result.current.onDiscardAll()
     })
-    expect(mockDiscardAll).toHaveBeenCalledWith(3)
+    expect(mockDiscardAll).toHaveBeenCalledWith([
+      { path: 'a.ts', status: ' M' },
+      { path: 'b.ts', status: ' D' },
+      { path: 'c.ts', status: '??' }
+    ])
     expect(order).toEqual(['lock', 'discard', 'refresh', 'unlock'])
   })
 

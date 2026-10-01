@@ -71,9 +71,9 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:discardHunk', 'src/a.ts', 'PATCH']
   ],
   [
-    'discardAll は git:discardAll チャンネルに件数を渡す',
-    () => api.discardAll(3),
-    ['git:discardAll', 3]
+    'discardAll は git:discardAll チャンネルに確認時の一覧を渡す',
+    () => api.discardAll([{ path: 'a.txt', status: ' M' }]),
+    ['git:discardAll', [{ path: 'a.txt', status: ' M' }]]
   ],
   ['push は git:push チャンネルを呼び出す', () => api.push(), ['git:push']],
   ['pull は git:pull チャンネルを呼び出す', () => api.pull(), ['git:pull']],
