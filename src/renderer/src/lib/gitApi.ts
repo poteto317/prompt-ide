@@ -1,4 +1,5 @@
 import type {
+  DiscardAllResult,
   DeleteBranchResult,
   GitStatusResult,
   GitLogEntry,
@@ -21,6 +22,14 @@ export function unstageFile(filePath: string, renamedFrom?: string): Promise<voi
 
 export function discardChanges(filePath: string): Promise<void> {
   return window.api.discardChanges(filePath)
+}
+
+export function discardHunk(filePath: string, patch: string): Promise<void> {
+  return window.api.discardHunk(filePath, patch)
+}
+
+export function discardAll(expectedCount: number): Promise<DiscardAllResult> {
+  return window.api.discardAll(expectedCount)
 }
 
 export function commitChanges(message: string): Promise<void> {

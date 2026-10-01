@@ -48,6 +48,10 @@ interface Props {
   isHunkOperationInProgress: boolean
   onStageHunk: (patch: string) => void
   onUnstageHunk: (patch: string) => void
+  /** ハンクの取り消し(確認・実行は useDiscardHunk)。DiffView に渡す */
+  onDiscardHunk: (patch: string, hunkHeader: string) => void
+  /** 開いている diff が取り消せるハンク操作の対象か(DiffView の取り消しボタンの表示条件) */
+  canDiscardHunk: boolean
   /** 開いている diff タブが未追跡ファイルか。DiffView に渡し、表示打ち切り時の
    *  ハンク操作ボタン抑止を無効化する(未追跡ファイルの stageHunk は patch を
    *  使わずファイル全体を git add するだけのため) */
@@ -84,6 +88,8 @@ export default function EditorPanel({
   isHunkOperationInProgress,
   onStageHunk,
   onUnstageHunk,
+  onDiscardHunk,
+  canDiscardHunk,
   isActiveFileUntracked
 }: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
@@ -151,6 +157,8 @@ export default function EditorPanel({
                     onUnstageHunk={onUnstageHunk}
                     disabled={isHunkOperationInProgress}
                     isUntracked={isActiveFileUntracked}
+                    onDiscardHunk={onDiscardHunk}
+                    canDiscardHunk={canDiscardHunk}
                   />
                 )}
               </>

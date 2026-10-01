@@ -13,6 +13,11 @@ interface Props {
    *  ファイル全体を git add するだけなので、表示の打ち切り(見えていない行が
    *  パッチに混入する懸念)がそもそも当てはまらない */
   isUntracked?: boolean
+  /** ハンクの取り消し(確認・実行は呼び出し元)。未ステージの diff でだけ使う */
+  onDiscardHunk?: (patch: string, hunkHeader: string) => void
+  /** 開いている diff が「取り消せるハンク操作の対象」か(追跡済みの変更ファイルで、
+   *  未追跡・intent-to-add・コンフリクトでない)。判定は useDiffOperations が行う */
+  canDiscardHunk?: boolean
 }
 
 // 描画する diff 行数の上限。main 側のサイズ上限
@@ -86,7 +91,9 @@ export default function DiffView({
   onStageHunk,
   onUnstageHunk,
   disabled = false,
-  isUntracked = false
+  isUntracked = false,
+  onDiscardHunk,
+  canDiscardHunk = false
 }: Props): React.JSX.Element {
   // disabled(実行中フラグ)の切り替えだけでも再レンダーされるため、diffText 自体が
   // 変わっていないときに毎回パースし直さないよう memo 化する
@@ -149,6 +156,10 @@ export default function DiffView({
       ))}
       {parsed.hunks.map((hunk, index) => {
         const prefixLength = hunkLinePrefixLength(hunk.header)
+        // ステージ / アンステージと取り消しのボタンが共有する表示条件
+        const canOperateHunk =
+          !parsed.isCombined &&
+          (isUntracked || !(isTruncated && visibleLinesByHunk[index].length < hunk.lines.length))
         return (
           <div key={`${hunk.header}-${index}`} className="diff-view__hunk">
             <div className="diff-view__hunk-header">
@@ -162,9 +173,8 @@ export default function DiffView({
                 ただし isUntracked の場合、ボタンは patch を使わず
                 gitApi.stageFile(path) でファイル全体を git add するだけなので、
                 この懸念は当てはまらない(打ち切っていても隠さない) */}
-              {!parsed.isCombined &&
-                (isUntracked ||
-                  !(isTruncated && visibleLinesByHunk[index].length < hunk.lines.length)) && (
+              {canOperateHunk && (
+                <span className="diff-view__hunk-actions">
                   <button
                     type="button"
                     className="diff-view__hunk-action-btn"
@@ -180,7 +190,19 @@ export default function DiffView({
                   >
                     {buttonLabel}
                   </button>
-                )}
+                  {canDiscardHunk && !staged && onDiscardHunk !== undefined && (
+                    <button
+                      type="button"
+                      className="diff-view__hunk-action-btn diff-view__hunk-action-btn--danger"
+                      aria-label="このハンクを取り消す"
+                      disabled={disabled}
+                      onClick={() => onDiscardHunk(buildHunkPatch(parsed, index), hunk.header)}
+                    >
+                      このハンクを取り消す
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
             {(isTruncated ? visibleLinesByHunk[index] : hunk.lines).map((line, lineIndex) => (
               <div key={lineIndex} className={lineClassName(line, prefixLength)}>

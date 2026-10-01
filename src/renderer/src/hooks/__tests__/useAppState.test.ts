@@ -178,6 +178,22 @@ const mockStashPanel = vi.hoisted(() => ({
 }))
 const mockUseStashPanel = vi.hoisted(() => vi.fn())
 
+// ハンク・一括の取り消しの組み立ても各フックのテストで検証する。ここでは配線だけを見る静的モックにする
+// (既定の実装を持たせるのは、他のテストでも useAppState が呼ぶため)
+const mockDiscardHunkFn = vi.hoisted(() => vi.fn())
+// mock.calls[0][0] で呼び出し引数を検証するため、引数を受け取る型として宣言する
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const mockUseDiscardHunk = vi.hoisted(() => vi.fn((_options?: unknown) => mockDiscardHunkFn))
+const mockDiscardAllState = vi.hoisted(() => ({
+  isDiscarding: false,
+  error: null,
+  onDiscardAll: vi.fn()
+}))
+const mockUseDiscardAllChanges = vi.hoisted(() =>
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  vi.fn((_options?: unknown) => mockDiscardAllState)
+)
+
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
@@ -190,6 +206,8 @@ vi.mock('../usePromptRunner', () => ({ usePromptRunner: mockUsePromptRunner }))
 vi.mock('../useDiffTabs', () => ({ useDiffTabs: mockUseDiffTabs }))
 vi.mock('../useGitHistory', () => ({ useGitHistory: mockUseGitHistory }))
 vi.mock('../useStashPanel', () => ({ useStashPanel: mockUseStashPanel }))
+vi.mock('../useDiscardHunk', () => ({ useDiscardHunk: mockUseDiscardHunk }))
+vi.mock('../useDiscardAllChanges', () => ({ useDiscardAllChanges: mockUseDiscardAllChanges }))
 
 import { useAppState } from '../useAppState'
 
@@ -1236,6 +1254,102 @@ describe('useAppState', () => {
         window.api.discardChanges = original
         confirmSpy.mockRestore()
       }
+    })
+  })
+
+  describe('ハンクと一括の取り消し', () => {
+    it('useDiscardHunk に依存を渡し、戻り値を discardHunk として公開する(useDiffOperations の boolean 版で上書きしない)', () => {
+      const hasDirtyTabAtOrInside = vi.fn(() => false)
+      const reloadOpenFile = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        hasDirtyTabAtOrInside,
+        reloadOpenFile,
+        refreshTree
+      })
+      mockUseDiffTabs.mockReturnValue({
+        diffTabs: [{ path: 'a.ts', staged: false }],
+        activeDiffTab: { path: 'a.ts', staged: false },
+        openDiffTab: vi.fn(),
+        closeDiffTab: vi.fn(),
+        activateDiffTab: vi.fn(),
+        deactivateDiffTab: vi.fn()
+      })
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: {
+          isRepo: true,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: [{ path: 'a.ts', index: ' ', workingDir: 'M' }]
+        },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn()
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseDiscardHunk).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderPath: '/project',
+          activeDiffTabPath: 'a.ts',
+          discardHunk: expect.any(Function),
+          hasDirtyTabAtOrInside,
+          reloadOpenFile,
+          refreshTree
+        })
+      )
+      expect(result.current.discardHunk).toBe(mockDiscardHunkFn)
+      // useDiffOperations の canDiscardHunk を公開する(未ステージの追跡済み変更なので true)
+      expect(result.current.canDiscardHunk).toBe(true)
+    })
+
+    it('activeDiffTab が無いとき useDiscardHunk の activeDiffTabPath は null', () => {
+      mockUseDiffTabs.mockReturnValue({
+        diffTabs: [],
+        activeDiffTab: null,
+        openDiffTab: vi.fn(),
+        closeDiffTab: vi.fn(),
+        activateDiffTab: vi.fn(),
+        deactivateDiffTab: vi.fn()
+      })
+      renderHook(() => useAppState())
+      expect(mockUseDiscardHunk).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activeDiffTabPath: null })
+      )
+    })
+
+    it('useDiscardAllChanges に依存を渡し、戻り値を discardAll として公開する', () => {
+      const confirmDiscardAnyDirty = vi.fn(() => true)
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        confirmDiscardAnyDirty,
+        reloadOpenFiles,
+        refreshTree
+      })
+      const refreshGitStatus = vi.fn()
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: null,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseDiscardAllChanges).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gitStatus: null,
+          refreshGitStatus,
+          fileLock: expect.anything(),
+          confirmDiscardAnyDirty,
+          reloadOpenFiles,
+          refreshTree
+        })
+      )
+      expect(result.current.discardAll).toBe(mockDiscardAllState)
     })
   })
 

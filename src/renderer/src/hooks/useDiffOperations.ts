@@ -8,6 +8,7 @@ import type { FileOperationLock } from './useFileOperationLock'
 import { isSamePath } from '../lib/pathUtils'
 import { toError } from '../lib/errorUtils'
 import { isUntrackedFile } from '../lib/gitUtils'
+import { canDiscardHunkFor } from '../lib/discardTarget'
 import { useLatestRef } from './useLatestRef'
 
 export interface DiffOperationsState {
@@ -19,6 +20,13 @@ export interface DiffOperationsState {
   isHunkOperationInProgress: boolean
   stageHunk: (patch: string) => Promise<void>
   unstageHunk: (patch: string) => Promise<void>
+  /** ハンクを取り消す(作業ツリーを index の内容へ戻す)。確認は呼び出し元(useDiscardHunk)が
+   *  行う。戻り値は実際に実行され成功したか(排他で弾かれた・失敗は false)。useAppState は
+   *  確認・タブ同期つきの同名の関数で差し替えて公開する */
+  discardHunk: (patch: string) => Promise<boolean>
+  /** 開いている diff が未ステージで、対象が追跡済みの変更ファイル(未追跡・intent-to-add・
+   *  コンフリクトでない)か。ハンクの取り消しボタンを出してよいかの判定に使う */
+  canDiscardHunk: boolean
   /** activeDiffTab も git status も変わらないまま diff を取り直す。
    *  エディタでのファイル保存は git status のステータス文字を変えない
    *  (既に " M" のファイルを編集・保存しても " M" のまま)ため、
@@ -226,7 +234,7 @@ export function useDiffOperations(
   const runHunkOperation = async (
     operation: (path: string, patch: string) => Promise<void>,
     patch: string
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (
       activeDiffTab === null ||
       isHunkOperationInProgressRef.current ||
@@ -240,7 +248,7 @@ export function useDiffOperations(
       // 同時に走らせてしまう
       lock.isAnyLocked()
     ) {
-      return
+      return false
     }
     const targetTab = activeDiffTab
     isHunkOperationInProgressRef.current = true
@@ -281,6 +289,7 @@ export function useDiffOperations(
         setStaleTab(targetTab)
         setDiffRefreshSignal((n) => n + 1)
       }
+      return true
     } catch (err) {
       // タブ切り替え自体は操作の実行中でもブロックされないため、targetTab の
       // IPC 呼び出しが実行中の間に別タブへ切り替えることができる。ここで
@@ -301,6 +310,7 @@ export function useDiffOperations(
         setDiffRefreshSignal((n) => n + 1)
       }
       setStaleTab(targetTab)
+      return false
     } finally {
       isHunkOperationInProgressRef.current = false
       setInProgressTab(null)
@@ -317,12 +327,26 @@ export function useDiffOperations(
   // 1 ハンクなので、git add に置き換えてもステージされる範囲は変わらない
   const isActiveFileUntracked = activeFileStatus !== undefined && isUntrackedFile(activeFileStatus)
 
-  const stageHunk = (patch: string): Promise<void> =>
-    runHunkOperation(
+  // stageHunk / unstageHunk の公開型は従来どおり Promise<void>(runHunkOperation の戻り値は捨てる)
+  const stageHunk = async (patch: string): Promise<void> => {
+    await runHunkOperation(
       isActiveFileUntracked ? (path) => gitApi.stageFile(path) : gitApi.stageHunk,
       patch
     )
-  const unstageHunk = (patch: string): Promise<void> => runHunkOperation(gitApi.unstageHunk, patch)
+  }
+  const unstageHunk = async (patch: string): Promise<void> => {
+    await runHunkOperation(gitApi.unstageHunk, patch)
+  }
+
+  // 未ステージの diff で、追跡済みの変更ファイルだけが対象。未追跡・intent-to-add はゴミ箱へ
+  // 移す対象でハンクでは取り消せず、コンフリクト中は取り消せない(main 側でも弾く)
+  const canDiscardHunk =
+    activeDiffTab !== null &&
+    !activeDiffTab.staged &&
+    activeFileStatus !== undefined &&
+    canDiscardHunkFor(activeFileStatus)
+  const discardHunk = (patch: string): Promise<boolean> =>
+    runHunkOperation(gitApi.discardHunk, patch)
 
   // ハンク操作後の再取得と同じトリガーを使う。diff タブが開いていない場合は
   // 上の effect が activeDiffTab === null で即 return するため、呼んでも無害
@@ -337,6 +361,8 @@ export function useDiffOperations(
     isHunkOperationInProgress,
     stageHunk,
     unstageHunk,
+    discardHunk,
+    canDiscardHunk,
     refreshDiff,
     isActiveFileUntracked
   }

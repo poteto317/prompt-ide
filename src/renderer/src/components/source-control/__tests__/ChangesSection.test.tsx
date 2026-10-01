@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
+import type { DiscardAllState } from '../../../types'
 import ChangesSection from '../ChangesSection'
 
 describe('ChangesSection', () => {
@@ -290,5 +291,82 @@ describe('ChangesSection', () => {
       )
       expect(screen.getByRole('button', { name: 'src/a.ts の変更を取り消し' })).toBeDisabled()
     })
+  })
+})
+
+describe('ChangesSection — すべて取り消す', () => {
+  const files: GitFileStatus[] = [
+    { path: 'a.ts', index: ' ', workingDir: 'M' },
+    { path: 'b.ts', index: ' ', workingDir: 'D' }
+  ]
+  const makeDiscardAll = (override: Partial<DiscardAllState> = {}): DiscardAllState => ({
+    isDiscarding: false,
+    error: null,
+    onDiscardAll: vi.fn().mockResolvedValue(undefined),
+    ...override
+  })
+  const renderSection = (
+    props: Partial<React.ComponentProps<typeof ChangesSection>> = {}
+  ): ReturnType<typeof render> =>
+    render(
+      <ChangesSection
+        files={files}
+        stagingPaths={new Set()}
+        onStage={vi.fn()}
+        onDiscard={vi.fn()}
+        onOpenDiff={vi.fn()}
+        {...props}
+      />
+    )
+
+  it('discardAll があれば「すべて取り消す」ボタンを出し、クリックで onDiscardAll が呼ばれる', async () => {
+    const discardAll = makeDiscardAll()
+    renderSection({ discardAll })
+    const button = screen.getByRole('button', { name: '変更をすべて取り消す' })
+    expect(button).toHaveTextContent('すべて取り消す')
+    await userEvent.click(button)
+    expect(discardAll.onDiscardAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('discardAll が無ければボタンを出さない', () => {
+    renderSection()
+    expect(screen.queryByRole('button', { name: '変更をすべて取り消す' })).not.toBeInTheDocument()
+  })
+
+  it('実行中は「取り消し中...」の表示・aria-label になり、disabled になる', () => {
+    renderSection({ discardAll: makeDiscardAll({ isDiscarding: true }) })
+    const button = screen.getByRole('button', { name: '変更を取り消し中' })
+    expect(button).toHaveTextContent('取り消し中...')
+    expect(button).toBeDisabled()
+  })
+
+  it('他の操作中(stagingPaths が空でない)は disabled になる', () => {
+    renderSection({ discardAll: makeDiscardAll(), stagingPaths: new Set(['other.ts']) })
+    expect(screen.getByRole('button', { name: '変更をすべて取り消す' })).toBeDisabled()
+  })
+
+  it('他の操作中(isAnyLocked)は disabled になる', () => {
+    renderSection({ discardAll: makeDiscardAll(), isAnyLocked: () => true })
+    expect(screen.getByRole('button', { name: '変更をすべて取り消す' })).toBeDisabled()
+  })
+
+  it('操作中でなければ有効', () => {
+    renderSection({ discardAll: makeDiscardAll() })
+    expect(screen.getByRole('button', { name: '変更をすべて取り消す' })).toBeEnabled()
+  })
+
+  it('error があれば role="alert" でメッセージを出し、無ければ出さない', () => {
+    const { unmount } = renderSection({
+      discardAll: makeDiscardAll({ error: new Error('取り消せませんでした') })
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('取り消せませんでした')
+    unmount()
+    renderSection({ discardAll: makeDiscardAll() })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('変更が 0 件ならセクションごと出さない', () => {
+    const { container } = renderSection({ files: [], discardAll: makeDiscardAll() })
+    expect(container.firstChild).toBeNull()
   })
 })

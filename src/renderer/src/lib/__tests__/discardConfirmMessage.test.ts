@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildDiscardConfirmMessage } from '../discardConfirmMessage'
+import {
+  buildDiscardAllConfirmMessage,
+  buildDiscardConfirmMessage,
+  buildDiscardHunkConfirmMessage
+} from '../discardConfirmMessage'
 
 describe('buildDiscardConfirmMessage', () => {
   it('追跡済みは「元に戻せません」と伝える', () => {
@@ -41,4 +45,42 @@ describe('buildDiscardConfirmMessage', () => {
       expect(message.endsWith('\n\nエディタの未保存の編集も破棄されます。')).toBe(true)
     }
   )
+})
+
+describe('buildDiscardHunkConfirmMessage', () => {
+  it('パスとハンクの見出しを示し、元に戻せないと伝える', () => {
+    expect(
+      buildDiscardHunkConfirmMessage({
+        path: 'src/a.ts',
+        hunkHeader: '@@ -1,3 +1,4 @@',
+        hasUnsavedEdits: false
+      })
+    ).toBe('src/a.ts の次のハンクを取り消しますか？この操作は元に戻せません。\n\n@@ -1,3 +1,4 @@')
+  })
+
+  it('未保存の編集があるときは末尾に破棄も伝える', () => {
+    expect(
+      buildDiscardHunkConfirmMessage({
+        path: 'src/a.ts',
+        hunkHeader: '@@ -1,3 +1,4 @@',
+        hasUnsavedEdits: true
+      })
+    ).toBe(
+      'src/a.ts の次のハンクを取り消しますか？この操作は元に戻せません。\n\n@@ -1,3 +1,4 @@\n\nエディタの未保存の編集も破棄されます。'
+    )
+  })
+})
+
+describe('buildDiscardAllConfirmMessage', () => {
+  it('ゴミ箱へ移すものがなければ件数と元に戻せないことだけを伝える', () => {
+    expect(buildDiscardAllConfirmMessage({ count: 3, trashCount: 0 })).toBe(
+      '変更 3 件を取り消しますか？この操作は元に戻せません。'
+    )
+  })
+
+  it('ゴミ箱へ移す未追跡ファイルがあるときは件数を追記する', () => {
+    expect(buildDiscardAllConfirmMessage({ count: 5, trashCount: 2 })).toBe(
+      '変更 5 件を取り消しますか？この操作は元に戻せません。\nうち 2 件の未追跡ファイルはゴミ箱へ移動します。'
+    )
+  })
 })

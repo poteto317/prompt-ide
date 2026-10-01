@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import DiffView from '../DiffView'
+import { parseDiff, buildHunkPatch } from '../../../lib/diffParser'
 
 const SAMPLE_DIFF = [
   'diff --git a/src/index.ts b/src/index.ts',
@@ -420,5 +421,152 @@ describe('DiffView', () => {
     )
     expect(container.querySelectorAll('.diff-view__line').length).toBeLessThan(30000)
     expect(screen.getByText(/表示できません|省略/)).toBeInTheDocument()
+  })
+})
+
+describe('DiffView — ハンクの取り消し', () => {
+  const DISCARD = 'このハンクを取り消す'
+  const SAME_HEADER_DIFF = [
+    'diff --git a/a.ts b/a.ts',
+    '--- a/a.ts',
+    '+++ b/a.ts',
+    '@@ -1,1 +1,1 @@',
+    '-x',
+    '+y',
+    '@@ -1,1 +1,1 @@',
+    '-x',
+    '+y',
+    ''
+  ].join('\n')
+
+  it('canDiscardHunk が真・未ステージ・onDiscardHunk ありなら、各ハンクに取り消しボタンを出す', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        canDiscardHunk
+      />
+    )
+    expect(screen.getAllByRole('button', { name: DISCARD })).toHaveLength(2)
+  })
+
+  it('押したハンクのパッチと見出しだけが onDiscardHunk に渡る', async () => {
+    const onDiscardHunk = vi.fn()
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={onDiscardHunk}
+        canDiscardHunk
+      />
+    )
+    const parsed = parseDiff(SAMPLE_DIFF)
+    await userEvent.click(screen.getAllByRole('button', { name: DISCARD })[1])
+    expect(onDiscardHunk).toHaveBeenCalledTimes(1)
+    expect(onDiscardHunk).toHaveBeenCalledWith(buildHunkPatch(parsed, 1), parsed.hunks[1].header)
+    expect(onDiscardHunk.mock.calls[0][0]).not.toBe(buildHunkPatch(parsed, 0))
+  })
+
+  it.each([
+    ['canDiscardHunk が偽', { canDiscardHunk: false }],
+    ['staged が真', { staged: true, canDiscardHunk: true }],
+    ['未追跡ファイル(canDiscardHunk が偽)', { isUntracked: true, canDiscardHunk: false }],
+    ['onDiscardHunk が無い', { onDiscardHunk: undefined, canDiscardHunk: true }]
+  ])('%s のときは取り消しボタンを出さない', (_label, override) => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        {...override}
+      />
+    )
+    expect(screen.queryByRole('button', { name: DISCARD })).not.toBeInTheDocument()
+  })
+
+  it('結合 diff では取り消しボタンを出さない', () => {
+    const combined = [
+      'diff --cc f.txt',
+      '--- a/f.txt',
+      '+++ b/f.txt',
+      '@@@ -1,1 -1,1 +1,5 @@@',
+      '++<<<<<<< HEAD',
+      ''
+    ].join('\n')
+    render(
+      <DiffView
+        diffText={combined}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        canDiscardHunk
+      />
+    )
+    expect(screen.queryByRole('button', { name: DISCARD })).not.toBeInTheDocument()
+  })
+
+  it('打ち切りで一部が表示されていないハンクには出さず、全て表示されているハンクには出す', () => {
+    const hunk = (n: number, count: number): string =>
+      `@@ -${n},0 +${n},${count} @@\n` +
+      Array.from({ length: count }, (_, i) => `+h${n}line${i}`).join('\n') +
+      '\n'
+    render(
+      <DiffView
+        diffText={'diff --git a/big.txt b/big.txt\n' + hunk(1, 10) + hunk(100, 2500)}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        canDiscardHunk
+      />
+    )
+    expect(screen.getAllByRole('button', { name: DISCARD })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: 'このハンクをステージ' })).toHaveLength(1)
+  })
+
+  it('disabled のときは押せない', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        canDiscardHunk
+        disabled
+      />
+    )
+    for (const button of screen.getAllByRole('button', { name: DISCARD })) {
+      expect(button).toBeDisabled()
+    }
+  })
+
+  it('同じ見出しのハンクが複数あっても key が重複しない', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      render(
+        <DiffView
+          diffText={SAME_HEADER_DIFF}
+          staged={false}
+          onStageHunk={vi.fn()}
+          onUnstageHunk={vi.fn()}
+          onDiscardHunk={vi.fn()}
+          canDiscardHunk
+        />
+      )
+      expect(screen.getAllByRole('button', { name: DISCARD })).toHaveLength(2)
+      const keyWarnings = errorSpy.mock.calls.filter((call) => String(call[0]).includes('same key'))
+      expect(keyWarnings).toHaveLength(0)
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 })

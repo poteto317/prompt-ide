@@ -48,3 +48,12 @@ export interface StashPanelState {
   onPop: (sha: string) => Promise<void>
   onDrop: (entry: GitStashEntry) => Promise<boolean>
 }
+
+// 「変更をすべて取り消す」が受け取る状態と操作
+export interface DiscardAllState {
+  /** 一括の取り消しが実行中か */
+  isDiscarding: boolean
+  error: Error | null
+  /** 確認 → 取り消し → 成功時のタブ・ツリーの再読込 */
+  onDiscardAll: () => Promise<void>
+}

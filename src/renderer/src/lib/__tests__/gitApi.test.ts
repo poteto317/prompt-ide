@@ -12,7 +12,9 @@ import {
   getBranches,
   getTags,
   amendCommit,
-  stashPop
+  stashPop,
+  discardHunk,
+  discardAll
 } from '../gitApi'
 
 const mockApi = {
@@ -27,7 +29,9 @@ const mockApi = {
   getBranches: vi.fn(),
   getTags: vi.fn(),
   amendCommit: vi.fn(),
-  stashPop: vi.fn()
+  stashPop: vi.fn(),
+  discardHunk: vi.fn(),
+  discardAll: vi.fn()
 }
 
 beforeEach(() => {
@@ -151,4 +155,28 @@ describe('stashPop', () => {
     await expect(stashPop('a'.repeat(40))).resolves.toBe(result)
     expect(mockApi.stashPop).toHaveBeenCalledWith('a'.repeat(40))
   })
+})
+
+describe('discardHunk', () => {
+  it('window.api.discardHunk に filePath と patch をそのまま渡す', async () => {
+    mockApi.discardHunk.mockResolvedValue(undefined)
+    await discardHunk('src/a.ts', 'PATCH')
+    expect(mockApi.discardHunk).toHaveBeenCalledWith('src/a.ts', 'PATCH')
+  })
+})
+
+describe('discardAll', () => {
+  it('window.api.discardAll に件数をそのまま渡す', async () => {
+    mockApi.discardAll.mockResolvedValue({ status: 'done' })
+    await discardAll(3)
+    expect(mockApi.discardAll).toHaveBeenCalledWith(3)
+  })
+
+  it.each([{ status: 'done' }, { status: 'partial', message: '途中で失敗しました' }] as const)(
+    '結果(%o)をそのまま返す',
+    async (result) => {
+      mockApi.discardAll.mockResolvedValue(result)
+      await expect(discardAll(2)).resolves.toEqual(result)
+    }
+  )
 })

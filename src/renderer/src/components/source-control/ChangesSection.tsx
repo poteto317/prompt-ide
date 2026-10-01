@@ -1,5 +1,6 @@
 import type { GitFileStatus } from '@shared/types'
 import { isUnstagedFile } from '../../lib/gitUtils'
+import type { DiscardAllState } from '../../types'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import ChangesFileItem from './ChangesFileItem'
 
@@ -26,6 +27,8 @@ interface Props {
    *  は対象パス単独の isLocked だけでなくこれも見て新規の stage をブロックするため、
    *  ボタン側もここを見ないと「押せそうに見えるのに押しても無言で弾かれる」状態になる */
   isAnyLocked?: () => boolean
+  /** 「すべて取り消す」の状態と操作。確認・ロック・再読込は呼び出し元(useDiscardAllChanges)が行う */
+  discardAll?: DiscardAllState
 }
 
 export default function ChangesSection({
@@ -35,13 +38,34 @@ export default function ChangesSection({
   onDiscard,
   onOpenDiff,
   isLocked = alwaysUnlocked,
-  isAnyLocked = alwaysUnlocked
+  isAnyLocked = alwaysUnlocked,
+  discardAll
 }: Props): React.JSX.Element | null {
   const changed = files.filter(isUnstagedFile)
   if (changed.length === 0) return null
   return (
     <section className="source-control-panel__section">
-      <h3 className="source-control-panel__section-title">変更 ({changed.length})</h3>
+      <div className="changes-section__header">
+        <h3 className="source-control-panel__section-title">変更 ({changed.length})</h3>
+        {discardAll !== undefined && (
+          <button
+            type="button"
+            className="changes-section__discard-all"
+            aria-label={discardAll.isDiscarding ? '変更を取り消し中' : '変更をすべて取り消す'}
+            // 他の stage/unstage・ハンク操作・pull 等の実行中は lockGlobal を取れず
+            // 押しても弾かれるため、ファイル単位の取り消しと同じ条件で無効化する
+            disabled={discardAll.isDiscarding || stagingPaths.size > 0 || isAnyLocked()}
+            onClick={() => void discardAll.onDiscardAll()}
+          >
+            {discardAll.isDiscarding ? '取り消し中...' : 'すべて取り消す'}
+          </button>
+        )}
+      </div>
+      {discardAll !== undefined && discardAll.error !== null && (
+        <p className="changes-section__error" role="alert">
+          {discardAll.error.message}
+        </p>
+      )}
       <ul className="source-control-panel__file-list">
         {changed.map((f) => (
           <ChangesFileItem

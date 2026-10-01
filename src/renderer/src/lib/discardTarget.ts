@@ -1,13 +1,21 @@
 import type { GitFileStatus } from '@shared/types'
-import { isIntentToAddFile, isUnstagedFile, isUntrackedFile } from './gitUtils'
+import { isConflictedFile, isIntentToAddFile, isUnstagedFile, isUntrackedFile } from './gitUtils'
 import { joinPath } from './pathUtils'
 
 // 変更の取り消しで、ファイルを index の内容へ戻すのではなく OS のゴミ箱へ移すか。
 // 履歴に内容が無いもの(未追跡・intent-to-add)が対象。main 側
-// (gitService.ts の discardFileChanges)の分類と揃える(片方だけ変えると、確認文言や
+// (gitDiscardClassifier.ts の classifyDiscardTarget)の分類と揃える(片方だけ変えると、確認文言や
 // タブの扱いと実際の操作が食い違う)
 export function movesToTrashOnDiscard(f: GitFileStatus): boolean {
   return isUntrackedFile(f) || isIntentToAddFile(f)
+}
+
+// ハンク単位で取り消せるファイルか。追跡済みの変更ファイルだけが対象で、ゴミ箱へ移す対象
+// (未追跡・intent-to-add)と、コンフリクト中のファイルは取り消せない。main 側
+// (gitDiscardService.ts の discardHunk)の分類と揃える(片方だけ変えると、ボタンの表示と
+// 実際の拒否が食い違う)
+export function canDiscardHunkFor(f: GitFileStatus): boolean {
+  return !movesToTrashOnDiscard(f) && !isConflictedFile(f)
 }
 
 export interface DiscardTarget {

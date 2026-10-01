@@ -85,6 +85,8 @@ const defaultProps = {
   isHunkOperationInProgress: false,
   onStageHunk: vi.fn(),
   onUnstageHunk: vi.fn(),
+  onDiscardHunk: vi.fn(),
+  canDiscardHunk: false,
   isActiveFileUntracked: false
 }
 
@@ -771,5 +773,38 @@ describe('EditorPanel — diff タブ', () => {
       />
     )
     expect(screen.getByRole('button', { name: 'このハンクをステージ' })).toBeDisabled()
+  })
+})
+
+describe('EditorPanel — ハンクの取り消しの配線', () => {
+  const diff = 'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'
+
+  it('canDiscardHunk が真なら DiffView に届き、押すと onDiscardHunk が呼ばれる', async () => {
+    const onDiscardHunk = vi.fn()
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={diff}
+        canDiscardHunk
+        onDiscardHunk={onDiscardHunk}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'このハンクを取り消す' }))
+    expect(onDiscardHunk).toHaveBeenCalledTimes(1)
+    expect(onDiscardHunk).toHaveBeenCalledWith(expect.stringContaining('+b'), '@@ -1,1 +1,1 @@')
+  })
+
+  it('canDiscardHunk が偽なら取り消しボタンは出ない', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffContent={diff}
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'このハンクを取り消す' })).not.toBeInTheDocument()
   })
 })

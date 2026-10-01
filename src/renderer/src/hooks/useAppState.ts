@@ -8,6 +8,8 @@ import { useGitOperations } from './useGitOperations'
 import { useGitRemoteOperations } from './useGitRemoteOperations'
 import { useGitBranchOperations } from './useGitBranchOperations'
 import { useDiscardFileChanges } from './useDiscardFileChanges'
+import { useDiscardHunk } from './useDiscardHunk'
+import { useDiscardAllChanges } from './useDiscardAllChanges'
 import { useSettings } from './useSettings'
 import { usePromptExecution } from './usePromptExecution'
 import { useHistory } from './useHistory'
@@ -21,7 +23,7 @@ import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
 import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isSamePath } from '../lib/pathUtils'
-import type { StashPanelState } from '../types'
+import type { DiscardAllState, StashPanelState } from '../types'
 import { isStagedFile, isUnstagedFile } from '../lib/gitUtils'
 
 type AppState = {
@@ -48,6 +50,11 @@ type AppState = {
   /** 退避セクションが受け取る状態と操作。退避・復元は未保存編集の破棄確認 + 成功時の
    *  ファイルツリーとタブの再読込を行うラッパーに差し替えている */
   stash: StashPanelState
+  /** ハンクの取り消し(確認 → 取り消し → 成功時のタブ・ツリーの再読込)。引数は diff のパッチと
+   *  ハンクの見出し(確認文言に使う)。useDiffOperations の同名の boolean 版を差し替えている */
+  discardHunk: (patch: string, hunkHeader: string) => Promise<void>
+  /** 未ステージの変更をすべて取り消す状態と操作(確認・排他・タブとツリーの再読込込み) */
+  discardAll: DiscardAllState
 } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -61,7 +68,7 @@ type AppState = {
   ReturnType<typeof useHistory> &
   ReturnType<typeof usePromptRunner> &
   ReturnType<typeof useDiffTabs> &
-  ReturnType<typeof useDiffOperations> &
+  Omit<ReturnType<typeof useDiffOperations>, 'discardHunk'> &
   ReturnType<typeof useGitHistory>
 
 export function useAppState(): AppState {
@@ -285,6 +292,25 @@ export function useAppState(): AppState {
     closeTabsAtOrInside: fileSystem.closeTabsAtOrInside,
     refreshTree: fileSystem.refreshTree
   })
+  // ハンクの取り消しも同様。useDiffOperations.discardHunk(確認なしの boolean 版)は
+  // ここで確認・タブ同期つきのものに差し替える(名前の衝突を避けるため別名で受ける)
+  const discardHunk = useDiscardHunk({
+    folderPath: fileSystem.folderPath,
+    activeDiffTabPath: diffTabs.activeDiffTab?.path ?? null,
+    discardHunk: diffOperations.discardHunk,
+    hasDirtyTabAtOrInside: fileSystem.hasDirtyTabAtOrInside,
+    reloadOpenFile: fileSystem.reloadOpenFile,
+    refreshTree: fileSystem.refreshTree
+  })
+  // 変更の一括取り消しは、確認・排他・タブとツリーの再読込を useDiscardAllChanges に任せる
+  const discardAll = useDiscardAllChanges({
+    gitStatus: git.gitStatus,
+    refreshGitStatus: git.refreshGitStatus,
+    fileLock: fileOperationLock,
+    confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+    reloadOpenFiles: fileSystem.reloadOpenFiles,
+    refreshTree: fileSystem.refreshTree
+  })
   // 他のフックと違いキー名の衝突を避けて quickOpen 名前空間にまとめる
   // (isOpen / query / results のような汎用的な名前を App 直下に展開しないため)
   const quickOpen = useQuickOpen({
@@ -327,6 +353,10 @@ export function useAppState(): AppState {
     checkoutBranch,
     mergeBranch,
     stash,
-    discardFile
+    discardFile,
+    // ...diffOperations の生の discardHunk(boolean 版)を、確認・同期つきのもので上書きする。
+    // spread の後に置く必要がある
+    discardHunk,
+    discardAll
   }
 }

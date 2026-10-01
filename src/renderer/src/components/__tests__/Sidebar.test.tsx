@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
-import type { StashPanelState } from '../../types'
+import type { DiscardAllState, StashPanelState } from '../../types'
 import { sidebarTitles } from '../../config/sidebarTitles'
 
 const emptyStash: StashPanelState = {
@@ -11,6 +11,12 @@ const emptyStash: StashPanelState = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPop: vi.fn().mockResolvedValue(undefined),
   onDrop: vi.fn().mockResolvedValue(true)
+}
+
+const emptyDiscardAll: DiscardAllState = {
+  isDiscarding: false,
+  error: null,
+  onDiscardAll: vi.fn().mockResolvedValue(undefined)
 }
 
 const defaultProps = {
@@ -74,6 +80,7 @@ const defaultProps = {
   onDeleteBranch: vi.fn().mockResolvedValue(true),
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
+  discardAll: emptyDiscardAll,
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),

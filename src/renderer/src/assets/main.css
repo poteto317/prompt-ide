@@ -1241,6 +1241,44 @@ body {
   font-size: 12px;
 }
 
+/* 変更セクションの見出し行と「すべて取り消す」(.stash-section__header / __push と同じ寸法・配色) */
+.changes-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 12px;
+}
+
+.changes-section__discard-all {
+  flex: none;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  background: none;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.changes-section__discard-all:hover:not(:disabled) {
+  background: #5a1d1d;
+  color: #ffffff;
+}
+
+.changes-section__discard-all:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.changes-section__error {
+  margin: 0;
+  padding: 4px 12px;
+  color: #f48771;
+  font-size: 12px;
+}
+
 .source-control-panel__ahead {
   color: #4ec9b0;
   font-size: 11px;
@@ -2226,6 +2264,19 @@ body {
 
 .diff-view__hunk-action-btn:hover:not(:disabled) {
   background: #1177bb;
+}
+
+.diff-view__hunk-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.diff-view__hunk-action-btn--danger {
+  background: #5a1d1d;
+}
+
+.diff-view__hunk-action-btn--danger:hover:not(:disabled) {
+  background: #7a2828;
 }
 
 .diff-view__hunk-action-btn:disabled {

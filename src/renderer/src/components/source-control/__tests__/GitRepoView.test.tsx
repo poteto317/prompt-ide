@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
-import type { StashPanelState } from '../../../types'
+import type { DiscardAllState, StashPanelState } from '../../../types'
 import GitRepoView from '../GitRepoView'
 
 const emptyStash: StashPanelState = {
@@ -12,6 +12,12 @@ const emptyStash: StashPanelState = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPop: vi.fn().mockResolvedValue(undefined),
   onDrop: vi.fn().mockResolvedValue(true)
+}
+
+const emptyDiscardAll: DiscardAllState = {
+  isDiscarding: false,
+  error: null,
+  onDiscardAll: vi.fn().mockResolvedValue(undefined)
 }
 
 const noFiles: GitFileStatus[] = []
@@ -42,7 +48,8 @@ const baseProps = {
   onCreateBranch: vi.fn().mockResolvedValue(true),
   onDeleteBranch: vi.fn().mockResolvedValue(true),
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
-  stash: emptyStash
+  stash: emptyStash,
+  discardAll: emptyDiscardAll
 }
 
 describe('GitRepoView', () => {
@@ -198,6 +205,7 @@ describe('GitRepoView', () => {
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
+        discardAll={emptyDiscardAll}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -267,6 +275,7 @@ describe('GitRepoView', () => {
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
+        discardAll={emptyDiscardAll}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -306,6 +315,7 @@ describe('GitRepoView', () => {
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
+        discardAll={emptyDiscardAll}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -343,6 +353,7 @@ describe('GitRepoView', () => {
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
+        discardAll={emptyDiscardAll}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -385,6 +396,7 @@ describe('GitRepoView', () => {
         ]}
         onMergeBranch={onMergeBranch}
         stash={emptyStash}
+        discardAll={emptyDiscardAll}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
@@ -403,6 +415,7 @@ describe('GitRepoView', () => {
         behind={0}
         files={noFiles}
         stash={{ ...emptyStash, entries: [] }}
+        discardAll={emptyDiscardAll}
       />
     )
     const headings = screen.getAllByRole('heading').map((h) => h.textContent)
@@ -420,6 +433,7 @@ describe('GitRepoView', () => {
         behind={0}
         files={noFiles}
         stash={{ ...emptyStash, onPush }}
+        discardAll={emptyDiscardAll}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: '変更を退避する' }))
@@ -440,5 +454,22 @@ describe('GitRepoView', () => {
       />
     )
     expect(screen.getByRole('button', { name: '変更を退避する' })).toBeDisabled()
+  })
+
+  it('discardAll は ChangesSection まで届く(「すべて取り消す」→ onDiscardAll、error は alert に出る)', async () => {
+    const onDiscardAll = vi.fn().mockResolvedValue(undefined)
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={[changedFile]}
+        discardAll={{ isDiscarding: false, error: new Error('取り消せません'), onDiscardAll }}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '変更をすべて取り消す' }))
+    expect(onDiscardAll).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('alert')).toHaveTextContent('取り消せません')
   })
 })

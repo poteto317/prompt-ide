@@ -6,7 +6,7 @@ import HistorySection from './HistorySection'
 import StashSection from './StashSection'
 import BranchSwitcher from './BranchSwitcher'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind, StashPanelState } from '../../types'
+import type { BranchOperationKind, DiscardAllState, StashPanelState } from '../../types'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
@@ -42,6 +42,7 @@ interface Props {
   onDeleteBranch: (branchName: string) => Promise<boolean>
   onMergeBranch: (branchName: string) => Promise<void>
   stash: StashPanelState
+  discardAll: DiscardAllState
 }
 
 export default function GitRepoView({
@@ -73,7 +74,8 @@ export default function GitRepoView({
   onCreateBranch,
   onDeleteBranch,
   onMergeBranch,
-  stash
+  stash,
+  discardAll
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -124,6 +126,7 @@ export default function GitRepoView({
         onStage={onStage}
         onDiscard={onDiscard}
         onOpenDiff={(path) => onOpenDiff(path, false)}
+        discardAll={discardAll}
       />
       {files.length === 0 && <p className="source-control-panel__empty">変更はありません</p>}
       <StashSection stash={stash} isBlocked={isBlockedByOtherOperation} />

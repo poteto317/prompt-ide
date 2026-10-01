@@ -12,6 +12,7 @@ const mockGetDiff = vi.mocked(gitApi.getDiff)
 const mockStageHunk = vi.mocked(gitApi.stageHunk)
 const mockUnstageHunk = vi.mocked(gitApi.unstageHunk)
 const mockStageFile = vi.mocked(gitApi.stageFile)
+const mockDiscardHunk = vi.mocked(gitApi.discardHunk)
 
 // 各テストが FileOperationLock の一部の挙動だけを差し替えられるよう、
 // デフォルト値(何もロックされていない状態)に overrides をマージして返す
@@ -974,5 +975,157 @@ describe('unstageHunk', () => {
 
     expect(mockUnstageHunk).toHaveBeenCalledWith('src/index.ts', 'PATCH_TEXT')
     expect(refreshGitStatus).toHaveBeenCalled()
+  })
+})
+
+describe('discardHunk', () => {
+  const activeTab = { path: 'src/index.ts', staged: false }
+  const modified = [{ path: 'src/index.ts', index: ' ', workingDir: 'M' }]
+
+  it('gitApi.discardHunk を path と patch で呼び、成功で true を返して diff を取り直す', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    mockDiscardHunk.mockResolvedValue(undefined)
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+    expect(mockGetDiff).toHaveBeenCalledTimes(1)
+
+    let ok = false
+    await act(async () => {
+      ok = await result.current.discardHunk('PATCH_TEXT')
+    })
+
+    expect(ok).toBe(true)
+    expect(mockDiscardHunk).toHaveBeenCalledWith('src/index.ts', 'PATCH_TEXT')
+    expect(refreshGitStatus).toHaveBeenCalled()
+    await waitFor(() => expect(mockGetDiff).toHaveBeenCalledTimes(2))
+  })
+
+  it('失敗すると false を返し、diffError に入り、diff を取り直す', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    mockDiscardHunk.mockRejectedValue(new Error('取り消せませんでした'))
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+
+    let ok = true
+    await act(async () => {
+      ok = await result.current.discardHunk('PATCH_TEXT')
+    })
+
+    expect(ok).toBe(false)
+    expect(result.current.diffError?.message).toBe('取り消せませんでした')
+    await waitFor(() => expect(mockGetDiff).toHaveBeenCalledTimes(2))
+  })
+
+  it('実行中の 2 回目は false を返し、gitApi.discardHunk は 1 回だけ呼ぶ', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    let resolveDiscard: () => void = () => {}
+    mockDiscardHunk.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDiscard = resolve
+        })
+    )
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+
+    let first: Promise<boolean> = Promise.resolve(false)
+    let second: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      first = result.current.discardHunk('PATCH_1')
+    })
+    act(() => {
+      second = result.current.discardHunk('PATCH_2')
+    })
+    let results: boolean[] = []
+    await act(async () => {
+      resolveDiscard()
+      results = await Promise.all([first, second])
+    })
+
+    expect(results).toEqual([true, false])
+    expect(mockDiscardHunk).toHaveBeenCalledTimes(1)
+  })
+
+  it('他のパスがロック中(isAnyLocked)は false を返し、gitApi.discardHunk を呼ばない', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
+    const { result } = renderHook(() =>
+      useDiffOperations(activeTab, refreshGitStatus, modified, lock)
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+
+    let ok = true
+    await act(async () => {
+      ok = await result.current.discardHunk('PATCH_TEXT')
+    })
+
+    expect(ok).toBe(false)
+    expect(mockDiscardHunk).not.toHaveBeenCalled()
+  })
+
+  it('stageHunk / unstageHunk は従来どおり void を返す(boolean を公開しない)', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    mockStageHunk.mockResolvedValue(undefined)
+    mockUnstageHunk.mockResolvedValue(undefined)
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+
+    let staged: unknown = 'x'
+    let unstaged: unknown = 'x'
+    await act(async () => {
+      staged = await result.current.stageHunk('P')
+      unstaged = await result.current.unstageHunk('P')
+    })
+
+    expect(staged).toBeUndefined()
+    expect(unstaged).toBeUndefined()
+  })
+})
+
+describe('canDiscardHunk', () => {
+  const unstagedTab = { path: 'a.ts', staged: false }
+  const compute = (
+    tab: DiffTabKey | null,
+    files: { path: string; index: string; workingDir: string }[]
+  ): boolean => {
+    mockGetDiff.mockResolvedValue('DIFF')
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useDiffOperations(tab, refreshGitStatus, files))
+    return result.current.canDiscardHunk
+  }
+
+  it('未ステージの diff で追跡済みの変更ファイルなら true', () => {
+    expect(compute(unstagedTab, [{ path: 'a.ts', index: ' ', workingDir: 'M' }])).toBe(true)
+  })
+
+  it('ステージ済み diff は false', () => {
+    expect(
+      compute({ path: 'a.ts', staged: true }, [{ path: 'a.ts', index: 'M', workingDir: 'M' }])
+    ).toBe(false)
+  })
+
+  it('未追跡(??)は false', () => {
+    expect(compute(unstagedTab, [{ path: 'a.ts', index: '?', workingDir: '?' }])).toBe(false)
+  })
+
+  it('intent-to-add( A)は false', () => {
+    expect(compute(unstagedTab, [{ path: 'a.ts', index: ' ', workingDir: 'A' }])).toBe(false)
+  })
+
+  it('コンフリクト(UU)は false', () => {
+    expect(compute(unstagedTab, [{ path: 'a.ts', index: 'U', workingDir: 'U' }])).toBe(false)
+  })
+
+  it('git status に対象ファイルが無ければ false', () => {
+    expect(compute(unstagedTab, [])).toBe(false)
+  })
+
+  it('activeDiffTab が null なら false', () => {
+    expect(compute(null, [{ path: 'a.ts', index: ' ', workingDir: 'M' }])).toBe(false)
   })
 })

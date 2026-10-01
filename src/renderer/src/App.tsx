@@ -90,6 +90,8 @@ export default function App(): React.JSX.Element {
     isActiveFileUntracked,
     stageHunk,
     unstageHunk,
+    discardHunk,
+    canDiscardHunk,
     amend,
     log,
     branches,
@@ -106,6 +108,7 @@ export default function App(): React.JSX.Element {
     deleteBranch,
     mergeBranch,
     stash,
+    discardAll,
     branchOperationError,
     hasKey,
     apiKeyLoaded,
@@ -281,6 +284,7 @@ export default function App(): React.JSX.Element {
               onDeleteBranch={deleteBranch}
               onMergeBranch={mergeBranch}
               stash={stash}
+              discardAll={discardAll}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
@@ -334,6 +338,8 @@ export default function App(): React.JSX.Element {
             isActiveFileUntracked={isActiveFileUntracked}
             onStageHunk={stageHunk}
             onUnstageHunk={unstageHunk}
+            onDiscardHunk={discardHunk}
+            canDiscardHunk={canDiscardHunk}
           />
         </div>
       </div>

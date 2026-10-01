@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
-import { movesToTrashOnDiscard, resolveDiscardTarget } from '../discardTarget'
+import { canDiscardHunkFor, movesToTrashOnDiscard, resolveDiscardTarget } from '../discardTarget'
 
 describe('movesToTrashOnDiscard', () => {
-  // main 側(gitService.discardFileChanges)と同じ分類。履歴に内容が無いものはゴミ箱へ
+  // main 側(gitDiscardClassifier.classifyDiscardTarget)と同じ分類。履歴に内容が無いものはゴミ箱へ
   it.each([
     ['未追跡', { path: 'new.txt', index: '?', workingDir: '?' }],
     ['intent-to-add', { path: 'ita.txt', index: ' ', workingDir: 'A' }]
@@ -18,6 +18,26 @@ describe('movesToTrashOnDiscard', () => {
     ['新規ステージ + 変更', { path: 'a.ts', index: 'A', workingDir: 'M' }]
   ] as const)('%s は index の内容へ戻す(ゴミ箱へ移さない)', (_label, file) => {
     expect(movesToTrashOnDiscard(file)).toBe(false)
+  })
+})
+
+describe('canDiscardHunkFor', () => {
+  // main 側(gitDiscardService.discardHunk)と同じ分類。追跡済みの変更ファイルだけがハンク単位で取り消せる
+  it.each([
+    ['変更', { path: 'a.ts', index: ' ', workingDir: 'M' }],
+    ['ステージ済み + 変更', { path: 'a.ts', index: 'M', workingDir: 'M' }],
+    ['削除', { path: 'a.ts', index: ' ', workingDir: 'D' }]
+  ] as const)('%s は取り消せる', (_label, file) => {
+    expect(canDiscardHunkFor(file)).toBe(true)
+  })
+
+  it.each([
+    ['未追跡', { path: 'new.txt', index: '?', workingDir: '?' }],
+    ['intent-to-add', { path: 'ita.txt', index: ' ', workingDir: 'A' }],
+    ['コンフリクト(UU)', { path: 'c.txt', index: 'U', workingDir: 'U' }],
+    ['コンフリクト(AA)', { path: 'c.txt', index: 'A', workingDir: 'A' }]
+  ] as const)('%s は取り消せない', (_label, file) => {
+    expect(canDiscardHunkFor(file)).toBe(false)
   })
 })
 
