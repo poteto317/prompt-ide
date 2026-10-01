@@ -7,6 +7,8 @@ interface Props {
   /** 入力値(trim 済み)を検証し、エラー文言か null を返す。省略時はファイル名の検証
    *  (isSafeEntryName)。ブランチ名のように '/' を含められる名前に流用するため */
   validate?: (name: string) => string | null
+  /** 入力欄のアクセシブルネーム。省略時は「名前」 */
+  inputLabel?: string
   onSubmit: (name: string) => void
   onCancel: () => void
 }
@@ -28,6 +30,7 @@ export default function NameInputDialog({
   title,
   initialValue = '',
   validate = validateName,
+  inputLabel = '名前',
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
@@ -61,7 +64,7 @@ export default function NameInputDialog({
           autoFocus
           type="text"
           className="name-input-dialog__input"
-          aria-label="名前"
+          aria-label={inputLabel}
           value={value}
           onChange={(e) => {
             setValue(e.target.value)

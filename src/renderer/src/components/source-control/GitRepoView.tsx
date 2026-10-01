@@ -3,9 +3,10 @@ import StagedSection from './StagedSection'
 import ChangesSection from './ChangesSection'
 import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
+import StashSection from './StashSection'
 import BranchSwitcher from './BranchSwitcher'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
-import type { BranchOperationKind } from '../../types'
+import type { BranchOperationKind, StashPanelState } from '../../types'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
@@ -40,6 +41,7 @@ interface Props {
   onCreateBranch: (branchName: string) => Promise<boolean>
   onDeleteBranch: (branchName: string) => Promise<boolean>
   onMergeBranch: (branchName: string) => Promise<void>
+  stash: StashPanelState
 }
 
 export default function GitRepoView({
@@ -70,7 +72,8 @@ export default function GitRepoView({
   onCheckoutBranch,
   onCreateBranch,
   onDeleteBranch,
-  onMergeBranch
+  onMergeBranch,
+  stash
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -123,6 +126,7 @@ export default function GitRepoView({
         onOpenDiff={(path) => onOpenDiff(path, false)}
       />
       {files.length === 0 && <p className="source-control-panel__empty">変更はありません</p>}
+      <StashSection stash={stash} isBlocked={isBlockedByOtherOperation} />
       <HistorySection
         log={log}
         branches={branches}

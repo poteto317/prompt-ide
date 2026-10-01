@@ -16,6 +16,17 @@ describe('NameInputDialog', () => {
     expect(screen.getByLabelText('名前')).toBeInTheDocument()
   })
 
+  it('inputLabel を渡すと、入力欄をその名前で取得できる', () => {
+    render(<NameInputDialog {...defaultProps} inputLabel="退避のメッセージ" />)
+    expect(screen.getByRole('textbox', { name: '退避のメッセージ' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: '名前' })).not.toBeInTheDocument()
+  })
+
+  it('inputLabel を渡さなければ、入力欄の名前は「名前」', () => {
+    render(<NameInputDialog {...defaultProps} />)
+    expect(screen.getByRole('textbox', { name: '名前' })).toBeInTheDocument()
+  })
+
   it('initialValue が入力欄の初期値になる', () => {
     render(<NameInputDialog {...defaultProps} initialValue="old.ts" />)
     expect((screen.getByLabelText('名前') as HTMLInputElement).value).toBe('old.ts')

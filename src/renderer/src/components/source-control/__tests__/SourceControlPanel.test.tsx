@@ -2,7 +2,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
+import type { StashPanelState } from '../../../types'
 import SourceControlPanel from '../SourceControlPanel'
+
+const emptyStash: StashPanelState = {
+  entries: [],
+  pendingOperation: null,
+  error: null,
+  onPush: vi.fn().mockResolvedValue(undefined),
+  onPop: vi.fn().mockResolvedValue(undefined),
+  onDrop: vi.fn().mockResolvedValue(true)
+}
 
 const baseProps = {
   gitStatus: null as GitStatusResult | null,
@@ -42,6 +52,7 @@ const baseProps = {
   onCreateBranch: vi.fn().mockResolvedValue(true),
   onDeleteBranch: vi.fn().mockResolvedValue(true),
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
+  stash: emptyStash,
   branchOperationError: null as Error | null
 }
 
@@ -229,6 +240,7 @@ describe('SourceControlPanel', () => {
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
+        stash={emptyStash}
         branchOperationError={null}
       />
     )

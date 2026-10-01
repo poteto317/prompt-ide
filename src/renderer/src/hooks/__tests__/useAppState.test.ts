@@ -166,6 +166,18 @@ const mockUseGitHistory = vi.hoisted(() =>
   }))
 )
 
+// 退避パネルの組み立て(確認・再読込のラップ)は useStashPanel.test.ts で検証するため、
+// ここでは useAppState の配線(依存の受け渡しと戻り値の公開)だけを見る静的モックにする
+const mockStashPanel = vi.hoisted(() => ({
+  entries: [] as unknown[],
+  pendingOperation: null,
+  error: null,
+  onPush: vi.fn(),
+  onPop: vi.fn(),
+  onDrop: vi.fn()
+}))
+const mockUseStashPanel = vi.hoisted(() => vi.fn())
+
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
@@ -177,6 +189,7 @@ vi.mock('../useHistory', () => ({ useHistory: mockUseHistory }))
 vi.mock('../usePromptRunner', () => ({ usePromptRunner: mockUsePromptRunner }))
 vi.mock('../useDiffTabs', () => ({ useDiffTabs: mockUseDiffTabs }))
 vi.mock('../useGitHistory', () => ({ useGitHistory: mockUseGitHistory }))
+vi.mock('../useStashPanel', () => ({ useStashPanel: mockUseStashPanel }))
 
 import { useAppState } from '../useAppState'
 
@@ -1223,6 +1236,43 @@ describe('useAppState', () => {
         window.api.discardChanges = original
         confirmSpy.mockRestore()
       }
+    })
+  })
+
+  describe('stash(退避)', () => {
+    it('useStashPanel の戻り値を stash として公開し、依存を渡す', () => {
+      const confirmDiscardAnyDirty = vi.fn(() => true)
+      const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
+      const refreshTree = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue({
+        ...mockUseFileSystem(),
+        folderPath: '/project',
+        confirmDiscardAnyDirty,
+        reloadOpenFiles,
+        refreshTree
+      })
+      const refreshGitStatus = vi.fn()
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: null,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      mockUseStashPanel.mockReturnValue(mockStashPanel)
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseStashPanel).toHaveBeenCalled()
+      expect(mockUseStashPanel).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folderPath: '/project',
+          confirmDiscardAnyDirty,
+          reloadOpenFiles,
+          refreshTree,
+          gitStatus: null,
+          refreshGitStatus,
+          fileOperationLock: expect.anything()
+        })
+      )
+      expect(result.current.stash).toBe(mockStashPanel)
     })
   })
 

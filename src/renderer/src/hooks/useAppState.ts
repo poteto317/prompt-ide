@@ -16,10 +16,12 @@ import { useQuickOpen } from './useQuickOpen'
 import { useDiffTabs } from './useDiffTabs'
 import { useDiffOperations } from './useDiffOperations'
 import { useGitHistory } from './useGitHistory'
+import { useStashPanel } from './useStashPanel'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
 import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isSamePath } from '../lib/pathUtils'
+import type { StashPanelState } from '../types'
 import { isStagedFile, isUnstagedFile } from '../lib/gitUtils'
 
 type AppState = {
@@ -43,6 +45,9 @@ type AppState = {
    *  成功時のみ reloadOpenFiles を行うラッパーに差し替えている(checkoutBranch と同じ)。
    *  公開する型は Promise<void> */
   mergeBranch: (branchName: string) => Promise<void>
+  /** 退避セクションが受け取る状態と操作。退避・復元は未保存編集の破棄確認 + 成功時の
+   *  ファイルツリーとタブの再読込を行うラッパーに差し替えている */
+  stash: StashPanelState
 } & ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -258,6 +263,17 @@ export function useAppState(): AppState {
       reloadOpenFiles: fileSystem.reloadOpenFiles,
       operation: () => gitBranchOperations.mergeBranch(branchName)
     })
+  // 退避の一覧・操作と、未保存編集の破棄確認・ツリー/タブの再読込の組み立ては
+  // useStashPanel に任せ、ここでは依存を渡すだけにする
+  const stash = useStashPanel({
+    folderPath: fileSystem.folderPath,
+    gitStatus: git.gitStatus,
+    refreshGitStatus: git.refreshGitStatus,
+    fileOperationLock,
+    confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+    reloadOpenFiles: fileSystem.reloadOpenFiles,
+    refreshTree: fileSystem.refreshTree
+  })
   // 変更の取り消しは、確認・取り消し・エディタのタブ同期の組み立てを
   // useDiscardFileChanges に任せ、ここでは依存を渡すだけにする
   const discardFile = useDiscardFileChanges({
@@ -310,6 +326,7 @@ export function useAppState(): AppState {
     saveFile,
     checkoutBranch,
     mergeBranch,
+    stash,
     discardFile
   }
 }

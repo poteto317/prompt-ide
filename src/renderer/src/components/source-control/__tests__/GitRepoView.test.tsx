@@ -2,7 +2,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
+import type { StashPanelState } from '../../../types'
 import GitRepoView from '../GitRepoView'
+
+const emptyStash: StashPanelState = {
+  entries: [],
+  pendingOperation: null,
+  error: null,
+  onPush: vi.fn().mockResolvedValue(undefined),
+  onPop: vi.fn().mockResolvedValue(undefined),
+  onDrop: vi.fn().mockResolvedValue(true)
+}
 
 const noFiles: GitFileStatus[] = []
 
@@ -31,7 +41,8 @@ const baseProps = {
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
   onCreateBranch: vi.fn().mockResolvedValue(true),
   onDeleteBranch: vi.fn().mockResolvedValue(true),
-  onMergeBranch: vi.fn().mockResolvedValue(undefined)
+  onMergeBranch: vi.fn().mockResolvedValue(undefined),
+  stash: emptyStash
 }
 
 describe('GitRepoView', () => {
@@ -186,6 +197,7 @@ describe('GitRepoView', () => {
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
+        stash={emptyStash}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -254,6 +266,7 @@ describe('GitRepoView', () => {
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
+        stash={emptyStash}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -292,6 +305,7 @@ describe('GitRepoView', () => {
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
+        stash={emptyStash}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -328,6 +342,7 @@ describe('GitRepoView', () => {
         onCreateBranch={vi.fn().mockResolvedValue(true)}
         onDeleteBranch={vi.fn().mockResolvedValue(true)}
         onMergeBranch={vi.fn().mockResolvedValue(undefined)}
+        stash={emptyStash}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -369,6 +384,7 @@ describe('GitRepoView', () => {
           { name: 'feature/x', current: false }
         ]}
         onMergeBranch={onMergeBranch}
+        stash={emptyStash}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
@@ -376,5 +392,53 @@ describe('GitRepoView', () => {
       screen.getByRole('button', { name: 'ブランチ feature/x を現在のブランチにマージ' })
     )
     expect(onMergeBranch).toHaveBeenCalledWith('feature/x')
+  })
+
+  it('「退避」セクションを変更の下・履歴の上に表示する', () => {
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        stash={{ ...emptyStash, entries: [] }}
+      />
+    )
+    const headings = screen.getAllByRole('heading').map((h) => h.textContent)
+    expect(headings.indexOf('退避（0）')).toBeGreaterThan(-1)
+    expect(headings.indexOf('退避（0）')).toBeLessThan(headings.indexOf('履歴'))
+  })
+
+  it('退避の操作は stash の props から呼ばれる(「退避する」→ onPush)', async () => {
+    const onPush = vi.fn().mockResolvedValue(undefined)
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        stash={{ ...emptyStash, onPush }}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '変更を退避する' }))
+    await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+    expect(onPush).toHaveBeenCalledWith('')
+  })
+
+  // 退避・復元は lockGlobal を取る。他の操作中(isAnyLocked)は押しても no-op になるため disabled にする
+  it('他の操作中(isAnyLocked)は「退避する」が disabled になる', () => {
+    render(
+      <GitRepoView
+        {...baseProps}
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        isAnyLocked={() => true}
+      />
+    )
+    expect(screen.getByRole('button', { name: '変更を退避する' })).toBeDisabled()
   })
 })

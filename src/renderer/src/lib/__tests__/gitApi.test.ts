@@ -11,7 +11,8 @@ import {
   getLog,
   getBranches,
   getTags,
-  amendCommit
+  amendCommit,
+  stashPop
 } from '../gitApi'
 
 const mockApi = {
@@ -25,7 +26,8 @@ const mockApi = {
   getLog: vi.fn(),
   getBranches: vi.fn(),
   getTags: vi.fn(),
-  amendCommit: vi.fn()
+  amendCommit: vi.fn(),
+  stashPop: vi.fn()
 }
 
 beforeEach(() => {
@@ -139,5 +141,14 @@ describe('amendCommit', () => {
   it('window.api.amendCommit を message で呼ぶ', async () => {
     await amendCommit('feat: 修正後')
     expect(mockApi.amendCommit).toHaveBeenCalledWith('feat: 修正後')
+  })
+})
+
+describe('stashPop', () => {
+  it('window.api.stashPop を SHA で呼び、結果をそのまま返す', async () => {
+    const result = { status: 'rollbackFailed', message: 'm' }
+    mockApi.stashPop.mockResolvedValue(result)
+    await expect(stashPop('a'.repeat(40))).resolves.toBe(result)
+    expect(mockApi.stashPop).toHaveBeenCalledWith('a'.repeat(40))
   })
 })

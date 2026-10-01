@@ -1,4 +1,11 @@
-import type { DeleteBranchResult, GitStatusResult, GitLogEntry, GitBranch } from '@shared/types'
+import type {
+  DeleteBranchResult,
+  GitStatusResult,
+  GitLogEntry,
+  GitBranch,
+  GitStashEntry,
+  StashPopResult
+} from '@shared/types'
 
 export function getGitStatus(): Promise<GitStatusResult> {
   return window.api.getGitStatus()
@@ -79,4 +86,20 @@ export function deleteBranch(branchName: string, force: boolean): Promise<Delete
 
 export function mergeBranch(branchName: string): Promise<void> {
   return window.api.mergeBranch(branchName)
+}
+
+export function getStashes(): Promise<GitStashEntry[]> {
+  return window.api.getStashes()
+}
+
+export function stashPush(message: string): Promise<void> {
+  return window.api.stashPush(message)
+}
+
+export function stashPop(sha: string): Promise<StashPopResult> {
+  return window.api.stashPop(sha)
+}
+
+export function stashDrop(sha: string): Promise<void> {
+  return window.api.stashDrop(sha)
 }

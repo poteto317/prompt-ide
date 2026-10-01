@@ -105,6 +105,7 @@ export default function App(): React.JSX.Element {
     createBranch,
     deleteBranch,
     mergeBranch,
+    stash,
     branchOperationError,
     hasKey,
     apiKeyLoaded,
@@ -279,6 +280,7 @@ export default function App(): React.JSX.Element {
               onCreateBranch={createBranch}
               onDeleteBranch={deleteBranch}
               onMergeBranch={mergeBranch}
+              stash={stash}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}

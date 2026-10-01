@@ -1153,6 +1153,94 @@ body {
   color: #ffffff;
 }
 
+/* 「退避」セクション。ボタンはタッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、
+   ホバー時だけ表示する作りにはしない。ホバー色は退避の戻す=青系・捨てる=赤系
+   (ブランチメニューのマージ・削除ボタンと同じ) */
+.stash-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 12px;
+}
+
+.stash-section__push,
+.stash-section__action {
+  flex: none;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  background: none;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.stash-section__push:hover:not(:disabled),
+.stash-section__action:hover:not(:disabled) {
+  background: #094771;
+  color: #ffffff;
+}
+
+.stash-section__action--danger:hover:not(:disabled) {
+  background: #5a1d1d;
+}
+
+.stash-section__push:disabled,
+.stash-section__action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.stash-section__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stash-section__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: #cccccc;
+}
+
+.stash-section__summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.stash-section__message {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stash-section__meta {
+  display: flex;
+  gap: 8px;
+  color: #969696;
+  font-size: 11px;
+}
+
+.stash-section__empty {
+  margin: 0;
+  padding: 4px 12px;
+  color: #6c6c6c;
+  font-size: 12px;
+}
+
+.stash-section__error {
+  margin: 0;
+  padding: 4px 12px;
+  color: #f48771;
+  font-size: 12px;
+}
+
 .source-control-panel__ahead {
   color: #4ec9b0;
   font-size: 11px;
