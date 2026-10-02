@@ -558,7 +558,7 @@
 - [ ] **GIT-003** 【要 Git リポジトリ】ターミナルで `echo new > new.txt` を実行し `更新` を押す → `変更` セクションに `new.txt` が状態文字 `U`（未追跡）で表示される
 - [ ] **GIT-004** 【要 Git リポジトリ】ターミナルで `git add a.txt` を実行し `更新` を押す → `ステージ済み (1)` セクションに `a.txt` が状態文字 `M` で表示され、`変更` セクションの件数からは `a.txt` が消える
 - [ ] **GIT-005** 【要 Git リポジトリ】ステージ済みの `a.txt` をさらに編集（`echo again >> a.txt`）して `更新` を押す → `a.txt` が `ステージ済み` と `変更` の両方のセクションに表示される
-- [ ] **GIT-006** Git リポジトリではないフォルダ（`mktemp -d` で作っただけの空フォルダ）を開く → パネルに `Git リポジトリではありません` が表示され、コミット欄や `変更` セクションは出ない
+- [ ] **GIT-006** Git リポジトリではないフォルダ（`mktemp -d` で作っただけの空フォルダ）を開く → パネルに `Git リポジトリではありません` とその下に `リポジトリを初期化` ボタンが表示され、コミット欄や `変更` セクションは出ない
 - [ ] **GIT-007** Git リポジトリではないフォルダを開いた状態でツールバーを見る → `フェッチ` `プル` `プッシュ` ボタンが無効（グレーアウト）になっている
 - [ ] **GIT-008** フォルダを一度も開いていない状態で `ソース管理` を開く → `フォルダを開いてください` が表示される
 - [ ] **GIT-009** 【要 Git リポジトリ】ターミナルで `git checkout -b feature-x` を実行し `更新` を押す → ブランチ名の表示が `feature-x` に変わる
@@ -1119,6 +1119,90 @@
 
 - [ ] **TAG-030** 端末で `printf '#!/bin/sh\nexec sleep 600\n' > "$TMPDIR/hang-gpg" && chmod +x "$TMPDIR/hang-gpg" && git config tag.forceSignAnnotated true && git config gpg.program "$TMPDIR/hang-gpg"` を実行し、`注釈付き`・名前 `v12`・メッセージ `m` で `作成` を押す → 約 2 分(120 秒)間は `作成中...` と `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` の案内のまま閉じられず、その後案内が消えてダイアログ内に `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: v12` が表示され、`タグ名` の入力欄にフォーカスが戻る。`git tag -l v12` は空で、`.git/refs/tags/v12.lock` は無い。続けて端末で `git config --unset tag.forceSignAnnotated` を実行してから同じ内容で `作成` を押すと、ダイアログが閉じて `v12` が作られる(`git cat-file -t v12` が `tag`)。確認後 `git config --unset gpg.program` と `pkill -f '^sleep 600$'`(残った署名プログラムを止める)で戻す
 
+### オーバーレイのドラッグ
+
+- [ ] **TAG-031** `履歴` の `タグを作成` でダイアログを開き、`タグ名` に `v1.2.3` を入力して、入力欄の中でマウスのボタンを押したまま、ダイアログの外側(暗い部分)まで動かして離す → ダイアログは閉じず、`v1.2.3` が残っている。続けてダイアログの外側で押して離すと閉じる
+
+## リモートの管理
+
+> 前提: 【要 Git リポジトリ】「管理外のフォルダ」は、端末で `cd "$(mktemp -d)" && pwd` を実行して作り、表示されたパスをアプリで開く(フォルダの選択画面では Cmd+Shift+G でパスを入力でき、Cmd+Shift+. で `.git` などの隠しフォルダが表示される)。送り先の bare リポジトリは、別の端末で `BARE="$(mktemp -d)/remote.git" && git init -q --bare --initial-branch=main "$BARE" && echo "$BARE"` を実行して作り、表示された絶対パスを URL に使う(以後もその端末で `$BARE` を使う)。端末での確認は開いたフォルダで行い、端末での変更はパネルの `更新` ボタンで反映する。
+> 前提: main プロセスが返したエラーの文言の前には、Electron が付ける英語の前置き `Error invoking remote method '<チャンネル>': Error: ` が付く(IPC を通る全操作に共通の既知の制約。ROADMAP 参照)。以下の期待結果には、前置きの後の文言を書く。
+> 前提: 利用者の git の設定で `push.autoSetupRemote` が `true` になっていないこと(`git config --global --get push.autoSetupRemote` が何も出力しない)。
+
+### リポジトリの初期化
+
+- [ ] **RMT-001** 管理外のフォルダを開き、ソース管理パネルを表示する → `Git リポジトリではありません` の下に `リポジトリを初期化` ボタンがある。ツールバーの `フェッチ` `プル` `プッシュ` は押せない
+- [ ] **RMT-002** `リポジトリを初期化` を押す → `リポジトリを初期化` のダイアログが開き、`このフォルダに空の Git リポジトリを作成します` の説明、`ブランチ名` の入力欄(値 `main` が全選択された状態でフォーカスあり)、`初期化` と `キャンセル` のボタンが表示される
+- [ ] **RMT-003** ダイアログを `キャンセル`・Escape キー・ダイアログの外側のクリックのそれぞれで閉じる → どの方法でもダイアログが閉じ、`リポジトリを初期化` ボタンにフォーカスが戻る。端末で `ls -a` を実行しても `.git` は無い
+- [ ] **RMT-004** `ブランチ名` を空にする → `名前を入力してください` が表示され `初期化` が押せない。空白だけでも同じ。`-x` を入力すると `` `-` で始まる名前は使用できません ``、`@` を入力すると `この名前は使用できません` が表示され、どちらも `初期化` が押せない
+- [ ] **RMT-005** `ブランチ名` に `a..b` を入力して `初期化` を押す → ダイアログは閉じず、赤字で `ブランチ名として使用できない名前です: a..b` が表示され、`ブランチ名` の入力欄にフォーカスがある。続けて `HEAD` を入力して `初期化` を押すと、前のエラーに代わって `ブランチ名として使用できない名前です: HEAD` が表示される。端末で `ls -a` を実行しても `.git` は無い
+- [ ] **RMT-006** RMT-005 のあと `キャンセル` で閉じ、もう一度 `リポジトリを初期化` を押す → 赤字のエラーは残っておらず、`ブランチ名` は `main` に戻っている
+- [ ] **RMT-007** `main` のまま `初期化` を押す → ダイアログが閉じ、パネルがリポジトリの表示(ブランチ `main`・`変更はありません`)に切り替わり、ブランチ名の下に `リモートが未設定です` と `リモートを追加` ボタンのバナーが表示され、`リモートを追加` にフォーカスがある。`履歴` にエラーは表示されない。端末で `git symbolic-ref HEAD` が `refs/heads/main`
+- [ ] **RMT-008** 別の管理外のフォルダを開き、`ブランチ名` に前後に空白を付けた `  feat/初期  ` を入力して初期化する → パネルがリポジトリの表示に切り替わり、ブランチ名に `feat/初期` が表示される。端末で `git symbolic-ref HEAD` が `refs/heads/feat/初期`
+- [ ] **RMT-009** RMT-007 のフォルダの中に端末で `mkdir sub` を実行し、アプリで `sub` フォルダを開く → `リポジトリを初期化` ボタンは無く、親のリポジトリとして表示され、`リモートが未設定です` のバナーが出る。端末で `ls -a sub` に `.git` は無い
+- [ ] **RMT-010** 別の管理外のフォルダを開いて `リポジトリを初期化` のダイアログを開いたまま、端末でそのフォルダに `git init -q -b trunk` を実行してから、ダイアログの `初期化` を押す → ダイアログが消え、パネルがリポジトリの表示(ブランチ `trunk`)に変わる。端末で `git symbolic-ref HEAD` は `refs/heads/trunk` のまま(再初期化されない)
+- [ ] **RMT-011** 端末で `B2="$(mktemp -d)/other.git" && git init -q --bare "$B2" && echo "$B2"` を実行して別の bare リポジトリを作り、そのフォルダをアプリで開く → `Git リポジトリではありません` と `リポジトリを初期化` が表示される(既知の制約)。`初期化` を押すとダイアログは閉じず、赤字で `このフォルダは既に Git リポジトリ（または親フォルダのリポジトリ）の中にあります` が表示される。端末で `ls -a "$B2"` に `.git` は無い。RMT-007 のフォルダの `.git` フォルダを開いて同じ操作をしても、同じ文言で拒否され、`ls -a .git` に `.git` は無い
+- [ ] **RMT-012** 別の管理外のフォルダを開いてから、端末で `rm -rf <そのフォルダのパス>` を実行してフォルダを消し、パネルの `リポジトリを初期化` から `初期化` を押す → ダイアログは閉じず、ダイアログ内に赤字で `フォルダが見つかりません: ` に続けて開いていたフォルダのパスが表示される(ダイアログ内には英語の `Cannot use simple-git on a directory that does not exist` は出ない)
+
+### リモートの状態バナー
+
+- [ ] **RMT-013** 端末で `cd "$(mktemp -d)" && git init -q -b main && git config user.name test && git config user.email test@example.com && echo 1 > a.txt && git add . && git commit -qm first && pwd` を実行してリモートの無いリポジトリを作り、アプリで開く → ブランチ名の下に `リモートが未設定です` と `リモートを追加` のバナーが出る。バナーを閉じるボタンは無く、別のフォルダを開いてから開き直してもバナーは出る
+- [ ] **RMT-014** RMT-013 のリポジトリで端末から `git checkout -q --detach` を実行して `更新` を押す → `リモートが未設定です` のバナーは出たまま(origin の追加はブランチに関係しない)。確認後 `git checkout -q main` で戻す
+- [ ] **RMT-015** RMT-013 のリポジトリで端末から `git checkout -qb other && echo other > a.txt && git commit -qam other && git checkout -q main && echo mine > a.txt && git commit -qam mine && git merge other` を実行してコンフリクトさせ、`更新` を押す → `マージ中（未解決 1 件）` のバナーの直後に `リモートが未設定です` のバナーが出て、`リモートを追加` は押せる。確認後 `git merge --abort` で戻す
+
+### リモートの追加
+
+> 前提: RMT-007 で初期化したフォルダを開き直して行う(コミットはまだ無い)。
+
+- [ ] **RMT-016** `リモートを追加` を押す → `リモートを追加` のダイアログが開き、`リモート origin を追加します（この時点では接続しません）` の説明と、空の `URL` 入力欄(フォーカスあり)が表示され、`URL を入力してください` が出て `追加` が押せない
+- [ ] **RMT-017** `URL` に `https://github.com/a/b.git`・`http://example.com/a.git`・`ssh://git@example.com:22/a.git`・`git://example.com/a`・`git@github.com:a/b.git`・`file:///tmp/a.git`・`/tmp/a.git` を 1 つずつ入力する → どれも検証の文言が出ず、`追加` が押せる(押さずに次へ進む)
+- [ ] **RMT-018** `URL` に `ext::sh -c touch% /tmp/pwned`、続けて `https://example.com/a b` を入力する → どちらも ``URL に空白・改行・制御文字・引用符（' " `）は使用できません`` が表示され `追加` が押せない。端末で `printf 'https://example.com/a\xe2\x80\x8bb' | pbcopy` を実行してゼロ幅スペースを含む URL をクリップボードに入れ、`URL` に貼り付けても同じ文言が表示される
+- [ ] **RMT-019** `URL` に `ext::sh`・`fd::3`・`../remote.git`・`example.com:repo.git`(`user@` の無い形)・`HTTPS://github.com/a/b.git`・`git://alice:s3cret@example.com/a`(git:// の資格情報)・`https://alice:ghp_DUMMY123@example.com/a/b.git`(https の資格情報)・`https://ghp_DUMMY123@example.com/a/b.git`(トークンだけ)・`http://alice@example.com/a.git`(user だけ)を 1 つずつ入力する → どれも `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され、`追加` が押せない(パスワード入りの URL は追加できない。認証は credential helper に任せる)。`--upload-pack=x` と `-oProxyCommand=x` では `` `-` で始まる URL は使用できません `` が表示され、`追加` が押せない
+- [ ] **RMT-020** ダイアログを `キャンセル`・Escape キー・ダイアログの外側のクリックのそれぞれで閉じる → どの方法でもダイアログが閉じ、`リモートを追加` にフォーカスが戻る。端末で `git remote` は何も出力しない
+- [ ] **RMT-021** `URL` に前提の bare リポジトリの絶対パス(`echo "$BARE"` の出力)を入力して `追加` を押す → ダイアログが閉じ、バナーが `upstream が未設定です（main）` と `初回 push（upstream を設定）` に変わり、そのボタンにフォーカスがある。端末で `git remote get-url origin` が入力した絶対パス
+- [ ] **RMT-022** 別の管理外のフォルダを開いて初期化し、`リモートを追加` で `https://unreachable.invalid/x.git` を `追加` する → 待たずにすぐ追加され(通信しない)、バナーが `upstream が未設定です（main）` に変わる。端末で `git remote get-url origin` が `https://unreachable.invalid/x.git`
+- [ ] **RMT-023** 別の管理外のフォルダを開いて初期化し、`リモートを追加` のダイアログを開いたまま、端末で `git remote add origin https://example.com/a.git` を実行してから、ダイアログで `https://example.com/b.git` を `追加` する → ダイアログは閉じず、赤字で `リモート origin は既に設定されています` が表示され、`URL` の入力欄にフォーカスがある。`キャンセル` で閉じるとバナーは `upstream が未設定です（main）` に変わっていて、端末で `git remote get-url origin` は `https://example.com/a.git` のまま
+
+### 初回 push(upstream の設定)と初期化の後の既存の機能
+
+> 前提: RMT-021 のリポジトリ(origin は bare リポジトリ・コミット無し)で、上から順に行う。
+
+- [ ] **RMT-024** `初回 push（upstream を設定）` を押す → パネル上部(ツールバーの下)に赤字で `コミットが無いため、初回 push できません。先にコミットしてください` が表示され、バナーはそのまま残り、`初回 push（upstream を設定）` にフォーカスがある
+- [ ] **RMT-025** 端末で `git config user.name test && git config user.email test@example.com && echo 1 > a.txt` を実行して `更新` を押し、`変更` の `a.txt` 行の `+` でステージし、`コミットメッセージ` に `first` を入力して `コミット` を押す → コミットされ、`履歴` の先頭に `first` が表示され、バッジに `main` が出る。`upstream が未設定です（main）` のバナーは残る
+- [ ] **RMT-026** `初回 push（upstream を設定）` を押す → RMT-024 の赤字のエラーが消え、バナーが消えて、ツールバーの `プッシュ` にフォーカスがある。端末で `git rev-parse --abbrev-ref main@{upstream}` が `origin/main`、`git --git-dir="$BARE" rev-parse main` が `git rev-parse main` と同じ
+- [ ] **RMT-027** 端末で `echo 2 >> a.txt && git commit -qam second` を実行して `更新` を押す → ブランチ名の横に `↑1` が出る。ツールバーの `プッシュ` を押すと `↑1` が消える
+- [ ] **RMT-028** ブランチ名ボタンのメニューの `＋ 新しいブランチを作成…` から `topic` を作る → ブランチ名が `topic` に切り替わり、バナー `upstream が未設定です（topic）` が出る。続けて `履歴` の `タグを作成` から名前 `v1` の軽量タグを作ると、`履歴` のバッジに `v1` が加わる
+- [ ] **RMT-029** 端末で `git checkout -q --detach` を実行して `更新` を押す → `upstream が未設定です` のバナーは出ない。確認後 `git checkout -q topic` で戻して `更新` を押すとバナーが戻る
+- [ ] **RMT-030** `topic` の上で、ツールバーの `プッシュ` を押す → パネル上部に git の英語のエラー(`has no upstream branch` を含む)が表示される(既知の制約)。続けてバナーの `初回 push（upstream を設定）` を押すと送れて、エラーとバナーが消える
+- [ ] **RMT-031** 端末で `OTHER="$(mktemp -d)/c" && git clone -q "$BARE" "$OTHER" && git -C "$OTHER" checkout -q -b clash && git -C "$OTHER" -c user.name=o -c user.email=o@example.com commit -q --allow-empty -m other && git -C "$OTHER" push -q origin clash` を実行して別のクローンから `clash` を先に送り、アプリのリポジトリで `git checkout -q -b clash` を実行して `更新` を押し、`初回 push（upstream を設定）` を押す → パネル上部に `初回 push に失敗しました: ` に続く git のエラー(`[rejected]` を含む)が表示され、バナー `upstream が未設定です（clash）` は残り、`初回 push（upstream を設定）` にフォーカスがある。端末で `git config --get branch.clash.remote` は何も出力しない(non-fast-forward の後はアプリから pull できない。既知の制約)
+- [ ] **RMT-032** 端末で `git checkout -q -b ghosted && git config branch.ghosted.remote ghost && git config branch.ghosted.merge refs/heads/ghosted` を実行して `更新` を押す → バナー `upstream が未設定です（ghosted）` が出る。`初回 push（upstream を設定）` を押すと、パネル上部に `upstream の設定が既にあるため、初回 push できません（設定先のリモートが無いか、fetch の設定が無いため表示されていません）` が表示される。端末で `git config --get branch.ghosted.remote` は `ghost` のままで、`git --git-dir="$BARE" for-each-ref refs/heads/ghosted` は何も出力しない
+- [ ] **RMT-033** 端末で `printf '#!/bin/sh\nsleep 5\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push && git checkout -q -b slow` を実行して `更新` を押し、`初回 push（upstream を設定）` を素早く 2 回押す → 約 5 秒間、バナーのボタンが `push 中...` で押せず、バナーに `初回 push 中です。応答が 30 秒途絶えると打ち切ります` が出て、ツールバーは `プッシュ中...` で押せない。5 秒後にバナーが消え、ツールバーの `プッシュ` にフォーカスがあり、エラーは表示されない。確認後 `rm .git/hooks/pre-push` で戻す
+- [ ] **RMT-034** 端末で `printf '#!/bin/sh\nexec sleep 40\n' > .git/hooks/pre-push && chmod +x .git/hooks/pre-push && git checkout -q -b hang` を実行して `更新` を押し、`初回 push（upstream を設定）` を押す → 約 30 秒間は `push 中...` と案内のまま、その後案内が消えてパネル上部に `操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります` が表示され、バナーは残り、`初回 push（upstream を設定）` にフォーカスがある。端末で `git config --get branch.hang.remote` は何も出力しない。確認後 `rm .git/hooks/pre-push` と `pkill -f '^sleep 40$'`(残ったフックの sleep を止める)で戻す
+
+### 見た目
+
+- [ ] **RMT-035** RMT-001 の `リポジトリを初期化` ボタンと、このリポジトリのバナーを見る → 暗色の背景で、バナーの文言は黄色系、ボタンはマージのバナーのボタンと同じ枠付きの見た目(押せない間は半透明)。端末で `git checkout -q -b release/2024.01.15_hotfix_for_customer_contoso_emergency_patch_v2` を実行して `更新` を押すと、バナーの文言はブランチ名の途中で折り返され、パネルの右端からはみ出さない
+
+### 資格情報の伏せ字とオーバーレイのドラッグ
+
+- [ ] **RMT-036** 別の管理外のフォルダを開いて初期化し、`リモートを追加` のダイアログで `URL` に `https://example.com/very/long/path/to/repository.git` を入力して、入力欄の中でマウスのボタンを押したまま、ダイアログの外側(暗い部分)まで動かして離す → ダイアログは閉じず、入力した URL が残っている。続けてダイアログの外側で押して離すと閉じ、`リモートを追加` にフォーカスが戻る
+- [ ] **RMT-037** RMT-036 のフォルダの `リモートを追加` で、`URL` に `https://alice:ghp_DUMMY123@example.com/a/b.git` を入力する → `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない(パスワード入りの URL は追加できない)。続けて端末から `touch .git/config.lock` を実行し、`URL` に `tok123@example.com:a/b.git`(scp 形式の user)を入力して `追加` を押す → ダイアログは閉じず、赤字で `リモートを追加できませんでした: ` に続く git のエラーが表示され、その中の URL は `***@example.com:a/b.git` になっていて、`tok123` は表示されない。確認後 `rm .git/config.lock` で戻す
+- [ ] **RMT-038** RMT-036 のフォルダで `リモートを追加` を開き、`URL` に `https://example.com/very/long/path/to/repository.git` を入力してから、ダイアログの外側(暗い部分)でマウスのボタンを押したまま、入力欄の上まで動かして離す → ダイアログは閉じず、入力した URL が残っている
+- [ ] **RMT-039** RMT-036 のフォルダの `リモートを追加` で、`URL` に `https://u:p'ss@example.com/a.git`、続けて `/repos/O'Brien/b.git`、`git@example.com:a"b.git` を入力する → どれも ``URL に空白・改行・制御文字・引用符（' " `）は使用できません`` が表示され `追加` が押せない(引用符を含む URL は追加できない。文言で引用符が理由だと分かる)
+- [ ] **RMT-040** RMT-036 のフォルダで端末から `git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init && printf '#!/bin/sh\necho "$1: Permission denied (publickey)." >&2\nexit 255\n' > /tmp/rmt-fake-ssh && chmod +x /tmp/rmt-fake-ssh && git config core.sshCommand /tmp/rmt-fake-ssh && git remote add origin ssh://u:pw@example.com/a/b.git` を実行して `更新` を押し(アプリからは追加できない形の origin を端末で追加する)、バナーの `初回 push（upstream を設定）` を押す → パネル上部に `初回 push に失敗しました: ***@example.com: Permission denied (publickey).` を含むエラーが表示され、`u:pw` は表示されない(端末で追加した origin でも初回 push の文言は伏せる)。確認後 `git remote remove origin && git config --unset core.sshCommand && rm /tmp/rmt-fake-ssh` で戻す
+- [ ] **RMT-041** RMT-036 のフォルダの `リモートを追加` で、`URL` に `ssh://u:p@ss@example.com/a.git`(authority に `@` が 2 個)、続けて `ssh://u:p%40ss@example.com/a.git`・`ssh://u:pw@example.com/a.git`・`ssh://example.com/a@b.git`(path の `@`)・`https://example.com/a@b.git` を入力する → どれも `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない。続けて `ssh://git@example.com/a.git`・`ssh://first.last+tag@example.com/a.git`・`ec2-user@example.com:a.git` を入力する → どれも検証の文言が出ず、`追加` が押せる(パスワードの無いユーザー名は使える。押さずに閉じる)
+- [ ] **RMT-042** RMT-036 のフォルダの `リモートを追加` で、`URL` に `ssh://alice%3Apw%40example.com/a.git`(host の `%XX`)、続けて `ssh://git@example.com%2Fx/a.git`、`ssh://u%40x@example.com/a.git`、`https://example.com#sec@example.org/a.git`(authority の後の `#`)、`https://example.com?x@example.org/a.git` を入力する → どれも `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない(git は ssh:// の URL 全体の `%XX` を元の文字に戻してから host を取り出すため)
+- [ ] **RMT-043** RMT-036 のフォルダの `リモートを追加` で、`URL` に `ssh://alice:s3cr%2Fet@example.com/a.git`、続けて `ssh://u:p%20ss@example.com/a.git`、`ssh://u:p%27ss@example.com/a.git`、`ssh://u:p%G1ss@example.com/a.git`、`ssh://u:p%3Ass@example.com/a.git`、`https://alice:s3cr%2Fet@example.com/a.git` を入力する → どれも `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない。続けて `ssh://example.com/a%2Fb.git`(path の `%2F`)を入力する → 検証の文言が出ず、`追加` が押せる(押さずに閉じる)
+- [ ] **RMT-044** RMT-036 のフォルダの `リモートを追加` で、`URL` に `https://user:pa/ss@example.com/a.git`(パスワードに生の `/`)、続けて `ssh://user:pa/ss@example.com/a.git`、`git://user:pa/ss@example.com/a.git`、`https://alice:1234/s3cret@example.com/a.git`(パスワードが数字で始まる)、`https://alice:/s3cret@example.com/a.git`、`https://ghp_tok/en@example.com/a.git`(トークンに生の `/`)、`https://user:pa%2Fss@example.com/a.git`、`https://user:pw@example.com:443/a.git`、`https://example.com:abc/a.git`、`https://[::1]x/a.git` を入力する → どれも `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない。続けて `https://example.com:8443/a.git`・`ssh://git@[::1]:22/a.git`・`https://example.com:/a.git` を入力する → どれも検証の文言が出ず、`追加` が押せる(押さずに閉じる)
+- [ ] **RMT-045** RMT-036 のフォルダの `リモートを追加` で、`URL` に Azure DevOps の「Clone」が出す形の `https://org@dev.azure.com/org/proj/_git/repo` を入力する → `使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）` が表示され `追加` が押せない(userinfo の `org` を user と解析するため)。続けて `org@` を消した `https://dev.azure.com/org/proj/_git/repo` に直す → エラーの表示が消え、`追加` が押せる(押さずに `キャンセル` で閉じる)
+
+### origin 以外の名前のリモートだけを持つリポジトリ
+
+> 前提: 端末で `GH="$(mktemp -d)" && git init -q --bare "$GH/r.git" && git clone -q "$GH/r.git" "$GH/seed" && git -C "$GH/seed" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m init && git -C "$GH/seed" push -q origin HEAD:main && git clone -q -o github -b main "$GH/r.git" "$GH/c" && echo "$GH/c"` を実行し、出力されたフォルダ(リモートの名前が `github` のクローン)をアプリで開く。
+
+- [ ] **RMT-046** 前提のフォルダを開いてソース管理パネルを見る → `リモートが未設定です` のバナーも `リモートを追加` ボタンも出ない(`upstream が未設定です` のバナーも出ない)。ツールバーの `フェッチ`・`プル` を押すとエラーなく終わる。端末で `git -C "$GH/c" remote` は `github` だけ(origin は足されていない)
+- [ ] **RMT-047** RMT-046 のフォルダで端末から `git -C "$GH/c" switch -q -c feat` を実行して `更新` を押す → ブランチ名が `feat` に変わり、`リモートが未設定です` のバナーも `upstream が未設定です（feat）` のバナー(`初回 push（upstream を設定）` ボタン)も出ない(初回 push は origin 固定のため出さない)。端末で `git -C "$GH/c" remote add origin "$GH/r.git"` を実行して `更新` を押すと `upstream が未設定です（feat）` のバナーが出る。確認後 `git -C "$GH/c" remote remove origin && git -C "$GH/c" switch -q main` で戻す
+
 ## 設定
 
 ### Anthropic API キー
@@ -1249,4 +1333,10 @@
 - バイナリ(`bin.dat`)で `自分をすべて採用` を押したあとの表示、`DU` で `ファイルを残す` を押したあとにファイルがどのセクションに現れるかは、実機で未確認のため項目にしていない
 - マージの完了・中止・解決の実行中の表示(`完了中...` `中止中...`)と、他の操作中に解決ビューのボタンが押せなくなることは、一瞬で目視確認が難しいため項目にしていない
 - TAG の `作成中...` の表示は通常は一瞬のため、TAG-026 で署名プログラムの `sleep` を使って作成を長引かせて確かめる。TAG-024 の pre-commit フックの `sleep` で、コミット中に `タグを作成` が押せなくなることを実機で確かめる(未確認)
+- RMT の初期化中・追加中の表示(`初期化中...` `追加中...` のボタン、`初期化中です` `追加中です` の案内と `aria-busy`、実行中にダイアログを `キャンセル`・Escape キー・外側のクリックで閉じられないこと、`初期化` `追加` の二重送信が 1 回になること)は、init・remote add が一瞬で終わり目視確認が難しいため項目にしていない(単体・結合テストで確認。実機で未確認)。失敗の直後、ステータスの取り直しが終わるまで実行中のまま案内を出さずエラーだけを出すこと(取り直しの待ち)も同じ理由で項目にしていない
+- RMT-010 では、先に端末で作ったリポジトリのため main プロセスは `このフォルダは既に Git リポジトリ（または親フォルダのリポジトリ）の中にあります` で拒否するが、ステータスの取り直しでダイアログごと消えるため文言は見えない想定(実機で未確認)
+- RMT-012 で、ステータスの取り直しが失敗したときにパネル上部(ツールバーの下)へ英語の `Cannot use simple-git on a directory that does not exist` が出るか(既存の getGitStatus の挙動)は実機で未確認
+- RMT-024・RMT-031・RMT-034 の失敗の後に `初回 push（upstream を設定）` へフォーカスが戻ること、RMT-007・RMT-021・RMT-026・RMT-033 の成功の後のフォーカスの移動は、ボタンが disabled になったときに Electron(Chromium)がフォーカスを body へ落とす前提で、実機で未確認
+- URL の改行は、`input type="text"` が貼り付け時に改行を取り除くため画面から入力できず、項目にしていない(main と renderer の単体テスト・main の統合テストで確認)
+- RMT-034 は、pre-push フックが出力を出さずに待つ間に打ち切られることを前提にしている(main の統合テストでは 300 ミリ秒の打ち切りで確認。実機の 30 秒は未確認)
 -->

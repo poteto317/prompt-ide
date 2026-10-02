@@ -2428,6 +2428,8 @@ Expected: FAIL（`CreateTagDialog` が無い、`HistorySection` にボタンが�
 
 - [ ] **Step 2: `CreateTagDialog.tsx` を実装する**
 
+> 注（リモートの管理の単一責任のレビューで変更）: 下の `wasCreatingRef` の effect（作成中が解けたときのフォーカスの復帰）は `hooks/useFocusOnRunningEnd.ts` に切り出し、`useFocusOnRunningEnd(isCreating, nameInputRef, { containerRef: formRef })` で呼ぶ形にした（`RemoteSetupInputDialog`・`RemoteSetupBanner` と共通。挙動は同じ）。外のフォーカスを奪わない条件のテストはフックのテストへ移し、`CreateTagDialog` のテストは「ダイアログ内(キャンセル)にあるフォーカスもタグ名の入力欄へ戻す」に置き換えた
+
 ```tsx
 import { useEffect, useId, useRef, useState } from 'react'
 import type { CreateTagRequest, TagKind } from '@shared/types'
@@ -2661,6 +2663,8 @@ export default function CreateTagDialog({
 ```
 
 - [ ] **Step 3: `HistorySection.tsx` を変える**
+
+> 注（リモートの管理の単一責任のレビューで変更）: 下の開閉の state・`restoreFocusPendingRef`・フォーカスを戻す effect は `hooks/useDialogFocusReturn.ts` に切り出し、`useDialogFocusReturn({ isRunning: gitTag.isCreating, onOpen: gitTag.clearError, openerRef: createTagButtonRef })` の `isOpen` / `open` / `close` を使う形にした（`NotRepositoryView`・`RemoteSetupBanner` と共通。挙動は同じ）。外のフォーカスを奪わないテストはフックのテストへ移した
 
 import と Props、本体の先頭と見出し、末尾のダイアログを次のようにする（ログ一覧・バッジ・もっと見るは変えない）:
 

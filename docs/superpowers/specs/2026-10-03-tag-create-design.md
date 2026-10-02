@@ -34,11 +34,12 @@
 - 実行中は二重送信を防ぐ（作成ボタンと入力を disabled）
 - 作成中は、ダイアログ（`form`）に `aria-busy="true"` を付け、ダイアログ内に `role="status"` の案内 `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` を出す（既存の説明文と同じ `create-tag-dialog__note` の見た目）。入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの `作成中...` だけではスクリーンリーダーに伝わらない。案内は完了・失敗で消え、失敗は `role="alert"` が伝える。「2 分」は main が git を打ち切る `TAG_CREATE_TIMEOUT_MS`（120 秒）から組み立てる（PR #41 の 2 周目のレビューで追加）。定数は `src/shared/tagTimeout.ts` に置き、main と renderer が同じ値を使う（`TAG_CREATE_TIMEOUT_MINUTES = TAG_CREATE_TIMEOUT_MS / 60_000`。案内は分で表すため 60 秒の倍数にし、単体テストで固定する。PR #41 の 3 周目のレビューで、別々のリテラルだったものを一本化した）。再試行の作成中は前回の失敗の `role="alert"` を消し（`useGitTagOperations` が開始時に `error` を `null` にする）、案内と古いエラーを同時に出さない。同じ文言で再び失敗しても alert が作り直されて読み上げられる（PR #41 の 3 周目のレビューで追加）。失敗の直後に履歴を取り直している間は `isCreating` がまだ `true` のままエラーだけがセットされるため、`isCreating && error === null` のときだけ案内と `aria-busy` を出し、その短い間も案内と alert を重ねない（PR #41 の 4 周目のレビューで追加）
 - 作成中は `キャンセル`・Escape・オーバーレイのクリックでダイアログを閉じず（`キャンセル` は disabled）、履歴の `タグを作成` ボタンも押せない。作成中に閉じると、遅れて届いた失敗を見る手段が無くなり（開き直すと前回の失敗の表示を消すため）、遅れて届いた成功が別の場所のフォーカスを奪い、開き直したダイアログが前の作成の成功で閉じられる（署名付きの注釈付きタグでパスフレーズの入力を待つ間など、作成が長引くときに起きる）。作成が終わらないままにならないよう、main が 120 秒で打ち切って失敗を返す（「main の検証と実行」9）
+- オーバーレイのクリックで閉じるのは、押したのも離したのもオーバーレイ自体のときだけ（`useOverlayDismiss`。リモートの管理の `RemoteSetupInputDialog` と共通）。`タグ名` の入力欄で押してオーバーレイで離すと、Chromium は共通の祖先（オーバーレイ）へ click を送り、フォームの `stopPropagation` はこの経路に入らないため、閉じて入力が消えていた（リモートの管理のコードレビューで修正）
 - 成功したらダイアログを閉じ、履歴セクションのタグ一覧とログを再取得する。フォーカスはボタンへ戻す
 - フォーカスの扱い（再レビューで追加）:
-  - ダイアログを閉じたら（成功・キャンセル・Escape・オーバーレイのクリック）`タグを作成` ボタンへ戻す。閉じる時点で直接 `focus()` すると、成功の経路では作成中フラグの解除がまだ描画に反映されておらず、`disabled` のボタンへの `focus()` が無視されて body に落ちる（パターン 73）。そのため閉じるときは「戻す予約」を立てるだけにし、ダイアログが閉じて作成中でもなくなった描画の後（`useEffect`）で戻す。予約は閉じたダイアログに対してだけ立ち、`HistorySection` のアンマウントで消える
+  - ダイアログを閉じたら（成功・キャンセル・Escape・オーバーレイのクリック）`タグを作成` ボタンへ戻す。閉じる時点で直接 `focus()` すると、成功の経路では作成中フラグの解除がまだ描画に反映されておらず、`disabled` のボタンへの `focus()` が無視されて body に落ちる（パターン 73）。そのため閉じるときは「戻す予約」を立てるだけにし、ダイアログが閉じて作成中でもなくなった描画の後（`useEffect`）で戻す。予約は閉じたダイアログに対してだけ立ち、`HistorySection` のアンマウントで消える（開閉と予約は `hooks/useDialogFocusReturn.ts`。リモートの管理と共通）
   - **奪わない条件**: 戻すのは、その時点のフォーカスが body（閉じたダイアログの中にあった要素が消えて落ちた）のときだけ。作成中にユーザーがダイアログの外の要素へフォーカスを移していたら、遅れて届いた成功で奪わない
-  - 作成中は入力欄と作成ボタンが `disabled` になり、ブラウザはフォーカスを body に落とす。失敗して作成中が解けたとき（ダイアログは開いたまま）、フォーカスが body かダイアログ内にあれば `タグ名` の入力欄へ戻す（Escape がフォームに届き、閉じられるようにする）。`readOnly` / `aria-disabled` でフォーカスを保つ案は、パネルのボタン（退避・マージのバナー等）が実行中に `disabled` にする流儀と揃えるため採らない
+  - 作成中は入力欄と作成ボタンが `disabled` になり、ブラウザはフォーカスを body に落とす。失敗して作成中が解けたとき（ダイアログは開いたまま）、フォーカスが body かダイアログ内にあれば `タグ名` の入力欄へ戻す（Escape がフォームに届き、閉じられるようにする。`hooks/useFocusOnRunningEnd.ts`。リモートの管理と共通）。`readOnly` / `aria-disabled` でフォーカスを保つ案は、パネルのボタン（退避・マージのバナー等）が実行中に `disabled` にする流儀と揃えるため採らない
 
 ### main の検証と実行（`createTag`）
 
@@ -86,7 +87,7 @@
 - `src/renderer/src/components/source-control/CreateTagDialog.tsx`（新規）: 名前・種類・メッセージの入力。`NameInputDialog` が名前だけの前提なら、同じ見た目の枠（既存のダイアログのスタイル）を使って別コンポーネントにする
 - `src/renderer/src/hooks/useGitTagOperations.ts`（新規）: `createTag(request): Promise<boolean>`（`useRunExclusiveGitOperation` を使う。成功・失敗のどちらでも履歴とタグを再取得）、`isCreating`、`error`、`clearError`（ダイアログを開くときに前回の失敗の表示を消す。実装プランの「設計書との差分」8）
 - `HistorySection.tsx`: 見出しの右に「タグを作成」ボタン（`aria-label="タグを作成"`）。履歴の再取得は `useGitHistory` の既存の仕組みを使う
-- `useAppState` が `useGitTagOperations` を呼び、`gitTag`（`GitTagPanelState`）を App → Sidebar → SourceControlPanel → GitRepoView → HistorySection へそのまま渡す（退避・マージ状態の配線に揃える）。ダイアログの開閉は HistorySection が自前の state で持ち、`isBlocked`（GitRepoView が計算）は HistorySection に渡す
+- `useAppState` が `useGitTagOperations` を呼び、`gitTag`（`GitTagPanelState`）を App → Sidebar → SourceControlPanel → GitRepoView → HistorySection へそのまま渡す（退避・マージ状態の配線に揃える）。ダイアログの開閉は HistorySection が持ち（`useDialogFocusReturn`）、`isBlocked`（GitRepoView が計算）は HistorySection に渡す
 
 ## エラーハンドリング
 
