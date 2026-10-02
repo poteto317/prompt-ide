@@ -730,10 +730,15 @@ describe('registerFileSystemHandlers', () => {
       mockIsSymbolicLink.mockRejectedValueOnce(
         Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
       )
+      // 前のテストが addToGitignore に設定した reject は vi.clearAllMocks() では消えない。
+      // 書き込みは成功する設定にし、同じメッセージで偶然一致しないようにする
+      mockAddToGitignore.mockResolvedValue(undefined)
 
       await expect(
         getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
       ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/.gitignore')
+      // isSymbolicLink の失敗で止まり、.gitignore へは書き込まない
+      expect(mockAddToGitignore).not.toHaveBeenCalled()
     })
   })
 })
