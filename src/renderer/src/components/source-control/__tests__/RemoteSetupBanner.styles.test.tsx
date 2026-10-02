@@ -150,4 +150,36 @@ describe('リモートの管理のスタイル(main.css)', () => {
       expect(style.cursor).toBe('default')
     }
   })
+
+  // form は tabindex=-1(ダイアログ内のクリックで Escape が届くように)で、フォーカスを受けると Chromium 既定の
+  // フォーカスリング(:focus-visible の outline: auto)がダイアログ全体に出る。form 自体には出さない。
+  // jsdom の getComputedStyle は :focus の規則をカスケードに含めない(UA スタイルシートも無い)ため、フォーカスのある
+  // form に一致する :focus の規則を main.css から集め、その宣言で outline を消していることを確かめる
+  it('ダイアログ内の文字をクリックして form にフォーカスがあっても、form にフォーカスリングを出さない', async () => {
+    render(
+      <InitRepositoryDialog
+        isRunning={false}
+        isBlocked={false}
+        error={null}
+        onSubmit={() => {}}
+        onCancel={() => {}}
+      />
+    )
+    const dialog = screen.getByRole('dialog', { name: 'リポジトリを初期化' })
+    await userEvent.click(screen.getByText('このフォルダに空の Git リポジトリを作成します'))
+    expect(dialog).toHaveFocus()
+    const focusRules = Array.from(styleElement.sheet?.cssRules ?? []).filter(
+      (rule): rule is CSSStyleRule =>
+        rule instanceof CSSStyleRule &&
+        rule.selectorText.includes(':focus') &&
+        dialog.matches(rule.selectorText)
+    )
+    // jsdom(cssstyle)は shorthand の outline を longhand に展開しないため、shorthand と longhand の両方を見る
+    expect(
+      focusRules.map(
+        (rule) =>
+          rule.style.getPropertyValue('outline') || rule.style.getPropertyValue('outline-style')
+      )
+    ).toContain('none')
+  })
 })

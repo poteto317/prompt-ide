@@ -790,6 +790,12 @@ body {
   margin-top: 8px;
 }
 
+/* リポジトリの初期化・リモートの追加のダイアログの form は tabindex=-1(中の文字・余白のクリックでフォーカスを受け、
+   Escape が届くように)。Chromium 既定のフォーカスリングがダイアログ全体に出ないよう消す(中の操作対象には出る) */
+.remote-setup-dialog:focus {
+  outline: none;
+}
+
 .create-tag-dialog__kinds {
   display: flex;
   gap: 8px;

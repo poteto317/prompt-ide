@@ -392,7 +392,7 @@ OS 標準の外部ブラウザへ遷移する実装のままでは「別画面�
 
 - [ ] キーボードのみでの完全操作
 - [ ] スクリーンリーダー対応（ARIA のさらなる拡充）
-- [ ] 既知の制約: `CreateTagDialog`・`NameInputDialog` に `aria-modal` とフォーカストラップが無い（Tab で背後の画面へ移れる。リモートの管理のダイアログは `useDialogFocusTrap` で対応済み）
+- [ ] 既知の制約: `CreateTagDialog`・`NameInputDialog` に `aria-modal` とフォーカストラップが無い（Tab で背後の画面へ移れる）。また、ダイアログ内の文字・余白をクリックした後は Escape で閉じない（フォーカスが body に落ちる。`CreateTagDialog` は Escape を form の `onKeyDown` で受けるが form に tabindex が無く、`NameInputDialog` は入力欄の `onKeyDown` だけで受ける）。リモートの管理のダイアログは `useDialogFocusTrap` と form の `tabIndex={-1}` で対応済み
 - [ ] フォント拡大 / UI スケーリング
 - [ ] ハイコントラストテーマ
 
