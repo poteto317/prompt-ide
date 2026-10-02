@@ -3090,7 +3090,8 @@ describe('useFileSystem', () => {
             resolveWrite = resolve
           })
       )
-      const { result } = renderHook(() => useFileSystem())
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderHook(() => useFileSystem({ onConfirm }))
       await act(async () => {
         await result.current.openFolder()
         await result.current.selectFile({
@@ -3099,6 +3100,9 @@ describe('useFileSystem', () => {
           type: 'file'
         })
       })
+
+      // 初回読み込みで 1 回呼ばれている
+      expect(mockReadFileContent).toHaveBeenCalledTimes(1)
 
       act(() => {
         result.current.updateFileContent('modified')
@@ -3114,6 +3118,7 @@ describe('useFileSystem', () => {
       act(() => {
         result.current.closeTab('/project/src/index.ts')
       })
+      expect(result.current.openFiles).toEqual([])
 
       // 保存が未完了のまま再度開く
       let openPromise: Promise<boolean> | null = null
@@ -3125,13 +3130,20 @@ describe('useFileSystem', () => {
         })
       })
 
+      // 保存待機中は呼び出し回数が増えない（未完了の保存を待っているため再読み込みに進まない）
+      expect(mockReadFileContent).toHaveBeenCalledTimes(1)
+
       // 保存を完了させる
+      let openResult: boolean | null | undefined
       await act(async () => {
         resolveWrite()
         await savePromise
-        await openPromise
+        openResult = await openPromise
       })
 
+      expect(openResult).toBe(true)
+      // 保存解決後に再読み込みが行われる
+      expect(mockReadFileContent).toHaveBeenCalledTimes(2)
       expect(result.current.openFile?.path).toBe('/project/src/index.ts')
     })
 

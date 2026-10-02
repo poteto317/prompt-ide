@@ -15,7 +15,7 @@ vi.mock('../useFileEditing', async (importOriginal) => {
       const res = actual.useFileEditing(...args)
       return {
         ...res,
-        saveCompletionsFor: () => completionsCount++,
+        saveCompletionsFor: () => completionsCount,
         pendingSaveFor: () => {
           const p = pendingSavePromise
           pendingSavePromise = null
@@ -52,7 +52,11 @@ describe('useFileSystem conflict retry exhaustion', () => {
   it('読み込み中に保存完了が連続して競合上限(MAX_READ_RETRIES)に達した場合、エラーを設定して中断する', async () => {
     mockOpenFolder.mockResolvedValue('/project')
     mockReadDirectory.mockResolvedValue(mockTree)
-    mockReadFileContent.mockResolvedValue('const a = 1')
+    // 読み込みが呼ばれるたびに保存完了カウントを進めて競合をシミュレートする
+    mockReadFileContent.mockImplementation(async () => {
+      completionsCount++
+      return 'const a = 1'
+    })
 
     const { result } = renderHook(() => useFileSystem())
     await act(async () => {
@@ -87,14 +91,17 @@ describe('useFileSystem conflict retry exhaustion', () => {
       await result.current.openFolder()
     })
 
+    let openResult: boolean | undefined
     await act(async () => {
-      await result.current.selectFile({
+      openResult = await result.current.selectFile({
         name: 'index.ts',
         path: '/project/src/index.ts',
         type: 'file'
       })
     })
 
+    expect(openResult).toBe(true)
     expect(mockReadFileContent).toHaveBeenCalledWith('/project/src/index.ts')
+    expect(result.current.openFile?.path).toBe('/project/src/index.ts')
   })
 })
