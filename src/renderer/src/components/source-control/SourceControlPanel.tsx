@@ -5,6 +5,7 @@ import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
   DiscardAllState,
+  GitTagPanelState,
   MergeStatePanelState,
   StashPanelState
 } from '../../types'
@@ -52,6 +53,7 @@ interface Props {
   stash: StashPanelState
   discardAll: DiscardAllState
   mergeState: MergeStatePanelState
+  gitTag: GitTagPanelState
   branchOperationError: Error | null
 }
 
@@ -98,6 +100,7 @@ export default function SourceControlPanel({
   stash,
   discardAll,
   mergeState,
+  gitTag,
   branchOperationError
 }: Props): React.JSX.Element {
   return (
@@ -166,6 +169,7 @@ export default function SourceControlPanel({
             stash={stash}
             discardAll={discardAll}
             mergeState={mergeState}
+            gitTag={gitTag}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

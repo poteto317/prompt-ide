@@ -10,6 +10,7 @@ import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
   DiscardAllState,
+  GitTagPanelState,
   MergeStatePanelState,
   StashPanelState
 } from '../../types'
@@ -50,6 +51,8 @@ interface Props {
   stash: StashPanelState
   discardAll: DiscardAllState
   mergeState: MergeStatePanelState
+  /** タグの作成の状態と操作(履歴セクションの「タグを作成」とダイアログ) */
+  gitTag: GitTagPanelState
 }
 
 export default function GitRepoView({
@@ -83,7 +86,8 @@ export default function GitRepoView({
   onMergeBranch,
   stash,
   discardAll,
-  mergeState
+  mergeState,
+  gitTag
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -147,6 +151,8 @@ export default function GitRepoView({
         isLoading={isLoadingLog}
         error={historyError}
         onLoadMore={onLoadMoreLog}
+        gitTag={gitTag}
+        isBlocked={isBlockedByOtherOperation}
       />
     </>
   )

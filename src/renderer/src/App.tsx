@@ -110,6 +110,7 @@ export default function App(): React.JSX.Element {
     stash,
     discardAll,
     mergeState,
+    gitTag,
     conflictFile,
     isActiveFileConflicted,
     branchOperationError,
@@ -289,6 +290,7 @@ export default function App(): React.JSX.Element {
               stash={stash}
               discardAll={discardAll}
               mergeState={mergeState}
+              gitTag={gitTag}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}

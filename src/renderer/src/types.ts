@@ -1,4 +1,4 @@
-import type { FileTreeNode, GitStashEntry } from '@shared/types'
+import type { CreateTagRequest, FileTreeNode, GitStashEntry } from '@shared/types'
 
 export type {
   PromptToolId,
@@ -73,4 +73,18 @@ export interface MergeStatePanelState {
   onComplete: () => Promise<void>
   /** 中止の確認 → 未保存編集の破棄確認 → マージを中止 → 成功時のタブ・ツリーの再読込 */
   onAbort: () => Promise<void>
+}
+
+// タグの作成(履歴セクションの「タグを作成」とダイアログ)が受け取る状態と操作。
+// App → Sidebar → SourceControlPanel → GitRepoView → HistorySection へ 1 つの props(gitTag)で渡す
+export interface GitTagPanelState {
+  /** タグの作成が実行中か(ダイアログの作成ボタンと入力を disabled にする) */
+  isCreating: boolean
+  /** 作成の失敗(main のエラー)。ダイアログ内に role="alert" で表示する */
+  error: Error | null
+  /** 現在の HEAD にタグを作る。戻り値は実際に実行され成功したか(ダイアログを閉じるかの判定に使う)。
+   *  他の操作中などで実行しなかった場合と失敗した場合は false */
+  createTag: (request: CreateTagRequest) => Promise<boolean>
+  /** error を消す。ダイアログを開くときに、前回の失敗の表示を持ち越さないために呼ぶ */
+  clearError: () => void
 }

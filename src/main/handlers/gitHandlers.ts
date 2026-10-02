@@ -1,8 +1,8 @@
 import { resolve, dirname, basename, join, isAbsolute } from 'path'
 import { realpath } from 'node:fs/promises'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { CONFLICT_CHOICES } from '@shared/types'
-import type { ConflictChoice, DiscardAllEntry } from '@shared/types'
+import { CONFLICT_CHOICES, TAG_KINDS } from '@shared/types'
+import type { ConflictChoice, CreateTagRequest, DiscardAllEntry } from '@shared/types'
 import {
   getGitStatus,
   stageFile,
@@ -25,6 +25,7 @@ import {
 import { discardFileChanges, discardHunk, discardAllChanges } from '../gitDiscardService'
 import * as conflictService from '../gitConflictService'
 import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'
+import { createTag } from '../gitTagService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -223,6 +224,22 @@ function assertConflictChoicesArg(value: unknown): asserts value is Record<numbe
 
 function assertConflictSideArg(value: unknown): asserts value is 'ours' | 'theirs' {
   if (value !== 'ours' && value !== 'theirs') throw new Error('Invalid side')
+}
+
+// { name: string, kind: 'lightweight' | 'annotated', message: string } のオブジェクトであることだけを検証する。
+// 値の中身(名前の規則・重複・メッセージの空)は service 層が検証する。余分なキーは呼び出し側で
+// 詰め直して service に渡さない
+function assertCreateTagArg(value: unknown): asserts value is CreateTagRequest {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error('Invalid tag request')
+  }
+  const { name, kind, message } = value as Record<string, unknown>
+  const valid =
+    typeof name === 'string' &&
+    typeof message === 'string' &&
+    typeof kind === 'string' &&
+    (TAG_KINDS as readonly string[]).includes(kind)
+  if (!valid) throw new Error('Invalid tag request')
 }
 
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
@@ -520,5 +537,15 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = getAllowedFolder(folderAccess, event)
     assertStashIdArg(sha)
     await stashDrop(allowedFolder, sha)
+  })
+
+  ipcMain.handle('git:createTag', async (event: IpcMainInvokeEvent, request: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertCreateTagArg(request)
+    await createTag(allowedFolder, {
+      name: request.name,
+      kind: request.kind,
+      message: request.message
+    })
   })
 }

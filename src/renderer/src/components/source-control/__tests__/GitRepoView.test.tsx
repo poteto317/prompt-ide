@@ -2,8 +2,14 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
-import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
+import type {
+  DiscardAllState,
+  GitTagPanelState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../../../types'
 import GitRepoView from '../GitRepoView'
+import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -60,7 +66,8 @@ const baseProps = {
   onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
-  mergeState: emptyMergeState
+  mergeState: emptyMergeState,
+  gitTag: makeGitTagPanelState()
 }
 
 describe('GitRepoView', () => {
@@ -218,6 +225,7 @@ describe('GitRepoView', () => {
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
+        gitTag={makeGitTagPanelState()}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -289,6 +297,7 @@ describe('GitRepoView', () => {
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
+        gitTag={makeGitTagPanelState()}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -330,6 +339,7 @@ describe('GitRepoView', () => {
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
+        gitTag={makeGitTagPanelState()}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -369,6 +379,7 @@ describe('GitRepoView', () => {
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
+        gitTag={makeGitTagPanelState()}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -534,5 +545,115 @@ describe('GitRepoView', () => {
     )
     expect(screen.getByRole('button', { name: 'マージを完了' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'マージを中止' })).toBeDisabled()
+  })
+
+  describe('gitTag(タグの作成)', () => {
+    it('gitTag が履歴セクションまで届く(タグを作成 → 作成で createTag が呼ばれる)', async () => {
+      const gitTag = makeGitTagPanelState()
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          gitTag={gitTag}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+      expect(gitTag.clearError).toHaveBeenCalledOnce()
+      await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v1{Enter}')
+      expect(gitTag.createTag).toHaveBeenCalledWith({
+        name: 'v1',
+        kind: 'lightweight',
+        message: ''
+      })
+    })
+
+    it('作成に成功するとダイアログが閉じ、フォーカスが「タグを作成」に戻る', async () => {
+      const gitTag = makeGitTagPanelState()
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          gitTag={gitTag}
+        />
+      )
+      const openButton = screen.getByRole('button', { name: 'タグを作成' })
+      await userEvent.click(openButton)
+      await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v1{Enter}')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(openButton).toHaveFocus()
+    })
+
+    it('作成に失敗するとダイアログを残し、gitTag.error を表示する', async () => {
+      const gitTag = makeGitTagPanelState({
+        createTag: vi.fn<GitTagPanelState['createTag']>().mockResolvedValue(false),
+        error: new Error('タグを作成できませんでした: 失敗')
+      })
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          gitTag={gitTag}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v1{Enter}')
+      expect(gitTag.createTag).toHaveBeenCalledOnce()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('タグを作成できませんでした: 失敗')
+    })
+
+    // ステージ等の実行中は、他のボタンと同じく押せない(isBlockedByOtherOperation)
+    it('他の操作中(stagingPaths)は「タグを作成」が押せない', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          stagingPaths={new Set(['a.ts'])}
+        />
+      )
+      expect(screen.getByRole('button', { name: 'タグを作成' })).toBeDisabled()
+    })
+
+    // pull・ブランチ操作・退避などがロックを持つ間(isAnyLocked)も、作成は no-op になるため押せない
+    it('他の操作中(isAnyLocked)は「タグを作成」が押せない', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          isAnyLocked={() => true}
+        />
+      )
+      expect(screen.getByRole('button', { name: 'タグを作成' })).toBeDisabled()
+    })
+
+    // マージ中でもタグは今の HEAD に作成できる(設計書)。マージ中であることだけでは押せなくしない
+    it('他の操作が無ければ、マージ中でも「タグを作成」を押せる', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          mergeState={{ ...emptyMergeState, inProgress: true, unresolvedCount: 1 }}
+        />
+      )
+      expect(screen.getByRole('button', { name: 'タグを作成' })).toBeEnabled()
+    })
   })
 })

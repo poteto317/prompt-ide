@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
 import type { DiffTabKey } from '../useDiffTabs'
+import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 
 const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
@@ -223,6 +224,12 @@ const mockUseConflictFile = vi.hoisted(() =>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   vi.fn((_options?: unknown) => mockConflictFileState)
 )
+// タグの作成の組み立ては useGitTagOperations.test.ts で検証する。ここでは配線だけを見る。
+// 戻り値はテスト内で makeGitTagPanelState から作って渡す(既定値の重複と型なしのモックを避ける。パターン 78)。
+// 他のテストでは useAppState が戻り値をそのまま公開するだけのため、既定の undefined のままでよい
+const mockUseGitTagOperations = vi.hoisted(() =>
+  vi.fn<typeof import('../useGitTagOperations').useGitTagOperations>()
+)
 
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
@@ -240,6 +247,7 @@ vi.mock('../useDiscardHunk', () => ({ useDiscardHunk: mockUseDiscardHunk }))
 vi.mock('../useDiscardAllChanges', () => ({ useDiscardAllChanges: mockUseDiscardAllChanges }))
 vi.mock('../useMergeState', () => ({ useMergeState: mockUseMergeState }))
 vi.mock('../useConflictFile', () => ({ useConflictFile: mockUseConflictFile }))
+vi.mock('../useGitTagOperations', () => ({ useGitTagOperations: mockUseGitTagOperations }))
 
 import { useAppState } from '../useAppState'
 
@@ -1632,6 +1640,47 @@ describe('useAppState', () => {
         })
       )
       expect(result.current.stash).toBe(mockStashPanel)
+    })
+  })
+
+  describe('gitTag(タグの作成)', () => {
+    it('useGitTagOperations に gitStatus・履歴の再取得・共有ロックを渡し、戻り値を gitTag として公開する', () => {
+      const refreshHistory = vi.fn()
+      mockUseGitHistory.mockReturnValue({
+        log: [],
+        branches: [],
+        tags: [],
+        hasMore: false,
+        isLoading: false,
+        loadMore: vi.fn(),
+        refresh: refreshHistory
+      })
+      const status = {
+        isRepo: true,
+        mergeInProgress: false,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      }
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: status,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn()
+      })
+      const panel = makeGitTagPanelState()
+      mockUseGitTagOperations.mockReturnValue(panel)
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseGitTagOperations).toHaveBeenCalledWith(
+        status,
+        refreshHistory,
+        expect.anything()
+      )
+      // 他の Git 操作と同じロックを渡す(別のロックだと、checkout などの途中でも作成できてしまう)
+      const sharedLock = mockUseStashPanel.mock.calls[0][0].fileOperationLock
+      expect(mockUseGitTagOperations.mock.calls[0][2]).toBe(sharedLock)
+      expect(result.current.gitTag).toBe(panel)
     })
   })
 

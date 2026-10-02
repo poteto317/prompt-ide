@@ -21,12 +21,18 @@ import { useGitHistory } from './useGitHistory'
 import { useStashPanel } from './useStashPanel'
 import { useMergeState } from './useMergeState'
 import { useConflictFile } from './useConflictFile'
+import { useGitTagOperations } from './useGitTagOperations'
 import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
 import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isSamePath } from '../lib/pathUtils'
-import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../types'
+import type {
+  DiscardAllState,
+  GitTagPanelState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../types'
 import { isConflictedFile, isStagedFile, isUnstagedFile } from '../lib/gitUtils'
 
 type AppState = {
@@ -58,6 +64,8 @@ type AppState = {
   discardHunk: (patch: string, hunkHeader: string) => Promise<void>
   /** 未ステージの変更をすべて取り消す状態と操作(確認・排他・タブとツリーの再読込込み) */
   discardAll: DiscardAllState
+  /** タグの作成の状態と操作(履歴セクションの「タグを作成」とダイアログ) */
+  gitTag: GitTagPanelState
   /** マージ中バナーの状態と、マージの完了・中止の操作 */
   mergeState: MergeStatePanelState
   /** 未解決ファイルの解決ビューの状態と操作 */
@@ -114,6 +122,9 @@ export function useAppState(): AppState {
     gitHistory.refresh,
     fileOperationLock
   )
+  // タグの作成は作業ツリーを変えないため、再取得は履歴(ログ・ブランチ・タグ)だけ。他の Git 操作の
+  // 途中(HEAD が動く間)は実行しないよう、ブランチ操作などと同じロックを渡す(ロック自体は取らない)
+  const gitTag = useGitTagOperations(git.gitStatus, gitHistory.refresh, fileOperationLock)
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
@@ -405,6 +416,7 @@ export function useAppState(): AppState {
     // spread の後に置く必要がある
     discardHunk,
     discardAll,
+    gitTag,
     mergeState,
     conflictFile,
     isActiveFileConflicted

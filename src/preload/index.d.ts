@@ -3,6 +3,7 @@ import type {
   CLIOnlyToolId,
   ConflictChoice,
   ConflictFile,
+  CreateTagRequest,
   DeleteBranchResult,
   MergeBranchResult,
   DiscardAllEntry,
@@ -73,6 +74,7 @@ declare global {
       stashPush(message: string): Promise<void>
       stashPop(sha: string): Promise<StashPopResult>
       stashDrop(sha: string): Promise<void>
+      createTag(request: CreateTagRequest): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

@@ -29,6 +29,7 @@ const mockGetStashes = vi.hoisted(() => vi.fn())
 const mockStashPush = vi.hoisted(() => vi.fn())
 const mockStashPop = vi.hoisted(() => vi.fn())
 const mockStashDrop = vi.hoisted(() => vi.fn())
+const mockCreateTag = vi.hoisted(() => vi.fn())
 const mockConflict = vi.hoisted(() => ({
   getConflictFile: vi.fn(),
   resolveConflictBlocks: vi.fn(),
@@ -79,6 +80,8 @@ vi.mock('../../gitStashService', () => ({
   stashPop: mockStashPop,
   stashDrop: mockStashDrop
 }))
+
+vi.mock('../../gitTagService', () => ({ createTag: mockCreateTag }))
 
 vi.mock('../../gitApply', () => ({
   stageHunk: mockStageHunk,
@@ -1417,6 +1420,70 @@ describe('registerGitHandlers', () => {
       registerGitHandlers(mockIpcMain, folderAccess)
       await expect(getRegisteredHandler('git:stashPush')(makeEvent(1), 123)).rejects.toThrow(
         'No folder open'
+      )
+    })
+  })
+
+  describe('git:createTag', () => {
+    const request = { name: 'v1.0.0', kind: 'annotated', message: 'リリース' }
+
+    // 型検証より先にフォルダの許可を確認する
+    it('folderAccess が未設定のとき、引数に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:createTag')(makeEvent(1), 123)).rejects.toThrow(
+        'No folder open'
+      )
+      expect(mockCreateTag).not.toHaveBeenCalled()
+    })
+
+    it('allowedFolder と要求を引数に createTag を呼ぶ', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCreateTag.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:createTag')(makeEvent(1), request)
+      expect(mockCreateTag).toHaveBeenCalledWith('/project', request)
+    })
+
+    // 余分なキーは service に渡さない(name・kind・message の 3 つだけを詰め直す)
+    it('余分なキーは無視して、name・kind・message だけを渡す', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCreateTag.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:createTag')(makeEvent(1), {
+        ...request,
+        force: true,
+        sign: true
+      })
+      expect(mockCreateTag.mock.calls[0][1]).toStrictEqual(request)
+    })
+
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+      ['文字列', 'v1'],
+      ['配列', ['v1']],
+      ['name が無い', { kind: 'lightweight', message: '' }],
+      ['name が文字列でない', { name: 1, kind: 'lightweight', message: '' }],
+      ['kind が列挙外', { name: 'v1', kind: 'signed', message: '' }],
+      ['kind が無い', { name: 'v1', message: '' }],
+      ['message が文字列でない', { name: 'v1', kind: 'annotated', message: null }],
+      ['message が無い', { name: 'v1', kind: 'lightweight' }]
+    ])('要求が不正(%s)なら createTag を呼ばずに拒否する', async (_label, bad) => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:createTag')(makeEvent(1), bad)).rejects.toThrow(
+        'Invalid tag request'
+      )
+      expect(mockCreateTag).not.toHaveBeenCalled()
+    })
+
+    it('createTag の失敗をそのまま伝える', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockCreateTag.mockRejectedValue(new Error('同じ名前のタグが既に存在します: v1.0.0'))
+      await expect(getRegisteredHandler('git:createTag')(makeEvent(1), request)).rejects.toThrow(
+        '同じ名前のタグが既に存在します: v1.0.0'
       )
     })
   })

@@ -3,6 +3,7 @@ import type {
   CLIOnlyToolId,
   ConflictChoice,
   ConflictFile,
+  CreateTagRequest,
   DeleteBranchResult,
   MergeBranchResult,
   DiscardAllEntry,
@@ -93,6 +94,8 @@ export const api = {
   stashPush: (message: string): Promise<void> => ipcRenderer.invoke('git:stashPush', message),
   stashPop: (sha: string): Promise<StashPopResult> => ipcRenderer.invoke('git:stashPop', sha),
   stashDrop: (sha: string): Promise<void> => ipcRenderer.invoke('git:stashDrop', sha),
+  createTag: (request: CreateTagRequest): Promise<void> =>
+    ipcRenderer.invoke('git:createTag', request),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),

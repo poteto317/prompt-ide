@@ -741,6 +741,8 @@ body {
   margin: 6px 0 0;
   font-size: 11px;
   color: #f48771;
+  /* `/` `.` `_` では折り返されない長い名前が、エラー文に含まれても枠からはみ出さない */
+  overflow-wrap: anywhere;
 }
 
 .name-input-dialog__actions {
@@ -759,8 +761,38 @@ body {
   cursor: pointer;
 }
 
-.name-input-dialog__ok:hover {
+.name-input-dialog__ok:hover:not(:disabled) {
   background: #1177bb;
+}
+
+/* タグの作成ダイアログ(枠・入力欄・ボタンは .name-input-dialog__* を共有する)。
+   disabled の作成ボタンの半透明は、下の共通のボタンの :disabled の規則で宣言する */
+.create-tag-dialog__note,
+.create-tag-dialog__label {
+  font-size: 11px;
+  color: #969696;
+}
+
+.create-tag-dialog__note {
+  margin: 0 0 4px;
+}
+
+.create-tag-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.create-tag-dialog__kinds {
+  display: flex;
+  gap: 8px;
+}
+
+.create-tag-dialog__message {
+  min-height: 64px;
+  resize: vertical;
+  font-family: inherit;
 }
 
 .name-input-dialog__cancel {
@@ -772,7 +804,7 @@ body {
   cursor: pointer;
 }
 
-.name-input-dialog__cancel:hover {
+.name-input-dialog__cancel:hover:not(:disabled) {
   border-color: #888888;
 }
 
@@ -1154,7 +1186,8 @@ body {
 }
 
 /* 「退避」セクション。ボタンの見た目は下の共通のボタン規則で、マージのバナー・コンフリクト解決ビューと共有する */
-.stash-section__header {
+.stash-section__header,
+.history-section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1169,7 +1202,9 @@ body {
 .stash-section__action,
 .merge-banner__button,
 .conflict-resolver__button,
-.conflict-block__button {
+.conflict-block__button,
+.history-section__create-tag,
+.create-tag-dialog__kind {
   flex: none;
   min-width: 32px;
   min-height: 32px;
@@ -1186,7 +1221,9 @@ body {
 .stash-section__action:hover:not(:disabled),
 .merge-banner__button:hover:not(:disabled),
 .conflict-resolver__button:hover:not(:disabled),
-.conflict-block__button:hover:not(:disabled) {
+.conflict-block__button:hover:not(:disabled),
+.history-section__create-tag:hover:not(:disabled),
+.create-tag-dialog__kind:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
 }
@@ -1201,9 +1238,20 @@ body {
 .stash-section__action:disabled,
 .merge-banner__button:disabled,
 .conflict-resolver__button:disabled,
-.conflict-block__button:disabled {
+.conflict-block__button:disabled,
+.history-section__create-tag:disabled,
+.create-tag-dialog__kind:disabled,
+.name-input-dialog__ok:disabled,
+.name-input-dialog__cancel:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* 選択中の種類。ボタンの寸法・枠は共通のボタンの規則(この規則は、それより後ろに置いて上書きする) */
+.create-tag-dialog__kind[aria-checked='true'] {
+  border-color: #007acc;
+  background: #094771;
+  color: #ffffff;
 }
 
 .stash-section__list {

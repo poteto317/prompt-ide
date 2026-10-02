@@ -13,6 +13,7 @@ import {
   getTags,
   amendCommit,
   stashPop,
+  createTag,
   mergeBranch,
   discardHunk,
   discardAll,
@@ -39,6 +40,7 @@ const mockApi = {
   getTags: vi.fn(),
   amendCommit: vi.fn(),
   stashPop: vi.fn(),
+  createTag: vi.fn(),
   mergeBranch: vi.fn(),
   discardHunk: vi.fn(),
   discardAll: vi.fn(),
@@ -265,5 +267,21 @@ describe('コンフリクトの解決', () => {
     mockApi[name].mockResolvedValue(undefined)
     await fn()
     expect(mockApi[name]).toHaveBeenCalledWith()
+  })
+})
+
+describe('createTag', () => {
+  it('window.api.createTag を要求で呼ぶ', async () => {
+    mockApi.createTag.mockResolvedValue(undefined)
+    const request = { name: 'v1', kind: 'lightweight' as const, message: '' }
+    await createTag(request)
+    expect(mockApi.createTag).toHaveBeenCalledWith(request)
+  })
+
+  it('失敗をそのまま伝える', async () => {
+    mockApi.createTag.mockRejectedValue(new Error('コミットが無いため、タグを作成できません'))
+    await expect(createTag({ name: 'v1', kind: 'lightweight', message: '' })).rejects.toThrow(
+      'コミットが無いため、タグを作成できません'
+    )
   })
 })

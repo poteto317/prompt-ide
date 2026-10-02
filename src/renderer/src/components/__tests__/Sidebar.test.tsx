@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
 import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../types'
 import { sidebarTitles } from '../../config/sidebarTitles'
+import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -92,6 +94,7 @@ const defaultProps = {
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
+  gitTag: makeGitTagPanelState(),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),
@@ -143,6 +146,27 @@ describe('Sidebar', () => {
       />
     )
     expect(screen.getByRole('status')).toHaveTextContent('マージ中（未解決 4 件）')
+  })
+
+  it('source-control: gitTag が履歴セクションまで届く', async () => {
+    const gitTag = makeGitTagPanelState()
+    render(
+      <Sidebar
+        activePanel="source-control"
+        {...defaultProps}
+        gitStatus={{
+          isRepo: true,
+          mergeInProgress: false,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: []
+        }}
+        gitTag={gitTag}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+    expect(gitTag.clearError).toHaveBeenCalledOnce()
   })
 
   it('prompts: ヘッダーが表示され PromptsPanel が描画される', () => {

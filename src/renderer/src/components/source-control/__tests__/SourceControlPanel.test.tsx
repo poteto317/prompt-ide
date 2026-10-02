@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
 import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
 import SourceControlPanel from '../SourceControlPanel'
+import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -71,6 +72,7 @@ const baseProps = {
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
+  gitTag: makeGitTagPanelState(),
   branchOperationError: null as Error | null
 }
 
@@ -270,6 +272,7 @@ describe('SourceControlPanel', () => {
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
+        gitTag={makeGitTagPanelState()}
         branchOperationError={null}
       />
     )
@@ -357,5 +360,12 @@ describe('SourceControlPanel', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'マージを完了' }))
     expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('gitTag は GitRepoView を経て履歴セクションまで届く', async () => {
+    const gitTag = makeGitTagPanelState({ error: new Error('タグの失敗') })
+    render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} gitTag={gitTag} />)
+    await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('タグの失敗')
   })
 })

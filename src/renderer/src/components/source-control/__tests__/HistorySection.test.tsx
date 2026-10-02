@@ -1,7 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
+import type { ComponentProps } from 'react'
+import type { GitStatusResult } from '@shared/types'
+import type { GitTagPanelState } from '../../../types'
 import HistorySection from '../HistorySection'
+import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
+
+vi.mock('../../../lib/gitApi')
+
+import * as gitApi from '../../../lib/gitApi'
+import { useGitTagOperations } from '../../../hooks/useGitTagOperations'
 
 describe('HistorySection', () => {
   it('ブランチ名・タグ名をバッジとして表示する', () => {
@@ -17,6 +26,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByText('main')).toBeInTheDocument()
@@ -41,6 +52,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByText('abcdef1')).toBeInTheDocument()
@@ -64,6 +77,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -85,6 +100,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByText('1時間前')).toBeInTheDocument()
@@ -100,6 +117,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByRole('button', { name: 'もっと見る' })).toBeInTheDocument()
@@ -115,6 +134,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.queryByRole('button', { name: 'もっと見る' })).not.toBeInTheDocument()
@@ -131,6 +152,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={onLoadMore}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     await userEvent.click(screen.getByRole('button', { name: 'もっと見る' }))
@@ -147,6 +170,8 @@ describe('HistorySection', () => {
         isLoading={true}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByRole('button', { name: 'もっと見る' })).toBeDisabled()
@@ -164,6 +189,8 @@ describe('HistorySection', () => {
         isLoading={false}
         error={new Error('spawn git ENOENT')}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
@@ -179,8 +206,254 @@ describe('HistorySection', () => {
         isLoading={false}
         error={null}
         onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
       />
     )
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+describe('HistorySection のタグの作成', () => {
+  type SectionProps = ComponentProps<typeof HistorySection>
+  // props に加え、同じ props を基に一部だけ変えて描き直す rerenderWith と unmount を返す
+  const renderSection = (
+    overrides: Partial<SectionProps> = {}
+  ): SectionProps & {
+    rerenderWith: (next: Partial<SectionProps>) => void
+    unmount: () => void
+  } => {
+    const props: SectionProps = {
+      log: [],
+      branches: [{ name: 'main', current: true }],
+      tags: ['v1'],
+      hasMore: false,
+      isLoading: false,
+      error: null,
+      onLoadMore: vi.fn(),
+      gitTag: makeGitTagPanelState(),
+      isBlocked: false,
+      ...overrides
+    }
+    const { rerender, unmount } = render(<HistorySection {...props} />)
+    const rerenderWith = (next: Partial<SectionProps>): void =>
+      rerender(<HistorySection {...props} {...next} />)
+    return { ...props, rerenderWith, unmount }
+  }
+  const openButton = (): HTMLElement => screen.getByRole('button', { name: 'タグを作成' })
+
+  it('見出しの右に「タグを作成」ボタンがあり、他の操作中は disabled', () => {
+    const { unmount } = renderSection({ isBlocked: true })
+    expect(openButton()).toHaveTextContent('タグを作成')
+    expect(openButton()).toBeDisabled()
+    unmount()
+    renderSection()
+    expect(openButton()).toBeEnabled()
+  })
+
+  it('押すと前回のエラーを消してからダイアログを開く', async () => {
+    const props = renderSection()
+    await userEvent.click(openButton())
+    expect(props.gitTag.clearError).toHaveBeenCalledOnce()
+    expect(screen.getByRole('dialog', { name: 'タグを作成' })).toBeInTheDocument()
+  })
+
+  it('既存のタグ・ブランチをダイアログの検証に使う', async () => {
+    renderSection()
+    await userEvent.click(openButton())
+    const input = screen.getByRole('textbox', { name: 'タグ名' })
+    await userEvent.type(input, 'v1')
+    expect(input).toHaveAccessibleDescription('同じ名前のタグが既に存在します')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'main')
+    expect(input).toHaveAccessibleDescription(
+      '同じ名前のブランチが存在するため、タグを作成できません'
+    )
+  })
+
+  it('作成に成功したらダイアログを閉じ、ボタンへフォーカスを戻す', async () => {
+    const props = renderSection()
+    await userEvent.click(openButton())
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
+    expect(props.gitTag.createTag).toHaveBeenCalledWith({
+      name: 'v2',
+      kind: 'lightweight',
+      message: ''
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(openButton()).toHaveFocus()
+  })
+
+  it('作成に失敗したら(false)ダイアログを閉じない', async () => {
+    const gitTag = makeGitTagPanelState({
+      createTag: vi.fn<GitTagPanelState['createTag']>().mockResolvedValue(false)
+    })
+    renderSection({ gitTag })
+    await userEvent.click(openButton())
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
+    expect(gitTag.createTag).toHaveBeenCalledOnce()
+    expect(screen.getByRole('dialog', { name: 'タグを作成' })).toBeInTheDocument()
+  })
+
+  it('ダイアログを開いたまま他の操作が始まると(isBlocked)、ダイアログの作成も disabled になる', async () => {
+    const { rerenderWith } = renderSection()
+    await userEvent.click(openButton())
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2')
+    expect(screen.getByRole('button', { name: '作成' })).toBeEnabled()
+    rerenderWith({ isBlocked: true })
+    expect(screen.getByRole('button', { name: '作成' })).toBeDisabled()
+  })
+
+  it('作成中(isCreating)は「タグを作成」ボタンも disabled(開き直したダイアログが前の作成の成功で閉じられない)', () => {
+    renderSection({ gitTag: makeGitTagPanelState({ isCreating: true }) })
+    expect(openButton()).toBeDisabled()
+    expect(openButton()).toHaveAccessibleName('タグを作成')
+  })
+})
+
+// 実物の useGitTagOperations(gitApi だけをモック)と HistorySection を結合し、作成が保留中の間の
+// 振る舞いを確かめる。作成中に閉じられると、遅れて届いた失敗を見る手段が無くなる(パターン 73)
+describe('HistorySection のタグの作成(useGitTagOperations との結合)', () => {
+  const repoStatus: GitStatusResult = {
+    isRepo: true,
+    mergeInProgress: false,
+    branch: 'main',
+    ahead: 0,
+    behind: 0,
+    files: []
+  }
+
+  function Harness(): React.JSX.Element {
+    const gitTag = useGitTagOperations(repoStatus, async () => {})
+    return (
+      <>
+        <HistorySection
+          log={[]}
+          branches={[{ name: 'main', current: true }]}
+          tags={[]}
+          hasMore={false}
+          isLoading={false}
+          error={null}
+          onLoadMore={vi.fn()}
+          gitTag={gitTag}
+          isBlocked={false}
+        />
+        {/* 作成中にユーザーがフォーカスを移す先(履歴の外の入力欄の代わり) */}
+        <input aria-label="外の入力欄" />
+      </>
+    )
+  }
+
+  // 作成を保留させ、解決・失敗を後から起こせるようにする
+  function holdCreate(): { resolve: () => void; reject: (reason: Error) => void } {
+    const handlers: { resolve: () => void; reject: (reason: Error) => void } = {
+      resolve: () => {},
+      reject: () => {}
+    }
+    vi.mocked(gitApi.createTag).mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          handlers.resolve = () => resolve()
+          handlers.reject = reject
+        })
+    )
+    return {
+      resolve: () => handlers.resolve(),
+      reject: (reason) => handlers.reject(reason)
+    }
+  }
+
+  it('作成が保留から成功すると、ダイアログが閉じて「タグを作成」ボタンにフォーカスが戻る(作成中の disabled が解けた後に戻す)', async () => {
+    const pending = holdCreate()
+    render(<Harness />)
+    const openButton = screen.getByRole('button', { name: 'タグを作成' })
+    await userEvent.click(openButton)
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
+    expect(openButton).toBeDisabled()
+
+    // act の中で解決すると、作成中フラグの解除(setBusy(false))が await の続きより先に反映され、
+    // 実機の「まだ disabled のボタンへ focus() して無視される」順序が再現しない。act の外で解決し、
+    // 実機と同じく React の通常のスケジューラで再描画させる(waitFor の間は act 環境が外れる)
+    pending.resolve()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(openButton).toBeEnabled()
+    expect(openButton).toHaveFocus()
+  })
+
+  it('キャンセルで閉じても「タグを作成」ボタンにフォーカスが戻る', async () => {
+    render(<Harness />)
+    const openButton = screen.getByRole('button', { name: 'タグを作成' })
+    await userEvent.click(openButton)
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(openButton).toHaveFocus()
+  })
+
+  it('作成中にダイアログの外の要素へフォーカスを移していたら、遅れて成功してもフォーカスを奪わない', async () => {
+    const pending = holdCreate()
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
+    const outside = screen.getByRole('textbox', { name: '外の入力欄' })
+    act(() => outside.focus())
+
+    pending.resolve()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'タグを作成' })).toBeEnabled()
+    expect(outside).toHaveFocus()
+  })
+
+  it('作成中に入力が disabled になってフォーカスが外れても、失敗の後はタグ名の入力欄へ戻り、Escape で閉じられる', async () => {
+    const pending = holdCreate()
+    render(<Harness />)
+    const openButton = screen.getByRole('button', { name: 'タグを作成' })
+    await userEvent.click(openButton)
+    const input = screen.getByRole('textbox', { name: 'タグ名' })
+    await userEvent.type(input, 'v2{Enter}')
+    expect(input).toBeDisabled()
+    // ブラウザは disabled になった要素からフォーカスを外し body に落とす。jsdom は落とさず、disabled の要素の
+    // blur() も無視するため、外の入力欄を経由して body に落とした状態を再現する
+    const outside = screen.getByRole('textbox', { name: '外の入力欄' })
+    act(() => {
+      outside.focus()
+      outside.blur()
+    })
+    expect(document.body).toHaveFocus()
+
+    await act(async () => {
+      pending.reject(new Error('タグの作成に失敗しました'))
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('タグの作成に失敗しました')
+    expect(input).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(openButton).toHaveFocus()
+  })
+
+  it('作成の保留中はキャンセル・Escape・オーバーレイで閉じられず、失敗はダイアログ内に role="alert" で見える', async () => {
+    const pending = holdCreate()
+    const { container } = render(<Harness />)
+    const openButton = screen.getByRole('button', { name: 'タグを作成' })
+    await userEvent.click(openButton)
+    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
+    expect(screen.getByRole('button', { name: '作成中...' })).toBeDisabled()
+
+    // 保留中: どの手段でも閉じず、開き直す入口も塞がっている
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'タグ名' }), { key: 'Escape' })
+    fireEvent.click(container.querySelector('.name-input-dialog__overlay')!)
+    expect(screen.getByRole('dialog', { name: 'タグを作成' })).toBeInTheDocument()
+    expect(openButton).toBeDisabled()
+
+    await act(async () => {
+      pending.reject(new Error('タグの作成に失敗しました'))
+    })
+    expect(screen.getByRole('dialog', { name: 'タグを作成' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('タグの作成に失敗しました')
+    // 終わった後は通常どおり閉じられ、開き直せる
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toBeEnabled()
+    expect(openButton).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

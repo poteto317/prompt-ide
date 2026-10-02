@@ -136,6 +136,11 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
   ],
   ['getStashes は git:getStashes チャンネルを呼び出す', () => api.getStashes(), ['git:getStashes']],
   [
+    'createTag は git:createTag チャンネルに要求を渡す',
+    () => api.createTag({ name: 'v1', kind: 'annotated', message: 'm' }),
+    ['git:createTag', { name: 'v1', kind: 'annotated', message: 'm' }]
+  ],
+  [
     'stashPush は git:stashPush チャンネルにメッセージを渡す',
     () => api.stashPush('msg'),
     ['git:stashPush', 'msg']

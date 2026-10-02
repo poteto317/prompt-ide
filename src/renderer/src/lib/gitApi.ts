@@ -1,6 +1,7 @@
 import type {
   ConflictChoice,
   ConflictFile,
+  CreateTagRequest,
   DiscardAllEntry,
   DiscardAllResult,
   DeleteBranchResult,
@@ -151,4 +152,8 @@ export function stashPop(sha: string): Promise<StashPopResult> {
 
 export function stashDrop(sha: string): Promise<void> {
   return window.api.stashDrop(sha)
+}
+
+export function createTag(request: CreateTagRequest): Promise<void> {
+  return window.api.createTag(request)
 }

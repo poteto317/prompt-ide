@@ -110,6 +110,13 @@ export type DiscardAllResult = { status: 'done' } | { status: 'partial'; message
 // message は `コンフリクトしました（<ファイル一覧>）。解決するか、マージを中止してください`
 export type MergeBranchResult = { status: 'merged' } | { status: 'conflict'; message: string }
 
+// タグの種類。IPC 境界(gitHandlers の assertCreateTagArg)が値の検証に使うため、配列としても公開する
+export const TAG_KINDS = ['lightweight', 'annotated'] as const
+export type TagKind = (typeof TAG_KINDS)[number]
+
+// タグの作成の要求。付ける先は常に現在の HEAD。message は注釈付きのときだけ使う(軽量では無視する)
+export type CreateTagRequest = { name: string; kind: TagKind; message: string }
+
 // 退避の復元(git stash pop 相当)の結果。事前検証の失敗と、巻き戻しに成功した apply 失敗は例外で返す
 // (作業ツリーは変わっていない)。作業ツリーが変わったうえで警告が要る場合だけ、例外ではなく結果で返す:
 // renderer は例外のとき開いているタブを再読込しないため、結果で返さないと変更後のディスクを
