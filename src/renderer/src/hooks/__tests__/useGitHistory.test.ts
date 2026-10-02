@@ -706,4 +706,27 @@ describe('useGitHistory', () => {
     expect(result.current.isLoading).toBe(false)
     expect(result.current.log).toEqual([])
   })
+
+  it('loadMore 中に getLog が reject した場合、historyError にエラーが設定され isLoading は false に戻る', async () => {
+    mockGetLog.mockResolvedValueOnce(
+      Array.from({ length: 20 }, (_, i) => ({
+        hash: `a${i}`,
+        message: 'm',
+        date: 'd',
+        authorName: 'x'
+      }))
+    )
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    mockGetLog.mockRejectedValueOnce(new Error('failed to load more commits'))
+    await act(async () => {
+      await result.current.loadMore()
+    })
+
+    expect(result.current.historyError?.message).toBe('failed to load more commits')
+    expect(result.current.isLoading).toBe(false)
+  })
 })

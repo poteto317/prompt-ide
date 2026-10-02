@@ -179,4 +179,23 @@ describe('useStreamingText', () => {
     })
     expect(result.current.streamingText).toBe('2回目')
   })
+
+  it('アンマウント時に保留中の flush タイマーをクリアする', async () => {
+    const { result, unmount } = renderHook(() => useStreamingText())
+    const listener = mockOnPromptStreamChunk.mock.calls[0][0]
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout')
+
+    act(() => {
+      result.current.startStreaming('req-1')
+    })
+    act(() => {
+      // このチャンクで flush タイマー(50ms後)が保留中になる
+      listener('req-1', 'チャンク')
+    })
+
+    // アンマウント時に保留中のタイマーをクリアすること
+    unmount()
+    expect(clearTimeoutSpy).toHaveBeenCalled()
+    clearTimeoutSpy.mockRestore()
+  })
 })

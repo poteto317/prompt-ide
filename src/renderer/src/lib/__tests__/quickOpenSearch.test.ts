@@ -269,3 +269,53 @@ describe('searchFiles', () => {
     expect(results[0].directory).toBe('src')
   })
 })
+
+describe('compareByCodePoint（サロゲートペアを含むパスのソート安定性）', () => {
+  // compareByCodePoint は UTF-16 '<' に頼らず codePointAt で比較する。
+  // BMP 外の文字（例: 絵文字 U+1F600 = サロゲートペア 2 コードユニット）を
+  // 含むパスが混在しても、スコア・名前長が同じならパス順でソートが安定することを確認する。
+  it('サロゲートペアを含むファイルパスでもスコア同点ならコードポイント昇順に並ぶ', () => {
+    const emoji1 = file('😀file.ts', '/project/😀file.ts')
+    const emoji2 = file('😁file.ts', '/project/😁file.ts')
+    // 😀 = U+1F600, 😁 = U+1F601; コードポイント昇順で 😀 < 😁
+    const files = [emoji2, emoji1]
+    const results = searchFiles('file', files, '/project')
+    // 両方マッチし、名前長も同じ場合、パスのコードポイント昇順で 😀 が先
+    expect(results[0].node.name).toBe('😀file.ts')
+    expect(results[1].node.name).toBe('😁file.ts')
+  })
+
+  it('サロゲートペアを含むパスが一方のみの場合、短い方（BMP外）が後に来ない', () => {
+    // 'a' (U+0061) < '😀' (U+1F600)
+    const plain = file('afile.ts', '/project/afile.ts')
+    const emoji = file('😀file.ts', '/project/😀file.ts')
+    const files = [emoji, plain]
+    const results = searchFiles('file', files, '/project')
+    expect(results[0].node.name).toBe('afile.ts')
+    expect(results[1].node.name).toBe('😀file.ts')
+  })
+
+  it('一方がもう一方のプレフィックスであるパスの場合、短いパスが先に並ぶ（L41 対応）', () => {
+    // '/project/sub/file.ts' (短) vs '/project/sub/file.ts.bak' (長)
+    const shortFile = file('test', '/project/sub/test')
+    const longFile = file('test', '/project/sub/test_long')
+    // 長い方を先に配列に入れて検索
+    const results1 = searchFiles('test', [longFile, shortFile], '/project')
+    expect(results1[0].node.path).toBe('/project/sub/test')
+    expect(results1[1].node.path).toBe('/project/sub/test_long')
+
+    // 逆に短い方を先に入れても安定する
+    const results2 = searchFiles('test', [shortFile, longFile], '/project')
+    expect(results2[0].node.path).toBe('/project/sub/test')
+    expect(results2[1].node.path).toBe('/project/sub/test_long')
+  })
+
+  it('同一パスの項目が複数ある場合、比較結果が 0 になり安定して並ぶ（L40 対応）', () => {
+    const file1 = file('dup.ts', '/project/dup.ts')
+    const file2 = file('dup.ts', '/project/dup.ts')
+    const results = searchFiles('dup', [file1, file2], '/project')
+    expect(results).toHaveLength(2)
+    expect(results[0].node.path).toBe('/project/dup.ts')
+    expect(results[1].node.path).toBe('/project/dup.ts')
+  })
+})

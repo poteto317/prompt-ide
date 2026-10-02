@@ -194,4 +194,48 @@ describe('buildHunkPatch', () => {
     const patch = buildHunkPatch(parsed, 0)
     expect(patch).toContain('diff --git a/src/index.ts b/src/index.ts')
   })
+
+  it('リネーム diff でヘッダーに "+++ " 行がない場合、元のヘッダーをそのまま返す（フォールバック）', () => {
+    // toSelfDiffHeaderLines: headerLines に "+++ " 行が存在しない場合は headerLines をそのまま返す
+    const renameDiffNoPlus = [
+      'diff --git a/old.txt b/new.txt',
+      'similarity index 84%',
+      'rename from old.txt',
+      'rename to new.txt',
+      'index 4083766..2f86025 100644',
+      '--- a/old.txt',
+      // "+++ b/new.txt" を意図的に省略
+      '@@ -1,1 +1,1 @@',
+      '-line1',
+      '+CHANGED1',
+      ''
+    ].join('\n')
+    const parsed = parseDiff(renameDiffNoPlus)
+    // "+++ " 行がないためフォールバックし、rename ヘッダーをそのまま含む
+    const patch = buildHunkPatch(parsed, 0)
+    // フォールバック時はオリジナルのヘッダーが使われる（rename fromが含まれるかもしれない）
+    expect(patch).toContain('diff --git a/old.txt b/new.txt')
+  })
+
+  it('リネーム diff の "+++ " トークンに b/ 接頭辞がない場合、トークンをそのまま使う', () => {
+    // toAPathToken: bPathToken が "b/" または b/ で始まらない場合のフォールバック分岐
+    const renameDiffNoBPrefix = [
+      'diff --git a/old.txt raw-new.txt',
+      'similarity index 84%',
+      'rename from old.txt',
+      'rename to raw-new.txt',
+      'index 4083766..2f86025 100644',
+      '--- a/old.txt',
+      '+++ raw-new.txt',
+      '@@ -1,1 +1,1 @@',
+      '-line1',
+      '+CHANGED1',
+      ''
+    ].join('\n')
+    const parsed = parseDiff(renameDiffNoBPrefix)
+    const patch = buildHunkPatch(parsed, 0)
+    expect(patch).toContain('diff --git raw-new.txt raw-new.txt')
+    expect(patch).toContain('--- raw-new.txt')
+    expect(patch).toContain('+++ raw-new.txt')
+  })
 })

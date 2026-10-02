@@ -138,6 +138,45 @@ describe('usePromptExecution', () => {
     expect(result.current.isExecuting).toBe(false)
   })
 
+  it('先行実行のエラーが後続実行の state を上書きしない（競合対策）', async () => {
+    let rejectFirst!: (err: Error) => void
+    let resolveSecond!: (v: string) => void
+    mockInvokePrompt
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((_, reject) => {
+            rejectFirst = reject
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSecond = resolve
+          })
+      )
+
+    const { result } = renderHook(() => usePromptExecution())
+
+    act(() => {
+      result.current.executePrompt('first', null, 'claude')
+    })
+    act(() => {
+      result.current.executePrompt('second', null, 'claude')
+    })
+
+    await act(async () => {
+      rejectFirst(new Error('first failed'))
+    })
+    expect(result.current.executionError).toBeNull()
+
+    await act(async () => {
+      resolveSecond('second result')
+    })
+    expect(result.current.result).toBe('second result')
+    expect(result.current.executionError).toBeNull()
+    expect(result.current.isExecuting).toBe(false)
+  })
+
   it('再実行前に前回の result / executionError がクリアされる', async () => {
     mockInvokePrompt.mockRejectedValueOnce(new Error('first error'))
     mockInvokePrompt.mockResolvedValueOnce('second result')
@@ -274,6 +313,37 @@ describe('usePromptExecution', () => {
       expect(onExecuted).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'error', errorMessage: 'キャンセルされました' })
       )
+    })
+
+    it('cancelPrompt が失敗した場合、エラーがコンソールに出力され例外は漏洩しない', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      let resolvePrompt!: (v: string) => void
+      mockInvokePrompt.mockImplementation(
+        () =>
+          new Promise<string>((resolve) => {
+            resolvePrompt = resolve
+          })
+      )
+      mockCancelPrompt.mockRejectedValueOnce(new Error('cancel failed'))
+      const { result } = renderHook(() => usePromptExecution())
+      act(() => {
+        result.current.executePrompt('p', null, 'api')
+      })
+
+      act(() => {
+        result.current.cancelExecution()
+      })
+
+      await Promise.resolve()
+      expect(consoleSpy).toHaveBeenCalledWith(
+        '[usePromptExecution] cancelPrompt failed:',
+        expect.any(Error)
+      )
+
+      consoleSpy.mockRestore()
+      await act(async () => {
+        resolvePrompt('x')
+      })
     })
   })
 

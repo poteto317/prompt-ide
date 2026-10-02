@@ -156,4 +156,30 @@ describe('useEditorFocusManager', () => {
 
     expect(editorInstance.focus).not.toHaveBeenCalled()
   })
+
+  it('要求対象と異なるファイルが開かれた場合、保留中のフォーカス要求は破棄される', () => {
+    const editorB = makeEditor()
+    const { result, rerender } = renderHook((props) => useEditorFocusManager(props), {
+      initialProps: makeParams({ openFilePath: '/a.ts', openedFileSignal: makeSignal(1, '/a.ts') })
+    })
+
+    // エディタ未マウントのまま /b.ts へ切り替わる
+    rerender(makeParams({ openFilePath: '/b.ts', openedFileSignal: makeSignal(1, '/a.ts') }))
+
+    // /b.ts のエディタがマウントされてもフォーカスされない
+    result.current.handleEditorMount(editorB, '/b.ts')
+    expect(editorB.focus).not.toHaveBeenCalled()
+  })
+
+  it('マウント後にエディタの getModel が null になった場合、フォーカスしない', () => {
+    const editorInstance = makeEditor()
+    const { result, rerender } = renderHook((props) => useEditorFocusManager(props), {
+      initialProps: makeParams({ openFilePath: '/a.ts' })
+    })
+    result.current.handleEditorMount(editorInstance, '/a.ts')
+    ;(editorInstance.getModel as ReturnType<typeof vi.fn>).mockReturnValue(null)
+
+    rerender(makeParams({ openFilePath: '/a.ts', openedFileSignal: makeSignal(1, '/a.ts') }))
+    expect(editorInstance.focus).not.toHaveBeenCalled()
+  })
 })

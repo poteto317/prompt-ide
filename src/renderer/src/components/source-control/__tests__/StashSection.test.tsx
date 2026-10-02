@@ -105,4 +105,20 @@ describe('StashSection', () => {
       errorSpy.mockRestore()
     }
   })
+
+  it('退避の「戻す」ボタンをクリックすると stash.onPop が SHA で呼ばれる', async () => {
+    const stash = makeStash({ entries: [e1] })
+    render(<StashSection stash={stash} isBlocked={false} />)
+    const popBtn = screen.getByRole('button', { name: `退避 ${e1.message} を戻す` })
+    await userEvent.click(popBtn)
+    expect(stash.onPop).toHaveBeenCalledWith(e1.sha)
+  })
+
+  it('退避の「捨てる」ボタンをクリックすると stash.onDrop が entry で呼ばれる', async () => {
+    const stash = makeStash({ entries: [e1] })
+    render(<StashSection stash={stash} isBlocked={false} />)
+    const dropBtn = screen.getByRole('button', { name: `退避 ${e1.message} を捨てる` })
+    await userEvent.click(dropBtn)
+    expect(stash.onDrop).toHaveBeenCalledWith(e1)
+  })
 })

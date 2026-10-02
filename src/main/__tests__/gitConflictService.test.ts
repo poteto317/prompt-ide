@@ -240,6 +240,20 @@ describe('getConflictFile', () => {
       stages: { ours: false, theirs: false }
     })
   })
+
+  it('lstat が ENOENT 以外のエラーで失敗したときは例外を再スローする', async () => {
+    mockFs.lstat.mockRejectedValue(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    )
+    await expect(getConflictFile('/p', 'f.txt')).rejects.toThrow('EACCES: permission denied')
+  })
+
+  it('readFile が ENOENT 以外のエラーで失敗したときは例外を再スローする', async () => {
+    mockFs.readFile.mockRejectedValue(
+      Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    )
+    await expect(getConflictFile('/p', 'f.txt')).rejects.toThrow('EACCES: permission denied')
+  })
 })
 
 describe('resolveConflictBlocks', () => {

@@ -19,4 +19,13 @@ describe('detectLanguage', () => {
     expect(detectLanguage('index.TS')).toBe('typescript')
     expect(detectLanguage('style.CSS')).toBe('css')
   })
+
+  it('空文字列ファイル名は plaintext を返す', () => {
+    expect(detectLanguage('')).toBe('plaintext')
+  })
+
+  it('ドットで終わるファイル名（拡張子なし）は plaintext を返す', () => {
+    // 'file.'.split('.').pop() === '' → EXT_LANGUAGE[''] は undefined → 'plaintext'
+    expect(detectLanguage('file.')).toBe('plaintext')
+  })
 })

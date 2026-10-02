@@ -3022,6 +3022,119 @@ describe('useFileSystem', () => {
       expect(result.current.saveError?.message).toBe('EACCES')
     })
 
+    it('closeTab: 読み込み保留中のパスと同名にリネームされたアクティブタブを閉じた場合、保留中読み込みが無効化される', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValueOnce('content of b')
+      mockRenameEntry.mockResolvedValue(undefined)
+
+      const { result } = renderHook(() => useFileSystem())
+      await act(async () => {
+        await result.current.openFolder()
+        await result.current.selectFile({
+          name: 'b.ts',
+          path: '/project/src/b.ts',
+          type: 'file'
+        })
+      })
+
+      // index.ts の読み込みを開始(保留状態)
+      let resolveRead!: (content: string) => void
+      mockReadFileContent.mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveRead = resolve
+          })
+      )
+      let openPromise: Promise<boolean> | null = null
+      act(() => {
+        openPromise = result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+
+      // アクティブな b.ts を index.ts にリネーム
+      await act(async () => {
+        await result.current.renameEntry(
+          { name: 'b.ts', path: '/project/src/b.ts', type: 'file' },
+          'index.ts'
+        )
+      })
+
+      // リネームによってアクティブかつパスが一致した index.ts タブを閉じる
+      act(() => {
+        result.current.closeTab('/project/src/index.ts')
+      })
+
+      // 遅れて index.ts の読み込みが解決
+      await act(async () => {
+        resolveRead('content of index')
+        await openPromise
+      })
+
+      // タブは復活しない
+      expect(result.current.openFiles).toEqual([])
+      expect(result.current.activeFilePath).toBeNull()
+    })
+
+    it('selectFile: 同じパスの保存が進行中の場合、保存完了を待ってから読み込む', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValue('const a = 1')
+      let resolveWrite!: () => void
+      mockWriteFileContent.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveWrite = resolve
+          })
+      )
+      const { result } = renderHook(() => useFileSystem())
+      await act(async () => {
+        await result.current.openFolder()
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+
+      act(() => {
+        result.current.updateFileContent('modified')
+      })
+
+      // 保存を開始(write は pending)
+      let savePromise: Promise<void> | null = null
+      act(() => {
+        savePromise = result.current.saveFile()
+      })
+
+      // タブを閉じる
+      act(() => {
+        result.current.closeTab('/project/src/index.ts')
+      })
+
+      // 保存が未完了のまま再度開く
+      let openPromise: Promise<boolean> | null = null
+      act(() => {
+        openPromise = result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+
+      // 保存を完了させる
+      await act(async () => {
+        resolveWrite()
+        await savePromise
+        await openPromise
+      })
+
+      expect(result.current.openFile?.path).toBe('/project/src/index.ts')
+    })
+
     it('deleteEntry: 非アクティブなファイルを削除しても、アクティブタブの saveError は残る', async () => {
       // closeTab の wasActive ゲートと同じ理由で、renameEntry/deleteEntry も
       // 「影響を受けたのがアクティブなタブかどうか」で clearStaleSaveState
@@ -3476,6 +3589,30 @@ describe('useFileSystem', () => {
       ])
       // アクティブファイルは変わらない
       expect(result.current.activeFilePath).toBe('/project/src/c.ts')
+    })
+
+    it('reorderTabs: 範囲外のインデックスが指定された場合は何もしない', async () => {
+      mockOpenFolder.mockResolvedValue('/project')
+      mockReadDirectory.mockResolvedValue(mockTree)
+      mockReadFileContent.mockResolvedValue('const a = 1')
+      const { result } = renderHook(() => useFileSystem())
+      await act(async () => {
+        await result.current.openFolder()
+        await result.current.selectFile({
+          name: 'index.ts',
+          path: '/project/src/index.ts',
+          type: 'file'
+        })
+      })
+
+      act(() => {
+        result.current.reorderTabs(-1, 0)
+        result.current.reorderTabs(0, -1)
+        result.current.reorderTabs(10, 0)
+        result.current.reorderTabs(0, 10)
+      })
+
+      expect(result.current.openFiles).toHaveLength(1)
     })
 
     it('Windows形式パスの大文字小文字のみのリネームでも activeFilePath が新しい表記と厳密に一致する', async () => {

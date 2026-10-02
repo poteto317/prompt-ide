@@ -4,6 +4,7 @@ import {
   getGitStatus,
   stageFile,
   unstageFile,
+  discardChanges,
   commitChanges,
   getDiff,
   stageHunk,
@@ -12,7 +13,16 @@ import {
   getBranches,
   getTags,
   amendCommit,
+  push,
+  pull,
+  fetchRemote,
+  checkoutBranch,
+  createBranch,
+  deleteBranch,
   stashPop,
+  getStashes,
+  stashPush,
+  stashDrop,
   createTag,
   initRepository,
   addOrigin,
@@ -34,6 +44,7 @@ const mockApi = {
   getGitStatus: vi.fn(),
   stageFile: vi.fn(),
   unstageFile: vi.fn(),
+  discardChanges: vi.fn(),
   commitChanges: vi.fn(),
   getDiff: vi.fn(),
   stageHunk: vi.fn(),
@@ -42,7 +53,16 @@ const mockApi = {
   getBranches: vi.fn(),
   getTags: vi.fn(),
   amendCommit: vi.fn(),
+  push: vi.fn(),
+  pull: vi.fn(),
+  fetchRemote: vi.fn(),
+  checkoutBranch: vi.fn(),
+  createBranch: vi.fn(),
+  deleteBranch: vi.fn(),
   stashPop: vi.fn(),
+  getStashes: vi.fn(),
+  stashPush: vi.fn(),
+  stashDrop: vi.fn(),
   createTag: vi.fn(),
   initRepository: vi.fn(),
   addOrigin: vi.fn(),
@@ -127,6 +147,14 @@ describe('unstageFile', () => {
   })
 })
 
+describe('discardChanges', () => {
+  it('window.api.discardChanges を filePath で呼び出す', async () => {
+    mockApi.discardChanges.mockResolvedValue(undefined)
+    await discardChanges('src/index.ts')
+    expect(mockApi.discardChanges).toHaveBeenCalledWith('src/index.ts')
+  })
+})
+
 describe('commitChanges', () => {
   it('window.api.commitChanges を message で呼び出す', async () => {
     mockApi.commitChanges.mockResolvedValue(undefined)
@@ -187,6 +215,75 @@ describe('amendCommit', () => {
   it('window.api.amendCommit を message で呼ぶ', async () => {
     await amendCommit('feat: 修正後')
     expect(mockApi.amendCommit).toHaveBeenCalledWith('feat: 修正後')
+  })
+})
+
+describe('push / pull / fetchRemote', () => {
+  it('push は引数なしで window.api.push を呼ぶ', async () => {
+    mockApi.push.mockResolvedValue(undefined)
+    await push()
+    expect(mockApi.push).toHaveBeenCalledWith()
+  })
+
+  it('pull は引数なしで window.api.pull を呼ぶ', async () => {
+    mockApi.pull.mockResolvedValue(undefined)
+    await pull()
+    expect(mockApi.pull).toHaveBeenCalledWith()
+  })
+
+  it('fetchRemote は引数なしで window.api.fetchRemote を呼ぶ', async () => {
+    mockApi.fetchRemote.mockResolvedValue(undefined)
+    await fetchRemote()
+    expect(mockApi.fetchRemote).toHaveBeenCalledWith()
+  })
+})
+
+describe('checkoutBranch / createBranch / deleteBranch', () => {
+  it('checkoutBranch はブランチ名を渡す', async () => {
+    mockApi.checkoutBranch.mockResolvedValue(undefined)
+    await checkoutBranch('feature/foo')
+    expect(mockApi.checkoutBranch).toHaveBeenCalledWith('feature/foo')
+  })
+
+  it('createBranch はブランチ名を渡す', async () => {
+    mockApi.createBranch.mockResolvedValue(undefined)
+    await createBranch('feature/bar')
+    expect(mockApi.createBranch).toHaveBeenCalledWith('feature/bar')
+  })
+
+  it('deleteBranch はブランチ名と force フラグを渡し、結果をそのまま返す', async () => {
+    const result = { status: 'deleted' }
+    mockApi.deleteBranch.mockResolvedValue(result)
+    await expect(deleteBranch('feature/baz', false)).resolves.toBe(result)
+    expect(mockApi.deleteBranch).toHaveBeenCalledWith('feature/baz', false)
+  })
+
+  it('deleteBranch は force=true も渡せる', async () => {
+    const result = { status: 'deleted' }
+    mockApi.deleteBranch.mockResolvedValue(result)
+    await deleteBranch('feature/baz', true)
+    expect(mockApi.deleteBranch).toHaveBeenCalledWith('feature/baz', true)
+  })
+})
+
+describe('getStashes / stashPush / stashDrop', () => {
+  it('getStashes は window.api.getStashes を呼び、配列をそのまま返す', async () => {
+    const stashes = [{ sha: 'abc', message: 'WIP' }]
+    mockApi.getStashes.mockResolvedValue(stashes)
+    await expect(getStashes()).resolves.toBe(stashes)
+    expect(mockApi.getStashes).toHaveBeenCalledWith()
+  })
+
+  it('stashPush はメッセージを渡す', async () => {
+    mockApi.stashPush.mockResolvedValue(undefined)
+    await stashPush('作業中')
+    expect(mockApi.stashPush).toHaveBeenCalledWith('作業中')
+  })
+
+  it('stashDrop は SHA を渡す', async () => {
+    mockApi.stashDrop.mockResolvedValue(undefined)
+    await stashDrop('a'.repeat(40))
+    expect(mockApi.stashDrop).toHaveBeenCalledWith('a'.repeat(40))
   })
 })
 

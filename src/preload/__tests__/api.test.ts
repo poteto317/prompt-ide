@@ -61,6 +61,57 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:getStatus']
   ],
   [
+    'stageFile は git:stage チャンネルに filePath を渡す',
+    () => api.stageFile('src/a.ts'),
+    ['git:stage', 'src/a.ts']
+  ],
+  [
+    'unstageFile は git:unstage チャンネルに filePath と renamedFrom を渡す',
+    () => api.unstageFile('src/a.ts', 'src/old.ts'),
+    ['git:unstage', 'src/a.ts', 'src/old.ts']
+  ],
+  [
+    'commitChanges は git:commit チャンネルに message を渡す',
+    () => api.commitChanges('feat: test'),
+    ['git:commit', 'feat: test']
+  ],
+  [
+    'getDiff は git:getDiff チャンネルに引数を渡す',
+    () => api.getDiff('src/a.ts', true, false, 'old.ts'),
+    ['git:getDiff', 'src/a.ts', true, false, 'old.ts']
+  ],
+  [
+    'stageHunk は git:stageHunk チャンネルに filePath と patch を渡す',
+    () => api.stageHunk('src/a.ts', 'PATCH'),
+    ['git:stageHunk', 'src/a.ts', 'PATCH']
+  ],
+  [
+    'unstageHunk は git:unstageHunk チャンネルに filePath と patch を渡す',
+    () => api.unstageHunk('src/a.ts', 'PATCH'),
+    ['git:unstageHunk', 'src/a.ts', 'PATCH']
+  ],
+  [
+    'getLog は git:getLog チャンネルに limit と skip を渡す',
+    () => api.getLog(20, 0),
+    ['git:getLog', 20, 0]
+  ],
+  [
+    'getBranches は git:getBranches チャンネルを呼び出す',
+    () => api.getBranches(),
+    ['git:getBranches']
+  ],
+  ['getTags は git:getTags チャンネルを呼び出す', () => api.getTags(), ['git:getTags']],
+  [
+    'amendCommit は git:amendCommit チャンネルに message を渡す',
+    () => api.amendCommit('fix: test'),
+    ['git:amendCommit', 'fix: test']
+  ],
+  [
+    'addToGitignore は fs:addToGitignore チャンネルに targetPath を渡す',
+    () => api.addToGitignore('node_modules'),
+    ['fs:addToGitignore', 'node_modules']
+  ],
+  [
     'discardChanges は git:discardChanges チャンネルに filePath を渡す',
     () => api.discardChanges('src/a.ts'),
     ['git:discardChanges', 'src/a.ts']

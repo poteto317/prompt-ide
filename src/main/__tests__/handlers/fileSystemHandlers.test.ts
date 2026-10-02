@@ -717,5 +717,22 @@ describe('registerFileSystemHandlers', () => {
         getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
       ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/.gitignore')
     })
+
+    it('isSymbolicLink(.gitignore)が ENOENT/ENOTDIR 以外のエラーで失敗した場合、エラーが伝播する', async () => {
+      const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
+      const folderAccess = makeFolderAccess({
+        get: vi.fn().mockReturnValue('/project'),
+        assertWithinFolder
+      })
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      mockToGitRelativePath.mockReturnValue('dist')
+      mockIsSymbolicLink.mockRejectedValue(
+        Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+      )
+
+      await expect(
+        getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
+      ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/.gitignore')
+    })
   })
 })

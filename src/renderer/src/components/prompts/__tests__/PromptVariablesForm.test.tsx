@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import PromptVariablesForm from '../PromptVariablesForm'
@@ -92,6 +92,18 @@ describe('PromptVariablesForm', () => {
     await userEvent.type(screen.getByRole('textbox', { name: '変数 name の値' }), '田中')
     await userEvent.type(screen.getByRole('textbox', { name: '変数 topic の値' }), 'React{Enter}')
     // form の onSubmit ガードにより、実行中は Enter でも submit されない
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('isRunDisabled=true のときに form の submit イベントが直接発火しても preventDefault され送信されない', () => {
+    const onSubmit = vi.fn()
+    const { container } = render(
+      <PromptVariablesForm {...defaultProps} onSubmit={onSubmit} isRunDisabled />
+    )
+    const form = container.querySelector('form')!
+    const event = fireEvent.submit(form)
+    // preventDefault が呼ばれるため fireEvent.submit の戻り値は false
+    expect(event).toBe(false)
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })

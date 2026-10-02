@@ -35,6 +35,7 @@ import {
   readDirRecursive,
   readFileContent,
   readFileBuffer,
+  writeFileContent,
   isExecutableFile,
   isSymbolicLink,
   getFileSize,
@@ -152,6 +153,14 @@ describe('readFileBuffer', () => {
     const result = await readFileBuffer('/project/image.png')
     expect(mockReadFile).toHaveBeenCalledWith('/project/image.png')
     expect(result).toBe(buf)
+  })
+})
+
+describe('writeFileContent', () => {
+  it('writeFile を utf-8 エンコーディングで呼び出す', async () => {
+    mockWriteFile.mockResolvedValue(undefined)
+    await writeFileContent('/project/src/index.ts', 'const x = 1')
+    expect(mockWriteFile).toHaveBeenCalledWith('/project/src/index.ts', 'const x = 1', 'utf-8')
   })
 })
 

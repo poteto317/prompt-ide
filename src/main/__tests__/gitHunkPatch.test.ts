@@ -172,6 +172,10 @@ describe('assertHunkPatchTargets', () => {
       expectRejected(patchOf(['diff --git a/f.txt b/other.txt', '--- a/f.txt', '+++ b/f.txt']))
     })
 
+    it('閉じクォートの無い diff --git 行は拒否する', () => {
+      expectRejected(patchOf(['diff --git "a/f.txt b/f.txt', '--- a/f.txt', '+++ b/f.txt']))
+    })
+
     it('--- と +++ のパスが食い違う', () => {
       expectRejected(patchOf(['diff --git a/f.txt b/f.txt', '--- a/other.txt', '+++ b/f.txt']))
       expectRejected(patchOf(['diff --git a/f.txt b/f.txt', '--- a/f.txt', '+++ b/other.txt']))
