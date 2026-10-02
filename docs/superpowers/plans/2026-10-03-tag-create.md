@@ -78,7 +78,7 @@
   - `タグを作成できませんでした: <detail>`（git のエラーの trim。detail が空なら `タグを作成できませんでした`）。`git tag` の失敗に加え、タグ・ブランチの一覧（`for-each-ref`）と作成後の確認（`rev-parse`）の reject もこの文言にする（英語の GitError をそのまま見せない。パターン 74）
   - IPC の型検証: `Invalid tag request`
 - ダイアログ内の検証の文言（完全一致）: `名前を入力してください` / `` `-` で始まる名前は使用できません `` / `この名前は使用できません` / `同じ名前のタグが既に存在します` / `既存のタグ <existing> と名前が衝突します` / `同じ名前のブランチが存在するため、タグを作成できません` / `メッセージを入力してください` / `メッセージに使用できない文字が含まれています`
-- UI 文言と ARIA: 履歴の見出しのボタン `タグを作成`（`aria-label="タグを作成"`）。ダイアログは `role="dialog"`、名前は見出し `タグを作成`（`aria-labelledby`）、説明 `現在の HEAD にタグを付けます`（`aria-describedby`）。入力欄は可視のラベル `タグ名` / `メッセージ`。種類は可視の `種類` を名前にした `role="radiogroup"` と、`role="radio"` + `aria-checked` の `軽量` / `注釈付き`（既定は軽量。矢印キーで切り替え、roving tabindex）。メッセージ欄は注釈付きのときだけ表示。ボタン `作成`（実行中 `作成中...`）/ `キャンセル`。作成中はダイアログ（`form`）に `aria-busy="true"` を付け、`role="status"` の案内 `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` を出す（完了・失敗で消える。PR #41 の 2 周目のレビューで追加）。検証エラーは入力欄の `aria-describedby` と `aria-invalid` で結び、作成の失敗は `role="alert"`。タップ領域は 32px 以上（共通のボタンの規則に入れる）。
+- UI 文言と ARIA: 履歴の見出しのボタン `タグを作成`（`aria-label="タグを作成"`）。ダイアログは `role="dialog"`、名前は見出し `タグを作成`（`aria-labelledby`）、説明 `現在の HEAD にタグを付けます`（`aria-describedby`）。入力欄は可視のラベル `タグ名` / `メッセージ`。種類は可視の `種類` を名前にした `role="radiogroup"` と、`role="radio"` + `aria-checked` の `軽量` / `注釈付き`（既定は軽量。矢印キーで切り替え、roving tabindex）。メッセージ欄は注釈付きのときだけ表示。ボタン `作成`（実行中 `作成中...`）/ `キャンセル`。作成中はダイアログ（`form`）に `aria-busy="true"` を付け、`role="status"` の案内 `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` を出す（完了・失敗で消える。失敗の直後に履歴を取り直している間は `isCreating` が `true` のままエラーがセットされるため、`isCreating && error === null` のときだけ出す。PR #41 の 2・4 周目のレビューで追加）。検証エラーは入力欄の `aria-describedby` と `aria-invalid` で結び、作成の失敗は `role="alert"`。タップ領域は 32px 以上（共通のボタンの規則に入れる）。
 - 排他: タグの作成どうしは実行中フラグ（ref）で排他。`lockGlobal` は取らない。他の Git 操作がロック中（`lock.isAnyLocked()`）・リポジトリでない間は no-op（`false`）。再取得（`refreshHistory`）は成功・失敗のどちらでも行い、実行中フラグはその後で解除する（`useRunExclusiveGitOperation`。パターン 73）。再取得の失敗で作成の成功を失敗にしない（パターン 52）。
 - 作業ツリー・index・HEAD は変わらないので、エディタのタブ・ファイルツリーの再読込、未保存編集の破棄確認、`refreshGitStatus` はしない。
 
@@ -2176,6 +2176,16 @@ describe('CreateTagDialog', () => {
       )
     })
 
+    it('失敗の直後(履歴の取り直しで isCreating がまだ true)でも、エラーがあれば案内と aria-busy を出さず alert だけ出す', () => {
+      renderDialog({ isCreating: true, error: new Error('タグを作成できませんでした: x') })
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('タグを作成できませんでした: x')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
     it('失敗して作成中が解けると、案内は消えてエラーの alert が出る', () => {
       const { rerenderWith } = renderDialog({ isCreating: true })
       expect(screen.getByRole('status')).toBeInTheDocument()
@@ -2817,7 +2827,7 @@ Expected: PASS
 
 - [ ] **Step 5: ミューテーション**
 
-(1) `canSubmit` から `!isBlocked` を外す → isBlocked のテスト、(2) `kind === 'annotated' ? message : ''` を `message` にする → 軽量に戻すテスト、(3) `handleKindKeyDown` の `focus()` を外す → 矢印キーのテスト、(4) `tabIndex` を常に `0` にする → roving tabindex のテスト、(5) `handleCreateTag` で成否を見ずに閉じる → 失敗で閉じないテスト、(6) `openTagDialog` の `clearError()` を外す → 前回のエラーのテスト、(7) フォーカスを戻す `useEffect` の `focus()` を外す → フォーカスのテスト（成功とキャンセルの両方）、(7') `closeTagDialog` で予約を立てずに直接 `focus()` する（修正前の実装）→ 実物の `useGitTagOperations` と結合した「保留から成功」のテスト（`act` の外で解決し、作成中の `disabled` が解ける前に `focus()` が走る実機の順序を再現する）、(7'') 戻す条件の「フォーカスが body のときだけ」を外す → 作成中に外へ移したフォーカスを奪わないテスト、(7''') `CreateTagDialog` の失敗後に入力欄へ戻す `focus()` を外す → 失敗の後に Escape で閉じられるテスト、(8) CSS のグループから `.history-section__create-tag` を外す → スタイルのテスト、(9) キャンセルの `disabled={isCreating}` を外す・Escape またはオーバーレイを `requestCancel` でなく `onCancel` にする → 作成中に閉じないテスト、(10) `タグを作成` の `disabled` から `gitTag.isCreating` を外す → 作成中のボタンのテスト、(11) 作成中の `role="status"` の案内を外す・`aria-busy` を外す → 作成中の案内のテスト（PR #41 の 2 周目のレビューで追加）。
+(1) `canSubmit` から `!isBlocked` を外す → isBlocked のテスト、(2) `kind === 'annotated' ? message : ''` を `message` にする → 軽量に戻すテスト、(3) `handleKindKeyDown` の `focus()` を外す → 矢印キーのテスト、(4) `tabIndex` を常に `0` にする → roving tabindex のテスト、(5) `handleCreateTag` で成否を見ずに閉じる → 失敗で閉じないテスト、(6) `openTagDialog` の `clearError()` を外す → 前回のエラーのテスト、(7) フォーカスを戻す `useEffect` の `focus()` を外す → フォーカスのテスト（成功とキャンセルの両方）、(7') `closeTagDialog` で予約を立てずに直接 `focus()` する（修正前の実装）→ 実物の `useGitTagOperations` と結合した「保留から成功」のテスト（`act` の外で解決し、作成中の `disabled` が解ける前に `focus()` が走る実機の順序を再現する）、(7'') 戻す条件の「フォーカスが body のときだけ」を外す → 作成中に外へ移したフォーカスを奪わないテスト、(7''') `CreateTagDialog` の失敗後に入力欄へ戻す `focus()` を外す → 失敗の後に Escape で閉じられるテスト、(8) CSS のグループから `.history-section__create-tag` を外す → スタイルのテスト、(9) キャンセルの `disabled={isCreating}` を外す・Escape またはオーバーレイを `requestCancel` でなく `onCancel` にする → 作成中に閉じないテスト、(10) `タグを作成` の `disabled` から `gitTag.isCreating` を外す → 作成中のボタンのテスト、(11) 作成中の `role="status"` の案内を外す・`aria-busy` を外す → 作成中の案内のテスト（PR #41 の 2 周目のレビューで追加）。 (12) `showCreatingNotice = isCreating && error === null` を `isCreating` にする → 失敗の直後に案内と aria-busy を出さないテスト。
 
 - [ ] **Step 6: 検証**
 
