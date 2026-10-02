@@ -36,6 +36,10 @@ describe('App: 変更の破棄（onDiscardFile）', () => {
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
       mergeInProgress: false,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: 'origin/main',
+      detached: false,
       branch: 'main',
       ahead: 0,
       behind: 0,
@@ -60,6 +64,8 @@ describe('App: 変更の破棄（onDiscardFile）', () => {
 
     // modified.ts が表示されるのを待つ
     await waitFor(() => expect(screen.getByText('modified.ts')).toBeInTheDocument())
+    // リモート設定済みの状態で検証する(未設定のバナーが出ていない)
+    expect(screen.queryByText('リモートが未設定です')).not.toBeInTheDocument()
 
     // 破棄ボタンをクリック
     const discardBtn = screen.getByRole('button', { name: 'modified.ts の変更を取り消し' })

@@ -726,7 +726,8 @@ describe('registerFileSystemHandlers', () => {
       })
       registerFileSystemHandlers(mockIpcMain, folderAccess)
       mockToGitRelativePath.mockReturnValue('dist')
-      mockIsSymbolicLink.mockRejectedValue(
+      // 後続のテストへ漏れないよう、この 1 回限りの動作として設定する
+      mockIsSymbolicLink.mockRejectedValueOnce(
         Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
       )
 
