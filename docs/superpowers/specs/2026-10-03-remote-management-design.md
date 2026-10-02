@@ -94,6 +94,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
   - 失敗して実行中が解けたら、フォーカスが body かダイアログ内にあれば入力欄へ戻す
   - 初回 push（バナーのボタン。ダイアログは無い）が失敗して実行中が解けたら、フォーカスが body なら `初回 push（upstream を設定）` へ戻す（実行中は disabled でフォーカスが body に落ちるため。外の要素にあるフォーカスは奪わない）。成功ではバナーが消えるか、残っても成功の後の移し先（ツールバーの `プッシュ`）に任せる
   - Escape は `isComposing` のときは無視する（IME）
+- モーダルとして扱う（PR #42 のレビュー指摘で追加）: `form` に `aria-modal="true"` を付け、Tab / Shift+Tab をダイアログの中（入力欄・実行・キャンセル）で循環させて、背後のコミット欄やツールバーへフォーカスを出さない（`useDialogFocusTrap`）。Tab は document の capture で受け（フォーカスが外や body にあっても受けられる。`QuickOpenDialog` と同じ理由）、操作対象（disabled と tabindex=-1 を除く）は押すたびに列挙し直す（実行中に disabled で対象が減るため。パターン 86）。外や body にあるフォーカスは、Tab で先頭へ、Shift+Tab で末尾へ入れる。実行中にすべて disabled になったときはフォーム自体に置く（tabindex=-1 を付ける）。IME の変換中（`isComposing`）は奪わない。タグの作成の `CreateTagDialog` とエクスプローラーとブランチの作成で使う `NameInputDialog` には付けていない（範囲外。ROADMAP の既知の制約）
 
 ## main の検証と実行
 
@@ -130,7 +131,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
       - path・query・fragment（authority の後）の `@` と `%40` は、すべてのスキームで拒否する。userinfo に生の `/` がある URL は、authority を最初の `/` で切ると `alice:1234`（`@` 無し）になり、port が数字のため host:port に見えて通っていた（git は https では `unable to access 'https://alice:1234/s3cret@h/r/'` と URL ごと出し、ssh では `Could not resolve hostname alice` と出す。5・6 周目のレビュー）。`%40` も git が `@` に戻すため同じく扱う。正当な URL の path の `@` は稀なため許容する（既知の制約）
       - 違反はすべて `unsupported`（文言は 5 のまま）
       - `file://`: 直後が `/`（絶対パス）
-      - scp 形式: `<user>@<host>:<path>`。`user` は ssh:// の userinfo と同じ `[A-Za-z0-9._~+-]+`（先頭は `-` でない。`git`・`ec2-user`・`first.last` は通る）。`host` は `/` `:` `@` を含まず、`-` で始まらない。`path` は空でなく、`@` を含まない（`Ua1@Ub2:Pa3@h:r` は user `Ua1@Ub2`・パスワード `Pa3` のつもりでも、git は host を `Ub2`・path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る。性質テストで検出し、ネットワークの URL と揃えた）。`[::1]` のような角括弧のホストは許可しない。scp 形式は git が `%XX` を decode しない（実機で確認）
+      - scp 形式: `<user>@<host>:<path>`。`user` は ssh:// の userinfo と同じ `[A-Za-z0-9._~+-]+`（先頭は `-` でない。`git`・`ec2-user`・`first.last` は通る）。`host` は `/` `:` `@` を含まず、`-` で始まらない。`path` は空でなく、`@` を含まない（`Ua1@Ub2:Pa3@h:r` は user `Ua1@Ub2`・パスワード `Pa3` のつもりでも、git は host を `Ub2`・path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る。開発中の探索で検出し、ネットワークの URL と揃えた。コミット済みの性質テストが `g@u:p@h:r` として再現する）。`[::1]` のような角括弧のホストは許可しない。scp 形式は git が `%XX` を decode しない（実機で確認）
       - 絶対パス: `/` で始まる。`windowsPaths` が真のときだけ、`C:\` `C:/` の形も許可する（main は `process.platform === 'win32'` を渡す。macOS で `C:/x` は git に scp 形式として解釈されるため拒否する。renderer は platform を知らないので、ダイアログでは寛容側の `true` を渡し、最終判断は main が行う）。相対パス（`../bare.git`）は git が開いているフォルダからの相対で解決して受け付けるが（実機で確認）、開いているフォルダが変わると別の場所を指すため拒否する
       - 上記以外はすべて拒否する。特に `ext::<command>`（任意のコマンドを実行する）、`fd::<n>`、`<名前>::<address>`、未知のスキームの `<名前>://`（`git-remote-<名前>` が起動する）。`ext::` は git の既定（`protocol.ext.allow=never`）では push 時に `transport 'ext' not allowed` で止まるが、利用者が `protocol.ext.allow=always` や `protocol.allow=always` を設定していると push 時にコマンドが実行された（実機で確認）。`fd::3` は push 時に読み込み待ちのまま終わらなかった（実機で確認）。simple-git は `git remote add -- origin <url>` で、これらの値も `--upload-pack=...` も止めない（実機で確認）。アプリの許可リストが唯一の防御になる
    - 規則の違反の文言には URL を含めない（拒否した URL は資格情報を含みうるため、画面に出さない）。git の失敗の詳細に URL が出る場合は 4 のとおり userinfo を伏せる
@@ -214,6 +215,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
 - `src/renderer/src/components/source-control/NotRepositoryView.tsx`（新規）: Git 管理外の表示（`Git リポジトリではありません` と `リポジトリを初期化`）。`InitRepositoryDialog` の開閉の状態を持つ。`isRepo` が真になると表示ごと外れるので、開いたままの状態が別のフォルダへ持ち越されない
 - `src/renderer/src/hooks/useRemoteSetupFocus.ts`（新規）: 成功の後のフォーカスの要求の state を持ち、描画の後に `data-remote-setup-focus="<target>"` の要素へ移す（下の「配線」を参照）
 - `src/renderer/src/hooks/useDialogFocusReturn.ts`（新規）: ボタンで開くダイアログの開閉と、閉じた後に開いたボタンへ戻すフォーカス（閉じるときに予約し、閉じて実行中でもなくなった描画の後、body のときだけ戻す）。`NotRepositoryView`・`RemoteSetupBanner`・タグの作成の `HistorySection` で共通（パターン 55）
+- `src/renderer/src/hooks/useDialogFocusTrap.ts`（新規）: モーダルのダイアログの中で Tab / Shift+Tab を循環させる（`useDialogFocusTrap(containerRef, isOpen)`。`RemoteSetupInputDialog` で使う）
 - `src/renderer/src/hooks/useFocusOnRunningEnd.ts`（新規）: 実行中が解けたときに、body（または `containerRef` の中）にあるフォーカスを対象へ戻す。`RemoteSetupInputDialog`・`RemoteSetupBanner`（`enabled` にエラーの有無）・タグの作成の `CreateTagDialog` で共通（パターン 55）
 - `SourceControlPanel.tsx`: `isRepo=false` のときに `NotRepositoryView` を出す
 - `GitRepoView.tsx`: `MergeBanner` の直後に `RemoteSetupBanner` を置き、`isBlocked`（`isBlockedByOtherOperation`）を渡す
@@ -266,7 +268,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
 
 ## テスト方針
 
-- `shared/remoteUrl`: 許可する形（`https://github.com/a/b.git`、`http://`、`ssh://git@host:22/a.git`、`git://host/a`、`file:///abs/bare.git`、`git@github.com:a/b.git`、`/abs/bare.git`、Windows のドライブの形を `windowsPaths` の真偽で）、拒否する形（`git://user:pass@host/a`・`git://user@host/a`、空、2049 文字、末尾以外の空白、改行、タブ、NUL、全角の空白、`-` 始まり、`--upload-pack=x`、`ext::sh -c x`、`fd::3`、`foo::bar`、`HTTPS://`、`unknown://x`、`ssh://-oProxyCommand=x/a`、`git@-x:a`、`file://host/a`、`../bare.git`、`host:path`、`[::1]:a`）、パスワード入りの URL（`https://user:pw@h/r`・`https://ghp_tok@h/r`・`ssh://u:pw@h/r`・`ssh://u%40x@h/r`・`https://alice:1234/s3cret@h/r`・`https://h#sec@h2/r` など）の拒否と `ssh://git@host/r`・`ec2-user@host:path` の許可、`parseNetworkUrl` の分解、判定の順序、`normalizeRemoteUrl`。性質テスト（スキーム × authority の各部 × path の `@` の組み合わせ 168,087 件）で、検証を通った URL を git・ssh の失敗の文言に埋め込んで `redactCredentials` を通し、パスワード・トークン・user の断片が残らないこと（ssh のユーザー名を除く）を確かめた（scratchpad。差分 24）
+- `shared/remoteUrl`: 許可する形（`https://github.com/a/b.git`、`http://`、`ssh://git@host:22/a.git`、`git://host/a`、`file:///abs/bare.git`、`git@github.com:a/b.git`、`/abs/bare.git`、Windows のドライブの形を `windowsPaths` の真偽で）、拒否する形（`git://user:pass@host/a`・`git://user@host/a`、空、2049 文字、末尾以外の空白、改行、タブ、NUL、全角の空白、`-` 始まり、`--upload-pack=x`、`ext::sh -c x`、`fd::3`、`foo::bar`、`HTTPS://`、`unknown://x`、`ssh://-oProxyCommand=x/a`、`git@-x:a`、`file://host/a`、`../bare.git`、`host:path`、`[::1]:a`）、パスワード入りの URL（`https://user:pw@h/r`・`https://ghp_tok@h/r`・`ssh://u:pw@h/r`・`ssh://u%40x@h/r`・`https://alice:1234/s3cret@h/r`・`https://h#sec@h2/r` など）の拒否と `ssh://git@host/r`・`ec2-user@host:path` の許可、`parseNetworkUrl` の分解、判定の順序、`normalizeRemoteUrl`。開発中に一度だけ実行した大規模探索（スキーム × authority の各部 × path の `@` の組み合わせ 168,087 件。scratchpad でコミットしていない。差分 24）で、検証を通った URL を git・ssh の失敗の文言に埋め込んで `redactCredentials` を通し、パスワード・トークン・user の断片が残らないこと（ssh のユーザー名を除く）を確かめた。コミット済みの性質テストは、これを縮めた決定的な組み合わせ 5,832 件（スキーム・scp 形式・file://・絶対パス × 区切り `@ : / ? # %40 %3A %2F` を挟んだ断片）で、検証を通った URL を git の解釈で分解しても userinfo に `:` が無いこと（通った件数が 0 でなく、scp・ssh の user あり・userinfo 無しの各形が通ること）を確かめる（PR #42 のレビュー指摘で追加）
 - `shared/branchName`: `normalizeInitialBranchName`（前後の空白、NFD → NFC）
 - `gitRemoteSetupService` の統合（実 git。`GIT_CONFIG_GLOBAL=/dev/null`・`GIT_CONFIG_NOSYSTEM=1` で環境を固定し、`init.defaultBranch` などの既定に依存しない。`GIT_CEILING_DIRECTORIES` に一時ディレクトリ（symlink を解決したもの）を入れ、`TMPDIR` がリポジトリの中にあっても `checkIsRepo` が親を拾わないようにする。パターン 46）:
   - init: `main` と `feat/x` と日本語の名前で `symbolic-ref HEAD` を確認。`HEAD`・`-x`・`@`・`a..b` は拒否され、`.git` が作られないこと。既にリポジトリのフォルダ、親がリポジトリのサブフォルダの拒否（`.git` が増えないこと）。`init.defaultBranch=trunk` があっても入力した名前になること
@@ -275,7 +277,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
   - タイムアウトは値を注入できる形にし、実時間を待たずに確かめる（パターン 84）
 - `gitService.getGitStatus`: `hasOrigin`・`hasRemote`（リモート無し・`origin` だけ・`origin` と別名・`git clone -o github` したリポジトリとその上の新しいブランチ）・`upstream`（設定済み・`gone`・ローカルの upstream・無し）・`detached`
 - `gitHandlers`: 引数の型の検証、許可フォルダ。preload: 3 つの IPC チャネル
-- renderer: `remoteSetupState`（状態の表の各行と、リモートの有無 3 通り × ブランチの位置 3 通り × `upstream` の有無 2 通りの全組み合わせ）、`remoteSetupValidation`、`RemoteSetupInputDialog`（実行中に閉じない 3 経路、`aria-busy` と案内、失敗で alert と入力欄へのフォーカス、再試行で古い alert が消える、IME の Escape）、`RemoteSetupBanner`（状態ごとの文言とボタンの disabled）、`useGitRemoteSetup`・`useGitRemoteOperations.pushSetUpstream`（成功・失敗のどちらでも取り直し、取り直しの後で実行中を下ろす、push と同時に走らない、開始時にエラーを消す）、成功後のフォーカスの移し先と「body のときだけ」。結合テストは実物のフックで、保留 → 操作 → 解決の順に作る（`act` の外で解決して `waitFor`。パターン 86）
+- renderer: `remoteSetupState`（状態の表の各行と、リモートの有無 3 通り × ブランチの位置 3 通り × `upstream` の有無 2 通りの全組み合わせ）、`remoteSetupValidation`、`RemoteSetupInputDialog`（実行中に閉じない 3 経路、`aria-busy` と案内、失敗で alert と入力欄へのフォーカス、再試行で古い alert が消える、IME の Escape、`aria-modal` と Tab の循環）、`useDialogFocusTrap`（循環・逆循環・外から入る・disabled と tabindex=-1 を飛ばす・対象が減っても循環・0 件でダイアログ自体・IME 中は奪わない・isOpen=false・アンマウントで解除）、`RemoteSetupBanner`（状態ごとの文言とボタンの disabled）、`useGitRemoteSetup`・`useGitRemoteOperations.pushSetUpstream`（成功・失敗のどちらでも取り直し、取り直しの後で実行中を下ろす、push と同時に走らない、開始時にエラーを消す）、成功後のフォーカスの移し先と「body のときだけ」。結合テストは実物のフックで、保留 → 操作 → 解決の順に作る（`act` の外で解決して `waitFor`。パターン 86）
 - 配線のテスト（`GitRepoView` / `SourceControlPanel` / `App`）は、タグの作成の既存のテストに揃える
 - すべてのテストで、実装を壊すと落ちることを変異で確かめる（パターン 57・78）
 

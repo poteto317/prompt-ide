@@ -6,26 +6,28 @@ import RemoteSetupInputDialog from '../RemoteSetupInputDialog'
 
 type Props = ComponentProps<typeof RemoteSetupInputDialog>
 
+const makeProps = (overrides: Partial<Props> = {}): Props => ({
+  title: 'ダイアログ',
+  description: '説明',
+  label: '値',
+  initialValue: 'main',
+  submitLabel: '実行',
+  runningSubmitLabel: '実行中...',
+  runningNotice: '実行中です',
+  normalize: (value) => value.trim(),
+  validate: (value) => (value === '' ? '値を入力してください' : null),
+  isRunning: false,
+  isBlocked: false,
+  error: null,
+  onSubmit: vi.fn(),
+  onCancel: vi.fn(),
+  ...overrides
+})
+
 const renderDialog = (
   overrides: Partial<Props> = {}
 ): Props & { container: HTMLElement; rerenderWith: (next: Partial<Props>) => void } => {
-  const props: Props = {
-    title: 'ダイアログ',
-    description: '説明',
-    label: '値',
-    initialValue: 'main',
-    submitLabel: '実行',
-    runningSubmitLabel: '実行中...',
-    runningNotice: '実行中です',
-    normalize: (value) => value.trim(),
-    validate: (value) => (value === '' ? '値を入力してください' : null),
-    isRunning: false,
-    isBlocked: false,
-    error: null,
-    onSubmit: vi.fn(),
-    onCancel: vi.fn(),
-    ...overrides
-  }
+  const props = makeProps(overrides)
   const { container, rerender } = render(<RemoteSetupInputDialog {...props} />)
   const rerenderWith = (next: Partial<Props>): void =>
     rerender(<RemoteSetupInputDialog {...props} {...next} />)
@@ -201,6 +203,58 @@ describe('RemoteSetupInputDialog', () => {
       rerenderWith({ isRunning: true })
       rerenderWith({ isRunning: false })
       expect(input()).toHaveFocus()
+    })
+  })
+
+  // 背後の画面(コミット欄・ツールバー)へフォーカスを出さない。循環の細部(disabled・tabindex=-1・IME・外から入る)は
+  // useDialogFocusTrap のテストで確かめる。ここは配線(aria-modal と、ダイアログのフォームを範囲にすること)
+  describe('モーダル', () => {
+    const renderWithBackground = (overrides: Partial<Props> = {}): void => {
+      render(
+        <>
+          <textarea aria-label="背後のコミット欄" />
+          <RemoteSetupInputDialog {...makeProps(overrides)} />
+          <button type="button">背後のツールバー</button>
+        </>
+      )
+    }
+    const cancelButton = (): HTMLElement => screen.getByRole('button', { name: 'キャンセル' })
+
+    it('aria-modal="true" のダイアログとして扱う', () => {
+      renderDialog()
+      expect(screen.getByRole('dialog', { name: 'ダイアログ' })).toHaveAttribute(
+        'aria-modal',
+        'true'
+      )
+    })
+
+    it('Tab を押し続けても、入力欄・実行・キャンセルを循環して背後へ出ない', async () => {
+      renderWithBackground()
+      expect(input()).toHaveFocus()
+      await userEvent.tab()
+      expect(submitButton()).toHaveFocus()
+      await userEvent.tab()
+      expect(cancelButton()).toHaveFocus()
+      await userEvent.tab()
+      expect(input()).toHaveFocus()
+    })
+
+    it('Shift+Tab を押し続けても、逆順に循環して背後へ出ない', async () => {
+      renderWithBackground()
+      await userEvent.tab({ shift: true })
+      expect(cancelButton()).toHaveFocus()
+      await userEvent.tab({ shift: true })
+      expect(submitButton()).toHaveFocus()
+      await userEvent.tab({ shift: true })
+      expect(input()).toHaveFocus()
+    })
+
+    // 実行中は入力欄・実行・キャンセルがすべて disabled になる。Tab でダイアログ自体に留める
+    it('実行中に Tab を押しても、背後へ出ずダイアログに留まる', async () => {
+      renderWithBackground({ isRunning: true })
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      await userEvent.tab()
+      expect(screen.getByRole('dialog', { name: 'ダイアログ' })).toHaveFocus()
     })
   })
 })

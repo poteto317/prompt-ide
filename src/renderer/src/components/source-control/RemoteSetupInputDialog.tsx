@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
+import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import { useFocusOnRunningEnd } from '../../hooks/useFocusOnRunningEnd'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
@@ -92,12 +93,18 @@ export default function RemoteSetupInputDialog({
   // 成功ではこの描画の前に閉じられている
   useFocusOnRunningEnd(isRunning, inputRef, { containerRef: formRef })
 
+  // モーダル(aria-modal="true")として、Tab / Shift+Tab をダイアログの中(入力欄・実行・キャンセル)で循環させ、
+  // 背後のコミット欄やツールバーへ出さない。実行中にすべて disabled になったときはフォーム自体に留める
+  // (useDialogFocusTrap。このダイアログは開いている間だけマウントされる)
+  useDialogFocusTrap(formRef, true)
+
   return (
     <div className="name-input-dialog__overlay" role="presentation" {...overlayHandlers}>
       <form
         ref={formRef}
         className="name-input-dialog remote-setup-dialog"
         role="dialog"
+        aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         aria-busy={showRunningNotice}

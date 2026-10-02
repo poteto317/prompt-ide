@@ -233,7 +233,8 @@ describe('getRemoteUrlRuleViolation', () => {
       ['scp の user の記号', 'u!x@h:p'],
       ['scp の user の %', 'u%40x@h:p'],
       // scp 形式の path の `@`。`Ua1@Ub2:Pa3@h:r`(user `Ua1@Ub2`・パスワード `Pa3` のつもり)は git が host を `Ub2`、
-      // path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る(性質テストで検出)。ネットワークの URL と同じく拒否する
+      // path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る(開発中の探索で検出。末尾の性質テストが同じ形の
+      // `g@u:p@h:r` で再現する)。ネットワークの URL と同じく拒否する
       ['scp の path の @', 'git@host:a@b'],
       ['scp の user:pw のつもりの @', 'Ua1@Ub2:Pa3@h.example:a/b.git'],
       ['scp の user:pw', 'alice:pw@host:a.git']
@@ -390,5 +391,63 @@ describe('normalizeRemoteUrl', () => {
   // URL の中の文字を変えると、サーバー側で別のパスになるため NFC にはそろえない
   it('NFD は NFD のまま返す', () => {
     expect(normalizeRemoteUrl('/r/e\u0301')).toBe('/r/e\u0301')
+  })
+})
+
+// 性質テスト(パターン 59): スキーム(https・http・ssh・git)・scp 形式・file://・絶対パスに、区切り(`@ : / ? # %40 %3A %2F`)を
+// 挟んだ断片を掛けた URL を決定的に作り(乱数は使わない)、検証を通った URL を git の解釈で分解しても、userinfo に `:`
+// (パスワードの区切り)が無いことを確かめる。git の解釈:
+// - ssh:// などのスキーム付き: git は URL 全体の `%XX` を元の文字に戻してから、最初の `/` までを authority とする。userinfo は
+//   authority の最後の `@` より前(ssh は最後の `@` で user と host を分ける。安全側に最後の `@` を使う)
+// - scp 形式: 最後の `:` より前の最後の `@` で userinfo と host を分ける(`Ua1@Ub2:Pa3@h:r` を user `Ua1@Ub2`・パスワード
+//   `Pa3` と読む利用者の意図。git は最初の `:` で host を切るため、パスワードが path に入って失敗の文言に残る)
+// - file:// と絶対パス: ローカルのパスで、userinfo は無い
+describe('getRemoteUrlRuleViolation の性質: 通った URL の userinfo にパスワードが無い', () => {
+  const SEPARATORS = ['', '@', ':', '/', '?', '#', '%40', '%3A', '%2F']
+  // `g@` は scp 形式の user の後ろに断片を足す形(`g@u:p@h:r` が `Ua1@Ub2:Pa3@h:r` と同じ形になる)
+  const PREFIXES = ['https://', 'http://', 'ssh://', 'git://', 'file:///', '/', '', 'g@']
+  const urls = PREFIXES.flatMap((prefix) =>
+    SEPARATORS.flatMap((s1) =>
+      SEPARATORS.flatMap((s2) => SEPARATORS.map((s3) => `${prefix}u${s1}p${s2}h${s3}r`))
+    )
+  )
+
+  const decodePercent = (text: string): string =>
+    text.replace(/%([0-9A-Fa-f]{2})/g, (_m, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+
+  // git の解釈での userinfo(無ければ null)
+  function gitUserinfo(url: string): string | null {
+    const scheme = /^(https|http|ssh|git):\/\//.exec(url)
+    if (scheme !== null) {
+      const rest = decodePercent(url.slice(scheme[0].length))
+      const slash = rest.indexOf('/')
+      const authority = slash === -1 ? rest : rest.slice(0, slash)
+      const at = authority.lastIndexOf('@')
+      return at === -1 ? null : authority.slice(0, at)
+    }
+    if (url.startsWith('file://') || url.startsWith('/') || /^[A-Za-z]:[\\/]/.test(url)) return null
+    const colon = url.lastIndexOf(':')
+    const beforeColon = colon === -1 ? url : url.slice(0, colon)
+    const at = beforeColon.lastIndexOf('@')
+    return at === -1 ? null : beforeColon.slice(0, at)
+  }
+
+  const passed = [posix, windows].flatMap((options) =>
+    urls.filter((url) => getRemoteUrlRuleViolation(url, options) === null)
+  )
+
+  it('組み合わせが空にならず、scp 形式・ssh:// の user あり・userinfo 無しの各形が通る', () => {
+    expect(urls.length).toBe(PREFIXES.length * SEPARATORS.length ** 3)
+    expect(passed.length).toBeGreaterThan(0)
+    expect(
+      passed.some((url) => !url.includes('://') && !url.startsWith('/') && url.includes('@'))
+    ).toBe(true)
+    expect(passed.some((url) => url.startsWith('ssh://') && gitUserinfo(url) !== null)).toBe(true)
+    expect(passed.some((url) => url.includes('://') && gitUserinfo(url) === null)).toBe(true)
+  })
+
+  it('検証を通った URL は、git の解釈で分解しても userinfo に : を含まない', () => {
+    const leaked = passed.filter((url) => gitUserinfo(url)?.includes(':') === true)
+    expect(leaked).toEqual([])
   })
 })

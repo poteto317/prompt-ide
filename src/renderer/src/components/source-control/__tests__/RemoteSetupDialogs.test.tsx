@@ -84,3 +84,28 @@ describe('AddRemoteDialog', () => {
     expect(screen.getByRole('status')).toHaveTextContent('追加中です')
   })
 })
+
+// 背後の画面へフォーカスを出さないモーダル(RemoteSetupInputDialog の useDialogFocusTrap)を、各ダイアログで確かめる
+describe.each([
+  ['InitRepositoryDialog', 'リポジトリを初期化', InitRepositoryDialog],
+  ['AddRemoteDialog', 'リモートを追加', AddRemoteDialog]
+] as const)('%s のモーダル', (_label, name, Dialog) => {
+  it('aria-modal="true" で、Tab を押し続けても背後のコミット欄へ移らない', async () => {
+    render(
+      <>
+        <textarea aria-label="背後のコミット欄" />
+        <Dialog {...common} isRunning={false} onSubmit={vi.fn()} />
+      </>
+    )
+    const dialog = screen.getByRole('dialog', { name })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    for (let i = 0; i < 4; i += 1) {
+      await userEvent.tab()
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+    for (let i = 0; i < 4; i += 1) {
+      await userEvent.tab({ shift: true })
+      expect(dialog).toContainElement(document.activeElement as HTMLElement)
+    }
+  })
+})

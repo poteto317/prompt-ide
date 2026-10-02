@@ -134,7 +134,8 @@ function isFileUrl(url: string): boolean {
 // host は `/` `:` `@` を含まず、`-` で始まらず、角括弧([::1] のような IPv6 の書き方)を含まない。path は空でない。
 // user@ の無い `host:path`(ssh の設定の別名)は許可しない(利用者の決定)。scp 形式は git が `%XX` を decode しない
 // (実機で確認)。path の `@` はネットワークの URL と同じく拒否する(`Ua1@Ub2:Pa3@h:r` は user `Ua1@Ub2`・パスワード `Pa3`
-// のつもりでも、git は host を `Ub2`、path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る。性質テストで検出)
+// のつもりでも、git は host を `Ub2`、path を `Pa3@h:r` と解釈し、パスワードが URL ごと失敗の文言に残る。開発中の探索で検出し、
+// remoteUrl.test.ts の性質テストが同じ形の `g@u:p@h:r` で再現する)
 const SCP_PATTERN = /^([^/:@]+)@([^/:@[\]]+):([^@]+)$/
 
 function isScpLike(url: string): boolean {
