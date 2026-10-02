@@ -33,6 +33,12 @@ const KIND_KEY_DELTAS: Partial<Record<string, number>> = {
   ArrowUp: -1
 }
 
+// 作成中の打ち切りまでの時間(分)。main の TAG_CREATE_TIMEOUT_MS(120 秒。src/main/gitTagService.ts)と
+// 合わせる。renderer は main のモジュールを import できないため値を持ち、TAG_CREATE_TIMEOUT_MS を変えたら
+// ここも直す(gitTagService.test.ts の TAG_CREATE_TIMEOUT_MS の値のテストにも同じ注記がある)
+const TAG_CREATE_TIMEOUT_MINUTES = 2
+const CREATING_STATUS_MESSAGE = `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
+
 // タグの作成ダイアログ(名前・種類・メッセージ)。NameInputDialog は名前 1 つの入力の前提のため、
 // 見た目の枠(.name-input-dialog__*)だけを共有した別コンポーネントにする。
 // 検証は UX 用(セキュリティ境界は main 側)。検証エラーは入力欄の説明(aria-describedby)として常に表示し、
@@ -111,6 +117,7 @@ export default function CreateTagDialog({
         role="dialog"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
+        aria-busy={isCreating}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // IME の変換を取り消す Escape ではダイアログを閉じない(入力中の名前が消えるため)
@@ -189,6 +196,13 @@ export default function CreateTagDialog({
               </p>
             )}
           </>
+        )}
+        {/* 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
+            スクリーンリーダーに伝わらない。role="status" で案内する(完了・失敗で消え、失敗は下の alert が伝える) */}
+        {isCreating && (
+          <p className="create-tag-dialog__note" role="status">
+            {CREATING_STATUS_MESSAGE}
+          </p>
         )}
         {error !== null && (
           <p className="name-input-dialog__error" role="alert">

@@ -456,7 +456,8 @@ describe('作成の失敗', () => {
   })
 
   // 署名のパスフレーズの入力待ち(pinentry・ssh-keygen)では git tag がいつまでも終わらない(実機 git 2.50.1 で
-  // 確認)。simple-git の timeout プラグインで打ち切る。timeout は引数で差し替えられる(統合テスト用)
+  // 確認)。simple-git の timeout プラグインで打ち切る。timeout は引数で差し替えられる(統合テスト用)。
+  // 既定値を変えたら、作成中の案内の「最大 2 分」(CreateTagDialog.tsx の TAG_CREATE_TIMEOUT_MINUTES)も直す
   it('simple-git に timeout(既定は TAG_CREATE_TIMEOUT_MS、引数で差し替え可)を渡す', async () => {
     setupRaw()
     await createTag('/project', lightweight('v1'), 1500)

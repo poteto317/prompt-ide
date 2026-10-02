@@ -32,7 +32,7 @@
     - `--ref-format=reftable` では、git が argv を NFC に直して作成し終了コード 0 だが、作成後の `rev-parse -q --verify refs/tags/<NFD>` が見つからず「タグを作成できませんでした」になった（タグは NFC 名で残る）
     - 既定（`precomposeunicode=true`）で NFC の `é` があると、NFD の要求は重複の判定をすり抜け、`fatal: tag 'é' already exists` が英語のまま漏れた
 11. **大文字小文字の無視は Unicode の完全な case folding に近づける**（PR 前のレビューで追加）。`toLowerCase` だけでは、macOS の APFS が同じ名前とみなす `ß` と `ss`・`ẞ`、`ſ` と `s`、`µ` と `μ`、`ας` と `ασ`、`ﬁ` と `fi` などが一致しない。packed-refs に `ss` があると `git tag --no-sign -- ß HEAD` が終了コード 0 で作られ、`git rev-parse refs/tags/ss` が新しいコミットを返した（既存のタグの解決を奪う）。ブランチ `ss` があるとタグ `ß` の作成後に `git rev-parse ss` が `refname 'ss' is ambiguous` になった（いずれも実機 git 2.50.1 / APFS）。`collisionKey` は NFC にそろえた後、1 文字ずつ小文字 → 大文字 → 小文字の順に変換し（`ẞ` → `ß` → `SS` → `ss`、`ς` → `Σ` → `σ`）、最後に NFC にそろえる。`ı`（点の無い i）は大文字化で `I` になるが、APFS は `i` と別の名前として扱うため変換しない。APFS 上で確かめた結果、Unicode の全文字について、この変換で同じになる単一文字の組（同値類 2295 個・2439 組）はすべて APFS でも同じ名前になり、`ı` と `i`、`İ` と `i`、`ss1` と `ß2`、全角と半角の英字は APFS でも別の名前で、この変換でも衝突しない（過剰な拒否は見つからなかった）。`ǅ` / `ǆ` / `Ǆ`、`İ` と `i` + U+0307、`K`（ケルビン記号）と `k` も APFS で同じ名前になり、この変換でも衝突する。
-12. **`git tag` を時間で打ち切る**（PR #41 のレビューで追加。設計書は「失敗しうる（失敗は表示する）」）。`gpg.format=ssh`・`tag.gpgSign=true`・パスフレーズ付きの鍵（ssh-agent に未登録）や、入力を待ち続ける `gpg.program` では、simple-git の `raw(['tag', ...])` がいつまでも pending のままだった。`simpleGit(folderPath, { timeout: { block: TAG_CREATE_TIMEOUT_MS } })`（120 秒。`createTag` の第 3 引数でテスト用に差し替える）で git を止め、`GitPluginError`（`plugin === 'timeout'`）を `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: <name>` にする。打ち切った後はタグも `refs/tags/<name>.lock` も残らず、同じ名前で作り直せた。git が起動した `gpg.program` のプロセスは git を止めても残る（`ssh-keygen -Y sign` は一緒に終わった）
+12. **`git tag` を時間で打ち切る**（PR #41 のレビューで追加。設計書は「失敗しうる（失敗は表示する）」）。`gpg.format=ssh`・`tag.gpgSign=true`・パスフレーズ付きの鍵（ssh-agent に未登録）や、入力を待ち続ける `gpg.program` では、simple-git の `raw(['tag', ...])` がいつまでも pending のままだった。なお `ssh-keygen` が入力を待つのは端末から起動した場合だけで、制御端末の無い環境では 0.01 秒で終了コード 128 になる（待ち続けない）。パッケージ版（GUI から起動）で時間切れになるのは主に gpg の pinentry の入力待ち（PR #41 の 2 周目のレビューで補足）。`simpleGit(folderPath, { timeout: { block: TAG_CREATE_TIMEOUT_MS } })`（120 秒。`createTag` の第 3 引数でテスト用に差し替える）で git を止め、`GitPluginError`（`plugin === 'timeout'`）を `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: <name>` にする。打ち切った後はタグも `refs/tags/<name>.lock` も残らず、同じ名前で作り直せた。git が起動した `gpg.program` のプロセスは git を止めても残る（`ssh-keygen -Y sign` は一緒に終わった）
 
 設計書の仮定のうち、次は実機で確認でき、そのまま採用する。
 
@@ -78,7 +78,7 @@
   - `タグを作成できませんでした: <detail>`（git のエラーの trim。detail が空なら `タグを作成できませんでした`）。`git tag` の失敗に加え、タグ・ブランチの一覧（`for-each-ref`）と作成後の確認（`rev-parse`）の reject もこの文言にする（英語の GitError をそのまま見せない。パターン 74）
   - IPC の型検証: `Invalid tag request`
 - ダイアログ内の検証の文言（完全一致）: `名前を入力してください` / `` `-` で始まる名前は使用できません `` / `この名前は使用できません` / `同じ名前のタグが既に存在します` / `既存のタグ <existing> と名前が衝突します` / `同じ名前のブランチが存在するため、タグを作成できません` / `メッセージを入力してください` / `メッセージに使用できない文字が含まれています`
-- UI 文言と ARIA: 履歴の見出しのボタン `タグを作成`（`aria-label="タグを作成"`）。ダイアログは `role="dialog"`、名前は見出し `タグを作成`（`aria-labelledby`）、説明 `現在の HEAD にタグを付けます`（`aria-describedby`）。入力欄は可視のラベル `タグ名` / `メッセージ`。種類は可視の `種類` を名前にした `role="radiogroup"` と、`role="radio"` + `aria-checked` の `軽量` / `注釈付き`（既定は軽量。矢印キーで切り替え、roving tabindex）。メッセージ欄は注釈付きのときだけ表示。ボタン `作成`（実行中 `作成中...`）/ `キャンセル`。検証エラーは入力欄の `aria-describedby` と `aria-invalid` で結び、作成の失敗は `role="alert"`。タップ領域は 32px 以上（共通のボタンの規則に入れる）。
+- UI 文言と ARIA: 履歴の見出しのボタン `タグを作成`（`aria-label="タグを作成"`）。ダイアログは `role="dialog"`、名前は見出し `タグを作成`（`aria-labelledby`）、説明 `現在の HEAD にタグを付けます`（`aria-describedby`）。入力欄は可視のラベル `タグ名` / `メッセージ`。種類は可視の `種類` を名前にした `role="radiogroup"` と、`role="radio"` + `aria-checked` の `軽量` / `注釈付き`（既定は軽量。矢印キーで切り替え、roving tabindex）。メッセージ欄は注釈付きのときだけ表示。ボタン `作成`（実行中 `作成中...`）/ `キャンセル`。作成中はダイアログ（`form`）に `aria-busy="true"` を付け、`role="status"` の案内 `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` を出す（完了・失敗で消える。PR #41 の 2 周目のレビューで追加）。検証エラーは入力欄の `aria-describedby` と `aria-invalid` で結び、作成の失敗は `role="alert"`。タップ領域は 32px 以上（共通のボタンの規則に入れる）。
 - 排他: タグの作成どうしは実行中フラグ（ref）で排他。`lockGlobal` は取らない。他の Git 操作がロック中（`lock.isAnyLocked()`）・リポジトリでない間は no-op（`false`）。再取得（`refreshHistory`）は成功・失敗のどちらでも行い、実行中フラグはその後で解除する（`useRunExclusiveGitOperation`。パターン 73）。再取得の失敗で作成の成功を失敗にしない（パターン 52）。
 - 作業ツリー・index・HEAD は変わらないので、エディタのタブ・ファイルツリーの再読込、未保存編集の破棄確認、`refreshGitStatus` はしない。
 
@@ -2149,6 +2149,43 @@ describe('CreateTagDialog', () => {
     expect(props.onSubmit).not.toHaveBeenCalled()
   })
 
+  // 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
+  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main の TAG_CREATE_TIMEOUT_MS)かかることも案内する
+  describe('作成中の案内(role="status"・aria-busy)', () => {
+    it('作成中は role="status" で最大 2 分かかりうることを案内し、ダイアログを aria-busy にする', () => {
+      renderDialog({ isCreating: true })
+      expect(screen.getByRole('status')).toHaveTextContent(
+        '作成中です。署名の入力待ちなどで最大 2 分かかることがあります'
+      )
+      expect(screen.getByRole('status')).toHaveClass('create-tag-dialog__note')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
+    it('作成中でなければ案内は出ず、aria-busy は true でない', () => {
+      renderDialog()
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
+    it('失敗して作成中が解けると、案内は消えてエラーの alert が出る', () => {
+      const { rerenderWith } = renderDialog({ isCreating: true })
+      expect(screen.getByRole('status')).toBeInTheDocument()
+      rerenderWith({ isCreating: false, error: new Error('タグを作成できませんでした: x') })
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('タグを作成できませんでした: x')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+  })
+
   it('他の操作中(isBlocked)は、名前が正しくても作成ボタンが disabled', async () => {
     const props = renderDialog({ isBlocked: true })
     await userEvent.type(nameInput(), 'v1{Enter}')
@@ -2414,6 +2451,12 @@ const KIND_KEY_DELTAS: Partial<Record<string, number>> = {
   ArrowUp: -1
 }
 
+// 作成中の打ち切りまでの時間(分)。main の TAG_CREATE_TIMEOUT_MS(120 秒。src/main/gitTagService.ts)と
+// 合わせる。renderer は main のモジュールを import できないため値を持ち、TAG_CREATE_TIMEOUT_MS を変えたら
+// ここも直す(gitTagService.test.ts の TAG_CREATE_TIMEOUT_MS の値のテストにも同じ注記がある)
+const TAG_CREATE_TIMEOUT_MINUTES = 2
+const CREATING_STATUS_MESSAGE = `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
+
 // タグの作成ダイアログ(名前・種類・メッセージ)。NameInputDialog は名前 1 つの入力の前提のため、
 // 見た目の枠(.name-input-dialog__*)だけを共有した別コンポーネントにする。
 // 検証は UX 用(セキュリティ境界は main 側)。検証エラーは入力欄の説明(aria-describedby)として常に表示し、
@@ -2492,6 +2535,7 @@ export default function CreateTagDialog({
         role="dialog"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
+        aria-busy={isCreating}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // IME の変換を取り消す Escape ではダイアログを閉じない(入力中の名前が消えるため)
@@ -2570,6 +2614,13 @@ export default function CreateTagDialog({
               </p>
             )}
           </>
+        )}
+        {/* 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
+            スクリーンリーダーに伝わらない。role="status" で案内する(完了・失敗で消え、失敗は下の alert が伝える) */}
+        {isCreating && (
+          <p className="create-tag-dialog__note" role="status">
+            {CREATING_STATUS_MESSAGE}
+          </p>
         )}
         {error !== null && (
           <p className="name-input-dialog__error" role="alert">
@@ -2762,7 +2813,7 @@ Expected: PASS
 
 - [ ] **Step 5: ミューテーション**
 
-(1) `canSubmit` から `!isBlocked` を外す → isBlocked のテスト、(2) `kind === 'annotated' ? message : ''` を `message` にする → 軽量に戻すテスト、(3) `handleKindKeyDown` の `focus()` を外す → 矢印キーのテスト、(4) `tabIndex` を常に `0` にする → roving tabindex のテスト、(5) `handleCreateTag` で成否を見ずに閉じる → 失敗で閉じないテスト、(6) `openTagDialog` の `clearError()` を外す → 前回のエラーのテスト、(7) フォーカスを戻す `useEffect` の `focus()` を外す → フォーカスのテスト（成功とキャンセルの両方）、(7') `closeTagDialog` で予約を立てずに直接 `focus()` する（修正前の実装）→ 実物の `useGitTagOperations` と結合した「保留から成功」のテスト（`act` の外で解決し、作成中の `disabled` が解ける前に `focus()` が走る実機の順序を再現する）、(7'') 戻す条件の「フォーカスが body のときだけ」を外す → 作成中に外へ移したフォーカスを奪わないテスト、(7''') `CreateTagDialog` の失敗後に入力欄へ戻す `focus()` を外す → 失敗の後に Escape で閉じられるテスト、(8) CSS のグループから `.history-section__create-tag` を外す → スタイルのテスト、(9) キャンセルの `disabled={isCreating}` を外す・Escape またはオーバーレイを `requestCancel` でなく `onCancel` にする → 作成中に閉じないテスト、(10) `タグを作成` の `disabled` から `gitTag.isCreating` を外す → 作成中のボタンのテスト。
+(1) `canSubmit` から `!isBlocked` を外す → isBlocked のテスト、(2) `kind === 'annotated' ? message : ''` を `message` にする → 軽量に戻すテスト、(3) `handleKindKeyDown` の `focus()` を外す → 矢印キーのテスト、(4) `tabIndex` を常に `0` にする → roving tabindex のテスト、(5) `handleCreateTag` で成否を見ずに閉じる → 失敗で閉じないテスト、(6) `openTagDialog` の `clearError()` を外す → 前回のエラーのテスト、(7) フォーカスを戻す `useEffect` の `focus()` を外す → フォーカスのテスト（成功とキャンセルの両方）、(7') `closeTagDialog` で予約を立てずに直接 `focus()` する（修正前の実装）→ 実物の `useGitTagOperations` と結合した「保留から成功」のテスト（`act` の外で解決し、作成中の `disabled` が解ける前に `focus()` が走る実機の順序を再現する）、(7'') 戻す条件の「フォーカスが body のときだけ」を外す → 作成中に外へ移したフォーカスを奪わないテスト、(7''') `CreateTagDialog` の失敗後に入力欄へ戻す `focus()` を外す → 失敗の後に Escape で閉じられるテスト、(8) CSS のグループから `.history-section__create-tag` を外す → スタイルのテスト、(9) キャンセルの `disabled={isCreating}` を外す・Escape またはオーバーレイを `requestCancel` でなく `onCancel` にする → 作成中に閉じないテスト、(10) `タグを作成` の `disabled` から `gitTag.isCreating` を外す → 作成中のボタンのテスト、(11) 作成中の `role="status"` の案内を外す・`aria-busy` を外す → 作成中の案内のテスト（PR #41 の 2 周目のレビューで追加）。
 
 - [ ] **Step 6: 検証**
 
@@ -3068,7 +3119,7 @@ npx prettier --check ROADMAP.md
 - [ ] **TAG-023** 名前 `v6` を入力して `作成` を素早く 2 回押す → タグ `v6` が 1 つだけ作られ、エラーは表示されない
 - [ ] **TAG-024** 端末で `printf '#!/bin/sh\nsleep 5\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit && echo 3 >> a.txt && git add a.txt` を実行して `更新` を押し、コミット欄にメッセージを入れてコミットする → コミットが終わるまでの約 5 秒間、`タグを作成` ボタンは半透明で押せず、コミットが終わると押せるようになる。確認後 `rm .git/hooks/pre-commit` で戻す
 - [ ] **TAG-025** ダイアログ全体を見る → 暗色の背景で、選択中の種類(`軽量` / `注釈付き`)が青く強調され、`作成` が押せない間は半透明になっている
-- [ ] **TAG-026** 端末で `printf '#!/bin/sh\nsleep 5\nexit 1\n' > "$TMPDIR/slow-gpg" && chmod +x "$TMPDIR/slow-gpg" && git config tag.gpgSign true && git config gpg.program "$TMPDIR/slow-gpg"` を実行し、`注釈付き`・名前 `v9`・メッセージ `m` で `作成` を押す → 約 5 秒間は `作成中...` で、`キャンセル` は半透明で押せず、Escape キーやダイアログの外側のクリックでも閉じない。5 秒後、ダイアログ内に `タグを作成できませんでした: ` に続く git のエラーが表示され、`タグ名` の入力欄にフォーカスが戻る。そのまま Escape キーを押すとダイアログが閉じ、`タグを作成` ボタンにフォーカスが戻る(`キャンセル` でも閉じられる)。確認後 `git config --unset tag.gpgSign` と `git config --unset gpg.program` で戻す
+- [ ] **TAG-026** 端末で `printf '#!/bin/sh\nsleep 5\nexit 1\n' > "$TMPDIR/slow-gpg" && chmod +x "$TMPDIR/slow-gpg" && git config tag.gpgSign true && git config gpg.program "$TMPDIR/slow-gpg"` を実行し、`注釈付き`・名前 `v9`・メッセージ `m` で `作成` を押す → 約 5 秒間は `作成中...` で、ダイアログ内に `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` の案内が出て、`キャンセル` は半透明で押せず、Escape キーやダイアログの外側のクリックでも閉じない。5 秒後、案内が消えてダイアログ内に `タグを作成できませんでした: ` に続く git のエラーが表示され、`タグ名` の入力欄にフォーカスが戻る。そのまま Escape キーを押すとダイアログが閉じ、`タグを作成` ボタンにフォーカスが戻る(`キャンセル` でも閉じられる)。確認後 `git config --unset tag.gpgSign` と `git config --unset gpg.program` で戻す
 ```
 
 ファイル末尾の HTML コメント（要確認事項）に、次の行を足す:

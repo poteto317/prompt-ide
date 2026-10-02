@@ -160,6 +160,43 @@ describe('CreateTagDialog', () => {
     expect(props.onSubmit).not.toHaveBeenCalled()
   })
 
+  // 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
+  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main の TAG_CREATE_TIMEOUT_MS)かかることも案内する
+  describe('作成中の案内(role="status"・aria-busy)', () => {
+    it('作成中は role="status" で最大 2 分かかりうることを案内し、ダイアログを aria-busy にする', () => {
+      renderDialog({ isCreating: true })
+      expect(screen.getByRole('status')).toHaveTextContent(
+        '作成中です。署名の入力待ちなどで最大 2 分かかることがあります'
+      )
+      expect(screen.getByRole('status')).toHaveClass('create-tag-dialog__note')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
+    it('作成中でなければ案内は出ず、aria-busy は true でない', () => {
+      renderDialog()
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
+    it('失敗して作成中が解けると、案内は消えてエラーの alert が出る', () => {
+      const { rerenderWith } = renderDialog({ isCreating: true })
+      expect(screen.getByRole('status')).toBeInTheDocument()
+      rerenderWith({ isCreating: false, error: new Error('タグを作成できませんでした: x') })
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('タグを作成できませんでした: x')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+  })
+
   it('他の操作中(isBlocked)は、名前が正しくても作成ボタンが disabled', async () => {
     const props = renderDialog({ isBlocked: true })
     await userEvent.type(nameInput(), 'v1{Enter}')
