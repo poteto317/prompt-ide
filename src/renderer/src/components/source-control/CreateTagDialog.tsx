@@ -68,6 +68,9 @@ export default function CreateTagDialog({
   const normalizedName = normalizeTagName(name)
   const nameError = validateTagName(normalizedName, tags, branchNames)
   const messageError = validateTagMessage(kind, message)
+  // 失敗の直後は、履歴を取り直している間だけ isCreating が true のまま error がセットされる。その短い間も
+  // 案内(status)と aria-busy を出さず、エラー(alert)だけを伝える(案内は失敗で消える)
+  const showCreatingNotice = isCreating && error === null
   const canSubmit = nameError === null && messageError === null && !isCreating && !isBlocked
 
   const handleSubmit = (e: React.FormEvent): void => {
@@ -115,7 +118,7 @@ export default function CreateTagDialog({
         role="dialog"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        aria-busy={isCreating}
+        aria-busy={showCreatingNotice}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // IME の変換を取り消す Escape ではダイアログを閉じない(入力中の名前が消えるため)
@@ -197,7 +200,7 @@ export default function CreateTagDialog({
         )}
         {/* 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
             スクリーンリーダーに伝わらない。role="status" で案内する(完了・失敗で消え、失敗は下の alert が伝える) */}
-        {isCreating && (
+        {showCreatingNotice && (
           <p className="create-tag-dialog__note" role="status">
             {CREATING_STATUS_MESSAGE}
           </p>

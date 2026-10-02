@@ -186,6 +186,16 @@ describe('CreateTagDialog', () => {
       )
     })
 
+    it('失敗の直後(履歴の取り直しで isCreating がまだ true)でも、エラーがあれば案内と aria-busy を出さず alert だけ出す', () => {
+      renderDialog({ isCreating: true, error: new Error('タグを作成できませんでした: x') })
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('タグを作成できませんでした: x')
+      expect(screen.getByRole('dialog', { name: 'タグを作成' })).not.toHaveAttribute(
+        'aria-busy',
+        'true'
+      )
+    })
+
     it('失敗して作成中が解けると、案内は消えてエラーの alert が出る', () => {
       const { rerenderWith } = renderDialog({ isCreating: true })
       expect(screen.getByRole('status')).toBeInTheDocument()
