@@ -96,6 +96,9 @@ export const api = {
   stashDrop: (sha: string): Promise<void> => ipcRenderer.invoke('git:stashDrop', sha),
   createTag: (request: CreateTagRequest): Promise<void> =>
     ipcRenderer.invoke('git:createTag', request),
+  initRepository: (branch: string): Promise<void> => ipcRenderer.invoke('git:init', branch),
+  addOrigin: (url: string): Promise<void> => ipcRenderer.invoke('git:addOrigin', url),
+  pushSetUpstream: (): Promise<void> => ipcRenderer.invoke('git:pushSetUpstream'),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { findConflictingBranchName, getBranchNameRuleViolation } from '../branchName'
+import {
+  findConflictingBranchName,
+  getBranchNameRuleViolation,
+  normalizeInitialBranchName
+} from '../branchName'
 
 describe('getBranchNameRuleViolation', () => {
   it('空文字は empty', () => {
@@ -51,5 +55,22 @@ describe('findConflictingBranchName', () => {
 
   it('既存ブランチが無ければ null', () => {
     expect(findConflictingBranchName('main/sub', [])).toBeNull()
+  })
+})
+
+// リポジトリの初期化の最初のブランチ名。main(initRepository の入口)と renderer(初期化ダイアログ)が
+// 同じ正規化を使う(パターン 83)。macOS の git は NFD の名前をそのまま refs/heads/<NFD> にする(実機で確認)
+describe('normalizeInitialBranchName', () => {
+  it('前後の空白・改行を除く', () => {
+    expect(normalizeInitialBranchName('  main \n')).toBe('main')
+  })
+
+  it('NFD を NFC にそろえる', () => {
+    expect(normalizeInitialBranchName('cafe\u0301')).toBe('caf\u00e9')
+  })
+
+  // 途中の空白は git の規則(check-ref-format)で main が拒否する。ここでは変えない
+  it('途中の空白は残す', () => {
+    expect(normalizeInitialBranchName('a b')).toBe('a b')
   })
 })

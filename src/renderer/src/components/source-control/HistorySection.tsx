@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import type { CreateTagRequest, GitBranch, GitLogEntry } from '@shared/types'
 import type { GitTagPanelState } from '../../types'
 import { formatRelativeDate } from '../../lib/dateFormat'
+import { useDialogFocusReturn } from '../../hooks/useDialogFocusReturn'
 import CreateTagDialog from './CreateTagDialog'
 
 interface Props {
@@ -30,41 +31,21 @@ export default function HistorySection({
   gitTag,
   isBlocked
 }: Props): React.JSX.Element {
-  const [isTagDialogOpen, setIsTagDialogOpen] = useState(false)
+  // 開くときに前回の失敗の表示を消す(キャンセルしたダイアログのエラーを持ち越さない)。ダイアログを閉じたら
+  // (成功・キャンセル・Escape・オーバーレイのクリック)ボタンへフォーカスを戻す(パターン 22)。戻すのは閉じて
+  // 作成中でもなくなった描画の後で、フォーカスが body のときだけ(useDialogFocusReturn。パターン 73・86)。
+  // isRunning の判定は保険(createTag は setBusy(false) の後に解決するため、閉じる描画では既に作成中が解けている)
   const createTagButtonRef = useRef<HTMLButtonElement>(null)
+  const tagDialog = useDialogFocusReturn({
+    isRunning: gitTag.isCreating,
+    onOpen: gitTag.clearError,
+    openerRef: createTagButtonRef
+  })
 
-  // 開くときに前回の失敗の表示を消す(キャンセルしたダイアログのエラーを持ち越さない)
-  const openTagDialog = (): void => {
-    gitTag.clearError()
-    setIsTagDialogOpen(true)
-  }
-
-  // ダイアログを閉じたら(成功・キャンセル・Escape・オーバーレイのクリック)ボタンへフォーカスを戻す
-  // (パターン 22)。閉じる時点で直接 focus() すると、成功の経路では作成中フラグの解除(setBusy(false))が
-  // まだ再描画に反映されておらず、disabled のボタンへの focus() が無視されてフォーカスが body に落ちる
-  // (パターン 73)。そのため閉じるときは「戻す予約」だけを立て、ダイアログが閉じて作成中でもなくなった
-  // 描画の後(下の useEffect)で戻す。予約は閉じたダイアログに対してだけ立つため、アンマウントで消え、
-  // フォルダの切り替え等で別のボタンへ持ち越さない
-  const restoreFocusPendingRef = useRef(false)
-  const closeTagDialog = (): void => {
-    restoreFocusPendingRef.current = true
-    setIsTagDialogOpen(false)
-  }
-
-  // gitTag.isCreating の判定は保険(createTag は setBusy(false) の後に解決するため、閉じる描画では
-  // 既に作成中が解けている)。createTag・clearError は毎回変わる参照のため依存に入れない
-  useEffect(() => {
-    if (!restoreFocusPendingRef.current || isTagDialogOpen || gitTag.isCreating) return
-    restoreFocusPendingRef.current = false
-    // フォーカスが行き場を失っている(閉じたダイアログの中にあって body に落ちた)ときだけ戻す。
-    // 作成中にユーザーがダイアログの外の要素へ移していたら、遅れて届いた成功で奪わない
-    const active = document.activeElement
-    if (active === null || active === document.body) createTagButtonRef.current?.focus()
-  }, [isTagDialogOpen, gitTag.isCreating])
-
-  // 成功したときだけ閉じる。失敗(false)はダイアログ内に gitTag.error を表示したまま残す
+  // 成功したときだけ閉じ、ボタンへ戻す(次の操作のボタンへ移す先が無いため)。失敗(false)はダイアログ内に
+  // gitTag.error を表示したまま残す
   const handleCreateTag = async (request: CreateTagRequest): Promise<void> => {
-    if (await gitTag.createTag(request)) closeTagDialog()
+    if (await gitTag.createTag(request)) tagDialog.close()
   }
 
   return (
@@ -78,7 +59,7 @@ export default function HistorySection({
           aria-label="タグを作成"
           // 作成中も押せない(開き直したダイアログが、前の作成の成功で閉じられるのを防ぐ。パターン 73)
           disabled={isBlocked || gitTag.isCreating}
-          onClick={openTagDialog}
+          onClick={tagDialog.open}
         >
           タグを作成
         </button>
@@ -130,7 +111,7 @@ export default function HistorySection({
           もっと見る
         </button>
       )}
-      {isTagDialogOpen && (
+      {tagDialog.isOpen && (
         <CreateTagDialog
           tags={tags}
           branchNames={branches.map((branch) => branch.name)}
@@ -138,7 +119,7 @@ export default function HistorySection({
           isBlocked={isBlocked}
           error={gitTag.error}
           onSubmit={(request) => void handleCreateTag(request)}
-          onCancel={closeTagDialog}
+          onCancel={tagDialog.close}
         />
       )}
     </section>

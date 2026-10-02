@@ -14,6 +14,9 @@ import {
   amendCommit,
   stashPop,
   createTag,
+  initRepository,
+  addOrigin,
+  pushSetUpstream,
   mergeBranch,
   discardHunk,
   discardAll,
@@ -41,6 +44,9 @@ const mockApi = {
   amendCommit: vi.fn(),
   stashPop: vi.fn(),
   createTag: vi.fn(),
+  initRepository: vi.fn(),
+  addOrigin: vi.fn(),
+  pushSetUpstream: vi.fn(),
   mergeBranch: vi.fn(),
   discardHunk: vi.fn(),
   discardAll: vi.fn(),
@@ -62,6 +68,10 @@ beforeEach(() => {
 const mockResult: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -80,6 +90,10 @@ describe('getGitStatus', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -282,6 +296,29 @@ describe('createTag', () => {
     mockApi.createTag.mockRejectedValue(new Error('コミットが無いため、タグを作成できません'))
     await expect(createTag({ name: 'v1', kind: 'lightweight', message: '' })).rejects.toThrow(
       'コミットが無いため、タグを作成できません'
+    )
+  })
+})
+
+describe('initRepository / addOrigin / pushSetUpstream', () => {
+  it('window.api の同名の関数を値で呼ぶ', async () => {
+    mockApi.initRepository.mockResolvedValue(undefined)
+    mockApi.addOrigin.mockResolvedValue(undefined)
+    mockApi.pushSetUpstream.mockResolvedValue(undefined)
+    await initRepository('main')
+    await addOrigin('https://github.com/a/b.git')
+    await pushSetUpstream()
+    expect(mockApi.initRepository).toHaveBeenCalledWith('main')
+    expect(mockApi.addOrigin).toHaveBeenCalledWith('https://github.com/a/b.git')
+    expect(mockApi.pushSetUpstream).toHaveBeenCalledWith()
+  })
+
+  it('失敗をそのまま伝える', async () => {
+    mockApi.pushSetUpstream.mockRejectedValue(
+      new Error('リモート origin が未設定のため、初回 push できません')
+    )
+    await expect(pushSetUpstream()).rejects.toThrow(
+      'リモート origin が未設定のため、初回 push できません'
     )
   })
 })

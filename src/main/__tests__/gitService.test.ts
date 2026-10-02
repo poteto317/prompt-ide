@@ -145,6 +145,10 @@ describe('getGitStatus', () => {
     expect(result).toEqual({
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -240,6 +244,79 @@ describe('getGitStatus', () => {
     mockStatus.mockResolvedValue({ ...baseStatusResult, current: null })
     const result = await getGitStatus('/project')
     expect(result.branch).toBeNull()
+  })
+
+  describe('hasOrigin・hasRemote・upstream・detached', () => {
+    // git remote と MERGE_HEAD の問い合わせを振り分ける(MERGE_HEAD は無い)
+    const rawWithRemotes =
+      (remotes: string) =>
+      (args: string[]): Promise<string> =>
+        Promise.resolve(args[0] === 'remote' ? remotes : '')
+
+    it('git remote に origin の行があれば hasOrigin: true', async () => {
+      mockCheckIsRepo.mockResolvedValue(true)
+      mockStatus.mockResolvedValue(baseStatusResult)
+      mockRaw.mockImplementation(rawWithRemotes('upstream\norigin\n'))
+      const result = await getGitStatus('/project')
+      expect(result.hasOrigin).toBe(true)
+      expect(mockRaw).toHaveBeenCalledWith(['remote'])
+    })
+
+    it('origin が無ければ hasOrigin: false', async () => {
+      mockCheckIsRepo.mockResolvedValue(true)
+      mockStatus.mockResolvedValue(baseStatusResult)
+      mockRaw.mockImplementation(rawWithRemotes('upstream\n'))
+      const result = await getGitStatus('/project')
+      expect(result.hasOrigin).toBe(false)
+    })
+
+    // hasRemote はリモートが 1 つでもあるか。origin 以外の名前のリモートだけ(git clone -o github など)でも真。
+    // git remote は 1 回だけ呼び、hasOrigin と同じ出力から決める
+    it.each([
+      ['origin と別名', true, true, 'upstream\norigin\n'],
+      ['origin 以外の名前だけ', false, true, 'github\n'],
+      ['origin 以外の名前だけ(\\r\\n)', false, true, 'github\r\n'],
+      ['リモートが無い', false, false, '']
+    ])(
+      'git remote が %s → hasOrigin: %s・hasRemote: %s',
+      async (_label, hasOrigin, hasRemote, remotes) => {
+        mockCheckIsRepo.mockResolvedValue(true)
+        mockStatus.mockResolvedValue(baseStatusResult)
+        mockRaw.mockImplementation(rawWithRemotes(remotes))
+        const result = await getGitStatus('/project')
+        expect(result).toMatchObject({ hasOrigin, hasRemote })
+        expect(mockRaw.mock.calls.filter(([args]) => args[0] === 'remote')).toHaveLength(1)
+      }
+    )
+
+    // gone(リモートの ref が消えた)でも simple-git は tracking に origin/<b> を返す(実機で確認)
+    it.each([
+      ['設定済み', 'origin/main', 'origin/main'],
+      ['ローカルのブランチ', 'main', 'main'],
+      ['未設定', null, null]
+    ])('upstream は status.tracking(%s)', async (_label, tracking, expected) => {
+      mockCheckIsRepo.mockResolvedValue(true)
+      mockStatus.mockResolvedValue({ ...baseStatusResult, tracking })
+      const result = await getGitStatus('/project')
+      expect(result.upstream).toBe(expected)
+    })
+
+    it('detached は status.detached', async () => {
+      mockCheckIsRepo.mockResolvedValue(true)
+      mockStatus.mockResolvedValue({ ...baseStatusResult, current: 'HEAD', detached: true })
+      const result = await getGitStatus('/project')
+      expect(result.detached).toBe(true)
+      expect(result.upstream).toBeNull()
+    })
+
+    it('git remote の失敗は getGitStatus の失敗にする', async () => {
+      mockCheckIsRepo.mockResolvedValue(true)
+      mockStatus.mockResolvedValue(baseStatusResult)
+      mockRaw.mockImplementation((args: string[]) =>
+        args[0] === 'remote' ? Promise.reject(new Error('fatal: bad config')) : Promise.resolve('')
+      )
+      await expect(getGitStatus('/project')).rejects.toThrow('fatal: bad config')
+    })
   })
 
   it('status() が throw した場合エラーが伝播する', async () => {

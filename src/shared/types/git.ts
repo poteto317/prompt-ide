@@ -16,6 +16,16 @@ export type GitStatusResult = {
   files: GitFileStatus[]
   /** マージ中（`.git/MERGE_HEAD` がある）か。リポジトリでないときは false */
   mergeInProgress: boolean
+  /** リモート origin があるか(`git remote` の出力に origin の行がある)。リポジトリでないときは false */
+  hasOrigin: boolean
+  /** リモートが 1 つでもあるか(`git remote` の出力が空でない)。origin 以外の名前のリモートだけ(git clone -o github
+   *  など)でも真。バナー『リモートが未設定です』はこれが偽のときだけ出す。リポジトリでないときは false */
+  hasRemote: boolean
+  /** 現在のブランチの upstream の短い名前(simple-git の status.tracking。例: origin/main)。リモートの ref が
+   *  消えた gone でも値が入る。未設定・detached HEAD・リポジトリでないときは null */
+  upstream: string | null
+  /** ブランチ上にいない(detached HEAD・リベース中・bisect 中)か。リポジトリでないときは false */
+  detached: boolean
 }
 
 /** コンフリクトのブロックごとの解決方法（both は自分 → 相手の順） */

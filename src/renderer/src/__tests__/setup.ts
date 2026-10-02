@@ -21,6 +21,10 @@ Object.defineProperty(window, 'api', {
       Promise.resolve({
         isRepo: false,
         mergeInProgress: false,
+        hasOrigin: false,
+        hasRemote: false,
+        upstream: null,
+        detached: false,
         branch: null,
         ahead: 0,
         behind: 0,

@@ -38,6 +38,10 @@ const makeParsed = (digests: string[]): ConflictFile => ({
 const status: GitStatusResult = {
   isRepo: true,
   mergeInProgress: true,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,

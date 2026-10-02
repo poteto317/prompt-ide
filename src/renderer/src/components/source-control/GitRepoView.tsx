@@ -6,14 +6,17 @@ import HistorySection from './HistorySection'
 import StashSection from './StashSection'
 import BranchSwitcher from './BranchSwitcher'
 import MergeBanner from './MergeBanner'
+import RemoteSetupBanner from './RemoteSetupBanner'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
+  RemoteSetupPanelState,
   StashPanelState
 } from '../../types'
+import type { RemoteSetupFocusTarget, RemoteSetupKind } from '../../lib/remoteSetupState'
 import { isStagedFile } from '../../lib/gitUtils'
 
 interface Props {
@@ -53,6 +56,12 @@ interface Props {
   mergeState: MergeStatePanelState
   /** タグの作成の状態と操作(履歴セクションの「タグを作成」とダイアログ) */
   gitTag: GitTagPanelState
+  /** リモートの状態バナーの種類(getRemoteSetupState(gitStatus)。SourceControlPanel が導出する) */
+  remoteSetupKind: RemoteSetupKind | null
+  /** リモートの管理の状態と操作(状態バナーの「リモートを追加」「初回 push」とダイアログ) */
+  remoteSetup: RemoteSetupPanelState
+  /** 追加・初回 push の成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
+  requestRemoteSetupFocus: (target: RemoteSetupFocusTarget) => void
 }
 
 export default function GitRepoView({
@@ -87,7 +96,10 @@ export default function GitRepoView({
   stash,
   discardAll,
   mergeState,
-  gitTag
+  gitTag,
+  remoteSetupKind,
+  remoteSetup,
+  requestRemoteSetupFocus
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -114,6 +126,14 @@ export default function GitRepoView({
         {behind > 0 && <span className="source-control-panel__behind">↓{behind}</span>}
       </div>
       <MergeBanner mergeState={mergeState} isBlocked={isBlockedByOtherOperation} />
+      {/* マージのバナーの直後に出す(どちらも条件を満たせば両方。設計書の表) */}
+      <RemoteSetupBanner
+        kind={remoteSetupKind}
+        branch={branch}
+        remoteSetup={remoteSetup}
+        requestFocus={requestRemoteSetupFocus}
+        isBlocked={isBlockedByOtherOperation}
+      />
       <CommitSection
         stagedCount={stagedCount}
         isCommitting={isCommitting}

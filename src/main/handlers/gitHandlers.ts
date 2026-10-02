@@ -26,6 +26,7 @@ import { discardFileChanges, discardHunk, discardAllChanges } from '../gitDiscar
 import * as conflictService from '../gitConflictService'
 import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'
 import { createTag } from '../gitTagService'
+import { initRepository, addOrigin, pushSetUpstream } from '../gitRemoteSetupService'
 import { stageHunk, unstageHunk } from '../gitApply'
 import { moveToTrash } from '../trash'
 import type { FolderAccessManager } from '../folderAccessManager'
@@ -240,6 +241,11 @@ function assertCreateTagArg(value: unknown): asserts value is CreateTagRequest {
     typeof kind === 'string' &&
     (TAG_KINDS as readonly string[]).includes(kind)
   if (!valid) throw new Error('Invalid tag request')
+}
+
+// 文字列であることだけを検証する。値の中身(許可リスト・長さ・制御文字)は service 層が検証する
+function assertRemoteUrlArg(value: unknown): asserts value is string {
+  if (typeof value !== 'string') throw new Error('Invalid remote url')
 }
 
 export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
@@ -547,5 +553,23 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
       kind: request.kind,
       message: request.message
     })
+  })
+
+  // service の第 3 引数以降(打ち切りの時間・windowsPaths)はテスト用。renderer から届いた余分な引数は渡さない
+  ipcMain.handle('git:init', async (event: IpcMainInvokeEvent, branch: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertBranchNameArg(branch)
+    await initRepository(allowedFolder, branch)
+  })
+
+  ipcMain.handle('git:addOrigin', async (event: IpcMainInvokeEvent, url: unknown) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    assertRemoteUrlArg(url)
+    await addOrigin(allowedFolder, url)
+  })
+
+  ipcMain.handle('git:pushSetUpstream', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await pushSetUpstream(allowedFolder)
   })
 }

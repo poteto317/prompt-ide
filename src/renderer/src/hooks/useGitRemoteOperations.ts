@@ -26,13 +26,20 @@ export interface GitRemoteOperationsState {
   push: () => Promise<void>
   pull: () => Promise<void>
   fetchRemote: () => Promise<void>
+  /** 初回 push(pushSetUpstream)の実行中か。isPushing と同時に true になる(実行中フラグを共有する)。
+   *  バナーのボタンの「push 中...」の表示に使う */
+  isSettingUpstream: boolean
+  /** upstream の無い現在のブランチを origin へ送り、upstream を設定する。戻り値は実際に実行され成功したか
+   *  (成功の後にフォーカスをツールバーの「プッシュ」へ移すかの判定に使う) */
+  pushSetUpstream: () => Promise<boolean>
   remoteOperationError: Error | null
 }
 
 export function useGitRemoteOperations(
   gitStatus: GitStatusResult | null,
   refreshGitStatus: () => Promise<void>,
-  fileLock?: FileOperationLock
+  fileLock?: FileOperationLock,
+  refreshHistory?: () => Promise<void>
 ): GitRemoteOperationsState {
   const [isPushing, setIsPushing] = useState(false)
   const isPushingRef = useRef(false)
@@ -40,6 +47,7 @@ export function useGitRemoteOperations(
   const isPullingRef = useRef(false)
   const [isFetching, setIsFetching] = useState(false)
   const isFetchingRef = useRef(false)
+  const [isSettingUpstream, setIsSettingUpstream] = useState(false)
   const [remoteOperationError, setRemoteOperationError] = useState<Error | null>(null)
   const localFileLock = useFileOperationLock()
   const lock = fileLock ?? localFileLock
@@ -119,6 +127,39 @@ export function useGitRemoteOperations(
       execute: gitApi.push
     }).then(() => undefined)
 
+  // 初回 push(upstream の設定)。成功すると upstream が設定され ↑/↓ と履歴のリモートの ref が変わるため、
+  // ステータスと履歴を取り直す(refreshHistory を渡さない呼び出しではステータスだけ。差分 3)。
+  // 両方の完了を待つ(allSettled): Promise.all では履歴が先に失敗した時点で実行中フラグが下り、ステータスの
+  // 取り直し前の upstream 未設定の表示のまま初回 push を押せてしまう(パターン 73)。失敗はどちらも呼び出し側へ
+  // 伝えない(共有ランナーと同じ。取り直しの失敗で成功を失敗にしない。パターン 52)
+  const refreshAfterSetUpstream = async (): Promise<void> => {
+    await Promise.allSettled([refreshGitStatus(), refreshHistory?.()])
+  }
+  const runSetUpstreamOperation = useRunExclusiveGitOperation(
+    refreshAfterSetUpstream,
+    setRemoteOperationError
+  )
+
+  // 開始条件と実行中フラグは push と共有する: push と初回 push は同じ ref と branch.<b> の設定を書くため
+  // 同時に走らせず、commit・checkout の途中に古い HEAD を送らないようロック中は待つ(push のコメントと同じ理由)。
+  // lockGlobal は取らない(既存の push と同じ。設計書の排他の表)。どちらの push かをバナーの表示に使うため、
+  // isSettingUpstream を別に持つ。開始時(onStart)にパネル上部の前回のエラーを消す(パターン 87)
+  const pushSetUpstream = (): Promise<boolean> =>
+    runSetUpstreamOperation({
+      isBusy: () =>
+        isPushingRef.current ||
+        isPullingRef.current ||
+        lock.isAnyLocked() ||
+        isRemoteOperationDisabled,
+      setBusy: (busy) => {
+        isPushingRef.current = busy
+        setIsPushing(busy)
+        setIsSettingUpstream(busy)
+      },
+      onStart: () => setRemoteOperationError(null),
+      execute: gitApi.pushSetUpstream
+    })
+
   // isBusy() 内の判定(ref を見る、実行開始の可否そのもの)とは別に、レンダーに
   // 反映される state 値から「他操作起因で押せないか」を計算する。値の出所
   // (push/pull が同時実行不可、両者ともハンク操作/commit 中も不可)は isBusy()
@@ -136,6 +177,8 @@ export function useGitRemoteOperations(
     push,
     pull,
     fetchRemote,
+    isSettingUpstream,
+    pushSetUpstream,
     remoteOperationError
   }
 }

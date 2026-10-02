@@ -1,12 +1,17 @@
+import { useRef } from 'react'
 import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 import SourceControlToolbar from './SourceControlToolbar'
+import NotRepositoryView from './NotRepositoryView'
+import { getRemoteSetupState } from '../../lib/remoteSetupState'
+import { useRemoteSetupFocus } from '../../hooks/useRemoteSetupFocus'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
+  RemoteSetupPanelState,
   StashPanelState
 } from '../../types'
 
@@ -54,6 +59,8 @@ interface Props {
   discardAll: DiscardAllState
   mergeState: MergeStatePanelState
   gitTag: GitTagPanelState
+  /** リモートの管理の状態と操作(Git 管理外の「リポジトリを初期化」、状態バナー、成功の後のフォーカスの移し先) */
+  remoteSetup: RemoteSetupPanelState
   branchOperationError: Error | null
 }
 
@@ -101,10 +108,15 @@ export default function SourceControlPanel({
   discardAll,
   mergeState,
   gitTag,
+  remoteSetup,
   branchOperationError
 }: Props): React.JSX.Element {
+  // 初期化・追加・初回 push の成功の後に、次の操作のボタン(このパネルの中にある)へフォーカスを移す。
+  // 要求する部品(NotRepositoryView・RemoteSetupBanner)へ requestFocus を渡す
+  const rootRef = useRef<HTMLDivElement>(null)
+  const { requestFocus: requestRemoteSetupFocus } = useRemoteSetupFocus(rootRef)
   return (
-    <div className="source-control-panel">
+    <div className="source-control-panel" ref={rootRef}>
       <SourceControlToolbar
         gitLoading={gitLoading}
         onRefresh={onRefresh}
@@ -135,7 +147,11 @@ export default function SourceControlPanel({
       )}
       {gitStatus !== null &&
         (!gitStatus.isRepo ? (
-          <p className="source-control-panel__no-repo">Git リポジトリではありません</p>
+          <NotRepositoryView
+            remoteSetup={remoteSetup}
+            isBlocked={isAnyLocked()}
+            requestFocus={requestRemoteSetupFocus}
+          />
         ) : (
           <GitRepoView
             branch={gitStatus.branch}
@@ -170,6 +186,9 @@ export default function SourceControlPanel({
             discardAll={discardAll}
             mergeState={mergeState}
             gitTag={gitTag}
+            remoteSetupKind={getRemoteSetupState(gitStatus)}
+            remoteSetup={remoteSetup}
+            requestRemoteSetupFocus={requestRemoteSetupFocus}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { ComponentProps } from 'react'
@@ -229,6 +229,46 @@ describe('CreateTagDialog', () => {
     expect(props.onCancel).toHaveBeenCalledTimes(3)
   })
 
+  // 入力欄で押してオーバーレイで離すと、Chromium は共通の祖先(オーバーレイ)へ click を送る。フォームの
+  // stopPropagation はこの経路に入らないため、押したのもオーバーレイのときだけ閉じる(RemoteSetupInputDialog と共通)
+  it('タグ名の入力欄で押してオーバーレイで離しても onCancel を呼ばず、入力が残る', () => {
+    const props = renderDialog()
+    const overlay = props.container.querySelector('.name-input-dialog__overlay')!
+    fireEvent.change(nameInput(), { target: { value: 'v1.2.3' } })
+    fireEvent.mouseDown(nameInput())
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(props.onCancel).not.toHaveBeenCalled()
+    expect(nameInput()).toHaveValue('v1.2.3')
+  })
+
+  // 逆向き: オーバーレイで押して入力欄で離しても、click は共通の祖先(オーバーレイ)へ届く。離したのも
+  // オーバーレイのときだけ閉じる(jsdom は click の target を決めないため、click はオーバーレイに送る)
+  it('オーバーレイで押してタグ名の入力欄で離しても onCancel を呼ばず、入力が残る', () => {
+    const props = renderDialog()
+    const overlay = props.container.querySelector('.name-input-dialog__overlay')!
+    fireEvent.change(nameInput(), { target: { value: 'v1.2.3' } })
+    fireEvent.mouseDown(overlay)
+    fireEvent.mouseUp(nameInput())
+    fireEvent.click(overlay)
+    expect(props.onCancel).not.toHaveBeenCalled()
+    expect(nameInput()).toHaveValue('v1.2.3')
+  })
+
+  it('オーバーレイで押して離すと onCancel を呼び、作成中は呼ばない', () => {
+    const props = renderDialog()
+    const overlay = props.container.querySelector('.name-input-dialog__overlay')!
+    fireEvent.mouseDown(overlay)
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(props.onCancel).toHaveBeenCalledTimes(1)
+    props.rerenderWith({ isCreating: true })
+    fireEvent.mouseDown(overlay)
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(props.onCancel).toHaveBeenCalledTimes(1)
+  })
+
   // 作成中に閉じると、遅れて届いた失敗がダイアログの外に出ず(開き直すと消える)、遅れて届いた成功が
   // 別の場所のフォーカスを奪う(パターン 73)。作成が終わるまで閉じさせない
   it('作成中(isCreating)は、キャンセルが disabled で、Escape・オーバーレイのクリックでも onCancel を呼ばない', async () => {
@@ -289,7 +329,9 @@ describe('CreateTagDialog', () => {
   )
 
   // 作成中は入力欄が disabled になり、フォーカスが body に落ちる。失敗して作成中が解けたとき、
-  // Escape がフォームに届くよう入力欄へ戻す(body かダイアログ内にフォーカスがある場合だけ)
+  // Escape がフォームに届くよう入力欄へ戻す(body かダイアログ内にフォーカスがある場合だけ)。
+  // 外のフォーカスを奪わないこと・作成中を経ていない描画で何もしないことは useFocusOnRunningEnd のテストで
+  // 確かめる。ここは配線(戻す先がタグ名の入力欄で、ダイアログのフォームを「中」とする)だけ
   describe('作成が終わったときのフォーカス', () => {
     it('isCreating が true→false になったとき、フォーカスが body にあればタグ名の入力欄へ戻す', () => {
       const { rerenderWith } = renderDialog({ isCreating: true })
@@ -299,19 +341,14 @@ describe('CreateTagDialog', () => {
       expect(nameInput()).toHaveFocus()
     })
 
-    it('isCreating が true→false になっても、ダイアログの外にあるフォーカスは奪わない', () => {
-      const outside = document.createElement('button')
-      outside.textContent = '外部'
-      document.body.appendChild(outside)
-      try {
-        const { rerenderWith } = renderDialog({ isCreating: true })
-        outside.focus()
-        expect(outside).toHaveFocus()
-        rerenderWith({ isCreating: false })
-        expect(outside).toHaveFocus()
-      } finally {
-        outside.remove()
-      }
+    // jsdom は disabled になった要素からフォーカスを外さないため、作成中に disabled になったキャンセルに
+    // フォーカスが残った状態(ダイアログ内)を作れる
+    it('isCreating が true→false になったとき、ダイアログ内(キャンセル)にあるフォーカスもタグ名の入力欄へ戻す', () => {
+      const { rerenderWith } = renderDialog()
+      act(() => screen.getByRole('button', { name: 'キャンセル' }).focus())
+      rerenderWith({ isCreating: true })
+      rerenderWith({ isCreating: false })
+      expect(nameInput()).toHaveFocus()
     })
   })
 })

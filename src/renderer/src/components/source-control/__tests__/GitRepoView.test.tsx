@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitFileStatus } from '@shared/types'
@@ -10,6 +10,8 @@ import type {
 } from '../../../types'
 import GitRepoView from '../GitRepoView'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
+import { makeRemoteSetupPanelState } from '../../../__tests__/makeRemoteSetupPanelState'
+import type { RemoteSetupKind } from '../../../lib/remoteSetupState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -67,7 +69,10 @@ const baseProps = {
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
-  gitTag: makeGitTagPanelState()
+  gitTag: makeGitTagPanelState(),
+  remoteSetupKind: null as RemoteSetupKind | null,
+  remoteSetup: makeRemoteSetupPanelState(),
+  requestRemoteSetupFocus: vi.fn()
 }
 
 describe('GitRepoView', () => {
@@ -226,6 +231,9 @@ describe('GitRepoView', () => {
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
         gitTag={makeGitTagPanelState()}
+        remoteSetupKind={null}
+        remoteSetup={makeRemoteSetupPanelState()}
+        requestRemoteSetupFocus={vi.fn()}
       />
     )
     await userEvent.click(screen.getByLabelText('changed.ts をステージ'))
@@ -298,6 +306,9 @@ describe('GitRepoView', () => {
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
         gitTag={makeGitTagPanelState()}
+        remoteSetupKind={null}
+        remoteSetup={makeRemoteSetupPanelState()}
+        requestRemoteSetupFocus={vi.fn()}
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
@@ -340,6 +351,9 @@ describe('GitRepoView', () => {
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
         gitTag={makeGitTagPanelState()}
+        remoteSetupKind={null}
+        remoteSetup={makeRemoteSetupPanelState()}
+        requestRemoteSetupFocus={vi.fn()}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -380,6 +394,9 @@ describe('GitRepoView', () => {
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
         gitTag={makeGitTagPanelState()}
+        remoteSetupKind={null}
+        remoteSetup={makeRemoteSetupPanelState()}
+        requestRemoteSetupFocus={vi.fn()}
       />
     )
     await userEvent.click(screen.getByText('a.ts'))
@@ -654,6 +671,89 @@ describe('GitRepoView', () => {
         />
       )
       expect(screen.getByRole('button', { name: 'タグを作成' })).toBeEnabled()
+    })
+  })
+
+  describe('remoteSetup(リモートの状態バナー)', () => {
+    // マージのバナーを先に、その下にリモートのバナーを出す(どちらも条件を満たせば両方。設計書の表)
+    it('マージのバナーの直後にリモートのバナーを出す', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          mergeState={{ ...emptyMergeState, inProgress: true, unresolvedCount: 1 }}
+          remoteSetupKind="no-upstream"
+        />
+      )
+      const statuses = screen.getAllByRole('status')
+      expect(statuses[0]).toHaveTextContent('マージ中')
+      expect(statuses[1]).toHaveTextContent('upstream が未設定です（main）')
+    })
+
+    it('他の操作中は、バナーのボタンが押せない', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          stagingPaths={new Set(['a.ts'])}
+          remoteSetupKind="no-origin"
+        />
+      )
+      expect(screen.getByRole('button', { name: 'リモートを追加' })).toBeDisabled()
+    })
+
+    it('他の操作が無ければ、バナーのボタンを押せる', () => {
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          remoteSetupKind="no-origin"
+        />
+      )
+      expect(screen.getByRole('button', { name: 'リモートを追加' })).toBeEnabled()
+    })
+
+    it('remoteSetup がバナーまで届く(リモートを追加 → 前回のエラーを消す)', async () => {
+      const remoteSetup = makeRemoteSetupPanelState()
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          remoteSetupKind="no-origin"
+          remoteSetup={remoteSetup}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'リモートを追加' }))
+      expect(remoteSetup.clearAddOriginError).toHaveBeenCalledOnce()
+    })
+
+    it('requestRemoteSetupFocus がバナーまで届く(初回 push の成功 → ツールバーの「プッシュ」を要求する)', async () => {
+      const requestRemoteSetupFocus = vi.fn()
+      render(
+        <GitRepoView
+          branch="main"
+          ahead={0}
+          behind={0}
+          files={noFiles}
+          {...baseProps}
+          remoteSetupKind="no-upstream"
+          requestRemoteSetupFocus={requestRemoteSetupFocus}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: '初回 push（upstream を設定）' }))
+      await waitFor(() => expect(requestRemoteSetupFocus).toHaveBeenCalledWith('push'))
     })
   })
 })

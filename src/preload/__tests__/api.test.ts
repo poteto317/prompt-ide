@@ -141,6 +141,21 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:createTag', { name: 'v1', kind: 'annotated', message: 'm' }]
   ],
   [
+    'initRepository は git:init チャンネルにブランチ名を渡す',
+    () => api.initRepository('main'),
+    ['git:init', 'main']
+  ],
+  [
+    'addOrigin は git:addOrigin チャンネルに URL を渡す',
+    () => api.addOrigin('https://github.com/a/b.git'),
+    ['git:addOrigin', 'https://github.com/a/b.git']
+  ],
+  [
+    'pushSetUpstream は git:pushSetUpstream チャンネルを引数なしで呼び出す',
+    () => api.pushSetUpstream(),
+    ['git:pushSetUpstream']
+  ],
+  [
     'stashPush は git:stashPush チャンネルにメッセージを渡す',
     () => api.stashPush('msg'),
     ['git:stashPush', 'msg']

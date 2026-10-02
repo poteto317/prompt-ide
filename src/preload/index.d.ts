@@ -75,6 +75,9 @@ declare global {
       stashPop(sha: string): Promise<StashPopResult>
       stashDrop(sha: string): Promise<void>
       createTag(request: CreateTagRequest): Promise<void>
+      initRepository(branch: string): Promise<void>
+      addOrigin(url: string): Promise<void>
+      pushSetUpstream(): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

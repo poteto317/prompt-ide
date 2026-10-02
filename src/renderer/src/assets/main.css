@@ -765,19 +765,25 @@ body {
   background: #1177bb;
 }
 
-/* タグの作成ダイアログ(枠・入力欄・ボタンは .name-input-dialog__* を共有する)。
-   disabled の作成ボタンの半透明は、下の共通のボタンの :disabled の規則で宣言する */
+/* タグの作成ダイアログと、リポジトリの初期化・リモートの追加のダイアログ(枠・入力欄・ボタンは
+   .name-input-dialog__* を共有する)。disabled の実行ボタン・キャンセルの半透明は、下の共通のボタンの
+   :disabled の規則で宣言する。リモートのバナーの案内(.remote-setup-banner__note)も同じ補足の文字にする */
 .create-tag-dialog__note,
-.create-tag-dialog__label {
+.create-tag-dialog__label,
+.remote-setup-dialog__note,
+.remote-setup-dialog__label,
+.remote-setup-banner__note {
   font-size: 11px;
   color: #969696;
 }
 
-.create-tag-dialog__note {
+.create-tag-dialog__note,
+.remote-setup-dialog__note {
   margin: 0 0 4px;
 }
 
-.create-tag-dialog__field {
+.create-tag-dialog__field,
+.remote-setup-dialog__field {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1069,6 +1075,11 @@ body {
   margin: 0;
 }
 
+/* Git 管理外の表示の「リポジトリを初期化」。文言の下に、文言と同じ左の余白で置く */
+.source-control-panel__no-repo-actions {
+  padding: 0 12px 12px;
+}
+
 .source-control-panel__branch {
   display: flex;
   align-items: center;
@@ -1194,7 +1205,7 @@ body {
   padding-right: 12px;
 }
 
-/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・解決ビューのツールバー・ブロック)。
+/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・解決ビューのツールバー・ブロック)。
    タッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、ホバー時だけ表示する作りにはしない。
    ホバー色は破壊的でない操作=青系、危険系(--danger: 退避を捨てる・マージを中止・削除する)=赤系
    (ブランチメニューのマージ・削除ボタンと同じ)。見た目を変えるときはここ 1 か所を直す */
@@ -1204,6 +1215,8 @@ body {
 .conflict-resolver__button,
 .conflict-block__button,
 .history-section__create-tag,
+.remote-setup-banner__button,
+.source-control-panel__init-btn,
 .create-tag-dialog__kind {
   flex: none;
   min-width: 32px;
@@ -1223,6 +1236,8 @@ body {
 .conflict-resolver__button:hover:not(:disabled),
 .conflict-block__button:hover:not(:disabled),
 .history-section__create-tag:hover:not(:disabled),
+.remote-setup-banner__button:hover:not(:disabled),
+.source-control-panel__init-btn:hover:not(:disabled),
 .create-tag-dialog__kind:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
@@ -1240,6 +1255,8 @@ body {
 .conflict-resolver__button:disabled,
 .conflict-block__button:disabled,
 .history-section__create-tag:disabled,
+.remote-setup-banner__button:disabled,
+.source-control-panel__init-btn:disabled,
 .create-tag-dialog__kind:disabled,
 .name-input-dialog__ok:disabled,
 .name-input-dialog__cancel:disabled {
@@ -2507,8 +2524,10 @@ body {
   opacity: 0.5;
 }
 
-/* マージ中のバナー。ボタン(.merge-banner__button)の見た目は退避セクションの共通のボタン規則で共有する */
-.merge-banner {
+/* マージ中のバナーとリモートの状態バナー。ボタン(.merge-banner__button / .remote-setup-banner__button)の見た目は
+   退避セクションの共通のボタン規則で共有する */
+.merge-banner,
+.remote-setup-banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2519,7 +2538,8 @@ body {
   border-bottom: 1px solid #333333;
 }
 
-.merge-banner__message {
+.merge-banner__message,
+.remote-setup-banner__message {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -2527,7 +2547,8 @@ body {
   font-size: 12px;
 }
 
-.merge-banner__actions {
+.merge-banner__actions,
+.remote-setup-banner__actions {
   display: flex;
   flex: none;
   gap: 4px;
@@ -2538,6 +2559,18 @@ body {
   margin: 0;
   color: #f48771;
   font-size: 12px;
+}
+
+/* ブランチ名が長いと `/` `.` `_` で折り返せないため、枠からはみ出さないよう途中でも折り返す(パターン 90) */
+.remote-setup-banner__message {
+  overflow-wrap: anywhere;
+}
+
+/* 初回 push 中の案内(打ち切りまでの秒数)。文言の下の行に出す。文字の大きさと色は、ダイアログの説明と
+   同じ補足の文字の規則(.create-tag-dialog__note のグループ)で共有する */
+.remote-setup-banner__note {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 /* コンフリクト解決ビュー(未解決ファイルの diff タブの中身)。行は .diff-view__line を流用し、

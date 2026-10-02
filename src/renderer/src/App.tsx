@@ -111,6 +111,7 @@ export default function App(): React.JSX.Element {
     discardAll,
     mergeState,
     gitTag,
+    remoteSetup,
     conflictFile,
     isActiveFileConflicted,
     branchOperationError,
@@ -291,6 +292,7 @@ export default function App(): React.JSX.Element {
               discardAll={discardAll}
               mergeState={mergeState}
               gitTag={gitTag}
+              remoteSetup={remoteSetup}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}

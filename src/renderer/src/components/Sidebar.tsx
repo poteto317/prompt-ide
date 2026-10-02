@@ -18,7 +18,8 @@ import type {
   StashPanelState,
   DiscardAllState,
   MergeStatePanelState,
-  GitTagPanelState
+  GitTagPanelState,
+  RemoteSetupPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -90,6 +91,8 @@ interface Props {
   discardAll: DiscardAllState
   mergeState: MergeStatePanelState
   gitTag: GitTagPanelState
+  /** リモートの管理の状態と操作(SourceControlPanel へそのまま渡す) */
+  remoteSetup: RemoteSetupPanelState
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
@@ -179,6 +182,7 @@ export default function Sidebar({
   discardAll,
   mergeState,
   gitTag,
+  remoteSetup,
   gitBranchOperationError,
   onOpenDiff,
   onAmend,
@@ -289,6 +293,7 @@ export default function Sidebar({
           discardAll={discardAll}
           mergeState={mergeState}
           gitTag={gitTag}
+          remoteSetup={remoteSetup}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}

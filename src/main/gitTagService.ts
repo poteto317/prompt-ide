@@ -1,4 +1,4 @@
-import simpleGit, { GitError, GitPluginError } from 'simple-git'
+import simpleGit, { GitError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { CreateTagRequest } from '@shared/types'
 import { getTagNameCollision, getTagNameRuleViolation, normalizeTagName } from '@shared/tagName'
@@ -7,6 +7,7 @@ import { getTagMessageRuleViolation } from '@shared/tagMessage'
 import type { TagMessageRuleViolation } from '@shared/tagMessage'
 // git を打ち切るまでの時間。renderer の作成中の案内(「最大 N 分」)と同じ値を使う
 import { TAG_CREATE_TIMEOUT_MS } from '@shared/tagTimeout'
+import { errorDetail, failure, isGitTimeoutError } from './gitStepErrors'
 
 // タグの作成(git tag)。付ける先は常に現在の HEAD。タグの責務はこのファイルにまとめ、gitService.ts には
 // 足さない(パターン 55)。ref を 1 つ増やすだけで作業ツリー・index・HEAD を変えないため、
@@ -37,10 +38,6 @@ function invalidTagNameError(name: string): Error {
   return new Error(`タグ名として使用できない名前です: ${name}`)
 }
 
-function errorDetail(err: unknown): string {
-  return err instanceof Error ? err.message.trim() : String(err).trim()
-}
-
 // timeout プラグインは英語の固定文言("block timeout reached")の GitPluginError を投げるため、原因の推測を添えた
 // 日本語にする。timeout 以外のプラグインのエラーは従来どおり作成の失敗として git のメッセージを添える
 function tagCreateTimeoutError(name: string): Error {
@@ -50,9 +47,7 @@ function tagCreateTimeoutError(name: string): Error {
 }
 
 function tagCreateFailureError(detail: string): Error {
-  return new Error(
-    detail === '' ? 'タグを作成できませんでした' : `タグを作成できませんでした: ${detail}`
-  )
+  return failure('タグを作成できませんでした', detail)
 }
 
 // 名前空間の配下の ref 名を、名前空間を除いて返す。完全な refname で列挙するため、短い名前の解決
@@ -180,7 +175,7 @@ export async function createTag(
   try {
     await git.raw(buildTagArgs(request))
   } catch (err) {
-    if (err instanceof GitPluginError && err.plugin === 'timeout') {
+    if (isGitTimeoutError(err)) {
       throw tagCreateTimeoutError(request.name)
     }
     throw tagCreateFailureError(errorDetail(err))

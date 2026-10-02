@@ -271,7 +271,8 @@ describe('HistorySection のタグの作成', () => {
     )
   })
 
-  it('作成に成功したらダイアログを閉じ、ボタンへフォーカスを戻す', async () => {
+  // 閉じた後にボタンへフォーカスを戻すこと(作成中が解けた後に戻す)は、下の結合テストで実物の作成中フラグと確かめる
+  it('作成に成功したらダイアログを閉じる', async () => {
     const props = renderSection()
     await userEvent.click(openButton())
     await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
@@ -281,7 +282,6 @@ describe('HistorySection のタグの作成', () => {
       message: ''
     })
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(openButton()).toHaveFocus()
   })
 
   it('作成に失敗したら(false)ダイアログを閉じない', async () => {
@@ -317,6 +317,10 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
   const repoStatus: GitStatusResult = {
     isRepo: true,
     mergeInProgress: false,
+    hasOrigin: true,
+    hasRemote: true,
+    upstream: 'origin/main',
+    detached: false,
     branch: 'main',
     ahead: 0,
     behind: 0,
@@ -377,7 +381,9 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
     pending.resolve()
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(openButton).toBeEnabled()
-    expect(openButton).toHaveFocus()
+    // waitFor はダイアログが消えた時点で抜けるが、フォーカスを戻す処理は passive な useEffect で後から走る。
+    // 負荷がかかると先に評価されて落ちるため、フォーカスも待つ
+    await waitFor(() => expect(openButton).toHaveFocus())
   })
 
   it('キャンセルで閉じても「タグを作成」ボタンにフォーカスが戻る', async () => {
@@ -386,22 +392,10 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
     await userEvent.click(openButton)
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(openButton).toHaveFocus()
+    await waitFor(() => expect(openButton).toHaveFocus())
   })
 
-  it('作成中にダイアログの外の要素へフォーカスを移していたら、遅れて成功してもフォーカスを奪わない', async () => {
-    const pending = holdCreate()
-    render(<Harness />)
-    await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
-    await userEvent.type(screen.getByRole('textbox', { name: 'タグ名' }), 'v2{Enter}')
-    const outside = screen.getByRole('textbox', { name: '外の入力欄' })
-    act(() => outside.focus())
-
-    pending.resolve()
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByRole('button', { name: 'タグを作成' })).toBeEnabled()
-    expect(outside).toHaveFocus()
-  })
+  // 作成中に外の要素へ移したフォーカスを、遅れて届いた成功で奪わないことは useDialogFocusReturn のテストで確かめる
 
   it('作成中に入力が disabled になってフォーカスが外れても、失敗の後はタグ名の入力欄へ戻り、Escape で閉じられる', async () => {
     const pending = holdCreate()
@@ -427,7 +421,7 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
     expect(input).toHaveFocus()
     await userEvent.keyboard('{Escape}')
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(openButton).toHaveFocus()
+    await waitFor(() => expect(openButton).toHaveFocus())
   })
 
   it('作成の保留中はキャンセル・Escape・オーバーレイで閉じられず、失敗はダイアログ内に role="alert" で見える', async () => {

@@ -30,6 +30,9 @@ const mockStashPush = vi.hoisted(() => vi.fn())
 const mockStashPop = vi.hoisted(() => vi.fn())
 const mockStashDrop = vi.hoisted(() => vi.fn())
 const mockCreateTag = vi.hoisted(() => vi.fn())
+const mockInitRepository = vi.hoisted(() => vi.fn())
+const mockAddOrigin = vi.hoisted(() => vi.fn())
+const mockPushSetUpstream = vi.hoisted(() => vi.fn())
 const mockConflict = vi.hoisted(() => ({
   getConflictFile: vi.fn(),
   resolveConflictBlocks: vi.fn(),
@@ -82,6 +85,12 @@ vi.mock('../../gitStashService', () => ({
 }))
 
 vi.mock('../../gitTagService', () => ({ createTag: mockCreateTag }))
+
+vi.mock('../../gitRemoteSetupService', () => ({
+  initRepository: mockInitRepository,
+  addOrigin: mockAddOrigin,
+  pushSetUpstream: mockPushSetUpstream
+}))
 
 vi.mock('../../gitApply', () => ({
   stageHunk: mockStageHunk,
@@ -151,6 +160,10 @@ describe('registerGitHandlers', () => {
       const mockResult = {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -1484,6 +1497,84 @@ describe('registerGitHandlers', () => {
       mockCreateTag.mockRejectedValue(new Error('同じ名前のタグが既に存在します: v1.0.0'))
       await expect(getRegisteredHandler('git:createTag')(makeEvent(1), request)).rejects.toThrow(
         '同じ名前のタグが既に存在します: v1.0.0'
+      )
+    })
+  })
+
+  // service は第 3 引数以降にテスト用の値(打ち切りの時間・windowsPaths)を取る。renderer から届いた余分な引数を
+  // そこへ渡さない(許可フォルダと値の 2 つだけで呼ぶ)
+  describe.each([
+    ['git:init', () => mockInitRepository, 'main', 'Invalid branch name'],
+    ['git:addOrigin', () => mockAddOrigin, 'https://github.com/a/b.git', 'Invalid remote url']
+  ] as const)('%s', (channel, getMock, value, invalidMessage) => {
+    // 型検証より先にフォルダの許可を確認する
+    it('folderAccess が未設定のとき、引数に関わらず "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler(channel)(makeEvent(1), 123)).rejects.toThrow(
+        'No folder open'
+      )
+      expect(getMock()).not.toHaveBeenCalled()
+    })
+
+    it('allowedFolder と値だけで service を呼ぶ(余分な引数は渡さない)', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      getMock().mockResolvedValue(undefined)
+      await getRegisteredHandler(channel)(makeEvent(1), value, 1, true)
+      expect(getMock().mock.calls[0]).toStrictEqual(['/project', value])
+    })
+
+    it.each([
+      ['null', null],
+      ['undefined', undefined],
+      ['数値', 1],
+      ['配列', [value]],
+      ['オブジェクト', { value }]
+    ])('値が文字列でない(%s)なら service を呼ばずに拒否する', async (_label, bad) => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler(channel)(makeEvent(1), bad)).rejects.toThrow(invalidMessage)
+      expect(getMock()).not.toHaveBeenCalled()
+    })
+
+    it('service の失敗をそのまま伝える', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      getMock().mockRejectedValue(new Error('リモート origin は既に設定されています'))
+      await expect(getRegisteredHandler(channel)(makeEvent(1), value)).rejects.toThrow(
+        'リモート origin は既に設定されています'
+      )
+    })
+  })
+
+  describe('git:pushSetUpstream', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:pushSetUpstream')(makeEvent(1))).rejects.toThrow(
+        'No folder open'
+      )
+      expect(mockPushSetUpstream).not.toHaveBeenCalled()
+    })
+
+    // 第 2 引数(打ち切りの時間)に renderer の値が渡ると、打ち切りを無効にできてしまう
+    it('allowedFolder だけで pushSetUpstream を呼ぶ(余分な引数は渡さない)', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPushSetUpstream.mockResolvedValue(undefined)
+      await getRegisteredHandler('git:pushSetUpstream')(makeEvent(1), 999_999)
+      expect(mockPushSetUpstream.mock.calls[0]).toStrictEqual(['/project'])
+    })
+
+    it('pushSetUpstream の失敗をそのまま伝える', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPushSetUpstream.mockRejectedValue(
+        new Error('コミットが無いため、初回 push できません。先にコミットしてください')
+      )
+      await expect(getRegisteredHandler('git:pushSetUpstream')(makeEvent(1))).rejects.toThrow(
+        'コミットが無いため、初回 push できません。先にコミットしてください'
       )
     })
   })

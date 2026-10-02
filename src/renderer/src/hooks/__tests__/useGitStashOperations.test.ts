@@ -26,6 +26,10 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 const repoStatus: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,

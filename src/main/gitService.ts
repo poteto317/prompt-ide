@@ -1,5 +1,5 @@
 import { join } from 'path'
-import simpleGit, { GitError, GitPluginError } from 'simple-git'
+import simpleGit, { GitError } from 'simple-git'
 import type { BranchSummary, SimpleGit } from 'simple-git'
 import type {
   GitStatusResult,
@@ -20,7 +20,7 @@ import {
 import { toLiteralPathspec } from './gitPathParsing'
 import { parseGitLogOutput } from './gitLogFormatter'
 import { parseWorktreeBranches } from './gitWorktreeParser'
-import { findConflictingBranchName, getBranchNameRuleViolation } from '@shared/branchName'
+import { findConflictingBranchName } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
 import { buildMergeAbortMessage, buildMergeConflictMessage } from './gitMergeMessages'
@@ -30,6 +30,10 @@ import {
   isUnmergedPath,
   listUnresolvedFiles
 } from './gitMergeState'
+import { ORIGIN_REMOTE, listRemoteNames } from './gitRemoteNames'
+import { assertValidNewBranchName } from './gitBranchNameGuard'
+import { getCurrentBranchRef } from './gitHeadState'
+import { simpleGitWithRemoteTimeout, toRemoteOperationError } from './gitRemoteTimeout'
 
 // この上限を超える未追跡ファイルは、全文読み込んで疑似diff化する処理そのものを
 // スキップする。Electron のメインプロセスは全ウィンドウで共有されているため、
@@ -40,15 +44,40 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
   const git = simpleGit(folderPath)
   const isRepo = await git.checkIsRepo()
   if (!isRepo) {
-    return { isRepo: false, branch: null, ahead: 0, behind: 0, files: [], mergeInProgress: false }
+    return {
+      isRepo: false,
+      branch: null,
+      ahead: 0,
+      behind: 0,
+      files: [],
+      mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false
+    }
   }
-  const [status, mergeInProgress] = await Promise.all([git.status(), hasMergeInProgress(git)])
+  // リモートの名前は git remote で 1 回だけ問い合わせ、origin の有無(hasOrigin)とリモートの有無(hasRemote)を
+  // 同じ出力から決める。upstream と detached は git.status() の結果に含まれる(追加の git 呼び出しは無い)。
+  // リモートのバナー(renderer の remoteSetupState)がこの 4 つで表示を決める
+  const [status, mergeInProgress, remoteNames] = await Promise.all([
+    git.status(),
+    hasMergeInProgress(git),
+    listRemoteNames(git)
+  ])
   return {
     isRepo: true,
     branch: status.current,
     ahead: status.ahead,
     behind: status.behind,
     mergeInProgress,
+    hasOrigin: remoteNames.includes(ORIGIN_REMOTE),
+    hasRemote: remoteNames.length > 0,
+    // gone(リモートの ref が消えた)でも origin/<b> が入る。既存の push は gone の upstream にも送れるため、
+    // 「設定済み」として扱う(実機で確認)
+    upstream: status.tracking ?? null,
+    // `## HEAD (no branch)` のとき真。リベースで止めている間も真になる(実機で確認)
+    detached: status.detached,
     files: status.files.map((f) => ({
       path: f.path,
       index: f.index,
@@ -302,46 +331,6 @@ export async function getTags(folderPath: string): Promise<string[]> {
   return result.all
 }
 
-// push/pull/fetch はネットワークI/Oを伴う。認証プロンプト待ち(認証情報未設定で
-// 端末から起動した場合、git が /dev/tty を開いてプロンプトを出し誰も応答しない)や
-// 到達不能なホストへの接続では、タイムアウトが無いと simple-git の Promise が
-// 永久に解決せず、呼び出し元(useGitRemoteOperations.ts)の実行中フラグが true の
-// まま戻らずボタンが恒久的に disabled のまま固まる(pull の場合は共有ロックも
-// 解除されず commit/ハンク操作まで巻き添えになる、runGitApply の
-// GIT_APPLY_TIMEOUT_MS と同じ理由)。simple-git 標準の timeout プラグイン
-// (stdout/stderr に一定時間データが来ないと強制終了する)を使う。
-// env() 経由で GIT_TERMINAL_PROMPT 等を渡す方式は、blockUnsafeOperationsPlugin が
-// GIT_SSH_COMMAND 等の継承環境変数を検査して GitPluginError を投げる既存の地雷
-// (getLog 参照)を再び踏むため採用しない
-const GIT_REMOTE_TIMEOUT_MS = 30_000
-
-function simpleGitWithRemoteTimeout(folderPath: string): SimpleGit {
-  return simpleGit(folderPath, {
-    timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-    // git は stderr が tty に接続されていないと既定で進捗行を出力しない。
-    // simple-git は progress オプションを渡した場合のみ push/pull/fetch に
-    // --progress を自動付与する(渡さないと timeout プラグインが見ている
-    // stdout/stderr に実際の転送中(圧縮・送受信)も何も流れず、正常に進行中の
-    // 操作まで誤ってタイムアウトしてしまう)。コールバックの中身は使わないため
-    // no-op
-    progress: () => {}
-  })
-}
-
-// timeout プラグインが投げる GitPluginError のメッセージは "block timeout
-// reached" という固定の英語の内部文字列で、ユーザーに見せても原因が伝わらない
-// (アプリの他の文言はすべて日本語)。plugin === 'timeout' のときだけ、原因の
-// 推測もセットにした日本語メッセージへ差し替える。それ以外の GitPluginError
-// (timeout プラグイン以外が投げたもの)は素通しする
-function toRemoteOperationError(err: unknown): unknown {
-  if (err instanceof GitPluginError && err.plugin === 'timeout') {
-    return new Error(
-      '操作がタイムアウトしました。認証情報が未設定か、ネットワークに問題がある可能性があります'
-    )
-  }
-  return err
-}
-
 // 既に origin が設定され、現在のブランチに upstream が設定済みであることを前提に
 // 引数なしで呼ぶ(git 自身のデフォルト解決に委ねる)。remote の追加・作成・
 // upstream の設定は別スコープ(ROADMAP 上も別項目)
@@ -426,36 +415,14 @@ export async function checkoutBranch(folderPath: string, branchName: string): Pr
   await git.checkout(branchName)
 }
 
-// ブランチ名が不正なときのエラー。形式違反(アプリ独自の規則・git の check-ref-format)は
-// 原則この同じ文言にし、呼び出し元(エラーバナー)が違反の種類を区別する必要が無いように
-// する。例外は '-' 始まりで、直し方が明確なため assertCreatableBranchName が専用の文言を返す
-function invalidBranchNameError(branchName: string): Error {
-  return new Error(`ブランチ名として使用できない名前です: ${branchName}`)
-}
-
 // 新しいブランチ名として使えるかを検証する。branchName は IPC 境界から届く任意の文字列の
 // ため、次の順で検証する(前の検証に失敗したら後の git 呼び出しには進まない):
-// 1. アプリ独自の規則(@shared/branchName)。'-' 始まりは check-ref-format 自体にも
-//    オプションとして解釈されるため、git に渡す前に弾く(docs/review-findings-patterns.md
-//    パターン21)。'@' のみは `git checkout @` が HEAD と解釈され、作成後に切り替えられない
-// 2. git 本体の規則(`..`、空白、`~^:?*[\`、末尾の .lock 等)は check-ref-format --branch
-//    に委ねる。--branch は '@{-1}'(直前のブランチ)を実在のブランチ名へ展開して成功扱いに
-//    するため、出力(正規化後の名前)が入力と一致することも確認する
+// 1・2. 名前の形式(アプリ独自の規則と git の check-ref-format --branch)。リポジトリの初期化と
+//    共有する(gitBranchNameGuard の assertValidNewBranchName)
 // 3. 同名の既存ブランチ、および階層が衝突する既存ブランチ('main' に対する 'main/sub' 等)は、
 //    checkout -b の失敗(英語のエラー文)を見せる前に日本語で弾く
 async function assertCreatableBranchName(git: SimpleGit, branchName: string): Promise<void> {
-  const violation = getBranchNameRuleViolation(branchName)
-  if (violation === 'leading-dash') {
-    throw new Error(`\`-\` で始まるブランチ名は使用できません: ${branchName}`)
-  }
-  if (violation !== null) throw invalidBranchNameError(branchName)
-  let normalized: string
-  try {
-    normalized = (await git.raw(['check-ref-format', '--branch', branchName])).trim()
-  } catch {
-    throw invalidBranchNameError(branchName)
-  }
-  if (normalized !== branchName) throw invalidBranchNameError(branchName)
+  await assertValidNewBranchName(git, branchName)
   const summary = await git.branchLocal()
   if (summary.all.includes(branchName)) {
     throw new Error(`同じ名前のブランチが既に存在します: ${branchName}`)
@@ -532,17 +499,10 @@ export async function deleteBranch(
   return { deleted: true }
 }
 
-// HEAD がブランチを指しているか。simple-git の branchLocal() の summary.detached は使わない:
-// `git branch -v` の先頭行が `(HEAD detached at X)` / `(HEAD detached from X)` の形のときしか
-// detached と認識せず、rebase 中の `(no branch, rebasing main)` や bisect 中の
-// `(no branch, bisect started on main)` は current: "(no"・detached: false と解析されるため、
-// rebase を edit で止めている間などに検証をすり抜けてしまう(実機で確認)。
-// symbolic-ref -q HEAD はブランチ上なら `refs/heads/<name>` を返し、ブランチ上にいなければ
-// (detached・rebase 中・bisect 中)終了コード 1・stderr 空で終わる。simple-git は reject せず
-// 空文字で resolve する(hasMergeInProgress と同じ)
+// HEAD がブランチを指しているか。判定の理由(branchLocal().detached を使わない)は gitHeadState の
+// getCurrentBranchRef を参照(初回 push と同じ判定を使う)
 async function isOnBranch(git: SimpleGit): Promise<boolean> {
-  const ref = await git.raw(['symbolic-ref', '-q', 'HEAD'])
-  return ref.trim() !== ''
+  return (await getCurrentBranchRef(git)) !== null
 }
 
 // 同名のタグ等があると git は refs/tags を優先し、警告だけで終了コード 0 のまま別のコミットを

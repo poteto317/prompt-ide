@@ -29,3 +29,11 @@ export function findConflictingBranchName(
     ) ?? null
   )
 }
+
+// リポジトリの初期化(git init --initial-branch)に渡す最初のブランチ名の正規化。前後の空白を除き、
+// Unicode の NFC にそろえる。main(gitRemoteSetupService の initRepository)の入口と、renderer の
+// 初期化ダイアログ(検証と送信値)が同じ関数を使う(パターン 83・88)。macOS の git は NFD の名前を
+// そのまま refs/heads/<NFD> にする(実機 git 2.50.1 で確認)ため、入口でそろえる
+export function normalizeInitialBranchName(name: string): string {
+  return name.trim().normalize('NFC')
+}

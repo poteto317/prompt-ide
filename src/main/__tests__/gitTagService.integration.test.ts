@@ -15,6 +15,7 @@ import { COMMITTER_UNKNOWN_MESSAGE, createTag } from '../gitTagService'
 import {
   commitAll,
   initRepo,
+  killRecordedProcess,
   runGit,
   stubIsolatedGitEnv,
   writeRepoFile
@@ -398,12 +399,9 @@ describe('gitTagService(実 git)', () => {
       vi.stubEnv('GIT_EDITOR', 'false')
     })
 
-    afterEach(() => {
+    afterEach(async () => {
       // git が打ち切られた後も署名プログラムは孤児として残る(既知の制約)。テストの後始末として止める
-      if (existsSync(pidFile)) {
-        const [signerPid] = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number)
-        if (isAlive(signerPid)) process.kill(signerPid, 'SIGKILL')
-      }
+      await killRecordedProcess(pidFile)
       rmSync(scriptDir, { recursive: true, force: true })
     })
 

@@ -54,6 +54,10 @@ describe('App: amend 完了後の履歴反映', () => {
     mockGetGitStatus.mockResolvedValue({
       isRepo: true,
       mergeInProgress: false,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: 'origin/main',
+      detached: false,
       branch: 'main',
       ahead: 0,
       behind: 0,

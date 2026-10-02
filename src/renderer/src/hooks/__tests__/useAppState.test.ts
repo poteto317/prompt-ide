@@ -3,6 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
 import type { DiffTabKey } from '../useDiffTabs'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
+import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 
 const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
@@ -230,6 +231,12 @@ const mockUseConflictFile = vi.hoisted(() =>
 const mockUseGitTagOperations = vi.hoisted(() =>
   vi.fn<typeof import('../useGitTagOperations').useGitTagOperations>()
 )
+// 初期化・追加の組み立ては useGitRemoteSetup.test.ts で検証する。ここでは配線(依存の受け渡しと、初回 push の
+// 状態との合成)だけを見る。戻り値はテスト内で makeRemoteSetupPanelState から作って渡す(パターン 78)。
+// 他のテストでは既定の undefined のままでよい(合成は spread のため undefined でも落ちない)
+const mockUseGitRemoteSetup = vi.hoisted(() =>
+  vi.fn<typeof import('../useGitRemoteSetup').useGitRemoteSetup>()
+)
 
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
@@ -248,6 +255,7 @@ vi.mock('../useDiscardAllChanges', () => ({ useDiscardAllChanges: mockUseDiscard
 vi.mock('../useMergeState', () => ({ useMergeState: mockUseMergeState }))
 vi.mock('../useConflictFile', () => ({ useConflictFile: mockUseConflictFile }))
 vi.mock('../useGitTagOperations', () => ({ useGitTagOperations: mockUseGitTagOperations }))
+vi.mock('../useGitRemoteSetup', () => ({ useGitRemoteSetup: mockUseGitRemoteSetup }))
 
 import { useAppState } from '../useAppState'
 
@@ -421,6 +429,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -448,6 +460,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -475,6 +491,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -508,6 +528,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -536,6 +560,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -564,6 +592,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -594,6 +626,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -1032,6 +1068,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -1218,6 +1258,10 @@ describe('useAppState', () => {
       gitStatus: {
         isRepo: true,
         mergeInProgress,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -1271,6 +1315,10 @@ describe('useAppState', () => {
         gitStatus: {
           isRepo: true,
           mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1315,6 +1363,10 @@ describe('useAppState', () => {
         gitStatus: {
           isRepo: true,
           mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1357,6 +1409,10 @@ describe('useAppState', () => {
         gitStatus: {
           isRepo: true,
           mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1409,6 +1465,10 @@ describe('useAppState', () => {
         gitStatus: {
           isRepo: true,
           mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -1486,6 +1546,10 @@ describe('useAppState', () => {
     const conflictedStatus = {
       isRepo: true,
       mergeInProgress: true,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: 'origin/main',
+      detached: false,
       branch: 'main',
       ahead: 0,
       behind: 0,
@@ -1658,6 +1722,10 @@ describe('useAppState', () => {
       const status = {
         isRepo: true,
         mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
         branch: 'main',
         ahead: 0,
         behind: 0,
@@ -1681,6 +1749,118 @@ describe('useAppState', () => {
       const sharedLock = mockUseStashPanel.mock.calls[0][0].fileOperationLock
       expect(mockUseGitTagOperations.mock.calls[0][2]).toBe(sharedLock)
       expect(result.current.gitTag).toBe(panel)
+    })
+  })
+
+  describe('remoteSetup(初期化・origin の追加・初回 push)', () => {
+    const repoStatus: GitStatusResult = {
+      isRepo: true,
+      mergeInProgress: false,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: null,
+      detached: false,
+      branch: 'main',
+      ahead: 0,
+      behind: 0,
+      files: []
+    }
+
+    const setupStatusAndHistory = (): {
+      refreshGitStatus: ReturnType<typeof vi.fn<() => Promise<void>>>
+      refreshHistory: ReturnType<typeof vi.fn<() => Promise<void>>>
+    } => {
+      const refreshGitStatus = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+      const refreshHistory = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: repoStatus,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      mockUseGitHistory.mockReturnValue({
+        log: [],
+        branches: [],
+        tags: [],
+        hasMore: false,
+        isLoading: false,
+        loadMore: vi.fn(),
+        refresh: refreshHistory
+      })
+      return { refreshGitStatus, refreshHistory }
+    }
+
+    it('useGitRemoteSetup に gitStatus・ステータスと履歴の再取得・共有ロックを渡し、初回 push の状態と合わせて公開する', () => {
+      const { refreshGitStatus, refreshHistory } = setupStatusAndHistory()
+      const setupState = makeRemoteSetupPanelState()
+      mockUseGitRemoteSetup.mockReturnValue(setupState)
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseGitRemoteSetup).toHaveBeenCalledWith(
+        repoStatus,
+        refreshGitStatus,
+        refreshHistory,
+        expect.anything()
+      )
+      // 他の Git 操作と同じロックを渡す(別のロックだと、commit などの途中でも初期化・追加できてしまう)
+      const sharedLock = mockUseStashPanel.mock.calls[0][0].fileOperationLock
+      expect(mockUseGitRemoteSetup.mock.calls[0][3]).toBe(sharedLock)
+      const { remoteSetup } = result.current
+      expect(remoteSetup.initRepository).toBe(setupState.initRepository)
+      expect(remoteSetup.addOrigin).toBe(setupState.addOrigin)
+      // 初回 push の 5 項目は useGitRemoteOperations のもの
+      expect(remoteSetup.pushSetUpstream).toBe(result.current.pushSetUpstream)
+      expect(remoteSetup.isSettingUpstream).toBe(false)
+      expect(remoteSetup.isPushing).toBe(result.current.isPushing)
+      expect(remoteSetup.isPushBlocked).toBe(result.current.isPushBlocked)
+      expect(remoteSetup.remoteOperationError).toBe(result.current.remoteOperationError)
+    })
+
+    // useGitRemoteOperations の 4 番目の引数(refreshHistory)を渡していることを、実物のフックで確かめる(差分 3)
+    it('初回 push の後に、ステータスと履歴を取り直す', async () => {
+      const { refreshGitStatus, refreshHistory } = setupStatusAndHistory()
+      const originalPushSetUpstream = window.api.pushSetUpstream
+      window.api.pushSetUpstream = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.remoteSetup.pushSetUpstream()
+        })
+        expect(window.api.pushSetUpstream).toHaveBeenCalledOnce()
+        expect(refreshGitStatus).toHaveBeenCalled()
+        expect(refreshHistory).toHaveBeenCalled()
+      } finally {
+        window.api.pushSetUpstream = originalPushSetUpstream
+      }
+    })
+
+    // ツールバーの push の実行中は isPushing だけが真で、初回 push の実行中(isSettingUpstream)ではない。
+    // 合成で取り違えると、バナーのボタンが「push 中...」になり案内も出てしまう
+    it('ツールバーの push の実行中は、remoteSetup の isPushing だけが真になる', async () => {
+      setupStatusAndHistory()
+      mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState())
+      const originalPush = window.api.push
+      let resolvePush: () => void = () => {}
+      window.api.push = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvePush = resolve
+          })
+      )
+      try {
+        const { result } = renderHook(() => useAppState())
+        let pushing: Promise<void> = Promise.resolve()
+        act(() => {
+          pushing = result.current.push()
+        })
+        expect(result.current.remoteSetup.isPushing).toBe(true)
+        expect(result.current.remoteSetup.isSettingUpstream).toBe(false)
+        await act(async () => {
+          resolvePush()
+          await pushing
+        })
+      } finally {
+        window.api.push = originalPush
+      }
     })
   })
 

@@ -1,8 +1,10 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { CreateTagRequest, TagKind } from '@shared/types'
 import { normalizeTagName } from '@shared/tagName'
 import { TAG_CREATE_TIMEOUT_MINUTES } from '@shared/tagTimeout'
 import { validateTagMessage, validateTagName } from '../../lib/tagValidation'
+import { useFocusOnRunningEnd } from '../../hooks/useFocusOnRunningEnd'
+import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
 interface Props {
   /** 重複・階層の衝突の判定に使う既存のタグ */
@@ -57,7 +59,6 @@ export default function CreateTagDialog({
   const kindRefs = useRef<Partial<Record<TagKind, HTMLButtonElement | null>>>({})
   const nameInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
-  const wasCreatingRef = useRef(isCreating)
   const titleId = useId()
   const descriptionId = useId()
   const kindLabelId = useId()
@@ -86,19 +87,15 @@ export default function CreateTagDialog({
     if (!isCreating) onCancel()
   }
 
+  // オーバーレイで押して離したときだけ閉じる(中とオーバーレイをまたぐドラッグでは、どちら向きでも閉じない。useOverlayDismiss)
+  const overlayHandlers = useOverlayDismiss(requestCancel)
+
   // 作成中は入力欄と作成ボタンが disabled になり、ブラウザはフォーカスを body に落とす。失敗して作成中が
   // 解けても body のままだと、Escape がフォームに届かず閉じられない(Tab で中へ戻るまで)。そのため作成中が
   // 解けたとき(ダイアログが開いたまま=失敗)に、フォーカスが body かダイアログ内にあればタグ名の入力欄へ戻す。
   // 成功ではこの描画の前に閉じられている(HistorySection がアンマウントする)ため、ここには来ない
-  useEffect(() => {
-    const wasCreating = wasCreatingRef.current
-    wasCreatingRef.current = isCreating
-    if (!wasCreating || isCreating) return
-    const active = document.activeElement
-    if (active === null || active === document.body || formRef.current?.contains(active)) {
-      nameInputRef.current?.focus()
-    }
-  }, [isCreating])
+  // (useFocusOnRunningEnd。パターン 86)
+  useFocusOnRunningEnd(isCreating, nameInputRef, { containerRef: formRef })
 
   const handleKindKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>): void => {
     const delta = KIND_KEY_DELTAS[e.key]
@@ -111,7 +108,7 @@ export default function CreateTagDialog({
   }
 
   return (
-    <div className="name-input-dialog__overlay" role="presentation" onClick={requestCancel}>
+    <div className="name-input-dialog__overlay" role="presentation" {...overlayHandlers}>
       <form
         ref={formRef}
         className="name-input-dialog create-tag-dialog"

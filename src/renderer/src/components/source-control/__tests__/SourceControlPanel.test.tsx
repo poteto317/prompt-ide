@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
 import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
 import SourceControlPanel from '../SourceControlPanel'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
+import { makeRemoteSetupPanelState } from '../../../__tests__/makeRemoteSetupPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -73,12 +74,17 @@ const baseProps = {
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
   gitTag: makeGitTagPanelState(),
+  remoteSetup: makeRemoteSetupPanelState(),
   branchOperationError: null as Error | null
 }
 
 const repoStatus: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -119,6 +125,10 @@ describe('SourceControlPanel', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -225,6 +235,10 @@ describe('SourceControlPanel', () => {
     const gitStatus: GitStatusResult = {
       isRepo: true,
       mergeInProgress: false,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: 'origin/main',
+      detached: false,
       branch: 'main',
       ahead: 0,
       behind: 0,
@@ -273,6 +287,7 @@ describe('SourceControlPanel', () => {
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
         gitTag={makeGitTagPanelState()}
+        remoteSetup={makeRemoteSetupPanelState()}
         branchOperationError={null}
       />
     )
@@ -367,5 +382,121 @@ describe('SourceControlPanel', () => {
     render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} gitTag={gitTag} />)
     await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
     expect(screen.getByRole('alert')).toHaveTextContent('タグの失敗')
+  })
+
+  describe('リモートの管理', () => {
+    const notRepoStatus: GitStatusResult = {
+      ...repoStatus,
+      isRepo: false,
+      branch: null,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null
+    }
+
+    it('Git 管理外では「リポジトリを初期化」を出す', () => {
+      render(<SourceControlPanel {...baseProps} gitStatus={notRepoStatus} />)
+      expect(screen.getByText('Git リポジトリではありません')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'リポジトリを初期化' })).toBeEnabled()
+    })
+
+    // 他の Git 操作のロック中は、初期化のダイアログの「初期化」を押せない(isAnyLocked が NotRepositoryView へ届く)
+    it('Git 管理外で他の操作中(isAnyLocked)は、初期化のダイアログの「初期化」が押せない', async () => {
+      const { rerender } = render(<SourceControlPanel {...baseProps} gitStatus={notRepoStatus} />)
+      await userEvent.click(screen.getByRole('button', { name: 'リポジトリを初期化' }))
+      expect(screen.getByRole('button', { name: '初期化' })).toBeEnabled()
+      rerender(
+        <SourceControlPanel {...baseProps} gitStatus={notRepoStatus} isAnyLocked={() => true} />
+      )
+      expect(screen.getByRole('button', { name: '初期化' })).toBeDisabled()
+    })
+
+    it('remoteSetup が Git 管理外の表示まで届く(リポジトリを初期化 → 前回のエラーを消す)', async () => {
+      const remoteSetup = makeRemoteSetupPanelState()
+      render(
+        <SourceControlPanel {...baseProps} gitStatus={notRepoStatus} remoteSetup={remoteSetup} />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'リポジトリを初期化' }))
+      expect(remoteSetup.clearInitError).toHaveBeenCalledOnce()
+    })
+
+    it('リモートが 1 つも無いリポジトリでは「リモートが未設定です」のバナーを出す', () => {
+      render(
+        <SourceControlPanel
+          {...baseProps}
+          gitStatus={{ ...repoStatus, hasOrigin: false, hasRemote: false, upstream: null }}
+        />
+      )
+      expect(screen.getByText('リモートが未設定です')).toBeInTheDocument()
+    })
+
+    // git clone -o github など、origin 以外の名前のリモートだけを持つリポジトリ。既存の push / pull は
+    // 通信できるため『リモートが未設定です』は出さない。初回 push は origin 固定で拒否されるため、upstream の
+    // 無いブランチでも upstream のバナーを出さない(レビュー 8 周目)
+    it.each([
+      ['upstream あり', 'github/main'],
+      ['upstream なし(新しいブランチ)', null]
+    ])(
+      'origin 以外の名前のリモートだけなら、リモートのバナーを出さない(%s)',
+      (_label, upstream) => {
+        render(
+          <SourceControlPanel
+            {...baseProps}
+            gitStatus={{ ...repoStatus, hasOrigin: false, hasRemote: true, upstream }}
+          />
+        )
+        expect(screen.queryByText('リモートが未設定です')).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'リモートを追加' })).not.toBeInTheDocument()
+        expect(screen.queryByText(/upstream が未設定です/)).not.toBeInTheDocument()
+        expect(
+          screen.queryByRole('button', { name: '初回 push（upstream を設定）' })
+        ).not.toBeInTheDocument()
+      }
+    )
+
+    it('upstream の無いブランチでは upstream のバナーを出し、設定済みなら出さない', () => {
+      const { rerender } = render(
+        <SourceControlPanel {...baseProps} gitStatus={{ ...repoStatus, upstream: null }} />
+      )
+      expect(screen.getByText('upstream が未設定です（main）')).toBeInTheDocument()
+      rerender(<SourceControlPanel {...baseProps} gitStatus={repoStatus} />)
+      expect(screen.queryByText('upstream が未設定です（main）')).not.toBeInTheDocument()
+    })
+
+    it('remoteSetup がバナーまで届く(リモートを追加 → 前回のエラーを消す)', async () => {
+      const remoteSetup = makeRemoteSetupPanelState()
+      render(
+        <SourceControlPanel
+          {...baseProps}
+          gitStatus={{ ...repoStatus, hasOrigin: false, hasRemote: false, upstream: null }}
+          remoteSetup={remoteSetup}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'リモートを追加' }))
+      expect(remoteSetup.clearAddOriginError).toHaveBeenCalledOnce()
+    })
+
+    // 初回 push の成功の後は、ツールバーの「プッシュ」へ移す(パネルの中の印の付いたボタン)。要求の state は
+    // このパネルの useRemoteSetupFocus が持ち、バナーへ requestFocus を渡す(移す条件はフックのテストで確かめる)
+    it('バナーの初回 push に成功すると、バナーが消えた後にツールバーの「プッシュ」へフォーカスを移す', async () => {
+      const remoteSetup = makeRemoteSetupPanelState()
+      let resolvePush: (succeeded: boolean) => void = () => {}
+      remoteSetup.pushSetUpstream = () =>
+        new Promise<boolean>((resolve) => {
+          resolvePush = resolve
+        })
+      const noUpstream = { ...repoStatus, upstream: null }
+      const { rerender } = render(
+        <SourceControlPanel {...baseProps} gitStatus={noUpstream} remoteSetup={remoteSetup} />
+      )
+      await userEvent.click(screen.getByRole('button', { name: '初回 push（upstream を設定）' }))
+      // 実物では、成功の取り直しで upstream が付きバナーが消え、押したボタンにあったフォーカスは body に落ちる
+      rerender(
+        <SourceControlPanel {...baseProps} gitStatus={repoStatus} remoteSetup={remoteSetup} />
+      )
+      expect(document.body).toHaveFocus()
+      await act(async () => resolvePush(true))
+      expect(screen.getByRole('button', { name: 'プッシュ' })).toHaveFocus()
+    })
   })
 })

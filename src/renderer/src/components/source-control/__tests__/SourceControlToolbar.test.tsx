@@ -100,4 +100,13 @@ describe('SourceControlToolbar', () => {
     render(<SourceControlToolbar {...baseProps} isPullBlocked={true} />)
     expect(screen.getByRole('button', { name: 'プル' })).toBeDisabled()
   })
+
+  // 初回 push の成功の後に、フォーカスを移す先(useRemoteSetupFocus が探す)
+  it('プッシュボタンはフォーカスの移し先の印を持つ', () => {
+    render(<SourceControlToolbar {...baseProps} />)
+    expect(screen.getByRole('button', { name: 'プッシュ' })).toHaveAttribute(
+      'data-remote-setup-focus',
+      'push'
+    )
+  })
 })

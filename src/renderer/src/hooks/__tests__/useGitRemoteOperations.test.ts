@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
 
@@ -11,6 +11,7 @@ import type { FileOperationLock } from '../useFileOperationLock'
 const mockPush = vi.mocked(gitApi.push)
 const mockPull = vi.mocked(gitApi.pull)
 const mockFetchRemote = vi.mocked(gitApi.fetchRemote)
+const mockPushSetUpstream = vi.mocked(gitApi.pushSetUpstream)
 
 // useGitOperations.test.ts と同じパターン。デフォルト値(何もロックされていない
 // 状態)に overrides をマージして返す
@@ -29,6 +30,10 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 const repoStatus: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -37,6 +42,11 @@ const repoStatus: GitStatusResult = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // clearAllMocks は呼び出し履歴だけを消し、mockResolvedValue などの実装は残す。前のテストの実装が
+  // 後のテストへ漏れないよう、実装ごとリセットする(pushSetUpstream は専用の describe でリセットする)
+  mockPush.mockReset()
+  mockPull.mockReset()
+  mockFetchRemote.mockReset()
 })
 
 describe('fetchRemote', () => {
@@ -622,6 +632,10 @@ describe('isRemoteOperationDisabled', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -659,6 +673,10 @@ describe('isRemoteOperationDisabled', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -683,5 +701,301 @@ describe('isRemoteOperationDisabled', () => {
     expect(mockPush).not.toHaveBeenCalled()
     expect(mockPull).not.toHaveBeenCalled()
     expect(mockFetchRemote).not.toHaveBeenCalled()
+  })
+})
+
+describe('pushSetUpstream(初回 push)', () => {
+  const makeRefreshes = (): {
+    refreshGitStatus: ReturnType<typeof vi.fn<() => Promise<void>>>
+    refreshHistory: ReturnType<typeof vi.fn<() => Promise<void>>>
+  } => ({
+    refreshGitStatus: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    refreshHistory: vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+  })
+
+  // 保留させ、解決・失敗を後から起こせるようにする
+  const holdSetUpstream = (): { resolve: () => void; reject: (err: Error) => void } => {
+    const handlers: { resolve: () => void; reject: (err: Error) => void } = {
+      resolve: () => {},
+      reject: () => {}
+    }
+    mockPushSetUpstream.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          handlers.resolve = () => resolve()
+          handlers.reject = reject
+        })
+    )
+    return { resolve: () => handlers.resolve(), reject: (err) => handlers.reject(err) }
+  }
+
+  beforeEach(() => {
+    mockPushSetUpstream.mockReset()
+  })
+
+  it('gitApi.pushSetUpstream を呼び、ステータスと履歴を取り直して true を返す', async () => {
+    mockPushSetUpstream.mockResolvedValue(undefined)
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+    let succeeded = false
+    await act(async () => {
+      succeeded = await result.current.pushSetUpstream()
+    })
+    expect(succeeded).toBe(true)
+    expect(mockPushSetUpstream).toHaveBeenCalledOnce()
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+    expect(refreshHistory).toHaveBeenCalledOnce()
+    expect(result.current.isSettingUpstream).toBe(false)
+    expect(result.current.isPushing).toBe(false)
+    expect(result.current.remoteOperationError).toBeNull()
+  })
+
+  // 既存の呼び出し(refreshHistory を渡さない)は従来どおり動く(差分 3)
+  it('refreshHistory を渡さなければ、ステータスだけ取り直す', async () => {
+    mockPushSetUpstream.mockResolvedValue(undefined)
+    const { refreshGitStatus } = makeRefreshes()
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+    await act(async () => {
+      await result.current.pushSetUpstream()
+    })
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+  })
+
+  // push と初回 push は同じ ref と branch.<b> の設定を書くため、同時に走らせない
+  it('実行中は isSettingUpstream と isPushing が true で、ツールバーの push は実行されない', async () => {
+    const pending = holdSetUpstream()
+    mockPush.mockResolvedValue(undefined)
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+    let promise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      promise = result.current.pushSetUpstream()
+    })
+    expect(result.current.isSettingUpstream).toBe(true)
+    expect(result.current.isPushing).toBe(true)
+    await act(async () => {
+      await result.current.push()
+    })
+    expect(mockPush).not.toHaveBeenCalled()
+    await act(async () => {
+      pending.resolve()
+      await promise
+    })
+    expect(result.current.isSettingUpstream).toBe(false)
+    expect(result.current.isPushing).toBe(false)
+  })
+
+  it('ツールバーの push の実行中は実行せず false を返し、isSettingUpstream は立たない', async () => {
+    let resolvePush: () => void = () => {}
+    mockPush.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve
+        })
+    )
+    const { refreshGitStatus } = makeRefreshes()
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+    let pushPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      pushPromise = result.current.push()
+    })
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.pushSetUpstream()
+    })
+    expect(succeeded).toBe(false)
+    expect(mockPushSetUpstream).not.toHaveBeenCalled()
+    expect(result.current.isSettingUpstream).toBe(false)
+    await act(async () => {
+      resolvePush()
+      await pushPromise
+    })
+  })
+
+  // 実行中フラグは取り直しの後で下ろす(パターン 73)
+  it('取り直しが終わるまで isSettingUpstream は true のまま', async () => {
+    mockPushSetUpstream.mockResolvedValue(undefined)
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    let resolveRefresh: () => void = () => {}
+    refreshHistory.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve
+        })
+    )
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+    let promise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      promise = result.current.pushSetUpstream()
+    })
+    await waitFor(() => expect(refreshHistory).toHaveBeenCalled())
+    expect(result.current.isSettingUpstream).toBe(true)
+    await act(async () => {
+      resolveRefresh()
+      await promise
+    })
+    expect(result.current.isSettingUpstream).toBe(false)
+  })
+
+  // 履歴の取り直しが先に失敗しても、ステータスの取り直しを待ってから実行中フラグを下ろす。Promise.all では
+  // 先に失敗した時点で下ろしてしまい、upstream 未設定の古い表示のまま初回 push を押せる(パターン 73)
+  it('履歴の取り直しが即失敗しても、ステータスの取り直しが終わるまで isSettingUpstream は true のまま', async () => {
+    mockPushSetUpstream.mockResolvedValue(undefined)
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    let resolveStatus: () => void = () => {}
+    refreshGitStatus.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveStatus = resolve
+        })
+    )
+    refreshHistory.mockRejectedValueOnce(new Error('履歴の取得に失敗'))
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+    let promise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      promise = result.current.pushSetUpstream()
+    })
+    await waitFor(() => expect(refreshHistory).toHaveBeenCalled())
+    // 履歴の失敗が処理されるまで待つ(Promise.all なら、ここで実行中フラグが下りる)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(result.current.isSettingUpstream).toBe(true)
+    expect(result.current.isPushing).toBe(true)
+    let second = true
+    await act(async () => {
+      second = await result.current.pushSetUpstream()
+    })
+    expect(second).toBe(false)
+    expect(mockPushSetUpstream).toHaveBeenCalledOnce()
+    let succeeded = false
+    await act(async () => {
+      resolveStatus()
+      succeeded = await promise
+    })
+    expect(succeeded).toBe(true)
+    expect(result.current.isSettingUpstream).toBe(false)
+  })
+
+  // 取り直しの失敗で、成功した初回 push を失敗にしない(パターン 52)
+  it.each([
+    ['ステータス', 'status'],
+    ['履歴', 'history']
+  ] as const)(
+    '%sの取り直しが失敗しても、成功として true を返しエラーを出さない',
+    async (_label, which) => {
+      mockPushSetUpstream.mockResolvedValue(undefined)
+      const { refreshGitStatus, refreshHistory } = makeRefreshes()
+      ;(which === 'status' ? refreshGitStatus : refreshHistory).mockRejectedValueOnce(
+        new Error('取り直しに失敗')
+      )
+      const { result } = renderHook(() =>
+        useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+      )
+      let succeeded = false
+      await act(async () => {
+        succeeded = await result.current.pushSetUpstream()
+      })
+      expect(succeeded).toBe(true)
+      expect(result.current.remoteOperationError).toBeNull()
+      expect(result.current.isSettingUpstream).toBe(false)
+    }
+  )
+
+  it('失敗は remoteOperationError に入れて false を返し、取り直しはする', async () => {
+    mockPushSetUpstream.mockRejectedValue(
+      new Error('コミットが無いため、初回 push できません。先にコミットしてください')
+    )
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.pushSetUpstream()
+    })
+    expect(succeeded).toBe(false)
+    expect(result.current.remoteOperationError?.message).toBe(
+      'コミットが無いため、初回 push できません。先にコミットしてください'
+    )
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+    expect(refreshHistory).toHaveBeenCalledOnce()
+  })
+
+  // パネル上部の前回のエラーが、再試行の実行中に残らない(パターン 87)
+  it('再試行の開始時に前回のエラーを消す', async () => {
+    mockPushSetUpstream.mockRejectedValueOnce(new Error('前回の失敗'))
+    const { refreshGitStatus } = makeRefreshes()
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+    await act(async () => {
+      await result.current.pushSetUpstream()
+    })
+    expect(result.current.remoteOperationError?.message).toBe('前回の失敗')
+    const pending = holdSetUpstream()
+    let promise: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      promise = result.current.pushSetUpstream()
+    })
+    expect(result.current.remoteOperationError).toBeNull()
+    await act(async () => {
+      pending.resolve()
+      await promise
+    })
+  })
+
+  it.each([
+    ['リポジトリが無い(null)', null, false],
+    ['ロック中', repoStatus, true]
+  ] as Array<[string, GitStatusResult | null, boolean]>)(
+    '%s なら実行せず false を返す',
+    async (_label, status, locked) => {
+      const { refreshGitStatus } = makeRefreshes()
+      const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(locked) })
+      const { result } = renderHook(() => useGitRemoteOperations(status, refreshGitStatus, lock))
+      let succeeded = true
+      await act(async () => {
+        succeeded = await result.current.pushSetUpstream()
+      })
+      expect(succeeded).toBe(false)
+      expect(mockPushSetUpstream).not.toHaveBeenCalled()
+    }
+  )
+
+  // pull の lockGlobal(全体ロック)とは別に、pull の実行中フラグでも止めることを確かめるため、
+  // lockGlobal が何もしないロックを渡す
+  it('pull の実行中は実行せず false を返す', async () => {
+    let resolvePull: () => void = () => {}
+    mockPull.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePull = resolve
+        })
+    )
+    const { refreshGitStatus } = makeRefreshes()
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, makeFileLock())
+    )
+    let pullPromise: Promise<void> = Promise.resolve()
+    act(() => {
+      pullPromise = result.current.pull()
+    })
+    let succeeded = true
+    await act(async () => {
+      succeeded = await result.current.pushSetUpstream()
+    })
+    expect(succeeded).toBe(false)
+    expect(mockPushSetUpstream).not.toHaveBeenCalled()
+    await act(async () => {
+      resolvePull()
+      await pullPromise
+    })
   })
 })

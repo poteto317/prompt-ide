@@ -5,6 +5,7 @@ import Sidebar from '../Sidebar'
 import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../types'
 import { sidebarTitles } from '../../config/sidebarTitles'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
+import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -95,6 +96,7 @@ const defaultProps = {
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
   gitTag: makeGitTagPanelState(),
+  remoteSetup: makeRemoteSetupPanelState(),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),
@@ -137,6 +139,10 @@ describe('Sidebar', () => {
         gitStatus={{
           isRepo: true,
           mergeInProgress: true,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -157,6 +163,10 @@ describe('Sidebar', () => {
         gitStatus={{
           isRepo: true,
           mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false,
           branch: 'main',
           ahead: 0,
           behind: 0,
@@ -167,6 +177,31 @@ describe('Sidebar', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
     expect(gitTag.clearError).toHaveBeenCalledOnce()
+  })
+
+  it('source-control: remoteSetup がバナーまで届く', async () => {
+    const remoteSetup = makeRemoteSetupPanelState()
+    render(
+      <Sidebar
+        activePanel="source-control"
+        {...defaultProps}
+        gitStatus={{
+          isRepo: true,
+          mergeInProgress: false,
+          hasOrigin: false,
+          hasRemote: false,
+          upstream: null,
+          detached: false,
+          branch: 'main',
+          ahead: 0,
+          behind: 0,
+          files: []
+        }}
+        remoteSetup={remoteSetup}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'リモートを追加' }))
+    expect(remoteSetup.clearAddOriginError).toHaveBeenCalledOnce()
   })
 
   it('prompts: ヘッダーが表示され PromptsPanel が描画される', () => {

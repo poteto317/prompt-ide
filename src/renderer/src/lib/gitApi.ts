@@ -157,3 +157,18 @@ export function stashDrop(sha: string): Promise<void> {
 export function createTag(request: CreateTagRequest): Promise<void> {
   return window.api.createTag(request)
 }
+
+// Git 管理外のフォルダに空のリポジトリを作る(最初のブランチ名を渡す)
+export function initRepository(branch: string): Promise<void> {
+  return window.api.initRepository(branch)
+}
+
+// リモート origin を追加する(この時点では通信しない)
+export function addOrigin(url: string): Promise<void> {
+  return window.api.addOrigin(url)
+}
+
+// 現在のブランチを origin へ送り、upstream を設定する
+export function pushSetUpstream(): Promise<void> {
+  return window.api.pushSetUpstream()
+}

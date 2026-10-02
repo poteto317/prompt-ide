@@ -1,3 +1,5 @@
+import type { RemoteSetupFocusTarget } from '../../lib/remoteSetupState'
+
 interface Props {
   gitLoading: boolean
   onRefresh: () => void
@@ -64,6 +66,8 @@ export default function SourceControlToolbar({
       <button
         type="button"
         className="source-control-panel__push-btn"
+        // 初回 push の成功の後のフォーカスの移し先(useRemoteSetupFocus が探す)。値は RemoteSetupFocusTarget と型で結ぶ
+        data-remote-setup-focus={'push' satisfies RemoteSetupFocusTarget}
         onClick={onPush}
         disabled={isRemoteOperationDisabled || isPushing || isPushBlocked}
         aria-label={isPushing ? 'プッシュ中' : 'プッシュ'}

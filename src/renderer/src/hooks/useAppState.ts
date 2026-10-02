@@ -22,6 +22,7 @@ import { useStashPanel } from './useStashPanel'
 import { useMergeState } from './useMergeState'
 import { useConflictFile } from './useConflictFile'
 import { useGitTagOperations } from './useGitTagOperations'
+import { useGitRemoteSetup } from './useGitRemoteSetup'
 import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
@@ -31,6 +32,7 @@ import type {
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
+  RemoteSetupPanelState,
   StashPanelState
 } from '../types'
 import { isConflictedFile, isStagedFile, isUnstagedFile } from '../lib/gitUtils'
@@ -66,6 +68,8 @@ type AppState = {
   discardAll: DiscardAllState
   /** タグの作成の状態と操作(履歴セクションの「タグを作成」とダイアログ) */
   gitTag: GitTagPanelState
+  /** リモートの管理の状態と操作(Git 管理外の「リポジトリを初期化」、状態バナーの「リモートを追加」「初回 push」) */
+  remoteSetup: RemoteSetupPanelState
   /** マージ中バナーの状態と、マージの完了・中止の操作 */
   mergeState: MergeStatePanelState
   /** 未解決ファイルの解決ビューの状態と操作 */
@@ -101,11 +105,6 @@ export function useAppState(): AppState {
   // 実行中でももう片方の操作が弾かれず、index への同時書き込みが競合してしまう
   const fileOperationLock = useFileOperationLock()
   const gitOperations = useGitOperations(git.refreshGitStatus, fileOperationLock)
-  const gitRemoteOperations = useGitRemoteOperations(
-    git.gitStatus,
-    git.refreshGitStatus,
-    fileOperationLock
-  )
   const diffTabs = useDiffTabs()
   const diffOperations = useDiffOperations(
     diffTabs.activeDiffTab,
@@ -114,6 +113,14 @@ export function useAppState(): AppState {
     fileOperationLock
   )
   const gitHistory = useGitHistory(fileSystem.folderPath)
+  // 初回 push(pushSetUpstream)の後は upstream と履歴のリモートの ref が変わるため、履歴も取り直す(差分 3)。
+  // 履歴の再取得(gitHistory.refresh)に依存するため、gitHistory より後に配置する
+  const gitRemoteOperations = useGitRemoteOperations(
+    git.gitStatus,
+    git.refreshGitStatus,
+    fileOperationLock,
+    gitHistory.refresh
+  )
   // ブランチ切替はブランチ一覧の再取得(gitHistory.refresh)に依存するため、
   // gitHistory より後に配置する必要がある
   const gitBranchOperations = useGitBranchOperations(
@@ -125,6 +132,23 @@ export function useAppState(): AppState {
   // タグの作成は作業ツリーを変えないため、再取得は履歴(ログ・ブランチ・タグ)だけ。他の Git 操作の
   // 途中(HEAD が動く間)は実行しないよう、ブランチ操作などと同じロックを渡す(ロック自体は取らない)
   const gitTag = useGitTagOperations(git.gitStatus, gitHistory.refresh, fileOperationLock)
+  // 初期化・origin の追加。他の Git 操作の途中は実行しないよう、同じロックを渡す(ロック自体は取らない)
+  const gitRemoteSetup = useGitRemoteSetup(
+    git.gitStatus,
+    git.refreshGitStatus,
+    gitHistory.refresh,
+    fileOperationLock
+  )
+  // 初回 push は push と実行中フラグ・エラーの表示先を共有するため useGitRemoteOperations が持つ。
+  // バナーに渡す状態として 1 つにまとめる(差分 8)
+  const remoteSetup: RemoteSetupPanelState = {
+    ...gitRemoteSetup,
+    isSettingUpstream: gitRemoteOperations.isSettingUpstream,
+    isPushing: gitRemoteOperations.isPushing,
+    isPushBlocked: gitRemoteOperations.isPushBlocked,
+    remoteOperationError: gitRemoteOperations.remoteOperationError,
+    pushSetUpstream: gitRemoteOperations.pushSetUpstream
+  }
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
@@ -417,6 +441,7 @@ export function useAppState(): AppState {
     discardHunk,
     discardAll,
     gitTag,
+    remoteSetup,
     mergeState,
     conflictFile,
     isActiveFileConflicted

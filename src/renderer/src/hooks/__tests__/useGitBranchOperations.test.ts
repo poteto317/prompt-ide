@@ -32,6 +32,10 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 const repoStatus: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
+  hasOrigin: true,
+  hasRemote: true,
+  upstream: 'origin/main',
+  detached: false,
   branch: 'main',
   ahead: 0,
   behind: 0,
@@ -254,6 +258,10 @@ describe('checkoutBranch', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
@@ -315,6 +323,10 @@ describe('checkoutBranch', () => {
     const notRepo: GitStatusResult = {
       isRepo: false,
       mergeInProgress: false,
+      hasOrigin: false,
+      hasRemote: false,
+      upstream: null,
+      detached: false,
       branch: null,
       ahead: 0,
       behind: 0,
