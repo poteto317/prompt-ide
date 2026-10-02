@@ -108,6 +108,10 @@ export default function RemoteSetupInputDialog({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         aria-busy={showRunningNotice}
+        // フォーム自体も focus を受けられるようにする(Tab の順には入らない)。ダイアログ内の文字・余白をクリックしたとき、
+        // フォーカスが body に落ちず form に移るため、Escape が下の onKeyDown に届いて閉じられる。実行中に操作対象が
+        // すべて disabled になったとき useDialogFocusTrap がフォーカスを置く先もこの form(実行の有無で挙動を変えない)
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           // IME の変換を取り消す Escape ではダイアログを閉じない(入力中の値が消えるため)

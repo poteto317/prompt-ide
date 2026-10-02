@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import InitRepositoryDialog from '../InitRepositoryDialog'
@@ -107,5 +107,26 @@ describe.each([
       await userEvent.tab({ shift: true })
       expect(dialog).toContainElement(document.activeElement as HTMLElement)
     }
+  })
+
+  // ダイアログ内の文字・余白のクリックでフォーカスが body に落ちると、Escape(form の onKeyDown)が届かず閉じられない。
+  // form 自体が focus を受ける(tabindex=-1)ため、クリックの後もフォーカスはダイアログ内に残る
+  it('説明文をクリックした後でも、Escape で閉じられる', async () => {
+    const onCancel = vi.fn()
+    render(<Dialog {...common} onCancel={onCancel} isRunning={false} onSubmit={vi.fn()} />)
+    const dialog = screen.getByRole('dialog', { name })
+    await userEvent.click(within(dialog).getAllByRole('paragraph')[1])
+    expect(dialog).toHaveFocus()
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).toHaveBeenCalledTimes(1)
+  })
+
+  it('実行中は、説明文をクリックした後の Escape でも閉じない', async () => {
+    const onCancel = vi.fn()
+    render(<Dialog {...common} onCancel={onCancel} isRunning={true} onSubmit={vi.fn()} />)
+    const dialog = screen.getByRole('dialog', { name })
+    await userEvent.click(within(dialog).getAllByRole('paragraph')[1])
+    await userEvent.keyboard('{Escape}')
+    expect(onCancel).not.toHaveBeenCalled()
   })
 })
