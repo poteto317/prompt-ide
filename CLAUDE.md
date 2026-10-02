@@ -21,15 +21,9 @@
   ```
   文字化けした既存本文は再利用せず、正常なテキストで上書きすること。
 
-# PR レビューフロー
+# PR レビュー対応フロー
 
-**指摘が 0 件になるまで自走すること。** ユーザーに「レビューが来ているか」を目視で確認させたり、
-1 周ごとに指示を待ったりしない。巡回数が増えたことを理由に打ち切らない。
-
-具体的なコマンド・スクリプト・落とし穴は [docs/pr-review-loop.md](docs/pr-review-loop.md) にまとめてある。
-セッションをまたぐ場合や別の端末で作業する場合も、この手順書に従えば同じループを再現できる。
-
-PR へのコミットをプッシュした後は、以下を 1 周として繰り返す。
+PR にレビュー指摘がある場合は、以下の手順に従って対応する。
 
 1. **指摘の取得**
    - `gh api graphql` で `reviewThreads`（`id`, `isResolved`, `comments` を含む）を取得する
@@ -61,12 +55,6 @@ PR へのコミットをプッシュした後は、以下を 1 周として繰�
 
 7. **PR 本文の更新**
    - コミットごとに「指摘 → 対応」の表を追記する。対応しない判断とその理由もここに残す
-
-8. **再レビューの依頼と監視**
-   - `bash scripts/request-copilot-review.sh <owner> <repo> <pr>` で依頼し、**登録されたことを出力で確認する**
-   - `bash scripts/watch-pr-review.sh <owner> <repo> <pr> "<baseline>"` で監視を張り直す
-   - 収束の判断は監視が出す `NO FINDINGS` で行う。`NO PENDING REVIEW` や `WATCH TIMEOUT` は「指摘なし」ではない
-   - `NO FINDINGS` が出た場合も、GraphQL で `reviews` と `reviewThreads` の最新を直接確認してから収束と判断する
 
 # コーディングルール（汎用）
 
@@ -211,3 +199,4 @@ const useFoo = ({ onConfirm = confirm } = {}) => { ... };
 ## 禁止事項
 
 - **`git commit` / `git push` の自動実行** — ユーザーの明示的な指示なしにコミット・プッシュを行わない
+- **Copilot へのレビュー依頼・監視の実行** — `scripts/request-copilot-review.sh` や `scripts/watch-pr-review.sh`、`gh pr review --request` などによる Copilot へのレビュー依頼やその監視は絶対に行わない
