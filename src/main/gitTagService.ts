@@ -1,4 +1,4 @@
-import simpleGit, { GitError } from 'simple-git'
+import simpleGit, { GitError, GitPluginError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { CreateTagRequest } from '@shared/types'
 import { getTagNameCollision, getTagNameRuleViolation, normalizeTagName } from '@shared/tagName'
@@ -28,6 +28,13 @@ const COLLISION_MESSAGES: Record<
   branch: (_collision, name) => `同じ名前のブランチが存在するため、タグを作成できません: ${name}`
 }
 
+// git の呼び出しを打ち切るまでの時間(stdout / stderr に何も出ない時間。simple-git の timeout プラグインの block)。
+// 署名付きの注釈付きタグでは、git tag がパスフレーズの入力(gpg の pinentry・ssh-keygen)を待っていつまでも
+// 終わらないことがある(実機 git 2.50.1 で確認)。作成中のダイアログはキャンセルできないため、打ち切らないと
+// アプリを再起動するまで戻れない。GUI の pinentry でパスフレーズを入力するのに足りる長さとして 120 秒にする。
+// 署名しない作成・検証の git 呼び出しは一瞬で終わるため、同じ値でも影響しない
+export const TAG_CREATE_TIMEOUT_MS = 120_000
+
 const TAGS_NAMESPACE = 'refs/tags/'
 const HEADS_NAMESPACE = 'refs/heads/'
 
@@ -37,6 +44,14 @@ function invalidTagNameError(name: string): Error {
 
 function errorDetail(err: unknown): string {
   return err instanceof Error ? err.message.trim() : String(err).trim()
+}
+
+// timeout プラグインは英語の固定文言("block timeout reached")の GitPluginError を投げるため、原因の推測を添えた
+// 日本語にする。timeout 以外のプラグインのエラーは従来どおり作成の失敗として git のメッセージを添える
+function tagCreateTimeoutError(name: string): Error {
+  return new Error(
+    `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: ${name}`
+  )
 }
 
 function tagCreateFailureError(detail: string): Error {
@@ -152,18 +167,27 @@ function buildTagArgs(request: CreateTagRequest): string[] {
 }
 
 // 現在の HEAD にタグを作る。署名の失敗・他のプロセスとの競合などの git のエラーは、git のメッセージを
-// 添えて返す(署名の設定は上書きしない)。終了コード 0 でもタグができたとは限らないため、
+// 添えて返す(署名の設定は上書きしない)。署名の入力待ちなどで時間内に終わらなければ git を止めて
+// 日本語の失敗にする(timeoutMs はテストで短くするための引数)。git が ref を書くのは署名の後のため、
+// 打ち切ってもタグも ref のロックも残らない(実機で確認)。終了コード 0 でもタグができたとは限らないため、
 // 作成後に ref を確かめる(パターン 69)
-export async function createTag(folderPath: string, rawRequest: CreateTagRequest): Promise<void> {
+export async function createTag(
+  folderPath: string,
+  rawRequest: CreateTagRequest,
+  timeoutMs: number = TAG_CREATE_TIMEOUT_MS
+): Promise<void> {
   // 名前は前後の空白を除き NFC にそろえる(@shared/tagName の normalizeTagName。renderer の送信値と同じ)。
   // 検証・衝突の判定・git tag・作成後の確認のすべてで、この名前を使う(NFD のまま渡すと、
   // check-ref-format を通り、既存の NFC のタグの解決を奪うか、作成後の確認で見つからない。実機で確認)
   const request: CreateTagRequest = { ...rawRequest, name: normalizeTagName(rawRequest.name) }
-  const git = simpleGit(folderPath)
+  const git = simpleGit(folderPath, { timeout: { block: timeoutMs } })
   await assertCreatableTag(git, request)
   try {
     await git.raw(buildTagArgs(request))
   } catch (err) {
+    if (err instanceof GitPluginError && err.plugin === 'timeout') {
+      throw tagCreateTimeoutError(request.name)
+    }
     throw tagCreateFailureError(errorDetail(err))
   }
   // 確認の reject も成功扱いにせず、英語の GitError を見せずに作成の失敗として投げる(パターン 74)

@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { CreateTagRequest } from '@shared/types'
@@ -356,6 +364,70 @@ describe('gitTagService(実 git)', () => {
 
     it('軽量タグは影響を受けず作れる', async () => {
       await createTag(repo, lightweight('v1'))
+      expect(objectType('v1')).toBe('commit')
+    })
+  })
+
+  // 署名のパスフレーズの入力待ち(pinentry・ssh-keygen)では git tag がいつまでも終わらない(実機 git 2.50.1 で
+  // 確認)。入力を待ち続ける署名プログラムで再現し、短いタイムアウトを注入して打ち切られることを固定する。
+  // 署名プログラムは sh のスクリプトのため Windows では実行しない
+  describe.skipIf(process.platform === 'win32')('署名が入力を待ち続ける環境', () => {
+    const SHORT_TIMEOUT_MS = 1500
+    let scriptDir: string
+    let pidFile: string
+
+    const isAlive = (pid: number): boolean => {
+      try {
+        process.kill(pid, 0)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    beforeEach(() => {
+      commit('a.txt', 'one')
+      scriptDir = mkdtempSync(join(tmpdir(), 'tag-hanging-gpg-'))
+      pidFile = join(scriptDir, 'pids')
+      const script = join(scriptDir, 'hanging-gpg.sh')
+      // 自分の pid と親(git)の pid を書き、入力を待つ代わりに眠り続ける
+      writeFileSync(script, `#!/bin/sh\necho "$$ $PPID" > '${pidFile}'\nexec sleep 300\n`)
+      chmodSync(script, 0o755)
+      runGit(repo, 'config', 'tag.forceSignAnnotated', 'true')
+      runGit(repo, 'config', 'gpg.program', script)
+      vi.stubEnv('GIT_EDITOR', 'false')
+    })
+
+    afterEach(() => {
+      // git が打ち切られた後も署名プログラムは孤児として残る(既知の制約)。テストの後始末として止める
+      if (existsSync(pidFile)) {
+        const [signerPid] = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number)
+        if (isAlive(signerPid)) process.kill(signerPid, 'SIGKILL')
+      }
+      rmSync(scriptDir, { recursive: true, force: true })
+    })
+
+    it('注釈付きタグは時間内に終わらなければ日本語で失敗し、git を止め、タグもロックも残さない', async () => {
+      await expect(createTag(repo, annotated('v1', 'm'), SHORT_TIMEOUT_MS)).rejects.toThrow(
+        'タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: v1'
+      )
+      const [, gitPid] = readFileSync(pidFile, 'utf8').trim().split(' ').map(Number)
+      expect(isAlive(gitPid)).toBe(false)
+      expect(tagNames()).toEqual([])
+      expect(existsSync(join(repo, '.git', 'refs', 'tags', 'v1.lock'))).toBe(false)
+    })
+
+    it('タイムアウトの後、署名の設定を直せば同じ名前で作れる(ref のロックが残らない)', async () => {
+      await expect(createTag(repo, annotated('v1', 'm'), SHORT_TIMEOUT_MS)).rejects.toThrow(
+        /時間内に終わりませんでした/
+      )
+      runGit(repo, 'config', 'tag.forceSignAnnotated', 'false')
+      await createTag(repo, annotated('v1', 'm'), SHORT_TIMEOUT_MS)
+      expect(objectType('v1')).toBe('tag')
+    })
+
+    it('軽量タグは署名しないため影響を受けず作れる', async () => {
+      await createTag(repo, lightweight('v1'), SHORT_TIMEOUT_MS)
       expect(objectType('v1')).toBe('commit')
     })
   })

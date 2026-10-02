@@ -1115,6 +1115,10 @@
 - [ ] **TAG-028** 端末で `git tag "$(printf 'v11-\xc3\xa9')"` を実行して NFC の `v11-é` を作り、パネルの `更新` を押す。`printf 'v11-e\xcc\x81' | pbcopy` で NFD の同じ見た目の名前をクリップボードに入れ、`タグ名` に貼り付ける → `同じ名前のタグが既に存在します` が表示され、`作成` が押せない
 - [ ] **TAG-029** 端末で `git tag release/2024.01.15_hotfix_for_customer_contoso_emergency_patch_v2` を実行して長い名前のタグを作り、パネルの `更新` を押す。`タグを作成` を開き、タグ名にその名前の後ろへ `/x` を付けて入力する → 赤いエラー文 `既存のタグ release/2024.01.15_hotfix_for_customer_contoso_emergency_patch_v2 と名前が衝突します` が、名前を途中で切らず全文のまま、ダイアログの右端からはみ出さず、枠の内側で折り返して表示される。アプリは暗色固定でテーマ切替はない
 
+### 署名の入力待ちの打ち切り
+
+- [ ] **TAG-030** 端末で `printf '#!/bin/sh\nexec sleep 600\n' > "$TMPDIR/hang-gpg" && chmod +x "$TMPDIR/hang-gpg" && git config tag.forceSignAnnotated true && git config gpg.program "$TMPDIR/hang-gpg"` を実行し、`注釈付き`・名前 `v12`・メッセージ `m` で `作成` を押す → 約 2 分(120 秒)間は `作成中...` のまま閉じられず、その後ダイアログ内に `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: v12` が表示され、`タグ名` の入力欄にフォーカスが戻る。`git tag -l v12` は空で、`.git/refs/tags/v12.lock` は無い。続けて端末で `git config --unset tag.forceSignAnnotated` を実行してから同じ内容で `作成` を押すと、ダイアログが閉じて `v12` が作られる(`git cat-file -t v12` が `tag`)。確認後 `git config --unset gpg.program` と `pkill -f '^sleep 600$'`(残った署名プログラムを止める)で戻す
+
 ## 設定
 
 ### Anthropic API キー

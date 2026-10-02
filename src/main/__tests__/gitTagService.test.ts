@@ -3,15 +3,27 @@ import type { CreateTagRequest } from '@shared/types'
 
 // simple-git の GitError(git プロセスが失敗した)と、それ以外の失敗(spawn の失敗等)を区別するためのモック
 const MockGitError = vi.hoisted(() => class MockGitError extends Error {})
+// simple-git のプラグイン(timeout プラグイン等)が投げるエラー。実物と同じく plugin プロパティを持つ
+const MockGitPluginError = vi.hoisted(
+  () =>
+    class MockGitPluginError extends MockGitError {
+      plugin?: string
+      constructor(_task?: unknown, plugin?: string, message?: string) {
+        super(message)
+        this.plugin = plugin
+      }
+    }
+)
 const mockRaw = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() => vi.fn(() => ({ raw: mockRaw })))
 
 vi.mock('simple-git', () => ({
   default: mockSimpleGit,
-  GitError: MockGitError
+  GitError: MockGitError,
+  GitPluginError: MockGitPluginError
 }))
 
-import { COMMITTER_UNKNOWN_MESSAGE, createTag } from '../gitTagService'
+import { COMMITTER_UNKNOWN_MESSAGE, TAG_CREATE_TIMEOUT_MS, createTag } from '../gitTagService'
 
 const HEAD_SHA = `${'a'.repeat(40)}\n`
 const TAG_SHA = `${'b'.repeat(40)}\n`
@@ -97,7 +109,9 @@ describe('createTag の実行', () => {
   it('軽量タグは tag --no-sign -- <name> HEAD を呼ぶ(付ける先を HEAD と明示する)', async () => {
     setupRaw()
     await createTag('/project', lightweight('v1.0.0'))
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      timeout: { block: TAG_CREATE_TIMEOUT_MS }
+    })
     expect(rawCalls()).toContainEqual(['tag', '--no-sign', '--', 'v1.0.0', 'HEAD'])
   })
 
@@ -438,6 +452,33 @@ describe('作成の失敗', () => {
     setupRaw({ createdTag: '' })
     await expect(createTag('/project', lightweight('v1'))).rejects.toMatchObject({
       message: 'タグを作成できませんでした'
+    })
+  })
+
+  // 署名のパスフレーズの入力待ち(pinentry・ssh-keygen)では git tag がいつまでも終わらない(実機 git 2.50.1 で
+  // 確認)。simple-git の timeout プラグインで打ち切る。timeout は引数で差し替えられる(統合テスト用)
+  it('simple-git に timeout(既定は TAG_CREATE_TIMEOUT_MS、引数で差し替え可)を渡す', async () => {
+    setupRaw()
+    await createTag('/project', lightweight('v1'), 1500)
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', { timeout: { block: 1500 } })
+    expect(TAG_CREATE_TIMEOUT_MS).toBe(120_000)
+  })
+
+  it('git tag がタイムアウト(GitPluginError, plugin: timeout)したら日本語の文言にする', async () => {
+    setupRaw({
+      tagError: new MockGitPluginError(undefined, 'timeout', 'block timeout reached')
+    })
+    await expect(createTag('/project', annotated('v1', 'm'))).rejects.toMatchObject({
+      message: 'タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: v1'
+    })
+  })
+
+  it('timeout 以外のプラグインのエラーは従来どおり git のメッセージを添えて投げる', async () => {
+    setupRaw({
+      tagError: new MockGitPluginError(undefined, 'spawn.after', 'some other plugin error')
+    })
+    await expect(createTag('/project', annotated('v1', 'm'))).rejects.toMatchObject({
+      message: 'タグを作成できませんでした: some other plugin error'
     })
   })
 })
