@@ -1107,7 +1107,7 @@
 - [ ] **TAG-023** 名前 `v6` を入力して `作成` を素早く 2 回押す → タグ `v6` が 1 つだけ作られ、エラーは表示されない
 - [ ] **TAG-024** 端末で `printf '#!/bin/sh\nsleep 5\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit && echo 3 >> a.txt && git add a.txt` を実行して `更新` を押し、コミット欄にメッセージを入れてコミットする → コミットが終わるまでの約 5 秒間、`タグを作成` ボタンは半透明で押せず、コミットが終わると押せるようになる。確認後 `rm .git/hooks/pre-commit` で戻す
 - [ ] **TAG-025** ダイアログ全体を見る → 暗色の背景で、選択中の種類(`軽量` / `注釈付き`)が青く強調され、`作成` が押せない間は半透明になっている
-- [ ] **TAG-026** 端末で `printf '#!/bin/sh\nsleep 5\nexit 1\n' > "$TMPDIR/slow-gpg" && chmod +x "$TMPDIR/slow-gpg" && git config tag.gpgSign true && git config gpg.program "$TMPDIR/slow-gpg"` を実行し、`注釈付き`・名前 `v9`・メッセージ `m` で `作成` を押す → 約 5 秒間は `作成中...` で、ダイアログ内に `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` の案内が出て、`キャンセル` は半透明で押せず、Escape キーやダイアログの外側のクリックでも閉じない。5 秒後、案内が消えてダイアログ内に `タグを作成できませんでした: ` に続く git のエラーが表示され、`タグ名` の入力欄にフォーカスが戻る。そのまま Escape キーを押すとダイアログが閉じ、`タグを作成` ボタンにフォーカスが戻る(`キャンセル` でも閉じられる)。確認後 `git config --unset tag.gpgSign` と `git config --unset gpg.program` で戻す
+- [ ] **TAG-026** 端末で `printf '#!/bin/sh\nsleep 5\nexit 1\n' > "$TMPDIR/slow-gpg" && chmod +x "$TMPDIR/slow-gpg" && git config tag.gpgSign true && git config gpg.program "$TMPDIR/slow-gpg"` を実行し、`注釈付き`・名前 `v9`・メッセージ `m` で `作成` を押す → 約 5 秒間は `作成中...` で、ダイアログ内に `作成中です。署名の入力待ちなどで最大 2 分かかることがあります` の案内が出て、`キャンセル` は半透明で押せず、Escape キーやダイアログの外側のクリックでも閉じない。5 秒後、案内が消えてダイアログ内に `タグを作成できませんでした: ` に続く git のエラーが表示され、`タグ名` の入力欄にフォーカスが戻る。そのまま `作成` を押して再試行すると、作成中の約 5 秒間は前回のエラーが消えて案内だけが出て、5 秒後に再び同じエラーが表示される(VoiceOver を有効にしていれば、2 回目のエラーも読み上げられる)。そのまま Escape キーを押すとダイアログが閉じ、`タグを作成` ボタンにフォーカスが戻る(`キャンセル` でも閉じられる)。確認後 `git config --unset tag.gpgSign` と `git config --unset gpg.program` で戻す
 
 ### 名前の Unicode 正規化(NFC / NFD)
 

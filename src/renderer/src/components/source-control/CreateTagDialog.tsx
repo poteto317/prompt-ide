@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { CreateTagRequest, TagKind } from '@shared/types'
 import { normalizeTagName } from '@shared/tagName'
+import { TAG_CREATE_TIMEOUT_MINUTES } from '@shared/tagTimeout'
 import { validateTagMessage, validateTagName } from '../../lib/tagValidation'
 
 interface Props {
@@ -33,10 +34,7 @@ const KIND_KEY_DELTAS: Partial<Record<string, number>> = {
   ArrowUp: -1
 }
 
-// 作成中の打ち切りまでの時間(分)。main の TAG_CREATE_TIMEOUT_MS(120 秒。src/main/gitTagService.ts)と
-// 合わせる。renderer は main のモジュールを import できないため値を持ち、TAG_CREATE_TIMEOUT_MS を変えたら
-// ここも直す(gitTagService.test.ts の TAG_CREATE_TIMEOUT_MS の値のテストにも同じ注記がある)
-const TAG_CREATE_TIMEOUT_MINUTES = 2
+// 作成中の打ち切りまでの時間(分)は、main が git を打ち切る時間と同じ @shared/tagTimeout の定数から組み立てる
 const CREATING_STATUS_MESSAGE = `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
 
 // タグの作成ダイアログ(名前・種類・メッセージ)。NameInputDialog は名前 1 つの入力の前提のため、

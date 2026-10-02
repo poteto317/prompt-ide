@@ -40,6 +40,12 @@ export function useGitTagOperations(
         isRunningRef.current = busy
         setIsCreating(busy)
       },
+      // 再試行の作成中に前回のエラー(role="alert")を残さない。残すと作成中の案内(role="status")と同時に出て、
+      // 同じ文言で再び失敗したときに alert の DOM が変わらず読み上げられない(PR #41 の 3 周目のレビュー)。
+      // 開始時に null にしておけば、再び失敗したときに alert が作り直される。onStart は isBusy で実行しない場合には
+      // 呼ばれないため、ロック中などで何も起きないときは表示中のエラーを消さない。
+      // useRunExclusiveGitOperation の共通の挙動(execute の後にだけ setError する)は他の操作に波及するため変えない
+      onStart: () => setError(null),
       execute: () => gitApi.createTag(request)
     })
 

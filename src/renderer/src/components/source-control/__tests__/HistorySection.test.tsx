@@ -456,4 +456,31 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
+
+  // 再試行の作成中に前回の alert が残ると、作成中の案内(status)と同時に出て、同じ文言で再び失敗したときに
+  // alert の DOM が変わらず読み上げられない(PR #41 の 3 周目のレビュー)
+  it('失敗の後に再試行すると、作成中は alert が消えて status だけになり、同じ文言で再び失敗すると alert が作り直される', async () => {
+    const pending = holdCreate()
+    render(<Harness />)
+    await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
+    const input = screen.getByRole('textbox', { name: 'タグ名' })
+    await userEvent.type(input, 'v2{Enter}')
+    await act(async () => {
+      pending.reject(new Error('タグを作成できませんでした: x'))
+    })
+    const firstAlert = screen.getByRole('alert')
+    expect(firstAlert).toHaveTextContent('タグを作成できませんでした: x')
+
+    await userEvent.click(screen.getByRole('button', { name: '作成' }))
+    expect(screen.getByRole('status')).toHaveTextContent('作成中です')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await act(async () => {
+      pending.reject(new Error('タグを作成できませんでした: x'))
+    })
+    const secondAlert = screen.getByRole('alert')
+    expect(secondAlert).toHaveTextContent('タグを作成できませんでした: x')
+    expect(secondAlert).not.toBe(firstAlert)
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
 })

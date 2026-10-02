@@ -189,6 +189,70 @@ describe('useGitTagOperations', () => {
     expect(result.current.error).toBeNull()
   })
 
+  // 再試行の作成中に前回のエラー(role="alert")が残ると、作成中の案内(role="status")と同時に出る。
+  // 同じ文言で再び失敗したときに alert の DOM が変わらず読み上げられないため、開始時に消す(PR #41 の 3 周目のレビュー)
+  it('失敗の後に再試行すると、作成中は error が null になり、同じ文言で再び失敗すると error がセットされる', async () => {
+    let rejectSecond: (err: Error) => void = () => {}
+    mockCreateTag
+      .mockRejectedValueOnce(new Error('タグを作成できませんでした: x'))
+      .mockReturnValueOnce(new Promise<void>((_resolve, reject) => (rejectSecond = reject)))
+    const { result } = setup()
+    await act(async () => {
+      await result.current.createTag(request)
+    })
+    expect(result.current.error?.message).toBe('タグを作成できませんでした: x')
+    let second: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      second = result.current.createTag(request)
+    })
+    expect([result.current.isCreating, result.current.error]).toEqual([true, null])
+    let ok = true
+    await act(async () => {
+      rejectSecond(new Error('タグを作成できませんでした: x'))
+      ok = await second
+    })
+    expect(ok).toBe(false)
+    expect(result.current.error?.message).toBe('タグを作成できませんでした: x')
+  })
+
+  it('失敗の後に再試行して成功すると、作成中も完了後も error は null', async () => {
+    let resolveSecond: () => void = () => {}
+    mockCreateTag
+      .mockRejectedValueOnce(new Error('失敗'))
+      .mockReturnValueOnce(new Promise<void>((r) => (resolveSecond = r)))
+    const { result } = setup()
+    await act(async () => {
+      await result.current.createTag(request)
+    })
+    let second: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      second = result.current.createTag(request)
+    })
+    expect(result.current.error).toBeNull()
+    let ok = false
+    await act(async () => {
+      resolveSecond()
+      ok = await second
+    })
+    expect(ok).toBe(true)
+    expect(result.current.error).toBeNull()
+  })
+
+  // 実行しない場合(実行中・ロック中)は、表示中のエラーを消さない(何も起きていないのに alert だけ消えない)
+  it('ロック中で実行しないときは、前回の error を消さない', async () => {
+    mockCreateTag.mockRejectedValue(new Error('失敗'))
+    const isAnyLocked = vi.fn().mockReturnValue(false)
+    const { result } = setup({ lock: makeFileLock({ isAnyLocked }) })
+    await act(async () => {
+      await result.current.createTag(request)
+    })
+    isAnyLocked.mockReturnValue(true)
+    await act(async () => {
+      await result.current.createTag(request)
+    })
+    expect(result.current.error?.message).toBe('失敗')
+  })
+
   it('clearError で error を消す', async () => {
     mockCreateTag.mockRejectedValue(new Error('失敗'))
     const { result } = setup()

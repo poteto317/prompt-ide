@@ -23,7 +23,8 @@ vi.mock('simple-git', () => ({
   GitPluginError: MockGitPluginError
 }))
 
-import { COMMITTER_UNKNOWN_MESSAGE, TAG_CREATE_TIMEOUT_MS, createTag } from '../gitTagService'
+import { TAG_CREATE_TIMEOUT_MS } from '@shared/tagTimeout'
+import { COMMITTER_UNKNOWN_MESSAGE, createTag } from '../gitTagService'
 
 const HEAD_SHA = `${'a'.repeat(40)}\n`
 const TAG_SHA = `${'b'.repeat(40)}\n`
@@ -457,12 +458,17 @@ describe('作成の失敗', () => {
 
   // 署名のパスフレーズの入力待ち(pinentry・ssh-keygen)では git tag がいつまでも終わらない(実機 git 2.50.1 で
   // 確認)。simple-git の timeout プラグインで打ち切る。timeout は引数で差し替えられる(統合テスト用)。
-  // 既定値を変えたら、作成中の案内の「最大 2 分」(CreateTagDialog.tsx の TAG_CREATE_TIMEOUT_MINUTES)も直す
-  it('simple-git に timeout(既定は TAG_CREATE_TIMEOUT_MS、引数で差し替え可)を渡す', async () => {
+  // 既定値は renderer の作成中の案内(「最大 2 分」)と同じ @shared/tagTimeout の TAG_CREATE_TIMEOUT_MS を使う
+  // (値そのものは shared の単体テストで固定する。PR #41 の 3 周目のレビュー)
+  it('simple-git に timeout(既定は @shared/tagTimeout の TAG_CREATE_TIMEOUT_MS、引数で差し替え可)を渡す', async () => {
+    setupRaw()
+    await createTag('/project', lightweight('v1'))
+    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', {
+      timeout: { block: TAG_CREATE_TIMEOUT_MS }
+    })
     setupRaw()
     await createTag('/project', lightweight('v1'), 1500)
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project', { timeout: { block: 1500 } })
-    expect(TAG_CREATE_TIMEOUT_MS).toBe(120_000)
+    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', { timeout: { block: 1500 } })
   })
 
   it('git tag がタイムアウト(GitPluginError, plugin: timeout)したら日本語の文言にする', async () => {

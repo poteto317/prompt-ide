@@ -24,7 +24,7 @@
 5. **ブランチとの同名は大文字小文字を無視して判定する**（設計書は同名のみ）。macOS（files backend）でブランチ `feat` とタグ `FEAT` があると、`git rev-parse feat` は `warning: refname 'feat' is ambiguous.` を出して**タグの**コミットを返した（パターン 43 と同じ曖昧さ）。大文字小文字を区別する FS では無害だが、区別せず一律に拒否する（判定を FS に依存させない）。タグどうしの大文字小文字の違い（`v1` と `V1`、`v1` と `V1/x`）も、大文字小文字を無視して拒否する（Task 2 のレビューで変更。設計書の既知の制約では git のエラーを表示するとしていた）。既存の `v1` が packed-refs にあると（clone・gc の後）、git は `V1` を終了コード 0 で作り、`git rev-parse v1` が `V1` のコミットを返して既存のタグの解決を奪った。loose なら `fatal: tag 'V1' already exists` / `cannot lock ref 'refs/tags/V1/x'` の英語のエラーになる。文言は階層の衝突と同じ `既存のタグ <existing> と名前が衝突します: <name>`（既存のタグ名を示す）。
 6. **作成後に `git rev-parse -q --verify refs/tags/<name>` で作成されたことを確かめる**（設計書に無い。パターン 69: 終了コード 0 は効果があったことを意味しない）。
 7. **設計書で未規定だった文言を確定する**（Global Constraints）: `-` 始まり・形式違反の main の文言、注釈付きの空メッセージ・NUL の main の文言、ダイアログ内の文言。
-8. **`GitTagPanelState` に `clearError` を足す**（設計書は `createTag` / `isCreating` / `error`）。ダイアログを開くときに前回の失敗の表示を持ち越さないため。
+8. **`GitTagPanelState` に `clearError` を足す**（設計書は `createTag` / `isCreating` / `error`）。ダイアログを開くときに前回の失敗の表示を持ち越さないため。また、`createTag` は実行を始めるとき（`useRunExclusiveGitOperation` の `onStart`。実行しない no-op では呼ばれない）に `error` を `null` にする。再試行の作成中に前回の `role="alert"` が案内（`role="status"`）と同時に残り、同じ文言で再び失敗すると alert の DOM が変わらず読み上げられなかったため（PR #41 の 3 周目のレビューで追加。`useRunExclusiveGitOperation` の共通の挙動は他の操作に波及するため変えない）。
 9. **`useGitTagOperations` は、他の Git 操作がロックを持っている間（`lock.isAnyLocked()`）は実行しない**（no-op で `false`）。設計書どおりロック（`lockGlobal`）は取らないが、checkout・マージ・commit の途中は HEAD が動くため、付ける先が定まらない間は待つ（ブランチの削除と同じ判断）。ダイアログの `作成` とセクションの `タグを作成` は、その間 disabled にする。
 
 10. **タグ名は Unicode の NFC にそろえて扱う**（PR 前のレビューで追加。設計書は「前後の空白を除く」のみ）。共有の `normalizeTagName(name)`（`@shared/tagName`。`trim()` の直後に `normalize('NFC')`）を、renderer のダイアログ（検証と送信値）と main の `createTag` の入口の両方で使う。main は以後の検証・衝突の判定・`git tag`・作成後の `rev-parse refs/tags/<name>` のすべてでこの名前を使う。衝突・重複・ブランチ同名の比較は、既存のタグ・ブランチ側も NFC にそろえる（衝突とブランチ同名は NFC にそろえてから大文字小文字を無視する。差分 11 で完全な case folding に変更。重複は NFC にそろえた完全一致）。`check-ref-format --normalize` は NFD をそのまま返すため、正規化しないと次が起きた（macOS）:
@@ -32,7 +32,7 @@
     - `--ref-format=reftable` では、git が argv を NFC に直して作成し終了コード 0 だが、作成後の `rev-parse -q --verify refs/tags/<NFD>` が見つからず「タグを作成できませんでした」になった（タグは NFC 名で残る）
     - 既定（`precomposeunicode=true`）で NFC の `é` があると、NFD の要求は重複の判定をすり抜け、`fatal: tag 'é' already exists` が英語のまま漏れた
 11. **大文字小文字の無視は Unicode の完全な case folding に近づける**（PR 前のレビューで追加）。`toLowerCase` だけでは、macOS の APFS が同じ名前とみなす `ß` と `ss`・`ẞ`、`ſ` と `s`、`µ` と `μ`、`ας` と `ασ`、`ﬁ` と `fi` などが一致しない。packed-refs に `ss` があると `git tag --no-sign -- ß HEAD` が終了コード 0 で作られ、`git rev-parse refs/tags/ss` が新しいコミットを返した（既存のタグの解決を奪う）。ブランチ `ss` があるとタグ `ß` の作成後に `git rev-parse ss` が `refname 'ss' is ambiguous` になった（いずれも実機 git 2.50.1 / APFS）。`collisionKey` は NFC にそろえた後、1 文字ずつ小文字 → 大文字 → 小文字の順に変換し（`ẞ` → `ß` → `SS` → `ss`、`ς` → `Σ` → `σ`）、最後に NFC にそろえる。`ı`（点の無い i）は大文字化で `I` になるが、APFS は `i` と別の名前として扱うため変換しない。APFS 上で確かめた結果、Unicode の全文字について、この変換で同じになる単一文字の組（同値類 2295 個・2439 組）はすべて APFS でも同じ名前になり、`ı` と `i`、`İ` と `i`、`ss1` と `ß2`、全角と半角の英字は APFS でも別の名前で、この変換でも衝突しない（過剰な拒否は見つからなかった）。`ǅ` / `ǆ` / `Ǆ`、`İ` と `i` + U+0307、`K`（ケルビン記号）と `k` も APFS で同じ名前になり、この変換でも衝突する。
-12. **`git tag` を時間で打ち切る**（PR #41 のレビューで追加。設計書は「失敗しうる（失敗は表示する）」）。`gpg.format=ssh`・`tag.gpgSign=true`・パスフレーズ付きの鍵（ssh-agent に未登録）や、入力を待ち続ける `gpg.program` では、simple-git の `raw(['tag', ...])` がいつまでも pending のままだった。なお `ssh-keygen` が入力を待つのは端末から起動した場合だけで、制御端末の無い環境では 0.01 秒で終了コード 128 になる（待ち続けない）。パッケージ版（GUI から起動）で時間切れになるのは主に gpg の pinentry の入力待ち（PR #41 の 2 周目のレビューで補足）。`simpleGit(folderPath, { timeout: { block: TAG_CREATE_TIMEOUT_MS } })`（120 秒。`createTag` の第 3 引数でテスト用に差し替える）で git を止め、`GitPluginError`（`plugin === 'timeout'`）を `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: <name>` にする。打ち切った後はタグも `refs/tags/<name>.lock` も残らず、同じ名前で作り直せた。git が起動した `gpg.program` のプロセスは git を止めても残る（`ssh-keygen -Y sign` は一緒に終わった）
+12. **`git tag` を時間で打ち切る**（PR #41 のレビューで追加。設計書は「失敗しうる（失敗は表示する）」）。`gpg.format=ssh`・`tag.gpgSign=true`・パスフレーズ付きの鍵（ssh-agent に未登録）や、入力を待ち続ける `gpg.program` では、simple-git の `raw(['tag', ...])` がいつまでも pending のままだった。なお `ssh-keygen` が入力を待つのは端末から起動した場合だけで、制御端末の無い環境では 0.01 秒で終了コード 128 になる（待ち続けない）。パッケージ版（GUI から起動）で時間切れになるのは主に gpg の pinentry の入力待ち（PR #41 の 2 周目のレビューで補足）。`simpleGit(folderPath, { timeout: { block: TAG_CREATE_TIMEOUT_MS } })`（120 秒。定数は `src/shared/tagTimeout.ts` に置き、renderer の作成中の案内「最大 2 分」と共有する（PR #41 の 3 周目のレビューで一本化）。`createTag` の第 3 引数でテスト用に差し替える）で git を止め、`GitPluginError`（`plugin === 'timeout'`）を `タグの作成が時間内に終わりませんでした（署名のパスフレーズの入力待ちなど）: <name>` にする。打ち切った後はタグも `refs/tags/<name>.lock` も残らず、同じ名前で作り直せた。git が起動した `gpg.program` のプロセスは git を止めても残る（`ssh-keygen -Y sign` は一緒に終わった）
 
 設計書の仮定のうち、次は実機で確認でき、そのまま採用する。
 
@@ -1956,6 +1956,8 @@ export function useGitTagOperations(
         isRunningRef.current = busy
         setIsCreating(busy)
       },
+      // 再試行の作成中に前回のエラー(role="alert")を残さない(PR #41 の 3 周目のレビューで追加)
+      onStart: () => setError(null),
       execute: () => gitApi.createTag(request)
     })
 
@@ -2150,12 +2152,13 @@ describe('CreateTagDialog', () => {
   })
 
   // 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
-  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main の TAG_CREATE_TIMEOUT_MS)かかることも案内する
+  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main が git を打ち切る TAG_CREATE_TIMEOUT_MS)
+  // かかることも案内する。分は @shared/tagTimeout の定数から組み立てる(main と別々の値を持たない。PR #41 の 3 周目のレビュー)
   describe('作成中の案内(role="status"・aria-busy)', () => {
     it('作成中は role="status" で最大 2 分かかりうることを案内し、ダイアログを aria-busy にする', () => {
       renderDialog({ isCreating: true })
       expect(screen.getByRole('status')).toHaveTextContent(
-        '作成中です。署名の入力待ちなどで最大 2 分かかることがあります'
+        `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
       )
       expect(screen.getByRole('status')).toHaveClass('create-tag-dialog__note')
       expect(screen.getByRole('dialog', { name: 'タグを作成' })).toHaveAttribute(
@@ -2451,10 +2454,8 @@ const KIND_KEY_DELTAS: Partial<Record<string, number>> = {
   ArrowUp: -1
 }
 
-// 作成中の打ち切りまでの時間(分)。main の TAG_CREATE_TIMEOUT_MS(120 秒。src/main/gitTagService.ts)と
-// 合わせる。renderer は main のモジュールを import できないため値を持ち、TAG_CREATE_TIMEOUT_MS を変えたら
-// ここも直す(gitTagService.test.ts の TAG_CREATE_TIMEOUT_MS の値のテストにも同じ注記がある)
-const TAG_CREATE_TIMEOUT_MINUTES = 2
+// 作成中の打ち切りまでの時間(分)は、main が git を打ち切る時間と同じ @shared/tagTimeout の定数から組み立てる
+// (import { TAG_CREATE_TIMEOUT_MINUTES } from '@shared/tagTimeout'。PR #41 の 3 周目のレビューで一本化)
 const CREATING_STATUS_MESSAGE = `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
 
 // タグの作成ダイアログ(名前・種類・メッセージ)。NameInputDialog は名前 1 つの入力の前提のため、

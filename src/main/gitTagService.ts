@@ -5,6 +5,8 @@ import { getTagNameCollision, getTagNameRuleViolation, normalizeTagName } from '
 import type { TagNameCollision, TagNameCollisionKind } from '@shared/tagName'
 import { getTagMessageRuleViolation } from '@shared/tagMessage'
 import type { TagMessageRuleViolation } from '@shared/tagMessage'
+// git を打ち切るまでの時間。renderer の作成中の案内(「最大 N 分」)と同じ値を使う
+import { TAG_CREATE_TIMEOUT_MS } from '@shared/tagTimeout'
 
 // タグの作成(git tag)。付ける先は常に現在の HEAD。タグの責務はこのファイルにまとめ、gitService.ts には
 // 足さない(パターン 55)。ref を 1 つ増やすだけで作業ツリー・index・HEAD を変えないため、
@@ -27,13 +29,6 @@ const COLLISION_MESSAGES: Record<
   conflict: (collision, name) => `既存のタグ ${collision.with} と名前が衝突します: ${name}`,
   branch: (_collision, name) => `同じ名前のブランチが存在するため、タグを作成できません: ${name}`
 }
-
-// git の呼び出しを打ち切るまでの時間(stdout / stderr に何も出ない時間。simple-git の timeout プラグインの block)。
-// 署名付きの注釈付きタグでは、git tag がパスフレーズの入力(gpg の pinentry・ssh-keygen)を待っていつまでも
-// 終わらないことがある(実機 git 2.50.1 で確認)。作成中のダイアログはキャンセルできないため、打ち切らないと
-// アプリを再起動するまで戻れない。GUI の pinentry でパスフレーズを入力するのに足りる長さとして 120 秒にする。
-// 署名しない作成・検証の git 呼び出しは一瞬で終わるため、同じ値でも影響しない
-export const TAG_CREATE_TIMEOUT_MS = 120_000
 
 const TAGS_NAMESPACE = 'refs/tags/'
 const HEADS_NAMESPACE = 'refs/heads/'

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { ComponentProps } from 'react'
+import { TAG_CREATE_TIMEOUT_MINUTES } from '@shared/tagTimeout'
 import CreateTagDialog from '../CreateTagDialog'
 
 type Props = ComponentProps<typeof CreateTagDialog>
@@ -161,12 +162,13 @@ describe('CreateTagDialog', () => {
   })
 
   // 作成中は入力欄とボタンが disabled になりフォーカスが body に落ちるため、ボタンの「作成中...」だけでは
-  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main の TAG_CREATE_TIMEOUT_MS)かかることも案内する
+  // スクリーンリーダーに伝わらない。署名の入力待ちで最大 2 分(main が git を打ち切る TAG_CREATE_TIMEOUT_MS)
+  // かかることも案内する。分は @shared/tagTimeout の定数から組み立てる(main と別々の値を持たない。PR #41 の 3 周目のレビュー)
   describe('作成中の案内(role="status"・aria-busy)', () => {
     it('作成中は role="status" で最大 2 分かかりうることを案内し、ダイアログを aria-busy にする', () => {
       renderDialog({ isCreating: true })
       expect(screen.getByRole('status')).toHaveTextContent(
-        '作成中です。署名の入力待ちなどで最大 2 分かかることがあります'
+        `作成中です。署名の入力待ちなどで最大 ${TAG_CREATE_TIMEOUT_MINUTES} 分かかることがあります`
       )
       expect(screen.getByRole('status')).toHaveClass('create-tag-dialog__note')
       expect(screen.getByRole('dialog', { name: 'タグを作成' })).toHaveAttribute(
