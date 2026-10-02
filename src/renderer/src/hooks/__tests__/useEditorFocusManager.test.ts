@@ -158,17 +158,28 @@ describe('useEditorFocusManager', () => {
   })
 
   it('要求対象と異なるファイルが開かれた場合、保留中のフォーカス要求は破棄される', () => {
-    const editorB = makeEditor()
+    // 信号の参照を固定する。再レンダーごとに新しいオブジェクトを渡すと、フォーカスの
+    // effect が毎回走り、focusEditorIfPending 冒頭のパス不一致ガードが要求を捨てるため、
+    // パス変更時の破棄(openFilePath の effect)を検証できなくなる
+    const signal = makeSignal(1, '/a.ts')
+    const editorA = makeEditor()
     const { result, rerender } = renderHook((props) => useEditorFocusManager(props), {
-      initialProps: makeParams({ openFilePath: '/a.ts', openedFileSignal: makeSignal(1, '/a.ts') })
+      initialProps: makeParams({
+        openFilePath: '/a.ts',
+        openedFileSignal: signal,
+        isOverlayOpen: true
+      })
     })
 
-    // エディタ未マウントのまま /b.ts へ切り替わる
-    rerender(makeParams({ openFilePath: '/b.ts', openedFileSignal: makeSignal(1, '/a.ts') }))
+    // オーバーレイを開いたまま /a.ts → /b.ts → /a.ts と切り替える
+    rerender(makeParams({ openFilePath: '/b.ts', openedFileSignal: signal, isOverlayOpen: true }))
+    rerender(makeParams({ openFilePath: '/a.ts', openedFileSignal: signal, isOverlayOpen: true }))
+    result.current.handleEditorMount(editorA, '/a.ts')
 
-    // /b.ts のエディタがマウントされてもフォーカスされない
-    result.current.handleEditorMount(editorB, '/b.ts')
-    expect(editorB.focus).not.toHaveBeenCalled()
+    // /b.ts へ切り替えた時点で要求は破棄されているため、オーバーレイを閉じてもフォーカスしない
+    rerender(makeParams({ openFilePath: '/a.ts', openedFileSignal: signal, isOverlayOpen: false }))
+
+    expect(editorA.focus).not.toHaveBeenCalled()
   })
 
   it('マウント後にエディタの getModel が null になった場合、フォーカスしない', () => {

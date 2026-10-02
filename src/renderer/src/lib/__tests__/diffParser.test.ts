@@ -211,10 +211,26 @@ describe('buildHunkPatch', () => {
       ''
     ].join('\n')
     const parsed = parseDiff(renameDiffNoPlus)
-    // "+++ " 行がないためフォールバックし、rename ヘッダーをそのまま含む
     const patch = buildHunkPatch(parsed, 0)
-    // フォールバック時はオリジナルのヘッダーが使われる（rename fromが含まれるかもしれない）
-    expect(patch).toContain('diff --git a/old.txt b/new.txt')
+    // "+++ " 行がないためフォールバックし、元のヘッダーを加工せずに使う。
+    // rename ヘッダー(similarity / rename from / rename to)も取り除かれずに残る
+    expect(patch).toBe(
+      [
+        'diff --git a/old.txt b/new.txt',
+        'similarity index 84%',
+        'rename from old.txt',
+        'rename to new.txt',
+        'index 4083766..2f86025 100644',
+        '--- a/old.txt',
+        '@@ -1,1 +1,1 @@',
+        '-line1',
+        '+CHANGED1',
+        ''
+      ].join('\n')
+    )
+    expect(patch).toContain('similarity index 84%')
+    expect(patch).toContain('rename from old.txt')
+    expect(patch).toContain('rename to new.txt')
   })
 
   it('リネーム diff の "+++ " トークンに b/ 接頭辞がない場合、トークンをそのまま使う', () => {

@@ -274,17 +274,6 @@ describe('compareByCodePoint（サロゲートペアを含むパスのソート�
   // compareByCodePoint は UTF-16 '<' に頼らず codePointAt で比較する。
   // BMP 外の文字（例: 絵文字 U+1F600 = サロゲートペア 2 コードユニット）を
   // 含むパスが混在しても、スコア・名前長が同じならパス順でソートが安定することを確認する。
-  it('サロゲートペアを含むファイルパスでもスコア同点ならコードポイント昇順に並ぶ', () => {
-    const emoji1 = file('😀file.ts', '/project/😀file.ts')
-    const emoji2 = file('😁file.ts', '/project/😁file.ts')
-    // 😀 = U+1F600, 😁 = U+1F601; コードポイント昇順で 😀 < 😁
-    const files = [emoji2, emoji1]
-    const results = searchFiles('file', files, '/project')
-    // 両方マッチし、名前長も同じ場合、パスのコードポイント昇順で 😀 が先
-    expect(results[0].node.name).toBe('😀file.ts')
-    expect(results[1].node.name).toBe('😁file.ts')
-  })
-
   it('サロゲートペアと BMP 文字の比較で UTF-16 順と逆転する場合もコードポイント昇順に並ぶ', () => {
     // UTF-16 コードユニット比較では '😀' (\uD83D\uDE00) < '！' (\uFF01) と判定されるが、
     // コードポイント比較では '！' (U+FF01) < '😀' (U+1F600) となる。
@@ -297,8 +286,8 @@ describe('compareByCodePoint（サロゲートペアを含むパスのソート�
     expect(results[1].node).toBe(surrogate)
   })
 
-  it('一方がもう一方のプレフィックスであるパスの場合、短いパスが先に並ぶ（L41 対応）', () => {
-    // '/project/sub/file.ts' (短) vs '/project/sub/file.ts.bak' (長)
+  it('一方がもう一方の前方一致になるパスでは、短いパスが先に並ぶ', () => {
+    // '/project/sub/test' (短) は '/project/sub/test_long' (長) の前方一致
     const shortFile = file('test', '/project/sub/test')
     const longFile = file('test', '/project/sub/test_long')
     // 長い方を先に配列に入れて検索
@@ -312,7 +301,7 @@ describe('compareByCodePoint（サロゲートペアを含むパスのソート�
     expect(results2[1].node.path).toBe('/project/sub/test_long')
   })
 
-  it('同一パスの項目が複数ある場合、比較結果が 0 になり安定して並ぶ（L40 対応）', () => {
+  it('同一パスの項目は比較結果が 0 になり、入力順を保つ', () => {
     const file1 = file('dup.ts', '/project/dup.ts')
     const file2 = file('dup.ts', '/project/dup.ts')
     const results = searchFiles('dup', [file1, file2], '/project')

@@ -38,8 +38,8 @@ export default defineConfig({
         '**/*.d.ts',
         'src/shared/types/**',
         // Monaco Editor のブートストラップコード。
-        // Worker の設定と loader.config を行うグローバル初期化のみで、
-        // jsdom / Node.js 環境ではテスト不可能なため除外する
+        // getWorker に Worker の選択分岐(label が typescript / javascript なら tsWorker、
+        // それ以外は editorWorker)を含むが、Vite の `?worker` import に依存するため対象外とする
         'src/renderer/src/lib/monaco-config.ts',
         // レンダラープロセスのエントリーポイント（createRootによるマウントのみ）
         'src/renderer/src/main.tsx',
