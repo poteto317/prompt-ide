@@ -18,7 +18,7 @@ import { computeAdjacentItem } from './computeAdjacentItem'
  */
 const MAX_OPENED_FILE_EVENTS = 50
 /** 読み込み中に保存が完了したときに読み直す回数の上限 */
-const MAX_READ_RETRIES = 5
+export const MAX_READ_RETRIES = 5
 
 export interface OpenedFileEvent {
   /** ファイルを開くたびに増える。同じファイルを開き直しても進む */

@@ -21,7 +21,7 @@ vi.mock('../useFileEditing', async (importOriginal) => {
 })
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
-import { useFileSystem } from '../useFileSystem'
+import { MAX_READ_RETRIES, useFileSystem } from '../useFileSystem'
 
 const mockOpenFolder = vi.mocked(fileSystemApi.openFolder)
 const mockReadDirectory = vi.mocked(fileSystemApi.readDirectory)
@@ -66,6 +66,8 @@ describe('useFileSystem 読み込みと保存の競合の再試行上限', () =>
     })
 
     expect(openResult).toBe(false)
+    // 上限に達するまで読み直している。初回の読み込みに加えて MAX_READ_RETRIES 回再試行する
+    expect(mockReadFileContent).toHaveBeenCalledTimes(MAX_READ_RETRIES + 1)
     expect(result.current.error?.message).toBe(
       '保存と競合したため読み込めませんでした。もう一度開いてください。'
     )
