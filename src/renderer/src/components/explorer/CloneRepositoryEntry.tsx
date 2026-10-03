@@ -45,6 +45,7 @@ export default function CloneRepositoryEntry({ clone }: Props): React.JSX.Elemen
       {dialog.isOpen && (
         <CloneRepositoryDialog
           isCloning={clone.isCloning}
+          isOpening={clone.isOpening}
           isBlocked={clone.isBlocked}
           error={clone.error}
           onSubmit={(url, folderName) => void handleSubmit(url, folderName)}

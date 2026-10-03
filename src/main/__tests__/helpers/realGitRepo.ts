@@ -30,6 +30,19 @@ export const isolatedGitEnv = {
 // フックの中から実行されたテストが、親リポジトリを操作しないよう外すリポジトリ位置の環境変数
 const REPO_LOCATION_ENV_KEYS = ['GIT_DIR', 'GIT_INDEX_FILE', 'GIT_WORK_TREE'] as const
 
+// 開発者の環境で設定されていると、git の振る舞いを変えて隔離(isolatedGitEnv の GIT_CONFIG_GLOBAL など)をすり抜ける
+// 環境変数。GIT_SSH_COMMAND は core.sshCommand より優先される(偽の ssh の代わりに本物の ssh が起動する)。
+// GIT_CONFIG_COUNT は設定ファイルより優先される設定を足す(GIT_CONFIG_KEY_n・VALUE_n は COUNT が無ければ読まれない
+// ため、COUNT だけを外せばよい)。GIT_ALLOW_PROTOCOL は許可するプロトコルを絞る(file:// などの clone が拒否される)。
+// GIT_CONFIG_PARAMETERS(`git -c` が子へ渡す設定)は、clone のテストへの影響は確認されていないが、同じく設定ファイルより
+// 優先される設定を足すため、隔離の目的で外す
+const GIT_BEHAVIOR_ENV_KEYS = [
+  'GIT_SSH_COMMAND',
+  'GIT_CONFIG_COUNT',
+  'GIT_CONFIG_PARAMETERS',
+  'GIT_ALLOW_PROTOCOL'
+] as const
+
 export function runGit(cwd: string, ...args: string[]): string {
   return runGitWithEnv(cwd, {}, ...args)
 }
@@ -42,6 +55,7 @@ export function runGitWithEnv(
 ): string {
   const env: NodeJS.ProcessEnv = { ...process.env, ...isolatedGitEnv, ...extraEnv }
   REPO_LOCATION_ENV_KEYS.forEach((key) => delete env[key])
+  GIT_BEHAVIOR_ENV_KEYS.forEach((key) => delete env[key])
   return execFileSync('git', args, {
     cwd,
     env,
@@ -63,11 +77,12 @@ export function commitAll(cwd: string, message: string): void {
 }
 
 // 対象の関数(simple-git が子プロセスとして起動する git)へ渡る process.env を切り離す。
-// isolatedGitEnv の反映に加え、リポジトリ位置の環境変数を外す。beforeEach で呼び、
+// isolatedGitEnv の反映に加え、リポジトリ位置の環境変数と、git の振る舞いを変える環境変数を外す。beforeEach で呼び、
 // afterEach で vi.unstubAllEnvs() を呼んで復元する
 export function stubIsolatedGitEnv(): void {
   Object.entries(isolatedGitEnv).forEach(([key, value]) => vi.stubEnv(key, value))
   REPO_LOCATION_ENV_KEYS.forEach((key) => vi.stubEnv(key, undefined))
+  GIT_BEHAVIOR_ENV_KEYS.forEach((key) => vi.stubEnv(key, undefined))
 }
 
 // 対象の関数(simple-git が起動する git)が、dir より上のリポジトリ(TMPDIR がリポジトリの中にある環境など)を

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import CloneRepositoryDialog, {
   CLONE_BLOCKED_NOTICE,
+  CLONE_OPENING_NOTICE,
   CLONE_RUNNING_NOTICE
 } from '../CloneRepositoryDialog'
 
@@ -212,6 +213,53 @@ describe('CloneRepositoryDialog', () => {
       rerender({ isCloning: false })
       expect(outside).toHaveFocus()
       outside.remove()
+    })
+  })
+
+  // clone が終わってフォルダを読み込んでいる間(isOpening)は、main に中止する clone が無い。中止の案内を出さず、
+  // `キャンセル` も押せなくする
+  describe('フォルダを開いている間(isOpening)', () => {
+    it('案内を「フォルダを開いています…」に切り替え、キャンセルを押せなくする', () => {
+      const { props } = renderDialog({ isCloning: true, isOpening: true })
+      expect(screen.getByRole('status')).toHaveTextContent(CLONE_OPENING_NOTICE)
+      expect(screen.queryByText(CLONE_RUNNING_NOTICE)).not.toBeInTheDocument()
+      const cancel = screen.getByRole('button', { name: 'キャンセル' })
+      expect(cancel).toBeDisabled()
+      fireEvent.click(cancel)
+      expect(props.onCancelClone).not.toHaveBeenCalled()
+      expect(props.onClose).not.toHaveBeenCalled()
+    })
+
+    it('clone の実行中(isOpening でない)は、従来どおり中止の案内を出し、キャンセルで中止を依頼する', async () => {
+      const { props } = renderDialog({ isCloning: true, isOpening: false })
+      expect(screen.getByRole('status')).toHaveTextContent(CLONE_RUNNING_NOTICE)
+      const cancel = screen.getByRole('button', { name: 'キャンセル' })
+      expect(cancel).toBeEnabled()
+      await userEvent.click(cancel)
+      expect(props.onCancelClone).toHaveBeenCalledOnce()
+    })
+
+    // `キャンセル` が disabled になると、ブラウザはそこにあったフォーカスを body に落とす(パターン 86)。ダイアログの外へ
+    // 出さないよう、フォーム(tabIndex=-1)へ移す(パターン 97)
+    it('開き始めたとき、キャンセルにあったフォーカスをダイアログ(フォーム)へ移す', () => {
+      const { rerender } = renderDialog({ isCloning: false })
+      rerender({ isCloning: true })
+      expect(screen.getByRole('button', { name: 'キャンセル' })).toHaveFocus()
+      rerender({ isCloning: true, isOpening: true })
+      expect(screen.getByRole('dialog')).toHaveFocus()
+    })
+
+    it('開き始めたとき、ダイアログの外へ移したフォーカスは奪わない', () => {
+      const outside = document.createElement('button')
+      document.body.appendChild(outside)
+      try {
+        const { rerender } = renderDialog({ isCloning: true })
+        outside.focus()
+        rerender({ isCloning: true, isOpening: true })
+        expect(outside).toHaveFocus()
+      } finally {
+        outside.remove()
+      }
     })
   })
 })

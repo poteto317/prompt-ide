@@ -12,7 +12,7 @@ interface Options {
 // 直前の実行中の状態は部品ごとの ref のため、初回のマウントでは何もせず、アンマウントで消える
 export function useFocusOnRunningStart(
   isRunning: boolean,
-  targetRef: RefObject<HTMLButtonElement | HTMLInputElement | null>,
+  targetRef: RefObject<HTMLElement | null>,
   { containerRef }: Options = {}
 ): void {
   const wasRunningRef = useRef(isRunning)

@@ -171,6 +171,73 @@ describe('useCloneRepository', () => {
     })
   })
 
+  // clone が cloned で返った後のフォルダの読み込み中は、main に中止する clone がもう無い。isOpening で表し、
+  // ダイアログの「キャンセルで中止できます」の案内と押せるのに効かない `キャンセル` を出さない
+  it('cloned で返ってから開き終わるまでだけ isOpening が true(isCloning も true)。その間 cancelClone は main へ依頼しない', async () => {
+    const clone = deferred<CloneRepositoryResult>()
+    mockCloneRepository.mockReturnValueOnce(clone.promise)
+    const opened = deferred<void>()
+    const { result } = renderClone({
+      applyOpenedFolder: vi
+        .fn<UseCloneRepositoryOptions['applyOpenedFolder']>()
+        .mockReturnValueOnce(opened.promise)
+    })
+    expect(result.current.clone.isOpening).toBe(false)
+    let running: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      running = result.current.clone.cloneRepository('u', 'b')
+    })
+    // clone の実行中(保存先の選択・clone)は開いていない
+    expect(result.current.clone.isCloning).toBe(true)
+    expect(result.current.clone.isOpening).toBe(false)
+    await act(async () => {
+      clone.resolve({ status: 'cloned', path: '/parent/b' })
+    })
+    expect(result.current.clone.isCloning).toBe(true)
+    expect(result.current.clone.isOpening).toBe(true)
+    act(() => result.current.clone.cancelClone())
+    expect(mockCancelCloneRepository).not.toHaveBeenCalled()
+    await act(async () => {
+      opened.resolve()
+      await running
+    })
+    expect(result.current.clone.isCloning).toBe(false)
+    expect(result.current.clone.isOpening).toBe(false)
+  })
+
+  // clone の結果を保留にして、保留中と決着の後の isOpening を見る(保存先の選択・clone の間に true にしないことも含む)
+  it.each<
+    [
+      string,
+      (settle: { resolve: (r: CloneRepositoryResult) => void; reject: (e: Error) => void }) => void
+    ]
+  >([
+    ['取り消し・中止(canceled)', ({ resolve }) => resolve({ status: 'canceled' })],
+    ['失敗', ({ reject }) => reject(new Error('リポジトリを clone できませんでした: x'))]
+  ])('%s では isOpening が true にならない', async (_label, settle) => {
+    let resolve!: (r: CloneRepositoryResult) => void
+    let reject!: (e: Error) => void
+    mockCloneRepository.mockReturnValueOnce(
+      new Promise<CloneRepositoryResult>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+    )
+    const { result, options } = renderClone()
+    let running: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      running = result.current.clone.cloneRepository('u', 'b')
+    })
+    expect(result.current.clone.isOpening).toBe(false)
+    await act(async () => {
+      settle({ resolve, reject })
+      await running
+    })
+    expect(result.current.clone.isOpening).toBe(false)
+    expect(result.current.clone.isCloning).toBe(false)
+    expect(options.applyOpenedFolder).not.toHaveBeenCalled()
+  })
+
   // useAppState の「Git 操作の実行中」の合成はロックを含むため、clone 自身の全体ロックでも true になる。isBlocked は
   // 契約どおり「他の Git 操作の実行中」だけを表し、clone の実行中は false にする
   it('clone の実行中は、Git 操作の実行中(自身の全体ロックを含む合成)が true でも isBlocked が false', async () => {

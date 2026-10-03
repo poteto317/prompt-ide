@@ -9,6 +9,7 @@ export const makeCloneRepositoryPanelState = (
   overrides: Partial<CloneRepositoryPanelState> = {}
 ): CloneRepositoryPanelState => ({
   isCloning: false,
+  isOpening: false,
   isBlocked: false,
   error: null,
   cloneRepository: vi.fn<CloneRepositoryPanelState['cloneRepository']>().mockResolvedValue(true),

@@ -33,6 +33,9 @@ export function createTestTimers(): TestTimers {
   }
 }
 
+// process.kill(pid, 0) は、回収されていないゾンビにも成功する(生きているとみなす)。親が先に止まった孫は PID 1 が
+// 回収するため、ゾンビを回収しない PID 1 の環境(Docker の --init なし、GitHub Actions の container: ジョブなど)では、
+// 孫の停止を確かめるテストが失敗しうる。今は開発者のローカル(macOS)で走る前提。CI を導入してコンテナで動かすときに見直す
 export function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0)

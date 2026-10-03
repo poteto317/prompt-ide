@@ -123,7 +123,7 @@ Electron + React + TypeScript 製のデスクトップアプリです。
       許可リストで検証し、`ext::` など任意のコマンドを実行しうる形式は拒否する。リモート名は `origin` 固定）
 - [x] リポジトリの clone（エクスプローラーの「リポジトリを clone」から URL とフォルダ名を入力し、保存先の親フォルダを
       OS のダイアログで選んで clone し、そのフォルダを開く。フォルダ名は URL から決めて編集できる。URL はリモートの追加と
-      同じ許可リストで検証し、パスワード入りの URL は拒否する。実行中は「キャンセル」で中止でき、出力が 60 秒途絶えたら
+      同じ許可リストで検証し、パスワード入りの URL は拒否する。実行中は「キャンセル」で中止でき（clone が終わってフォルダを開いている間は中止できないため、案内を「フォルダを開いています…」に切り替える）、出力が 60 秒途絶えたら
       打ち切る。中止・打ち切り・失敗では git が起動した子プロセスまで止め、アプリが作った保存先だけを削除する。
       保存先が既にあれば上書きしない。他の Git 操作（退避の削除を含む）の実行中は押せない。clone 中はダイアログが画面全体を
       覆い、他の操作はできない（Git 操作は全体ロックでも始めさせない）。clone の間に未保存の内容が変わっていたら、フォルダを
@@ -724,3 +724,4 @@ OS 標準の外部ブラウザへ遷移する実装のままでは「別画面�
   - checkout の失敗（`Clone succeeded, but checkout failed`。LFS の smudge filter の失敗など）でも、clone は失敗として扱い保存先を削除する。git の案内文（`git status` で調べて `git restore --source=HEAD :/` で再試行）はそのまま表示されるが、保存先は削除済みなので無視してよい。LFS の認証などを済ませてからもう一度 clone する（git の出力の文字列で消すとロケールで壊れるため消さない）。実 git 2.50.1 で、失敗する smudge filter を設定して clone すると、終了コード 128 で `warning: Clone succeeded, but checkout failed.`・`You can inspect what was checked out with 'git status'`・`and retry with 'git restore --source=HEAD :/'` の 3 行が出ることを確認した
   - Windows では `//host/share/repo` が絶対パスとして許可リストを通り（`@shared/remoteUrl` の `isAbsolutePath` は `/` で始まる形を許可する。リモートの追加から既存の規則）、clone で SMB 接続（NTLM の送出）を起こしうる。入力するのは利用者自身（Windows の実機で未確認）
   - Windows の予約名（`CON`・`NUL` など）・`:`・末尾のドットのフォルダ名は検証していない（新規作成・リネームと同じ既存の規則。`getCloneFolderNameViolation` は `isSafeEntryName` だけで判定する）。`:` を含む名前では mkdir の失敗（`ERROR_INVALID_NAME` を libuv が `ENOENT` に変換する）が「保存先の親フォルダが見つかりません」と表示されうる。`foo.` は末尾のドットが落とされて `foo` として作られる。URL が `https://h/CON.git` なら既定のフォルダ名は `CON` になる（Windows の実機で未確認。libuv の対応表からの推定）
+  - テストの前提: 子孫の停止を確かめるテスト（`helpers/processProbe.ts` の `isAlive` は `process.kill(pid, 0)` で、回収されていないゾンビも生きているとみなす）は、ゾンビを回収しない PID 1 の環境（Docker の `--init` なし、GitHub Actions の `container:` ジョブなど）では失敗しうる。今は開発者のローカル（macOS）で走る前提（CI を導入するときに見直す）

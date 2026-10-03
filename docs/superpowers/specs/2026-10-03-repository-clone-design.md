@@ -126,7 +126,10 @@ allowUnsafeProtocolOverride` で拒否した（git の前に置いても、clone
   シート）で、開いている間は画面を操作できないため、OS のダイアログで中止する。他の Git 操作の実行中は実行ボタンを押せず、
   `他の Git 操作の実行中は clone できません` を案内する
 - 結果
-  - 成功（`cloned`）: ダイアログを閉じ、そのフォルダを開く（後述）
+  - 成功（`cloned`）: そのフォルダを開き、開き終わったらダイアログを閉じる（後述）。clone が終わってからフォルダを開き終わるまで
+    （`applyOpenedFolder` を待つ間）は、main に中止する clone がもう無いため、案内を `フォルダを開いています…` に切り替え、`キャンセル` を
+    押せなくする（`CloneRepositoryPanelState.isOpening`。`isCloning` は true のままで、ロックと閉じる経路の禁止は続く。フォーカスが
+    `キャンセル` にあればダイアログ（フォーム）へ移す。PR #44 のレビューで追加）
   - キャンセル（`canceled`: OS のダイアログの取り消し、または `キャンセル`）: ダイアログは開いたまま、入力を保持する
   - 失敗: ダイアログは開いたまま、エラーを `role="alert"` で出す。入力は保持する
 - 開く処理: `useFileSystem.openFolder` を「フォルダの選択」と「選ばれたパスを開く（`applyOpenedFolder(path, { dirtySnapshotAtConfirm })`）」に分け、
@@ -243,7 +246,7 @@ IPC（`handlers/cloneHandlers.ts`、新規）
 - `components/explorer/CloneRepositoryDialog.tsx`（新規）: URL・フォルダ名・実行中の表示
 - `components/explorer/CloneRepositoryEntry.tsx`（新規）: `リポジトリを clone` のボタンと、ダイアログの開閉（`useDialogFocusReturn`）・
   成功したら閉じる判定・閉じた後のフォーカスの戻し
-- `hooks/useCloneRepository.ts`（新規）: 実行中、結果、エラー、キャンセル、排他（ダイアログの開閉は持たない）
+- `hooks/useCloneRepository.ts`（新規）: 実行中（`isCloning`）、clone の後のフォルダの読み込み中（`isOpening`）、結果、エラー、キャンセル、排他（ダイアログの開閉は持たない）
 - `hooks/useFocusOnRunningStart.ts`（新規）: 実行が始まったとき、フォーカスが body かダイアログの中にあれば `キャンセル` へ移す
   （`useFocusOnRunningEnd` の対）
 - `hooks/useFileSystem.ts`: `applyOpenedFolder(path, { dirtySnapshotAtConfirm })` を `openFolder` から切り出し、`captureDirtySnapshot` を公開する
@@ -298,6 +301,7 @@ ROADMAP の「既知の制約（リポジトリの clone）」と 1 対 1 で対
 - checkout の失敗（`Clone succeeded, but checkout failed`。LFS の smudge filter の失敗など）でも、clone は失敗として扱い保存先を削除する。git の案内文（`git status` で調べて `git restore --source=HEAD :/` で再試行）はそのまま表示されるが、保存先は削除済みなので無視してよい。LFS の認証などを済ませてからもう一度 clone する（git の出力の文字列で消すとロケールで壊れるため消さない）。実 git 2.50.1 で、失敗する smudge filter を設定して clone すると、終了コード 128 で `warning: Clone succeeded, but checkout failed.`・`You can inspect what was checked out with 'git status'`・`and retry with 'git restore --source=HEAD :/'` の 3 行が出ることを確認した
 - Windows では `//host/share/repo` が絶対パスとして許可リストを通り（`@shared/remoteUrl` の `isAbsolutePath` は `/` で始まる形を許可する。リモートの追加から既存の規則）、clone で SMB 接続（NTLM の送出）を起こしうる。入力するのは利用者自身（Windows の実機で未確認）
 - Windows の予約名（`CON`・`NUL` など）・`:`・末尾のドットのフォルダ名は検証していない（新規作成・リネームと同じ既存の規則。`getCloneFolderNameViolation` は `isSafeEntryName` だけで判定する）。`:` を含む名前では mkdir の失敗（`ERROR_INVALID_NAME` を libuv が `ENOENT` に変換する）が「保存先の親フォルダが見つかりません」と表示されうる。`foo.` は末尾のドットが落とされて `foo` として作られる。URL が `https://h/CON.git` なら既定のフォルダ名は `CON` になる（Windows の実機で未確認。libuv の対応表からの推定）
+- テストの前提: 子孫の停止を確かめるテスト（`helpers/processProbe.ts` の `isAlive` は `process.kill(pid, 0)` で、回収されていないゾンビも生きているとみなす）は、ゾンビを回収しない PID 1 の環境（Docker の `--init` なし、GitHub Actions の `container:` ジョブなど）では失敗しうる。今は開発者のローカル（macOS）で走る前提（CI を導入するときに見直す）
 
 ## テスト方針
 

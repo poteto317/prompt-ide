@@ -8,7 +8,11 @@ vi.mock('../../../lib/gitApi')
 
 import * as gitApi from '../../../lib/gitApi'
 import ExplorerPanel from '../ExplorerPanel'
-import { CLONE_BLOCKED_NOTICE, CLONE_RUNNING_NOTICE } from '../CloneRepositoryDialog'
+import {
+  CLONE_BLOCKED_NOTICE,
+  CLONE_OPENING_NOTICE,
+  CLONE_RUNNING_NOTICE
+} from '../CloneRepositoryDialog'
 import { useCloneRepository } from '../../../hooks/useCloneRepository'
 import type { UseCloneRepositoryOptions } from '../../../hooks/useCloneRepository'
 import { useFileOperationLock } from '../../../hooks/useFileOperationLock'
@@ -164,6 +168,23 @@ describe('ExplorerPanel と useCloneRepository の結合', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     await waitFor(() => expect(cloneButton()).toHaveFocus())
     expect(locks.at(-1)).toBe(false)
+  })
+
+  it('clone の成功の後のフォルダの読み込み中は、案内が「フォルダを開いています…」になり、キャンセルを押せない', async () => {
+    mockCloneRepository.mockResolvedValueOnce({ status: 'cloned', path: '/parent/b' })
+    const opened = deferred<void>()
+    const applyOpenedFolder = vi
+      .fn<UseCloneRepositoryOptions['applyOpenedFolder']>()
+      .mockReturnValueOnce(opened.promise)
+    render(<Harness applyOpenedFolder={applyOpenedFolder} />)
+    await userEvent.click(cloneButton())
+    await userEvent.type(screen.getByRole('textbox', { name: 'URL' }), 'https://github.com/a/b.git')
+    await userEvent.click(screen.getByRole('button', { name: '保存先を選んで clone' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(CLONE_OPENING_NOTICE))
+    expect(screen.getByRole('button', { name: 'キャンセル' })).toBeDisabled()
+    opened.resolve()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mockCancelCloneRepository).not.toHaveBeenCalled()
   })
 
   // 実行中の解除(useCloneRepository の finally)と閉じる操作(cloneRepository の戻りの後)が別々の描画になると、

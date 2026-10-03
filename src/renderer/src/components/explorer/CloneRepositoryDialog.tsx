@@ -14,10 +14,15 @@ import { validateRemoteUrl } from '../../lib/remoteUrlValidation'
 // 実行中の案内。打ち切りの秒数は main の打ち切りと同じ定数から組み立てる(パターン 87・88)
 export const CLONE_RUNNING_NOTICE = `clone 中です。キャンセルで中止できます（応答が ${GIT_CLONE_IDLE_TIMEOUT_SECONDS} 秒途絶えると打ち切ります）`
 export const CLONE_BLOCKED_NOTICE = '他の Git 操作の実行中は clone できません'
+// clone が終わり、そのフォルダを開いている間の案内(main に中止する clone はもう無い)
+export const CLONE_OPENING_NOTICE = 'フォルダを開いています…'
 
 interface Props {
   /** clone の依頼中(保存先の選択・clone・開くまで)。入力と実行ボタンを disabled にし、閉じさせない */
   isCloning: boolean
+  /** clone が終わり、そのフォルダを開いている間(isCloning も true)。中止の案内の代わりに CLONE_OPENING_NOTICE を出し、
+   *  `キャンセル` を押せなくする(main に中止する clone が無い)。省略時は false */
+  isOpening?: boolean
   /** 他の Git 操作の実行中で、clone を始められない */
   isBlocked: boolean
   /** clone の失敗(main のエラー)。role="alert" で表示する */
@@ -37,6 +42,7 @@ interface Props {
 // 閉じるのは呼び出し元が成功を受け取ったとき(失敗・中止はダイアログに残し、入力も保持する)
 export default function CloneRepositoryDialog({
   isCloning,
+  isOpening = false,
   isBlocked,
   error,
   onSubmit,
@@ -83,8 +89,10 @@ export default function CloneRepositoryDialog({
     if (!isCloning) onClose()
   }
 
-  // `キャンセル` は実行中なら clone を中止し、実行中でなければ閉じる
+  // `キャンセル` は実行中なら clone を中止し、実行中でなければ閉じる。フォルダを開いている間は押せない(防御として
+  // ここでも何もしない)
   const handleCancelButton = (): void => {
+    if (isOpening) return
     if (isCloning) onCancelClone()
     else onClose()
   }
@@ -94,6 +102,10 @@ export default function CloneRepositoryDialog({
   // 実行が始まると入力欄と実行ボタンが disabled になり、フォーカスが body に落ちる。押せる `キャンセル` へ移す
   // (フォーカスがダイアログの外に移されていたら奪わない。パターン 86)
   useFocusOnRunningStart(isCloning, cancelButtonRef, { containerRef: formRef })
+
+  // フォルダを開き始めると `キャンセル` が disabled になり、そこにあったフォーカスが body に落ちる(パターン 86)。
+  // ダイアログの外へ出さないよう、フォーム(tabIndex=-1)へ移す(パターン 97。外へ移したフォーカスは奪わない)
+  useFocusOnRunningStart(isOpening, formRef, { containerRef: formRef })
 
   // 実行が解けたとき(ダイアログが開いたまま=失敗・中止)に、フォーカスが body かダイアログ内なら URL の入力欄へ戻す
   useFocusOnRunningEnd(isCloning, urlInputRef, { containerRef: formRef })
@@ -173,7 +185,7 @@ export default function CloneRepositoryDialog({
         )}
         {showRunningNotice && (
           <p className="clone-repository-dialog__note" role="status">
-            {CLONE_RUNNING_NOTICE}
+            {isOpening ? CLONE_OPENING_NOTICE : CLONE_RUNNING_NOTICE}
           </p>
         )}
         {error !== null && (
@@ -189,6 +201,7 @@ export default function CloneRepositoryDialog({
             ref={cancelButtonRef}
             type="button"
             className="name-input-dialog__cancel"
+            disabled={isOpening}
             onClick={handleCancelButton}
           >
             キャンセル

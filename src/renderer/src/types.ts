@@ -94,6 +94,10 @@ export interface GitTagPanelState {
 export interface CloneRepositoryPanelState {
   /** clone の依頼中(保存先の選択・clone・成功の後のフォルダの読み込みまで)。フォルダの変更と clone を押せなくする */
   isCloning: boolean
+  /** clone が cloned で返ってから、そのフォルダを開き終わるまで(applyOpenedFolder を待つ間)だけ true。isCloning も
+   *  true のまま(ロックと閉じる禁止は続く)。main に中止する clone がもう無いため、ダイアログは中止の案内と
+   *  `キャンセル` を出さない(押せなくする) */
+  isOpening: boolean
   /** 他の Git 操作の実行中で、clone を始められない(押しても何もしない)。clone 自身の実行中(全体ロックを含む)は
    *  false(実行中は isCloning が表す) */
   isBlocked: boolean

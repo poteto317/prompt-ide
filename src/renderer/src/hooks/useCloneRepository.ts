@@ -33,10 +33,18 @@ export function useCloneRepository({
   const [isCloning, setIsCloning] = useState(false)
   const isCloningRef = useRef(false)
   const [error, setError] = useState<Error | null>(null)
+  // clone が終わってフォルダを開いている間。cancelClone が同じ描画の値に頼らないよう ref にも持つ(isCloningRef と同じ)
+  const [isOpening, setIsOpening] = useState(false)
+  const isOpeningRef = useRef(false)
 
   const setCloning = (cloning: boolean): void => {
     isCloningRef.current = cloning
     setIsCloning(cloning)
+  }
+
+  const setOpening = (opening: boolean): void => {
+    isOpeningRef.current = opening
+    setIsOpening(opening)
   }
 
   const cloneRepository = async (url: string, folderName: string): Promise<boolean> => {
@@ -51,6 +59,7 @@ export function useCloneRepository({
     try {
       const result = await gitApi.cloneRepository(url, folderName)
       if (result.status === 'canceled') return false
+      setOpening(true)
       await applyOpenedFolder(result.path, { dirtySnapshotAtConfirm })
       return true
     } catch (err) {
@@ -58,14 +67,17 @@ export function useCloneRepository({
       return false
     } finally {
       lock.unlockGlobal()
+      // 実行中と開いている間を同じ描画で下ろす
+      setOpening(false)
       setCloning(false)
     }
   }
 
   // 中止は main が子プロセスを止めて保存先を削除し、cloneRepository が canceled で返る。依頼の失敗は表示しない
-  // (中止できなかった場合も、clone の結果は cloneRepository の側に届く)
+  // (中止できなかった場合も、clone の結果は cloneRepository の側に届く)。フォルダを開いている間は main に中止する
+  // clone が無いため、何もしない
   const cancelClone = (): void => {
-    if (!isCloningRef.current) return
+    if (!isCloningRef.current || isOpeningRef.current) return
     gitApi.cancelCloneRepository().catch(() => undefined)
   }
 
@@ -73,6 +85,7 @@ export function useCloneRepository({
 
   return {
     isCloning,
+    isOpening,
     // isGitOperationRunning はロックを含む合成のため、clone 自身の全体ロックでも true になる。isBlocked は「他の
     // Git 操作の実行中」だけを表す(clone の実行中は isCloning が表す)
     isBlocked: isGitOperationRunning && !isCloning,
