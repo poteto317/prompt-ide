@@ -65,7 +65,8 @@ describe('CloneRepositoryEntry', () => {
     await submitClone()
     expect(cloneRepository).toHaveBeenCalledWith('https://github.com/a/b.git', 'b')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(cloneButton()).toHaveFocus()
+    // フォーカスを戻すのはダイアログが消えた描画の後の effect。消えたことを待った直後には間に合わないことがある
+    await waitFor(() => expect(cloneButton()).toHaveFocus())
   })
 
   it('開けなかった(false)ときは閉じず、入力を保持する', async () => {

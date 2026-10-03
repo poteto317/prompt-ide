@@ -130,7 +130,9 @@ describe('ExplorerPanel と useCloneRepository の結合', () => {
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'URL' })).toBeEnabled())
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'URL' })).toHaveValue('https://github.com/a/b.git')
-    expect(screen.getByRole('textbox', { name: 'URL' })).toHaveFocus()
+    // フォーカスを戻すのは実行中が解けた描画の後の effect(useFocusOnRunningEnd)。入力欄が有効になったことを待った
+    // 直後には間に合わないことがある
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'URL' })).toHaveFocus())
     expect(applyOpenedFolder).not.toHaveBeenCalled()
   })
 
@@ -241,7 +243,8 @@ describe('ExplorerPanel のフォルダの切り替えをまたぐ clone', () =>
     opened.resolve(true)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'フォルダを変更' })).toBeInTheDocument()
-    expect(cloneButton()).toHaveFocus()
+    // フォーカスを戻すのはダイアログが消えた描画の後の effect。消えたことを待った直後には間に合わないことがある
+    await waitFor(() => expect(cloneButton()).toHaveFocus())
   })
 })
 
