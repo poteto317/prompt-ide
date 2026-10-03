@@ -121,6 +121,13 @@ Electron + React + TypeScript 製のデスクトップアプリです。
       既定は `main`）、リモート未設定のリポジトリではパネル上部のバナーから origin の URL を追加、upstream 未設定のブランチは
       バナーから初回 push（`push -u`）。URL は `https://` `http://` `ssh://` `git://` `file://`・`user@host:path`・絶対パスの
       許可リストで検証し、`ext::` など任意のコマンドを実行しうる形式は拒否する。リモート名は `origin` 固定）
+- [x] リポジトリの clone（エクスプローラーの「リポジトリを clone」から URL とフォルダ名を入力し、保存先の親フォルダを
+      OS のダイアログで選んで clone し、そのフォルダを開く。フォルダ名は URL から決めて編集できる。URL はリモートの追加と
+      同じ許可リストで検証し、パスワード入りの URL は拒否する。実行中は「キャンセル」で中止でき、出力が 60 秒途絶えたら
+      打ち切る。中止・打ち切り・失敗では git が起動した子プロセスまで止め、アプリが作った保存先だけを削除する。
+      保存先が既にあれば上書きしない。他の Git 操作（退避の削除を含む）の実行中は押せない。clone 中はダイアログが画面全体を
+      覆い、他の操作はできない（Git 操作は全体ロックでも始めさせない）。clone の間に未保存の内容が変わっていたら、フォルダを
+      開く前にもう一度破棄を確認する（画面からは到達しにくい、防御の層）。renderer を再読み込みしたら clone を中止する）
 
 ### 進捗管理（開発ステージ追跡）
 
@@ -153,7 +160,8 @@ Electron + React + TypeScript 製のデスクトップアプリです。
 
 - [ ] blame（行ごとの変更者表示）
 - [ ] コミット履歴 / ログのグラフ表示
-- [ ] リポジトリの clone
+- [ ] clone の拡張（ブランチの指定、浅い clone（`--depth`）、サブモジュールの再帰（`--recurse-submodules`）、LFS の設定、
+      進捗の % 表示、既存のフォルダへの clone（上書き・マージ）、認証情報の入力欄）
 
 ### ターミナル / 実行環境
 
@@ -698,3 +706,21 @@ OS 標準の外部ブラウザへ遷移する実装のままでは「別画面�
 - [ ] MVP（コンセプト中核機能: ソース管理の Git push/pull/fetch（実装済み）、統合ターミナル、
       タッチ操作対応）の実装完了後、タッチ対応の実機デバイスでの動作検証を行い、
       そこで見つかった不具合を固定するための E2E テストを作成する
+- [ ] 既知の制約（リポジトリの clone。設計書 `docs/superpowers/specs/2026-10-03-repository-clone-design.md` の「既知の制約」と 1 対 1）:
+  - 認証が要る https のリポジトリは、credential helper が無いと失敗する（`GIT_TERMINAL_PROMPT=0` のため待たない）。ssh の未知のホスト鍵は、端末が無いと確認できず失敗する。ユーザーの設定は上書きしない
+  - credential helper の GUI（Git Credential Manager など）が 60 秒以上出力なしで待つと、無出力のタイムアウトで打ち切られる
+  - `GIT_ASKPASS`（VS Code のターミナルから起動したときの VS Code の askpass など）・`core.askPass`・`SSH_ASKPASS` がある環境では、`GIT_TERMINAL_PROMPT=0` でもそのプログラムが資格情報を求める（上書きしない。応答が無ければ 60 秒で打ち切る）
+  - パスワード入りの URL・path に `@` を含む URL は、リモートの追加と同じ理由で使えない
+  - 巨大なリポジトリでも合計時間の上限は無い。止めたいときは `キャンセル`
+  - clone 中はダイアログのオーバーレイが画面全体を覆うが、メニューバーの操作（View > Reload・アプリの終了・ウィンドウを閉じる操作など）とそのキーボードショートカットは塞がれない（CSS とコードからの判断で、画面の他の操作ができないことは実機で未確認。CLN-027）
+  - clone 中にアプリを終了すると、保存先に不完全なフォルダが残りうる。macOS でウィンドウを閉じたとき（アプリは終了しない）と、renderer のリロード（メインフレームの別文書への遷移）では clone を中止して保存先を削除する（再読み込み後に開いたフォルダの許可を clone 先へ書き換えないため。許可の切り替えの直前にも中止を確かめる）。Windows・Linux では最後のウィンドウを閉じるとアプリが終了する（`window-all-closed` で `app.quit()`）ため、中止の依頼（SIGTERM・`taskkill` の起動）までは走るが、保存先の削除が終わる前に main が終了し、アプリの終了と同じく残りうる（git は SIGTERM で空のフォルダを残す）
+  - `gitCloneService.ts` の `!signal.aborted` の確認の後の `await realpath(destination)` の間にリロードが来ると、handler は canceled を返し、完全な clone のフォルダが保存先に残る（データ損失は無く、残ったフォルダは利用者が手で消せる）
+  - 中止が子プロセスの終了を待つ間は、同じウィンドウからの二重起動は拒否される（`既に clone を実行中です`）
+  - `applyOpenedFolder` が reject する経路は契約外（実物は例外を握る）で、clone 側ではエラーとしてダイアログに出すだけにしている
+  - `gitCloneProcess` は、止めた後でも `setsid` したデーモン化する子孫がパイプを持ち続けると `close` が来ず、`isCloning` と全体ロックが再起動まで残りうる（現行の OpenSSH の ControlPersist と credential-cache の daemon は標準エラーを /dev/null へ向けるため、可能性は低い）
+  - 保存先の親フォルダ自体が clone の最中に symlink へ差し替えられる競合は検知できない（保存先が親の直下にあるかをパスの文字列で比べるため。削除は保存先がフォルダのときだけ行う）
+  - Windows では、子孫ごとの停止（`taskkill /T /F`）と、ssh のホスト鍵の確認が待たないことは実機で未確認
+  - 既定のフォルダ名は、query・fragment を落とすなど git の既定の名前と一部違う（利用者は編集できる）
+  - checkout の失敗（`Clone succeeded, but checkout failed`。LFS の smudge filter の失敗など）でも、clone は失敗として扱い保存先を削除する。git の案内文（`git status` で調べて `git restore --source=HEAD :/` で再試行）はそのまま表示されるが、保存先は削除済みなので無視してよい。LFS の認証などを済ませてからもう一度 clone する（git の出力の文字列で消すとロケールで壊れるため消さない）。実 git 2.50.1 で、失敗する smudge filter を設定して clone すると、終了コード 128 で `warning: Clone succeeded, but checkout failed.`・`You can inspect what was checked out with 'git status'`・`and retry with 'git restore --source=HEAD :/'` の 3 行が出ることを確認した
+  - Windows では `//host/share/repo` が絶対パスとして許可リストを通り（`@shared/remoteUrl` の `isAbsolutePath` は `/` で始まる形を許可する。リモートの追加から既存の規則）、clone で SMB 接続（NTLM の送出）を起こしうる。入力するのは利用者自身（Windows の実機で未確認）
+  - Windows の予約名（`CON`・`NUL` など）・`:`・末尾のドットのフォルダ名は検証していない（新規作成・リネームと同じ既存の規則。`getCloneFolderNameViolation` は `isSafeEntryName` だけで判定する）。`:` を含む名前では mkdir の失敗（`ERROR_INVALID_NAME` を libuv が `ENOENT` に変換する）が「保存先の親フォルダが見つかりません」と表示されうる。`foo.` は末尾のドットが落とされて `foo` として作られる。URL が `https://h/CON.git` なら既定のフォルダ名は `CON` になる（Windows の実機で未確認。libuv の対応表からの推定）

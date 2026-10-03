@@ -207,6 +207,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
 
 - `src/renderer/src/lib/gitApi.ts`: 上の 3 つ
 - `src/renderer/src/lib/remoteSetupValidation.ts`（新規）: ダイアログ用の検証と文言（`validateInitialBranchName`・`validateRemoteUrl`）。最初のブランチ名は `validateBranchName(normalizeInitialBranchName(name), [])` で、ブランチの作成ダイアログ（`branchNameValidation`）の文言の表を共有する（同じ層に同じ表を 2 つ持たない。パターン 88）。URL の文言はここの表で持つ
+  - （注記）clone の PR で、`validateRemoteUrl` と URL の文言の表は `lib/remoteUrlValidation.ts` へ移した（`remoteSetupValidation.ts` は `initRepositoryValidation.ts` に改名）
 - `src/renderer/src/lib/remoteSetupState.ts`（新規）: `getRemoteSetupState(gitStatus)`（状態の表の判定）と、成功後のフォーカスの移し先の型 `RemoteSetupFocusTarget`（`'add-remote' | 'set-upstream' | 'push'`）
 - `src/renderer/src/hooks/useGitRemoteSetup.ts`（新規）: `initRepository(branch): Promise<boolean>`、`addOrigin(url): Promise<boolean>`、`isInitializing`、`isAddingOrigin`、`initError`、`addOriginError`、`clearInitError`、`clearAddOriginError`。`useRunExclusiveGitOperation` を使い、`onStart` でエラーを消す。初期化の取り直しはステータスと履歴、追加はステータスだけ
 - `src/renderer/src/hooks/useGitRemoteOperations.ts`: `pushSetUpstream(): Promise<boolean>`（実際に実行され成功したか。成功の後のフォーカスの移動に使う）・`isSettingUpstream` を追加。取り直しはステータスと履歴（`refreshHistory` を末尾（4 番目）の省略可能な引数に足す。省略時はステータスだけ。`useAppState` は必ず渡す）
@@ -278,6 +279,7 @@ Git 管理外のフォルダを開いたとき、アプリの中だけで「リ�
 - `gitService.getGitStatus`: `hasOrigin`・`hasRemote`（リモート無し・`origin` だけ・`origin` と別名・`git clone -o github` したリポジトリとその上の新しいブランチ）・`upstream`（設定済み・`gone`・ローカルの upstream・無し）・`detached`
 - `gitHandlers`: 引数の型の検証、許可フォルダ。preload: 3 つの IPC チャネル
 - renderer: `remoteSetupState`（状態の表の各行と、リモートの有無 3 通り × ブランチの位置 3 通り × `upstream` の有無 2 通りの全組み合わせ）、`remoteSetupValidation`、`RemoteSetupInputDialog`（実行中に閉じない 3 経路、`aria-busy` と案内、失敗で alert と入力欄へのフォーカス、再試行で古い alert が消える、IME の Escape、`aria-modal` と Tab の循環）、`useDialogFocusTrap`（循環・逆循環・外から入る・disabled と tabindex=-1 を飛ばす・対象が減っても循環・0 件でダイアログ自体・IME 中は奪わない・isOpen=false・アンマウントで解除）、`RemoteSetupBanner`（状態ごとの文言とボタンの disabled）、`useGitRemoteSetup`・`useGitRemoteOperations.pushSetUpstream`（成功・失敗のどちらでも取り直し、取り直しの後で実行中を下ろす、push と同時に走らない、開始時にエラーを消す）、成功後のフォーカスの移し先と「body のときだけ」。結合テストは実物のフックで、保留 → 操作 → 解決の順に作る（`act` の外で解決して `waitFor`。パターン 86）
+  - （注記）clone の PR で、`validateRemoteUrl` と URL の文言の表は `lib/remoteUrlValidation.ts` へ移した（`remoteSetupValidation.ts` は `initRepositoryValidation.ts` に改名）
 - 配線のテスト（`GitRepoView` / `SourceControlPanel` / `App`）は、タグの作成の既存のテストに揃える
 - すべてのテストで、実装を壊すと落ちることを変異で確かめる（パターン 57・78）
 
