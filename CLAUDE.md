@@ -199,4 +199,4 @@ const useFoo = ({ onConfirm = confirm } = {}) => { ... };
 ## 禁止事項
 
 - **`git commit` / `git push` の自動実行** — ユーザーの明示的な指示なしにコミット・プッシュを行わない
-- **Copilot へのレビュー依頼・監視の実行** — `scripts/request-copilot-review.sh` や `scripts/watch-pr-review.sh`、`gh pr review --request` などによる Copilot へのレビュー依頼やその監視は絶対に行わない
+- **Copilot へのレビュー依頼・監視の実行** — `scripts/request-copilot-review.sh` や `scripts/watch-pr-review.sh`、`gh pr review --request` などによる Copilot へのレビュー依頼やその監視は絶対に行わない（2026-10-03 から。理由: トークンの消費量が多く、利用上限にすぐ達するため。スクリプトは削除せず、`ALLOW_COPILOT_REVIEW=1` を付けないと実行できないようにしてある）
