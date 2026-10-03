@@ -207,6 +207,16 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:pushSetUpstream']
   ],
   [
+    'cloneRepository は git:cloneRepository チャンネルに URL とフォルダ名を渡す',
+    () => api.cloneRepository('https://github.com/a/b.git', 'b'),
+    ['git:cloneRepository', 'https://github.com/a/b.git', 'b']
+  ],
+  [
+    'cancelCloneRepository は git:cancelCloneRepository チャンネルを引数なしで呼び出す',
+    () => api.cancelCloneRepository(),
+    ['git:cancelCloneRepository']
+  ],
+  [
     'stashPush は git:stashPush チャンネルにメッセージを渡す',
     () => api.stashPush('msg'),
     ['git:stashPush', 'msg']

@@ -1,5 +1,6 @@
 import { realpath } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
+import { BrowserWindow } from 'electron'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { openFolderDialog } from '../dialogService'
 import {
@@ -60,7 +61,8 @@ export function registerFileSystemHandlers(
   folderAccess: FolderAccessManager
 ): void {
   ipcMain.handle('dialog:openFolder', async (event: IpcMainInvokeEvent) => {
-    const result = await openFolderDialog()
+    // 送信元のウィンドウのモーダルにする(表示中に clone などの画面の操作をさせない)
+    const result = await openFolderDialog(BrowserWindow.fromWebContents(event.sender))
     if (result !== null) folderAccess.set(event.sender.id, await realpath(result))
     return result
   })

@@ -1,6 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type {
   CLIOnlyToolId,
+  CloneRepositoryResult,
   ConflictChoice,
   ConflictFile,
   CreateTagRequest,
@@ -99,6 +100,9 @@ export const api = {
   initRepository: (branch: string): Promise<void> => ipcRenderer.invoke('git:init', branch),
   addOrigin: (url: string): Promise<void> => ipcRenderer.invoke('git:addOrigin', url),
   pushSetUpstream: (): Promise<void> => ipcRenderer.invoke('git:pushSetUpstream'),
+  cloneRepository: (url: string, folderName: string): Promise<CloneRepositoryResult> =>
+    ipcRenderer.invoke('git:cloneRepository', url, folderName),
+  cancelCloneRepository: (): Promise<void> => ipcRenderer.invoke('git:cancelCloneRepository'),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
   hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),

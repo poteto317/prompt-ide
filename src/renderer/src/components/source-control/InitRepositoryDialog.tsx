@@ -1,5 +1,5 @@
 import { normalizeInitialBranchName } from '@shared/branchName'
-import { validateInitialBranchName } from '../../lib/remoteSetupValidation'
+import { validateInitialBranchName } from '../../lib/initRepositoryValidation'
 import RemoteSetupInputDialog from './RemoteSetupInputDialog'
 
 interface Props {

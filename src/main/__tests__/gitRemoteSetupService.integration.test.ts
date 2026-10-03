@@ -18,12 +18,12 @@ import {
   NO_COMMIT_FOR_PUSH_MESSAGE,
   NO_ORIGIN_FOR_PUSH_MESSAGE,
   ORIGIN_EXISTS_MESSAGE,
-  REMOTE_URL_RULE_MESSAGES,
   UPSTREAM_CONFIG_EXISTS_MESSAGE,
   addOrigin,
   initRepository,
   pushSetUpstream
 } from '../gitRemoteSetupService'
+import { REMOTE_URL_RULE_MESSAGES } from '../gitRemoteUrlMessages'
 import {
   commitAll,
   initRepo,

@@ -1,4 +1,5 @@
 import type {
+  CloneRepositoryResult,
   ConflictChoice,
   ConflictFile,
   CreateTagRequest,
@@ -171,4 +172,15 @@ export function addOrigin(url: string): Promise<void> {
 // 現在のブランチを origin へ送り、upstream を設定する
 export function pushSetUpstream(): Promise<void> {
   return window.api.pushSetUpstream()
+}
+
+// リポジトリを clone する(保存先の親フォルダは main が OS のダイアログで選ぶ)。成功したら main はそのフォルダを
+// 開く許可に切り替えている(renderer は返ったパスを開く)
+export function cloneRepository(url: string, folderName: string): Promise<CloneRepositoryResult> {
+  return window.api.cloneRepository(url, folderName)
+}
+
+// 実行中の clone を中止する(実行中でなければ何もしない)
+export function cancelCloneRepository(): Promise<void> {
+  return window.api.cancelCloneRepository()
 }

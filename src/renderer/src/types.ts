@@ -89,6 +89,25 @@ export interface GitTagPanelState {
   clearError: () => void
 }
 
+// リポジトリの clone(エクスプローラーの「リポジトリを clone」とそのダイアログ)が受け取る状態と操作。
+// useCloneRepository が作り、App → Sidebar → ExplorerPanel へ 1 つの props(clone)で渡す
+export interface CloneRepositoryPanelState {
+  /** clone の依頼中(保存先の選択・clone・成功の後のフォルダの読み込みまで)。フォルダの変更と clone を押せなくする */
+  isCloning: boolean
+  /** 他の Git 操作の実行中で、clone を始められない(押しても何もしない)。clone 自身の実行中(全体ロックを含む)は
+   *  false(実行中は isCloning が表す) */
+  isBlocked: boolean
+  /** clone の失敗(main のエラー)。ダイアログ内に role="alert" で表示する */
+  error: Error | null
+  /** clone し、成功したらそのフォルダを開く。戻り値は開いたか(保存先の選択の取り消し・中止・失敗・未保存の確認の
+   *  取り消し・他の操作中で実行しなかった場合は false。ダイアログを閉じるかの判定に使う) */
+  cloneRepository: (url: string, folderName: string) => Promise<boolean>
+  /** 実行中の clone を中止する(実行中でなければ何もしない) */
+  cancelClone: () => void
+  /** error を消す。ダイアログを開くときに、前回の失敗の表示を持ち越さないために呼ぶ */
+  clearError: () => void
+}
+
 // リモートの管理(Git 管理外の「リポジトリを初期化」、状態バナーの「リモートを追加」「初回 push」)が受け取る状態と操作。
 // 初期化・追加は useGitRemoteSetup、初回 push は useGitRemoteOperations のものを useAppState で合成する。
 // App → Sidebar → SourceControlPanel へ 1 つの props(remoteSetup)で渡し、SourceControlPanel が GitRepoView(状態バナー)と

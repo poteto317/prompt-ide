@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile } from '../lib/fileUtils'
 import { toError } from '../lib/errorUtils'
+import { toDirtySnapshot } from '../lib/dirtySnapshot'
 import { isPathAtOrInside, isSamePath, toComparablePath } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { useFileEditing, DISCARD_CONFIRM_MESSAGE } from './useFileEditing'
@@ -37,6 +38,22 @@ export interface OpenedFileSignal {
   events: OpenedFileEvent[]
 }
 
+export interface ApplyOpenedFolderOptions {
+  /**
+   * 呼び出し側が未保存の確認(confirmDiscardAnyDirty)をした時点の未保存の状態(captureDirtySnapshot の値)。
+   * 走査の後にタブを閉じるとき、未保存のタブがあり、その内容がこの時点から変わっていれば、もう一度確認する
+   * (clone の実行中に入った編集を確認なしで捨てないため。未保存の有無だけで比べると、確認の時点で未保存が
+   * あったタブをさらに編集した場合や、別のタブを編集した場合を見逃す)
+   */
+  dirtySnapshotAtConfirm: string
+}
+
+// 走査の後にタブを閉じる前の再確認で、走査の前の状態として控えるもの。openFolder は未保存の有無(presence)で
+// 比べる(ダイアログはモーダルで、ダイアログが返ってから走査が終わるまでは短い)。applyOpenedFolder は
+// 呼び出し側が確認した時点の未保存の内容(snapshot)で比べる(clone の実行中は長い。画面はダイアログが覆うため
+// 編集は入りにくい。clone 中に未保存の内容が変わる経路は今は無く、将来オーバーレイが外れる・別の入口が増えたときのための防御の層として比べる)
+type DirtyBaseline = { kind: 'presence'; dirty: boolean } | { kind: 'snapshot'; snapshot: string }
+
 export interface SelectFileOptions {
   /** 開いたあとエディタへフォーカスを移すか(クイックオープン経由の場合のみ true) */
   moveFocusToEditor?: boolean
@@ -58,6 +75,12 @@ interface FileSystemState {
   error: Error | null
   saveError: Error | null
   openFolder: () => Promise<void>
+  /**
+   * 既に選ばれたフォルダ(clone の保存先など。main が開く許可を切り替え済み)を開く。走査・タブを閉じる判定・
+   * 世代の管理・エラーの表示は openFolder と同じ。未保存の確認は呼び出し側が事前に行う(options.dirtySnapshotAtConfirm)。
+   * 実行中の openFolder のダイアログより後に呼ばれたら、そのダイアログの結果は捨てる
+   */
+  applyOpenedFolder: (path: string, options: ApplyOpenedFolderOptions) => Promise<void>
   /** ファイルを開けたら true。ディレクトリ・破棄確認のキャンセル・読み込み失敗では false */
   selectFile: (node: FileTreeNode, options?: SelectFileOptions) => Promise<boolean>
   closeFile: () => void
@@ -78,6 +101,12 @@ interface FileSystemState {
    *  確認せず true)。checkout 等、working tree を書き換える操作の実行前に
    *  呼び出し側が使う */
   confirmDiscardAnyDirty: () => boolean
+  /**
+   * 未保存のタブの状態を、値で比べられる不透明な文字列にして返す(未保存のタブを path 順に並べた [path, content]
+   * の組)。編集・保存・タブを閉じるで変わり、未保存の内容が同じなら同じ値になる。applyOpenedFolder の
+   * dirtySnapshotAtConfirm を、未保存の確認(confirmDiscardAnyDirty)の直前に測るために使う
+   */
+  captureDirtySnapshot: () => string
   /** 開いている全タブのバッファをディスクの最新内容へ同期する。git checkout
    *  等、このフック外の要因(gitコマンド)で working tree のファイルが
    *  書き換わった後に呼ぶ想定。読み込みに失敗したタブ(対象ファイルが無く
@@ -289,11 +318,19 @@ export function useFileSystem(options?: Options): FileSystemState {
   const confirmDiscardAnyDirty = (): boolean =>
     !hasAnyDirtyTab() || onConfirm(DISCARD_CONFIRM_MESSAGE)
 
+  // 直列化の中身(未保存のタブだけを path の順に並べる)は lib/dirtySnapshot
+  const captureDirtySnapshot = (): string => toDirtySnapshot(openFilesMirrorRef.current)
+
   // 待機の前後で「dirty なタブがあるか」が変わっていたら、開始時の確認はその状態を
-  // 見ていない。変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)
-  const confirmDiscardChangedSinceOpenFolder = (dirtyAtStart: boolean): boolean => {
+  // 見ていない。変わっていなければ再確認しない(同じダイアログが 2 回出てしまうため)。
+  // snapshot で控えた場合は、未保存のタブがあり、その内容が確認の時点から変わっていれば再確認する
+  const confirmDiscardChangedSinceOpenFolder = (dirtyBaseline: DirtyBaseline): boolean => {
+    if (dirtyBaseline.kind === 'snapshot') {
+      if (captureDirtySnapshot() === dirtyBaseline.snapshot) return true
+      return confirmDiscardAnyDirty()
+    }
     const dirtyNow = hasAnyDirtyTab()
-    if (dirtyNow === dirtyAtStart) return true
+    if (dirtyNow === dirtyBaseline.dirty) return true
     return confirmDiscardAnyDirty()
   }
 
@@ -355,8 +392,14 @@ export function useFileSystem(options?: Options): FileSystemState {
     invalidatePendingReads
   })
 
-  const openFolder = async (): Promise<void> => {
-    if (!confirmDiscardAnyDirty()) return
+  // フォルダを選び(selectPath)、そのフォルダを走査して開く。openFolder(OS のダイアログで選ぶ)と
+  // applyOpenedFolder(既に選ばれたパス)が共有する。dirtySnapshotAtConfirm は呼び出し側が未保存を確認した時点の
+  // 状態(captureDirtySnapshot)で、省略時は選択が返った時点の未保存の有無を使う(openFolder の従来の挙動。
+  // ネイティブのダイアログはモーダルで、確認からダイアログが返るまでの間に編集は入らない)
+  const runFolderOpen = async (
+    selectPath: () => Promise<string | null>,
+    dirtySnapshotAtConfirm?: string
+  ): Promise<void> => {
     // ダイアログの表示前に試行の世代を割り当てる。解決後だと、ダイアログが
     // reject した時点で「最新の試行か」を判定できず、後続のフォルダ選択が
     // 確定したあとに先行操作のエラーで上書きしてしまう
@@ -372,9 +415,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     let selectedPath: string | null = null
     // 失敗経路でも成功経路と同じ判定を行うため、走査開始時点の状態を控える
     let committedOpenAtStart: number | null = null
-    let dirtyAtStart: boolean | null = null
+    let dirtyBaseline: DirtyBaseline | null = null
     try {
-      const path = await fileSystemApi.openFolder()
+      const path = await selectPath()
       // 先行ダイアログが後発の選択より遅れて返ることがある。古い試行のまま
       // 進むと、走査の世代を進めて後発の結果を捨て、古いフォルダが最終表示になる
       if (dialogAttemptId !== dialogAttemptRef.current) return
@@ -390,7 +433,10 @@ export function useFileSystem(options?: Options): FileSystemState {
       // フォルダが変わるので、旧フォルダのファイルを読み込み中なら無効化する
       latestReadRef.current += 1
       committedOpenAtStart = committedOpenRef.current
-      dirtyAtStart = hasAnyDirtyTab()
+      dirtyBaseline =
+        dirtySnapshotAtConfirm === undefined
+          ? { kind: 'presence', dirty: hasAnyDirtyTab() }
+          : { kind: 'snapshot', snapshot: dirtySnapshotAtConfirm }
       const treeWriteSeq = ++treeWriteSeqRef.current
       const tree = await fileSystemApi.readDirectory(path)
       // より新しいフォルダ選択が始まっていたら、こちらの結果は捨てる
@@ -416,7 +462,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       // ディレクトリ走査は秒単位になり得る。その間に入った編集は開始時の確認が
       // 見ていないため、閉じる前にあらためて確認する。キャンセルされた場合は
       // フォルダとツリーだけ確定し、ファイルは開いたまま残す
-      if (!confirmDiscardChangedSinceOpenFolder(dirtyAtStart)) return
+      if (!confirmDiscardChangedSinceOpenFolder(dirtyBaseline)) return
       // クリアする前の全タブを控える。フォルダを開き直すと openFiles を丸ごと
       // 空にするため、それまで開いていた全タブの保存セッションを無効化する必要が
       // ある(参照している path が無くなる各タブ個別にではなく、まとめて 1 回で行う)
@@ -447,8 +493,8 @@ export function useFileSystem(options?: Options): FileSystemState {
         if (
           committedOpenAtStart !== null &&
           committedOpenRef.current === committedOpenAtStart &&
-          dirtyAtStart !== null &&
-          confirmDiscardChangedSinceOpenFolder(dirtyAtStart)
+          dirtyBaseline !== null &&
+          confirmDiscardChangedSinceOpenFolder(dirtyBaseline)
         ) {
           const pathsBeingCleared = openFilesMirrorRef.current.map((f) => f.path)
           setOpenFilesAndFixActive(() => [])
@@ -484,6 +530,15 @@ export function useFileSystem(options?: Options): FileSystemState {
       }
     }
   }
+
+  const openFolder = async (): Promise<void> => {
+    if (!confirmDiscardAnyDirty()) return
+    await runFolderOpen(() => fileSystemApi.openFolder())
+  }
+
+  // 選択の世代(dialogAttemptRef)も進めるため、実行中の openFolder のダイアログが後から返っても捨てられる
+  const applyOpenedFolder = (path: string, options: ApplyOpenedFolderOptions): Promise<void> =>
+    runFolderOpen(() => Promise.resolve(path), options.dirtySnapshotAtConfirm)
 
   // 呼び出し側が「実際に開けたか」で分岐できるよう成否を返す。クイックオープンは
   // 開けなかったとき(破棄確認のキャンセルなど)にダイアログを閉じずに残す。
@@ -782,6 +837,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     error,
     saveError,
     openFolder,
+    applyOpenedFolder,
     selectFile,
     closeFile,
     activateTab,
@@ -795,6 +851,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     deleteEntry,
     refreshTree,
     confirmDiscardAnyDirty,
+    captureDirtySnapshot,
     reloadOpenFiles,
     reloadOpenFile,
     closeTabsAtOrInside,

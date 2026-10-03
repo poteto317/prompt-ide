@@ -1,6 +1,7 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
   CLIOnlyToolId,
+  CloneRepositoryResult,
   ConflictChoice,
   ConflictFile,
   CreateTagRequest,
@@ -78,6 +79,8 @@ declare global {
       initRepository(branch: string): Promise<void>
       addOrigin(url: string): Promise<void>
       pushSetUpstream(): Promise<void>
+      cloneRepository(url: string, folderName: string): Promise<CloneRepositoryResult>
+      cancelCloneRepository(): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
       hasApiKey(): Promise<boolean>
       setApiKey(apiKey: string): Promise<void>

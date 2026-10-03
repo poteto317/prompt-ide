@@ -15,7 +15,9 @@ const mockAddToGitignore = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 const mockToGitRelativePath = vi.hoisted(() => vi.fn())
 const mockIsSymbolicLink = vi.hoisted(() => vi.fn())
+const mockFromWebContents = vi.hoisted(() => vi.fn())
 
+vi.mock('electron', () => ({ BrowserWindow: { fromWebContents: mockFromWebContents } }))
 vi.mock('../../dialogService', () => ({ openFolderDialog: mockOpenFolderDialog }))
 vi.mock('../../fileSystem', () => ({
   readDirRecursive: mockReadDirRecursive,
@@ -113,6 +115,20 @@ describe('registerFileSystemHandlers', () => {
       mockOpenFolderDialog.mockResolvedValue('/project')
       await getRegisteredHandler('dialog:openFolder')(makeEvent(1))
       expect(folderAccess.set).toHaveBeenCalledWith(1, '/project')
+    })
+
+    // 親ウィンドウ無しのダイアログは表示中も画面を操作でき、clone の成功の後に残ったダイアログの結果で許可が
+    // 書き換わる。送信元のウィンドウのモーダルにして、表示中は画面を操作させない
+    it('送信元のウィンドウ(sender から引いた BrowserWindow)をダイアログに渡す', async () => {
+      const folderAccess = makeFolderAccess()
+      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      const window = { id: 'window' }
+      mockFromWebContents.mockReturnValueOnce(window)
+      mockOpenFolderDialog.mockResolvedValueOnce(null)
+      const event = makeEvent(1)
+      await getRegisteredHandler('dialog:openFolder')(event)
+      expect(mockFromWebContents).toHaveBeenCalledWith(event.sender)
+      expect(mockOpenFolderDialog).toHaveBeenCalledWith(window)
     })
   })
 

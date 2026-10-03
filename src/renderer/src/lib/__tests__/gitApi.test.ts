@@ -25,6 +25,8 @@ import {
   stashDrop,
   createTag,
   initRepository,
+  cloneRepository,
+  cancelCloneRepository,
   addOrigin,
   pushSetUpstream,
   mergeBranch,
@@ -65,6 +67,8 @@ const mockApi = {
   stashDrop: vi.fn(),
   createTag: vi.fn(),
   initRepository: vi.fn(),
+  cloneRepository: vi.fn(),
+  cancelCloneRepository: vi.fn(),
   addOrigin: vi.fn(),
   pushSetUpstream: vi.fn(),
   mergeBranch: vi.fn(),
@@ -416,6 +420,27 @@ describe('initRepository / addOrigin / pushSetUpstream', () => {
     )
     await expect(pushSetUpstream()).rejects.toThrow(
       'リモート origin が未設定のため、初回 push できません'
+    )
+  })
+})
+
+describe('cloneRepository / cancelCloneRepository', () => {
+  it('window.api の同名の関数を呼び、結果をそのまま返す', async () => {
+    mockApi.cloneRepository.mockResolvedValueOnce({ status: 'cloned', path: '/parent/b' })
+    mockApi.cancelCloneRepository.mockResolvedValueOnce(undefined)
+    await expect(cloneRepository('https://github.com/a/b.git', 'b')).resolves.toEqual({
+      status: 'cloned',
+      path: '/parent/b'
+    })
+    await cancelCloneRepository()
+    expect(mockApi.cloneRepository).toHaveBeenCalledWith('https://github.com/a/b.git', 'b')
+    expect(mockApi.cancelCloneRepository).toHaveBeenCalledWith()
+  })
+
+  it('失敗をそのまま伝える', async () => {
+    mockApi.cloneRepository.mockRejectedValueOnce(new Error('既に clone を実行中です'))
+    await expect(cloneRepository('https://github.com/a/b.git', 'b')).rejects.toThrow(
+      '既に clone を実行中です'
     )
   })
 })

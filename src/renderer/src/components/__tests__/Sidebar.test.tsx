@@ -6,6 +6,7 @@ import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../
 import { sidebarTitles } from '../../config/sidebarTitles'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
+import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -97,6 +98,7 @@ const defaultProps = {
   mergeState: emptyMergeState,
   gitTag: makeGitTagPanelState(),
   remoteSetup: makeRemoteSetupPanelState(),
+  clone: makeCloneRepositoryPanelState(),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),
@@ -177,6 +179,14 @@ describe('Sidebar', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
     expect(gitTag.clearError).toHaveBeenCalledOnce()
+  })
+
+  it('explorer: clone が「リポジトリを clone」とダイアログまで届く', async () => {
+    const clone = makeCloneRepositoryPanelState()
+    render(<Sidebar {...defaultProps} activePanel="explorer" clone={clone} />)
+    await userEvent.click(screen.getByRole('button', { name: 'リポジトリを clone' }))
+    expect(clone.clearError).toHaveBeenCalledOnce()
+    expect(screen.getByRole('dialog', { name: 'リポジトリを clone' })).toBeInTheDocument()
   })
 
   it('source-control: remoteSetup がバナーまで届く', async () => {

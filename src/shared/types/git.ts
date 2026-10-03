@@ -143,3 +143,7 @@ export type StashPopResult =
       status: 'rollbackFailed'
       message: string
     }
+
+// リポジトリの clone(git:cloneRepository)の結果。canceled は保存先の選択(OS のダイアログ)の取り消しと、
+// clone 中の中止(git:cancelCloneRepository・ウィンドウを閉じた)の両方。失敗は例外(日本語の文言)
+export type CloneRepositoryResult = { status: 'cloned'; path: string } | { status: 'canceled' }

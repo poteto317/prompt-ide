@@ -40,13 +40,13 @@ import {
   NO_ORIGIN_FOR_PUSH_MESSAGE,
   ORIGIN_EXISTS_MESSAGE,
   REMOTE_SETUP_LOCAL_TIMEOUT_MS,
-  REMOTE_URL_RULE_MESSAGES,
   UPSTREAM_CONFIG_EXISTS_MESSAGE,
   UPSTREAM_NOT_CONFIRMED_MESSAGE,
   addOrigin,
   initRepository,
   pushSetUpstream
 } from '../gitRemoteSetupService'
+import { REMOTE_URL_RULE_MESSAGES } from '../gitRemoteUrlMessages'
 
 const HEAD_SHA = `${'a'.repeat(40)}\n`
 const timeoutError = (): Error =>

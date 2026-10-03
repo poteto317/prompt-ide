@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import type { FileTreeNode } from '../../types'
+import type { CloneRepositoryPanelState, FileTreeNode } from '../../types'
 import { useContextMenu } from '../../hooks/useContextMenu'
 import { buildMenuItems } from '../../lib/explorerMenuItems'
 import FileTreeItem from './FileTreeItem'
 import ExplorerContextMenu from './ExplorerContextMenu'
 import NameInputDialog from './NameInputDialog'
+import CloneRepositoryEntry from './CloneRepositoryEntry'
 
 interface Props {
   folderPath: string | null
@@ -21,6 +22,8 @@ interface Props {
   onRenameEntry: (node: FileTreeNode, newName: string) => void
   onDeleteEntry: (node: FileTreeNode) => void
   onAddToGitignore: (node: FileTreeNode) => void
+  /** リポジトリの clone の状態と操作(「リポジトリを clone」とダイアログ) */
+  clone: CloneRepositoryPanelState
 }
 
 type DialogState =
@@ -45,11 +48,11 @@ export default function ExplorerPanel({
   onCreateDirectory,
   onRenameEntry,
   onDeleteEntry,
-  onAddToGitignore
+  onAddToGitignore,
+  clone
 }: Props): React.JSX.Element {
   const { menu, openMenu, closeMenu } = useContextMenu()
   const [dialog, setDialog] = useState<DialogState | null>(null)
-
   const handleDialogSubmit = (name: string): void => {
     if (dialog === null) return
     if (dialog.mode === 'createFile') {
@@ -62,19 +65,36 @@ export default function ExplorerPanel({
     setDialog(null)
   }
 
+  // clone の実行中はフォルダを変えさせない(成功するとフォルダが切り替わるため)。「リポジトリを clone」の入口
+  // (CloneRepositoryEntry)は 2 つの分岐の同じ位置(2 番目)に置く。分岐が切り替わっても React が同じ部品として
+  // 引き継ぐため、clone に成功してフォルダが開いたときも、ダイアログを閉じた後のフォーカスの戻しが保たれる
   return (
     <div className="explorer-panel">
       {error && <p className="explorer-panel__error">{error.message}</p>}
       {gitignoreError && <p className="explorer-panel__error">{gitignoreError.message}</p>}
       {folderPath === null ? (
-        <button type="button" className="explorer-panel__open-btn" onClick={onOpenFolder}>
-          フォルダを開く
-        </button>
+        <>
+          <button
+            type="button"
+            className="explorer-panel__open-btn"
+            disabled={clone.isCloning}
+            onClick={onOpenFolder}
+          >
+            フォルダを開く
+          </button>
+          <CloneRepositoryEntry clone={clone} />
+        </>
       ) : (
         <>
-          <button type="button" className="explorer-panel__change-btn" onClick={onOpenFolder}>
+          <button
+            type="button"
+            className="explorer-panel__change-btn"
+            disabled={clone.isCloning}
+            onClick={onOpenFolder}
+          >
             フォルダを変更
           </button>
+          <CloneRepositoryEntry clone={clone} />
           <div
             role="tree"
             aria-label="ファイルツリー"

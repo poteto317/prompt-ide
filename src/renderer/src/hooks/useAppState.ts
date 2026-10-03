@@ -23,12 +23,15 @@ import { useMergeState } from './useMergeState'
 import { useConflictFile } from './useConflictFile'
 import { useGitTagOperations } from './useGitTagOperations'
 import { useGitRemoteSetup } from './useGitRemoteSetup'
+import { useCloneRepository } from './useCloneRepository'
 import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
 import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
+import { isAnyGitOperationRunning } from '../lib/gitOperationActivity'
 import { isSamePath } from '../lib/pathUtils'
 import type {
+  CloneRepositoryPanelState,
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
@@ -70,6 +73,8 @@ type AppState = {
   gitTag: GitTagPanelState
   /** リモートの管理の状態と操作(Git 管理外の「リポジトリを初期化」、状態バナーの「リモートを追加」「初回 push」) */
   remoteSetup: RemoteSetupPanelState
+  /** リポジトリの clone の状態と操作(エクスプローラーの「リポジトリを clone」とダイアログ) */
+  clone: CloneRepositoryPanelState
   /** マージ中バナーの状態と、マージの完了・中止の操作 */
   mergeState: MergeStatePanelState
   /** 未解決ファイルの解決ビューの状態と操作 */
@@ -328,6 +333,26 @@ export function useAppState(): AppState {
     reloadOpenFiles: fileSystem.reloadOpenFiles,
     refreshTree: fileSystem.refreshTree
   })
+  // clone は Git 操作の実行中は始めない(判定の中身と理由は lib/gitOperationActivity)。退避の実行中フラグ
+  // (stash.pendingOperation)を読むため、useStashPanel より後ろに置く
+  const isGitOperationRunning = isAnyGitOperationRunning({
+    isAnyLocked: fileOperationLock.isAnyLocked(),
+    isPushing: gitRemoteOperations.isPushing,
+    isFetching: gitRemoteOperations.isFetching,
+    isSettingUpstream: gitRemoteOperations.isSettingUpstream,
+    pendingBranchOperation: gitBranchOperations.pendingBranchOperation,
+    stashPendingOperation: stash.pendingOperation,
+    isCreatingTag: gitTag.isCreating,
+    isInitializing: gitRemoteSetup.isInitializing,
+    isAddingOrigin: gitRemoteSetup.isAddingOrigin
+  })
+  const clone = useCloneRepository({
+    captureDirtySnapshot: fileSystem.captureDirtySnapshot,
+    confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+    applyOpenedFolder: fileSystem.applyOpenedFolder,
+    lock: fileOperationLock,
+    isGitOperationRunning
+  })
   // 変更の取り消しは、確認・取り消し・エディタのタブ同期の組み立てを
   // useDiscardFileChanges に任せ、ここでは依存を渡すだけにする
   const discardFile = useDiscardFileChanges({
@@ -442,6 +467,7 @@ export function useAppState(): AppState {
     discardAll,
     gitTag,
     remoteSetup,
+    clone,
     mergeState,
     conflictFile,
     isActiveFileConflicted

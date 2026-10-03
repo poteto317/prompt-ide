@@ -1,5 +1,5 @@
 import { normalizeRemoteUrl } from '@shared/remoteUrl'
-import { validateRemoteUrl } from '../../lib/remoteSetupValidation'
+import { validateRemoteUrl } from '../../lib/remoteUrlValidation'
 import RemoteSetupInputDialog from './RemoteSetupInputDialog'
 
 interface Props {

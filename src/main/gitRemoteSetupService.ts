@@ -1,16 +1,12 @@
 import simpleGit, { GitConstructError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { getBranchNameRuleViolation, normalizeInitialBranchName } from '@shared/branchName'
-import {
-  MAX_REMOTE_URL_LENGTH,
-  getRemoteUrlRuleViolation,
-  normalizeRemoteUrl
-} from '@shared/remoteUrl'
-import type { RemoteUrlRuleViolation } from '@shared/remoteUrl'
+import { getRemoteUrlRuleViolation, normalizeRemoteUrl } from '@shared/remoteUrl'
 import { GIT_REMOTE_TIMEOUT_MS } from '@shared/remoteTimeout'
 import { assertValidNewBranchName } from './gitBranchNameGuard'
 import { getCurrentBranchRef } from './gitHeadState'
 import { ORIGIN_REMOTE, hasOriginRemote } from './gitRemoteNames'
+import { REMOTE_URL_RULE_MESSAGES } from './gitRemoteUrlMessages'
 import { REMOTE_OPERATION_TIMEOUT_MESSAGE, simpleGitWithRemoteTimeout } from './gitRemoteTimeout'
 import {
   failure,
@@ -43,17 +39,6 @@ export const UPSTREAM_CONFIG_EXISTS_MESSAGE =
 export const FOLDER_NOT_FOUND_MESSAGE = 'フォルダが見つかりません'
 export const UPSTREAM_NOT_CONFIRMED_MESSAGE =
   'push は完了しましたが、upstream を設定できませんでした'
-
-// URL の規則の違反ごとの文言。判定(種類と順序)は renderer と同じ getRemoteUrlRuleViolation(@shared/remoteUrl)。
-// 文言は各側の表で持つ(パターン 88)。URL は資格情報を含みうるため、文言に入れない
-export const REMOTE_URL_RULE_MESSAGES: Record<RemoteUrlRuleViolation, string> = {
-  empty: 'URL を入力してください',
-  'too-long': `URL が長すぎます（${MAX_REMOTE_URL_LENGTH} 文字まで）`,
-  'invalid-char': 'URL に空白・改行・制御文字・引用符（\' " `）は使用できません',
-  'leading-dash': '`-` で始まる URL は使用できません',
-  unsupported:
-    '使用できない形式の URL です（https://・http://・ssh://・git://・file://・user@host:path・絶対パスが使えます）。ユーザー名・パスワード入りの http(s) URL は使えません（認証は credential helper か ssh の鍵を使います）'
-}
 
 const INIT_FAILURE = 'リポジトリを初期化できませんでした'
 const ADD_ORIGIN_FAILURE = 'リモートを追加できませんでした'

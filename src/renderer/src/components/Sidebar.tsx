@@ -19,7 +19,8 @@ import type {
   DiscardAllState,
   MergeStatePanelState,
   GitTagPanelState,
-  RemoteSetupPanelState
+  RemoteSetupPanelState,
+  CloneRepositoryPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -37,6 +38,8 @@ interface Props {
   onCreateDirectory: (parentPath: string, name: string) => void
   onRenameEntry: (node: FileTreeNode, newName: string) => void
   onDeleteEntry: (node: FileTreeNode) => void
+  /** リポジトリの clone の状態と操作(ExplorerPanel へそのまま渡す) */
+  clone: CloneRepositoryPanelState
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
@@ -128,6 +131,7 @@ export default function Sidebar({
   onCreateDirectory,
   onRenameEntry,
   onDeleteEntry,
+  clone,
   prompts,
   onAddPrompt,
   onDeletePrompt,
@@ -221,6 +225,7 @@ export default function Sidebar({
           onRenameEntry={onRenameEntry}
           onDeleteEntry={onDeleteEntry}
           onAddToGitignore={onAddToGitignore}
+          clone={clone}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'prompts'}>

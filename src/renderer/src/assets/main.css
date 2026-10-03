@@ -635,7 +635,7 @@ body {
   align-self: stretch;
 }
 
-.explorer-panel__open-btn:hover {
+.explorer-panel__open-btn:hover:not(:disabled) {
   background: #1177bb;
 }
 
@@ -651,9 +651,15 @@ body {
   flex-shrink: 0;
 }
 
-.explorer-panel__change-btn:hover {
+.explorer-panel__change-btn:hover:not(:disabled) {
   color: #cccccc;
   border-color: #888888;
+}
+
+/* 「リポジトリを clone」(寸法・枠・配色は下の共通のボタンの規則。ここは配置だけ) */
+.explorer-panel__clone-btn {
+  margin: 0 12px 6px;
+  align-self: flex-start;
 }
 
 .explorer-panel__error {
@@ -765,34 +771,39 @@ body {
   background: #1177bb;
 }
 
-/* タグの作成ダイアログと、リポジトリの初期化・リモートの追加のダイアログ(枠・入力欄・ボタンは
+/* タグの作成ダイアログと、リポジトリの初期化・リモートの追加・リポジトリの clone のダイアログ(枠・入力欄・ボタンは
    .name-input-dialog__* を共有する)。disabled の実行ボタン・キャンセルの半透明は、下の共通のボタンの
    :disabled の規則で宣言する。リモートのバナーの案内(.remote-setup-banner__note)も同じ補足の文字にする */
 .create-tag-dialog__note,
 .create-tag-dialog__label,
 .remote-setup-dialog__note,
 .remote-setup-dialog__label,
+.clone-repository-dialog__note,
+.clone-repository-dialog__label,
 .remote-setup-banner__note {
   font-size: 11px;
   color: #969696;
 }
 
 .create-tag-dialog__note,
-.remote-setup-dialog__note {
+.remote-setup-dialog__note,
+.clone-repository-dialog__note {
   margin: 0 0 4px;
 }
 
 .create-tag-dialog__field,
-.remote-setup-dialog__field {
+.remote-setup-dialog__field,
+.clone-repository-dialog__field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 8px;
 }
 
-/* リポジトリの初期化・リモートの追加のダイアログの form は tabindex=-1(中の文字・余白のクリックでフォーカスを受け、
-   Escape が届くように)。Chromium 既定のフォーカスリングがダイアログ全体に出ないよう消す(中の操作対象には出る) */
-.remote-setup-dialog:focus {
+/* リポジトリの初期化・リモートの追加・リポジトリの clone のダイアログの form は tabindex=-1(中の文字・余白の
+   クリックでフォーカスを受け、Escape が届くように)。Chromium 既定のフォーカスリングがダイアログ全体に出ないよう消す(中の操作対象には出る) */
+.remote-setup-dialog:focus,
+.clone-repository-dialog:focus {
   outline: none;
 }
 
@@ -1211,7 +1222,8 @@ body {
   padding-right: 12px;
 }
 
-/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・解決ビューのツールバー・ブロック)。
+/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・エクスプローラーの clone・
+   解決ビューのツールバー・ブロック)。
    タッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、ホバー時だけ表示する作りにはしない。
    ホバー色は破壊的でない操作=青系、危険系(--danger: 退避を捨てる・マージを中止・削除する)=赤系
    (ブランチメニューのマージ・削除ボタンと同じ)。見た目を変えるときはここ 1 か所を直す */
@@ -1223,6 +1235,7 @@ body {
 .history-section__create-tag,
 .remote-setup-banner__button,
 .source-control-panel__init-btn,
+.explorer-panel__clone-btn,
 .create-tag-dialog__kind {
   flex: none;
   min-width: 32px;
@@ -1244,6 +1257,7 @@ body {
 .history-section__create-tag:hover:not(:disabled),
 .remote-setup-banner__button:hover:not(:disabled),
 .source-control-panel__init-btn:hover:not(:disabled),
+.explorer-panel__clone-btn:hover:not(:disabled),
 .create-tag-dialog__kind:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
@@ -1255,6 +1269,8 @@ body {
   background: #5a1d1d;
 }
 
+/* 無効時の共通の見た目(半透明・既定のカーソル)。上の共通の枠付きのボタンに加え、独自の見た目を持つボタン
+   (エクスプローラーの .explorer-panel__open-btn・__change-btn、ダイアログの .name-input-dialog__ok・__cancel)も含む */
 .stash-section__push:disabled,
 .stash-section__action:disabled,
 .merge-banner__button:disabled,
@@ -1263,6 +1279,9 @@ body {
 .history-section__create-tag:disabled,
 .remote-setup-banner__button:disabled,
 .source-control-panel__init-btn:disabled,
+.explorer-panel__clone-btn:disabled,
+.explorer-panel__open-btn:disabled,
+.explorer-panel__change-btn:disabled,
 .create-tag-dialog__kind:disabled,
 .name-input-dialog__ok:disabled,
 .name-input-dialog__cancel:disabled {

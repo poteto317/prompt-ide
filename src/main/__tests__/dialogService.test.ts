@@ -4,10 +4,16 @@ const mockShowOpenDialog = vi.hoisted(() => vi.fn())
 const mockShowSaveDialog = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
-  dialog: { showOpenDialog: mockShowOpenDialog, showSaveDialog: mockShowSaveDialog },
+  dialog: { showOpenDialog: mockShowOpenDialog, showSaveDialog: mockShowSaveDialog }
 }))
 
-import { openFolderDialog, openJsonDialog, saveJsonDialog } from '../dialogService'
+import type { BrowserWindow } from 'electron'
+import {
+  chooseCloneParentDialog,
+  openFolderDialog,
+  openJsonDialog,
+  saveJsonDialog
+} from '../dialogService'
 
 const JSON_FILTERS = [{ name: 'JSON', extensions: ['json'] }]
 
@@ -45,6 +51,20 @@ describe('openFolderDialog', () => {
     const result = await openFolderDialog()
     expect(result).toBeNull()
   })
+  // 親ウィンドウ無しのダイアログは独立したウィンドウになり、表示中も画面を操作できる(clone を押せてしまう)。
+  // ウィンドウを渡せばそのウィンドウのモーダル(macOS はシート)にする
+  it('ウィンドウを渡すと、そのウィンドウのモーダルとして showOpenDialog(window, options) を呼ぶ', async () => {
+    const window = { id: 'window' } as unknown as BrowserWindow
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/project'] })
+    expect(await openFolderDialog(window)).toBe('/project')
+    expect(mockShowOpenDialog).toHaveBeenCalledWith(window, { properties: ['openDirectory'] })
+  })
+
+  it('ウィンドウが null なら、従来どおり options だけで呼ぶ', async () => {
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+    await openFolderDialog(null)
+    expect(mockShowOpenDialog.mock.calls[0]).toEqual([{ properties: ['openDirectory'] }])
+  })
 })
 
 describe('saveJsonDialog', () => {
@@ -53,7 +73,7 @@ describe('saveJsonDialog', () => {
     await saveJsonDialog('prompts.json')
     expect(mockShowSaveDialog).toHaveBeenCalledWith({
       defaultPath: 'prompts.json',
-      filters: JSON_FILTERS,
+      filters: JSON_FILTERS
     })
   })
 
@@ -76,7 +96,7 @@ describe('openJsonDialog', () => {
     await openJsonDialog()
     expect(mockShowOpenDialog).toHaveBeenCalledWith({
       properties: ['openFile'],
-      filters: JSON_FILTERS,
+      filters: JSON_FILTERS
     })
   })
 
@@ -90,5 +110,33 @@ describe('openJsonDialog', () => {
     mockShowOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] })
     const result = await openJsonDialog()
     expect(result).toBeNull()
+  })
+})
+
+describe('chooseCloneParentDialog', () => {
+  const options = {
+    title: 'clone の保存先（親フォルダ）を選択',
+    buttonLabel: 'ここに clone',
+    properties: ['openDirectory', 'createDirectory']
+  }
+
+  it('ウィンドウがあれば、そのウィンドウのモーダルとしてフォルダの作成を許可して開く', async () => {
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/parent'] })
+    const window = { id: 1 } as unknown as BrowserWindow
+    expect(await chooseCloneParentDialog(window)).toBe('/parent')
+    expect(mockShowOpenDialog).toHaveBeenCalledWith(window, options)
+  })
+
+  it('ウィンドウが無ければ、親を指定せずに開く', async () => {
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: ['/parent'] })
+    expect(await chooseCloneParentDialog(null)).toBe('/parent')
+    expect(mockShowOpenDialog).toHaveBeenCalledWith(options)
+  })
+
+  it('取り消し・空の選択は null', async () => {
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: ['/parent'] })
+    expect(await chooseCloneParentDialog(null)).toBeNull()
+    mockShowOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [] })
+    expect(await chooseCloneParentDialog(null)).toBeNull()
   })
 })

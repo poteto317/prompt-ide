@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
 import type { DiffTabKey } from '../useDiffTabs'
+import type { ApplyOpenedFolderOptions } from '../useFileSystem'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
+import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
 
 const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
@@ -35,6 +37,8 @@ const mockUseFileSystem = vi.hoisted(() =>
       reloadOpenFile?: (absolutePath: string) => Promise<void>
       closeTabsAtOrInside?: (absolutePath: string) => void
       refreshTree?: () => Promise<boolean>
+      captureDirtySnapshot?: () => string
+      applyOpenedFolder?: (path: string, options: ApplyOpenedFolderOptions) => Promise<void>
     } => ({
       folderPath: null,
       fileTree: [],
@@ -226,16 +230,22 @@ const mockUseConflictFile = vi.hoisted(() =>
   vi.fn((_options?: unknown) => mockConflictFileState)
 )
 // タグの作成の組み立ては useGitTagOperations.test.ts で検証する。ここでは配線だけを見る。
-// 戻り値はテスト内で makeGitTagPanelState から作って渡す(既定値の重複と型なしのモックを避ける。パターン 78)。
-// 他のテストでは useAppState が戻り値をそのまま公開するだけのため、既定の undefined のままでよい
+// 戻り値は makeGitTagPanelState から作って渡す(既定値の重複と型なしのモックを避ける。パターン 78)。
+// clone の「Git 操作の実行中」の合成が isCreating を読むため、既定の戻り値は beforeEach で毎回設定し、
+// 個別のテストは mockReturnValue で上書きする
 const mockUseGitTagOperations = vi.hoisted(() =>
   vi.fn<typeof import('../useGitTagOperations').useGitTagOperations>()
 )
 // 初期化・追加の組み立ては useGitRemoteSetup.test.ts で検証する。ここでは配線(依存の受け渡しと、初回 push の
-// 状態との合成)だけを見る。戻り値はテスト内で makeRemoteSetupPanelState から作って渡す(パターン 78)。
-// 他のテストでは既定の undefined のままでよい(合成は spread のため undefined でも落ちない)
+// 状態との合成)だけを見る。戻り値は makeRemoteSetupPanelState から作って渡す(パターン 78)。
+// clone の「Git 操作の実行中」の合成が isInitializing・isAddingOrigin を読むため、既定の戻り値は beforeEach で
+// 毎回設定し、個別のテストは mockReturnValue で上書きする
 const mockUseGitRemoteSetup = vi.hoisted(() =>
   vi.fn<typeof import('../useGitRemoteSetup').useGitRemoteSetup>()
+)
+// clone の組み立ては useCloneRepository.test.ts で検証する。ここでは配線(依存の受け渡し・Git 操作の実行中の合成)だけを見る
+const mockUseCloneRepository = vi.hoisted(() =>
+  vi.fn<typeof import('../useCloneRepository').useCloneRepository>()
 )
 
 vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
@@ -256,11 +266,19 @@ vi.mock('../useMergeState', () => ({ useMergeState: mockUseMergeState }))
 vi.mock('../useConflictFile', () => ({ useConflictFile: mockUseConflictFile }))
 vi.mock('../useGitTagOperations', () => ({ useGitTagOperations: mockUseGitTagOperations }))
 vi.mock('../useGitRemoteSetup', () => ({ useGitRemoteSetup: mockUseGitRemoteSetup }))
+vi.mock('../useCloneRepository', () => ({ useCloneRepository: mockUseCloneRepository }))
 
 import { useAppState } from '../useAppState'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // clone の「Git 操作の実行中」の合成がタグ・初期化の実行中フラグを読むため、既定の戻り値を毎回設定し直す
+  // (前のテストの mockReturnValue を持ち込まない。パターン 103)。個別のテストは mockReturnValue で上書きする
+  mockUseGitTagOperations.mockReturnValue(makeGitTagPanelState())
+  mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState())
+  mockUseCloneRepository.mockReturnValue(makeCloneRepositoryPanelState())
+  // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
+  mockUseStashPanel.mockReturnValue(mockStashPanel)
 })
 
 describe('useAppState', () => {
@@ -1885,5 +1903,157 @@ describe('useAppState', () => {
     })
     renderHook(() => useAppState())
     expect(mockCloseDiffTab).not.toHaveBeenCalled()
+  })
+
+  describe('clone(リポジトリの clone)', () => {
+    it('useCloneRepository に useFileSystem の確認・未保存の判定・開く処理と共有ロックを渡し、clone として公開する', () => {
+      const fileSystemDeps = {
+        captureDirtySnapshot: vi.fn(() => '[]'),
+        confirmDiscardAnyDirty: vi.fn(() => true),
+        applyOpenedFolder: vi.fn(() => Promise.resolve())
+      }
+      mockUseFileSystem.mockReturnValueOnce({
+        ...mockUseFileSystem.getMockImplementation()!(),
+        ...fileSystemDeps
+      })
+      const cloneState = makeCloneRepositoryPanelState()
+      mockUseCloneRepository.mockReturnValue(cloneState)
+      const { result } = renderHook(() => useAppState())
+      const options = mockUseCloneRepository.mock.calls[0][0]
+      expect(options.captureDirtySnapshot).toBe(fileSystemDeps.captureDirtySnapshot)
+      expect(options.confirmDiscardAnyDirty).toBe(fileSystemDeps.confirmDiscardAnyDirty)
+      expect(options.applyOpenedFolder).toBe(fileSystemDeps.applyOpenedFolder)
+      // 他の Git 操作と同じロック(別のロックだと、clone の間に commit などを始められる)
+      expect(options.lock).toBe(mockUseStashPanel.mock.calls[0][0].fileOperationLock)
+      expect(options.isGitOperationRunning).toBe(false)
+      expect(result.current.clone).toBe(cloneState)
+    })
+
+    it.each([
+      [
+        'タグの作成中',
+        () => mockUseGitTagOperations.mockReturnValue(makeGitTagPanelState({ isCreating: true }))
+      ],
+      [
+        'リポジトリの初期化中',
+        () =>
+          mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState({ isInitializing: true }))
+      ],
+      [
+        'origin の追加中',
+        () =>
+          mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState({ isAddingOrigin: true }))
+      ]
+    ])('%s は Git 操作の実行中として渡す', (_label, arrange) => {
+      arrange()
+      renderHook(() => useAppState())
+      expect(mockUseCloneRepository.mock.calls[0][0].isGitOperationRunning).toBe(true)
+    })
+
+    // ロックを取る操作(commit・pull など)は実行中フラグを持たないため、ロックの保持も「Git 操作の実行中」に含める。
+    // 含めないと、clone のボタンは押せるのに useCloneRepository が lock.isAnyLocked() で何も言わずに断る
+    it('共有ロックの保持中は Git 操作の実行中として渡し、解けたら外す', () => {
+      renderHook(() => useAppState())
+      const sharedLock = mockUseStashPanel.mock.calls[0][0].fileOperationLock
+      act(() => sharedLock.lockGlobal())
+      expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(true)
+      act(() => sharedLock.unlockGlobal())
+      expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(false)
+    })
+
+    // ロックを取らない操作(fetch・push・初回 push・ブランチの削除)は実行中フラグで見る。useGitRemoteOperations・
+    // useGitBranchOperations はこのテストでは実物のため、IPC(window.api)を保留させて実行中を作る
+    describe('ロックを取らない Git 操作の実行中', () => {
+      const cloneRepoStatus: GitStatusResult = {
+        isRepo: true,
+        mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
+        branch: 'main',
+        ahead: 1,
+        behind: 0,
+        files: []
+      }
+
+      it.each([
+        {
+          label: 'fetch',
+          api: 'fetchRemote' as const,
+          settled: undefined,
+          start: (state: ReturnType<typeof useAppState>) => state.fetchRemote()
+        },
+        {
+          label: 'push',
+          api: 'push' as const,
+          settled: undefined,
+          start: (state: ReturnType<typeof useAppState>) => state.push()
+        },
+        {
+          label: '初回 push',
+          api: 'pushSetUpstream' as const,
+          settled: undefined,
+          start: (state: ReturnType<typeof useAppState>) => state.remoteSetup.pushSetUpstream()
+        },
+        {
+          label: 'ブランチの削除',
+          api: 'deleteBranch' as const,
+          settled: { deleted: true },
+          start: (state: ReturnType<typeof useAppState>) => state.deleteBranch('feature/x')
+        }
+      ])(
+        '$label の実行中は Git 操作の実行中として渡し、終わったら外す',
+        async ({ api, settled, start }) => {
+          mockUseGitStatus.mockReturnValue({
+            gitStatus: cloneRepoStatus,
+            gitLoading: false,
+            gitError: null,
+            refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+          })
+          const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+          const original = window.api[api]
+          let settle: () => void = () => {}
+          window.api[api] = vi.fn(
+            () =>
+              new Promise((resolve) => {
+                settle = () => resolve(settled as never)
+              })
+          ) as never
+          try {
+            const { result } = renderHook(() => useAppState())
+            expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(false)
+            let running: Promise<unknown> = Promise.resolve()
+            act(() => {
+              running = start(result.current)
+            })
+            expect(window.api[api]).toHaveBeenCalledOnce()
+            expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(true)
+            await act(async () => {
+              settle()
+              await running
+            })
+            expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(false)
+          } finally {
+            window.api[api] = original as never
+            confirmSpy.mockRestore()
+          }
+        }
+      )
+    })
+
+    // 退避の削除(drop)はロックを取らないため、退避の実行中フラグ(stash.pendingOperation)で見る。
+    // useStashPanel はこのファイルでは静的モックのため、実行中の戻り値に差し替えて再描画する
+    it('退避の削除の実行中は Git 操作の実行中として渡し、終わったら外す', () => {
+      mockUseStashPanel.mockReturnValue({
+        ...mockStashPanel,
+        pendingOperation: { kind: 'drop', sha: 'abc123' }
+      })
+      const { rerender } = renderHook(() => useAppState())
+      expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(true)
+      mockUseStashPanel.mockReturnValue(mockStashPanel)
+      rerender()
+      expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(false)
+    })
   })
 })

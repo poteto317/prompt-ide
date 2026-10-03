@@ -112,6 +112,7 @@ export default function App(): React.JSX.Element {
     mergeState,
     gitTag,
     remoteSetup,
+    clone,
     conflictFile,
     isActiveFileConflicted,
     branchOperationError,
@@ -238,6 +239,7 @@ export default function App(): React.JSX.Element {
               onCreateDirectory={createDirectory}
               onRenameEntry={renameEntry}
               onDeleteEntry={deleteEntry}
+              clone={clone}
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}

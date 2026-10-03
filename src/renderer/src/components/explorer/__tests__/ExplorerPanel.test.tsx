@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { FileTreeNode } from '../../../types'
 import ExplorerPanel from '../ExplorerPanel'
+import { makeCloneRepositoryPanelState } from '../../../__tests__/makeCloneRepositoryPanelState'
 
 const mockTree: FileTreeNode[] = [
   {
@@ -26,7 +27,8 @@ const defaultProps = {
   onCreateDirectory: vi.fn(),
   onRenameEntry: vi.fn(),
   onDeleteEntry: vi.fn(),
-  onAddToGitignore: vi.fn()
+  onAddToGitignore: vi.fn(),
+  clone: makeCloneRepositoryPanelState()
 }
 
 const openedProps = { ...defaultProps, folderPath: '/p', fileTree: mockTree }
