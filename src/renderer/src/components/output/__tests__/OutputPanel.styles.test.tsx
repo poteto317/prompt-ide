@@ -86,6 +86,50 @@ describe('出力パネルの挿入・置換のスタイル(main.css)', () => {
     }
   })
 
+  it('ヘッダーの通知と無効の理由は 1 行に収め、はみ出しは省略する(狭い幅でヘッダーの高さが伸びない)', () => {
+    // 反映の直後は「挿入しました」と「選択範囲がありません」が必ず並ぶ。折り返すとヘッダーが 41px から伸び、本文が動く。
+    // jsdom はレイアウトを計算しないため高さそのものは測れない(高さは実機 APL-027 で確かめる)
+    const { container } = render(
+      <OutputPanel
+        {...baseProps}
+        applyOutput={makeApplyOutputState({
+          notice: { text: '挿入しました', id: 1 },
+          replaceDisabledReason: '選択範囲がありません'
+        })}
+      />
+    )
+
+    for (const selector of ['.output-panel__notice', '.output-panel__apply-reason']) {
+      const style = getComputedStyle(container.querySelector(selector) as HTMLElement)
+      expect(style.whiteSpace).toBe('nowrap')
+      expect(style.overflow).toBe('hidden')
+      expect(style.textOverflow).toBe('ellipsis')
+    }
+  })
+
+  it('ヘッダーのタイトルとクリア・キャンセルは縮まず、折り返さない', () => {
+    const { container, unmount } = render(
+      <OutputPanel {...baseProps} applyOutput={makeApplyOutputState()} />
+    )
+    const targets = [
+      container.querySelector('.output-panel__title') as HTMLElement,
+      screen.getByRole('button', { name: '出力をクリア' })
+    ]
+    for (const element of targets) {
+      const style = getComputedStyle(element)
+      expect(style.flexShrink).toBe('0')
+      expect(style.whiteSpace).toBe('nowrap')
+    }
+    unmount()
+
+    render(
+      <OutputPanel {...baseProps} isExecuting result={null} applyOutput={makeApplyOutputState()} />
+    )
+    const cancelStyle = getComputedStyle(screen.getByRole('button', { name: '実行をキャンセル' }))
+    expect(cancelStyle.flexShrink).toBe('0')
+    expect(cancelStyle.whiteSpace).toBe('nowrap')
+  })
+
   it('コードブロックの見出しは折り返しを通常に戻し、pre は見出しとつながる(余白なし)', () => {
     const { container } = render(
       <OutputPanel {...baseProps} applyOutput={makeApplyOutputState()} />

@@ -1576,7 +1576,8 @@ body {
 }
 
 /* 高さは 32px の挿入・置換のボタンが入る高さ(4px + 32px + 4px + 境界線 1px)で固定する。パネルは高さ固定のため、
-   ボタンの無い実行中・エラーだけのとき(クリア・キャンセルは約 19px)に縮むと、実行の開始・終了のたびに本文の領域が伸び縮みする */
+   ボタンの無い実行中・エラーだけのとき(クリア・キャンセルは約 19px)に縮むと、実行の開始・終了のたびに本文の領域が伸び縮みする。
+   狭い幅でも 1 行に収める(通知・無効の理由ははみ出しを省略し、タイトル・クリア・キャンセルは縮めない。.editor-tabs__error と同じ扱い) */
 .output-panel__header {
   display: flex;
   align-items: center;
@@ -1596,9 +1597,13 @@ body {
   text-transform: uppercase;
   color: #969696;
   user-select: none;
+  flex: none;
+  white-space: nowrap;
 }
 
 .output-panel__clear-btn {
+  flex: none;
+  white-space: nowrap;
   background: none;
   color: #969696;
   border: 1px solid #555555;
@@ -1613,6 +1618,8 @@ body {
 }
 
 .output-panel__cancel-btn {
+  flex: none;
+  white-space: nowrap;
   background: none;
   color: #f48771;
   border: 1px solid #a1533f;
@@ -1641,12 +1648,18 @@ body {
   margin: 0 12px;
   font-size: 12px;
   color: #89d185;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 挿入・置換が無効な理由(無効なボタンの aria-describedby)。タッチ操作では title が出ないため画面に表示する */
 .output-panel__apply-reason {
   font-size: 11px;
   color: #969696;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .output-panel__content {
