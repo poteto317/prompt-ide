@@ -181,6 +181,25 @@ describe('applyToEditor(実物の Monaco)', () => {
     expect(model.getValue()).toBe('aaa\nXbb\nccc')
   })
 
+  it('複数カーソルで反映すると選択は 1 つ(反映したテキストの末尾)になり、undo で元の複数のカーソルが戻る', () => {
+    // endCursorState が選択を 1 つだけ返すため、主カーソル以外は解除される(null を返すと他のカーソルが残る。PR #45 で実測)
+    const { editor, model } = createEditor('aaa\nbbb\nccc')
+    const before = [new monaco.Selection(1, 1, 1, 2), new monaco.Selection(2, 4, 2, 4)]
+    editor.setSelections(before)
+
+    applyToEditor(editor, 'replace', 'X')
+
+    expect(model.getValue()).toBe('Xaa\nbbb\nccc')
+    expect(editor.getSelections()?.map(String)).toEqual([
+      new monaco.Selection(1, 2, 1, 2).toString()
+    ])
+
+    undo(editor)
+
+    expect(model.getValue()).toBe('aaa\nbbb\nccc')
+    expect(editor.getSelections()?.map(String)).toEqual(before.map(String))
+  })
+
   // 表示範囲は、editor.layout で大きさを決めると jsdom でも getVisibleRanges・getScrollTop で観測できる(実測)。
   // minimap は切る(付けると、破棄の後にミニマップの描画が走り、未処理のエラーが出る)
   const createSizedEditor = (text: string): monaco.editor.IStandaloneCodeEditor => {
