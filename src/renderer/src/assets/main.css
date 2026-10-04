@@ -1223,7 +1223,7 @@ body {
 }
 
 /* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・エクスプローラーの clone・
-   解決ビューのツールバー・ブロック)。
+   解決ビューのツールバー・ブロック・出力パネルとコードブロックの「挿入」「置換」)。
    タッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、ホバー時だけ表示する作りにはしない。
    ホバー色は破壊的でない操作=青系、危険系(--danger: 退避を捨てる・マージを中止・削除する)=赤系
    (ブランチメニューのマージ・削除ボタンと同じ)。見た目を変えるときはここ 1 か所を直す */
@@ -1236,6 +1236,8 @@ body {
 .remote-setup-banner__button,
 .source-control-panel__init-btn,
 .explorer-panel__clone-btn,
+.output-panel__apply-btn,
+.code-block__button,
 .create-tag-dialog__kind {
   flex: none;
   min-width: 32px;
@@ -1258,6 +1260,8 @@ body {
 .remote-setup-banner__button:hover:not(:disabled),
 .source-control-panel__init-btn:hover:not(:disabled),
 .explorer-panel__clone-btn:hover:not(:disabled),
+.output-panel__apply-btn:hover:not(:disabled),
+.code-block__button:hover:not(:disabled),
 .create-tag-dialog__kind:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
@@ -1282,6 +1286,8 @@ body {
 .explorer-panel__clone-btn:disabled,
 .explorer-panel__open-btn:disabled,
 .explorer-panel__change-btn:disabled,
+.output-panel__apply-btn:disabled,
+.code-block__button:disabled,
 .create-tag-dialog__kind:disabled,
 .name-input-dialog__ok:disabled,
 .name-input-dialog__cancel:disabled {
@@ -1569,10 +1575,14 @@ body {
   background: #1e1e1e;
 }
 
+/* 高さは 32px の挿入・置換のボタンが入る高さ(4px + 32px + 4px + 境界線 1px)で固定する。パネルは高さ固定のため、
+   ボタンの無い実行中・エラーだけのとき(クリア・キャンセルは約 19px)に縮むと、実行の開始・終了のたびに本文の領域が伸び縮みする */
 .output-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-sizing: border-box;
+  min-height: 41px;
   padding: 4px 12px;
   background: #2d2d2d;
   border-bottom: 1px solid #3c3c3c;
@@ -1614,6 +1624,29 @@ body {
 .output-panel__cancel-btn:hover {
   color: #ffffff;
   border-color: #f48771;
+}
+
+/* ヘッダーの右側(無効の理由・挿入・置換・クリア/キャンセル)。挿入・置換の見た目は共通の枠付きボタンの規則 */
+.output-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 反映の結果の通知(role="status")。タイトルと右側のボタンの間の余白を埋める */
+.output-panel__notice {
+  flex: 1;
+  min-width: 0;
+  margin: 0 12px;
+  font-size: 12px;
+  color: #89d185;
+}
+
+/* 挿入・置換が無効な理由(無効なボタンの aria-describedby)。タッチ操作では title が出ないため画面に表示する */
+.output-panel__apply-reason {
+  font-size: 11px;
+  color: #969696;
 }
 
 .output-panel__content {
@@ -1689,6 +1722,42 @@ body {
   padding: 10px 12px;
   overflow-x: auto;
   margin: 6px 0;
+}
+
+/* 出力パネルのコードブロック(CodeBlock)。見出し(言語名・挿入・置換)を pre の上に付ける。
+   .markdown-renderer は white-space: pre-wrap のため、見出しは normal に戻す */
+.code-block {
+  margin: 6px 0;
+}
+
+.code-block__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 2px 12px;
+  background: #252526;
+  border-radius: 4px 4px 0 0;
+  white-space: normal;
+  /* 出力を範囲選択してコピーしたとき、言語名・ボタンの文言が本文に混ざらないようにする */
+  user-select: none;
+}
+
+.code-block__language {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 11px;
+  color: #969696;
+}
+
+.code-block__actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* .markdown-renderer pre の余白・角丸を、見出しとつながる形に上書きする */
+.markdown-renderer .code-block__pre {
+  margin: 0;
+  border-radius: 0 0 4px 4px;
 }
 
 .markdown-renderer pre code {

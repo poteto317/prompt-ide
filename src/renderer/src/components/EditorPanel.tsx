@@ -4,6 +4,7 @@ import { editorOptions } from '../lib/editorOptions'
 import { registerSaveCommand } from '../lib/editorShortcuts'
 import { useLatestRef } from '../hooks/useLatestRef'
 import { useEditorFocusManager } from '../hooks/useEditorFocusManager'
+import { useApplyOutputToEditor } from '../hooks/useApplyOutputToEditor'
 import type { OpenFile } from '../types'
 import WelcomeView from './editor/WelcomeView'
 import EditorTabs from './editor/EditorTabs'
@@ -114,6 +115,9 @@ export default function EditorPanel({
     openedFileSignal,
     isOverlayOpen
   })
+  // 出力パネルからの反映先は、現在のファイルのエディタ(onMount で渡す)。diff タブ・Welcome・ファイルを
+  // 閉じたときはエディタが破棄され、反映先から外れる
+  const { applyOutput, attachEditor } = useApplyOutputToEditor({ isExecuting })
 
   const { combinedTabs, activeTabPath, handleActivateTab, handleCloseTab } = useCombinedEditorTabs({
     openFiles,
@@ -189,6 +193,7 @@ export default function EditorPanel({
                 onMount={(editorInstance, monaco) => {
                   const isCurrent = handleEditorMount(editorInstance, openFile.path)
                   if (!isCurrent) return
+                  attachEditor(editorInstance)
                   registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
                   focusEditorIfPending()
                 }}
@@ -210,6 +215,7 @@ export default function EditorPanel({
         executionError={executionError}
         onClear={onClearResult}
         onCancel={onCancelExecution}
+        applyOutput={applyOutput}
       />
     </div>
   )

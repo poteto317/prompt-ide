@@ -193,3 +193,15 @@ describe('MarkdownRenderer', () => {
     expect(container.textContent).toContain('インデントあり')
   })
 })
+
+describe('MarkdownRenderer — codeBlockActions を渡さないとき', () => {
+  it('コードブロックは従来どおり pre だけで、見出しもボタンも付けない', () => {
+    const { container } = render(<MarkdownRenderer content={'```ts\nconst x = 1\n```'} />)
+
+    expect(container.querySelector('.code-block')).toBeNull()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText('const x = 1').closest('pre')?.parentElement).toHaveClass(
+      'markdown-renderer'
+    )
+  })
+})
