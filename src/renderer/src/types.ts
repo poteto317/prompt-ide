@@ -145,3 +145,24 @@ export interface RemoteSetupPanelState {
   /** 現在のブランチを origin へ送り upstream を設定する。戻り値は実際に実行され成功したか */
   pushSetUpstream: () => Promise<boolean>
 }
+
+// AI の出力のエディタへの反映(useApplyOutputToEditor)。挿入はカーソルの位置へ、置換は選択範囲を置き換える
+export type ApplyMode = 'insert' | 'replace'
+
+// role="status" で読み上げる通知。id は通知ごとに進め、同じ文言が続いても読み上げられるようにする(パターン 87)
+export interface Announcement {
+  text: string
+  id: number
+}
+
+// 出力パネル(ヘッダーとコードブロック)が使う、反映の可否と操作
+export interface ApplyOutputState {
+  /** 挿入できない理由。null なら挿入できる */
+  insertDisabledReason: string | null
+  /** 置換できない理由。null なら置換できる */
+  replaceDisabledReason: string | null
+  /** 反映する。無効な操作は何もしない */
+  apply: (mode: ApplyMode, text: string) => void
+  /** 直近の反映の結果の通知(数秒後に null へ戻る) */
+  notice: Announcement | null
+}
