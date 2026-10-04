@@ -4,6 +4,7 @@ import type { ConflictFileState } from '../../hooks/useConflictFile'
 import { getConflictActions } from '../../lib/conflictActions'
 import type { ConflictActions } from '../../lib/conflictActions'
 import { CHOICE_TARGET } from '../../lib/conflictChoice'
+import { toAnnouncementText } from '../../lib/announcementText'
 import ConflictBlock from './ConflictBlock'
 import ConflictLines from './ConflictLines'
 
@@ -126,10 +127,8 @@ export default function ConflictResolver({ conflict, isBlocked }: Props): React.
   return (
     <div className="conflict-resolver" ref={rootRef}>
       <p className="conflict-resolver__status" role="status">
-        {/* 同じ文言が続いても読み上げが再実行されるよう、奇数回目はゼロ幅スペースを付けて文字列を変える */}
-        {announcement.text === ''
-          ? ''
-          : announcement.text + (announcement.id % 2 === 1 ? '' : '\u200b')}
+        {/* 同じ文言が続いても読み上げが再実行されるよう、文字列を変える */}
+        {toAnnouncementText(announcement)}
       </p>
       {error !== null && (
         <p className="conflict-resolver__error" role="alert">
