@@ -2,6 +2,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { getApiKey, setApiKey } from '../apiKeyStore'
 import { getModelSettings, setModelSettings } from '../modelSettingsStore'
 import { parseModelSettingsPayload } from './settingsPayloadParser'
+import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('settings:hasApiKey', async () => {
@@ -26,5 +27,12 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
       const settings = parseModelSettingsPayload(payload)
       return setModelSettings(settings)
     }
+  )
+
+  ipcMain.handle('settings:getPromptExecutionMode', async () => getPromptExecutionMode())
+
+  ipcMain.handle(
+    'settings:setPromptExecutionMode',
+    async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptExecutionMode(mode)
   )
 }

@@ -14,6 +14,12 @@ vi.mock('../../modelSettingsStore', () => ({
   getModelSettings: mockGetModelSettings,
   setModelSettings: mockSetModelSettings
 }))
+const mockGetPromptExecutionMode = vi.hoisted(() => vi.fn())
+const mockSetPromptExecutionMode = vi.hoisted(() => vi.fn())
+vi.mock('../../executionModeStore', () => ({
+  getPromptExecutionMode: mockGetPromptExecutionMode,
+  setPromptExecutionMode: mockSetPromptExecutionMode
+}))
 
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
 
@@ -25,7 +31,7 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
   return call[1] as (...args: unknown[]) => unknown
 }
 
-function makeEvent(senderId: number) {
+function makeEvent(senderId: number): { sender: { id: number } } {
   return { sender: { id: senderId } }
 }
 
@@ -120,5 +126,27 @@ describe('registerSettingsHandlers', () => {
       ).rejects.toThrow('modelId は')
       expect(mockSetModelSettings).not.toHaveBeenCalled()
     })
+  })
+})
+
+describe('実行方式', () => {
+  it('settings:getPromptExecutionMode は保存された方式を返す', async () => {
+    mockGetPromptExecutionMode.mockResolvedValueOnce('legacy')
+    await expect(
+      getRegisteredHandler('settings:getPromptExecutionMode')(makeEvent(1))
+    ).resolves.toBe('legacy')
+  })
+
+  it('settings:setPromptExecutionMode は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetPromptExecutionMode.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setPromptExecutionMode')(makeEvent(1), 'agent-cli')
+    expect(mockSetPromptExecutionMode).toHaveBeenCalledWith('agent-cli')
+  })
+
+  it('不正な値の拒否(store の例外)を renderer へ返す', async () => {
+    mockSetPromptExecutionMode.mockRejectedValueOnce(new Error('実行方式が不正です: shell'))
+    await expect(
+      getRegisteredHandler('settings:setPromptExecutionMode')(makeEvent(1), 'shell')
+    ).rejects.toThrow('実行方式が不正です: shell')
   })
 })

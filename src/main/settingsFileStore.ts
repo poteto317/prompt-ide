@@ -9,6 +9,8 @@ export interface SettingsFile {
   apiKey?: string
   modelId?: string
   maxTokens?: number
+  /** プロンプトの実行方式(executionModeStore が検証する) */
+  promptExecutionMode?: string
 }
 
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')
