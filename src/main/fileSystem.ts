@@ -20,6 +20,13 @@ export function writeFileContent(filePath: string, content: string): Promise<voi
   return writeFile(filePath, content, 'utf-8')
 }
 
+// 排他的作成(O_CREAT|O_EXCL)。既にエントリがあれば EEXIST で失敗する。ぶら下がったシンボリックリンクも
+// 辿らずに EEXIST になるため、realpath で解決できなかったパスへの書き込み(削除されたファイルの作り直し)で、
+// リンク先(フォルダの外)にファイルを作らない
+export function createFileContent(filePath: string, content: string): Promise<void> {
+  return writeFile(filePath, content, { encoding: 'utf-8', flag: 'wx' })
+}
+
 // 未追跡ファイルの疑似diff生成(gitDiffFormatter.ts の buildUntrackedDiff)で
 // 実行ビットを保つために使う。git 自身(ce_mode_from_stat)は所有者の実行ビット
 // (S_IXUSR, 0o100)のみを見て実行可能ファイルかどうかを判定し、グループ/その他の
