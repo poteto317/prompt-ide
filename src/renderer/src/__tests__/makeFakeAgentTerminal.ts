@@ -1,0 +1,151 @@
+import { vi } from 'vitest'
+import type {
+  AgentTerminalApiLike,
+  AgentTerminalController,
+  ClipboardLike,
+  FitAddonLike,
+  TerminalLike
+} from '../lib/agentTerminalController'
+import type { ViewportLine } from '../lib/agentViewport'
+import type { AgentSessionData, AgentSessionExit } from '@shared/types'
+
+// xterm の偽物。open・write・reset などを記録し、onData・キーのハンドラをテストから起こせる
+export interface FakeTerminal extends TerminalLike {
+  cols: number
+  rows: number
+  modes: { bracketedPasteMode: boolean }
+  written: string[]
+  open: ReturnType<typeof vi.fn<TerminalLike['open']>>
+  reset: ReturnType<typeof vi.fn<TerminalLike['reset']>>
+  paste: ReturnType<typeof vi.fn<TerminalLike['paste']>>
+  focus: ReturnType<typeof vi.fn<TerminalLike['focus']>>
+  selection: string
+  typeKey(data: string): void
+  pressKey(init: KeyboardEventInit & { type?: string }): boolean
+}
+
+export function makeFakeTerminal(): FakeTerminal {
+  let dataListener: (data: string) => void = () => undefined
+  let keyHandler: (event: KeyboardEvent) => boolean = () => true
+  const fake: FakeTerminal = {
+    cols: 80,
+    rows: 24,
+    modes: { bracketedPasteMode: true },
+    buffer: { active: { viewportY: 0, getLine: () => undefined } },
+    written: [],
+    selection: '',
+    open: vi.fn<TerminalLike['open']>(),
+    write: (data) => {
+      fake.written.push(data)
+    },
+    reset: vi.fn<TerminalLike['reset']>(),
+    focus: vi.fn<TerminalLike['focus']>(),
+    onData: (listener) => {
+      dataListener = listener
+      return { dispose: () => undefined }
+    },
+    attachCustomKeyEventHandler: (handler) => {
+      keyHandler = handler
+    },
+    hasSelection: () => fake.selection !== '',
+    getSelection: () => fake.selection,
+    paste: vi.fn<TerminalLike['paste']>(),
+    typeKey: (data) => dataListener(data),
+    pressKey: ({ type = 'keydown', ...init }) => keyHandler(new KeyboardEvent(type, init))
+  }
+  return fake
+}
+
+// IPC の偽物。出力・終了をテストから起こせる
+export interface FakeAgentApi extends AgentTerminalApiLike {
+  writeAgentSession: ReturnType<typeof vi.fn<AgentTerminalApiLike['writeAgentSession']>>
+  resizeAgentSession: ReturnType<typeof vi.fn<AgentTerminalApiLike['resizeAgentSession']>>
+  emitData(payload: AgentSessionData): void
+  emitExit(payload: AgentSessionExit): void
+}
+
+export function makeFakeAgentApi(): FakeAgentApi {
+  const dataListeners = new Set<(payload: AgentSessionData) => void>()
+  const exitListeners = new Set<(payload: AgentSessionExit) => void>()
+  return {
+    writeAgentSession: vi.fn<AgentTerminalApiLike['writeAgentSession']>(),
+    resizeAgentSession: vi.fn<AgentTerminalApiLike['resizeAgentSession']>(),
+    onAgentData: (listener) => {
+      dataListeners.add(listener)
+      return () => dataListeners.delete(listener)
+    },
+    onAgentExit: (listener) => {
+      exitListeners.add(listener)
+      return () => exitListeners.delete(listener)
+    },
+    emitData: (payload) => dataListeners.forEach((listener) => listener(payload)),
+    emitExit: (payload) => exitListeners.forEach((listener) => listener(payload))
+  }
+}
+
+export function makeFakeClipboard(text = ''): ClipboardLike & {
+  writeText: ReturnType<typeof vi.fn<ClipboardLike['writeText']>>
+} {
+  return {
+    readText: vi.fn<ClipboardLike['readText']>(async () => text),
+    writeText: vi.fn<ClipboardLike['writeText']>(async () => undefined)
+  }
+}
+
+export const makeFakeFitAddon = (): FitAddonLike & {
+  fit: ReturnType<typeof vi.fn<FitAddonLike['fit']>>
+} => ({
+  fit: vi.fn<FitAddonLike['fit']>()
+})
+
+/** hook・部品のテスト用の、controller そのものの偽物(画面の行は viewport で差し替える) */
+export interface FakeController extends AgentTerminalController {
+  viewport: ViewportLine[]
+  bracketed: boolean
+  sessionId: string | null
+  writes: string[]
+  exitListeners: Set<(exit: AgentSessionExit) => void>
+  attach: ReturnType<typeof vi.fn<AgentTerminalController['attach']>>
+  detach: ReturnType<typeof vi.fn<AgentTerminalController['detach']>>
+  fit: ReturnType<typeof vi.fn<AgentTerminalController['fit']>>
+  prepareForStart: ReturnType<typeof vi.fn<AgentTerminalController['prepareForStart']>>
+  beginSending: ReturnType<typeof vi.fn<AgentTerminalController['beginSending']>>
+  endSending: ReturnType<typeof vi.fn<AgentTerminalController['endSending']>>
+  setFocusOutHandler: ReturnType<typeof vi.fn<AgentTerminalController['setFocusOutHandler']>>
+  focus: ReturnType<typeof vi.fn<AgentTerminalController['focus']>>
+  emitExit(exit: AgentSessionExit): void
+}
+
+export function makeFakeController(): FakeController {
+  const fake: FakeController = {
+    viewport: [],
+    bracketed: true,
+    sessionId: null,
+    writes: [],
+    exitListeners: new Set(),
+    attach: vi.fn<AgentTerminalController['attach']>(),
+    detach: vi.fn<AgentTerminalController['detach']>(),
+    fit: vi.fn<AgentTerminalController['fit']>(() => ({ cols: 80, rows: 24 })),
+    getSize: () => ({ cols: 80, rows: 24 }),
+    prepareForStart: vi.fn<AgentTerminalController['prepareForStart']>(),
+    setSession: (sessionId) => {
+      fake.sessionId = sessionId
+    },
+    getSessionId: () => fake.sessionId,
+    readViewport: () => fake.viewport,
+    isBracketedPasteEnabled: () => fake.bracketed,
+    writeToSession: (data) => {
+      fake.writes.push(data)
+    },
+    beginSending: vi.fn<AgentTerminalController['beginSending']>(),
+    endSending: vi.fn<AgentTerminalController['endSending']>(),
+    onExit: (listener) => {
+      fake.exitListeners.add(listener)
+      return () => fake.exitListeners.delete(listener)
+    },
+    setFocusOutHandler: vi.fn<AgentTerminalController['setFocusOutHandler']>(),
+    focus: vi.fn<AgentTerminalController['focus']>(),
+    emitExit: (exit) => fake.exitListeners.forEach((listener) => listener(exit))
+  }
+  return fake
+}

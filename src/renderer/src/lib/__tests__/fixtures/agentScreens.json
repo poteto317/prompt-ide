@@ -1,0 +1,1215 @@
+{
+ "_note": "claude 2.1.288 の画面(@xterm/headless の表示中のバッファ)。lines は 行番号 -> [文字列, dim の範囲, 反転の範囲](範囲は [開始, 終わり) のセルの位置)。文字列は幅 0 のセルを除いたセルの文字を連結し、末尾の空白(dim・反転でないもの)を除いたもの。記号の後ろの空白は U+00A0。記録の手順は .superpowers/agent-terminal-mvp/agent-screens-recorder/README.md",
+ "screens": {
+  "empty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents                           ◐ medium · /effort"
+    ]
+   }
+  },
+  "narrowEmpty": {
+   "cols": 40,
+   "rows": 30,
+   "lines": {
+    "0": [
+     "           Claude Code v2.1.288"
+    ],
+    "1": [
+     " ▐▛███▛█   Opus 5.5"
+    ],
+    "2": [
+     "▝▜██████▀  API Usage Billing"
+    ],
+    "3": [
+     " ▝▝   ▝▝   /…/scratchpad/fixrec/work"
+    ],
+    "6": [
+     "────────────────────────────────────────"
+    ],
+    "7": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "8": [
+     "────────────────────────────────────────"
+    ],
+    "9": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)"
+    ],
+    "10": [
+     "                    ◐ medium · /effort"
+    ]
+   }
+  },
+  "single": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0abc def ghi ",
+     [],
+     [
+      [
+       13,
+       14
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                          ◐ medium · /effort"
+    ]
+   }
+  },
+  "singleCurMid": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0abc def ghi",
+     [],
+     [
+      [
+       8,
+       9
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                          ◐ medium · /effort"
+    ]
+   }
+  },
+  "multiTyped": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0typed line 0"
+    ],
+    "7": [
+     "  typed line 1"
+    ],
+    "8": [
+     "  typed line 2 ",
+     [],
+     [
+      [
+       14,
+       15
+      ]
+     ]
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "10": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "long": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0L01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234"
+    ],
+    "7": [
+     "  567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+    ],
+    "8": [
+     "  123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456"
+    ],
+    "9": [
+     "  7890123456789END ",
+     [],
+     [
+      [
+       18,
+       19
+      ]
+     ]
+    ],
+    "10": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "11": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                          ◐ medium · /effort"
+    ]
+   }
+  },
+  "pasted40": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0[Pasted text #1 +39 lines] ",
+     [],
+     [
+      [
+       28,
+       29
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  paste again to expand                                                         ◐ medium · /effort"
+    ]
+   }
+  },
+  "mixed": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0head [Pasted text #1 +39 lines] tail ",
+     [],
+     [
+      [
+       38,
+       39
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  paste again to expand                                                         ◐ medium · /effort"
+    ]
+   }
+  },
+  "shellEmpty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "!\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  ! for shell mode                                                              ◐ medium · /effort"
+    ]
+   }
+  },
+  "shellText": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "!\u00a0ls -la ",
+     [],
+     [
+      [
+       8,
+       9
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  ! for shell mode                                                              ◐ medium · /effort"
+    ]
+   }
+  },
+  "slash": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0/he ",
+     [],
+     [
+      [
+       5,
+       6
+      ]
+     ]
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "8": [
+     "  /help                         Show help and available commands"
+    ],
+    "9": [
+     "  /theme                        Change the theme"
+    ],
+    "10": [
+     "  /doctor                       Health-check the user's Claude Code setup and fix issues: diagnose"
+    ],
+    "11": [
+     "                                installation health — what the `claude doctor` terminal diagnosti…"
+    ],
+    "12": [
+     "  /rewind                       Restore the code and/or conversation to a previous point"
+    ],
+    "13": [
+     "  /tasks                        View and manage everything running in the background"
+    ],
+    "14": [
+     "  /dataviz                      Use this skill whenever you are about to create ANY chart, graph,"
+    ],
+    "15": [
+     "                                plot, dashboard, or data visualization, in ANY output medium — an…"
+    ],
+    "16": [
+     "  /debug                        Enable debug logging for this session and help diagnose issues"
+    ],
+    "17": [
+     "  /fork                         Copy this conversation into a new background session and keep"
+    ],
+    "18": [
+     "                                working here"
+    ],
+    "19": [
+     "  /subtask                      Send a subagent off with your full context; its result comes back"
+    ],
+    "20": [
+     "                                here"
+    ],
+    "21": [
+     "  /team-onboarding              Help teammates ramp on Claude Code with a guide from your usage"
+    ]
+   }
+  },
+  "echoShort": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0first line of prompt"
+    ],
+    "7": [
+     "  second line ",
+     [],
+     [
+      [
+       13,
+       14
+      ]
+     ]
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "9": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "echoLeadingNewline": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0"
+    ],
+    "7": [
+     "  after blank line"
+    ],
+    "8": [
+     "  third ",
+     [],
+     [
+      [
+       7,
+       8
+      ]
+     ]
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "10": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "echoLongLine": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    ],
+    "7": [
+     "  XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX ",
+     [],
+     [
+      [
+       56,
+       57
+      ]
+     ]
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "9": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                          ◐ medium · /effort"
+    ]
+   }
+  },
+  "echoIndented": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0  indented line    TAB"
+    ],
+    "7": [
+     "  2nd ",
+     [],
+     [
+      [
+       5,
+       6
+      ]
+     ]
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "9": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "echoJapanese": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "❯\u00a0日本語のプロンプト"
+    ],
+    "7": [
+     "  二行目 ",
+     [],
+     [
+      [
+       5,
+       6
+      ]
+     ]
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "9": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "tallTyped": {
+   "cols": 100,
+   "rows": 12,
+   "lines": {
+    "0": [
+     "  typed line 5"
+    ],
+    "1": [
+     "  typed line 6"
+    ],
+    "2": [
+     "  typed line 7"
+    ],
+    "3": [
+     "  typed line 8"
+    ],
+    "4": [
+     "  typed line 9"
+    ],
+    "5": [
+     "  typed line 10"
+    ],
+    "6": [
+     "  typed line 11"
+    ],
+    "7": [
+     "  typed line 12"
+    ],
+    "8": [
+     "  typed line 13 ",
+     [],
+     [
+      [
+       15,
+       16
+      ]
+     ]
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "10": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                       ctrl+g to edit in Vim"
+    ]
+   }
+  },
+  "working": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ hello"
+    ],
+    "7": [
+     "✻ Connection refused — a firewall or proxy may be blocking it (EC… · Retrying in 1s · attempt 2/10"
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "10": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "11": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "12": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents        ◐ medium · /effort"
+    ]
+   }
+  },
+  "workingDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ hello"
+    ],
+    "7": [
+     "✻ Connection refused — a firewall or proxy may be blocking it (EC… · Retrying in 1s · attempt 2/10"
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "10": [
+     "❯\u00a0draft text ",
+     [],
+     [
+      [
+       12,
+       13
+      ]
+     ]
+    ],
+    "11": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "12": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle)                                          ◐ medium · /effort"
+    ]
+   }
+  },
+  "queuedEmpty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ hello"
+    ],
+    "7": [
+     "❯ queued message"
+    ],
+    "8": [
+     "  ctrl+x ctrl+s to send now"
+    ],
+    "10": [
+     "✻ Connection refused — a firewall or proxy may be blocking it (EC… · Retrying in 3s · attempt 3/10"
+    ],
+    "12": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "13": [
+     "❯\u00a0Press up to edit queued messages",
+     [
+      [
+       3,
+       7
+      ],
+      [
+       8,
+       10
+      ],
+      [
+       11,
+       13
+      ],
+      [
+       14,
+       18
+      ],
+      [
+       19,
+       25
+      ],
+      [
+       26,
+       34
+      ]
+     ],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "15": [
+     "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents        ◐ medium · /effort"
+    ]
+   }
+  },
+  "trust": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "1": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "2": [
+     " Accessing workspace:"
+    ],
+    "4": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/00000000-0000-0000-0000-000000000000/scratc"
+    ],
+    "5": [
+     " hpad/fixrec/untrusted"
+    ],
+    "7": [
+     " Quick safety check: Is this a project you created or one you trust? (Like your own code, a"
+    ],
+    "8": [
+     " well-known open source project, or work from your team). If not, take a moment to review what's in"
+    ],
+    "9": [
+     " this folder first."
+    ],
+    "11": [
+     " Claude Code'll be able to read, edit, and execute files here."
+    ],
+    "13": [
+     " Security guide"
+    ],
+    "15": [
+     " ❯ No, exit"
+    ],
+    "16": [
+     "   Yes, I trust this folder"
+    ],
+    "18": [
+     " Enter to confirm · Esc to cancel"
+    ]
+   }
+  },
+  "fullscreen": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "6": [
+     "  Try the new fullscreen renderer?"
+    ],
+    "8": [
+     "  · Flicker-free output — fixes the flashing you see during long responses"
+    ],
+    "9": [
+     "  · Mouse support — click to move your cursor or expand results"
+    ],
+    "10": [
+     "  · Selected text auto-copies to your clipboard"
+    ],
+    "12": [
+     "  ❯ 1. Yes, try it"
+    ],
+    "13": [
+     "    2. Not now"
+    ],
+    "15": [
+     "  Enter to confirm · Esc to cancel"
+    ]
+   }
+  },
+  "permission": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ Bash(echo hi > out.txt)"
+    ],
+    "8": [
+     "  ⎿ \u00a0Waiting…"
+    ],
+    "10": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "11": [
+     " Bash command"
+    ],
+    "12": [
+     " Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below"
+    ],
+    "13": [
+     " fake"
+    ],
+    "14": [
+     "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+    ],
+    "15": [
+     " echo hi > out.txt"
+    ],
+    "16": [
+     "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+    ],
+    "17": [
+     " Do you want to proceed?"
+    ],
+    "18": [
+     " ❯ 1. Yes"
+    ],
+    "19": [
+     "   2. Yes, and always allow access to /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/0000000"
+    ],
+    "20": [
+     "      0-0000-0000-0000-000000000000/scratchpad/fixrec/work from this project"
+    ],
+    "21": [
+     "   3. Yes, and switch to auto mode · auto mode handles these prompts for you"
+    ],
+    "22": [
+     "   4. No"
+    ],
+    "24": [
+     " Esc to cancel · Tab to amend"
+    ]
+   }
+  },
+  "permissionAfterClear": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ Bash(echo hi > out.txt)"
+    ],
+    "8": [
+     "  ⎿ \u00a0Waiting…"
+    ],
+    "10": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "11": [
+     " Bash command"
+    ],
+    "12": [
+     " Tip: auto mode handles these prompts for you — choose \"switch to auto mode\" below"
+    ],
+    "13": [
+     " fake"
+    ],
+    "14": [
+     "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+    ],
+    "15": [
+     " echo hi > out.txt"
+    ],
+    "16": [
+     "╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌"
+    ],
+    "17": [
+     " Do you want to proceed?"
+    ],
+    "18": [
+     " ❯ 1. Yes"
+    ],
+    "19": [
+     "   2. Yes, and always allow access to /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/0000000"
+    ],
+    "20": [
+     "      0-0000-0000-0000-000000000000/scratchpad/fixrec/work from this project"
+    ],
+    "21": [
+     "   3. Yes, and switch to auto mode · auto mode handles these prompts for you"
+    ],
+    "22": [
+     "   4. No"
+    ],
+    "24": [
+     " Esc to cancel · Tab to amend"
+    ]
+   }
+  },
+  "streamingDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "9": [
+     "· Ionizing… (2s · ↓ 27 tokens)"
+    ],
+    "11": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "12": [
+     "❯\u00a0draft during stream ",
+     [],
+     [
+      [
+       21,
+       22
+      ]
+     ]
+    ],
+    "13": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "14": [
+     "  ⏸ manual mode on                                                              ◐ medium · /effort"
+    ]
+   }
+  },
+  "streamingAfterClear": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "9": [
+     "✢ Ionizing… (3s · ↓ 34 tokens)"
+    ],
+    "11": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "12": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "13": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "14": [
+     "  ⏸ manual mode on · esc to interrupt · ← for agents                  Ctrl+Y to paste deleted text"
+    ]
+   }
+  },
+  "toolrunDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ Bash(sleep 6)"
+    ],
+    "8": [
+     "  ⎿ \u00a0Running…"
+    ],
+    "10": [
+     "✢ Sautéing… (1s · ↓ 11 tokens)"
+    ],
+    "12": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "13": [
+     "❯\u00a0draft during tool ",
+     [],
+     [
+      [
+       19,
+       20
+      ]
+     ]
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "15": [
+     "  ⏸ manual mode on                                                              ◐ medium · /effort"
+    ]
+   }
+  },
+  "toolrunAfterClear": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " ▐▛███▛█   Claude Code v2.1.288"
+    ],
+    "1": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "2": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "5": [
+     "❯ do the thing"
+    ],
+    "7": [
+     "⏺ Bash(sleep 6)"
+    ],
+    "8": [
+     "  ⎿ \u00a0Running…"
+    ],
+    "10": [
+     "✽ Sautéing… (1s · ↓ 11 tokens)"
+    ],
+    "12": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "13": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "15": [
+     "  ⏸ manual mode on · esc to interrupt · ← for agents                  Ctrl+Y to paste deleted text"
+    ]
+   }
+  }
+ }
+}
