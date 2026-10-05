@@ -1,11 +1,27 @@
 import { realpath } from 'node:fs/promises'
 import { sep } from 'node:path'
 
+/** 開いているフォルダが変わったときの通知(webContents の id と新しいフォルダ) */
+export type FolderChangeListener = (webContentsId: number, path: string) => void
+
 export class FolderAccessManager {
   private readonly folders = new Map<number, string>()
+  private readonly changeListeners = new Set<FolderChangeListener>()
 
+  /** フォルダを設定する。前と違うパスになったときだけ購読者へ通知する(同じフォルダを開き直したときは通知しない) */
   set(webContentsId: number, path: string): void {
+    const previous = this.folders.get(webContentsId)
     this.folders.set(webContentsId, path)
+    if (previous === path) return
+    for (const listener of [...this.changeListeners]) listener(webContentsId, path)
+  }
+
+  /** フォルダの変更を購読する。戻り値で解除する(セッションの停止・監視の解除が使う。FolderAccessManager はそれらを知らない) */
+  onDidChange(listener: FolderChangeListener): () => void {
+    this.changeListeners.add(listener)
+    return () => {
+      this.changeListeners.delete(listener)
+    }
   }
 
   get(webContentsId: number): string | undefined {

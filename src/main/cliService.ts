@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import type { CLIOnlyToolId } from '@shared/types'
+import { appendSearchPaths, getCliSearchPaths } from './cliSearchPaths'
 
 interface ToolConfig {
   command: string
@@ -30,16 +31,11 @@ function buildEnv(): NodeJS.ProcessEnv {
   if (process.platform === 'win32') {
     return { ...process.env }
   }
-  const extra = [
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
-    '/snap/bin',
-    process.env.HOME && `${process.env.HOME}/.local/bin`,
-    process.env.HOME && `${process.env.HOME}/.cargo/bin`
-  ].filter(Boolean) as string[]
-  const extraStr = extra.join(':')
-  const basePath = process.env.PATH ? `${process.env.PATH}:${extraStr}` : extraStr
-  return { ...process.env, PATH: basePath }
+  // 既定の探索先はエージェントの起動(agentCommand)と共有する(cliSearchPaths)
+  return {
+    ...process.env,
+    PATH: appendSearchPaths(process.env.PATH, getCliSearchPaths(process.env.HOME))
+  }
 }
 
 export interface RunCLIPromptOptions {
@@ -61,7 +57,7 @@ export function runCLIPrompt(
   return new Promise((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | null = null
     let settled = false
-    const settle = (fn: () => void) => {
+    const settle = (fn: () => void): void => {
       if (settled) return
       settled = true
       if (timer !== null) clearTimeout(timer)

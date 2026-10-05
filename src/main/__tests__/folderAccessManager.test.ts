@@ -181,3 +181,32 @@ describe('FolderAccessManager', () => {
     })
   })
 })
+
+describe('FolderAccessManager.onDidChange', () => {
+  it('別のパスに変わったときだけ通知し、解除の後は通知しない', () => {
+    const manager = new FolderAccessManager()
+    const listener = vi.fn()
+    const dispose = manager.onDidChange(listener)
+    manager.set(1, '/a')
+    manager.set(1, '/a')
+    manager.set(1, '/b')
+    manager.set(2, '/b')
+    expect(listener.mock.calls).toEqual([
+      [1, '/a'],
+      [1, '/b'],
+      [2, '/b']
+    ])
+    dispose()
+    manager.set(1, '/c')
+    expect(listener).toHaveBeenCalledTimes(3)
+  })
+
+  it('delete は通知しない(ウィンドウの破棄は destroyed で扱う)', () => {
+    const manager = new FolderAccessManager()
+    manager.set(1, '/a')
+    const listener = vi.fn()
+    manager.onDidChange(listener)
+    manager.delete(1)
+    expect(listener).not.toHaveBeenCalled()
+  })
+})
