@@ -1,6 +1,13 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
 import type {
+  AgentSessionData,
+  AgentSessionExit,
+  AgentSessionSnapshot,
+  AgentStartRequest,
+  AgentStartResult,
   CLIOnlyToolId,
+  ExternalFileChangeEvent,
+  PromptExecutionMode,
+  WriteFileCheckedResult,
   CloneRepositoryResult,
   ConflictChoice,
   ConflictFile,
@@ -23,7 +30,6 @@ import type {
 
 declare global {
   interface Window {
-    electron: ElectronAPI
     api: {
       openFolder(): Promise<string | null>
       readDirectory(path: string): Promise<FileTreeNode[]>
@@ -106,6 +112,24 @@ declare global {
       onPromptStreamChunk(listener: (requestId: string, chunk: string) => void): () => void
       loadHistory(): Promise<HistoryEntry[]>
       saveHistory(entries: HistoryEntry[]): Promise<void>
+      getPromptExecutionMode(): Promise<PromptExecutionMode>
+      setPromptExecutionMode(mode: PromptExecutionMode): Promise<void>
+      startAgentSession(request: AgentStartRequest): Promise<AgentStartResult>
+      writeAgentSession(sessionId: string, data: string): void
+      resizeAgentSession(sessionId: string, cols: number, rows: number): void
+      stopAgentSession(sessionId: string): Promise<void>
+      getAgentSession(): Promise<AgentSessionSnapshot>
+      onAgentData(listener: (payload: AgentSessionData) => void): () => void
+      onAgentExit(listener: (payload: AgentSessionExit) => void): () => void
+      setAgentTerminalFocused(focused: boolean): void
+      writeFileChecked(
+        path: string,
+        content: string,
+        baseContent: string | null
+      ): Promise<WriteFileCheckedResult>
+      setWatchedFiles(paths: string[]): Promise<void>
+      onExternalFileChange(listener: (event: ExternalFileChangeEvent) => void): () => void
+      openExternalLink(url: string): Promise<boolean>
     }
   }
 }

@@ -1,6 +1,14 @@
 import { ipcRenderer } from 'electron'
 import type {
+  AgentSessionData,
+  AgentSessionExit,
+  AgentSessionSnapshot,
+  AgentStartRequest,
+  AgentStartResult,
   CLIOnlyToolId,
+  ExternalFileChangeEvent,
+  PromptExecutionMode,
+  WriteFileCheckedResult,
   CloneRepositoryResult,
   ConflictChoice,
   ConflictFile,
@@ -20,6 +28,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
+import { isAgentExitReason } from '@shared/types'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -147,5 +156,76 @@ export const api = {
   },
   loadHistory: (): Promise<HistoryEntry[]> => ipcRenderer.invoke('history:load'),
   saveHistory: (entries: HistoryEntry[]): Promise<void> =>
-    ipcRenderer.invoke('history:save', entries)
+    ipcRenderer.invoke('history:save', entries),
+  getPromptExecutionMode: (): Promise<PromptExecutionMode> =>
+    ipcRenderer.invoke('settings:getPromptExecutionMode'),
+  setPromptExecutionMode: (mode: PromptExecutionMode): Promise<void> =>
+    ipcRenderer.invoke('settings:setPromptExecutionMode', mode),
+  // エージェントのセッション。起動のコマンド・作業ディレクトリ・環境変数は main が決める
+  startAgentSession: (request: AgentStartRequest): Promise<AgentStartResult> =>
+    ipcRenderer.invoke('agentTerminal:start', request),
+  // キー入力・xterm の応答・貼り付けの順序を保つため send(fire-and-forget)にする
+  writeAgentSession: (sessionId: string, data: string): void =>
+    ipcRenderer.send('agentTerminal:write', sessionId, data),
+  resizeAgentSession: (sessionId: string, cols: number, rows: number): void =>
+    ipcRenderer.send('agentTerminal:resize', sessionId, cols, rows),
+  stopAgentSession: (sessionId: string): Promise<void> =>
+    ipcRenderer.invoke('agentTerminal:stop', sessionId),
+  getAgentSession: (): Promise<AgentSessionSnapshot> =>
+    ipcRenderer.invoke('agentTerminal:getState'),
+  onAgentData: (listener: (payload: AgentSessionData) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (typeof payload !== 'object' || payload === null) return
+      const { sessionId, data } = payload as Record<string, unknown>
+      if (typeof sessionId !== 'string' || typeof data !== 'string') return
+      listener({ sessionId, data })
+    }
+    ipcRenderer.on('agentTerminal:data', wrapped)
+    return () => {
+      ipcRenderer.removeListener('agentTerminal:data', wrapped)
+    }
+  },
+  onAgentExit: (listener: (payload: AgentSessionExit) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (typeof payload !== 'object' || payload === null) return
+      const { sessionId, exitCode, signal, reason } = payload as Record<string, unknown>
+      if (typeof sessionId !== 'string') return
+      if (!isAgentExitReason(reason)) return
+      listener({
+        sessionId,
+        exitCode: typeof exitCode === 'number' ? exitCode : null,
+        signal: typeof signal === 'number' ? signal : null,
+        reason
+      })
+    }
+    ipcRenderer.on('agentTerminal:exit', wrapped)
+    return () => {
+      ipcRenderer.removeListener('agentTerminal:exit', wrapped)
+    }
+  },
+  setAgentTerminalFocused: (focused: boolean): void =>
+    ipcRenderer.send('agentTerminal:focus', focused),
+  // baseContent はタブが最後にディスクと一致した内容。null は照合せずに書く(上書きの確認の後)
+  writeFileChecked: (
+    path: string,
+    content: string,
+    baseContent: string | null
+  ): Promise<WriteFileCheckedResult> =>
+    ipcRenderer.invoke('fs:writeFileChecked', path, content, baseContent),
+  setWatchedFiles: (paths: string[]): Promise<void> =>
+    ipcRenderer.invoke('fs:setWatchedFiles', paths),
+  onExternalFileChange: (listener: (event: ExternalFileChangeEvent) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (typeof payload !== 'object' || payload === null) return
+      const { paths } = payload as Record<string, unknown>
+      if (!Array.isArray(paths) || !paths.every((path) => typeof path === 'string')) return
+      listener({ paths })
+    }
+    ipcRenderer.on('fs:externalChange', wrapped)
+    return () => {
+      ipcRenderer.removeListener('fs:externalChange', wrapped)
+    }
+  },
+  openExternalLink: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke('shell:openExternalLink', url)
 }

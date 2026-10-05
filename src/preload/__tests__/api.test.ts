@@ -3,12 +3,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockInvoke = vi.hoisted(() => vi.fn())
 const mockOn = vi.hoisted(() => vi.fn())
 const mockRemoveListener = vi.hoisted(() => vi.fn())
+const mockSend = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
-  ipcRenderer: { invoke: mockInvoke, on: mockOn, removeListener: mockRemoveListener }
+  ipcRenderer: {
+    invoke: mockInvoke,
+    on: mockOn,
+    removeListener: mockRemoveListener,
+    send: mockSend
+  }
 }))
 
 import { api } from '../api'
+import { AGENT_EXIT_REASONS } from '@shared/types'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -371,5 +378,138 @@ describe('onPromptStreamChunk', () => {
     unsubscribe()
 
     expect(mockRemoveListener).toHaveBeenCalledWith('prompt:streamChunk', wrapped)
+  })
+})
+
+describe('エージェントのターミナル・外部変更・実行方式・リンクの API', () => {
+  it.each<[string, () => unknown, unknown[]]>([
+    [
+      'startAgentSession は agentTerminal:start に依頼を渡す',
+      () => api.startAgentSession({ folderPath: '/p', cols: 80, rows: 24 }),
+      ['agentTerminal:start', { folderPath: '/p', cols: 80, rows: 24 }]
+    ],
+    [
+      'stopAgentSession は agentTerminal:stop に sessionId を渡す',
+      () => api.stopAgentSession('s'),
+      ['agentTerminal:stop', 's']
+    ],
+    [
+      'getAgentSession は agentTerminal:getState を呼ぶ',
+      () => api.getAgentSession(),
+      ['agentTerminal:getState']
+    ],
+    [
+      'writeFileChecked は fs:writeFileChecked に path・content・baseContent を渡す',
+      () => api.writeFileChecked('/p/a', 'new', 'old'),
+      ['fs:writeFileChecked', '/p/a', 'new', 'old']
+    ],
+    [
+      'writeFileChecked は baseContent の null をそのまま渡す',
+      () => api.writeFileChecked('/p/a', 'new', null),
+      ['fs:writeFileChecked', '/p/a', 'new', null]
+    ],
+    [
+      'setWatchedFiles は fs:setWatchedFiles にパスを渡す',
+      () => api.setWatchedFiles(['/p/a']),
+      ['fs:setWatchedFiles', ['/p/a']]
+    ],
+    [
+      'getPromptExecutionMode は settings:getPromptExecutionMode を呼ぶ',
+      () => api.getPromptExecutionMode(),
+      ['settings:getPromptExecutionMode']
+    ],
+    [
+      'setPromptExecutionMode は settings:setPromptExecutionMode に方式を渡す',
+      () => api.setPromptExecutionMode('legacy'),
+      ['settings:setPromptExecutionMode', 'legacy']
+    ],
+    [
+      'openExternalLink は shell:openExternalLink に URL を渡す',
+      () => api.openExternalLink('https://x'),
+      ['shell:openExternalLink', 'https://x']
+    ]
+  ])('%s', (_name, call, expectedArgs) => {
+    call()
+    expect(mockInvoke).toHaveBeenCalledWith(...expectedArgs)
+  })
+
+  it.each<[string, () => unknown, unknown[]]>([
+    [
+      'writeAgentSession は send で順序を保って送る',
+      () => api.writeAgentSession('s', 'abc'),
+      ['agentTerminal:write', 's', 'abc']
+    ],
+    [
+      'resizeAgentSession は send で送る',
+      () => api.resizeAgentSession('s', 100, 30),
+      ['agentTerminal:resize', 's', 100, 30]
+    ],
+    [
+      'setAgentTerminalFocused は send で送る',
+      () => api.setAgentTerminalFocused(true),
+      ['agentTerminal:focus', true]
+    ]
+  ])('%s', (_name, call, expectedArgs) => {
+    call()
+    expect(mockSend).toHaveBeenCalledWith(...expectedArgs)
+    expect(mockInvoke).not.toHaveBeenCalled()
+  })
+})
+
+describe.each([
+  [
+    'onAgentData',
+    'agentTerminal:data',
+    (l: (p: unknown) => void) => api.onAgentData(l),
+    { sessionId: 's', data: 'x' },
+    [null, { sessionId: 1, data: 'x' }, { sessionId: 's', data: 1 }]
+  ],
+  [
+    'onAgentExit',
+    'agentTerminal:exit',
+    (l: (p: unknown) => void) => api.onAgentExit(l),
+    { sessionId: 's', exitCode: 1, signal: null, reason: 'exited' },
+    [null, { sessionId: 1, reason: 'exited' }, { sessionId: 's', reason: 'unknown' }]
+  ],
+  [
+    'onExternalFileChange',
+    'fs:externalChange',
+    (l: (p: unknown) => void) => api.onExternalFileChange(l),
+    { paths: ['/a'] },
+    [null, { paths: '/a' }, { paths: [1] }]
+  ]
+])('%s', (_name, channel, subscribe, valid, invalids) => {
+  it(`${channel} を購読し、検証を通った payload で呼び、解除関数で removeListener する`, () => {
+    const listener = vi.fn()
+    const unsubscribe = subscribe(listener)
+    const wrapped = mockOn.mock.calls.find(([ch]) => ch === channel)?.[1]
+    wrapped({}, valid)
+    for (const invalid of invalids) wrapped({}, invalid)
+    expect(listener.mock.calls).toEqual([[valid]])
+    unsubscribe()
+    expect(mockRemoveListener).toHaveBeenCalledWith(channel, wrapped)
+  })
+})
+
+describe('onAgentExit の正規化', () => {
+  it.each(AGENT_EXIT_REASONS)('終了理由 %s は捨てずに通す', (reason) => {
+    const listener = vi.fn()
+    api.onAgentExit(listener)
+    const wrapped = mockOn.mock.calls.find(([ch]) => ch === 'agentTerminal:exit')?.[1]
+    wrapped({}, { sessionId: 's', exitCode: 0, signal: null, reason })
+    expect(listener).toHaveBeenCalledWith({ sessionId: 's', exitCode: 0, signal: null, reason })
+  })
+
+  it('exitCode・signal が数でなければ null にする', () => {
+    const listener = vi.fn()
+    api.onAgentExit(listener)
+    const wrapped = mockOn.mock.calls.find(([ch]) => ch === 'agentTerminal:exit')?.[1]
+    wrapped({}, { sessionId: 's', reason: 'stopped' })
+    expect(listener).toHaveBeenCalledWith({
+      sessionId: 's',
+      exitCode: null,
+      signal: null,
+      reason: 'stopped'
+    })
   })
 })
