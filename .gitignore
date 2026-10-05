@@ -11,5 +11,6 @@ coverage
 AGENTS.md
 .claude/RESUME.md
 
-# 実機テスト仕様書から生成した HTML(scripts/build-manual-test-spec.mjs の出力)
-.superpowers/manual-test-spec.html
+# 開発の作業用ファイル(実機テスト仕様書から生成した HTML〈scripts/build-manual-test-spec.mjs の出力〉、サブエージェント駆動開発の台帳・レビュー記録、調査メモ、実機の画面の記録の元データなど)。
+# 元データには個人情報(ユーザー名・パス)が含まれうるため、リポジトリには入れない
+.superpowers/
