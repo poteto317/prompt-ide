@@ -5,6 +5,7 @@ import type { FileTreeNode } from '../../types'
 vi.mock('../../lib/fileSystemApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
+import { routeCheckedWritesToWriteFileContent } from '../../__tests__/routeCheckedWrites'
 import { useFileSystem } from '../useFileSystem'
 
 const mockOpenFolder = vi.mocked(fileSystemApi.openFolder)
@@ -27,6 +28,7 @@ const mockTree: FileTreeNode[] = [
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeCheckedWritesToWriteFileContent()
 })
 
 describe('useFileSystem', () => {

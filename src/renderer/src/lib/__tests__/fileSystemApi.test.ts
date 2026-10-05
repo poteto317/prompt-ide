@@ -9,7 +9,10 @@ import {
   createDirectory,
   renameEntry,
   deleteEntry,
-  addToGitignore
+  addToGitignore,
+  writeFileContentChecked,
+  setWatchedFiles,
+  onExternalFileChange
 } from '../fileSystemApi'
 
 const mockApi = {
@@ -21,7 +24,10 @@ const mockApi = {
   createDirectory: vi.fn(),
   renameEntry: vi.fn(),
   deleteEntry: vi.fn(),
-  addToGitignore: vi.fn()
+  addToGitignore: vi.fn(),
+  writeFileChecked: vi.fn(),
+  setWatchedFiles: vi.fn(),
+  onExternalFileChange: vi.fn()
 }
 
 beforeEach(() => {
@@ -108,5 +114,26 @@ describe('addToGitignore', () => {
   it('window.api.addToGitignore を targetPath で呼ぶ', async () => {
     await addToGitignore('/project/dist')
     expect(mockApi.addToGitignore).toHaveBeenCalledWith('/project/dist')
+  })
+})
+
+describe('外部変更の検知', () => {
+  it('writeFileContentChecked は window.api.writeFileChecked に path・content・baseContent を渡し、結果を返す', async () => {
+    mockApi.writeFileChecked.mockResolvedValue({ kind: 'conflict', reason: 'modified' })
+    await expect(writeFileContentChecked('/p/a', 'new', 'old')).resolves.toEqual({
+      kind: 'conflict',
+      reason: 'modified'
+    })
+    expect(mockApi.writeFileChecked).toHaveBeenCalledWith('/p/a', 'new', 'old')
+  })
+
+  it('setWatchedFiles・onExternalFileChange は window.api に委譲する', async () => {
+    const unsubscribe = vi.fn()
+    mockApi.onExternalFileChange.mockReturnValue(unsubscribe)
+    await setWatchedFiles(['/p/a'])
+    const listener = vi.fn()
+    expect(onExternalFileChange(listener)).toBe(unsubscribe)
+    expect(mockApi.setWatchedFiles).toHaveBeenCalledWith(['/p/a'])
+    expect(mockApi.onExternalFileChange).toHaveBeenCalledWith(listener)
   })
 })

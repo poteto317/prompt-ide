@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import type { ExternalChangeKind } from '@shared/types'
 import type { OpenFile } from '../types'
 import * as fileSystemApi from '../lib/fileSystemApi'
 import { isPathAtOrInside, isSamePath, replacePathPrefix, toComparablePath } from '../lib/pathUtils'
@@ -29,6 +30,21 @@ export const SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY =
 
 export const DISCARD_CONFIRM_MESSAGE = '保存されていない変更があります。破棄して続行しますか？'
 
+// 保存の直前の照合で、ディスクが最後に読み込んだ内容から変わっていたときの確認(設計書「保存の直前の照合」)
+export const SAVE_CONFLICT_MODIFIED_MESSAGE =
+  'このファイルは、最後に読み込んだ後にディスク上で変更されています（エージェントなどによる変更）。上書きして保存すると、その変更は失われます。上書きして保存しますか？'
+export const SAVE_CONFLICT_DELETED_MESSAGE =
+  'このファイルは、ディスク上で削除されています。保存すると、もう一度作成されます。保存しますか？'
+// 上書きの確認で OK の後の、照合しない書き込みも conflict だったとき。main は、realpath で解決できないパス
+// (ぶら下がったシンボリックリンクなど)へは排他的作成で書き、既にエントリがあれば書かずに conflict を返す
+// (リンクを辿ってフォルダの外へ作らないため)。もう一度確認しても同じ結果になるため、確認を繰り返さず理由を示して止める
+export const SAVE_CONFLICT_OVERWRITE_FAILED_MESSAGE =
+  '保存できませんでした。保存先にリンク先の無いシンボリックリンクがあるか、確認の間にファイルが作成されました。ディスク上の状態を確認してください。'
+
+/** 保存の直前の照合で見つかった外部変更の種類に応じた、上書きの確認の文言 */
+export const saveConflictMessage = (reason: ExternalChangeKind): string =>
+  reason === 'deleted' ? SAVE_CONFLICT_DELETED_MESSAGE : SAVE_CONFLICT_MODIFIED_MESSAGE
+
 export type ResetForFileChangeOptions = {
   /**
    * リネームの追随でパスが付け替わる場合に渡す。中止の通知は「どのパスの保存を
@@ -41,6 +57,10 @@ export type ResetForFileChangeOptions = {
 
 export interface Options {
   onConfirm?: (message: string) => boolean
+  /** 保存の直前の照合で外部変更が見つかり、上書きの確認がキャンセルされたとき(タブに外部変更の印を付ける) */
+  onSaveConflict?: (path: string, reason: ExternalChangeKind) => void
+  /** 書き込めたとき(ディスクがタブの内容と同じになった。タブの外部変更の印を消す) */
+  onSaveSucceeded?: (path: string) => void
 }
 
 /**
@@ -155,7 +175,7 @@ export type FileOperationLockOptions = {
 export function useFileEditing(
   openFile: OpenFile | null,
   setOpenFile: Dispatch<SetStateAction<OpenFile | null>>,
-  { getOpenFile }: InternalOptions = {}
+  { getOpenFile, onConfirm = confirm, onSaveConflict, onSaveSucceeded }: InternalOptions = {}
 ): FileEditingState {
   // 保存中のファイルの path 集合を保持する。isSaving は単一の boolean ではなく
   // path の集合で判定することで、「file A の保存中に file B を保存しようとしたら
@@ -453,6 +473,34 @@ export function useFileEditing(
     clearStaleSaveState()
   }
 
+  // 照合付きで書き込み、外部変更と衝突したら解決する(設計書「保存の直前の照合」)。確認でキャンセルされたらタブに外部変更の
+  // 印を付け、OK なら照合せずに書き直す。書けたら 'written'、書かずに終えたら 'aborted'。例外は呼び出し側(saveFile)へ投げる
+  const writeWithConflictResolution = async (
+    path: string,
+    contentToWrite: string,
+    baseContent: string,
+    generation: number
+  ): Promise<'written' | 'aborted'> => {
+    const result = await fileSystemApi.writeFileContentChecked(path, contentToWrite, baseContent)
+    if (result.kind !== 'conflict') return 'written'
+    if (!onConfirm(saveConflictMessage(result.reason))) {
+      // 保存しない(savedContent は変えない)。タブに外部変更の印を付けて、通知を出す
+      if (generation === getGeneration(path)) onSaveConflict?.(path, result.reason)
+      return 'aborted'
+    }
+    // 確認の間にタブが閉じられた・開き直された場合は書かない
+    if (generation !== getGeneration(path)) return 'aborted'
+    const forced = await fileSystemApi.writeFileContentChecked(path, contentToWrite, null)
+    if (forced.kind === 'conflict') {
+      // 書けていない。savedContent は変えず、確認を繰り返さずに理由を示す
+      if (generation === getGeneration(path)) {
+        setSaveError(new Error(SAVE_CONFLICT_OVERWRITE_FAILED_MESSAGE))
+      }
+      return 'aborted'
+    }
+    return 'written'
+  }
+
   const saveFile = async (): Promise<void> => {
     // 入口の判定も同期ミラーから読む。render 時の openFile を見ると、
     // updateFileContent の直後に saveFile を呼んだ場合（同じ tick の編集）に
@@ -513,9 +561,17 @@ export function useFileEditing(
       // 待っている間に編集されていれば、その内容を書く。待たずに書けた場合は
       // openFile は同じなので、通常経路の挙動は変わらない
       const latest = readOpenFile()
-      const contentToWrite =
-        latest !== null && isSamePath(latest.path, path) ? latest.content : content
-      await fileSystemApi.writeFileContent(path, contentToWrite)
+      const isSameTab = latest !== null && isSamePath(latest.path, path)
+      const contentToWrite = isSameTab ? latest.content : content
+      // 照合の基準は、タブが最後にディスクと一致した内容(待っている間に再読込されていればその内容)
+      const baseContent = isSameTab ? latest.savedContent : target.savedContent
+      const written = await writeWithConflictResolution(
+        path,
+        contentToWrite,
+        baseContent,
+        generation
+      )
+      if (written === 'aborted') return
       // 書き込みに使った時点の path/content/generation を捕捉しているため、
       // await 中にユーザーがさらに編集したり、この path 自身が閉じられる・
       // 同じ path で開き直される・リネームされるなどして無効化されたりしても、
@@ -532,6 +588,7 @@ export function useFileEditing(
           ? { ...prev, savedContent: contentToWrite }
           : prev
       )
+      if (generation === getGeneration(path)) onSaveSucceeded?.(path)
     } catch (err) {
       // この path 自身が無効化されていた(このタブが閉じられた・同じ path で
       // 開き直された・リネームされたなど)場合、この保存失敗はもう対象の

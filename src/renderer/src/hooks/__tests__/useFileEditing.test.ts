@@ -5,6 +5,7 @@ import type { OpenFile } from '../../types'
 vi.mock('../../lib/fileSystemApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
+import { routeCheckedWritesToWriteFileContent } from '../../__tests__/routeCheckedWrites'
 import { useFileEditing } from '../useFileEditing'
 
 const mockWriteFileContent = vi.mocked(fileSystemApi.writeFileContent)
@@ -33,6 +34,7 @@ const dirtyOtherFile: OpenFile = { ...otherFile, content: 'edited other content'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  routeCheckedWritesToWriteFileContent()
 })
 
 describe('isDirty', () => {

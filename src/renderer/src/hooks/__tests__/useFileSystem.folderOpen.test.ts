@@ -5,6 +5,7 @@ import type { FileTreeNode } from '../../types'
 vi.mock('../../lib/fileSystemApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
+import { routeCheckedWritesToWriteFileContent } from '../../__tests__/routeCheckedWrites'
 import { useFileSystem } from '../useFileSystem'
 
 // フォルダを開く経路のテスト。openFolder(OS のダイアログでフォルダを選ぶ)と applyOpenedFolder(選ばれたパスを
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mockReadDirectory.mockImplementation((path: string) => Promise.resolve(treeFor(path)))
   mockReadFileContent.mockResolvedValue('const x = 1')
+  routeCheckedWritesToWriteFileContent()
 })
 
 describe('openFolder', () => {

@@ -21,6 +21,7 @@ vi.mock('../useFileEditing', async (importOriginal) => {
 })
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
+import { routeCheckedWritesToWriteFileContent } from '../../__tests__/routeCheckedWrites'
 import { MAX_READ_RETRIES, useFileSystem } from '../useFileSystem'
 
 const mockOpenFolder = vi.mocked(fileSystemApi.openFolder)
@@ -39,6 +40,7 @@ const mockTree: FileTreeNode[] = [
 beforeEach(() => {
   vi.clearAllMocks()
   completionsCount = 0
+  routeCheckedWritesToWriteFileContent()
 })
 
 describe('useFileSystem 読み込みと保存の競合の再試行上限', () => {

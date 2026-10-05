@@ -124,6 +124,24 @@ interface FileSystemState {
   closeTabsAtOrInside: (absolutePath: string) => void
   /** そのパス自身か配下に未保存の編集があるタブがあるか */
   hasDirtyTabAtOrInside: (absolutePath: string) => boolean
+  /** 開いているタブの最新の状態(同期ミラーから読む)。開いていなければ null */
+  getOpenFileSnapshot: (path: string) => OpenFile | null
+  /** そのパスの保存(書き込み待ちを含む)が終わるまで待つ。無ければすぐ解決する */
+  waitForPendingSave: (path: string) => Promise<void>
+  /**
+   * 外部変更の反映(設計書「未編集のタブの自動の再読込」4・6)。タブが未編集で、読む前の控え(expected)から content・savedContent が
+   * 変わっていないときだけ、ディスクの内容に置き換える(disk が null なら閉じる)。保存の世代も進める。置き換えた・閉じたら true。
+   * 読む間に打鍵された・保存が始まったときは false(呼び出し側は印を付ける。パターン 110)
+   * expected は必ず「未編集の控え」(読む前に getOpenFileSnapshot で取った、content === savedContent のタブの内容)を渡すこと。
+   * 読む間の変化(打鍵・保存)の検出はこの控えとの一致に頼っている(読んだ後に取った控えを渡すと、読む間に保存された新しい内容を、
+   * 保存の前に読んだ古いディスクの内容で上書きしてしまう)。
+   * 呼び出し側の useExternalFileChanges が、未編集のときだけ読む前の控えを渡す(useExternalFileChanges.test.ts で固定)
+   */
+  replaceCleanTabWithDisk: (
+    path: string,
+    expected: { content: string; savedContent: string },
+    disk: string | null
+  ) => boolean
 }
 
 // getOpenFile はここで常に自前の同期ミラーへ差し替える。Options（公開型）には
@@ -824,6 +842,39 @@ export function useFileSystem(options?: Options): FileSystemState {
       (f) => isPathAtOrInside(f.path, absolutePath) && f.content !== f.savedContent
     )
 
+  const getOpenFileSnapshot = (path: string): OpenFile | null =>
+    findFile(openFilesMirrorRef.current, path)
+
+  const waitForPendingSave = async (path: string): Promise<void> => {
+    await (pendingSaveFor(path) ?? Promise.resolve())
+  }
+
+  const replaceCleanTabWithDisk = (
+    path: string,
+    expected: { content: string; savedContent: string },
+    disk: string | null
+  ): boolean => {
+    const current = findFile(openFilesMirrorRef.current, path)
+    if (
+      current === null ||
+      current.content !== expected.content ||
+      current.savedContent !== expected.savedContent ||
+      current.content !== current.savedContent ||
+      pendingSaveFor(path) !== null
+    ) {
+      return false
+    }
+    const activePath = activeFilePathMirrorRef.current
+    setOpenFilesAndFixActive((prev) =>
+      prev.flatMap((f) => {
+        if (!isSamePath(f.path, path)) return [f]
+        return disk === null ? [] : [{ ...f, content: disk, savedContent: disk }]
+      })
+    )
+    invalidateSaveStateOfTab(path, activePath)
+    return true
+  }
+
   return {
     folderPath,
     fileTree,
@@ -855,6 +906,9 @@ export function useFileSystem(options?: Options): FileSystemState {
     reloadOpenFiles,
     reloadOpenFile,
     closeTabsAtOrInside,
-    hasDirtyTabAtOrInside
+    hasDirtyTabAtOrInside,
+    getOpenFileSnapshot,
+    waitForPendingSave,
+    replaceCleanTabWithDisk
   }
 }
