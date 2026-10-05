@@ -22,3 +22,12 @@ export const DEFAULT_MODEL_SETTINGS: ModelSettings = {
   modelId: 'claude-haiku-4-5',
   maxTokens: 4096
 }
+
+/** プロンプトの実行方式。agent-cli: アプリ内のターミナルの claude へ送る。legacy: Claude API・非対話の CLI(従来の方式) */
+export const PROMPT_EXECUTION_MODES = ['agent-cli', 'legacy'] as const
+export type PromptExecutionMode = (typeof PROMPT_EXECUTION_MODES)[number]
+export const DEFAULT_PROMPT_EXECUTION_MODE: PromptExecutionMode = 'agent-cli'
+
+export function isPromptExecutionMode(value: unknown): value is PromptExecutionMode {
+  return typeof value === 'string' && (PROMPT_EXECUTION_MODES as readonly string[]).includes(value)
+}
