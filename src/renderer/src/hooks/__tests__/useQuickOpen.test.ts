@@ -998,3 +998,42 @@ describe('selectFile が失敗したとき', () => {
     expect(selectFile).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('useQuickOpen: ターミナルの中のキー', () => {
+  // ターミナルの領域(data-agent-terminal)の中の入力欄を作る。テストの後に外す
+  const makeTerminalInput = (): { input: HTMLTextAreaElement; cleanup: () => void } => {
+    const area = document.createElement('div')
+    area.setAttribute('data-agent-terminal', '')
+    const input = document.createElement('textarea')
+    area.appendChild(input)
+    document.body.appendChild(area)
+    return { input, cleanup: () => area.remove() }
+  }
+
+  it('ターミナルの中の Ctrl+P は開かず、preventDefault もしない(端末へ通す)', () => {
+    const { result } = setup()
+    const { input, cleanup } = makeTerminalInput()
+    const event = pressKeyOnElement(input, { key: 'p', ctrlKey: true })
+    expect(result.current.isOpen).toBe(false)
+    expect(event.defaultPrevented).toBe(false)
+    cleanup()
+  })
+
+  it('ターミナルの中でも Cmd+P は開く', () => {
+    const { result } = setup()
+    const { input, cleanup } = makeTerminalInput()
+    const event = pressKeyOnElement(input, { key: 'p', metaKey: true })
+    expect(result.current.isOpen).toBe(true)
+    expect(event.defaultPrevented).toBe(true)
+    cleanup()
+  })
+
+  it('ターミナルの外の Ctrl+P は従来どおり開く', () => {
+    const { result } = setup()
+    const outside = document.createElement('input')
+    document.body.appendChild(outside)
+    pressKeyOnElement(outside, { key: 'p', ctrlKey: true })
+    expect(result.current.isOpen).toBe(true)
+    outside.remove()
+  })
+})

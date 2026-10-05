@@ -20,7 +20,9 @@ import type {
   MergeStatePanelState,
   GitTagPanelState,
   RemoteSetupPanelState,
-  CloneRepositoryPanelState
+  CloneRepositoryPanelState,
+  PromptRunPanelState,
+  ExecutionModePanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -116,6 +118,10 @@ interface Props {
   modelSettings: ModelSettings
   modelSettingsLoaded: boolean
   onSaveModelSettings: (settings: ModelSettings) => Promise<void>
+  /** 実行ボタン・再実行の押せる条件と送信の結果。省略時は isExecuting で押せなくする(従来どおり) */
+  promptRun?: PromptRunPanelState
+  /** プロンプトの実行方式の設定。省略時は設定パネルに実行方式を出さない */
+  executionMode?: ExecutionModePanelState
 }
 
 export default function Sidebar({
@@ -206,7 +212,9 @@ export default function Sidebar({
   onSaveApiKey,
   modelSettings,
   modelSettingsLoaded,
-  onSaveModelSettings
+  onSaveModelSettings,
+  promptRun,
+  executionMode
 }: Props): React.JSX.Element {
   return (
     <div className="sidebar">
@@ -239,7 +247,11 @@ export default function Sidebar({
           onExport={onExportPrompts}
           onImport={onImportPrompts}
           onRun={onRunPrompt}
-          isRunDisabled={isExecuting}
+          isRunDisabled={promptRun?.isRunDisabled ?? isExecuting}
+          runDisabledReason={promptRun?.runDisabledReason ?? null}
+          agentSend={promptRun?.agentSend ?? null}
+          showToolSelector={promptRun?.showToolSelector ?? true}
+          runAriaLabel={promptRun?.runAriaLabel}
           isActive={activePanel === 'prompts'}
         />
       </PanelContainer>
@@ -261,7 +273,8 @@ export default function Sidebar({
           onDelete={onDeleteHistoryEntry}
           onClear={onClearHistory}
           onRerun={onRerunHistoryEntry}
-          isRerunDisabled={isExecuting}
+          isRerunDisabled={promptRun?.isRerunDisabled ?? isExecuting}
+          rerunDisabledReason={promptRun?.rerunDisabledReason ?? null}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>
@@ -322,6 +335,7 @@ export default function Sidebar({
           modelSettings={modelSettings}
           modelSettingsLoaded={modelSettingsLoaded}
           onSaveModelSettings={onSaveModelSettings}
+          executionMode={executionMode}
         />
       </PanelContainer>
     </div>

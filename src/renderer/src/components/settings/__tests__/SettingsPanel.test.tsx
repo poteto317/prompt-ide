@@ -200,3 +200,46 @@ describe('SettingsPanel', () => {
     })
   })
 })
+
+describe('SettingsPanel: 実行方式', () => {
+  it('最上部に実行方式を出し、選ぶと onSelect を呼ぶ', async () => {
+    const onSelect = vi.fn()
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        executionMode={{ mode: 'agent-cli', saveError: null, isLocked: false, onSelect }}
+      />
+    )
+    expect(screen.getByRole('radiogroup', { name: 'プロンプトの実行方式' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('radio', { name: /^従来の方式/ }))
+    expect(onSelect).toHaveBeenCalledWith('legacy')
+  })
+
+  it('実行方式を選べない理由を渡す', () => {
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        executionMode={{
+          mode: 'legacy',
+          saveError: null,
+          isLocked: true,
+          lockedReason: '従来の方式で実行している間は、実行方式を切り替えられません',
+          onSelect: vi.fn()
+        }}
+      />
+    )
+    expect(screen.getByRole('radio', { name: /^従来の方式/ })).toHaveAccessibleDescription(
+      '従来の方式で実行している間は、実行方式を切り替えられません'
+    )
+  })
+
+  it('API キーとモデルに「従来の方式で使います」を添える', () => {
+    render(<SettingsPanel {...defaultProps} />)
+    expect(screen.getAllByText('従来の方式で使います')).toHaveLength(2)
+  })
+
+  it('executionMode を渡さなければ実行方式を出さない', () => {
+    render(<SettingsPanel {...defaultProps} />)
+    expect(screen.queryByRole('radiogroup', { name: 'プロンプトの実行方式' })).toBeNull()
+  })
+})

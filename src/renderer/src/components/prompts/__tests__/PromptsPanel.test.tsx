@@ -18,7 +18,11 @@ vi.mock('@dnd-kit/core', () => ({
     onDragEnd: (e: unknown) => void
   }) => {
     dndState.onDragEnd = onDragEnd
-    return <div data-testid="dnd-context" data-on-drag-end={String(!!onDragEnd)}>{children}</div>
+    return (
+      <div data-testid="dnd-context" data-on-drag-end={String(!!onDragEnd)}>
+        {children}
+      </div>
+    )
   },
   PointerSensor: class {},
   KeyboardSensor: class {},
@@ -61,14 +65,14 @@ const samplePrompt: Prompt = {
   id: 'p1',
   title: 'テストタイトル',
   content: 'テスト内容',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 const anotherPrompt: Prompt = {
   id: 'p2',
   title: 'バグ修正',
   content: 'エラーログを確認して修正する',
-  createdAt: 2000000,
+  createdAt: 2000000
 }
 
 describe('PromptsPanel', () => {
@@ -164,10 +168,7 @@ describe('PromptsPanel', () => {
   it('ツールセレクタで api に変更してから実行すると toolId が api で onRun に渡る', async () => {
     const onRun = vi.fn()
     render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} onRun={onRun} />)
-    await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: '実行ツールを選択' }),
-      'api'
-    )
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '実行ツールを選択' }), 'api')
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
     expect(onRun).toHaveBeenCalledWith('テスト内容', 'api', samplePrompt)
   })
@@ -249,7 +250,13 @@ describe('PromptsPanel', () => {
   describe('handleDragEnd → onReorder', () => {
     it('over が存在し active と異なる ID のとき onReorder が両 ID で呼ばれる', () => {
       const onReorder = vi.fn()
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, anotherPrompt]}
+          onReorder={onReorder}
+        />
+      )
       act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
       expect(onReorder).toHaveBeenCalledWith('p1', 'p2')
       expect(onReorder).toHaveBeenCalledOnce()
@@ -257,14 +264,26 @@ describe('PromptsPanel', () => {
 
     it('over が null のとき onReorder は呼ばれない（ドロップ先なし）', () => {
       const onReorder = vi.fn()
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, anotherPrompt]}
+          onReorder={onReorder}
+        />
+      )
       act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: null }))
       expect(onReorder).not.toHaveBeenCalled()
     })
 
     it('active と over が同一 ID のとき onReorder は呼ばれない（順序不変）', () => {
       const onReorder = vi.fn()
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, anotherPrompt]} onReorder={onReorder} />)
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, anotherPrompt]}
+          onReorder={onReorder}
+        />
+      )
       act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p1' } }))
       expect(onReorder).not.toHaveBeenCalled()
     })
@@ -283,7 +302,13 @@ describe('PromptsPanel', () => {
       const onReorder = vi.fn()
       const pinnedPrompt = { ...anotherPrompt, pinned: true }
       // 表示順は [pinnedPrompt(p2), samplePrompt(p1)]
-      render(<PromptsPanel {...defaultProps} prompts={[samplePrompt, pinnedPrompt]} onReorder={onReorder} />)
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, pinnedPrompt]}
+          onReorder={onReorder}
+        />
+      )
       // 非ピン p1 → ピン済み p2 の位置へドラッグ（境界をまたぐ）
       act(() => dndState.onDragEnd?.({ active: { id: 'p1' }, over: { id: 'p2' } }))
       expect(onReorder).not.toHaveBeenCalled()
@@ -341,20 +366,20 @@ describe('PromptsPanel', () => {
       title: 'タグ付きA',
       content: 'コンテンツA',
       createdAt: 1000000,
-      tags: ['React', 'TypeScript'],
+      tags: ['React', 'TypeScript']
     }
     const otherTaggedPrompt: Prompt = {
       id: 'p2',
       title: 'タグ付きB',
       content: 'コンテンツB',
       createdAt: 2000000,
-      tags: ['Vue'],
+      tags: ['Vue']
     }
     const noTagPrompt: Prompt = {
       id: 'p3',
       title: 'タグなし',
       content: 'コンテンツC',
-      createdAt: 3000000,
+      createdAt: 3000000
     }
 
     it('タグを持つプロンプトがあるときタグフィルターバーが表示される', () => {
@@ -369,10 +394,7 @@ describe('PromptsPanel', () => {
 
     it('タグをクリックすると該当タグを持つプロンプトだけが表示される', async () => {
       render(
-        <PromptsPanel
-          {...defaultProps}
-          prompts={[taggedPrompt, otherTaggedPrompt, noTagPrompt]}
-        />
+        <PromptsPanel {...defaultProps} prompts={[taggedPrompt, otherTaggedPrompt, noTagPrompt]} />
       )
       await userEvent.click(screen.getByRole('button', { name: 'React' }))
       expect(screen.getByText('タグ付きA')).toBeInTheDocument()
@@ -381,9 +403,7 @@ describe('PromptsPanel', () => {
     })
 
     it('同じタグをもう一度クリックすると絞り込みが解除される', async () => {
-      render(
-        <PromptsPanel {...defaultProps} prompts={[taggedPrompt, noTagPrompt]} />
-      )
+      render(<PromptsPanel {...defaultProps} prompts={[taggedPrompt, noTagPrompt]} />)
       await userEvent.click(screen.getByRole('button', { name: 'React' }))
       expect(screen.queryByText('タグなし')).not.toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: 'React' }))
@@ -405,9 +425,7 @@ describe('PromptsPanel', () => {
     })
 
     it('タグフィルターで 0 件になったとき no-results メッセージが表示される', async () => {
-      render(
-        <PromptsPanel {...defaultProps} prompts={[taggedPrompt, otherTaggedPrompt]} />
-      )
+      render(<PromptsPanel {...defaultProps} prompts={[taggedPrompt, otherTaggedPrompt]} />)
       // React のみ持つ taggedPrompt と Vue のみ持つ otherTaggedPrompt を AND 選択 → 0 件
       await userEvent.click(screen.getByRole('button', { name: 'React' }))
       await userEvent.click(screen.getByRole('button', { name: 'Vue' }))
@@ -435,5 +453,70 @@ describe('PromptsPanel', () => {
       await userEvent.click(screen.getByRole('button', { name: 'ピン留め' }))
       expect(onTogglePin).toHaveBeenCalledWith('p1')
     })
+  })
+})
+
+describe('PromptsPanel: エージェント CLI 方式', () => {
+  it('押せない理由を上部に 1 か所だけ出し、無効の実行ボタンの aria-describedby から参照する', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt, anotherPrompt]}
+        isRunDisabled
+        runDisabledReason="エージェントが起動していません（ターミナルの「起動」を押してください）"
+        agentSend={{ error: null, notice: null }}
+        showToolSelector={false}
+        runAriaLabel="実行（エージェントに送信）"
+      />
+    )
+    expect(
+      screen.getAllByText('エージェントが起動していません（ターミナルの「起動」を押してください）')
+    ).toHaveLength(1)
+    const buttons = screen.getAllByRole('button', { name: '実行（エージェントに送信）' })
+    expect(buttons).toHaveLength(2)
+    for (const button of buttons) {
+      expect(button).toBeDisabled()
+      expect(
+        document.getElementById(button.getAttribute('aria-describedby') ?? '')
+      ).toHaveTextContent('エージェントが起動していません')
+    }
+  })
+
+  it('押せるときは aria-describedby を付けない', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        runDisabledReason={null}
+        agentSend={{ error: null, notice: null }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'プロンプトを実行' })).not.toHaveAttribute(
+      'aria-describedby'
+    )
+  })
+
+  it('実行ツールの選択を隠せる', () => {
+    render(<PromptsPanel {...defaultProps} showToolSelector={false} />)
+    expect(screen.queryByRole('combobox', { name: '実行ツールを選択' })).toBeNull()
+  })
+
+  it('送信の失敗を role="alert" で、成功を role="status" で出す', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        agentSend={{
+          error: '送信する内容がありません',
+          notice: { text: 'エージェントに送信しました', id: 1 }
+        }}
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('送信する内容がありません')
+    expect(screen.getByRole('status')).toHaveTextContent('エージェントに送信しました')
+  })
+
+  it('従来の方式(agentSend が null)では通知の領域を置かない', () => {
+    render(<PromptsPanel {...defaultProps} />)
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

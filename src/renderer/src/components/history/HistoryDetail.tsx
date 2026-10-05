@@ -1,4 +1,5 @@
 'use client'
+import { useId } from 'react'
 import type { HistoryEntry } from '../../types'
 import MarkdownRenderer from '../output/MarkdownRenderer'
 import { getToolLabel, formatExecutedAt } from '../../lib/historyFormatters'
@@ -8,10 +9,19 @@ interface Props {
   onRerun: (entry: HistoryEntry) => void
   onDelete: (id: string) => void
   isRerunDisabled: boolean
+  rerunDisabledReason?: string | null
 }
 
-export default function HistoryDetail({ entry, onRerun, onDelete, isRerunDisabled }: Props) {
+export default function HistoryDetail({
+  entry,
+  onRerun,
+  onDelete,
+  isRerunDisabled,
+  rerunDisabledReason = null
+}: Props): React.JSX.Element {
   const toolLabel = getToolLabel(entry.toolId)
+  const reasonId = useId()
+  const showReason = isRerunDisabled && rerunDisabledReason !== null
 
   return (
     <div className="history-detail">
@@ -28,6 +38,7 @@ export default function HistoryDetail({ entry, onRerun, onDelete, isRerunDisable
           className="history-detail__rerun"
           onClick={() => onRerun(entry)}
           disabled={isRerunDisabled}
+          aria-describedby={showReason ? reasonId : undefined}
         >
           再実行
         </button>
@@ -40,6 +51,11 @@ export default function HistoryDetail({ entry, onRerun, onDelete, isRerunDisable
           削除
         </button>
       </div>
+      {showReason && (
+        <p id={reasonId} className="history-detail__rerun-reason">
+          {rerunDisabledReason}
+        </p>
+      )}
       <div className="history-detail__content">
         {entry.status === 'success' && entry.resultText !== null && (
           <MarkdownRenderer content={entry.resultText} />

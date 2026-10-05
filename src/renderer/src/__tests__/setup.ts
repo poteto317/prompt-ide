@@ -43,6 +43,21 @@ Object.defineProperty(window, 'api', {
     cancelPrompt: () => Promise.resolve(false),
     onPromptStreamChunk: () => () => {},
     loadHistory: () => Promise.resolve([]),
-    saveHistory: () => Promise.resolve()
+    saveHistory: () => Promise.resolve(),
+    // 既存のテストは従来の方式の画面を前提にしている。エージェント CLI 方式の画面のテストは個別に差し替える
+    getPromptExecutionMode: () => Promise.resolve('legacy'),
+    setPromptExecutionMode: () => Promise.resolve(),
+    startAgentSession: () => Promise.resolve({ kind: 'error', error: 'no-folder' }),
+    writeAgentSession: () => {},
+    resizeAgentSession: () => {},
+    stopAgentSession: () => Promise.resolve(),
+    getAgentSession: () => Promise.resolve(null),
+    onAgentData: () => () => {},
+    onAgentExit: () => () => {},
+    setAgentTerminalFocused: () => {},
+    writeFileChecked: () => Promise.resolve({ kind: 'written' }),
+    setWatchedFiles: () => Promise.resolve(),
+    onExternalFileChange: () => () => {},
+    openExternalLink: () => Promise.resolve(true)
   }
 })

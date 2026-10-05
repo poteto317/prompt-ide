@@ -2,6 +2,7 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import type { Prompt } from '../../types'
 import { truncatePreview } from '../../lib/promptUtils'
+import { PROMPT_RUN_ARIA_LABEL_LEGACY } from '../../lib/agentSendMessages'
 
 interface Props {
   prompt: Prompt
@@ -11,6 +12,10 @@ interface Props {
     listeners: DraggableSyntheticListeners
   }
   isRunDisabled: boolean
+  /** 押せない理由の要素の id(押せないときだけ渡す) */
+  runDisabledReasonId?: string
+  /** 実行ボタンの aria-label。省略時は「プロンプトを実行」 */
+  runAriaLabel?: string
   onRun: () => void
   onEditStart: () => void
   onDelete: () => void
@@ -22,11 +27,13 @@ export default function PromptItemView({
   isSortable,
   dragHandleProps,
   isRunDisabled,
+  runDisabledReasonId,
+  runAriaLabel = PROMPT_RUN_ARIA_LABEL_LEGACY,
   onRun,
   onEditStart,
   onDelete,
   onTogglePin
-}: Props) {
+}: Props): React.JSX.Element {
   return (
     <>
       {isSortable && (
@@ -67,7 +74,8 @@ export default function PromptItemView({
         <button
           type="button"
           className="prompt-item__run"
-          aria-label="プロンプトを実行"
+          aria-label={runAriaLabel}
+          aria-describedby={runDisabledReasonId}
           disabled={isRunDisabled}
           onClick={onRun}
         >

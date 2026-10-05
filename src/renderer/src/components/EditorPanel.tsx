@@ -14,6 +14,10 @@ import { useCombinedEditorTabs } from '../hooks/useCombinedEditorTabs'
 import DiffView from './source-control/DiffView'
 import ConflictResolver from './source-control/ConflictResolver'
 import type { ConflictFileState } from '../hooks/useConflictFile'
+import AgentTerminalPanel from './agent/AgentTerminalPanel'
+import type { AgentTerminalPanelState } from '../hooks/useAgentWorkspace'
+import ExternalChangeBanner, { ExternalChangeAnnouncer } from './editor/ExternalChangeBanner'
+import type { ExternalChangeBannerState } from '../hooks/useExternalFileChanges'
 
 interface Props {
   openFiles: OpenFile[]
@@ -66,6 +70,15 @@ interface Props {
   conflictFile: ConflictFileState
   /** 他の操作中(ロック中)か。解決ビューの全ボタンを無効化する(ハンク操作の isHunkOperationInProgress と同じ扱い) */
   isConflictBlocked: boolean
+  /**
+   * 下部に置くパネル。output: 出力パネル(従来の方式)、agent-terminal: ターミナルパネル(エージェント CLI 方式)、
+   * none: 何も置かない(実行方式の読み込み中)。省略時は output
+   */
+  bottomPanel?: 'output' | 'agent-terminal' | 'none'
+  /** bottomPanel が agent-terminal のときのターミナルパネルの状態 */
+  agentTerminal?: AgentTerminalPanelState
+  /** 編集中のタブのファイルがディスク上で変わったときの通知(useExternalFileChanges)。無ければ null */
+  externalChangeBanner?: ExternalChangeBannerState | null
 }
 
 export default function EditorPanel({
@@ -103,7 +116,10 @@ export default function EditorPanel({
   isActiveFileUntracked,
   isActiveFileConflicted,
   conflictFile,
-  isConflictBlocked
+  isConflictBlocked,
+  bottomPanel = 'output',
+  agentTerminal,
+  externalChangeBanner = null
 }: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
@@ -132,91 +148,103 @@ export default function EditorPanel({
     onDeactivateDiffTab
   })
 
+  const showAgentTerminal = bottomPanel === 'agent-terminal' && agentTerminal !== undefined
+  // ターミナルパネルの最大化の間は、タブと本文を隠してパネルが全体を使う(Monaco は automaticLayout で戻したときに合わせ直す)
+  const isAgentMaximized = showAgentTerminal && agentTerminal.layout.isMaximized
+
   return (
     <div className="editor-panel">
-      {/* diffTabs に非アクティブな diff タブが残っている場合、WelcomeView に
+      {/* 外部変更の通知の読み上げ。通知が無い間も置き(文言は同じ要素に入れる)、ターミナルの最大化で隠れるタブと本文の外に置く */}
+      <ExternalChangeAnnouncer banner={externalChangeBanner} />
+      <div className="editor-panel__main" hidden={isAgentMaximized}>
+        {/* diffTabs に非アクティブな diff タブが残っている場合、WelcomeView に
           切り替えるとタブバーごと消えてそれらのタブへ二度とアクセスできなくなる */}
-      {openFile === null && activeDiffTab === null && diffTabs.length === 0 ? (
-        <WelcomeView />
-      ) : (
-        <>
-          <EditorTabs
-            tabs={combinedTabs}
-            activePath={activeTabPath}
-            saveTargetPath={activeFilePath}
-            isSaving={isSaving}
-            saveError={saveError}
-            onSave={onSave}
-            onActivateTab={handleActivateTab}
-            onCloseTab={handleCloseTab}
-            onReorderTabs={onReorderTabs}
-          />
-          {/* 既知の挙動: diff タブをアクティブにすると下の <Editor> がアンマウントされ、
+        {openFile === null && activeDiffTab === null && diffTabs.length === 0 ? (
+          <WelcomeView />
+        ) : (
+          <>
+            <EditorTabs
+              tabs={combinedTabs}
+              activePath={activeTabPath}
+              saveTargetPath={activeFilePath}
+              isSaving={isSaving}
+              saveError={saveError}
+              onSave={onSave}
+              onActivateTab={handleActivateTab}
+              onCloseTab={handleCloseTab}
+              onReorderTabs={onReorderTabs}
+            />
+            <ExternalChangeBanner banner={externalChangeBanner} />
+            {/* 既知の挙動: diff タブをアクティブにすると下の <Editor> がアンマウントされ、
               Monaco のモデルが破棄されるため、実ファイルタブへ戻したときに undo/redo
               スタック・カーソル位置・スクロール位置が失われる(バッファの内容自体は
               openFile.content に保持されるので失われない)。常時マウントして
               display:none で切り替える方法はあるが、Monaco は非表示状態だと
               レイアウト計算が狂うため復帰時の layout() 呼び出しが必要になり、
               jsdom ベースのテストでは検証できない副作用を抱え込むことになる */}
-          <div className="editor-body">
-            {activeDiffTab !== null && isActiveFileConflicted ? (
-              // 未解決の間は結合 diff ではなく解決ビュー(内容は main から読み直す。diff の取得は待たない)
-              <ConflictResolver conflict={conflictFile} isBlocked={isConflictBlocked} />
-            ) : activeDiffTab !== null ? (
-              <>
-                {diffError !== null && <p className="diff-view__error">{diffError.message}</p>}
-                {diffContent === null && diffError === null && (
-                  <p className="diff-view__loading">読み込み中...</p>
-                )}
-                {diffContent !== null && (
-                  <DiffView
-                    diffText={diffContent}
-                    staged={diffStaged}
-                    onStageHunk={onStageHunk}
-                    onUnstageHunk={onUnstageHunk}
-                    disabled={isHunkOperationInProgress}
-                    isUntracked={isActiveFileUntracked}
-                    onDiscardHunk={onDiscardHunk}
-                    canDiscardHunk={canDiscardHunk}
-                  />
-                )}
-              </>
-            ) : openFile !== null ? (
-              <Editor
-                key={openFile.path}
-                height="100%"
-                language={openFile.language}
-                theme="vs-dark"
-                value={openFile.content}
-                options={editorOptions}
-                onChange={(value) => onChangeContent(value ?? '')}
-                onMount={(editorInstance, monaco) => {
-                  const isCurrent = handleEditorMount(editorInstance, openFile.path)
-                  if (!isCurrent) return
-                  attachEditor(editorInstance)
-                  registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
-                  focusEditorIfPending()
-                }}
-              />
-            ) : (
-              // 非アクティブな diff タブが残っているだけ(実ファイルタブも
-              // アクティブな diff タブも無い)場合、ここに来る。タブバーは表示
-              // されているので、何も描画しないと本文だけが空白のまま残り、
-              // ユーザーがタブを選び直すまで理由が分からない状態になる
-              <p className="editor-panel__placeholder">タブを選択してください</p>
-            )}
-          </div>
-        </>
+            <div className="editor-body">
+              {activeDiffTab !== null && isActiveFileConflicted ? (
+                // 未解決の間は結合 diff ではなく解決ビュー(内容は main から読み直す。diff の取得は待たない)
+                <ConflictResolver conflict={conflictFile} isBlocked={isConflictBlocked} />
+              ) : activeDiffTab !== null ? (
+                <>
+                  {diffError !== null && <p className="diff-view__error">{diffError.message}</p>}
+                  {diffContent === null && diffError === null && (
+                    <p className="diff-view__loading">読み込み中...</p>
+                  )}
+                  {diffContent !== null && (
+                    <DiffView
+                      diffText={diffContent}
+                      staged={diffStaged}
+                      onStageHunk={onStageHunk}
+                      onUnstageHunk={onUnstageHunk}
+                      disabled={isHunkOperationInProgress}
+                      isUntracked={isActiveFileUntracked}
+                      onDiscardHunk={onDiscardHunk}
+                      canDiscardHunk={canDiscardHunk}
+                    />
+                  )}
+                </>
+              ) : openFile !== null ? (
+                <Editor
+                  key={openFile.path}
+                  height="100%"
+                  language={openFile.language}
+                  theme="vs-dark"
+                  value={openFile.content}
+                  options={editorOptions}
+                  onChange={(value) => onChangeContent(value ?? '')}
+                  onMount={(editorInstance, monaco) => {
+                    const isCurrent = handleEditorMount(editorInstance, openFile.path)
+                    if (!isCurrent) return
+                    attachEditor(editorInstance)
+                    registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
+                    focusEditorIfPending()
+                  }}
+                />
+              ) : (
+                // 非アクティブな diff タブが残っているだけ(実ファイルタブも
+                // アクティブな diff タブも無い)場合、ここに来る。タブバーは表示
+                // されているので、何も描画しないと本文だけが空白のまま残り、
+                // ユーザーがタブを選び直すまで理由が分からない状態になる
+                <p className="editor-panel__placeholder">タブを選択してください</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      {bottomPanel === 'output' && (
+        <OutputPanel
+          isExecuting={isExecuting}
+          result={result}
+          streamingText={streamingText}
+          executionError={executionError}
+          onClear={onClearResult}
+          onCancel={onCancelExecution}
+          applyOutput={applyOutput}
+        />
       )}
-      <OutputPanel
-        isExecuting={isExecuting}
-        result={result}
-        streamingText={streamingText}
-        executionError={executionError}
-        onClear={onClearResult}
-        onCancel={onCancelExecution}
-        applyOutput={applyOutput}
-      />
+      {showAgentTerminal && <AgentTerminalPanel state={agentTerminal} />}
     </div>
   )
 }

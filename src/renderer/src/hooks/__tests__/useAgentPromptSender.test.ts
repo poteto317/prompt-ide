@@ -1,0 +1,158 @@
+import { renderHook, act } from '@testing-library/react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
+import { useAgentPromptSender } from '../useAgentPromptSender'
+import type { AgentSendClock } from '../../lib/agentPromptSend'
+import { AGENT_SENT_AFTER_CLEAR_NOTICE, AGENT_SENT_NOTICE } from '../../lib/agentSendMessages'
+import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
+import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
+import { toAnnouncementText } from '../../lib/announcementText'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+// 仮想の時計(sleep で時間を進めるだけ)
+const clock: AgentSendClock = (() => {
+  let now = 0
+  return { now: () => now, sleep: async (ms: number) => void (now += ms) }
+})()
+
+// 空の入力欄の画面。貼り付けを書き込むと本文が入った画面に変える
+function controllerWithEmptyInput(): ReturnType<typeof makeFakeController> {
+  const controller = makeFakeController()
+  const border = makeLine('─'.repeat(40))
+  controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
+  const original = controller.writeToSession
+  controller.writeToSession = (data) => {
+    original(data)
+    if (data.startsWith('\x1b[200~'))
+      controller.viewport = [border, makeLine(`❯\xa0${data.slice(6, -6)}`), border]
+  }
+  return controller
+}
+
+describe('useAgentPromptSender', () => {
+  it('送信の間は利用者の入力を溜め、成功を通知し、パネルを開く', async () => {
+    const controller = controllerWithEmptyInput()
+    const onSettled = vi.fn()
+    const { result } = renderHook(() => useAgentPromptSender({ controller, onSettled, clock }))
+    await act(async () => {
+      await result.current.send('hello')
+    })
+    expect(controller.beginSending).toHaveBeenCalledOnce()
+    expect(controller.endSending).toHaveBeenCalledOnce()
+    // 空と判定されても消去を最低 1 回送ってから貼り付ける(Task 14 の手順)
+    expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+    expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_NOTICE)
+    expect(result.current.error).toBeNull()
+    expect(onSettled).toHaveBeenCalledOnce()
+    expect(result.current.isSending).toBe(false)
+  })
+
+  it('pty への書き込みはすべて利用者の入力を溜めている間に行う', async () => {
+    const controller = controllerWithEmptyInput()
+    let holding = false
+    controller.beginSending.mockImplementation(() => void (holding = true))
+    controller.endSending.mockImplementation(() => void (holding = false))
+    const heldAtWrite: boolean[] = []
+    const write = controller.writeToSession
+    controller.writeToSession = (data) => {
+      heldAtWrite.push(holding)
+      write(data)
+    }
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ controller, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send('hello')
+    })
+    expect(heldAtWrite).toEqual([true, true, true])
+    expect(holding).toBe(false)
+  })
+
+  it('失敗の理由の文言を出し、パネルを開く。送らなかったときも入力の保留を解く', async () => {
+    const controller = makeFakeController()
+    const onSettled = vi.fn()
+    const { result } = renderHook(() => useAgentPromptSender({ controller, onSettled, clock }))
+    await act(async () => {
+      await result.current.send('hello')
+    })
+    expect(result.current.error).toBe(
+      'エージェントの入力欄が見つかりません。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+    )
+    expect(controller.endSending).toHaveBeenCalledOnce()
+    expect(onSettled).toHaveBeenCalledOnce()
+  })
+
+  it('書きかけを消して送ったときは、その旨を(参考として)通知する', async () => {
+    const controller = controllerWithEmptyInput()
+    const border = makeLine('─'.repeat(40))
+    controller.viewport = [border, makeLine('❯\xa0abc ', [], [[5, 6]]), border]
+    const write = controller.writeToSession
+    controller.writeToSession = (data) => {
+      if (data.startsWith('\x0b'))
+        controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
+      write(data)
+    }
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ controller, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send('p')
+    })
+    expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_AFTER_CLEAR_NOTICE)
+  })
+
+  it('送信の途中で例外が起きても、送信中の状態と入力の保留を解き、理由を出してパネルを開く', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const controller = controllerWithEmptyInput()
+    controller.writeToSession = () => {
+      throw new Error('IPC closed')
+    }
+    const onSettled = vi.fn()
+    const { result } = renderHook(() => useAgentPromptSender({ controller, onSettled, clock }))
+    await act(async () => {
+      await expect(result.current.send('hello')).resolves.toBeUndefined()
+    })
+    expect(controller.endSending).toHaveBeenCalledOnce()
+    expect(result.current.isSending).toBe(false)
+    expect(result.current.error).toBe('エージェントへ送信できませんでした: IPC closed')
+    expect(onSettled).toHaveBeenCalledOnce()
+    // 保留が解けていれば、次の送信を受け付ける
+    await act(async () => {
+      await result.current.send('again')
+    })
+    expect(controller.beginSending).toHaveBeenCalledTimes(2)
+    consoleSpy.mockRestore()
+  })
+
+  it('送信中の 2 回目の send は何もしない', async () => {
+    const controller = controllerWithEmptyInput()
+    let release: () => void = () => undefined
+    const slowClock: AgentSendClock = {
+      now: () => 0,
+      sleep: () => new Promise<void>((resolve) => (release = resolve))
+    }
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ controller, onSettled: vi.fn(), clock: slowClock })
+    )
+    let first: Promise<unknown> = Promise.resolve()
+    act(() => {
+      first = result.current.send('a')
+    })
+    expect(result.current.isSending).toBe(true)
+    await act(async () => {
+      await expect(result.current.send('b')).resolves.toBeUndefined()
+    })
+    expect(controller.beginSending).toHaveBeenCalledOnce()
+    // 1 回目を終わらせる(待ちを解き続ける)
+    for (let i = 0; i < 10; i++) {
+      await act(async () => release())
+    }
+    await act(async () => {
+      await first
+    })
+    expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~a\x1b[201~', '\r'])
+  })
+})

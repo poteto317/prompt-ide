@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import type { PromptExecutionMode } from '@shared/types'
 import type { HistoryEntry, OpenFile, Prompt, PromptToolId } from '../types'
 import type { ExecutionContext, PromptExecutionState } from './usePromptExecution'
 
@@ -6,6 +7,10 @@ interface Deps {
   openFile: OpenFile | null
   executePrompt: PromptExecutionState['executePrompt']
   addHistoryEntry: (entry: Omit<HistoryEntry, 'id'>) => void
+  /** 実行方式。読み込み中は null(何もしない) */
+  executionMode: PromptExecutionMode | null
+  /** エージェント CLI 方式の送信(useAgentPromptSender.send)。ファイル内容は添付しない(C2) */
+  sendToAgent: (text: string) => Promise<unknown>
 }
 
 interface PromptRunner {
@@ -13,7 +18,13 @@ interface PromptRunner {
   rerunHistoryEntry: (entry: HistoryEntry) => Promise<void>
 }
 
-export function usePromptRunner({ openFile, executePrompt, addHistoryEntry }: Deps): PromptRunner {
+export function usePromptRunner({
+  openFile,
+  executePrompt,
+  addHistoryEntry,
+  executionMode,
+  sendToAgent
+}: Deps): PromptRunner {
   const run = useCallback(
     (
       content: string,
@@ -24,24 +35,33 @@ export function usePromptRunner({ openFile, executePrompt, addHistoryEntry }: De
     [executePrompt, addHistoryEntry]
   )
 
+  // エージェント CLI 方式は起動中のセッションへ送る(履歴に記録しない。C11)。従来の方式は従来どおり
   const runPrompt = useCallback(
-    (content: string, toolId: PromptToolId, prompt: Prompt) =>
-      run(content, openFile?.content ?? null, toolId, {
+    async (content: string, toolId: PromptToolId, prompt: Prompt): Promise<void> => {
+      if (executionMode === 'agent-cli') {
+        await sendToAgent(content)
+        return
+      }
+      if (executionMode !== 'legacy') return
+      await run(content, openFile?.content ?? null, toolId, {
         promptId: prompt.id,
         promptTitle: prompt.title
-      }),
-    [run, openFile]
+      })
+    },
+    [run, openFile, executionMode, sendToAgent]
   )
 
   // 履歴からの再実行は「実行時のファイル内容スナップショット」をそのまま再現する
-  // （現在開いているファイルではなく entry.fileContent を使う）
+  // （現在開いているファイルではなく entry.fileContent を使う）。エージェント CLI 方式では再実行しない(ボタンも押せない)
   const rerunHistoryEntry = useCallback(
-    (entry: HistoryEntry) =>
-      run(entry.promptContent, entry.fileContent, entry.toolId, {
+    async (entry: HistoryEntry): Promise<void> => {
+      if (executionMode !== 'legacy') return
+      await run(entry.promptContent, entry.fileContent, entry.toolId, {
         promptId: entry.promptId,
         promptTitle: entry.promptTitle
-      }),
-    [run]
+      })
+    },
+    [run, executionMode]
   )
 
   return { runPrompt, rerunHistoryEntry }

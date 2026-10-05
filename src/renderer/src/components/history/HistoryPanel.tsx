@@ -11,6 +11,8 @@ interface Props {
   onClear: () => void
   onRerun: (entry: HistoryEntry) => void
   isRerunDisabled?: boolean
+  /** 再実行を押せない理由(エージェント CLI 方式)。詳細に表示し、aria-describedby で参照する */
+  rerunDisabledReason?: string | null
 }
 
 export default function HistoryPanel({
@@ -18,8 +20,9 @@ export default function HistoryPanel({
   onDelete,
   onClear,
   onRerun,
-  isRerunDisabled = false
-}: Props) {
+  isRerunDisabled = false,
+  rerunDisabledReason = null
+}: Props): React.JSX.Element {
   const { selectedEntry, selectEntry, deselectIfMatches } = useSelectedHistoryEntry(history)
   // id → ボタン要素の参照を保持する。DOM文字列セレクタでの検索を避けるため
   // （id は history.json 由来の永続データで任意の文字列になりうる）、
@@ -89,6 +92,7 @@ export default function HistoryPanel({
                 onRerun={onRerun}
                 onDelete={handleDelete}
                 isRerunDisabled={isRerunDisabled}
+                rerunDisabledReason={rerunDisabledReason}
               />
             )}
           </>

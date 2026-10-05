@@ -16,6 +16,9 @@ interface Props {
   onTogglePin: (id: string) => void
   isRunDisabled?: boolean
   isSortable?: boolean
+  /** 実行ボタンを押せない理由の要素の id(押せないときだけ渡す) */
+  runDisabledReasonId?: string
+  runAriaLabel?: string
 }
 
 export default function PromptItem({
@@ -25,8 +28,10 @@ export default function PromptItem({
   onEdit,
   onTogglePin,
   isRunDisabled = false,
-  isSortable = false
-}: Props) {
+  isSortable = false,
+  runDisabledReasonId,
+  runAriaLabel
+}: Props): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
   const [isFillingVariables, setIsFillingVariables] = useState(false)
 
@@ -76,6 +81,7 @@ export default function PromptItem({
           onSubmit={handleVariablesSubmit}
           onCancel={() => setIsFillingVariables(false)}
           isRunDisabled={isRunDisabled}
+          runDisabledReasonId={runDisabledReasonId}
         />
       ) : isEditing ? (
         <PromptEditForm
@@ -89,6 +95,8 @@ export default function PromptItem({
           isSortable={isSortable}
           dragHandleProps={{ attributes, listeners }}
           isRunDisabled={isRunDisabled}
+          runDisabledReasonId={runDisabledReasonId}
+          runAriaLabel={runAriaLabel}
           onRun={handleRunClick}
           onEditStart={() => setIsEditing(true)}
           onDelete={() => onDelete(prompt.id)}

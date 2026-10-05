@@ -1238,7 +1238,11 @@ body {
 .explorer-panel__clone-btn,
 .output-panel__apply-btn,
 .code-block__button,
-.create-tag-dialog__kind {
+.create-tag-dialog__kind,
+.agent-terminal-panel__toggle,
+.agent-terminal-panel__button,
+.external-change-banner__button,
+.execution-mode-section__option {
   flex: none;
   min-width: 32px;
   min-height: 32px;
@@ -1262,7 +1266,11 @@ body {
 .explorer-panel__clone-btn:hover:not(:disabled),
 .output-panel__apply-btn:hover:not(:disabled),
 .code-block__button:hover:not(:disabled),
-.create-tag-dialog__kind:hover:not(:disabled) {
+.create-tag-dialog__kind:hover:not(:disabled),
+.agent-terminal-panel__toggle:hover:not(:disabled),
+.agent-terminal-panel__button:hover:not(:disabled),
+.external-change-banner__button:hover:not(:disabled),
+.execution-mode-section__option:hover:not(:disabled) {
   background: #094771;
   color: #ffffff;
 }
@@ -1289,6 +1297,8 @@ body {
 .output-panel__apply-btn:disabled,
 .code-block__button:disabled,
 .create-tag-dialog__kind:disabled,
+.agent-terminal-panel__button:disabled,
+.execution-mode-section__option:disabled,
 .name-input-dialog__ok:disabled,
 .name-input-dialog__cancel:disabled {
   opacity: 0.5;
@@ -1562,6 +1572,176 @@ body {
 .source-control-panel__file-path:focus-visible {
   outline: 1px solid #0e639c;
   outline-offset: 1px;
+}
+
+/* ---- Editor Panel の本文(タブと本文。ターミナルパネルの最大化の間は隠す) ---- */
+
+.editor-panel__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.editor-panel__main[hidden] {
+  display: none;
+}
+
+/* ---- 外部変更の通知(編集中のタブのファイルがディスク上で変わった) ---- */
+
+.external-change-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: #3a3d41;
+  border-bottom: 1px solid #454545;
+  color: #cccccc;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.external-change-banner__message {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.external-change-banner__actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 通知の文言の読み上げ(視覚的に隠す。.agent-terminal-panel__hint と同じ規則) */
+.external-change-banner__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- エージェントのターミナルパネル(エディタの領域の下部。設計書「配置の案」A) ---- */
+
+.agent-terminal-panel {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-top: 1px solid #3c3c3c;
+  background: #1e1e1e;
+  min-height: 0;
+}
+
+/* 開いたときはエディタの領域の 45%(最小 160px)。閉じたときは見出しの帯だけ。最大化は全体 */
+.agent-terminal-panel--open {
+  flex: 0 0 45%;
+  min-height: 160px;
+}
+
+.agent-terminal-panel--maximized {
+  flex: 1 1 auto;
+}
+
+.agent-terminal-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 0 8px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.agent-terminal-panel__toggle {
+  border-color: transparent;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agent-terminal-panel__status {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #969696;
+  font-size: 12px;
+}
+
+/* 狭い幅では、起動できない理由が状態の文言より先に縮む(flex-shrink を大きく)。ボタンは共通の規則の flex: none で縮まない(パターン 124) */
+.agent-terminal-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 100 auto;
+  min-width: 0;
+}
+
+/* 可変の文言は 1 行で省略する(全文は title と、起動のボタンの aria-describedby で残る) */
+.agent-terminal-panel__reason {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #969696;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.agent-terminal-panel__button {
+  white-space: nowrap;
+}
+
+/* 帯は上下の余白が無く overflow: hidden のため、既定のフォーカスリング(外側)は上下が切れる。内側に描く */
+.agent-terminal-panel__toggle:focus-visible,
+.agent-terminal-panel__button:focus-visible {
+  outline: 2px solid #007acc;
+  outline-offset: -2px;
+}
+
+/* 視覚的には隠し、支援技術には読ませる(開閉のボタンの aria-describedby) */
+.agent-terminal-panel__hint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.agent-terminal-panel__error {
+  margin: 0;
+  padding: 4px 12px;
+  color: #f48771;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.agent-terminal-panel__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.agent-terminal-panel__body[hidden] {
+  display: none;
+}
+
+.agent-terminal-view {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 0 0 8px;
+}
+
+.agent-terminal-view__host {
+  width: 100%;
+  height: 100%;
 }
 
 /* ---- Output Panel ---- */
@@ -1935,6 +2115,57 @@ body {
   color: #f48771;
   margin-bottom: 8px;
   word-break: break-all;
+}
+
+/* ---- 実行方式(設定パネルの最上部) ---- */
+
+.execution-mode-section__options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.execution-mode-section__option {
+  text-align: left;
+  white-space: normal;
+}
+
+.execution-mode-section__option[aria-checked='true'] {
+  border-color: #007acc;
+  color: #ffffff;
+}
+
+.settings-panel__note {
+  font-size: 11px;
+  color: #969696;
+}
+
+/* ---- プロンプトの実行の理由・結果(プロンプトパネルの上部) ---- */
+
+.prompts-panel__run-reason,
+.prompts-panel__run-notice {
+  margin: 0;
+  padding: 2px 12px;
+  color: #969696;
+  font-size: 12px;
+}
+
+/* 空の通知も DOM に残す(ライブリージョンは先に在る必要がある。パターン 87)。余白だけを消す */
+.prompts-panel__run-notice:empty {
+  padding: 0;
+}
+
+.prompts-panel__run-error {
+  margin: 0;
+  padding: 2px 12px;
+  color: #f48771;
+  font-size: 12px;
+}
+
+.history-detail__rerun-reason {
+  margin: 4px 0;
+  color: #969696;
+  font-size: 12px;
 }
 
 /* ---- PromptItem 実行ボタン ---- */

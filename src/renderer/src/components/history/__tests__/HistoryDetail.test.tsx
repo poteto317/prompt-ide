@@ -85,3 +85,25 @@ describe('HistoryDetail', () => {
     expect(container.querySelector('.history-detail__content')).toBeEmptyDOMElement()
   })
 })
+
+describe('HistoryDetail: 再実行を押せない理由', () => {
+  it('理由があれば表示し、無効の再実行ボタンの aria-describedby から参照する', () => {
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        isRerunDisabled
+        rerunDisabledReason="エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）"
+      />
+    )
+    const rerun = screen.getByRole('button', { name: '再実行' })
+    expect(rerun).toBeDisabled()
+    expect(document.getElementById(rerun.getAttribute('aria-describedby') ?? '')).toHaveTextContent(
+      'エージェント CLI 方式では再実行できません'
+    )
+  })
+
+  it('理由が無ければ表示しない(従来の方式の実行中)', () => {
+    render(<HistoryDetail {...defaultProps} isRerunDisabled />)
+    expect(screen.getByRole('button', { name: '再実行' })).not.toHaveAttribute('aria-describedby')
+  })
+})

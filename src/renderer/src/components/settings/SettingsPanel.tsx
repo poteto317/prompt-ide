@@ -1,7 +1,9 @@
 import type { ModelSettings } from '@shared/types'
+import type { ExecutionModePanelState } from '../../types'
 import { useApiKeyForm } from '../../hooks/useApiKeyForm'
 import { useModelSettingsForm } from '../../hooks/useModelSettingsForm'
 import ModelSettingsSection from './ModelSettingsSection'
+import ExecutionModeSection from './ExecutionModeSection'
 
 interface Props {
   hasKey: boolean
@@ -11,6 +13,8 @@ interface Props {
   modelSettings: ModelSettings
   modelSettingsLoaded: boolean
   onSaveModelSettings: (settings: ModelSettings) => Promise<void>
+  /** プロンプトの実行方式(省略時は出さない) */
+  executionMode?: ExecutionModePanelState
 }
 
 export default function SettingsPanel({
@@ -20,8 +24,9 @@ export default function SettingsPanel({
   onSave,
   modelSettings,
   modelSettingsLoaded,
-  onSaveModelSettings
-}: Props) {
+  onSaveModelSettings,
+  executionMode
+}: Props): React.JSX.Element {
   const { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave } =
     useApiKeyForm({ apiKeyLoaded, keyStoreError, onSave })
 
@@ -32,8 +37,18 @@ export default function SettingsPanel({
 
   return (
     <div className="settings-panel">
+      {executionMode !== undefined && (
+        <ExecutionModeSection
+          mode={executionMode.mode}
+          saveError={executionMode.saveError}
+          isLocked={executionMode.isLocked}
+          lockedReason={executionMode.lockedReason}
+          onSelect={executionMode.onSelect}
+        />
+      )}
       <div className="settings-panel__section">
         <p className="settings-panel__label">Anthropic API キー</p>
+        <p className="settings-panel__note">従来の方式で使います</p>
         {keyStoreError && <p className="settings-panel__keystore-error">{keyStoreError}</p>}
         {!keyStoreError && apiKeyLoaded && hasKey && (
           <p className="settings-panel__status">（設定済み）更新するには再入力してください</p>
@@ -62,6 +77,7 @@ export default function SettingsPanel({
       </div>
       <div className="settings-panel__section">
         <p className="settings-panel__label">モデル</p>
+        <p className="settings-panel__note">従来の方式で使います</p>
         {modelSettingsLoaded ? (
           <ModelSettingsSection
             key={`${modelSettings.modelId}:${modelSettings.maxTokens}`}

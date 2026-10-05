@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useId } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -14,7 +14,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
-import type { PromptToolId, Prompt } from '../../types'
+import type { AgentSendFeedback, PromptToolId, Prompt } from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
@@ -24,6 +24,7 @@ import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
 import { useSelectedTool } from '../../hooks/useSelectedTool'
 import { sortByPinned, crossesPinBoundary } from '../../lib/promptUtils'
+import { toAnnouncementText } from '../../lib/announcementText'
 
 interface Props {
   prompts: Prompt[]
@@ -37,6 +38,14 @@ interface Props {
   onImport: () => void
   isRunDisabled?: boolean
   isActive?: boolean
+  /** 実行ボタンを押せない理由。上部に 1 か所だけ表示し、無効のボタンの aria-describedby から参照する(パターン 126) */
+  runDisabledReason?: string | null
+  /** エージェント CLI 方式の送信の失敗と成功の通知。従来の方式では null(通知の領域を置かない) */
+  agentSend?: AgentSendFeedback | null
+  /** 実行ツールの選択を出すか(エージェント CLI 方式では出さない。C3) */
+  showToolSelector?: boolean
+  /** 実行ボタンの aria-label。省略時は従来の「プロンプトを実行」 */
+  runAriaLabel?: string
 }
 
 export default function PromptsPanel({
@@ -50,8 +59,13 @@ export default function PromptsPanel({
   onExport,
   onImport,
   isRunDisabled = false,
-  isActive
-}: Props) {
+  isActive,
+  runDisabledReason = null,
+  agentSend = null,
+  showToolSelector = true,
+  runAriaLabel
+}: Props): React.JSX.Element {
+  const runReasonId = useId()
   const { selectedTool, selectTool } = useSelectedTool()
   const { filteredPrompts, query, setQuery, selectedTags, toggleTag, isFiltered } = usePromptFilter(
     prompts,
@@ -76,7 +90,7 @@ export default function PromptsPanel({
     [onRun, selectedTool]
   )
 
-  function handleDragEnd({ active, over }: DragEndEvent) {
+  function handleDragEnd({ active, over }: DragEndEvent): void {
     if (!over || active.id === over.id) return
     const activePrompt = displayed.find((p) => p.id === String(active.id))
     const overPrompt = displayed.find((p) => p.id === String(over.id))
@@ -95,7 +109,24 @@ export default function PromptsPanel({
         onExport={onExport}
         isExportDisabled={prompts.length === 0}
       />
-      <ExecutionToolSelector selectedTool={selectedTool} onSelectTool={selectTool} />
+      {showToolSelector && (
+        <ExecutionToolSelector selectedTool={selectedTool} onSelectTool={selectTool} />
+      )}
+      {runDisabledReason !== null && (
+        <p id={runReasonId} className="prompts-panel__run-reason">
+          {runDisabledReason}
+        </p>
+      )}
+      {agentSend !== null && agentSend.error !== null && (
+        <p className="prompts-panel__run-error" role="alert">
+          {agentSend.error}
+        </p>
+      )}
+      {agentSend !== null && (
+        <p className="prompts-panel__run-notice" role="status">
+          {toAnnouncementText(agentSend.notice)}
+        </p>
+      )}
       <div className="prompts-panel__search">
         <input
           className="prompts-panel__search-input"
@@ -111,11 +142,13 @@ export default function PromptsPanel({
         {prompts.length === 0 ? (
           <p className="prompts-panel__empty">プロンプトがありません</p>
         ) : filteredPrompts.length === 0 ? (
-          <p className="prompts-panel__no-results">
-            条件に一致するプロンプトはありません
-          </p>
+          <p className="prompts-panel__no-results">条件に一致するプロンプトはありません</p>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
             <SortableContext
               items={displayed.map((p) => p.id)}
               strategy={verticalListSortingStrategy}
@@ -130,6 +163,10 @@ export default function PromptsPanel({
                   onEdit={onEdit}
                   onTogglePin={onTogglePin}
                   isRunDisabled={isRunDisabled}
+                  runDisabledReasonId={
+                    isRunDisabled && runDisabledReason !== null ? runReasonId : undefined
+                  }
+                  runAriaLabel={runAriaLabel}
                 />
               ))}
             </SortableContext>

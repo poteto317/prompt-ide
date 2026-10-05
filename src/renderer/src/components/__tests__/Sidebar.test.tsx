@@ -288,3 +288,60 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
   })
 })
+
+describe('Sidebar: プロンプトの実行の状態の受け渡し', () => {
+  const promptRun = {
+    isRunDisabled: true,
+    runDisabledReason: 'エージェントが起動していません（ターミナルの「起動」を押してください）',
+    agentSend: { error: null, notice: null },
+    showToolSelector: false,
+    runAriaLabel: '実行（エージェントに送信）',
+    isRerunDisabled: true,
+    rerunDisabledReason:
+      'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
+  }
+
+  it('プロンプトパネルへ押せない理由・ツールの選択の有無を渡す', () => {
+    render(<Sidebar {...defaultProps} activePanel="prompts" promptRun={promptRun} />)
+    expect(screen.getByText(promptRun.runDisabledReason)).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: '実行ツールを選択' })).toBeNull()
+  })
+
+  it('promptRun が無ければ従来どおり(ツールの選択を出す)', () => {
+    render(<Sidebar {...defaultProps} activePanel="prompts" />)
+    expect(screen.getByRole('combobox', { name: '実行ツールを選択' })).toBeInTheDocument()
+  })
+
+  it('設定パネルへ実行方式を渡す', () => {
+    render(
+      <Sidebar
+        {...defaultProps}
+        activePanel="settings"
+        executionMode={{ mode: 'legacy', saveError: null, isLocked: false, onSelect: vi.fn() }}
+      />
+    )
+    expect(screen.getByRole('radio', { name: /^従来の方式/ })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+  })
+
+  it('設定パネルへ実行方式を選べない理由を渡す', () => {
+    render(
+      <Sidebar
+        {...defaultProps}
+        activePanel="settings"
+        executionMode={{
+          mode: 'legacy',
+          saveError: null,
+          isLocked: true,
+          lockedReason: '従来の方式で実行している間は、実行方式を切り替えられません',
+          onSelect: vi.fn()
+        }}
+      />
+    )
+    expect(screen.getByRole('radio', { name: /^従来の方式/ })).toHaveAccessibleDescription(
+      '従来の方式で実行している間は、実行方式を切り替えられません'
+    )
+  })
+})

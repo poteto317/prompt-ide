@@ -62,6 +62,29 @@ describe('PromptVariablesForm', () => {
     expect(screen.getByRole('button', { name: '変数を差し込んで実行' })).toBeDisabled()
   })
 
+  it('isRunDisabled のとき、実行ボタンの aria-describedby から押せない理由を参照する', () => {
+    render(
+      <>
+        <p id="run-disabled-reason">エージェントが起動していません</p>
+        <PromptVariablesForm
+          {...defaultProps}
+          isRunDisabled
+          runDisabledReasonId="run-disabled-reason"
+        />
+      </>
+    )
+    const button = screen.getByRole('button', { name: '変数を差し込んで実行' })
+    expect(button).toHaveAttribute('aria-describedby', 'run-disabled-reason')
+    expect(button).toHaveAccessibleDescription('エージェントが起動していません')
+  })
+
+  it('isRunDisabled でなければ、理由の id を渡されても aria-describedby を付けない', () => {
+    render(<PromptVariablesForm {...defaultProps} runDisabledReasonId="run-disabled-reason" />)
+    expect(screen.getByRole('button', { name: '変数を差し込んで実行' })).not.toHaveAttribute(
+      'aria-describedby'
+    )
+  })
+
   it('実行で onSubmit が入力値とともに呼ばれる', async () => {
     const onSubmit = vi.fn()
     render(<PromptVariablesForm {...defaultProps} onSubmit={onSubmit} />)

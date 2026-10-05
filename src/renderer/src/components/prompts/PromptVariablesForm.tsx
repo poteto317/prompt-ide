@@ -7,14 +7,17 @@ interface Props {
   onSubmit: (values: Record<string, string>) => void
   onCancel: () => void
   isRunDisabled?: boolean
+  /** 押せない理由の要素の id(押せないときだけ渡す) */
+  runDisabledReasonId?: string
 }
 
 export default function PromptVariablesForm({
   variables,
   onSubmit,
   onCancel,
-  isRunDisabled = false
-}: Props) {
+  isRunDisabled = false,
+  runDisabledReasonId
+}: Props): React.JSX.Element {
   const { values, isDisabled, handleChange, handleSubmit } = usePromptVariablesForm(
     variables,
     onSubmit
@@ -58,6 +61,7 @@ export default function PromptVariablesForm({
           type="submit"
           className="prompt-item__save"
           aria-label="変数を差し込んで実行"
+          aria-describedby={isRunDisabled ? runDisabledReasonId : undefined}
           disabled={isDisabled || isRunDisabled}
         >
           実行

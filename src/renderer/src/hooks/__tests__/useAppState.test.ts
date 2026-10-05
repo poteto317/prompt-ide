@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
+import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { ApplyOpenedFolderOptions } from '../useFileSystem'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
@@ -267,8 +268,22 @@ vi.mock('../useConflictFile', () => ({ useConflictFile: mockUseConflictFile }))
 vi.mock('../useGitTagOperations', () => ({ useGitTagOperations: mockUseGitTagOperations }))
 vi.mock('../useGitRemoteSetup', () => ({ useGitRemoteSetup: mockUseGitRemoteSetup }))
 vi.mock('../useCloneRepository', () => ({ useCloneRepository: mockUseCloneRepository }))
+// 外部変更の検知・実行方式とエージェント(useAgentWorkspace)は、それぞれのテストで確かめる。ここでは組み立て(渡す値)だけを見る。
+// useAgentWorkspace の内側(useExecutionMode・useAgentSession・xterm)は差し替えない(内側の組み替えでこのテストを壊さない)
+// mock.calls[0][0] で呼び出し引数を検証するため、引数を受け取る型として宣言する
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const mockUseExternalFileChanges = vi.hoisted(() => vi.fn((_options?: unknown) => null))
+const mockUseAgentWorkspace = vi.hoisted(() =>
+  vi.fn<typeof import('../useAgentWorkspace').useAgentWorkspace>()
+)
+vi.mock('../useAgentWorkspace', () => ({ useAgentWorkspace: mockUseAgentWorkspace }))
+vi.mock('../useExternalFileChanges', () => ({ useExternalFileChanges: mockUseExternalFileChanges }))
 
 import { useAppState } from '../useAppState'
+
+// useFileSystem・usePromptExecution の既定の実装(個別のテストが mockReturnValue で上書きしても、beforeEach で戻す。パターン 103)
+const defaultUseFileSystem = mockUseFileSystem.getMockImplementation()!
+const defaultUsePromptExecution = mockUsePromptExecution.getMockImplementation()!
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -279,6 +294,9 @@ beforeEach(() => {
   mockUseCloneRepository.mockReturnValue(makeCloneRepositoryPanelState())
   // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
   mockUseStashPanel.mockReturnValue(mockStashPanel)
+  mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState())
+  mockUseFileSystem.mockImplementation(defaultUseFileSystem)
+  mockUsePromptExecution.mockImplementation(defaultUsePromptExecution)
 })
 
 describe('useAppState', () => {
@@ -1921,7 +1939,9 @@ describe('useAppState', () => {
       const { result } = renderHook(() => useAppState())
       const options = mockUseCloneRepository.mock.calls[0][0]
       expect(options.captureDirtySnapshot).toBe(fileSystemDeps.captureDirtySnapshot)
-      expect(options.confirmDiscardAnyDirty).toBe(fileSystemDeps.confirmDiscardAnyDirty)
+      // エージェントが動いていなければ、未保存の確認(useFileSystem)をそのまま使う
+      expect(options.confirmDiscardAnyDirty()).toBe(true)
+      expect(fileSystemDeps.confirmDiscardAnyDirty).toHaveBeenCalledOnce()
       expect(options.applyOpenedFolder).toBe(fileSystemDeps.applyOpenedFolder)
       // 他の Git 操作と同じロック(別のロックだと、clone の間に commit などを始められる)
       expect(options.lock).toBe(mockUseStashPanel.mock.calls[0][0].fileOperationLock)

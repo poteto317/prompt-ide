@@ -1,4 +1,9 @@
-import type { CreateTagRequest, FileTreeNode, GitStashEntry } from '@shared/types'
+import type {
+  CreateTagRequest,
+  FileTreeNode,
+  GitStashEntry,
+  PromptExecutionMode
+} from '@shared/types'
 
 export type {
   PromptToolId,
@@ -165,4 +170,36 @@ export interface ApplyOutputState {
   apply: (mode: ApplyMode, text: string) => void
   /** 直近の反映の結果の通知(数秒後に null へ戻る) */
   notice: Announcement | null
+}
+
+// エージェント CLI 方式の送信の失敗(role="alert")と成功の通知(role="status")
+export interface AgentSendFeedback {
+  error: string | null
+  notice: Announcement | null
+}
+
+// 設定パネルの実行方式の項目の状態と操作(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
+export interface ExecutionModePanelState {
+  mode: PromptExecutionMode | null
+  saveError: string | null
+  isLocked: boolean
+  /** 選べない理由(従来の方式の実行中)。無ければ null・省略 */
+  lockedReason?: string | null
+  onSelect: (mode: PromptExecutionMode) => void
+}
+
+// プロンプトの実行ボタン・履歴の再実行の押せる条件と、エージェント CLI 方式の送信の結果(lib/promptRunState.ts の
+// buildPromptRunPanelState が組み立て〈useAgentWorkspace から呼ぶ〉、Sidebar → PromptsPanel・HistoryPanel へ渡す)
+export interface PromptRunPanelState {
+  isRunDisabled: boolean
+  /** 押せない理由(プロンプトパネルの上部に 1 か所だけ表示し、無効のボタンの aria-describedby から参照する) */
+  runDisabledReason: string | null
+  /** エージェント CLI 方式の送信の失敗(role="alert")と成功の通知(role="status")。従来の方式では null */
+  agentSend: AgentSendFeedback | null
+  /** 実行ツールの選択を出すか(従来の方式だけ。C3) */
+  showToolSelector: boolean
+  /** 実行ボタンの aria-label(可視の文言「実行」で始める。パターン 76) */
+  runAriaLabel: string
+  isRerunDisabled: boolean
+  rerunDisabledReason: string | null
 }

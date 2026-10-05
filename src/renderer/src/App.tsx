@@ -134,7 +134,12 @@ export default function App(): React.JSX.Element {
     clearHistory,
     runPrompt,
     rerunHistoryEntry,
-    quickOpen
+    quickOpen,
+    executionModePanel,
+    promptRun,
+    bottomPanel,
+    agentTerminal,
+    externalChangeBanner
   } = useAppState()
 
   // タブを開く操作(openDiffTab の呼び出し)と、diff 内容の取得(activeDiffTab の変化に対する
@@ -315,6 +320,8 @@ export default function App(): React.JSX.Element {
               modelSettings={modelSettings}
               modelSettingsLoaded={modelSettingsLoaded}
               onSaveModelSettings={saveModelSettings}
+              promptRun={promptRun}
+              executionMode={executionModePanel}
             />
           )}
           <EditorPanel
@@ -353,6 +360,9 @@ export default function App(): React.JSX.Element {
             onUnstageHunk={unstageHunk}
             onDiscardHunk={discardHunk}
             canDiscardHunk={canDiscardHunk}
+            bottomPanel={bottomPanel}
+            agentTerminal={agentTerminal}
+            externalChangeBanner={externalChangeBanner}
           />
         </div>
       </div>

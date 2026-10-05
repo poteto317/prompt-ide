@@ -1,0 +1,114 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { render, screen } from '@testing-library/react'
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
+import AgentTerminalPanel from '../AgentTerminalPanel'
+import type { AgentTerminalPanelState } from '../../../hooks/useAgentWorkspace'
+import { makeFakeController } from '../../../__tests__/makeFakeAgentTerminal'
+import { makeAgentSessionState } from '../../../__tests__/makeAgentSessionState'
+import { AGENT_START_DISABLED_NO_FOLDER } from '../../../lib/agentSessionMessages'
+
+// 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する(OutputPanel.styles.test.tsx と同じ流儀)。
+// jsdom はレイアウトを計算しないため、狭い幅で帯が 1 行に収まるかそのものは測れない(実機の手動テストで確かめる。パターン 124)
+let styleElement: HTMLStyleElement
+
+beforeAll(() => {
+  styleElement = document.createElement('style')
+  styleElement.textContent = readFileSync(resolve(__dirname, '../../../assets/main.css'), 'utf-8')
+  document.head.appendChild(styleElement)
+})
+
+afterAll(() => {
+  styleElement.remove()
+})
+
+beforeEach(() => {
+  window.api.setAgentTerminalFocused = vi.fn()
+})
+
+// フォルダを開いていない状態(初回の起動で必ず通る)。帯に最も多くの部品が並ぶ
+function renderNoFolder(): HTMLElement {
+  const state: AgentTerminalPanelState = {
+    controller: makeFakeController(),
+    session: makeAgentSessionState({ startDisabledReason: AGENT_START_DISABLED_NO_FOLDER }),
+    layout: {
+      isOpen: true,
+      isMaximized: false,
+      open: vi.fn(),
+      toggleOpen: vi.fn(),
+      toggleMaximized: vi.fn()
+    }
+  }
+  const { container } = render(<AgentTerminalPanel state={state} />)
+  return container
+}
+
+const styleOf = (container: HTMLElement, selector: string): CSSStyleDeclaration =>
+  getComputedStyle(container.querySelector(selector) as HTMLElement)
+
+describe('ターミナルパネルの見出しの帯のスタイル(main.css)', () => {
+  it('帯は 32px のボタンが入る高さで、折り返さない', () => {
+    const container = renderNoFolder()
+    const header = styleOf(container, '.agent-terminal-panel__header')
+    expect(header.minHeight).toBe('32px')
+    expect(header.boxSizing).toBe('border-box')
+    expect(header.flexWrap).not.toBe('wrap')
+  })
+
+  it('起動できない理由は 1 行で省略して縮み、全文は title に残す(狭い幅でボタンを押し出さない)', () => {
+    const container = renderNoFolder()
+    const reason = styleOf(container, '.agent-terminal-panel__reason')
+    expect(reason.whiteSpace).toBe('nowrap')
+    expect(reason.overflow).toBe('hidden')
+    expect(reason.textOverflow).toBe('ellipsis')
+    expect(reason.minWidth).toBe('0px')
+    expect(reason.flexShrink).not.toBe('0')
+    expect(container.querySelector('.agent-terminal-panel__reason')).toHaveAttribute(
+      'title',
+      AGENT_START_DISABLED_NO_FOLDER
+    )
+
+    // 理由を入れた操作群も縮められる(縮まない入れ物の中では理由が縮めない)
+    const actions = styleOf(container, '.agent-terminal-panel__actions')
+    expect(actions.minWidth).toBe('0px')
+    expect(actions.flexShrink).not.toBe('0')
+  })
+
+  it('状態の文言より先に、起動できない理由が縮む', () => {
+    const container = renderNoFolder()
+    const actionsShrink = Number(styleOf(container, '.agent-terminal-panel__actions').flexShrink)
+    const statusShrink = Number(styleOf(container, '.agent-terminal-panel__status').flexShrink)
+    expect(actionsShrink).toBeGreaterThan(statusShrink)
+  })
+
+  it('開閉・起動・最大化のボタンは縮まず、折り返さない', () => {
+    renderNoFolder()
+    const buttons = [
+      screen.getByRole('button', { name: /エージェント/ }),
+      screen.getByRole('button', { name: /^起動/ }),
+      screen.getByRole('button', { name: '最大化' })
+    ]
+    for (const button of buttons) {
+      const style = getComputedStyle(button)
+      expect(style.flexShrink).toBe('0')
+      expect(style.whiteSpace).toBe('nowrap')
+    }
+  })
+
+  it('ボタンのフォーカスリングは帯の内側に描く(帯の overflow: hidden で切れない)', () => {
+    // jsdom は :focus-visible を計算しないため、規則そのものを CSSOM から探す
+    const rules = Array.from(styleElement.sheet?.cssRules ?? []).filter(
+      (rule): rule is CSSStyleRule => rule instanceof CSSStyleRule
+    )
+    for (const selector of [
+      '.agent-terminal-panel__toggle:focus-visible',
+      '.agent-terminal-panel__button:focus-visible'
+    ]) {
+      const rule = rules.find((r) => r.selectorText.split(/,\s*/).includes(selector))
+      expect(rule, selector).toBeDefined()
+      expect(rule?.style.outlineOffset).toBe('-2px')
+      // jsdom は outline の一括指定を個別の値に展開しない
+      expect(rule?.style.getPropertyValue('outline')).toContain('solid')
+    }
+  })
+})

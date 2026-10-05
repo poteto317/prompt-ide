@@ -39,6 +39,12 @@ import type {
   StashPanelState
 } from '../types'
 import { isConflictedFile, isStagedFile, isUnstagedFile } from '../lib/gitUtils'
+import { useAgentWorkspace } from './useAgentWorkspace'
+import type { AgentWorkspaceState } from './useAgentWorkspace'
+import { useExternalChangeMarks } from './useExternalChangeMarks'
+import { useExternalFileChanges } from './useExternalFileChanges'
+import type { ExternalChangeBannerState } from './useExternalFileChanges'
+import { AGENT_STOP_ON_FOLDER_CHANGE_CONFIRM } from '../lib/agentSessionMessages'
 
 type AppState = {
   quickOpen: ReturnType<typeof useQuickOpen>
@@ -82,7 +88,10 @@ type AppState = {
   /** アクティブな diff タブのファイルがコンフリクト中か(EditorPanel が解決ビューを出す条件。
    *  conflictFile の対象と同じ導出) */
   isActiveFileConflicted: boolean
-} & ReturnType<typeof usePanelState> &
+  /** 編集中のタブの外部変更の通知 */
+  externalChangeBanner: ExternalChangeBannerState | null
+} & Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
+  ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
   ReturnType<typeof useProgressTasks> &
@@ -100,7 +109,13 @@ type AppState = {
 
 export function useAppState(): AppState {
   const panel = usePanelState()
-  const fileSystem = useFileSystem()
+  // 保存の直前の照合で上書きがキャンセルされたタブは、監視と同じ外部変更の確認を通して印を付ける(印を直接付けると
+  // 「このまま編集する」で消した後にフォーカスの復帰で出し直す)。保存できたら印を消す
+  const externalChangeMarks = useExternalChangeMarks()
+  const fileSystem = useFileSystem({
+    onSaveConflict: externalChangeMarks.requestCheck,
+    onSaveSucceeded: externalChangeMarks.clear
+  })
   const prompts = usePrompts()
   const progress = useProgressTasks()
   const git = useGitStatus(fileSystem.folderPath)
@@ -157,11 +172,23 @@ export function useAppState(): AppState {
   const settings = useSettings()
   const execution = usePromptExecution()
   const history = useHistory()
+  // 実行方式とエージェント(ターミナル・セッション・送信)。実行方式の切り替えの手順と、フォルダの切り替えの前の停止の確認を持つ
+  const agentWorkspace = useAgentWorkspace({
+    folderPath: fileSystem.folderPath,
+    isExecuting: execution.isExecuting
+  })
   const promptRunner = usePromptRunner({
     openFile: fileSystem.openFile,
     executePrompt: execution.executePrompt,
-    addHistoryEntry: history.addHistoryEntry
+    addHistoryEntry: history.addHistoryEntry,
+    executionMode: agentWorkspace.executionModePanel.mode,
+    sendToAgent: agentWorkspace.sendToAgent
   })
+  const { confirmStopAgent } = agentWorkspace
+  const openFolder: typeof fileSystem.openFolder = async () => {
+    if (!confirmStopAgent(AGENT_STOP_ON_FOLDER_CHANGE_CONFIRM)) return
+    await fileSystem.openFolder()
+  }
   // isUntracked(useDiffOperations.ts)は renderer 側の gitStatus.files から渡す
   // 設計のため、開いている diff タブの対象ファイルが gitStatus.files から消える
   // (.gitignore 追加・コミット等で追跡対象外になる)と、そのまま診断すると誤った
@@ -348,7 +375,9 @@ export function useAppState(): AppState {
   })
   const clone = useCloneRepository({
     captureDirtySnapshot: fileSystem.captureDirtySnapshot,
-    confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
+    // clone はフォルダを切り替えるため、「フォルダを変更」と同じくエージェントの終了も確かめる
+    confirmDiscardAnyDirty: () =>
+      confirmStopAgent(AGENT_STOP_ON_FOLDER_CHANGE_CONFIRM) && fileSystem.confirmDiscardAnyDirty(),
     applyOpenedFolder: fileSystem.applyOpenedFolder,
     lock: fileOperationLock,
     isGitOperationRunning
@@ -428,6 +457,19 @@ export function useAppState(): AppState {
     folderLoadError: fileSystem.folderLoadError,
     selectFile
   })
+  // 開いているタブの外部変更の検知(実行方式に関係なく常に有効)。diff タブの表示中は通知を出さない
+  const externalChangeBanner = useExternalFileChanges({
+    openFiles: fileSystem.openFiles,
+    activeFilePath: fileSystem.activeFilePath,
+    isFileTabActive: diffTabs.activeDiffTab === null,
+    getOpenFileSnapshot: fileSystem.getOpenFileSnapshot,
+    waitForPendingSave: fileSystem.waitForPendingSave,
+    replaceCleanTabWithDisk: fileSystem.replaceCleanTabWithDisk,
+    reloadOpenFile: fileSystem.reloadOpenFile,
+    marks: externalChangeMarks,
+    // main はフォルダが変わると監視を閉じる。タブが残る切り替えでも監視の対象を送り直す
+    folderPath: fileSystem.folderPath
+  })
   return {
     quickOpen,
     isLocked: fileOperationLock.isLocked,
@@ -470,6 +512,12 @@ export function useAppState(): AppState {
     clone,
     mergeState,
     conflictFile,
-    isActiveFileConflicted
+    isActiveFileConflicted,
+    openFolder,
+    executionModePanel: agentWorkspace.executionModePanel,
+    promptRun: agentWorkspace.promptRun,
+    bottomPanel: agentWorkspace.bottomPanel,
+    agentTerminal: agentWorkspace.agentTerminal,
+    externalChangeBanner
   }
 }

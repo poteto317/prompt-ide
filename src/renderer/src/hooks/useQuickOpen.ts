@@ -5,6 +5,7 @@ import type { QuickOpenResult } from '../lib/quickOpenSearch'
 import { flattenFileTree, searchFiles } from '../lib/quickOpenSearch'
 import { toComparablePath } from '../lib/pathUtils'
 import { useLatestRef } from './useLatestRef'
+import { isInsideAgentTerminal } from '../lib/agentTerminalKeys'
 
 /** 空クエリのときに表示する「最近開いたファイル」の最大件数 */
 const MAX_RECENT_FILES = 10
@@ -295,6 +296,8 @@ export function useQuickOpen({
         return
       }
       if (!(event.ctrlKey || event.metaKey)) return
+      // ターミナルの中の Ctrl+P は端末へ通す(claude・シェルの履歴の上)。macOS の Cmd+P はターミナルの中でも開く
+      if (event.ctrlKey && !event.metaKey && isInsideAgentTerminal(event.target)) return
       if (event.shiftKey || event.altKey) return
       if (event.key.toLowerCase() !== 'p') return
       // ブラウザの印刷は常に抑止する。ただし既に表示中なら open() を呼ばない

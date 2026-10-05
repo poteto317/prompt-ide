@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ModelSettings } from '@shared/types'
-import { getModelSettings, setModelSettings } from '../settingsApi'
+import {
+  getModelSettings,
+  getPromptExecutionMode,
+  setModelSettings,
+  setPromptExecutionMode
+} from '../settingsApi'
 
 const mockApi = {
   getModelSettings: vi.fn(),
@@ -31,5 +36,18 @@ describe('setModelSettings', () => {
     mockApi.setModelSettings.mockResolvedValue(undefined)
     await setModelSettings(mockSettings)
     expect(mockApi.setModelSettings).toHaveBeenCalledWith(mockSettings)
+  })
+})
+
+describe('実行方式', () => {
+  it('getPromptExecutionMode・setPromptExecutionMode は window.api に委譲する', async () => {
+    const api = {
+      getPromptExecutionMode: vi.fn().mockResolvedValue('legacy'),
+      setPromptExecutionMode: vi.fn().mockResolvedValue(undefined)
+    }
+    vi.stubGlobal('api', api)
+    await expect(getPromptExecutionMode()).resolves.toBe('legacy')
+    await setPromptExecutionMode('agent-cli')
+    expect(api.setPromptExecutionMode).toHaveBeenCalledWith('agent-cli')
   })
 })
