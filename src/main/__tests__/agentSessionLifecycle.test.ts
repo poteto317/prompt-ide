@@ -4,6 +4,12 @@ import type { App } from 'electron'
 import { FolderAccessManager } from '../folderAccessManager'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { setupAgentSessionLifecycle } from '../agentSessionLifecycle'
+import {
+  AGENT_KILL_GRACE_MS,
+  AGENT_KILL_SETTLE_MS,
+  AGENT_PS_TIMEOUT_MS,
+  stopProcessTree
+} from '../agentProcessTree'
 import { agentStartCanceled } from '@shared/types'
 
 afterEach(() => {
@@ -220,5 +226,38 @@ describe('setupAgentSessionLifecycle', () => {
     expect(app.quit).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(1)
     expect(app.quit).toHaveBeenCalledOnce()
+  })
+  it('既定の上限は ps の打ち切りまで待っても、SIGKILL を送り終えてから quit する(子が SIGTERM を無視するとき)', async () => {
+    // 上限を注入せず既定値のまま組む。停止は実物の stopProcessTree(ps は打ち切りの時間いっぱいで返る偽物、子は終わらない)
+    vi.useFakeTimers()
+    const events: Array<[number, string | number] | 'quit'> = []
+    const app = Object.assign(new EventEmitter(), {
+      quit: vi.fn(() => {
+        events.push('quit')
+      })
+    })
+    const registry = new AgentSessionRegistry()
+    vi.spyOn(registry, 'hasAny').mockReturnValue(true)
+    vi.spyOn(registry, 'stopAll').mockImplementation(() =>
+      stopProcessTree({
+        pid: 50000,
+        exited: new Promise<void>(() => undefined),
+        platform: 'darwin',
+        listProcesses: () =>
+          new Promise((resolve) => {
+            setTimeout(() => resolve([{ pid: 50001, ppid: 50000 }]), AGENT_PS_TIMEOUT_MS)
+          }),
+        kill: (pid, signal) => {
+          // signal 0 は生存の確認(例外を投げない = 生きている)。記録は SIGTERM・SIGKILL だけ
+          if (signal !== 0) events.push([pid, signal])
+        }
+      })
+    )
+    setupAgentSessionLifecycle(app as unknown as App, registry, new FolderAccessManager())
+    app.emit('before-quit', { preventDefault: vi.fn() })
+    await vi.advanceTimersByTimeAsync(
+      AGENT_PS_TIMEOUT_MS + AGENT_KILL_GRACE_MS + AGENT_KILL_SETTLE_MS + 100
+    )
+    expect(events).toEqual([[-50000, 'SIGTERM'], [-50000, 'SIGKILL'], [50001, 'SIGKILL'], 'quit'])
   })
 })

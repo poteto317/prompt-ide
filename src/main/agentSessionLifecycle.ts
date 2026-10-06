@@ -1,7 +1,7 @@
 import type { App } from 'electron'
 import type { FolderAccessManager } from './folderAccessManager'
 import type { AgentSessionRegistry } from './agentSessionRegistry'
-import { AGENT_KILL_GRACE_MS } from './agentProcessTree'
+import { AGENT_KILL_GRACE_MS, AGENT_KILL_SETTLE_MS, AGENT_PS_TIMEOUT_MS } from './agentProcessTree'
 import { onOwnerContextEnded } from './ownerContextLifecycle'
 
 // エージェントのセッションを止める契機(設計書「停止の契機」)。ウィンドウの破棄(destroyed)、renderer のプロセスの終了、
@@ -9,8 +9,13 @@ import { onOwnerContextEnded } from './ownerContextLifecycle'
 // (作業ディレクトリ = 許可のフォルダ の不変条件を守る)、アプリの終了(before-quit で止め終わるのを待ってから終了し直す)。
 // 終了以外の契機の検知は ownerContextLifecycle.ts
 
-/** アプリの終了で、停止を待つ上限(猶予 + 1 秒) */
-export const AGENT_QUIT_TIMEOUT_MS = AGENT_KILL_GRACE_MS + 1_000
+/**
+ * アプリの終了で、停止を待つ上限(ps の打ち切り + 猶予 + SIGKILL の後の待ち = 6 秒)。SIGTERM の前に ps で子孫を控えるため、
+ * ps の時間を含めないと、ps が遅く子が SIGTERM を無視するときに SIGKILL より先に quit して孤児を残す(PR #46 のレビュー対応で
+ * 猶予 + 1 秒 = 4 秒から変えた)
+ */
+export const AGENT_QUIT_TIMEOUT_MS =
+  AGENT_PS_TIMEOUT_MS + AGENT_KILL_GRACE_MS + AGENT_KILL_SETTLE_MS
 
 export interface AgentSessionLifecycleOptions {
   quitTimeoutMs?: number
