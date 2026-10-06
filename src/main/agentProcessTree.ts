@@ -133,7 +133,10 @@ const defaultSpawnTaskkill = (pid: number): void => {
 }
 
 /**
- * 子孫を含めて止める。子の終了(exited)を待って解決する(最大で猶予 + settleMs)。
+ * 子孫を含めて止める。子の終了(exited)を待って解決する。
+ * POSIX の手順は ps で子孫を控える(最大で AGENT_PS_TIMEOUT_MS = 2 秒)→ SIGTERM → 猶予(graceMs)→ SIGKILL → settleMs。
+ * 最悪の合計は ps の打ち切り + 猶予 + settleMs(既定で 2 + 3 + 1 = 6 秒)。
+ * Windows は ps を使わず、猶予 + settleMs の間 exited を待つ。
  * pid が送ってよい値でなければ(isSignalablePid)、何もせずにすぐ解決する
  */
 export async function stopProcessTree({
