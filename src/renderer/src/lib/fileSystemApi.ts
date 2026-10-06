@@ -13,6 +13,10 @@ export function readFileContent(path: string): Promise<string> {
   return window.api.readFile(path)
 }
 
+/**
+ * 照合を通さない書き込み(fs:writeFile)。ディスクの内容との照合をしないため、保存には使わない(保存は writeFileContentChecked。
+ * IPC は fs:writeFileChecked)。PR #46 の時点で本番のコードからの呼び出しは無い(テストの橋 routeCheckedWrites のみ。削除は別 PR)
+ */
 export function writeFileContent(path: string, content: string): Promise<void> {
   return window.api.writeFile(path, content)
 }

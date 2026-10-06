@@ -34,6 +34,7 @@ declare global {
       openFolder(): Promise<string | null>
       readDirectory(path: string): Promise<FileTreeNode[]>
       readFile(path: string): Promise<string>
+      /** 照合を通さない書き込み(fs:writeFile)。保存には使わない(保存は writeFileChecked) */
       writeFile(path: string, content: string): Promise<void>
       createFile(parentPath: string, name: string): Promise<void>
       createDirectory(parentPath: string, name: string): Promise<void>
