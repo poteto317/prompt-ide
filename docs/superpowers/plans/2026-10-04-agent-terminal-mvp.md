@@ -104,7 +104,7 @@ cp "$BK/agentSession.ts" "$F"; cmp "$F" "$BK/agentSession.ts" && echo restored
 - `src/shared/types/settings.ts`: `PROMPT_EXECUTION_MODES = ['agent-cli', 'legacy'] as const`、`PromptExecutionMode`、`DEFAULT_PROMPT_EXECUTION_MODE = 'agent-cli'`、`isPromptExecutionMode(value: unknown): value is PromptExecutionMode`
 - `src/shared/types/fileSystem.ts`: `ExternalChangeKind = 'modified' | 'deleted'`、`WriteFileCheckedResult = { kind: 'written' } | { kind: 'conflict'; reason: ExternalChangeKind }`、`ExternalFileChangeEvent = { paths: string[] }`
 - `src/shared/agentPasteText.ts`: `AGENT_PROMPT_MAX_LENGTH = 200_000`、`AGENT_CLEAR_INPUT_CHUNK`（`\x0b` × 12 + `\x15` × 12）、`AGENT_SUBMIT_KEY = '\r'`、`normalizeAgentPrompt(raw): NormalizedAgentPrompt`、`buildAgentPasteBytes(text): string`
-- 待ち時間（`src/renderer/src/lib/agentPromptSend.ts`）: 消去の間隔 30ms・上限 3,000ms・空の確認の間隔 50ms・現れたかの確認 16ms ごと・上限 1,000ms。停止の猶予 `AGENT_KILL_GRACE_MS = 3_000`、終了を待つ上限 `AGENT_QUIT_TIMEOUT_MS = 4_000`、PATH の取得の打ち切り 5,000ms、監視の間引き 300ms、起動の直後とみなす 2,000ms
+- 待ち時間（`src/renderer/src/lib/agentPromptSend.ts`）: 消去の間隔 30ms・上限 3,000ms・空の確認の間隔 50ms・現れたかの確認 16ms ごと・上限 1,000ms。停止の猶予 `AGENT_KILL_GRACE_MS = 3_000`、終了を待つ上限 `AGENT_QUIT_TIMEOUT_MS = 4_000`（注: PR #46 のレビュー対応で `AGENT_PS_TIMEOUT_MS + AGENT_KILL_GRACE_MS + AGENT_KILL_SETTLE_MS` = 6,000ms に変えた。`ps` の打ち切りを含めないと SIGKILL より先に終了しうるため）、PATH の取得の打ち切り 5,000ms、監視の間引き 300ms、起動の直後とみなす 2,000ms
 - IPC のチャンネル: `agentTerminal:start`・`agentTerminal:stop`・`agentTerminal:getState`（invoke）、`agentTerminal:write`・`agentTerminal:resize`・`agentTerminal:focus`（send）、`agentTerminal:data`・`agentTerminal:exit`（main → renderer）、`fs:writeFileChecked`・`fs:setWatchedFiles`（invoke）、`fs:externalChange`（main → renderer）、`settings:getPromptExecutionMode`・`settings:setPromptExecutionMode`・`shell:openExternalLink`（invoke）
 - UI の文言は設計書の「エラー処理」「プロンプトの送信」「保存の直前の照合」「未編集のタブの自動の再読込と、編集中のタブへの通知」「実行方式の切り替え」の表のとおり（コードの定数: `lib/agentSessionMessages.ts`・`lib/agentSendMessages.ts`・`hooks/useFileEditing.ts` の `SAVE_CONFLICT_*`・`hooks/useExternalFileChanges.ts`・`components/editor/ExternalChangeBanner.tsx`・`components/settings/ExecutionModeSection.tsx`）。ボタン: `起動`（`aria-label="起動（開いているフォルダで claude を起動）"`）・`終了`（`aria-label="終了（エージェントを止める）"`）・`最大化`/`元に戻す`（`aria-pressed`）・開閉 `エージェント`（`aria-expanded`・`aria-controls`・`aria-describedby` → `F6 でターミナルから抜けます`）、実行ボタンの `aria-label="実行（エージェントに送信）"`（エージェント CLI 方式）
 
@@ -2712,7 +2712,7 @@ git status --short src/main
 **Interfaces:**
 
 - Consumes: `AgentSessionRegistry`（Task 6）、`AGENT_KILL_GRACE_MS`（Task 5）
-- Produces: `type FolderChangeListener = (webContentsId: number, path: string) => void`、`FolderAccessManager.onDidChange(listener): () => void`、`AGENT_QUIT_TIMEOUT_MS = 4_000`、`setupAgentSessionLifecycle(app: App, registry, folderAccess, { quitTimeoutMs? }?): void`
+- Produces: `type FolderChangeListener = (webContentsId: number, path: string) => void`、`FolderAccessManager.onDidChange(listener): () => void`、`AGENT_QUIT_TIMEOUT_MS = 4_000`（注: PR #46 のレビュー対応で `ps` の打ち切りを含めた 6,000ms に変えた。下のコードの「猶予 + 1 秒」も同様）、`setupAgentSessionLifecycle(app: App, registry, folderAccess, { quitTimeoutMs? }?): void`
 - 注: `FolderAccessManager` はセッションを知らない（依存の向き。設計書）。`delete`（ウィンドウの破棄）は通知しない（`destroyed` で扱う）。同じパスの `set`（同じフォルダを開き直す）は通知しない（差異 23）。`before-quit` は再入の印を持ち、2 回目は素通しする
 
 - [ ] **Step 1: 失敗するテストを書く**
