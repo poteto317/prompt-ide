@@ -69,6 +69,9 @@ export function formatAgentChangesRevertedNotice(count: number): string {
   return `${count} 件を実行前の状態に戻しました`
 }
 
+/** diff タブでハンクを戻した後の読み上げ */
+export const AGENT_CHANGES_HUNK_REVERTED_NOTICE = 'ハンクを実行前の状態に戻しました'
+
 export const AGENT_CHANGES_BUSY_LOADING = '一覧を取得しています'
 export const AGENT_CHANGES_BUSY_GIT = '他の Git 操作の実行中です'
 export const AGENT_CHANGES_BUSY_REVERTING = '戻す操作の実行中です'

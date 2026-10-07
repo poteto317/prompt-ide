@@ -641,6 +641,7 @@ describe('EditorPanel — diff タブ', () => {
           canRevertHunk: true,
           disabledReason: null,
           error: null,
+          notice: null,
           onRevertHunk: vi.fn()
         }}
       />
@@ -669,6 +670,7 @@ describe('EditorPanel — diff タブ', () => {
           canRevertHunk: true,
           disabledReason: null,
           error: null,
+          notice: null,
           onRevertHunk: vi.fn()
         }}
       />
@@ -964,5 +966,130 @@ describe('EditorPanel — ハンクの取り消しの配線', () => {
       />
     )
     expect(screen.queryByRole('button', { name: 'このハンクを取り消す' })).not.toBeInTheDocument()
+  })
+})
+
+// エージェントの変更の diff タブでハンクを戻した後の読み上げとフォーカス(PR #47 B-2。パターン 86・87・152)
+describe('EditorPanel — エージェントの変更のハンクを戻した後', () => {
+  const agentDiff = 'diff --git a/a.txt b/a.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n'
+  const agentActions = (
+    overrides: Partial<
+      NonNullable<React.ComponentProps<typeof EditorPanel>['agentDiffActions']>
+    > = {}
+  ): NonNullable<React.ComponentProps<typeof EditorPanel>['agentDiffActions']> => ({
+    canRevertHunk: true,
+    disabledReason: null,
+    error: null,
+    notice: null,
+    onRevertHunk: vi.fn(),
+    ...overrides
+  })
+  const agentTabProps = {
+    diffTabs: [{ path: 'a.txt', kind: 'agent' }] as DiffTabKey[],
+    activeDiffTab: { path: 'a.txt', kind: 'agent' } as DiffTabKey,
+    diffContent: agentDiff
+  }
+
+  it('結果の読み上げの要素は、diff タブが無い間も常設し、diff の作り直し・タブを閉じても同じ要素に文言を入れる', () => {
+    const { container, rerender } = render(
+      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={agentActions()} />
+    )
+    const live = container.querySelector('.agent-diff__live')
+    expect(live).not.toBeNull()
+    expect(live).toHaveAttribute('aria-live', 'polite')
+    expect(live).toHaveTextContent('')
+    // 最後のハンクを戻すとタブが閉じる(Welcome に戻る)
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        agentDiffActions={agentActions({
+          notice: { text: 'ハンクを実行前の状態に戻しました', id: 1 }
+        })}
+      />
+    )
+    expect(container.querySelector('.agent-diff__live')).toBe(live)
+    expect(live).toHaveTextContent('ハンクを実行前の状態に戻しました')
+  })
+
+  it('押したボタンが diff の作り直しで消えたら、フォーカスをアクティブなタブへ戻す', async () => {
+    const user = userEvent.setup()
+    const actions = agentActions()
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={actions} />
+    )
+    const button = screen.getByRole('button', { name: 'このハンクを実行前に戻す' })
+    await user.click(button)
+    expect(actions.onRevertHunk).toHaveBeenCalledOnce()
+    expect(button).toHaveFocus()
+    // 取り直しの間は diffContent が null になり、DiffView ごと消える
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        {...agentTabProps}
+        diffContent={null}
+        agentDiffActions={actions}
+      />
+    )
+    expect(screen.getByRole('tab', { selected: true })).toHaveFocus()
+  })
+
+  it('最後のハンクを戻してタブが閉じたら、次にアクティブになったタブへ戻す', async () => {
+    const user = userEvent.setup()
+    const actions = agentActions()
+    const { rerender } = render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        {...agentTabProps}
+        agentDiffActions={actions}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'このハンクを実行前に戻す' }))
+    rerender(
+      <EditorPanel {...defaultProps} {...withOpenFile(mockOpenFile)} agentDiffActions={actions} />
+    )
+    expect(screen.getByRole('tab', { selected: true })).toHaveTextContent('index.ts')
+    expect(screen.getByRole('tab', { selected: true })).toHaveFocus()
+  })
+
+  it('利用者がエディタの外へ移したフォーカスは奪わない', async () => {
+    const user = userEvent.setup()
+    const actions = agentActions()
+    const { rerender } = render(
+      <>
+        <button type="button">外</button>
+        <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={actions} />
+      </>
+    )
+    await user.click(screen.getByRole('button', { name: 'このハンクを実行前に戻す' }))
+    await user.click(screen.getByRole('button', { name: '外' }))
+    rerender(
+      <>
+        <button type="button">外</button>
+        <EditorPanel
+          {...defaultProps}
+          {...agentTabProps}
+          diffContent={null}
+          agentDiffActions={actions}
+        />
+      </>
+    )
+    expect(screen.getByRole('button', { name: '外' })).toHaveFocus()
+  })
+
+  it('ハンクを戻していなければ、diff が消えてもフォーカスを動かさない', () => {
+    const { rerender } = render(
+      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={agentActions()} />
+    )
+    screen.getByRole('button', { name: 'このハンクを実行前に戻す' }).focus()
+    rerender(
+      <EditorPanel
+        {...defaultProps}
+        {...agentTabProps}
+        diffContent={null}
+        agentDiffActions={agentActions()}
+      />
+    )
+    expect(screen.getByRole('tab', { selected: true })).not.toHaveFocus()
   })
 })

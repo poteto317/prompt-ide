@@ -85,6 +85,8 @@ export function makeAgentChangesRevertState(
   return {
     isReverting: false,
     error: null,
+    errorPath: null,
+    hunkNotice: null,
     revertDisabledReason: null,
     revertAllDisabledReason: null,
     revertFile: vi.fn<AgentChangesRevertState['revertFile']>(async () => undefined),

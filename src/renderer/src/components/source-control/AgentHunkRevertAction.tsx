@@ -1,5 +1,6 @@
 'use client'
-import type { AgentDiffActions } from '../../types'
+import { toAnnouncementText } from '../../lib/announcementText'
+import type { AgentDiffActions, Announcement } from '../../types'
 
 interface NoticesProps {
   agentActions: AgentDiffActions
@@ -7,15 +8,15 @@ interface NoticesProps {
   reasonId: string
 }
 
-/** エージェントの変更の diff の上部に出す、直前の失敗(role="alert")と、戻すボタンを押せない理由 */
+/**
+ * エージェントの変更の diff の上部に出す、このタブのパスの直前の失敗と、戻すボタンを押せない理由。
+ * 失敗は見た目だけに出す(role="alert" にしない)。ハンクの失敗は AgentDiffAnnouncer が、ファイルの失敗はセクションの
+ * alert が読み上げる。diff は戻した後に作り直されるため、ここに alert を置くと読み上げが不確か・二重になる
+ */
 export function AgentDiffNotices({ agentActions, reasonId }: NoticesProps): React.JSX.Element {
   return (
     <>
-      {agentActions.error !== null && (
-        <p className="diff-view__error" role="alert">
-          {agentActions.error}
-        </p>
-      )}
+      {agentActions.error !== null && <p className="diff-view__error">{agentActions.error}</p>}
       {/* 戻すボタンを押せない理由(1 か所に出してボタンから参照する。パターン 126) */}
       {agentActions.canRevertHunk && agentActions.disabledReason !== null && (
         <p id={reasonId} className="diff-view__notice">
@@ -57,6 +58,19 @@ export default function AgentHunkRevertAction({
       >
         このハンクを実行前に戻す
       </button>
+    </span>
+  )
+}
+
+/**
+ * ハンクを戻した結果(成功・失敗)の読み上げ(視覚的には隠す)。戻すと diff が作り直されて押したボタンが消え、最後のハンクなら
+ * タブも閉じるため、EditorPanel が diff タブの外(タブと本文の外)に常設し、同じ要素に文言を入れる(パターン 87)。
+ * role="status" を付けないのは ExternalChangeAnnouncer と同じ理由(出力パネルの常設の status と重ねない)
+ */
+export function AgentDiffAnnouncer({ notice }: { notice: Announcement | null }): React.JSX.Element {
+  return (
+    <span className="agent-diff__live" aria-live="polite" aria-atomic="true">
+      {toAnnouncementText(notice)}
     </span>
   )
 }

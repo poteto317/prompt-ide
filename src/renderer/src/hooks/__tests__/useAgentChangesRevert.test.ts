@@ -13,6 +13,7 @@ import {
   AGENT_CHANGES_BUSY_GIT,
   AGENT_CHANGES_BUSY_LOADING,
   AGENT_CHANGES_BUSY_REVERTING,
+  AGENT_CHANGES_HUNK_REVERTED_NOTICE,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
   AGENT_CHANGES_TRUNCATED_REASON
@@ -419,4 +420,167 @@ describe('useAgentChangesRevert — 押せない間(パターン 111)', () => {
       expect(options.fileLock.lockGlobal).not.toHaveBeenCalled()
     }
   )
+})
+
+// 失敗の文言は、その記録・そのフォルダについてのもの(PR #47 B-1)
+describe('useAgentChangesRevert — 失敗の文言を消す契機', () => {
+  const recordingAt = (startedAt: number): AgentChangesRevertOptions['changes']['view'] => ({
+    kind: 'recording',
+    startedAt,
+    list: makeAgentChangesList([makeAgentChangeEntry('a.txt')])
+  })
+
+  async function failOnce(options: AgentChangesRevertOptions): Promise<{
+    result: { current: ReturnType<typeof useAgentChangesRevert> }
+    rerender: (props: AgentChangesRevertOptions) => void
+  }> {
+    vi.mocked(agentChangesApi.revertAgentChange).mockRejectedValue(new Error('戻せません: a.txt'))
+    const { result, rerender } = renderHook(
+      (props: AgentChangesRevertOptions) => useAgentChangesRevert(props),
+      { initialProps: options }
+    )
+    await act(async () => {
+      await result.current.revertFile(makeAgentChangeEntry('a.txt'))
+    })
+    expect(result.current.error).toBe('戻せません: a.txt')
+    return { result, rerender }
+  }
+
+  it('記録が無くなったら(確認を終えた)消す', async () => {
+    const options = makeOptions()
+    const { result, rerender } = await failOnce(options)
+    rerender({ ...options, changes: { ...options.changes, view: { kind: 'none' } } })
+    expect(result.current.error).toBeNull()
+    expect(result.current.errorPath).toBeNull()
+  })
+
+  it('新しい記録(startedAt が変わった)なら消す', async () => {
+    const options = makeOptions()
+    const { result, rerender } = await failOnce(options)
+    rerender({ ...options, changes: { ...options.changes, view: recordingAt(2) } })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('フォルダを切り替えたら消す', async () => {
+    const options = makeOptions()
+    const { result, rerender } = await failOnce(options)
+    rerender({ ...options, folderPath: '/other' })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('同じ記録のまま一覧だけが取り直されても消さない(消しすぎない)', async () => {
+    const options = makeOptions()
+    const { result, rerender } = await failOnce(options)
+    rerender({ ...options, changes: { ...options.changes, view: recordingAt(1) } })
+    expect(result.current.error).toBe('戻せません: a.txt')
+    expect(result.current.errorPath).toBe('a.txt')
+  })
+
+  it('実行中にフォルダを切り替えたら、終わった後に前のフォルダの失敗を出さない', async () => {
+    let rejectRevert: (err: Error) => void = () => undefined
+    vi.mocked(agentChangesApi.revertAgentChange).mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectRevert = reject
+        })
+    )
+    const options = makeOptions()
+    const { result, rerender } = renderHook(
+      (props: AgentChangesRevertOptions) => useAgentChangesRevert(props),
+      { initialProps: options }
+    )
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.revertFile(makeAgentChangeEntry('a.txt'))
+    })
+    rerender({ ...options, folderPath: '/other' })
+    await act(async () => {
+      rejectRevert(new Error('戻せません: a.txt'))
+      await pending
+    })
+    expect(result.current.error).toBeNull()
+  })
+
+  it('失敗の対象のパスを返す(ファイル・ハンクはそのパス、すべて戻すは null)', async () => {
+    const options = makeOptions()
+    const { result } = await failOnce(options)
+    expect(result.current.errorPath).toBe('a.txt')
+
+    vi.mocked(agentChangesApi.revertAgentChangeHunk).mockRejectedValue(new Error('合いません'))
+    await act(async () => {
+      await result.current.revertHunk('b.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.errorPath).toBe('b.txt')
+
+    vi.mocked(agentChangesApi.revertAllAgentChanges).mockRejectedValue(new Error('中止しました'))
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    expect(result.current.error).toBe('中止しました')
+    expect(result.current.errorPath).toBeNull()
+  })
+})
+
+// ハンクを戻した結果の読み上げ(PR #47 B-2)。diff タブ側の常設の aria-live に入れる
+describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
+  it('成功したら hunkNotice に結果を出す(セクションの読み上げには出さない)', async () => {
+    const options = makeOptions()
+    const { result } = renderHook(() => useAgentChangesRevert(options))
+    expect(result.current.hunkNotice).toBeNull()
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.hunkNotice?.text).toBe(AGENT_CHANGES_HUNK_REVERTED_NOTICE)
+    expect(options.changes.announce).not.toHaveBeenCalled()
+  })
+
+  it('同じ結果が続いても id を進める(読み上げ直させる)', async () => {
+    const options = makeOptions()
+    const { result } = renderHook(() => useAgentChangesRevert(options))
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    const firstId = result.current.hunkNotice?.id
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.hunkNotice?.id).not.toBe(firstId)
+  })
+
+  it('失敗したら hunkNotice に失敗の文言を出す', async () => {
+    vi.mocked(agentChangesApi.revertAgentChangeHunk).mockRejectedValue(new Error('合いません'))
+    const options = makeOptions()
+    const { result } = renderHook(() => useAgentChangesRevert(options))
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.hunkNotice?.text).toBe('合いません')
+  })
+
+  it('ファイル単位・すべて戻すの結果は hunkNotice に出さない(セクションが読み上げる)', async () => {
+    vi.mocked(agentChangesApi.revertAllAgentChanges).mockRejectedValue(new Error('中止しました'))
+    const options = makeOptions()
+    const { result } = renderHook(() => useAgentChangesRevert(options))
+    await act(async () => {
+      await result.current.revertFile(makeAgentChangeEntry('a.txt'))
+    })
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    expect(result.current.hunkNotice).toBeNull()
+  })
+
+  it('フォルダを切り替えたら消す', async () => {
+    const options = makeOptions()
+    const { result, rerender } = renderHook(
+      (props: AgentChangesRevertOptions) => useAgentChangesRevert(props),
+      { initialProps: options }
+    )
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.hunkNotice).not.toBeNull()
+    rerender({ ...options, folderPath: '/other' })
+    expect(result.current.hunkNotice).toBeNull()
+  })
 })

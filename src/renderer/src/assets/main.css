@@ -1761,7 +1761,8 @@ body {
 }
 
 /* 通知の文言の読み上げ(視覚的に隠す。.agent-terminal-panel__hint と同じ規則) */
-.external-change-banner__live {
+.external-change-banner__live,
+.agent-diff__live {
   position: absolute;
   width: 1px;
   height: 1px;

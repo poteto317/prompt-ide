@@ -12,6 +12,8 @@ import OutputPanel from './output/OutputPanel'
 import type { DiffTabKey } from '../hooks/useDiffTabs'
 import { useCombinedEditorTabs } from '../hooks/useCombinedEditorTabs'
 import DiffView from './source-control/DiffView'
+import { AgentDiffAnnouncer } from './source-control/AgentHunkRevertAction'
+import { useAgentDiffFocusRestore } from '../hooks/useAgentDiffFocusRestore'
 import ConflictResolver from './source-control/ConflictResolver'
 import type { ConflictFileState } from '../hooks/useConflictFile'
 import AgentTerminalPanel from './agent/AgentTerminalPanel'
@@ -157,11 +159,25 @@ export default function EditorPanel({
   const showAgentTerminal = bottomPanel === 'agent-terminal' && agentTerminal !== undefined
   // ターミナルパネルの最大化の間は、タブと本文を隠してパネルが全体を使う(Monaco は automaticLayout で戻したときに合わせ直す)
   const isAgentMaximized = showAgentTerminal && agentTerminal.layout.isMaximized
+  // ハンクを戻すと押したボタンが消える(最後のハンクならタブも閉じる)。フォーカスをアクティブなタブへ戻す予約を立てる
+  const { panelRef, reserveFocusRestore } = useAgentDiffFocusRestore()
+  const agentActionsForDiff: AgentDiffActions | undefined =
+    agentDiffActions === undefined
+      ? undefined
+      : {
+          ...agentDiffActions,
+          onRevertHunk: (patch, hunkHeader) => {
+            reserveFocusRestore()
+            agentDiffActions.onRevertHunk(patch, hunkHeader)
+          }
+        }
 
   return (
-    <div className="editor-panel">
+    <div className="editor-panel" ref={panelRef}>
       {/* 外部変更の通知の読み上げ。通知が無い間も置き(文言は同じ要素に入れる)、ターミナルの最大化で隠れるタブと本文の外に置く */}
       <ExternalChangeAnnouncer banner={externalChangeBanner} />
+      {/* ハンクを戻した結果の読み上げ。diff の作り直し・タブを閉じても消えないよう、タブと本文の外に常設する */}
+      <AgentDiffAnnouncer notice={agentDiffActions?.notice ?? null} />
       <div className="editor-panel__main" hidden={isAgentMaximized}>
         {/* diffTabs に非アクティブな diff タブが残っている場合、WelcomeView に
           切り替えるとタブバーごと消えてそれらのタブへ二度とアクセスできなくなる */}
@@ -209,7 +225,9 @@ export default function EditorPanel({
                       isUntracked={isActiveFileUntracked}
                       onDiscardHunk={onDiscardHunk}
                       canDiscardHunk={canDiscardHunk}
-                      agentActions={activeDiffTab.kind === 'agent' ? agentDiffActions : undefined}
+                      agentActions={
+                        activeDiffTab.kind === 'agent' ? agentActionsForDiff : undefined
+                      }
                     />
                   )}
                 </>

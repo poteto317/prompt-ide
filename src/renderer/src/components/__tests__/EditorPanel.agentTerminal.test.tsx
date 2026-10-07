@@ -144,7 +144,8 @@ describe('EditorPanel: 下部のパネル', () => {
   // ターミナルの最大化で隠れるタブと本文(.editor-panel__main)の外に置く
   it('外部変更の通知のライブリージョンを、タブと本文の外に通知が無い間も置き、通知が出たら同じ要素に文言を入れる', () => {
     const { container, rerender } = render(<EditorPanel {...baseProps} />)
-    const regions = container.querySelectorAll('[aria-live="polite"]')
+    // ハンクを戻した結果の読み上げ(.agent-diff__live)も常設するため、外部変更のものをクラスで選ぶ
+    const regions = container.querySelectorAll('.external-change-banner__live[aria-live="polite"]')
     expect(regions).toHaveLength(1)
     const region = regions[0]
     expect(region.closest('.editor-panel__main')).toBeNull()
@@ -155,7 +156,7 @@ describe('EditorPanel: 下部のパネル', () => {
         externalChangeBanner={{ path: file.path, kind: 'deleted', reload: null, dismiss: vi.fn() }}
       />
     )
-    expect(container.querySelector('[aria-live="polite"]')).toBe(region)
+    expect(container.querySelector('.external-change-banner__live')).toBe(region)
     expect(region).toHaveTextContent('ディスク上のファイルが削除されました。')
   })
 
@@ -170,8 +171,12 @@ describe('EditorPanel: 下部のパネル', () => {
       />
     )
     expect(container.querySelector('.editor-panel__main')).not.toBeVisible()
-    const region = container.querySelector('[aria-live="polite"]')
+    const region = container.querySelector('.external-change-banner__live[aria-live="polite"]')
     expect(region).toBeVisible()
+    // ハンクを戻した結果の読み上げも、タブと本文の外に置くため最大化の間も隠れない
+    const agentDiffRegion = container.querySelector('.agent-diff__live[aria-live="polite"]')
+    expect(agentDiffRegion?.closest('.editor-panel__main')).toBeNull()
+    expect(agentDiffRegion).toBeVisible()
     expect(region).toHaveTextContent(
       'ディスク上のファイルが変更されました（エージェントなどによる変更）。'
     )

@@ -577,6 +577,7 @@ describe('DiffView — エージェントの変更', () => {
     canRevertHunk: true,
     disabledReason: null,
     error: null,
+    notice: null,
     onRevertHunk: vi.fn(),
     ...overrides
   })
@@ -638,7 +639,7 @@ describe('DiffView — エージェントの変更', () => {
     expect(screen.queryAllByRole('button')).toEqual([])
   })
 
-  it('直前の戻す操作の失敗を role="alert" で出す', () => {
+  it('直前の戻す操作の失敗を出す(読み上げは EditorPanel の常設の要素とセクションが行うため、alert にしない)', () => {
     render(
       <DiffView
         diffText={SAMPLE_DIFF}
@@ -648,7 +649,8 @@ describe('DiffView — エージェントの変更', () => {
         agentActions={actions({ error: 'ハンクを戻せませんでした' })}
       />
     )
-    expect(screen.getByRole('alert')).toHaveTextContent('ハンクを戻せませんでした')
+    expect(screen.getByText('ハンクを戻せませんでした')).toHaveClass('diff-view__error')
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('押せないときは理由を 1 か所に出し、ボタンから参照する(パターン 126)', () => {

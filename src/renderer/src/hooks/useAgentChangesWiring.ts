@@ -19,6 +19,12 @@ import { useOnChange } from './useOnChange'
 // 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機、一覧から消えたパスの diff タブの
 // 同期、戻す操作(useAgentChangesRevert)、表示用の値(セクション・diff タブの操作・ターミナルの帯)の組み立てを持つ
 
+// 一覧のパスと diff タブのパスの照合(フォルダの行は末尾に / が付く。どちらかが null なら一致しない)
+function isSameAgentPath(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return false
+  return a.replace(/\/+$/, '') === b.replace(/\/+$/, '')
+}
+
 export interface AgentChangesFocusRequest {
   isRequested: boolean
   /** セクションがフォーカスを移したら呼ぶ(依頼を下ろす) */
@@ -146,7 +152,10 @@ export function useAgentChangesWiring({
     canRevertHunk: canRevertAgentHunk(findActiveAgentEntry(view, diffTabs.activeDiffTab)),
     // 戻す操作・一覧の取得・他の Git 操作の間は押せない(理由は useAgentChangesRevert が組み立てる)
     disabledReason: revert.revertDisabledReason,
-    error: revert.error,
+    // 失敗はそのパスの diff タブにだけ出す(b.txt の失敗を a.txt のタブに出さない。「すべて戻す」の失敗はセクションだけ)
+    error: isSameAgentPath(revert.errorPath, activeAgentPath) ? revert.error : null,
+    // ハンクを戻した結果の読み上げは、タブを問わず渡す(最後のハンクを戻すとタブが閉じる。EditorPanel が常設の要素に入れる)
+    notice: revert.hunkNotice,
     onRevertHunk: (patch, hunkHeader) => {
       if (activeAgentPath !== null) void revert.revertHunk(activeAgentPath, patch, hunkHeader)
     }

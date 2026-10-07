@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { AgentChangeEntry } from '@shared/types'
+import type { Announcement } from '../types'
 import * as agentChangesApi from '../lib/agentChangesApi'
 import {
   agentRevertAllDisabledReason,
@@ -9,12 +10,16 @@ import {
   buildAgentRevertAllConfirmMessage,
   buildAgentRevertFileConfirmMessage,
   buildAgentRevertHunkConfirmMessage,
-  formatAgentChangesRevertedNotice
+  formatAgentChangesRevertedNotice,
+  AGENT_CHANGES_HUNK_REVERTED_NOTICE
 } from '../lib/agentChangesMessages'
 import { toError } from '../lib/errorUtils'
 import { agentChangeAbsolutePath, isEntrySavedInApp, isSavedInApp } from '../lib/agentChangesPaths'
+import { AGENT_CHANGES_NOTICE_DURATION_MS } from './useAgentChanges'
 import type { AgentChangesController } from './useAgentChanges'
 import type { FileOperationLock } from './useFileOperationLock'
+import { useOnChange } from './useOnChange'
+import { useTransientNotice } from './useTransientNotice'
 
 // エージェントの変更を戻す(ファイル・ハンク・すべて)。既存の取り消し(useDiscardFileChanges・useDiscardHunk・
 // useDiscardAllChanges)と同じく「押せるか → 確認 → ロック → 実行 → 成功したときだけタブとツリーを同期」の順で行う
@@ -44,8 +49,12 @@ export interface AgentChangesRevertOptions {
 
 export interface AgentChangesRevertState {
   isReverting: boolean
-  /** 直前の戻す操作の失敗・partial の警告 */
+  /** 直前の戻す操作の失敗・partial の警告。フォルダの切り替え・記録の終了・新しい記録で消える */
   error: string | null
+  /** error の対象のパス(ファイル・ハンクを戻したときの一覧のパス。「すべて戻す」は null)。diff タブは自分のパスの失敗だけを出す */
+  errorPath: string | null
+  /** ハンクを戻した結果(成功・失敗)の読み上げ。diff タブ側の常設の aria-live に入れる(セクションが見えていなくても届く) */
+  hunkNotice: Announcement | null
   /** ファイル・ハンクを戻すボタンを押せない理由(押せるなら null) */
   revertDisabledReason: string | null
   /** 「すべて戻す」を押せない理由 */
@@ -71,7 +80,26 @@ export function useAgentChangesRevert({
   onConfirm = confirm
 }: AgentChangesRevertOptions): AgentChangesRevertState {
   const [isReverting, setIsReverting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<{ message: string; path: string | null } | null>(null)
+  const {
+    notice: hunkNotice,
+    announce: announceHunk,
+    clear: clearHunkNotice
+  } = useTransientNotice(AGENT_CHANGES_NOTICE_DURATION_MS)
+  // 失敗の文言は、その記録・そのフォルダについてのもの。フォルダの切り替え・記録の終了(none)・新しい記録(startedAt の変化)で
+  // 消す(useAgentChanges の listError と同じく、前の記録の失敗を新しい記録で role="alert" に出さない)。
+  // 実行中に変わった場合に、終わった後で古い失敗を出さないよう、範囲の番号を進めて照合する
+  const scopeRef = useRef(0)
+  const resetForScopeChange = (): void => {
+    scopeRef.current += 1
+    setError(null)
+    clearHunkNotice()
+  }
+  useOnChange(folderPath, resetForScopeChange)
+  useOnChange(
+    changes.view.kind === 'recording' ? changes.view.startedAt : null,
+    resetForScopeChange
+  )
   // 同じ描画の中の 2 回目の依頼を止める(state は次の描画まで変わらない)
   const revertingRef = useRef(false)
   const list = changes.view.kind === 'recording' ? changes.view.list : null
@@ -91,8 +119,14 @@ export function useAgentChangesRevert({
 
   const absoluteOf = (path: string): string | null => agentChangeAbsolutePath(folderPath, path)
 
-  // 実行(ロックと後片付け)。成功したら true。失敗の文言は error に出す
-  const run = async (execute: () => Promise<void>): Promise<boolean> => {
+  // 実行(ロックと後片付け)。成功したら true。失敗の文言は error に出す(path は diff タブの出し分けに使う)。
+  // 実行中にフォルダ・記録が変わっていたら、失敗は出さない(onFailure も呼ばない)
+  const run = async (
+    path: string | null,
+    execute: () => Promise<void>,
+    onFailure?: (message: string) => void
+  ): Promise<boolean> => {
+    const scope = scopeRef.current
     revertingRef.current = true
     setIsReverting(true)
     setError(null)
@@ -101,7 +135,11 @@ export function useAgentChangesRevert({
       await execute()
       return true
     } catch (err) {
-      setError(toError(err).message)
+      if (scope === scopeRef.current) {
+        const message = toError(err).message
+        setError({ message, path })
+        onFailure?.(message)
+      }
       return false
     } finally {
       fileLock.unlockGlobal()
@@ -132,7 +170,7 @@ export function useAgentChangesRevert({
       agentRunning
     })
     if (!onConfirm(message)) return
-    const succeeded = await run(() => agentChangesApi.revertAgentChange(entry.path))
+    const succeeded = await run(entry.path, () => agentChangesApi.revertAgentChange(entry.path))
     if (succeeded) {
       // 追加はゴミ箱へ移したのでタブを閉じ、それ以外は記録の時点の内容を読み直す
       if (entry.status === 'A') closeTabsAtOrInside(absolutePath)
@@ -153,8 +191,18 @@ export function useAgentChangesRevert({
       agentRunning
     })
     if (!onConfirm(message)) return
-    const succeeded = await run(() => agentChangesApi.revertAgentChangeHunk(path, patch))
-    if (succeeded) await reloadOpenFile(absolutePath)
+    // 結果は diff タブ側の aria-live で読み上げる(成功すると diff が作り直されて押したボタンが消え、最後のハンクならタブも
+    // 閉じる。セクションの読み上げはソース管理パネルが見えていないと届かない)。失敗は error にも出す
+    const scope = scopeRef.current
+    const succeeded = await run(
+      path,
+      () => agentChangesApi.revertAgentChangeHunk(path, patch),
+      announceHunk
+    )
+    if (succeeded) {
+      await reloadOpenFile(absolutePath)
+      if (scope === scopeRef.current) announceHunk(AGENT_CHANGES_HUNK_REVERTED_NOTICE)
+    }
     await refreshAfter()
   }
 
@@ -176,22 +224,26 @@ export function useAgentChangesRevert({
     // 確認で見せた一覧(パスと状態の文字)を main へ渡す。実行時の一覧と完全一致しなければ main が中止する
     const expected = list.entries.map(({ path, status }) => ({ path, status }))
     let warning: string | null = null
-    const succeeded = await run(async () => {
+    const scope = scopeRef.current
+    const succeeded = await run(null, async () => {
       const result = await agentChangesApi.revertAllAgentChanges(expected)
       if (result.status === 'partial') warning = result.message
     })
     if (succeeded) {
       // partial も作業ツリーが変わっているので読み直す(パターン 52)。警告は読み直しの後に出す
       await reloadOpenFiles()
-      if (warning !== null) setError(warning)
-      else changes.announce(formatAgentChangesRevertedNotice(expected.length))
+      if (warning !== null) {
+        if (scope === scopeRef.current) setError({ message: warning, path: null })
+      } else changes.announce(formatAgentChangesRevertedNotice(expected.length))
     }
     await refreshAfter()
   }
 
   return {
     isReverting,
-    error,
+    error: error?.message ?? null,
+    errorPath: error?.path ?? null,
+    hunkNotice,
     revertDisabledReason,
     revertAllDisabledReason,
     revertFile,

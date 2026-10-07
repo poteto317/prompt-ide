@@ -1,7 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import AgentHunkRevertAction, { AgentDiffNotices } from '../AgentHunkRevertAction'
+import AgentHunkRevertAction, {
+  AgentDiffAnnouncer,
+  AgentDiffNotices
+} from '../AgentHunkRevertAction'
 import type { AgentDiffActions } from '../../../types'
 
 function makeActions(overrides: Partial<AgentDiffActions> = {}): AgentDiffActions {
@@ -9,6 +12,7 @@ function makeActions(overrides: Partial<AgentDiffActions> = {}): AgentDiffAction
     canRevertHunk: true,
     disabledReason: null,
     error: null,
+    notice: null,
     onRevertHunk: vi.fn(),
     ...overrides
   }
@@ -87,14 +91,16 @@ describe('AgentHunkRevertAction', () => {
 })
 
 describe('AgentDiffNotices', () => {
-  it('error を role="alert" で出す', () => {
+  // 読み上げは AgentDiffAnnouncer(ハンク)とセクションの alert(ファイル)が行う。diff の作り直しで消える要素に alert を置かない
+  it('error を見た目だけに出す(role="alert" にしない)', () => {
     render(<AgentDiffNotices agentActions={makeActions({ error: '失敗した' })} reasonId="r" />)
-    expect(screen.getByRole('alert')).toHaveTextContent('失敗した')
+    expect(screen.getByText('失敗した')).toHaveClass('diff-view__error')
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
-  it('error が null なら alert を出さない', () => {
-    render(<AgentDiffNotices agentActions={makeActions()} reasonId="r" />)
-    expect(screen.queryByRole('alert')).toBeNull()
+  it('error が null なら何も出さない', () => {
+    const { container } = render(<AgentDiffNotices agentActions={makeActions()} reasonId="r" />)
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('理由の段落に reasonId が付き、ボタンの aria-describedby から参照できる', () => {
@@ -126,5 +132,21 @@ describe('AgentDiffNotices', () => {
       />
     )
     expect(screen.queryByText('理由です')).toBeNull()
+  })
+})
+
+describe('AgentDiffAnnouncer', () => {
+  it('通知が無い間も空の aria-live の要素を置き、通知の文言を同じ要素に入れる(パターン 87)', () => {
+    const { container, rerender } = render(<AgentDiffAnnouncer notice={null} />)
+    const live = container.querySelector('[aria-live="polite"]')
+    expect(live).not.toBeNull()
+    expect(live).toHaveAttribute('aria-atomic', 'true')
+    expect(live).toHaveTextContent('')
+    rerender(<AgentDiffAnnouncer notice={{ text: '戻しました', id: 1 }} />)
+    expect(container.querySelector('[aria-live="polite"]')).toBe(live)
+    expect(live?.textContent).toBe('戻しました')
+    // 同じ文言が続いても読み上げ直されるよう、id ごとに文字列を変える
+    rerender(<AgentDiffAnnouncer notice={{ text: '戻しました', id: 2 }} />)
+    expect(live?.textContent).toBe('戻しました\u200b')
   })
 })

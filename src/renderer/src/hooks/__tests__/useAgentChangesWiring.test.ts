@@ -35,7 +35,12 @@ const gitStatusOf = (branch: string): GitStatusResult => ({
 })
 
 // 既定と違う値(失敗あり・押せない)で、パネルへそのまま渡ることを確かめる
-const revertState = makeAgentChangesRevertState({ error: 'failed', revertDisabledReason: 'busy' })
+const revertState = makeAgentChangesRevertState({
+  error: 'failed',
+  errorPath: 'a.txt',
+  hunkNotice: { text: 'ハンクを実行前の状態に戻しました', id: 3 },
+  revertDisabledReason: 'busy'
+})
 
 const lock = {} as FileOperationLock
 
@@ -237,6 +242,30 @@ describe('useAgentChangesWiring', () => {
       })
       update({ diffTabs: { ...base.diffTabs, activeDiffTab: { path: 'b.txt', kind: 'agent' } } })
       expect(result.current.agentDiffActions.canRevertHunk).toBe(false)
+    })
+
+    // 失敗はそのパスのタブにだけ出す(PR #47 B-1: b.txt の失敗を a.txt のタブに出さない)
+    it.each<[string, string | null, string, string | null]>([
+      ['同じパスのタブなら出す', 'a.txt', 'a.txt', 'failed'],
+      ['別のパスのタブには出さない', 'b.txt', 'a.txt', null],
+      ['「すべて戻す」の失敗(パスなし)は出さない', null, 'a.txt', null],
+      ['フォルダの行の失敗は、末尾の / を除いて照合する', 'dir/', 'dir', 'failed']
+    ])('失敗は、%s', (_label, errorPath, tabPath, expected) => {
+      mockUseAgentChangesRevert.mockReturnValue({ ...revertState, errorPath })
+      const base = makeOptions()
+      const { result } = setup({
+        ...base,
+        diffTabs: { ...base.diffTabs, activeDiffTab: { path: tabPath, kind: 'agent' } }
+      })
+      expect(result.current.agentDiffActions.error).toBe(expected)
+    })
+
+    it('ハンクを戻した結果の読み上げは、開いているタブを問わず渡す(最後のハンクでタブが閉じても届く)', () => {
+      const { result } = setup()
+      expect(result.current.agentDiffActions.notice).toEqual({
+        text: 'ハンクを実行前の状態に戻しました',
+        id: 3
+      })
     })
 
     it('ハンクを戻すと、開いている agent のタブのパスで戻す', () => {
