@@ -183,6 +183,46 @@ describe('AgentBaselineRegistry', () => {
     await expect(later).resolves.toBeNull()
   })
 
+  // PR #47 レビュー A-2: ハンドラーは入り口で許可のフォルダを取り、withRecord は列の番が来てから照合する。列で待っていた古いフォルダの
+  // 依頼が、フォルダの切り替えの後に作られた新しい記録を「フォルダが違う」として捨て、一時ディレクトリも消していた
+  it('列で待っていた古いフォルダの依頼は、フォルダを切り替えた後の新しい記録を捨てない(null を返すだけ)', async () => {
+    const s = setup()
+    await recordFor(s, 1, '/a', '/tmp/A')
+    let releaseSlow: () => void = () => undefined
+    let started = false
+    const slow = s.registry.withRecord(1, '/a', async () => {
+      started = true
+      await new Promise<void>((r) => (releaseSlow = r))
+      return 'slow'
+    })
+    const oldTask = vi.fn(async () => 'old')
+    const queuedOld = s.registry.withRecord(1, '/a', oldTask)
+    await vi.waitFor(() => expect(started).toBe(true))
+    const cleared = s.registry.clear(1)
+    await recordFor(s, 1, '/b', '/tmp/B')
+    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100 })
+    releaseSlow()
+    await expect(slow).resolves.toBe('slow')
+    await expect(queuedOld).resolves.toBeNull()
+    await cleared
+    expect(oldTask).not.toHaveBeenCalled()
+    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100 })
+    expect(s.removeDir.mock.calls).toEqual([['/tmp/A']])
+    await expect(
+      s.registry.withRecord(1, '/b', async (snapshot) => snapshot.tempDir)
+    ).resolves.toBe('/tmp/B')
+  })
+
+  it('記録と違うフォルダの withRecord は task を呼ばずに null を返し、記録を捨てない', async () => {
+    const s = setup()
+    await recordFor(s, 1, '/b', '/tmp/B')
+    const task = vi.fn(async () => 'x')
+    await expect(s.registry.withRecord(1, '/a', task)).resolves.toBeNull()
+    expect(task).not.toHaveBeenCalled()
+    expect(s.removeDir).not.toHaveBeenCalled()
+    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100 })
+  })
+
   it('失敗した操作の後も列は進む', async () => {
     const s = setup()
     await recordFor(s, 1, '/repo', '/tmp/a')

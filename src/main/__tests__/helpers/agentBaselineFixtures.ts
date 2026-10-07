@@ -94,6 +94,7 @@ export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}):
     head: null,
     excluded: [],
     skippedRepos: [],
+    ignoredAtBaseline: [],
     ...overrides
   }
 }

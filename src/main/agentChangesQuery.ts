@@ -7,6 +7,7 @@ import {
   assertBaselineIndex,
   containsNotRecorded,
   hasIgnoredInside,
+  isIgnoredAtBaseline,
   toBaselineQueryError
 } from './agentBaselineCoverage'
 import { createBaselineGit, createRepoGit } from './agentBaselineGit'
@@ -35,10 +36,21 @@ function parseNameStatus(output: string): { path: string; status: AgentChangeSta
   return result
 }
 
+// 記録の時点に ignore されていたフォルダ('a/b/')のうち、path の祖先で最も浅いもの。無ければ null
+function ignoredAncestorDir(snapshot: BaselineSnapshot, path: string): string | null {
+  for (let slash = path.indexOf('/'); slash !== -1; slash = path.indexOf('/', slash + 1)) {
+    const dir = path.slice(0, slash + 1)
+    if (isIgnoredAtBaseline(snapshot, dir)) return dir
+  }
+  return null
+}
+
 // まとめたフォルダの行のうち、記録の前からあったと分かる中身(ignore されたファイル・記録から除外したファイル・
-// 記録から外した入れ子のリポジトリ)を持つものは、まとめずに中のファイルを 1 行ずつにする。まとめたままだと、戻すと
-// それらをフォルダごとゴミ箱へ移し(I1)、何もしなくても行が出続けてすべて戻すを常に拒否する(M1)。展開には --directory を
-// 付けないので、入れ子のリポジトリだけが '<sub>/' の 1 行で残る(git は入れ子のリポジトリの中へ降りない)
+// 記録から外した入れ子のリポジトリ・記録の時点に ignore されていたもの)を持つものは、まとめずに中のファイルを 1 行ずつにする。
+// まとめたままだと、戻すとそれらをフォルダごとゴミ箱へ移し(I1)、何もしなくても行が出続けてすべて戻すを常に拒否する(M1)。
+// 展開には --directory を付けないので、入れ子のリポジトリだけが '<sub>/' の 1 行で残る(git は入れ子のリポジトリの中へ降りない)。
+// フォルダ自体が記録の時点に ignore されていたもの(node_modules/ など)は展開せず 1 行のまま notRecorded にする。展開した中の、
+// 記録の時点に ignore されていたフォルダの中のファイルも、そのフォルダの 1 行にまとめ直す(展開で数万行になって打ち切りに当たらない)
 async function expandPreexistingFolders(
   git: SimpleGit,
   snapshot: BaselineSnapshot,
@@ -46,7 +58,11 @@ async function expandPreexistingFolders(
 ): Promise<string[]> {
   const result: string[] = []
   for (const path of others) {
-    if (!path.endsWith('/') || snapshot.skippedRepos.includes(path)) {
+    if (
+      !path.endsWith('/') ||
+      snapshot.skippedRepos.includes(path) ||
+      isIgnoredAtBaseline(snapshot, path)
+    ) {
       result.push(path)
       continue
     }
@@ -55,18 +71,24 @@ async function expandPreexistingFolders(
       result.push(path)
       continue
     }
-    result.push(
-      ...parseNulSeparatedPaths(
-        await git.raw([
-          'ls-files',
-          '-z',
-          '--others',
-          '--exclude-standard',
-          '--',
-          toLiteralPathspec(path)
-        ])
-      )
-    )
+    const collapsed = new Set<string>()
+    for (const inner of parseNulSeparatedPaths(
+      await git.raw([
+        'ls-files',
+        '-z',
+        '--others',
+        '--exclude-standard',
+        '--',
+        toLiteralPathspec(path)
+      ])
+    )) {
+      const ignoredDir = ignoredAncestorDir(snapshot, inner)
+      if (ignoredDir === null) result.push(inner)
+      else if (!collapsed.has(ignoredDir)) {
+        collapsed.add(ignoredDir)
+        result.push(ignoredDir)
+      }
+    }
   }
   return result
 }
@@ -81,6 +103,23 @@ async function excludedChange(
   return stat.isFile() && stat.size === file.size && stat.mtimeMs === file.mtimeMs
     ? 'unchanged'
     : 'modified'
+}
+
+const inodeKey = ({ dev, ino }: { dev: number; ino: number }): string => `${dev}:${ino}`
+
+// 記録から除外したファイルがエージェントに別の名前へ移された(同じファイルシステムの rename は inode を保つ)なら、移した先の
+// 「追加」の行は記録の前からあった唯一の実体なので、戻せない行にする(A-1)。除外のファイルが消えたときだけ追加の行を調べる。
+// 新しいフォルダの中へ移された場合(フォルダの 1 行)・コピー・別のファイルシステムへの移動は拾えない(既知の制約)
+async function markMovedExcluded(
+  folderPath: string,
+  entries: AgentChangeEntry[],
+  movedAway: Set<string>
+): Promise<void> {
+  for (const entry of entries) {
+    if (entry.status !== 'A' || entry.isDirectory || entry.notRecorded) continue
+    const stat = await lstat(join(folderPath, entry.path)).catch(() => null)
+    if (stat !== null && stat.isFile() && movedAway.has(inodeKey(stat))) entry.notRecorded = true
+  }
 }
 
 /** 記録の時点 → いまの作業ツリーの変更のすべて(打ち切らない)。パスの順。戻す操作の照合(agentChangesRevert)も使う */
@@ -120,14 +159,21 @@ export async function collectAgentChangeEntries(
   for (const path of others) {
     const isDirectory = path.endsWith('/')
     if (isDirectory) {
-      // 除外したファイルを中に含む新しいフォルダは、ゴミ箱へ移すと記録していない内容を失うため戻せない
+      // 除外したファイルを中に含む新しいフォルダ・記録の時点に ignore されていたフォルダ(前方一致なのでフォルダ自身も当たる)は、
+      // ゴミ箱へ移すと記録していない内容を失うため戻せない
       const notRecorded = containsNotRecorded(snapshot, path)
       entries.push({ path, status: 'A', isDirectory, notRecorded })
       continue
     }
     const excluded = excludedByPath.get(path)
     if (excluded === undefined) {
-      entries.push({ path, status: 'A', isDirectory, notRecorded: false })
+      // 記録の時点に ignore されていたファイル(記録の後に ignore の規則から外れた)は、記録の前からあったもの(A-1)
+      entries.push({
+        path,
+        status: 'A',
+        isDirectory,
+        notRecorded: isIgnoredAtBaseline(snapshot, path)
+      })
       continue
     }
     excludedByPath.delete(path)
@@ -136,11 +182,14 @@ export async function collectAgentChangeEntries(
     }
   }
   // 一覧に現れなかった除外のファイルは、消えたものだけを出す(ignore されたもの・追跡に変わったものは出さない)
+  const movedAway = new Set<string>()
   for (const excluded of excludedByPath.values()) {
     if ((await excludedChange(folderPath, excluded)) === 'deleted') {
       entries.push({ path: excluded.path, status: 'D', isDirectory: false, notRecorded: true })
+      movedAway.add(inodeKey(excluded))
     }
   }
+  if (movedAway.size > 0) await markMovedExcluded(folderPath, entries, movedAway)
   return entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
 }
 

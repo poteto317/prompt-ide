@@ -23,25 +23,83 @@ export async function assertBaselineIndex(indexPath: string): Promise<void> {
   if (stat === null || !stat.isFile()) throw new Error('記録が見つかりません')
 }
 
+// 記録の時点の ignore 済みの一覧(node_modules の中がまとまらない構成では数万行になりうる)を、一覧の行ごとに走査しないための索引。
+// 記録ごとに 1 度だけ作る(記録は作った後に変えない)。
+// `--directory` の出力のフォルダの行には 2 種類ある: ignore されたフォルダ('node_modules/'。中の行は続かない)と、
+// 未追跡の中身がすべて ignore されていたフォルダ('build/' の後に 'build/cache/' などが続く)。後者はフォルダごと ignore されて
+// いたわけではなく、記録の後に足されたファイルを含みうるため、中の行が続かないフォルダだけを「フォルダごと」とみなす
+interface IgnoredIndex {
+  files: Set<string>
+  wholeDirs: Set<string>
+  sorted: string[]
+}
+const ignoredIndexCache = new WeakMap<readonly string[], IgnoredIndex>()
+
+function ignoredIndexOf(snapshot: BaselineSnapshot): IgnoredIndex {
+  const cached = ignoredIndexCache.get(snapshot.ignoredAtBaseline)
+  if (cached !== undefined) return cached
+  // 'd/' の配下('d/...')は、並べると 'd/' の直後に連続する('/' より小さい文字で続く 'd-x' などは 'd/' より前に来る)
+  const sorted = [...snapshot.ignoredAtBaseline].sort()
+  const files = new Set<string>()
+  const wholeDirs = new Set<string>()
+  sorted.forEach((path, i) => {
+    if (!path.endsWith('/')) files.add(path)
+    else if (!(sorted[i + 1] ?? '').startsWith(path)) wholeDirs.add(path)
+  })
+  const index = { files, wholeDirs, sorted }
+  ignoredIndexCache.set(snapshot.ignoredAtBaseline, index)
+  return index
+}
+
 /**
- * フォルダ('<dir>/')の配下に、記録から除外したファイル・記録から外した入れ子のリポジトリがあるか(前方一致)。
- * dirPath は末尾の '/' を含むこと('a/' が 'ab/...' に一致しないように)
+ * そのパス(末尾の '/' の有無を問わない)が、記録の時点に ignore されていたか。ignore されていたファイルと一致するか、
+ * そのパス自体か祖先('a/')がフォルダごと ignore されていたフォルダなら真(--directory で 1 行にまとまっている)
+ */
+export function isIgnoredAtBaseline(snapshot: BaselineSnapshot, path: string): boolean {
+  const { files, wholeDirs } = ignoredIndexOf(snapshot)
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
+  if (files.has(trimmed) || wholeDirs.has(`${trimmed}/`)) return true
+  for (let slash = trimmed.indexOf('/'); slash !== -1; slash = trimmed.indexOf('/', slash + 1)) {
+    if (wholeDirs.has(trimmed.slice(0, slash + 1))) return true
+  }
+  return false
+}
+
+// 記録の時点の ignore 済みの一覧に、dirPath で始まるものがあるか(二分探索)
+function hasIgnoredAtBaselineUnder(snapshot: BaselineSnapshot, dirPath: string): boolean {
+  const { sorted } = ignoredIndexOf(snapshot)
+  let low = 0
+  let high = sorted.length
+  while (low < high) {
+    const mid = (low + high) >> 1
+    if (sorted[mid] < dirPath) low = mid + 1
+    else high = mid
+  }
+  return low < sorted.length && sorted[low].startsWith(dirPath)
+}
+
+/**
+ * フォルダ('<dir>/')の配下に、記録から除外したファイル・記録から外した入れ子のリポジトリ・記録の時点に ignore されていた
+ * ファイルやフォルダがあるか(前方一致)。dirPath は末尾の '/' を含むこと('a/' が 'ab/...' に一致しないように)
  */
 export function containsNotRecorded(snapshot: BaselineSnapshot, dirPath: string): boolean {
   return (
     snapshot.excluded.some((file) => file.path.startsWith(dirPath)) ||
-    snapshot.skippedRepos.some((repo) => repo.startsWith(dirPath))
+    snapshot.skippedRepos.some((repo) => repo.startsWith(dirPath)) ||
+    hasIgnoredAtBaselineUnder(snapshot, dirPath)
   )
 }
 
 /**
- * そのパス自体を記録していないか(除外したファイル・コミットの無い入れ子のリポジトリ。完全一致)。
- * filePath はリポジトリ相対で末尾の '/' を落としたもの。入れ子のリポジトリは '<sub>/' で控えているので '/' を足して比べる
+ * そのパス自体を記録していないか(除外したファイル・コミットの無い入れ子のリポジトリは完全一致。記録の時点に ignore されて
+ * いたものは祖先のフォルダを含む)。filePath はリポジトリ相対で末尾の '/' を落としたもの。入れ子のリポジトリは '<sub>/' で
+ * 控えているので '/' を足して比べる
  */
 export function isNotRecordedPath(snapshot: BaselineSnapshot, filePath: string): boolean {
   return (
     snapshot.excluded.some((file) => file.path === filePath) ||
-    snapshot.skippedRepos.some((repo) => repo === `${filePath}/`)
+    snapshot.skippedRepos.some((repo) => repo === `${filePath}/`) ||
+    isIgnoredAtBaseline(snapshot, filePath)
   )
 }
 

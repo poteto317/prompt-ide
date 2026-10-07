@@ -90,7 +90,8 @@ export class AgentBaselineRegistry {
 
   /**
    * 記録を使う操作を所有者の列に並べて行う。列の順番が来た時点で記録が無い(clear 済み・フォルダが違う)なら
-   * task を呼ばずに null を返す
+   * task を呼ばずに null を返す。フォルダが違っても記録は捨てない: folderPath は依頼の入り口で取ったもので、列で待つ間に
+   * フォルダが切り替わり新しい記録が作られていることがある(PR #47 レビュー A-2。古い依頼が新しい記録を捨てていた)
    */
   withRecord<T>(
     ownerId: number,
@@ -98,7 +99,7 @@ export class AgentBaselineRegistry {
     task: (snapshot: BaselineSnapshot) => Promise<T>
   ): Promise<T | null> {
     return this.queue.enqueue(ownerId, async () => {
-      const record = this.currentRecord(ownerId, folderPath)
+      const record = this.matchingRecord(ownerId, folderPath)
       return record === null ? null : task(record)
     })
   }
@@ -119,12 +120,17 @@ export class AgentBaselineRegistry {
     this.records.clear()
   }
 
-  // 記録があり、そのフォルダがいまの許可のフォルダと同じなら返す。違えば捨てる(フォルダの切り替えの通知より先に依頼が来た場合)
-  private currentRecord(ownerId: number, folderPath: string): BaselineSnapshot | null {
+  // 記録があり、そのフォルダが folderPath と同じなら返す(照合だけ。記録は捨てない)
+  private matchingRecord(ownerId: number, folderPath: string): BaselineSnapshot | null {
     const record = this.records.get(ownerId)
-    if (record === undefined) return null
-    if (record.folderPath === folderPath) return record
-    void this.clear(ownerId)
-    return null
+    return record !== undefined && record.folderPath === folderPath ? record : null
+  }
+
+  // matchingRecord に加え、フォルダが違えば記録を捨てる(フォルダの切り替えの通知より先に依頼が来た場合)。
+  // begin・getState は呼ばれた時点のいまの許可のフォルダと同期で比べるため、記録の方が古いと言える。withRecord では使わない
+  private currentRecord(ownerId: number, folderPath: string): BaselineSnapshot | null {
+    const record = this.matchingRecord(ownerId, folderPath)
+    if (record === null && this.records.has(ownerId)) void this.clear(ownerId)
+    return record
   }
 }

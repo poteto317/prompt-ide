@@ -8,17 +8,68 @@ import {
   assertBaselineIndex,
   containsNotRecorded,
   hasIgnoredInside,
+  isIgnoredAtBaseline,
   isNotRecordedPath,
   toBaselineQueryError
 } from '../agentBaselineCoverage'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
 import { makeBaselineSnapshot } from './helpers/agentBaselineFixtures'
 
-const snapshotWith = (excluded: string[], skippedRepos: string[] = []): BaselineSnapshot =>
+const snapshotWith = (
+  excluded: string[],
+  skippedRepos: string[] = [],
+  ignoredAtBaseline: string[] = []
+): BaselineSnapshot =>
   makeBaselineSnapshot({
-    excluded: excluded.map((path) => ({ path, size: 1, mtimeMs: 0 })),
-    skippedRepos
+    excluded: excluded.map((path) => ({ path, size: 1, mtimeMs: 0, dev: 1, ino: 1 })),
+    skippedRepos,
+    ignoredAtBaseline
   })
+
+const ignoredSnapshot = (ignored: string[]): BaselineSnapshot => snapshotWith([], [], ignored)
+
+// PR #47 レビュー A-1: 記録の時点の `ls-files --others --ignored --exclude-standard --directory` の一覧
+describe('isIgnoredAtBaseline', () => {
+  it('ignore されていたファイルと完全一致なら true(末尾の / の有無を問わない)', () => {
+    const snapshot = ignoredSnapshot(['.env', 'src/x.log'])
+    expect(isIgnoredAtBaseline(snapshot, '.env')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'src/x.log')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, '.env.local')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'src')).toBe(false)
+  })
+
+  it('フォルダごと ignore されていたフォルダ自体・その中のパスは true', () => {
+    const snapshot = ignoredSnapshot(['node_modules/', 'a/b/'])
+    expect(isIgnoredAtBaseline(snapshot, 'node_modules/')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'node_modules')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'node_modules/x/i.js')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'a/b/c/d.txt')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'a/')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'a/c.txt')).toBe(false)
+  })
+
+  it("前方が同じ別名('ab/'・'node_modules2/')には一致しない", () => {
+    const snapshot = ignoredSnapshot(['a/', 'node_modules/'])
+    expect(isIgnoredAtBaseline(snapshot, 'ab/')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'ab/x.txt')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'node_modules2/x.js')).toBe(false)
+  })
+
+  it("中身がすべて ignore されていたフォルダ('build/' の後に中の行が続く)はフォルダごととみなさない", () => {
+    const snapshot = ignoredSnapshot(['build/cache/', 'build/', 'b2/out.log', 'b2/', 'b2-x'])
+    expect(isIgnoredAtBaseline(snapshot, 'build/')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'build/new.txt')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'build/cache/')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'build/cache/c.bin')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'b2/')).toBe(false)
+    expect(isIgnoredAtBaseline(snapshot, 'b2/out.log')).toBe(true)
+    expect(isIgnoredAtBaseline(snapshot, 'b2/new.txt')).toBe(false)
+  })
+
+  it('一覧が空なら false', () => {
+    expect(isIgnoredAtBaseline(ignoredSnapshot([]), '.env')).toBe(false)
+  })
+})
 
 describe('containsNotRecorded', () => {
   it('除外したファイルが配下にあれば true', () => {
@@ -39,6 +90,18 @@ describe('containsNotRecorded', () => {
 
   it('何も除外していなければ false', () => {
     expect(containsNotRecorded(snapshotWith([]), 'a/')).toBe(false)
+  })
+
+  it('記録の時点に ignore されていたものが配下にあれば true(A-1)', () => {
+    expect(containsNotRecorded(ignoredSnapshot(['a/b/x.log']), 'a/')).toBe(true)
+    expect(containsNotRecorded(ignoredSnapshot(['a/cache/']), 'a/')).toBe(true)
+    expect(containsNotRecorded(ignoredSnapshot(['a/']), 'a/')).toBe(true)
+  })
+
+  it('記録の時点に ignore されていたものが名前の前方が同じ別のフォルダ(ab/)・手前にあれば false', () => {
+    expect(containsNotRecorded(ignoredSnapshot(['ab/x.log', 'a.log', 'a-b/', 'b/']), 'a/')).toBe(
+      false
+    )
   })
 })
 
@@ -63,6 +126,14 @@ describe('isNotRecordedPath', () => {
 
   it('入れ子のリポジトリの中のファイルは false', () => {
     expect(isNotRecordedPath(snapshotWith([], ['sub/']), 'sub/file.txt')).toBe(false)
+  })
+
+  it('記録の時点に ignore されていたファイル・フォルダ(の中)は true(A-1)', () => {
+    const snapshot = ignoredSnapshot(['.env', 'node_modules/'])
+    expect(isNotRecordedPath(snapshot, '.env')).toBe(true)
+    expect(isNotRecordedPath(snapshot, 'node_modules')).toBe(true)
+    expect(isNotRecordedPath(snapshot, 'node_modules/x/i.js')).toBe(true)
+    expect(isNotRecordedPath(snapshot, 'new.txt')).toBe(false)
   })
 })
 

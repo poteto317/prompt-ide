@@ -150,7 +150,34 @@ describe('takeBaselineSnapshot(実 git)', () => {
     expect(await baselinePaths(snapshot)).toEqual(['a.txt', 'small.txt'])
     const stat = statSync(join(repo, 'big.bin'))
     expect(snapshot.excluded).toEqual([
-      { path: 'big.bin', size: 6 * 1024 * 1024, mtimeMs: stat.mtimeMs }
+      {
+        path: 'big.bin',
+        size: 6 * 1024 * 1024,
+        mtimeMs: stat.mtimeMs,
+        dev: stat.dev,
+        ino: stat.ino
+      }
+    ])
+  })
+
+  // PR #47 レビュー A-1: 記録の時点の ignore 済みの一覧(.gitignore・.git/info/exclude。ignore されたフォルダは 1 行)
+  it('記録の時点に ignore されていた未追跡のファイル・フォルダを控える(追跡中・ignore されていないものは入れない)', async () => {
+    write('.gitignore', '.env\nnode_modules/\n*.log\n')
+    write('tracked.log', 't\n')
+    runGit(repo, 'add', '-f', 'tracked.log')
+    commitAll(repo, 'init')
+    write('.git/info/exclude', 'local.db\n')
+    write('.env', 'S\n')
+    write('local.db', 'd\n')
+    write('node_modules/x/i.js', 'i\n')
+    write('src/a.log', 'l\n')
+    write('src/keep.txt', 'k\n')
+    const snapshot = recordedSnapshot(await takeBaselineSnapshot(repo, { tempRoot }))
+    expect([...snapshot.ignoredAtBaseline].sort()).toEqual([
+      '.env',
+      'local.db',
+      'node_modules/',
+      'src/a.log'
     ])
   })
 
@@ -217,7 +244,7 @@ describe('takeBaselineSnapshot(実 git)', () => {
     })
   })
 
-  it.each([1, 2, 3, 4, 5, 6, 7, 8])(
+  it.each([1, 2, 3, 4, 5, 6, 7, 8, 9])(
     '%i 回目の確認で取り消されたら canceled を返し、一時ディレクトリを残さない(パターン 141)',
     async (cancelAt) => {
       write('a.txt', 'a\n')
@@ -232,14 +259,15 @@ describe('takeBaselineSnapshot(実 git)', () => {
     }
   )
 
-  // 確認は 8 か所(リポジトリか・最上位・未追跡の検査・index の場所・写し・pathspec の書き込み・add・HEAD の後)。取り消されなければ記録が返る
-  it('8 回の確認のどれでも取り消されなければ記録を返す', async () => {
+  // 確認は 9 か所(リポジトリか・最上位・未追跡の検査・index の場所・写し・pathspec の書き込み・add・ignore 済みの一覧・HEAD の後)。
+  // 取り消されなければ記録が返る
+  it('9 回の確認のどれでも取り消されなければ記録を返す', async () => {
     write('a.txt', 'a\n')
     commitAll(repo, 'init')
     let calls = 0
-    const result = await takeBaselineSnapshot(repo, { tempRoot, isCanceled: () => ++calls >= 9 })
+    const result = await takeBaselineSnapshot(repo, { tempRoot, isCanceled: () => ++calls >= 10 })
     expect(result.kind).toBe('recorded')
-    expect(calls).toBe(8)
+    expect(calls).toBe(9)
   })
 
   it('HEAD の無い入れ子のリポジトリがあっても記録でき、そのディレクトリは記録に入れない', async () => {

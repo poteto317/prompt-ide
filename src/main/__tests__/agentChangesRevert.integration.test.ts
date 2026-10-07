@@ -13,7 +13,7 @@ import {
 import { join } from 'node:path'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE } from '../agentBaselineCoverage'
-import { getAgentChangeDiff } from '../agentChangeDiff'
+import { NOT_RECORDED_DIFF_MESSAGE, getAgentChangeDiff } from '../agentChangeDiff'
 import { listAgentChanges } from '../agentChangesQuery'
 import {
   AGENT_CHANGES_STALE_MESSAGE,
@@ -631,5 +631,130 @@ describe('記録の後に .gitattributes が変わった場合の filter(実 git
       await revertAgentChange(context, 'other.md')
       expect(read('other.md')).toBe('o\n')
     })
+  })
+})
+
+// PR #47 レビュー A-1: 一覧・戻すの判定は「いまの」ignore の規則を使うため、記録の後に規則から行が消えると、記録の前からあった
+// ignore 済みのファイルが「追加」に見え、戻すとゴミ箱へ移っていた。記録の時点の ignore 済みの一覧(ignoredAtBaseline)に当たる行を
+// notRecorded にして、既存の拒否の経路に乗せる。5MiB 超の除外ファイルのリネームは inode の照合で同じ扱いにする
+describe('記録の時点に ignore されていたファイル・記録から外した大きいファイル(実 git)', () => {
+  const NOT_RECORDED = '実行前の内容を記録していないため戻せません'
+
+  const expectNothingReverted = async (
+    context: AgentRevertContext,
+    paths: string[]
+  ): Promise<void> => {
+    for (const path of paths) {
+      await expect(revertAgentChange(context, path)).rejects.toThrow(`${NOT_RECORDED}: ${path}`)
+    }
+    const entries = (await listAgentChanges(context.snapshot)).entries
+    await expect(revertAllAgentChanges(context, entries)).rejects.toThrow(
+      '戻せないファイルがあるため、何も戻しませんでした'
+    )
+    expect(trashed).toEqual([])
+  }
+
+  it('.gitignore から行を消すと、記録の前からあった .env・node_modules/ は notRecorded になり、ファイル・すべて戻すのどちらでも戻らない', async () => {
+    write('.gitignore', '.env\nnode_modules/\n')
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('.env', 'SECRET=1\n')
+    write('node_modules/x/i.js', 'i\n')
+    const context = await record()
+    write('.gitignore', '')
+    const entries = (await listAgentChanges(context.snapshot)).entries
+    expect(entries).toEqual([
+      { path: '.env', status: 'A', isDirectory: false, notRecorded: true },
+      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false },
+      { path: 'node_modules/', status: 'A', isDirectory: true, notRecorded: true }
+    ])
+    expect(await getAgentChangeDiff(context.snapshot, '.env')).toBe(NOT_RECORDED_DIFF_MESSAGE)
+    await expectNothingReverted(context, ['.env', 'node_modules'])
+    expect(read('.env')).toBe('SECRET=1\n')
+    expect(read('node_modules/x/i.js')).toBe('i\n')
+    expect(read('.gitignore')).toBe('')
+  })
+
+  it('.git/info/exclude から行を消すと、記録の前からあった local.db は notRecorded になり戻らない', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('.git/info/exclude', 'local.db\n')
+    write('local.db', 'db\n')
+    const context = await record()
+    write('.git/info/exclude', '')
+    expect((await listAgentChanges(context.snapshot)).entries).toEqual([
+      { path: 'local.db', status: 'A', isDirectory: false, notRecorded: true }
+    ])
+    await expectNothingReverted(context, ['local.db'])
+    expect(read('local.db')).toBe('db\n')
+  })
+
+  it('5MiB 超で記録から外したファイルをリネームすると、移した先は notRecorded になり戻らない', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('big.bin', '')
+    truncateSync(join(repo, 'big.bin'), 6 * 1024 * 1024)
+    const context = await record()
+    expect(context.snapshot.excluded.map((file) => file.path)).toEqual(['big.bin'])
+    renameSync(join(repo, 'big.bin'), join(repo, 'moved.bin'))
+    expect((await listAgentChanges(context.snapshot)).entries).toEqual([
+      { path: 'big.bin', status: 'D', isDirectory: false, notRecorded: true },
+      { path: 'moved.bin', status: 'A', isDirectory: false, notRecorded: true }
+    ])
+    await expectNothingReverted(context, ['moved.bin', 'big.bin'])
+    expect(statSync(join(repo, 'moved.bin')).size).toBe(6 * 1024 * 1024)
+  })
+
+  it('新しいフォルダの中に記録の前の ignore 済みフォルダがあれば展開し、そのフォルダの 1 行だけを notRecorded にする(足したファイルは戻せる)', async () => {
+    write('.gitignore', 'cache/\n')
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('build/cache/c.bin', 'c\n')
+    const context = await record()
+    write('.gitignore', '')
+    write('build/new.txt', 'n\n')
+    const entries = (await listAgentChanges(context.snapshot)).entries
+    expect(entries).toEqual([
+      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false },
+      { path: 'build/cache/', status: 'A', isDirectory: true, notRecorded: true },
+      { path: 'build/new.txt', status: 'A', isDirectory: false, notRecorded: false }
+    ])
+    await revertAgentChange(context, 'build/new.txt')
+    expect(trashed).toEqual([join(repo, 'build/new.txt')])
+    await expect(revertAgentChange(context, 'build/cache')).rejects.toThrow(NOT_RECORDED)
+    expect(read('build/cache/c.bin')).toBe('c\n')
+  })
+
+  it('記録の後に作られた ignore 済みのファイルは、規則を消した後も従来どおり戻せる(過剰に拒否しない)', async () => {
+    write('.gitignore', '.env\n')
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    const context = await record()
+    write('.env', 'agent\n')
+    write('.gitignore', '')
+    expect((await listAgentChanges(context.snapshot)).entries).toContainEqual({
+      path: '.env',
+      status: 'A',
+      isDirectory: false,
+      notRecorded: false
+    })
+    await revertAgentChange(context, '.env')
+    expect(trashed).toEqual([join(repo, '.env')])
+  })
+
+  it('通常の追加ファイルは従来どおり戻せる(ignore 済みが記録にあっても)', async () => {
+    write('.gitignore', '.env\n')
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    write('.env', 'SECRET=1\n')
+    const context = await record()
+    write('new.txt', 'n\n')
+    const entries = (await listAgentChanges(context.snapshot)).entries
+    expect(entries).toEqual([
+      { path: 'new.txt', status: 'A', isDirectory: false, notRecorded: false }
+    ])
+    await expect(revertAllAgentChanges(context, entries)).resolves.toEqual({ status: 'done' })
+    expect(trashed).toEqual([join(repo, 'new.txt')])
+    expect(read('.env')).toBe('SECRET=1\n')
   })
 })

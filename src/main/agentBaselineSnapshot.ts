@@ -20,11 +20,18 @@ export const AGENT_BASELINE_MAX_UNTRACKED_BYTES = 100 * 1024 * 1024
 /** これを超える大きさの未追跡のファイルは記録から除外する(バイト。diff の未追跡の上限と同じ値) */
 export const AGENT_BASELINE_EXCLUDE_FILE_BYTES = 5 * 1024 * 1024
 
-/** 記録の時点に大きすぎて除外した未追跡のファイル。一覧で変わったかを見るため、大きさと更新時刻を控える */
+/**
+ * 記録の時点に大きすぎて除外した未追跡のファイル。一覧で変わったかを見るため、大きさと更新時刻を控える。
+ * dev・ino は、エージェントが別の名前へ移した(同じファイルシステムの rename は inode を保つ)ときに、移した先の「追加」の行を
+ * 記録していないものとして扱うために控える(PR #47 レビュー A-1)。ino が Number の精度を超える環境では別のファイルと一致しうるが、
+ * その誤りは「戻せない」側に倒れる
+ */
 export interface ExcludedBaselineFile {
   path: string
   size: number
   mtimeMs: number
+  dev: number
+  ino: number
 }
 
 /** 1 つの記録。renderer には渡さない(場所を IPC に出さない。パターン 144) */
@@ -40,6 +47,12 @@ export interface BaselineSnapshot {
   excluded: ExcludedBaselineFile[]
   /** 記録の時点からあった、コミットの無い入れ子のリポジトリ(末尾 '/')。記録に入れていないため、一覧では notRecorded の行にする */
   skippedRepos: string[]
+  /**
+   * 記録の時点に ignore されていた未追跡のファイル・フォルダ(`ls-files --others --ignored --exclude-standard --directory`。
+   * フォルダは末尾 '/')。記録に入れていないため、記録の後に ignore の規則から外れて一覧に現れても notRecorded の行にする
+   * (PR #47 レビュー A-1。一覧・戻すの判定は「いまの」規則を使うため、控えないと記録の前からあった .env などが「追加」に見える)
+   */
+  ignoredAtBaseline: string[]
 }
 
 export type AgentChangesUnavailable = Extract<AgentChangesState, { kind: 'unavailable' }>
@@ -114,7 +127,13 @@ async function inspectUntracked(
     const stat = await lstat(join(folderPath, path)).catch(() => null)
     if (stat === null || !stat.isFile()) continue
     if (stat.size > AGENT_BASELINE_EXCLUDE_FILE_BYTES) {
-      excluded.push({ path, size: stat.size, mtimeMs: stat.mtimeMs })
+      excluded.push({
+        path,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        dev: stat.dev,
+        ino: stat.ino
+      })
     } else {
       bytes += stat.size
     }
@@ -209,6 +228,19 @@ export async function takeBaselineSnapshot(
       '--pathspec-file-nul'
     ])
     checkpoint()
+    // 記録の時点の ignore 済みの一覧(A-1)。--directory で ignore されたフォルダは 1 行にまとまり、git はその中へ降りないため、
+    // node_modules などが大きくても未追跡の検査(上の ls-files --others)と同程度の走査で済む。打ち切りは他の git と同じ
+    const ignoredAtBaseline = parseNulSeparatedPaths(
+      await baselineGit.raw([
+        'ls-files',
+        '-z',
+        '--others',
+        '--ignored',
+        '--exclude-standard',
+        '--directory'
+      ])
+    )
+    checkpoint()
     // コミットが無いときは -q で出力が空になる(失敗にならない)。打ち切りなどの失敗は握らず、呼び出し側で扱う
     const head = (await repoGit.raw(['rev-parse', '--verify', '-q', 'HEAD'])).trim() || null
     checkpoint()
@@ -221,7 +253,8 @@ export async function takeBaselineSnapshot(
         startedAt,
         head,
         excluded: inspection.excluded,
-        skippedRepos: inspection.skippedRepos
+        skippedRepos: inspection.skippedRepos,
+        ignoredAtBaseline
       }
     }
   } catch (error) {

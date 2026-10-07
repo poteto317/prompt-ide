@@ -24,12 +24,13 @@ describe('makeBaselineSnapshot', () => {
       startedAt: 0,
       head: null,
       excluded: [],
-      skippedRepos: []
+      skippedRepos: [],
+      ignoredAtBaseline: []
     })
   })
 
   it('渡したフィールドだけを上書きする', () => {
-    const excluded = [{ path: 'big.bin', size: 1, mtimeMs: 0 }]
+    const excluded = [{ path: 'big.bin', size: 1, mtimeMs: 0, dev: 1, ino: 2 }]
     expect(
       makeBaselineSnapshot({ folderPath: '/f', startedAt: 42, head: 'abc', excluded })
     ).toEqual({
@@ -39,7 +40,8 @@ describe('makeBaselineSnapshot', () => {
       startedAt: 42,
       head: 'abc',
       excluded,
-      skippedRepos: []
+      skippedRepos: [],
+      ignoredAtBaseline: []
     })
   })
 
@@ -62,6 +64,7 @@ describe('makeBaselineSnapshot', () => {
     const b = makeBaselineSnapshot()
     expect(a.excluded).not.toBe(b.excluded)
     expect(a.skippedRepos).not.toBe(b.skippedRepos)
+    expect(a.ignoredAtBaseline).not.toBe(b.ignoredAtBaseline)
   })
 })
 
