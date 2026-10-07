@@ -86,6 +86,7 @@ export function makeAgentChangesRevertState(
     isReverting: false,
     error: null,
     errorPath: null,
+    isErrorAnnouncedInDiff: false,
     hunkNotice: null,
     revertDisabledReason: null,
     revertAllDisabledReason: null,

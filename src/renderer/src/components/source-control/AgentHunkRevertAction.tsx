@@ -10,8 +10,8 @@ interface NoticesProps {
 
 /**
  * エージェントの変更の diff の上部に出す、このタブのパスの直前の失敗と、戻すボタンを押せない理由。
- * 失敗は見た目だけに出す(role="alert" にしない)。ハンクの失敗は AgentDiffAnnouncer が、ファイルの失敗はセクションの
- * alert が読み上げる。diff は戻した後に作り直されるため、ここに alert を置くと読み上げが不確か・二重になる
+ * 失敗は見た目だけに出す(role="alert" にしない)。ハンクの失敗は AgentDiffAnnouncer だけが読み上げ(セクションは見た目だけ)、
+ * ファイルの失敗はセクションの alert が読み上げる。diff は戻した後に作り直されるため、ここに alert を置くと読み上げが不確か・二重になる
  */
 export function AgentDiffNotices({ agentActions, reasonId }: NoticesProps): React.JSX.Element {
   return (

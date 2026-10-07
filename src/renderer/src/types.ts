@@ -160,7 +160,7 @@ export interface AgentDiffActions {
   canRevertHunk: boolean
   /** 押せない理由(押せるなら null。パターン 126) */
   disabledReason: string | null
-  /** このタブのパスについての直前の戻す操作の失敗(無ければ null)。読み上げは notice とセクションが行うため、見た目だけに出す */
+  /** このタブのパスについての直前の戻す操作の失敗(無ければ null)。読み上げは、ハンクの失敗は notice(diff 側)だけ、ファイルの失敗はセクションの alert が行うため、ここは見た目だけに出す */
   error: string | null
   /** ハンクを戻した結果(成功・失敗)の読み上げ。EditorPanel が常設の aria-live に入れる(タブが閉じても届くように) */
   notice: Announcement | null

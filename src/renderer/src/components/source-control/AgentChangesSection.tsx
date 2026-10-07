@@ -156,7 +156,11 @@ export default function AgentChangesSection({
                 </p>
               )}
               {revert.error !== null && (
-                <p className="agent-changes__error" role="alert">
+                // ハンクの失敗は diff タブ側の常設の aria-live が読み上げるため、ここは見た目だけ(二重に読ませない)
+                <p
+                  className="agent-changes__error"
+                  role={revert.isErrorAnnouncedInDiff ? undefined : 'alert'}
+                >
                   {revert.error}
                 </p>
               )}

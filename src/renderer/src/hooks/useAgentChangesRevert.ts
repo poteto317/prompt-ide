@@ -53,6 +53,9 @@ export interface AgentChangesRevertState {
   error: string | null
   /** error の対象のパス(ファイル・ハンクを戻したときの一覧のパス。「すべて戻す」は null)。diff タブは自分のパスの失敗だけを出す */
   errorPath: string | null
+  /** error がハンクを戻した失敗か。ハンクの失敗は diff タブ側の常設の aria-live(hunkNotice)で読み上げるため、
+   *  セクションは見た目だけに出す(role="alert" にすると、ソース管理パネルが見えているときに二重に読まれる) */
+  isErrorAnnouncedInDiff: boolean
   /** ハンクを戻した結果(成功・失敗)の読み上げ。diff タブ側の常設の aria-live に入れる(セクションが見えていなくても届く) */
   hunkNotice: Announcement | null
   /** ファイル・ハンクを戻すボタンを押せない理由(押せるなら null) */
@@ -80,7 +83,12 @@ export function useAgentChangesRevert({
   onConfirm = confirm
 }: AgentChangesRevertOptions): AgentChangesRevertState {
   const [isReverting, setIsReverting] = useState(false)
-  const [error, setError] = useState<{ message: string; path: string | null } | null>(null)
+  // source は失敗の発生源(どこで読み上げるかの出し分けに使う)
+  const [error, setError] = useState<{
+    message: string
+    path: string | null
+    source: 'hunk' | 'file' | 'all'
+  } | null>(null)
   const {
     notice: hunkNotice,
     announce: announceHunk,
@@ -119,10 +127,11 @@ export function useAgentChangesRevert({
 
   const absoluteOf = (path: string): string | null => agentChangeAbsolutePath(folderPath, path)
 
-  // 実行(ロックと後片付け)。成功したら true。失敗の文言は error に出す(path は diff タブの出し分けに使う)。
-  // 実行中にフォルダ・記録が変わっていたら、失敗は出さない(onFailure も呼ばない)
+  // 実行(ロックと後片付け)。成功したら true。失敗の文言は error に出す(path は diff タブの出し分けに、source は読み上げの
+  // 出し分けに使う)。実行中にフォルダ・記録が変わっていたら、失敗は出さない(onFailure も呼ばない)
   const run = async (
     path: string | null,
+    source: 'hunk' | 'file' | 'all',
     execute: () => Promise<void>,
     onFailure?: (message: string) => void
   ): Promise<boolean> => {
@@ -137,7 +146,7 @@ export function useAgentChangesRevert({
     } catch (err) {
       if (scope === scopeRef.current) {
         const message = toError(err).message
-        setError({ message, path })
+        setError({ message, path, source })
         onFailure?.(message)
       }
       return false
@@ -170,7 +179,9 @@ export function useAgentChangesRevert({
       agentRunning
     })
     if (!onConfirm(message)) return
-    const succeeded = await run(entry.path, () => agentChangesApi.revertAgentChange(entry.path))
+    const succeeded = await run(entry.path, 'file', () =>
+      agentChangesApi.revertAgentChange(entry.path)
+    )
     if (succeeded) {
       // 追加はゴミ箱へ移したのでタブを閉じ、それ以外は記録の時点の内容を読み直す
       if (entry.status === 'A') closeTabsAtOrInside(absolutePath)
@@ -192,10 +203,12 @@ export function useAgentChangesRevert({
     })
     if (!onConfirm(message)) return
     // 結果は diff タブ側の aria-live で読み上げる(成功すると diff が作り直されて押したボタンが消え、最後のハンクならタブも
-    // 閉じる。セクションの読み上げはソース管理パネルが見えていないと届かない)。失敗は error にも出す
+    // 閉じる。セクションの読み上げはソース管理パネルが見えていないと届かない)。失敗は error にも出すが、セクションでは
+    // 見た目だけにする(isErrorAnnouncedInDiff。PR #47 の 2 回目のレビューで二重の読み上げを修正)
     const scope = scopeRef.current
     const succeeded = await run(
       path,
+      'hunk',
       () => agentChangesApi.revertAgentChangeHunk(path, patch),
       announceHunk
     )
@@ -225,7 +238,7 @@ export function useAgentChangesRevert({
     const expected = list.entries.map(({ path, status }) => ({ path, status }))
     let warning: string | null = null
     const scope = scopeRef.current
-    const succeeded = await run(null, async () => {
+    const succeeded = await run(null, 'all', async () => {
       const result = await agentChangesApi.revertAllAgentChanges(expected)
       if (result.status === 'partial') warning = result.message
     })
@@ -233,7 +246,7 @@ export function useAgentChangesRevert({
       // partial も作業ツリーが変わっているので読み直す(パターン 52)。警告は読み直しの後に出す
       await reloadOpenFiles()
       if (warning !== null) {
-        if (scope === scopeRef.current) setError({ message: warning, path: null })
+        if (scope === scopeRef.current) setError({ message: warning, path: null, source: 'all' })
       } else changes.announce(formatAgentChangesRevertedNotice(expected.length))
     }
     await refreshAfter()
@@ -243,6 +256,7 @@ export function useAgentChangesRevert({
     isReverting,
     error: error?.message ?? null,
     errorPath: error?.path ?? null,
+    isErrorAnnouncedInDiff: error?.source === 'hunk',
     hunkNotice,
     revertDisabledReason,
     revertAllDisabledReason,

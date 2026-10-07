@@ -1,6 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
+import { useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import type { Root } from 'react-dom/client'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   mockAddCommand,
   mockFocus,
@@ -11,6 +14,7 @@ import type { OpenFile } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import EditorPanel from '../EditorPanel'
 import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
+import { useOnChange } from '../../hooks/useOnChange'
 
 // dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
 // EditorTabs.test.tsx と同じ方針で DndContext/SortableContext/useSortable をモックする
@@ -1091,5 +1095,317 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
       />
     )
     expect(screen.getByRole('tab', { selected: true })).not.toHaveFocus()
+  })
+})
+
+// ハンクを戻した後のフォーカスを、実機(createRoot)と同じ描画の順で確かめる(PR #47 の 2 回目のレビュー)。
+// act の中では更新がまとめて流されるため、実際の順(押した描画で実行中の disabled → 戻す操作の完了〈マイクロタスク〉 →
+// 一覧の取り直しの描画〈Scheduler のタスク〉 → 一覧が変わった描画の effect でタブを閉じる描画)を通らない。
+// act を使わずに createRoot で描画し、イベントはネイティブに送る。配線は useAgentChangesRevert・useAgentChangesWiring と同じ順に組む
+describe('EditorPanel — ハンクを戻した後のフォーカス(実機と同じ描画の順)', () => {
+  const agentDiff = 'diff --git a/a.txt b/a.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n'
+  const agentTab: DiffTabKey = { path: 'a.txt', kind: 'agent' }
+  const REVERTING = '戻す操作の実行中です'
+
+  interface Deferred {
+    promise: Promise<void>
+    resolve: () => void
+  }
+  const deferred = (): Deferred => {
+    let resolve = (): void => undefined
+    const promise = new Promise<void>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  interface HarnessOptions {
+    /** 戻した後の一覧に、戻したファイルが残るか(途中のハンクなら残る。最後のハンクなら消えてタブが閉じる) */
+    remainsInList: boolean
+    /** 確認の結果 */
+    confirmResult: boolean
+    /** 戻す操作(main への依頼)。resolve するまで実行中のまま */
+    revertApi: Deferred
+    withOtherFile: boolean
+  }
+
+  // 一覧の取り直し(更新ボタン)を外から呼ぶ
+  let refreshFromOutside: () => void = () => undefined
+
+  function Harness({
+    remainsInList,
+    confirmResult,
+    revertApi,
+    withOtherFile
+  }: HarnessOptions): React.JSX.Element {
+    const [isReverting, setIsReverting] = useState(false)
+    const [listVersion, setListVersion] = useState(0)
+    const [isInList, setIsInList] = useState(true)
+    const [diffTabs, setDiffTabs] = useState<DiffTabKey[]>([agentTab])
+    const [activeDiffTab, setActiveDiffTab] = useState<DiffTabKey | null>(agentTab)
+    const [diffContent, setDiffContent] = useState<string | null>(agentDiff)
+
+    // useAgentChanges.refresh: 取得(非同期)の後に setView。await の後なので、イベントの外の既定の優先度の描画になる
+    const refreshList = async (): Promise<void> => {
+      await Promise.resolve()
+      setIsInList(remainsInList)
+      setListVersion((v) => v + 1)
+    }
+    refreshFromOutside = () => void refreshList()
+    // useAgentChangesWiring: 一覧が変わった描画の effect で、一覧から消えたパスの diff タブを閉じる
+    useOnChange(listVersion, () => {
+      if (isInList) return
+      setDiffTabs([])
+      setActiveDiffTab(null)
+    })
+    // useDiffOperations.refreshDiff: 取り直しの間は diffContent が null
+    const refreshDiff = (): void => {
+      setDiffContent(null)
+      void Promise.resolve().then(() => setDiffContent(agentDiff))
+    }
+    // useAgentChangesRevert.revertHunk と同じ順(確認 → run〈同期で実行中に〉 → 完了で実行中を外す → 読み直し → 一覧の取り直し)
+    const revertHunk = async (): Promise<void> => {
+      if (!confirmResult) return
+      setIsReverting(true)
+      try {
+        await revertApi.promise
+      } finally {
+        setIsReverting(false)
+      }
+      await Promise.resolve() // reloadOpenFile
+      await Promise.resolve() // refreshTree
+      await Promise.resolve() // refreshGitStatus
+      await refreshList()
+      refreshDiff()
+    }
+    const files = withOtherFile ? withOpenFile(mockOpenFile) : withOpenFile(null)
+    return (
+      <>
+        <button type="button">外</button>
+        <EditorPanel
+          {...defaultProps}
+          {...files}
+          diffTabs={diffTabs}
+          activeDiffTab={activeDiffTab}
+          diffContent={diffContent}
+          agentDiffActions={{
+            canRevertHunk: true,
+            disabledReason: isReverting ? REVERTING : null,
+            error: null,
+            notice: null,
+            onRevertHunk: () => void revertHunk()
+          }}
+        />
+      </>
+    )
+  }
+
+  let container: HTMLDivElement
+  let root: Root
+  let previousActEnvironment: unknown
+  const globalWithAct = globalThis as { IS_REACT_ACT_ENVIRONMENT?: unknown }
+
+  beforeEach(() => {
+    previousActEnvironment = globalWithAct.IS_REACT_ACT_ENVIRONMENT
+    globalWithAct.IS_REACT_ACT_ENVIRONMENT = false
+    container = document.createElement('div')
+    document.body.appendChild(container)
+    root = createRoot(container)
+  })
+
+  afterEach(() => {
+    root.unmount()
+    container.remove()
+    globalWithAct.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
+  })
+
+  // Scheduler のタスク(マクロタスク)とマイクロタスクを流す
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 10; i += 1) await new Promise<void>((r) => setTimeout(r, 0))
+  }
+  const mount = async (options: Partial<HarnessOptions> = {}): Promise<Deferred> => {
+    const revertApi = options.revertApi ?? deferred()
+    root.render(
+      <Harness
+        remainsInList={false}
+        confirmResult={true}
+        withOtherFile={true}
+        {...options}
+        revertApi={revertApi}
+      />
+    )
+    await settle()
+    return revertApi
+  }
+  const revertButton = (): HTMLButtonElement =>
+    within(container).getByRole('button', { name: 'このハンクを実行前に戻す' })
+  const selectedTab = (): HTMLElement => within(container).getByRole('tab', { selected: true })
+  // マウスで押す(押下 → フォーカス → click の順)
+  const pressWithPointer = (element: HTMLElement): void => {
+    element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    element.focus()
+    element.click()
+  }
+  // キーボードで押す(フォーカスのあるボタンで Enter の keydown → click の順)
+  const pressWithEnter = (element: HTMLElement): void => {
+    element.focus()
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    element.click()
+  }
+
+  it('最後のハンクを戻すと、実行中に押したボタンが押せなくなり、一覧の取り直しの後にタブが閉じても、次にアクティブになったタブへ戻す', async () => {
+    const revertApi = await mount()
+    pressWithPointer(revertButton())
+    await settle()
+    // 実行中は押したボタンが disabled になる。フォーカスはアクティブなタブ(diff タブ)へ移る
+    expect(revertButton()).toBeDisabled()
+    expect(selectedTab()).toHaveTextContent('a.txt')
+    expect(selectedTab()).toHaveFocus()
+    revertApi.resolve()
+    await settle()
+    expect(within(container).queryByRole('tab', { name: /a\.txt/ })).toBeNull()
+    expect(selectedTab()).toHaveTextContent('index.ts')
+    expect(selectedTab()).toHaveFocus()
+  })
+
+  it('キーボード(Enter)で押した場合も、次にアクティブになったタブへ戻す', async () => {
+    const revertApi = await mount()
+    pressWithEnter(revertButton())
+    await settle()
+    expect(selectedTab()).toHaveFocus()
+    revertApi.resolve()
+    await settle()
+    expect(selectedTab()).toHaveTextContent('index.ts')
+    expect(selectedTab()).toHaveFocus()
+  })
+
+  it('途中のハンクを戻した後も、作り直された diff のタブにフォーカスが残る', async () => {
+    const revertApi = await mount({ remainsInList: true, withOtherFile: false })
+    pressWithPointer(revertButton())
+    await settle()
+    revertApi.resolve()
+    await settle()
+    // diff は作り直されて、押せるボタンが戻っている
+    expect(revertButton()).toBeEnabled()
+    expect(selectedTab()).toHaveTextContent('a.txt')
+    expect(selectedTab()).toHaveFocus()
+  })
+
+  it('戻す確認をキャンセルした後、本文をクリックしてフォーカスが外れても、タブへ飛ばない', async () => {
+    await mount({ confirmResult: false, remainsInList: true, withOtherFile: false })
+    const button = revertButton()
+    pressWithPointer(button)
+    await settle()
+    expect(button).toHaveFocus()
+    // diff の本文の文字(フォーカスできない要素)をクリックすると、フォーカスは body に落ちる
+    const text = container.querySelector<HTMLElement>('.editor-body')
+    expect(text).not.toBeNull()
+    text?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    button.blur()
+    expect(document.activeElement).toBe(document.body)
+    // その後の無関係な描画(一覧の取り直し)
+    refreshFromOutside()
+    await settle()
+    expect(selectedTab()).not.toHaveFocus()
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  // 予約の間だけ document に付けるリスナー(pointerdown・keydown の capture)が、予約を捨てたとき・アンマウントで外れるか
+  const documentListeners = (): {
+    added: () => string[]
+    removed: () => string[]
+    restore: () => void
+  } => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    const pick = (calls: unknown[][]): string[] =>
+      calls
+        .filter(
+          ([type, , options]) => (type === 'pointerdown' || type === 'keydown') && options === true
+        )
+        .map(([type]) => String(type))
+    return {
+      added: () => pick(add.mock.calls),
+      removed: () => pick(remove.mock.calls),
+      restore: () => {
+        add.mockRestore()
+        remove.mockRestore()
+      }
+    }
+  }
+
+  it('予約の間だけ document にリスナーを付け、利用者の次の操作・アンマウントで外す', async () => {
+    const listeners = documentListeners()
+    try {
+      await mount({ confirmResult: false, remainsInList: true, withOtherFile: false })
+      pressWithPointer(revertButton())
+      expect(listeners.added()).toEqual(['pointerdown', 'keydown'])
+      expect(listeners.removed()).toEqual([])
+      // 利用者の次の操作で外す
+      within(container)
+        .getByRole('button', { name: '外' })
+        .dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      expect(listeners.removed()).toEqual(['pointerdown', 'keydown'])
+      // 予約し直してからアンマウントしても外す
+      pressWithPointer(revertButton())
+      expect(listeners.added()).toHaveLength(4)
+      root.unmount()
+      expect(listeners.removed()).toHaveLength(4)
+      root = createRoot(container)
+    } finally {
+      listeners.restore()
+    }
+  })
+
+  it('アクティブなタブが無くなったら予約を捨て、リスナーを外す', async () => {
+    const listeners = documentListeners()
+    try {
+      const user = userEvent.setup()
+      const other: DiffTabKey = { path: 'b.txt', kind: 'agent' }
+      const actions = {
+        canRevertHunk: true,
+        disabledReason: null,
+        error: null,
+        notice: null,
+        onRevertHunk: vi.fn()
+      }
+      root.unmount()
+      root = createRoot(container)
+      const renderPanel = (tabs: DiffTabKey[], active: DiffTabKey | null): void =>
+        root.render(
+          <EditorPanel
+            {...defaultProps}
+            diffTabs={tabs}
+            activeDiffTab={active}
+            diffContent={agentDiff}
+            agentDiffActions={actions}
+          />
+        )
+      renderPanel([agentTab, other], agentTab)
+      await settle()
+      await user.click(revertButton())
+      expect(listeners.removed()).toEqual([])
+      // 非アクティブな diff タブだけが残る(アクティブなタブが無い)
+      renderPanel([other], null)
+      await settle()
+      expect(listeners.removed()).toEqual(['pointerdown', 'keydown'])
+      // 後で b.txt がアクティブになっても、フォーカスを奪わない
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      renderPanel([other], other)
+      await settle()
+      expect(selectedTab()).not.toHaveFocus()
+    } finally {
+      listeners.restore()
+    }
+  })
+
+  it('実行中に利用者がエディタの外へ移したフォーカスは、タブが閉じても奪わない', async () => {
+    const revertApi = await mount()
+    pressWithPointer(revertButton())
+    await settle()
+    pressWithPointer(within(container).getByRole('button', { name: '外' }))
+    revertApi.resolve()
+    await settle()
+    expect(within(container).getByRole('button', { name: '外' })).toHaveFocus()
   })
 })

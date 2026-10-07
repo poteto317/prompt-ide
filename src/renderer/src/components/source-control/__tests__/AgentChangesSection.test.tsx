@@ -191,6 +191,30 @@ describe('AgentChangesSection', () => {
     }
   })
 
+  // PR #47 の 2 回目のレビュー: ハンクの失敗は diff タブ側の aria-live が読み上げるため、ここで alert にすると二重に読まれる
+  it('ハンクの失敗(isErrorAnnouncedInDiff)は文言だけを出し、alert にしない', () => {
+    renderSection(recordingView([makeAgentChangeEntry('a.txt')]), {
+      revert: makeAgentChangesRevertState({
+        error: '合いません',
+        errorPath: 'a.txt',
+        isErrorAnnouncedInDiff: true
+      })
+    })
+    expect(screen.getByText('合いません')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('ファイル・すべて戻すの失敗は alert で出す', () => {
+    renderSection(recordingView([makeAgentChangeEntry('a.txt')]), {
+      revert: makeAgentChangesRevertState({
+        error: '戻せません',
+        errorPath: 'a.txt',
+        isErrorAnnouncedInDiff: false
+      })
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('戻せません')
+  })
+
   it('打ち切ったら「ほか N 件」を出し、すべて戻すだけを理由つきで押せなくする', () => {
     renderSection(
       recordingView([makeAgentChangeEntry('a.txt')], { truncated: true, totalCount: 501 }),

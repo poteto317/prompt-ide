@@ -521,6 +521,58 @@ describe('useAgentChangesRevert — 失敗の文言を消す契機', () => {
   })
 })
 
+// 失敗の読み上げの出し分け(PR #47 の 2 回目のレビュー)。ハンクの失敗は diff タブ側の aria-live(hunkNotice)が読み上げるため、
+// セクションの alert にしない(二重に読まれる)。ファイル・すべて(partial を含む)の失敗はセクションの alert が読み上げる
+describe('useAgentChangesRevert — 失敗をどこで読み上げるか', () => {
+  it('ハンクの失敗は isErrorAnnouncedInDiff が true', async () => {
+    vi.mocked(agentChangesApi.revertAgentChangeHunk).mockRejectedValue(new Error('合いません'))
+    const { result } = renderHook(() => useAgentChangesRevert(makeOptions()))
+    expect(result.current.isErrorAnnouncedInDiff).toBe(false)
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    expect(result.current.error).toBe('合いません')
+    expect(result.current.isErrorAnnouncedInDiff).toBe(true)
+  })
+
+  it('ハンクの失敗の後のファイルの失敗は false に戻る', async () => {
+    vi.mocked(agentChangesApi.revertAgentChangeHunk).mockRejectedValue(new Error('合いません'))
+    vi.mocked(agentChangesApi.revertAgentChange).mockRejectedValue(new Error('戻せません'))
+    const { result } = renderHook(() => useAgentChangesRevert(makeOptions()))
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    })
+    await act(async () => {
+      await result.current.revertFile(makeAgentChangeEntry('a.txt'))
+    })
+    expect(result.current.error).toBe('戻せません')
+    expect(result.current.isErrorAnnouncedInDiff).toBe(false)
+  })
+
+  it('すべて戻すの失敗・partial の警告は false', async () => {
+    const entries = [makeAgentChangeEntry('a.txt')]
+    vi.mocked(agentChangesApi.revertAllAgentChanges).mockRejectedValue(new Error('中止しました'))
+    const { result } = renderHook(() =>
+      useAgentChangesRevert(makeOptions({}, makeAgentChangesList(entries)))
+    )
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    expect(result.current.error).toBe('中止しました')
+    expect(result.current.isErrorAnnouncedInDiff).toBe(false)
+
+    vi.mocked(agentChangesApi.revertAllAgentChanges).mockResolvedValue({
+      status: 'partial',
+      message: '途中で失敗しました'
+    })
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    expect(result.current.error).toBe('途中で失敗しました')
+    expect(result.current.isErrorAnnouncedInDiff).toBe(false)
+  })
+})
+
 // ハンクを戻した結果の読み上げ(PR #47 B-2)。diff タブ側の常設の aria-live に入れる
 describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
   it('成功したら hunkNotice に結果を出す(セクションの読み上げには出さない)', async () => {
