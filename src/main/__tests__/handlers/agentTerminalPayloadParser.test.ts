@@ -1,12 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
-  AGENT_FOLDER_PATH_MAX_LENGTH,
-  isMainFrameSender,
   parseAgentResize,
   parseAgentSessionId,
   parseAgentStartRequest,
   parseAgentWrite
 } from '../../handlers/agentTerminalPayloadParser'
+import { IPC_PATH_MAX_LENGTH } from '../../handlers/payloadValidators'
 
 describe('parseAgentStartRequest', () => {
   it('folderPath・cols・rows を返す', () => {
@@ -30,7 +29,7 @@ describe('parseAgentStartRequest', () => {
     expect(() => parseAgentStartRequest(payload)).toThrow()
   })
   it('folderPath の長さが上限を超えたら投げる(realpath に巨大な文字列を渡さない)', () => {
-    const path = '/' + 'a'.repeat(AGENT_FOLDER_PATH_MAX_LENGTH - 1)
+    const path = '/' + 'a'.repeat(IPC_PATH_MAX_LENGTH - 1)
     expect(() => parseAgentStartRequest({ folderPath: path, cols: 80, rows: 24 })).not.toThrow()
     expect(() => parseAgentStartRequest({ folderPath: path + 'a', cols: 80, rows: 24 })).toThrow()
   })
@@ -85,13 +84,5 @@ describe('parseAgentSessionId', () => {
     expect(() => parseAgentSessionId('')).toThrow()
     expect(() => parseAgentSessionId(undefined)).toThrow()
     expect(() => parseAgentSessionId(1)).toThrow()
-  })
-})
-
-describe('isMainFrameSender', () => {
-  it('親の無いフレームだけを通す', () => {
-    expect(isMainFrameSender({ senderFrame: { parent: null } })).toBe(true)
-    expect(isMainFrameSender({ senderFrame: { parent: {} } })).toBe(false)
-    expect(isMainFrameSender({ senderFrame: null })).toBe(false)
   })
 })

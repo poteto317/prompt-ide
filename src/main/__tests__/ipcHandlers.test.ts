@@ -26,6 +26,16 @@ const mockSendExternalChange = vi.hoisted(() => vi.fn())
 // 親ディレクトリの監視(fs.watch)。実物のディレクトリを監視しない
 const mockWatch = vi.hoisted(() => vi.fn(() => ({ close: vi.fn(), on: vi.fn() })))
 
+const mockSetupAgentBaselineLifecycle = vi.hoisted(() => vi.fn())
+const mockRegisterAgentChangesHandlers = vi.hoisted(() => vi.fn())
+const mockMoveToTrash = vi.hoisted(() => vi.fn())
+vi.mock('../agentBaselineLifecycle', () => ({
+  setupAgentBaselineLifecycle: mockSetupAgentBaselineLifecycle
+}))
+vi.mock('../handlers/agentChangesHandlers', () => ({
+  registerAgentChangesHandlers: mockRegisterAgentChangesHandlers
+}))
+vi.mock('../trash', () => ({ moveToTrash: mockMoveToTrash }))
 vi.mock('electron', () => ({
   app: {},
   shell: { openExternal: vi.fn() }
@@ -90,6 +100,7 @@ vi.mock('../handlers/claudeHandlers', () => ({
 import { registerIpcHandlers } from '../ipcHandlers'
 import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
+import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
 
 const mockIpcMain = { handle: mockHandle } as never
@@ -174,6 +185,19 @@ describe('registerIpcHandlers', () => {
     expect(deps).toEqual({ registry, startSession: mockStartAgentSession })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
+  })
+
+  it('エージェントの変更の記録の寿命と IPC に、ファイル操作と同じ FolderAccessManager・同じ記録の registry・ゴミ箱を渡す', () => {
+    registerIpcHandlers(mockIpcMain)
+    const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1]
+    const [, registry, lifecycleFolderAccess] = mockSetupAgentBaselineLifecycle.mock.calls[0]
+    expect(registry).toBeInstanceOf(AgentBaselineRegistry)
+    expect(lifecycleFolderAccess).toBe(folderAccess)
+    const [ipcMain, deps] = mockRegisterAgentChangesHandlers.mock.calls[0]
+    expect(ipcMain).toBe(mockIpcMain)
+    expect(deps.registry).toBe(registry)
+    expect(deps.folderAccess).toBe(folderAccess)
+    expect(deps.trash).toBe(mockMoveToTrash)
   })
 
   it('エージェントの起動の規則(starter)を、同じ FolderAccessManager・同じ registry・実物の起動の部品で組み立てる', () => {

@@ -94,6 +94,14 @@ export function stubGitCeiling(dir: string): void {
   vi.stubEnv('GIT_CEILING_DIRECTORIES', realpathSync(dir))
 }
 
+// 記録のインデックスで問い合わせる git(agentBaselineGit.ts)は、simple-git の env() の制限のため GIT_CONFIG_GLOBAL を子へ
+// 渡せない(外す)。その git が開発者の ~/.gitconfig・~/.config/git/* を読まないよう、HOME と XDG_CONFIG_HOME を dir に
+// する。stubIsolatedGitEnv と同じく afterEach の vi.unstubAllEnvs() で復元する
+export function stubGitHome(dir: string): void {
+  vi.stubEnv('HOME', dir)
+  vi.stubEnv('XDG_CONFIG_HOME', dir)
+}
+
 // ファイルシステムが大文字小文字を区別しないかを実測する(macOS・Windows の既定は区別しない)。
 // 区別する FS では 'a' と 'A' が別物になり、大文字小文字だけ違う配置を作るテストが成り立たない
 export function isCaseInsensitiveFs(): boolean {

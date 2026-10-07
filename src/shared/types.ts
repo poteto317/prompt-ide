@@ -6,6 +6,7 @@ export type * from './types/cli'
 export type * from './types/history'
 export type * from './types/settings'
 export type * from './types/agentTerminal'
+export type * from './types/agentChanges'
 export { PROMPT_EXPORT_KIND } from './types/prompt'
 export { EXECUTION_TOOLS, CLI_ONLY_TOOL_IDS } from './types/cli'
 export {
@@ -27,4 +28,11 @@ export {
   isAgentStartCanceled,
   isAgentExitReason
 } from './types/agentTerminal'
+export {
+  AGENT_CHANGES_LIST_LIMIT,
+  AGENT_CHANGES_UNAVAILABLE_REASONS,
+  AGENT_CHANGE_STATUSES,
+  isAgentChangeStatus,
+  toAgentChangeRelativePath
+} from './types/agentChanges'
 export { CONFLICT_CHOICES, TAG_KINDS } from './types/git'

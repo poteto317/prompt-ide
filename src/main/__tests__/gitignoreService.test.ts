@@ -159,7 +159,7 @@ describe('addToGitignore', () => {
     // fsErrors.ts の isMissingPathError は「対象が無い」ことを表す fs エラーを
     // ENOENT だけでなく ENOTDIR(祖先パスのコンポーネントがディレクトリでは
     // なくファイルに置き換わっていた場合)も含めると定義しており、
-    // fileAccessGuard.ts や gitHandlers.ts の resolveCanonicalPath は既に
+    // fileAccessGuard.ts や handlers/gitPathResolver.ts の resolveCanonicalPath は既に
     // この基準に揃えている。ここだけ isEnoentError(ENOENT のみ)のままだと、
     // 同じレース条件で未変換の ENOTDIR がそのままユーザーへ伝播してしまう
     mockReadFileBuffer.mockRejectedValue(Object.assign(new Error('ENOTDIR'), { code: 'ENOTDIR' }))

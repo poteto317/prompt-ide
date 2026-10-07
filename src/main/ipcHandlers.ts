@@ -28,6 +28,15 @@ import {
   sendExternalChange
 } from './handlers/externalChangeHandlers'
 import { registerShellHandlers } from './handlers/shellHandlers'
+import { AgentBaselineRegistry } from './agentBaselineRegistry'
+import { setupAgentBaselineLifecycle } from './agentBaselineLifecycle'
+import {
+  removeBaselineDir,
+  removeBaselineDirSync,
+  takeBaselineSnapshot
+} from './agentBaselineSnapshot'
+import { registerAgentChangesHandlers } from './handlers/agentChangesHandlers'
+import { moveToTrash } from './trash'
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   const folderAccess = new FolderAccessManager()
@@ -73,4 +82,16 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   setupOpenFileWatcherLifecycle(app, openFileWatcher, folderAccess)
   registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher)
   registerShellHandlers(ipcMain, (url) => shell.openExternal(url))
+  // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる
+  const agentBaselineRegistry = new AgentBaselineRegistry({
+    takeSnapshot: (folderPath, options) => takeBaselineSnapshot(folderPath, options),
+    removeDir: removeBaselineDir,
+    removeDirSync: removeBaselineDirSync
+  })
+  setupAgentBaselineLifecycle(app, agentBaselineRegistry, folderAccess)
+  registerAgentChangesHandlers(ipcMain, {
+    registry: agentBaselineRegistry,
+    folderAccess,
+    trash: moveToTrash
+  })
 }

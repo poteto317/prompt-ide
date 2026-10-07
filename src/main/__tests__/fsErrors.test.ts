@@ -59,7 +59,7 @@ describe('isMissingPathError', () => {
     // 祖先パスのコンポーネントがディレクトリではなくファイルに置き換わっていた
     // 場合(例: git checkout でディレクトリだった箇所が同名ファイルになった)、
     // realpath は ENOENT ではなく ENOTDIR を投げる。fileAccessGuard.ts と
-    // gitHandlers.ts の削除済みパス向けフォールバックがこのケースを見逃すと、
+    // handlers/gitPathResolver.ts の削除済みパス向けフォールバックがこのケースを見逃すと、
     // 未変換の ENOTDIR がそのままレンダラーへ伝播してしまう
     expect(isMissingPathError(makeErrnoError('ENOTDIR'))).toBe(true)
   })

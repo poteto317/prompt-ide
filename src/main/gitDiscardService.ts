@@ -2,12 +2,9 @@ import { join } from 'path'
 import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { DiscardAllEntry, DiscardAllResult } from '@shared/types'
-import { discardHunkPatch, listPatchPaths } from './gitApply'
-import {
-  assertHunkPatchTargets,
-  stripModeChangeLines,
-  PATCH_MISMATCH_MESSAGE
-} from './gitHunkPatch'
+import { applyInOrder, assertSameEntries, listPathsForMessage } from './discardBatch'
+import { discardHunkPatch } from './gitApply'
+import { verifyHunkPatch } from './gitHunkPatchVerifier'
 import { parseUnstagedStatusEntries, toLiteralPathspec } from './gitPathParsing'
 import {
   assertDiscardable,
@@ -69,8 +66,7 @@ export async function discardFileChanges(
 // 「変更」セクションのハンク単位の取り消し。作業ツリーだけへパッチを逆適用する(index は変わらない)。
 // - 分類はファイル単位と同じ classifyDiscardTarget を使う。ハンクで扱えるのは追跡済みだけ
 //   (未追跡・intent-to-add はファイルごとゴミ箱へ移す対象で、ハンクの粒度では取り消せない)
-// - IPC の境界で届いた任意のパッチが、対象以外のファイルを書き換えないよう、git apply に
-//   パッチの対象を列挙させて filePath 1 件だけであることを確かめる
+// - パッチの検査は verifyHunkPatch(gitHunkPatchVerifier)
 export async function discardHunk(
   folderPath: string,
   filePath: string,
@@ -82,17 +78,7 @@ export async function discardHunk(
   if (kind === 'untracked' || kind === 'intent-to-add') {
     throw new Error(`ゴミ箱へ移す対象のため、ハンクでは取り消せません: ${filePath}`)
   }
-  // 許可リストで構造を検証し(rename / copy / 新規作成 / a と b の不一致などを拒否)、さらに
-  // git apply の解釈でも順方向・逆方向の両方で対象が filePath 1 件だけであることを確かめる
-  assertHunkPatchTargets(patch, filePath)
-  // chmod を伴う変更の old mode / new mode は取り除いて適用する(内容だけが戻り、モードは残る)
-  const contentPatch = stripModeChangeLines(patch)
-  for (const reverse of [false, true]) {
-    const targets = await listPatchPaths(folderPath, contentPatch, { reverse }).catch(() => null)
-    if (targets === null || targets.length !== 1 || targets[0] !== filePath) {
-      throw new Error(PATCH_MISMATCH_MESSAGE)
-    }
-  }
+  const contentPatch = await verifyHunkPatch(folderPath, filePath, patch)
   try {
     await discardHunkPatch(folderPath, filePath, contentPatch)
   } catch (error) {
@@ -103,18 +89,7 @@ export async function discardHunk(
   }
 }
 
-const MAX_LISTED_PATHS = 5
-
-// 確認時の一覧との照合キー。パスは NUL を含められない(-z の区切り)ため、NUL で区切れば衝突しない
-const toMatchKey = (status: string, path: string): string => `${status}\0${path}`
-
-function listPathsForMessage(paths: string[]): string {
-  const shown = paths.slice(0, MAX_LISTED_PATHS).join('、')
-  const rest = paths.length - MAX_LISTED_PATHS
-  return rest > 0 ? `${shown}、ほか ${rest} 件` : shown
-}
-
-// 「変更」セクションの一括の取り消し。
+// 「変更」セクションの一括の取り消し(照合と順の実行の共通の手順は discardBatch)。
 // - renderer が持つ一覧は信用せず、実行時の status から対象を作り直す。確認ダイアログで見せた一覧
 //   (パス + 2 文字のステータス)と完全一致しなければ、見せていない取り消しを実行してしまうため中止する
 //   (状態は確認と実行の間に変わりうる)。件数だけを比べていたときは、中身が入れ替わっても通り、確認して
@@ -134,15 +109,12 @@ export async function discardAllChanges(
     await git.raw(['status', '--porcelain', '-z', '--untracked-files=all'])
   )
   // renderer の path は simple-git の表記(行の末尾の空白だけを削る。先頭は残る)なので、生のパスも trimEnd して比べる
-  // (ネストした git リポジトリは 'sub/'、末尾空白は trim 済み)。ソート済みの配列で比べ、重複も区別する
-  const actualKeys = entries.map((e) => toMatchKey(e.status, e.rawPath.trimEnd())).sort()
-  const expectedKeys = expected.map((e) => toMatchKey(e.status, e.path)).sort()
-  if (
-    actualKeys.length !== expectedKeys.length ||
-    actualKeys.some((key, i) => key !== expectedKeys[i])
-  ) {
-    throw new Error('変更の状態が変わったため取り消しを中止しました。もう一度操作してください')
-  }
+  // (ネストした git リポジトリは 'sub/'、末尾空白は trim 済み)
+  assertSameEntries(
+    entries.map((e) => ({ status: e.status, path: e.rawPath.trimEnd() })),
+    expected,
+    '変更の状態が変わったため取り消しを中止しました。もう一度操作してください'
+  )
   const paths = entries.map((e) => e.path)
   const targets: { path: string; kind: ApplicableDiscardKind }[] = []
   const blocked: string[] = []
@@ -156,17 +128,10 @@ export async function discardAllChanges(
       `取り消せないファイルがあるため、何も取り消しませんでした（${listPathsForMessage(blocked)}）`
     )
   }
-  let done = 0
-  for (const { path, kind } of targets) {
-    try {
-      await applyDiscard(git, folderPath, kind, path, trash)
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
-      const message = `一括の取り消しが途中で失敗しました（${done} / ${targets.length} 件を取り消し済み）: ${reason}`
-      if (done > 0) return { status: 'partial', message }
-      throw new Error(message, { cause: error })
-    }
-    done++
-  }
-  return { status: 'done' }
+  return applyInOrder(
+    targets,
+    ({ path, kind }) => applyDiscard(git, folderPath, kind, path, trash),
+    (done, total, reason) =>
+      `一括の取り消しが途中で失敗しました（${done} / ${total} 件を取り消し済み）: ${reason}`
+  )
 }

@@ -1,5 +1,8 @@
 import { ipcRenderer } from 'electron'
 import type {
+  AgentChangesListResult,
+  AgentChangesState,
+  AgentRevertAllEntry,
   AgentSessionData,
   AgentSessionExit,
   AgentSessionSnapshot,
@@ -227,5 +230,19 @@ export const api = {
     }
   },
   openExternalLink: (url: string): Promise<boolean> =>
-    ipcRenderer.invoke('shell:openExternalLink', url)
+    ipcRenderer.invoke('shell:openExternalLink', url),
+  // エージェントの変更(記録・一覧・diff・戻す)。記録の場所・フォルダ・git の引数は main が決める
+  beginAgentChanges: (): Promise<AgentChangesState> => ipcRenderer.invoke('agentChanges:begin'),
+  getAgentChangesState: (): Promise<AgentChangesState> =>
+    ipcRenderer.invoke('agentChanges:getState'),
+  listAgentChanges: (): Promise<AgentChangesListResult> => ipcRenderer.invoke('agentChanges:list'),
+  getAgentChangeDiff: (path: string): Promise<string> =>
+    ipcRenderer.invoke('agentChanges:getDiff', path),
+  revertAgentChange: (path: string): Promise<void> =>
+    ipcRenderer.invoke('agentChanges:revertFile', path),
+  revertAgentChangeHunk: (path: string, patch: string): Promise<void> =>
+    ipcRenderer.invoke('agentChanges:revertHunk', path, patch),
+  revertAllAgentChanges: (expected: AgentRevertAllEntry[]): Promise<DiscardAllResult> =>
+    ipcRenderer.invoke('agentChanges:revertAll', expected),
+  clearAgentChanges: (): Promise<void> => ipcRenderer.invoke('agentChanges:clear')
 }

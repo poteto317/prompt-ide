@@ -18,6 +18,7 @@ import {
   buildEmptyFileDiffMessage
 } from './gitDiffFormatter'
 import { toLiteralPathspec } from './gitPathParsing'
+import { PATCH_FORMAT_ARGS } from './gitDiffArgs'
 import { parseGitLogOutput } from './gitLogFormatter'
 import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName } from '@shared/branchName'
@@ -38,7 +39,7 @@ import { simpleGitWithRemoteTimeout, toRemoteOperationError } from './gitRemoteT
 // この上限を超える未追跡ファイルは、全文読み込んで疑似diff化する処理そのものを
 // スキップする。Electron のメインプロセスは全ウィンドウで共有されているため、
 // 巨大ファイルでのメモリ/CPU スパイクはこのプロセス全体をブロックしてしまう
-const MAX_UNTRACKED_DIFF_FILE_SIZE_BYTES = 5 * 1024 * 1024
+export const MAX_UNTRACKED_DIFF_FILE_SIZE_BYTES = 5 * 1024 * 1024
 
 export async function getGitStatus(folderPath: string): Promise<GitStatusResult> {
   const git = simpleGit(folderPath)
@@ -210,27 +211,7 @@ export async function getDiff(
       throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
     }
   }
-  // ユーザーの gitconfig がそのまま効くため、パッチの形式を左右する設定を
-  // 明示的にすべて打ち消す。いずれも実機で再現確認済み:
-  // - diff.noprefix=true: 出力に a/ b/ が付かず、gitApply の `git apply`
-  //   (既定は -p1 = 先頭1階層を剥がす)が "git diff header lacks filename
-  //   information" で全ハンクのステージ/アンステージに失敗する
-  // - diff.external: パッチとして適用できない出力になる(--no-ext-diff)
-  // - textconv(.gitattributes の diff=<driver> + diff.<driver>.textconv):
-  //   変換後のテキストで diff が作られるため、変換結果が同一だと「差分は
-  //   ありません」と表示され、異なる場合は実体と食い違うパッチが作られる。
-  //   --no-ext-diff では無効化されないので --no-textconv が別途必要
-  // - color.ui / color.diff = always: パイプ出力でも ANSI エスケープが混入し、
-  //   DiffView にエスケープ列が文字として表示され、パッチも壊れる
-  // 未追跡ファイルの疑似diff(buildUntrackedDiff)は常に a/ b/ を付けるので、
-  // 揃えるべきはこちら側
-  const patchFormatArgs = [
-    '--no-ext-diff',
-    '--no-textconv',
-    '--no-color',
-    '--src-prefix=a/',
-    '--dst-prefix=b/'
-  ]
+  // パッチの形式を左右する利用者の設定を打ち消す引数は gitDiffArgs.ts(エージェントの変更の diff と共有)
   const literalPathspec = toLiteralPathspec(filePath)
   // ステージ済みリネームは、新パスだけを pathspec に渡すと旧パス側が対象から
   // 外れるため git がリネーム検出を行わず、「新規ファイル + 全行追加」として
@@ -253,8 +234,8 @@ export async function getDiff(
   // (実機で再現確認済み)。--find-renames で設定に依存させない
   const renameArgs = isStagedRename ? ['--find-renames'] : []
   const args = staged
-    ? [...patchFormatArgs, '--cached', ...renameArgs, '-U3', '--', ...pathspecs]
-    : [...patchFormatArgs, '-U3', '--', ...pathspecs]
+    ? [...PATCH_FORMAT_ARGS, '--cached', ...renameArgs, '-U3', '--', ...pathspecs]
+    : [...PATCH_FORMAT_ARGS, '-U3', '--', ...pathspecs]
   return git.diff(args)
 }
 

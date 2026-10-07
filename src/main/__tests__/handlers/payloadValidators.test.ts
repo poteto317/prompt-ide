@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { assertPlainObject, assertRequestId } from '../../handlers/payloadValidators'
+import {
+  assertPlainObject,
+  assertRequestId,
+  IPC_PATH_MAX_LENGTH
+} from '../../handlers/payloadValidators'
 
 describe('assertPlainObject', () => {
   it.each([
@@ -29,12 +33,16 @@ describe('assertRequestId', () => {
     ['空文字列', ''],
     ['空白のみ', '   ']
   ])('%s のとき「requestId は空でない文字列である必要があります」を投げる', (_label, value) => {
-    expect(() => assertRequestId(value)).toThrow(
-      'requestId は空でない文字列である必要があります'
-    )
+    expect(() => assertRequestId(value)).toThrow('requestId は空でない文字列である必要があります')
   })
 
   it('空でない文字列のとき何も投げない', () => {
     expect(() => assertRequestId('req-uuid-1')).not.toThrow()
+  })
+})
+
+describe('IPC_PATH_MAX_LENGTH', () => {
+  it('Windows の長いパスの上限(32,767)に合わせる', () => {
+    expect(IPC_PATH_MAX_LENGTH).toBe(32_767)
   })
 })

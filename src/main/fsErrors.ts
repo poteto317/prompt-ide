@@ -17,7 +17,7 @@ export function isEnoentError(err: unknown): err is NodeJS.ErrnoException {
 // (例: git checkout でディレクトリだった箇所が同名ファイルになった)、
 // realpath は ENOENT ではなく ENOTDIR を投げる。削除済みパス向けの
 // フォールバック判定(fileAccessGuard.ts の assertFileWithinFolder、
-// gitHandlers.ts の resolveCanonicalPath)がこのケースを isEnoentError だけで
+// handlers/gitPathResolver.ts の resolveCanonicalPath)がこのケースを isEnoentError だけで
 // 判定すると、未変換の ENOTDIR がそのままユーザーへ伝播してしまう
 export function isMissingPathError(err: unknown): err is NodeJS.ErrnoException {
   return isFsError(err, 'ENOENT') || isFsError(err, 'ENOTDIR')

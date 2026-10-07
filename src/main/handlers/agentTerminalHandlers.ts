@@ -3,8 +3,8 @@ import type { AgentSessionSnapshot, AgentStartResult } from '@shared/types'
 import type { AgentSessionRegistry } from '../agentSessionRegistry'
 import type { AgentSessionStarter } from '../agentSessionStarter'
 import { isDestroyedSafely, sendSafely } from '../safeWebContentsSend'
+import { isMainFrameSender } from './ipcSenderGuard'
 import {
-  isMainFrameSender,
   parseAgentResize,
   parseAgentSessionId,
   parseAgentStartRequest,

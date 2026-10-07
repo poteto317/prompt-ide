@@ -21,24 +21,30 @@ import {
   isCaseInsensitiveFs,
   readRepoFile,
   runGit,
+  stubGitHome,
   stubIsolatedGitEnv,
   writeRepoFile
 } from './helpers/realGitRepo'
 
 // 3 つの describe で共有する一時リポジトリ(テストごとに作って片付ける)
 let repo: string
+// 開発者の ~/.gitconfig・~/.config/git/* を読ませないための HOME(stubGitHome)
+let home: string
 const write = (path: string, content: string): void => writeRepoFile(repo, path, content)
 const read = (path: string): string => readRepoFile(repo, path)
 
 beforeEach(() => {
   stubIsolatedGitEnv()
   repo = mkdtempSync(join(tmpdir(), 'discard-integration-'))
+  home = mkdtempSync(join(tmpdir(), 'discard-integration-home-'))
+  stubGitHome(home)
   initRepo(repo)
 })
 
 afterEach(() => {
   vi.unstubAllEnvs()
   rmSync(repo, { recursive: true, force: true })
+  rmSync(home, { recursive: true, force: true })
 })
 
 // gitDiscardService.test.ts は simple-git をモックするため、「実際の git がこの pathspec で何を出力し、

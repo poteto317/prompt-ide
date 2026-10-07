@@ -306,6 +306,54 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
   ]
 ]
 
+describe('エージェントの変更の API', () => {
+  it.each<[string, () => unknown, unknown[]]>([
+    [
+      'beginAgentChanges は agentChanges:begin を呼ぶ',
+      () => api.beginAgentChanges(),
+      ['agentChanges:begin']
+    ],
+    [
+      'getAgentChangesState は agentChanges:getState を呼ぶ',
+      () => api.getAgentChangesState(),
+      ['agentChanges:getState']
+    ],
+    [
+      'listAgentChanges は agentChanges:list を呼ぶ',
+      () => api.listAgentChanges(),
+      ['agentChanges:list']
+    ],
+    [
+      'getAgentChangeDiff は agentChanges:getDiff にパスを渡す',
+      () => api.getAgentChangeDiff('a.txt'),
+      ['agentChanges:getDiff', 'a.txt']
+    ],
+    [
+      'revertAgentChange は agentChanges:revertFile にパスを渡す',
+      () => api.revertAgentChange('a.txt'),
+      ['agentChanges:revertFile', 'a.txt']
+    ],
+    [
+      'revertAgentChangeHunk は agentChanges:revertHunk にパスとパッチを渡す',
+      () => api.revertAgentChangeHunk('a.txt', 'patch'),
+      ['agentChanges:revertHunk', 'a.txt', 'patch']
+    ],
+    [
+      'revertAllAgentChanges は agentChanges:revertAll に確認の一覧を渡す',
+      () => api.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }]),
+      ['agentChanges:revertAll', [{ path: 'a.txt', status: 'M' }]]
+    ],
+    [
+      'clearAgentChanges は agentChanges:clear を呼ぶ',
+      () => api.clearAgentChanges(),
+      ['agentChanges:clear']
+    ]
+  ])('%s', (_name, call, expectedArgs) => {
+    call()
+    expect(mockInvoke).toHaveBeenCalledWith(...expectedArgs)
+  })
+})
+
 describe('api', () => {
   it.each(invokeCases)('%s', (_name, call, expectedArgs) => {
     call()

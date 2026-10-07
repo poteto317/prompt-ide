@@ -19,7 +19,7 @@ import { getAllowedFolder, assertFileAccess, assertFileWithinFolder } from './fi
 import { assertValidEntryName } from './entryNameValidator'
 import { convertFsError, convertFsAccessError } from '../fsErrorConverter'
 import { isMissingPathError } from '../fsErrors'
-import { resolveAndAssertRelativePath } from './gitHandlers'
+import { resolveAndAssertRelativePath } from './gitPathResolver'
 
 // .gitignore がシンボリックリンクかどうか。存在しない場合は false(新規作成の経路)。
 // isSymbolicLink(lstat)は対象が無ければ ENOENT を投げるため、ここで吸収する。
