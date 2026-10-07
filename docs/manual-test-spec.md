@@ -795,6 +795,11 @@
 - [ ] **AGC-035** 記録が無い状態（`確認を終える` の後）で、`nested/` が残っていれば端末で `rm -rf nested` を実行して消し、端末で `printf '.env\nnode_modules/\n' > .gitignore && git add .gitignore && git commit -qm ignore && echo secret > .env && mkdir node_modules && echo x > node_modules/a.js` を実行してから `いまから記録する` を押し、端末で `: > .gitignore`（記録の後にエージェントが ignore の行を消した状態）を実行して `更新` を押し、端末で `git diff .gitignore` を控える → 一覧に `A .env` と `A node_modules/` が出て、どちらも `↶` の代わりに `記録していないため戻せません` が出る（`.gitignore` の `M` の行は `↶` が押せる）。`.env` を押した diff タブには `記録の時点では内容を保存していないため、差分を表示できません` が出る。`すべて戻す` は押せず、一覧の上に `記録していないファイルがあるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください` が出る。端末で `cat .env && ls node_modules` を実行すると `secret` と `a.js` が残っている。なお `.git/info/exclude` に書いた行を消した場合も同じになる
 - [ ] **AGC-036** 記録が無い状態で、端末で `head -c 5300000 /dev/zero > big.bin && git add big.bin && git commit -qm big` を実行してから `いまから記録する` を押し（5MiB 超のファイルは中身を記録しない）、端末で `mv big.bin moved.bin`（同じファイルシステムの中の移動）を実行して `更新` を押す → 一覧の `D big.bin` と `A moved.bin` のどちらにも `↶` の代わりに `記録していないため戻せません` が出て、`すべて戻す` は押せない。端末で `ls -l moved.bin` を実行するとファイルが残っている
 
+### ハンクを戻した後のフォーカスの予約と、失敗の読み上げの回数
+
+- [ ] **AGC-037** AGC-001 の状態で `a.txt` をエディタでも開き（未編集）、一覧の `a.txt` を押して diff タブをアクティブにする。diff タブの `このハンクを実行前に戻す` を押し、確認で キャンセル する。続けて diff の本文の文字（行番号でない部分）をクリックし、アプリの中を操作せずに（クリック・キー入力をしない）、アプリの外の端末（macOS のターミナル.app など）で `echo z >> a.txt` を実行する（開いている `a.txt` のタブが読み直され、エディタの領域が描画し直される。アプリの中の `更新` を押すと、その押下でフォーカスの予約が下りるため確かめられない）→ フォーカスは diff タブのタブへ飛ばない（タブにフォーカスの枠が出ない）
+- [ ] **AGC-038** AGC-031 の状態で、ソース管理パネルを開いたまま（エージェントの変更のセクションを開いた状態）VoiceOver を有効にし、`c.txt` の diff タブでハンクの `このハンクを実行前に戻す` を押して OK し、失敗させる → 失敗の文言が 1 回だけ読み上げられる（セクションにも diff タブにも文言は見た目で出る）。続けて一覧の `c.txt` の `↶` を押して OK し、失敗させると、失敗の文言が読み上げられる
+
 ## ソース管理（基本）
 
 > 前提: 以降の GIT 項目はすべて「ソース管理」パネル（アクティビティバーの `ソース管理` アイコン）で確認する。テスト用リポジトリはターミナルで次のように作り、アプリの「フォルダを開く」で開く。`export R=$(mktemp -d); cd "$R" && git init -b main && git config user.name tester && git config user.email tester@example.com && printf 'one\ntwo\nthree\n' > a.txt && printf 'hello\n' > b.txt && mkdir src && printf 'x\n' > src/c.ts && git add . && git commit -m "init" && printf 'second\n' >> b.txt && git commit -am "second commit"`。リモートが要る項目用に `export BARE=$(mktemp -d); git init --bare "$BARE"; cd "$R" && git remote add origin "$BARE" && git push -u origin main` を実行しておく。外部での変更はターミナルで行い、パネルの `更新` ボタンで反映する。
