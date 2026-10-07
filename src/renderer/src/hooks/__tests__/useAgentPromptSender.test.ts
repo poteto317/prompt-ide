@@ -1,7 +1,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
-import { useAgentPromptSender } from '../useAgentPromptSender'
+import { AGENT_BEFORE_SEND_TIMEOUT_MS, useAgentPromptSender } from '../useAgentPromptSender'
 import type { AgentSendClock } from '../../lib/agentPromptSend'
 import { AGENT_SENT_AFTER_CLEAR_NOTICE, AGENT_SENT_NOTICE } from '../../lib/agentSendMessages'
 import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
@@ -154,5 +154,99 @@ describe('useAgentPromptSender', () => {
       await first
     })
     expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~a\x1b[201~', '\r'])
+  })
+
+  describe('送信の前の準備(エージェントの変更の記録)', () => {
+    // 上限の待ち(10 秒)だけは release まで解かず、送信の手順の待ちはすぐ解く時計
+    const timeoutClock = (): AgentSendClock & { releaseTimeout: () => void; slept: number[] } => {
+      let releaseTimeout: () => void = () => undefined
+      const slept: number[] = []
+      return {
+        now: () => 0,
+        sleep: (ms: number) => {
+          slept.push(ms)
+          return ms === AGENT_BEFORE_SEND_TIMEOUT_MS
+            ? new Promise<void>((resolve) => (releaseTimeout = resolve))
+            : Promise.resolve()
+        },
+        releaseTimeout: () => releaseTimeout(),
+        slept
+      }
+    }
+
+    it('準備を待ってから、消去・貼り付け・Enter を送る', async () => {
+      const controller = controllerWithEmptyInput()
+      const testClock = timeoutClock()
+      let finishPreparation: () => void = () => undefined
+      const beforeSend = vi.fn(() => new Promise<void>((resolve) => (finishPreparation = resolve)))
+      const { result } = renderHook(() =>
+        useAgentPromptSender({ controller, onSettled: vi.fn(), beforeSend, clock: testClock })
+      )
+      let sending: Promise<unknown> = Promise.resolve()
+      act(() => {
+        sending = result.current.send('hello')
+      })
+      await act(async () => undefined)
+      expect(beforeSend).toHaveBeenCalledOnce()
+      expect(controller.writes).toEqual([])
+      expect(controller.beginSending).not.toHaveBeenCalled()
+      await act(async () => {
+        finishPreparation()
+        await sending
+      })
+      expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+    })
+
+    it('準備が失敗しても送る', async () => {
+      const controller = controllerWithEmptyInput()
+      const beforeSend = vi.fn(async () => {
+        throw new Error('begin failed')
+      })
+      const { result } = renderHook(() =>
+        useAgentPromptSender({ controller, onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
+      )
+      await act(async () => {
+        await result.current.send('hello')
+      })
+      expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+      expect(result.current.error).toBeNull()
+    })
+
+    it('準備が同期で例外を投げても送り、送信中のまま固まらない', async () => {
+      const controller = controllerWithEmptyInput()
+      const beforeSend = vi.fn((): Promise<void> => {
+        throw new Error('sync failure')
+      })
+      const { result } = renderHook(() =>
+        useAgentPromptSender({ controller, onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
+      )
+      await act(async () => {
+        await result.current.send('a')
+      })
+      expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~a\x1b[201~', '\r'])
+      expect(result.current.isSending).toBe(false)
+      // 送信中のまま固まらない(固まると sendingRef も true のままで、次の送信は無視される)
+    })
+
+    it('準備が上限(10 秒)を超えたら待たずに送る', async () => {
+      const controller = controllerWithEmptyInput()
+      const testClock = timeoutClock()
+      const beforeSend = vi.fn(() => new Promise<void>(() => undefined))
+      const { result } = renderHook(() =>
+        useAgentPromptSender({ controller, onSettled: vi.fn(), beforeSend, clock: testClock })
+      )
+      let sending: Promise<unknown> = Promise.resolve()
+      act(() => {
+        sending = result.current.send('hello')
+      })
+      await act(async () => undefined)
+      expect(controller.writes).toEqual([])
+      await act(async () => {
+        testClock.releaseTimeout()
+        await sending
+      })
+      expect(testClock.slept[0]).toBe(AGENT_BEFORE_SEND_TIMEOUT_MS)
+      expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+    })
   })
 })

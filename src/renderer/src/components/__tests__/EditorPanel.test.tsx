@@ -626,12 +626,79 @@ describe('EditorPanel — 複数タブ', () => {
 })
 
 describe('EditorPanel — diff タブ', () => {
+  // agentDiffActions は省略可能な props のため、渡し忘れ・種類の取り違えを型で検知できない(パターン 155)
+  it.each([
+    ['agent', 1],
+    ['unstaged', 0]
+  ] as const)('%s の diff タブでは「このハンクを実行前に戻す」を %i 個出す', (kind, count) => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'src/index.ts', kind }]}
+        activeDiffTab={{ path: 'src/index.ts', kind }}
+        diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
+        agentDiffActions={{
+          canRevertHunk: true,
+          disabledReason: null,
+          error: null,
+          onRevertHunk: vi.fn()
+        }}
+      />
+    )
+    expect(screen.queryAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(
+      count
+    )
+  })
+
+  // エージェントの変更の diff は patch から戻すため、打ち切ったハンクには戻すボタンを出さない。
+  // git status で未追跡でも agent のタブでは useDiffOperations が isActiveFileUntracked を false にする
+  // (useDiffOperations.test.ts で固定)。EditorPanel はその値をそのまま DiffView へ渡す
+  it('agent の diff タブは、打ち切ったハンクに戻すボタンを出さず、全て表示されているハンクには出す', () => {
+    const hunk = (n: number, count: number): string =>
+      `@@ -${n},0 +${n},${count} @@\n` +
+      Array.from({ length: count }, (_, i) => `+h${n}line${i}`).join('\n') +
+      '\n'
+    render(
+      <EditorPanel
+        {...defaultProps}
+        isActiveFileUntracked={false}
+        diffTabs={[{ path: 'big.txt', kind: 'agent' }]}
+        activeDiffTab={{ path: 'big.txt', kind: 'agent' }}
+        diffContent={'diff --git a/big.txt b/big.txt\n' + hunk(1, 10) + hunk(100, 2500)}
+        agentDiffActions={{
+          canRevertHunk: true,
+          disabledReason: null,
+          error: null,
+          onRevertHunk: vi.fn()
+        }}
+      />
+    )
+    expect(screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(1)
+  })
+
+  it('isActiveFileUntracked をそのまま DiffView の isUntracked へ渡す(未追跡の diff は打ち切ってもステージのボタンを出す)', () => {
+    const hunk = (n: number, count: number): string =>
+      `@@ -${n},0 +${n},${count} @@\n` +
+      Array.from({ length: count }, (_, i) => `+h${n}line${i}`).join('\n') +
+      '\n'
+    render(
+      <EditorPanel
+        {...defaultProps}
+        isActiveFileUntracked
+        diffTabs={[{ path: 'big.txt', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'big.txt', kind: 'unstaged' }}
+        diffContent={'diff --git a/big.txt b/big.txt\n' + hunk(1, 2500)}
+      />
+    )
+    expect(screen.getAllByRole('button', { name: 'このハンクをステージ' })).toHaveLength(1)
+  })
+
   it('activeDiffTab がある場合、DiffView を表示しMonaco Editorは表示しない', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
       />
     )
@@ -643,8 +710,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'c.txt', staged: false }]}
-        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffTabs={[{ path: 'c.txt', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'c.txt', kind: 'unstaged' }}
         diffContent={'diff --cc c.txt\n@@@ -1,1 -1,1 +1,1 @@@\n- a\n'}
         isActiveFileConflicted
         conflictFile={makeConflictFileState({
@@ -676,8 +743,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'c.txt', staged: false }]}
-        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffTabs={[{ path: 'c.txt', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'c.txt', kind: 'unstaged' }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
         isActiveFileConflicted={false}
       />
@@ -690,8 +757,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'c.txt', staged: false }]}
-        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffTabs={[{ path: 'c.txt', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'c.txt', kind: 'unstaged' }}
         diffContent={null}
         isActiveFileConflicted
         conflictFile={makeConflictFileState({ isLoading: true })}
@@ -705,8 +772,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'c.txt', staged: false }]}
-        activeDiffTab={{ path: 'c.txt', staged: false }}
+        diffTabs={[{ path: 'c.txt', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'c.txt', kind: 'unstaged' }}
         isActiveFileConflicted
         isConflictBlocked
         conflictFile={makeConflictFileState({
@@ -730,8 +797,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
       />
     )
@@ -746,14 +813,14 @@ describe('EditorPanel — diff タブ', () => {
         {...defaultProps}
         openFiles={[otherFile]}
         activeFilePath={otherFile.path}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
         activeDiffTab={null}
         onActivateDiffTab={onActivateDiffTab}
         diffContent={null}
       />
     )
     await userEvent.click(screen.getByText('src/index.ts (未ステージ差分)'))
-    expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
+    expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', kind: 'unstaged' })
   })
 
   it('実ファイルタブが無くても、非アクティブな diff タブが残っていれば WelcomeView ではなくタブバーを表示する', () => {
@@ -764,7 +831,7 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
         activeDiffTab={null}
       />
     )
@@ -779,7 +846,7 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
         activeDiffTab={null}
       />
     )
@@ -795,8 +862,8 @@ describe('EditorPanel — diff タブ', () => {
       <EditorPanel
         {...defaultProps}
         {...withOpenFile(mockOpenFile)}
-        diffTabs={[{ path: 'src/other.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/other.ts', staged: false }}
+        diffTabs={[{ path: 'src/other.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/other.ts', kind: 'unstaged' }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
         onDeactivateDiffTab={onDeactivateDiffTab}
         onActivateTab={onActivateTab}
@@ -814,7 +881,7 @@ describe('EditorPanel — diff タブ', () => {
       <EditorPanel
         {...defaultProps}
         {...withOpenFile(mockOpenFile)}
-        diffTabs={[{ path: 'src/other.ts', staged: false }]}
+        diffTabs={[{ path: 'src/other.ts', kind: 'unstaged' }]}
         activeDiffTab={null}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
         onDeactivateDiffTab={onDeactivateDiffTab}
@@ -828,8 +895,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={null}
         diffError={new Error('diff の取得に失敗しました')}
       />
@@ -844,8 +911,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={null}
         diffError={null}
       />
@@ -857,8 +924,8 @@ describe('EditorPanel — diff タブ', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
         isHunkOperationInProgress={true}
       />
@@ -875,8 +942,8 @@ describe('EditorPanel — ハンクの取り消しの配線', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={diff}
         canDiscardHunk
         onDiscardHunk={onDiscardHunk}
@@ -891,8 +958,8 @@ describe('EditorPanel — ハンクの取り消しの配線', () => {
     render(
       <EditorPanel
         {...defaultProps}
-        diffTabs={[{ path: 'src/index.ts', staged: false }]}
-        activeDiffTab={{ path: 'src/index.ts', staged: false }}
+        diffTabs={[{ path: 'src/index.ts', kind: 'unstaged' }]}
+        activeDiffTab={{ path: 'src/index.ts', kind: 'unstaged' }}
         diffContent={diff}
       />
     )

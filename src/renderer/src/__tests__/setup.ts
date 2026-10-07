@@ -58,6 +58,15 @@ Object.defineProperty(window, 'api', {
     writeFileChecked: () => Promise.resolve({ kind: 'written' }),
     setWatchedFiles: () => Promise.resolve(),
     onExternalFileChange: () => () => {},
-    openExternalLink: () => Promise.resolve(true)
+    openExternalLink: () => Promise.resolve(true),
+    // エージェントの変更。既定は記録なし(個別のテストで差し替える)
+    beginAgentChanges: () => Promise.resolve({ kind: 'none' }),
+    getAgentChangesState: () => Promise.resolve({ kind: 'none' }),
+    listAgentChanges: () => Promise.resolve({ kind: 'none' }),
+    getAgentChangeDiff: () => Promise.resolve(''),
+    revertAgentChange: () => Promise.resolve(),
+    revertAgentChangeHunk: () => Promise.resolve(),
+    revertAllAgentChanges: () => Promise.resolve({ status: 'done' }),
+    clearAgentChanges: () => Promise.resolve()
   }
 })

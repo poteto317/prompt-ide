@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import AgentTerminalPanel from '../AgentTerminalPanel'
+import type { AgentChangesReviewAction } from '../../../types'
 import type { AgentTerminalPanelState } from '../../../hooks/useAgentWorkspace'
 import { makeFakeController } from '../../../__tests__/makeFakeAgentTerminal'
 import type { FakeController } from '../../../__tests__/makeFakeAgentTerminal'
@@ -21,14 +22,17 @@ function makeLayout(overrides: Partial<AgentTerminalPanelLayout> = {}): AgentTer
   }
 }
 
-function renderPanel(overrides: Partial<AgentTerminalPanelState> = {}): AgentTerminalPanelState {
+function renderPanel(
+  overrides: Partial<AgentTerminalPanelState> = {},
+  review?: AgentChangesReviewAction
+): AgentTerminalPanelState {
   const state: AgentTerminalPanelState = {
     controller,
     session: makeAgentSessionState(),
     layout: makeLayout(),
     ...overrides
   }
-  render(<AgentTerminalPanel state={state} />)
+  render(<AgentTerminalPanel state={state} review={review} />)
   return state
 }
 
@@ -135,5 +139,40 @@ describe('AgentTerminalPanel', () => {
     const handler = controller.setFocusOutHandler.mock.calls.at(-1)?.[0]
     handler?.()
     expect(screen.getByRole('button', { name: /エージェント/ })).toHaveFocus()
+  })
+})
+
+describe('AgentTerminalPanel — 変更を確認', () => {
+  const REVIEW = 'エージェントの変更を確認（ソース管理を開く）'
+
+  it.each([
+    ['渡されない', undefined],
+    ['記録が無い', { isRecording: false, onReview: vi.fn() }]
+  ])('%s ときは出さない', (_label, review) => {
+    renderPanel({}, review)
+    expect(screen.queryByRole('button', { name: REVIEW })).toBeNull()
+  })
+
+  it('記録がある間だけ最大化の前に出し、押すと確認へ移る', async () => {
+    const onReview = vi.fn()
+    renderPanel({}, { isRecording: true, onReview })
+    const button = screen.getByRole('button', { name: REVIEW })
+    expect(button).toHaveTextContent('変更を確認')
+    expect(button.compareDocumentPosition(screen.getByRole('button', { name: '最大化' }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    await userEvent.click(button)
+    expect(onReview).toHaveBeenCalledOnce()
+  })
+
+  it('最大化の間に押したら、最大化を元に戻してから移る', async () => {
+    const order: string[] = []
+    const layout = makeLayout({
+      isMaximized: true,
+      toggleMaximized: vi.fn(() => void order.push('restore'))
+    })
+    renderPanel({ layout }, { isRecording: true, onReview: () => void order.push('review') })
+    await userEvent.click(screen.getByRole('button', { name: REVIEW }))
+    expect(order).toEqual(['restore', 'review'])
   })
 })

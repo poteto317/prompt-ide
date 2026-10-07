@@ -2,8 +2,10 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../lib/gitApi')
+vi.mock('../../lib/agentChangesApi')
 
 import * as gitApi from '../../lib/gitApi'
+import * as agentChangesApi from '../../lib/agentChangesApi'
 import { useDiffOperations } from '../useDiffOperations'
 import type { FileOperationLock } from '../useFileOperationLock'
 import type { DiffTabKey } from '../useDiffTabs'
@@ -38,7 +40,7 @@ describe('diff の取得', () => {
     // 都度オブジェクトリテラルを作ると、無関係な再レンダーのたびに新しい参照になり、
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
     expect(mockGetDiff).toHaveBeenCalledWith('src/index.ts', false, false, undefined)
@@ -51,7 +53,7 @@ describe('diff の取得', () => {
     // 再実行を省略するため、renderer 側の gitStatusFiles から正しく渡せている必要がある
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'new.txt', staged: false }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: '?', workingDir: '?' }
@@ -64,7 +66,7 @@ describe('diff の取得', () => {
   it('未追跡ファイルの diff を開いたとき、isActiveFileUntracked: true を返す(DiffView が打ち切り時のボタン抑止を無効化する判定に使う)', async () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'new.txt', staged: false }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: '?', workingDir: '?' }
@@ -77,7 +79,7 @@ describe('diff の取得', () => {
   it('追跡済みファイルの diff を開いたとき、isActiveFileUntracked: false を返す', async () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'src/index.ts', index: ' ', workingDir: 'M' }
@@ -95,7 +97,7 @@ describe('diff の取得', () => {
     // isSamePath を使えばこの表記違いを吸収できる
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'C:\\project\\new.txt', staged: false }
+    const activeTab: DiffTabKey = { path: 'C:\\project\\new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'c:/project/new.txt', index: '?', workingDir: '?' }
@@ -111,7 +113,7 @@ describe('diff の取得', () => {
     // ステージに残ってファイルが消える(実機で再現確認済み)
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'new.txt', staged: true }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'staged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: 'R', workingDir: ' ', from: 'old.txt' }
@@ -130,7 +132,7 @@ describe('diff の取得', () => {
     // アンステージ操作が誤った旧パスに対して行われてしまう
     mockGetDiff.mockResolvedValueOnce('DIFF_A').mockResolvedValueOnce('DIFF_B')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'new.txt', staged: true }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'staged' }
     const { result, rerender } = renderHook(
       ({
         files
@@ -155,7 +157,7 @@ describe('diff の取得', () => {
   it('リネームでないファイルには旧パスを渡さない', async () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'a.ts', staged: true }
+    const activeTab: DiffTabKey = { path: 'a.ts', kind: 'staged' }
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [
         { path: 'a.ts', index: 'M', workingDir: ' ' }
@@ -177,7 +179,7 @@ describe('diff の取得', () => {
     // patch が新しい activeDiffTab.path 宛てに送られ、誤ったファイルを操作してしまう
     mockGetDiff.mockResolvedValueOnce('DIFF_A')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       {
@@ -188,7 +190,7 @@ describe('diff の取得', () => {
 
     // b.ts の取得は未解決のまま止める
     mockGetDiff.mockImplementation(() => new Promise<string>(() => {}))
-    const tabB = { path: 'b.ts', staged: false }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     rerender({ tab: tabB })
 
     expect(result.current.diffContent).toBeNull()
@@ -197,10 +199,10 @@ describe('diff の取得', () => {
   it('activeDiffTab が切り替わった時点で、getDiff の解決を待たず即座に diffStaged が新タブの staged に一致する', async () => {
     // diffStaged は getDiff 成功後にのみ setDiffStaged していたため、取得中
     // (fetch が未解決の間)は前のタブの staged 値が残り続けてしまう。
-    // activeDiffTab.staged から直接導出すれば、この同期漏れの余地自体が無くなる
+    // activeDiffTab.kind から直接導出すれば、この同期漏れの余地自体が無くなる
     mockGetDiff.mockResolvedValueOnce('DIFF_A')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       {
@@ -210,9 +212,9 @@ describe('diff の取得', () => {
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_A'))
     expect(result.current.diffStaged).toBe(false)
 
-    // b.ts(staged: true)の取得は未解決のまま止める
+    // b.ts(kind: 'staged')の取得は未解決のまま止める
     mockGetDiff.mockImplementation(() => new Promise<string>(() => {}))
-    const tabB = { path: 'b.ts', staged: true }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'staged' }
     rerender({ tab: tabB })
 
     expect(result.current.diffStaged).toBe(true)
@@ -226,7 +228,7 @@ describe('diff の取得', () => {
     // git apply が失敗する
     mockGetDiff.mockResolvedValueOnce('DIFF_UNSTAGED')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'a.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ files }: { files: Array<{ path: string; index: string; workingDir: string }> }) =>
         useDiffOperations(activeTab, refreshGitStatus, files),
@@ -249,7 +251,7 @@ describe('diff の取得', () => {
     // 送ってしまい、ユーザーが一度も意図していない内容が index に入る
     mockGetDiff.mockResolvedValue('OLD_DIFF')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('OLD_DIFF'))
 
@@ -267,7 +269,7 @@ describe('diff の取得', () => {
     // 都度オブジェクトリテラルを作ると、無関係な再レンダーのたびに新しい参照になり、
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffError?.message).toBe('diff failed'))
   })
@@ -282,7 +284,7 @@ describe('stageHunk', () => {
     // 都度オブジェクトリテラルを作ると、無関係な再レンダーのたびに新しい参照になり、
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -306,7 +308,7 @@ describe('stageHunk', () => {
     const refreshGitStatus = vi.fn(
       () => new Promise<void>((resolve) => (resolveRefreshGitStatus = resolve))
     )
-    const activeTab = { path: 'new.txt', staged: false }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const gitStatusFiles = [{ path: 'new.txt', index: '?', workingDir: '?' }]
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, gitStatusFiles)
@@ -342,7 +344,7 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValueOnce('DIFF_BEFORE')
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_BEFORE'))
 
@@ -377,7 +379,7 @@ describe('stageHunk', () => {
     // 書き換えてしまう
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({ isLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
@@ -402,7 +404,7 @@ describe('stageHunk', () => {
     // .git/index へ書き込みに行ってしまう
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'a.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({
       isLocked: vi.fn().mockReturnValue(false),
       isAnyLocked: vi.fn().mockReturnValue(true)
@@ -436,7 +438,7 @@ describe('stageHunk', () => {
     // 都度オブジェクトリテラルを作ると、無関係な再レンダーのたびに新しい参照になり、
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -463,8 +465,8 @@ describe('stageHunk', () => {
     // 発火し、無関係な B の diff 表示に A の古いエラーメッセージが乗ってしまう
     mockGetDiff.mockResolvedValueOnce('DIFF_A')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -512,7 +514,7 @@ describe('stageHunk', () => {
     // ステージされる範囲は変わらない
     mockGetDiff.mockResolvedValue('UNTRACKED_PSEUDO_DIFF')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'new.txt', staged: false }
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const untrackedStatus = [{ path: 'new.txt', index: '?', workingDir: '?' }]
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, untrackedStatus)
@@ -530,7 +532,7 @@ describe('stageHunk', () => {
   it('追跡済みファイルのステージは従来どおり stageHunk(git apply --cached)を使う', async () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'tracked.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'tracked.ts', kind: 'unstaged' }
     const trackedStatus = [{ path: 'tracked.ts', index: ' ', workingDir: 'M' }]
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, trackedStatus)
@@ -553,7 +555,7 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockRejectedValue(new Error('git status failed'))
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -575,7 +577,7 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockStageHunk.mockRejectedValue(new Error('patch does not apply'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -592,8 +594,8 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockStageHunk.mockRejectedValue(new Error('patch does not apply'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -616,7 +618,7 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValueOnce('DIFF_TEXT')
     mockStageHunk.mockRejectedValue(new Error('apply failed'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -643,7 +645,7 @@ describe('stageHunk', () => {
     // 都度オブジェクトリテラルを作ると、無関係な再レンダーのたびに新しい参照になり、
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -681,8 +683,8 @@ describe('stageHunk', () => {
       })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -712,8 +714,8 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_A')
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -744,7 +746,7 @@ describe('stageHunk', () => {
     mockGetDiff.mockResolvedValueOnce('DIFF_BEFORE')
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }: { tab: DiffTabKey | null }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA as DiffTabKey | null } }
@@ -771,7 +773,7 @@ describe('stageHunk', () => {
 
     // 同じ path/staged だが別オブジェクトのタブを開き直す
     mockGetDiff.mockResolvedValueOnce('DIFF_REOPENED')
-    const tabAReopened = { path: 'a.ts', staged: false }
+    const tabAReopened: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     rerender({ tab: tabAReopened })
 
     // 新しい取得(3回目の getDiff)がまだ未解決の間、isHunkOperationInProgress は
@@ -787,7 +789,7 @@ describe('stageHunk', () => {
     // しまい、クリックすると lock.isLocked のガードで黙って無視される
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({ isLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() =>
       useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
@@ -806,7 +808,7 @@ describe('stageHunk', () => {
     // まさにこのファイル冒頭のコメントが警告している状態になる
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'a.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({
       isLocked: vi.fn().mockReturnValue(false),
       isAnyLocked: vi.fn().mockReturnValue(true)
@@ -835,8 +837,8 @@ describe('stageHunk', () => {
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const unstagedTab = { path: 'src/index.ts', staged: false }
-    const stagedTab = { path: 'src/index.ts', staged: true }
+    const unstagedTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
+    const stagedTab: DiffTabKey = { path: 'src/index.ts', kind: 'staged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: unstagedTab } }
@@ -871,8 +873,8 @@ describe('stageHunk', () => {
     const refreshGitStatus = vi.fn(
       () => new Promise<void>((resolve) => (resolveRefreshGitStatus = resolve))
     )
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -929,8 +931,8 @@ describe('stageHunk', () => {
     let resolveStageHunk: () => void = () => {}
     mockStageHunk.mockReturnValueOnce(new Promise<void>((resolve) => (resolveStageHunk = resolve)))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const tabA = { path: 'a.ts', staged: false }
-    const tabB = { path: 'b.ts', staged: false }
+    const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
+    const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
@@ -965,7 +967,7 @@ describe('unstageHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockUnstageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const activeTab = { path: 'src/index.ts', staged: true }
+    const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'staged' }
     const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -979,7 +981,7 @@ describe('unstageHunk', () => {
 })
 
 describe('discardHunk', () => {
-  const activeTab = { path: 'src/index.ts', staged: false }
+  const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
   const modified = [{ path: 'src/index.ts', index: ' ', workingDir: 'M' }]
 
   it('gitApi.discardHunk を path と patch で呼び、成功で true を返して diff を取り直す', async () => {
@@ -1088,7 +1090,7 @@ describe('discardHunk', () => {
 })
 
 describe('canDiscardHunk', () => {
-  const unstagedTab = { path: 'a.ts', staged: false }
+  const unstagedTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
   const compute = (
     tab: DiffTabKey | null,
     files: { path: string; index: string; workingDir: string }[]
@@ -1105,7 +1107,7 @@ describe('canDiscardHunk', () => {
 
   it('ステージ済み diff は false', () => {
     expect(
-      compute({ path: 'a.ts', staged: true }, [{ path: 'a.ts', index: 'M', workingDir: 'M' }])
+      compute({ path: 'a.ts', kind: 'staged' }, [{ path: 'a.ts', index: 'M', workingDir: 'M' }])
     ).toBe(false)
   })
 
@@ -1127,5 +1129,32 @@ describe('canDiscardHunk', () => {
 
   it('activeDiffTab が null なら false', () => {
     expect(compute(null, [{ path: 'a.ts', index: ' ', workingDir: 'M' }])).toBe(false)
+  })
+})
+
+describe('useDiffOperations — エージェントの変更の diff タブ', () => {
+  it('agent のタブはエージェントの変更の diff を取り、git の diff は呼ばない。ハンクの取り消しは出さない', async () => {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('agent diff')
+    const activeTab: DiffTabKey = { path: 'src/a.ts', kind: 'agent' }
+    const { result } = renderHook(() =>
+      useDiffOperations(activeTab, vi.fn(), [{ path: 'src/a.ts', index: ' ', workingDir: 'M' }])
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('agent diff'))
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('src/a.ts')
+    expect(mockGetDiff).not.toHaveBeenCalled()
+    expect(result.current.canDiscardHunk).toBe(false)
+    expect(result.current.diffStaged).toBe(false)
+  })
+
+  // エージェントの変更の diff は記録の時点との比較で、git status の未追跡と無関係
+  // (未追跡として扱うと DiffView が打ち切ったハンクも戻すパッチに含めてしまう)
+  it('agent のタブでは、同じパスが git status で未追跡でも isActiveFileUntracked は false', async () => {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('agent diff')
+    const activeTab: DiffTabKey = { path: 'new.txt', kind: 'agent' }
+    const { result } = renderHook(() =>
+      useDiffOperations(activeTab, vi.fn(), [{ path: 'new.txt', index: '?', workingDir: '?' }])
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('agent diff'))
+    expect(result.current.isActiveFileUntracked).toBe(false)
   })
 })

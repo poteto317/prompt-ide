@@ -3,6 +3,7 @@ import ProgressPanel from './progress/ProgressPanel'
 import HistoryPanel from './history/HistoryPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
 import SourceControlPanel from './source-control/SourceControlPanel'
+import type { AgentChangesPanelState } from '../hooks/useAgentChangesWiring'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import { sidebarTitles } from '../config/sidebarTitles'
@@ -98,6 +99,8 @@ interface Props {
   gitTag: GitTagPanelState
   /** リモートの管理の状態と操作(SourceControlPanel へそのまま渡す) */
   remoteSetup: RemoteSetupPanelState
+  /** セクション「エージェントの変更」の状態と操作(SourceControlPanel へそのまま渡す) */
+  agentChanges?: AgentChangesPanelState
   gitBranchOperationError: Error | null
   onOpenDiff: (path: string, staged: boolean) => void
   onAmend: (message: string) => Promise<boolean>
@@ -193,6 +196,7 @@ export default function Sidebar({
   mergeState,
   gitTag,
   remoteSetup,
+  agentChanges,
   gitBranchOperationError,
   onOpenDiff,
   onAmend,
@@ -312,6 +316,7 @@ export default function Sidebar({
           mergeState={mergeState}
           gitTag={gitTag}
           remoteSetup={remoteSetup}
+          agentChanges={agentChanges}
           branchOperationError={gitBranchOperationError}
           lastCommitMessage={lastCommitMessage}
           onAmend={onAmend}

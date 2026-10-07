@@ -5,6 +5,8 @@ interface PanelState {
   activePanel: Panel
   sidebarOpen: boolean
   handlePanelChange: (panel: Panel) => void
+  /** パネルを切り替えて開く(同じパネルでも閉じない。ターミナルの帯の「変更を確認」から使う) */
+  showPanel: (panel: Panel) => void
 }
 
 export function usePanelState(): PanelState {
@@ -20,5 +22,10 @@ export function usePanelState(): PanelState {
     }
   }
 
-  return { activePanel, sidebarOpen, handlePanelChange }
+  const showPanel = (panel: Panel): void => {
+    setActivePanel(panel)
+    setSidebarOpen(true)
+  }
+
+  return { activePanel, sidebarOpen, handlePanelChange, showPanel }
 }

@@ -33,8 +33,28 @@ describe('usePanelState', () => {
   it('サイドバーが閉じた状態で別パネルを選択すると sidebarOpen が true になる', () => {
     const { result } = renderHook(() => usePanelState())
     act(() => result.current.handlePanelChange('explorer')) // close
-    act(() => result.current.handlePanelChange('prompts'))  // switch → open
+    act(() => result.current.handlePanelChange('prompts')) // switch → open
     expect(result.current.activePanel).toBe('prompts')
+    expect(result.current.sidebarOpen).toBe(true)
+  })
+})
+
+describe('usePanelState.showPanel', () => {
+  it('別のパネルに切り替えて開く', () => {
+    const { result } = renderHook(() => usePanelState())
+    act(() => result.current.showPanel('source-control'))
+    expect(result.current.activePanel).toBe('source-control')
+    expect(result.current.sidebarOpen).toBe(true)
+  })
+
+  it('同じパネルでも閉じず、閉じていれば開く', () => {
+    const { result } = renderHook(() => usePanelState())
+    act(() => result.current.showPanel('source-control'))
+    act(() => result.current.showPanel('source-control'))
+    expect(result.current.sidebarOpen).toBe(true)
+    act(() => result.current.handlePanelChange('source-control'))
+    expect(result.current.sidebarOpen).toBe(false)
+    act(() => result.current.showPanel('source-control'))
     expect(result.current.sidebarOpen).toBe(true)
   })
 })

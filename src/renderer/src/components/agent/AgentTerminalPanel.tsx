@@ -3,15 +3,17 @@ import { useCallback, useId, useRef } from 'react'
 import { isInsideAgentTerminal } from '../../lib/agentTerminalKeys'
 import { describeAgentStatus } from '../../lib/agentSessionMessages'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
+import type { AgentChangesReviewAction } from '../../types'
 import AgentTerminalView from './AgentTerminalView'
 
 interface Props {
   state: AgentTerminalPanelState
+  review?: AgentChangesReviewAction
 }
 
 // エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・状態・起動/終了・最大化)と xterm の表示の領域。
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)
-export default function AgentTerminalPanel({ state }: Props): React.JSX.Element {
+export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
   const { controller, session, layout } = state
   const bodyId = useId()
   const hintId = useId()
@@ -90,6 +92,23 @@ export default function AgentTerminalPanel({ state }: Props): React.JSX.Element 
               onClick={() => void session.start()}
             >
               起動
+            </button>
+          )}
+          {review?.isRecording === true && (
+            <button
+              type="button"
+              className="agent-terminal-panel__button"
+              aria-label="エージェントの変更を確認（ソース管理を開く）"
+              onClick={() => {
+                // 最大化の間はエディタとサイドバーの操作が隠れるため、元に戻してから移る
+                if (layout.isMaximized) {
+                  moveFocusOutOfTerminal()
+                  layout.toggleMaximized()
+                }
+                review.onReview()
+              }}
+            >
+              変更を確認
             </button>
           )}
           <button

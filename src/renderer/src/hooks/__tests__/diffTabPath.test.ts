@@ -1,17 +1,18 @@
+import type { DiffTabKey } from '../useDiffTabs'
 import { describe, it, expect } from 'vitest'
 import { encodeDiffTabPath, isDiffTabPath, decodeDiffTabPath } from '../diffTabPath'
 
 describe('encodeDiffTabPath / isDiffTabPath / decodeDiffTabPath', () => {
   it('staged=false でエンコードすると isDiffTabPath が true、decode で元のキーに戻る', () => {
-    const encoded = encodeDiffTabPath({ path: 'src/index.ts', staged: false })
+    const encoded = encodeDiffTabPath({ path: 'src/index.ts', kind: 'unstaged' })
     expect(isDiffTabPath(encoded)).toBe(true)
-    expect(decodeDiffTabPath(encoded)).toEqual({ path: 'src/index.ts', staged: false })
+    expect(decodeDiffTabPath(encoded)).toEqual({ path: 'src/index.ts', kind: 'unstaged' })
   })
 
   it('staged=true でエンコードすると isDiffTabPath が true、decode で元のキーに戻る', () => {
-    const encoded = encodeDiffTabPath({ path: 'src/index.ts', staged: true })
+    const encoded = encodeDiffTabPath({ path: 'src/index.ts', kind: 'staged' })
     expect(isDiffTabPath(encoded)).toBe(true)
-    expect(decodeDiffTabPath(encoded)).toEqual({ path: 'src/index.ts', staged: true })
+    expect(decodeDiffTabPath(encoded)).toEqual({ path: 'src/index.ts', kind: 'staged' })
   })
 
   it('実ファイルパスは isDiffTabPath が false を返す', () => {
@@ -32,9 +33,19 @@ describe('encodeDiffTabPath / isDiffTabPath / decodeDiffTabPath', () => {
   })
 
   it('往復変換で元のキーと一致する（staged/unstaged 両方）', () => {
-    const unstagedKey = { path: 'a/b/c.ts', staged: false }
-    const stagedKey = { path: 'a/b/c.ts', staged: true }
+    const unstagedKey: DiffTabKey = { path: 'a/b/c.ts', kind: 'unstaged' }
+    const stagedKey: DiffTabKey = { path: 'a/b/c.ts', kind: 'staged' }
     expect(decodeDiffTabPath(encodeDiffTabPath(unstagedKey))).toEqual(unstagedKey)
     expect(decodeDiffTabPath(encodeDiffTabPath(stagedKey))).toEqual(stagedKey)
+  })
+})
+
+describe('エージェントの変更の diff タブ', () => {
+  it('kind: agent も往復変換で元のキーに戻り、他の種類と別の擬似パスになる', () => {
+    const agentKey: DiffTabKey = { path: 'a/b/c.ts', kind: 'agent' }
+    const encoded = encodeDiffTabPath(agentKey)
+    expect(isDiffTabPath(encoded)).toBe(true)
+    expect(decodeDiffTabPath(encoded)).toEqual(agentKey)
+    expect(encoded).not.toBe(encodeDiffTabPath({ path: 'a/b/c.ts', kind: 'unstaged' }))
   })
 })

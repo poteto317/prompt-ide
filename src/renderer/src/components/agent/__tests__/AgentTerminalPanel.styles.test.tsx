@@ -39,7 +39,10 @@ function renderNoFolder(): HTMLElement {
       toggleMaximized: vi.fn()
     }
   }
-  const { container } = render(<AgentTerminalPanel state={state} />)
+  // 帯に最も多くの部品が並ぶよう、記録がある間の「変更を確認」も出す
+  const { container } = render(
+    <AgentTerminalPanel state={state} review={{ isRecording: true, onReview: vi.fn() }} />
+  )
   return container
 }
 
@@ -81,11 +84,12 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
     expect(actionsShrink).toBeGreaterThan(statusShrink)
   })
 
-  it('開閉・起動・最大化のボタンは縮まず、折り返さない', () => {
+  it('開閉・起動・変更を確認・最大化のボタンは縮まず、折り返さない', () => {
     renderNoFolder()
     const buttons = [
-      screen.getByRole('button', { name: /エージェント/ }),
+      screen.getByRole('button', { name: /^▾ エージェント$|^エージェント$/ }),
       screen.getByRole('button', { name: /^起動/ }),
+      screen.getByRole('button', { name: 'エージェントの変更を確認（ソース管理を開く）' }),
       screen.getByRole('button', { name: '最大化' })
     ]
     for (const button of buttons) {

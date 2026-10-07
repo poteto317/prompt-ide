@@ -41,6 +41,12 @@ interface CombinedEditorTabs {
   handleCloseTab: (path: string) => void
 }
 
+// diff タブのラベル。フルパス + 種類で一意にする(下の combinedTabs の説明)
+export function diffTabLabel(tab: DiffTabKey): string {
+  if (tab.kind === 'agent') return `${tab.path} (エージェントの変更)`
+  return `${tab.path} (${tab.kind === 'staged' ? 'ステージ済み' : '未ステージ'}差分)`
+}
+
 // 実ファイルタブと diff タブ(擬似パスでエンコードされたタブ)を1本のタブバーへ
 // 統合する責務のみを担う。フォーカス管理等の Monaco 固有ロジックとは責務が異なるため
 // EditorPanel から分離している。
@@ -67,7 +73,7 @@ export function useCombinedEditorTabs({
     // フルパス + ステージ状態でラベルの一意性を保つ
     const diffTabItems = diffTabs.map((tab) => ({
       path: encodeDiffTabPath(tab),
-      name: `${tab.path} (${tab.staged ? 'ステージ済み' : '未ステージ'}差分)`,
+      name: diffTabLabel(tab),
       isDirty: false,
       isReorderable: false
     }))

@@ -454,7 +454,7 @@ describe('useAppState', () => {
     // 挙動にする
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'gone.txt', staged: false }],
+      diffTabs: [{ path: 'gone.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -479,13 +479,44 @@ describe('useAppState', () => {
       refreshGitStatus: vi.fn()
     })
     renderHook(() => useAppState())
-    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'gone.txt', staged: false })
+    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'gone.txt', kind: 'unstaged' })
+  })
+
+  it('エージェントの変更の diff タブは、gitStatus.files に無くても閉じない', () => {
+    const mockCloseDiffTab = vi.fn()
+    mockUseDiffTabs.mockReturnValue({
+      diffTabs: [{ path: 'agent-only.txt', kind: 'agent' }],
+      activeDiffTab: null,
+      openDiffTab: vi.fn(),
+      closeDiffTab: mockCloseDiffTab,
+      activateDiffTab: vi.fn(),
+      deactivateDiffTab: vi.fn()
+    })
+    mockUseGitStatus.mockReturnValue({
+      gitStatus: {
+        isRepo: true,
+        mergeInProgress: false,
+        hasOrigin: true,
+        hasRemote: true,
+        upstream: 'origin/main',
+        detached: false,
+        branch: 'main',
+        ahead: 0,
+        behind: 0,
+        files: []
+      },
+      gitLoading: false,
+      gitError: null,
+      refreshGitStatus: vi.fn()
+    })
+    renderHook(() => useAppState())
+    expect(mockCloseDiffTab).not.toHaveBeenCalled()
   })
 
   it('gitStatus.files にまだ存在する diffTab は閉じない(unstaged タブ、未ステージの変更が残っている)', () => {
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'still-here.txt', staged: false }],
+      diffTabs: [{ path: 'still-here.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -516,7 +547,7 @@ describe('useAppState', () => {
   it('gitStatus.files にまだ存在する diffTab は閉じない(staged タブ、ステージ済みの変更が残っている)', () => {
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'still-here.txt', staged: true }],
+      diffTabs: [{ path: 'still-here.txt', kind: 'staged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -553,7 +584,7 @@ describe('useAppState', () => {
     // タブが指す方向(staged/unstaged)に対応する変更が実際にあるかまで見る必要がある
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'unstaged-now.txt', staged: true }],
+      diffTabs: [{ path: 'unstaged-now.txt', kind: 'staged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -579,13 +610,13 @@ describe('useAppState', () => {
       refreshGitStatus: vi.fn()
     })
     renderHook(() => useAppState())
-    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'unstaged-now.txt', staged: true })
+    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'unstaged-now.txt', kind: 'staged' })
   })
 
   it('unstaged diffTab を開いた後にそのファイルを stage すると、unstaged 側の差分がもう無いのでタブを閉じる', () => {
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'staged-now.txt', staged: false }],
+      diffTabs: [{ path: 'staged-now.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -611,13 +642,13 @@ describe('useAppState', () => {
       refreshGitStatus: vi.fn()
     })
     renderHook(() => useAppState())
-    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'staged-now.txt', staged: false })
+    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'staged-now.txt', kind: 'unstaged' })
   })
 
   it('unstaged diffTab は、未追跡ファイル(index="?")のままなら閉じない', () => {
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'untracked.txt', staged: false }],
+      diffTabs: [{ path: 'untracked.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -651,7 +682,7 @@ describe('useAppState', () => {
     // diff タブを誤って閉じてしまう(ユーザーが見ている最中のタブが消える)
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'C:\\project\\a.txt', staged: false }],
+      diffTabs: [{ path: 'C:\\project\\a.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,
@@ -691,8 +722,8 @@ describe('useAppState', () => {
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
       diffTabs: [
-        { path: 'src/index.ts', staged: false },
-        { path: 'src/other.ts', staged: true }
+        { path: 'src/index.ts', kind: 'unstaged' },
+        { path: 'src/other.ts', kind: 'staged' }
       ],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
@@ -741,8 +772,8 @@ describe('useAppState', () => {
     })
     rerender()
 
-    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
-    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'src/other.ts', staged: true })
+    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', kind: 'unstaged' })
+    expect(mockCloseDiffTab).toHaveBeenCalledWith({ path: 'src/other.ts', kind: 'staged' })
   })
 
   it('selectFile(エクスプローラー/クイックオープン経路)でファイルを開けたら diff タブを非アクティブ化する', async () => {
@@ -911,7 +942,7 @@ describe('useAppState', () => {
         }
       })
     })
-    const activeTab: DiffTabKey = { path: 'a.ts', staged: false }
+    const activeTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     mockUseDiffTabs.mockReturnValue({
       diffTabs: [activeTab],
       activeDiffTab: activeTab,
@@ -1490,8 +1521,8 @@ describe('useAppState', () => {
         refreshTree
       })
       mockUseDiffTabs.mockReturnValue({
-        diffTabs: [{ path: 'a.ts', staged: false }],
-        activeDiffTab: { path: 'a.ts', staged: false },
+        diffTabs: [{ path: 'a.ts', kind: 'unstaged' }],
+        activeDiffTab: { path: 'a.ts', kind: 'unstaged' },
         openDiffTab: vi.fn(),
         closeDiffTab: vi.fn(),
         activateDiffTab: vi.fn(),
@@ -1648,7 +1679,7 @@ describe('useAppState', () => {
       })
       mockUseDiffTabs.mockReturnValue({
         ...mockUseDiffTabs(),
-        activeDiffTab: { path: 'a.txt', staged: false }
+        activeDiffTab: { path: 'a.txt', kind: 'unstaged' }
       })
       const { result } = renderHook(() => useAppState())
       expect(mockUseConflictFile).toHaveBeenLastCalledWith(
@@ -1676,7 +1707,25 @@ describe('useAppState', () => {
       })
       mockUseDiffTabs.mockReturnValue({
         ...mockUseDiffTabs(),
-        activeDiffTab: { path: 'm.txt', staged: false }
+        activeDiffTab: { path: 'm.txt', kind: 'unstaged' }
+      })
+      const { result } = renderHook(() => useAppState())
+      expect(mockUseConflictFile).toHaveBeenLastCalledWith(
+        expect.objectContaining({ activePath: null })
+      )
+      expect(result.current.isActiveFileConflicted).toBe(false)
+    })
+
+    it('エージェントの変更の diff タブは、コンフリクト中のファイルでも解決ビューにしない', () => {
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: conflictedStatus,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn()
+      })
+      mockUseDiffTabs.mockReturnValue({
+        ...mockUseDiffTabs(),
+        activeDiffTab: { path: 'a.txt', kind: 'agent' }
       })
       const { result } = renderHook(() => useAppState())
       expect(mockUseConflictFile).toHaveBeenLastCalledWith(
@@ -1696,7 +1745,7 @@ describe('useAppState', () => {
       })
       mockUseDiffTabs.mockReturnValue({
         ...mockUseDiffTabs(),
-        activeDiffTab: { path: 'a.txt', staged: false }
+        activeDiffTab: { path: 'a.txt', kind: 'unstaged' }
       })
       const { result } = renderHook(() => useAppState())
       expect(mockUseConflictFile).toHaveBeenLastCalledWith(
@@ -1906,7 +1955,7 @@ describe('useAppState', () => {
     // 直前のテストの gitStatus(files あり)がそのまま使われてしまう
     const mockCloseDiffTab = vi.fn()
     mockUseDiffTabs.mockReturnValue({
-      diffTabs: [{ path: 'a.txt', staged: false }],
+      diffTabs: [{ path: 'a.txt', kind: 'unstaged' }],
       activeDiffTab: null,
       openDiffTab: vi.fn(),
       closeDiffTab: mockCloseDiffTab,

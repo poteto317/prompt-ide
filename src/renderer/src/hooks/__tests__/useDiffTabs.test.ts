@@ -6,21 +6,21 @@ describe('useDiffTabs', () => {
   it('openDiffTab で開いたタブが diffTabs に追加され、アクティブになる', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'src/index.ts', staged: false })
+      result.current.openDiffTab({ path: 'src/index.ts', kind: 'unstaged' })
     })
-    expect(result.current.diffTabs).toEqual([{ path: 'src/index.ts', staged: false }])
-    expect(result.current.activeDiffTab).toEqual({ path: 'src/index.ts', staged: false })
+    expect(result.current.diffTabs).toEqual([{ path: 'src/index.ts', kind: 'unstaged' }])
+    expect(result.current.activeDiffTab).toEqual({ path: 'src/index.ts', kind: 'unstaged' })
   })
 
   it('同じ path/staged のタブを再度開いても重複追加せず、アクティブにするだけ', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.diffTabs).toHaveLength(2)
-    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', staged: false })
+    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', kind: 'unstaged' })
   })
 
   it('同一レンダーサイクル内で複数回 openDiffTab を呼んでも、activeDiffTab は diffTabs 内の既存参照を再利用する', () => {
@@ -33,10 +33,10 @@ describe('useDiffTabs', () => {
     // 依存配列に持つ useDiffOperations の effect が無駄に diff を再取得する
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
       // path/staged は1回目と同じだが、別オブジェクト
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     const aInDiffTabs = result.current.diffTabs.find((t) => t.path === 'a.ts')
     expect(result.current.activeDiffTab).toBe(aInDiffTabs)
@@ -45,8 +45,8 @@ describe('useDiffTabs', () => {
   it('同じ path で staged が異なる場合は別タブとして扱う', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'a.ts', staged: true })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'staged' })
     })
     expect(result.current.diffTabs).toHaveLength(2)
   })
@@ -54,14 +54,14 @@ describe('useDiffTabs', () => {
   it('closeDiffTab でタブが削除され、閉じたのがアクティブタブなら直前のタブがアクティブになる', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
     })
     act(() => {
-      result.current.closeDiffTab({ path: 'b.ts', staged: false })
+      result.current.closeDiffTab({ path: 'b.ts', kind: 'unstaged' })
     })
-    expect(result.current.diffTabs).toEqual([{ path: 'a.ts', staged: false }])
-    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', staged: false })
+    expect(result.current.diffTabs).toEqual([{ path: 'a.ts', kind: 'unstaged' }])
+    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', kind: 'unstaged' })
   })
 
   it('中間のアクティブタブを閉じると、実ファイルタブ(useFileSystem.ts の computeAdjacentPath)と同じく右隣が優先してアクティブになる', () => {
@@ -70,24 +70,24 @@ describe('useDiffTabs', () => {
     // よってアクティブの移り先が変わってしまい、ユーザーから見て一貫性が無い
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
-      result.current.openDiffTab({ path: 'c.ts', staged: false })
-      result.current.activateDiffTab({ path: 'b.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'c.ts', kind: 'unstaged' })
+      result.current.activateDiffTab({ path: 'b.ts', kind: 'unstaged' })
     })
     act(() => {
-      result.current.closeDiffTab({ path: 'b.ts', staged: false })
+      result.current.closeDiffTab({ path: 'b.ts', kind: 'unstaged' })
     })
-    expect(result.current.activeDiffTab).toEqual({ path: 'c.ts', staged: false })
+    expect(result.current.activeDiffTab).toEqual({ path: 'c.ts', kind: 'unstaged' })
   })
 
   it('closeDiffTab で全タブを閉じると activeDiffTab は null になる', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     act(() => {
-      result.current.closeDiffTab({ path: 'a.ts', staged: false })
+      result.current.closeDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.diffTabs).toEqual([])
     expect(result.current.activeDiffTab).toBeNull()
@@ -96,11 +96,11 @@ describe('useDiffTabs', () => {
   it('activateDiffTab で指定したタブがアクティブになる', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
-      result.current.activateDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      result.current.activateDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
-    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', staged: false })
+    expect(result.current.activeDiffTab).toEqual({ path: 'a.ts', kind: 'unstaged' })
   })
 
   it('activateDiffTab に diffTabs に存在しないキーを渡しても、activeDiffTab を「ゴーストタブ」にしない', () => {
@@ -113,12 +113,12 @@ describe('useDiffTabs', () => {
     // diff 表示だけが残る「ゴーストタブ」)が生まれてしまう
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.closeDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.closeDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.diffTabs).toEqual([])
     act(() => {
-      result.current.activateDiffTab({ path: 'a.ts', staged: false })
+      result.current.activateDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.activeDiffTab).toBeNull()
   })
@@ -129,11 +129,11 @@ describe('useDiffTabs', () => {
     // useDiffOperations の effect が無駄に diff を再取得してしまう
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     const before = result.current.activeDiffTab
     act(() => {
-      result.current.activateDiffTab({ path: 'a.ts', staged: false })
+      result.current.activateDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.activeDiffTab).toBe(before)
   })
@@ -146,7 +146,7 @@ describe('useDiffTabs', () => {
     // 依存配列に持つ useDiffOperations の effect が無駄に diff を再取得してしまう
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     const original = result.current.diffTabs[0]
     act(() => {
@@ -154,7 +154,7 @@ describe('useDiffTabs', () => {
     })
     act(() => {
       // decodeDiffTabPath 相当: 同じ内容だが別オブジェクトを渡す
-      result.current.activateDiffTab({ path: 'a.ts', staged: false })
+      result.current.activateDiffTab({ path: 'a.ts', kind: 'unstaged' })
     })
     expect(result.current.activeDiffTab).toBe(original)
   })
@@ -162,16 +162,16 @@ describe('useDiffTabs', () => {
   it('deactivateDiffTab で activeDiffTab が null になり、diffTabs 配列自体は変わらない', () => {
     const { result } = renderHook(() => useDiffTabs())
     act(() => {
-      result.current.openDiffTab({ path: 'a.ts', staged: false })
-      result.current.openDiffTab({ path: 'b.ts', staged: false })
+      result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
     })
     act(() => {
       result.current.deactivateDiffTab()
     })
     expect(result.current.activeDiffTab).toBeNull()
     expect(result.current.diffTabs).toEqual([
-      { path: 'a.ts', staged: false },
-      { path: 'b.ts', staged: false }
+      { path: 'a.ts', kind: 'unstaged' },
+      { path: 'b.ts', kind: 'unstaged' }
     ])
   })
 })

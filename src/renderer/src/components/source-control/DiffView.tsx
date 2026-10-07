@@ -1,5 +1,7 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import { parseDiff, buildHunkPatch } from '../../lib/diffParser'
+import type { AgentDiffActions } from '../../types'
+import AgentHunkRevertAction, { AgentDiffNotices } from './AgentHunkRevertAction'
 
 interface Props {
   diffText: string
@@ -18,6 +20,8 @@ interface Props {
   /** 開いている diff が「取り消せるハンク操作の対象」か(追跡済みの変更ファイルで、
    *  未追跡・intent-to-add・コンフリクトでない)。判定は useDiffOperations が行う */
   canDiscardHunk?: boolean
+  /** エージェントの変更の diff のとき渡す。ステージ・アンステージ・取り消しのボタンを出さず、「このハンクを実行前に戻す」だけを出す */
+  agentActions?: AgentDiffActions
 }
 
 // 描画する diff 行数の上限。main 側のサイズ上限
@@ -93,8 +97,10 @@ export default function DiffView({
   disabled = false,
   isUntracked = false,
   onDiscardHunk,
-  canDiscardHunk = false
+  canDiscardHunk = false,
+  agentActions
 }: Props): React.JSX.Element {
+  const agentReasonId = useId()
   // disabled(実行中フラグ)の切り替えだけでも再レンダーされるため、diffText 自体が
   // 変わっていないときに毎回パースし直さないよう memo 化する
   const parsed = useMemo(() => parseDiff(diffText), [diffText])
@@ -127,6 +133,9 @@ export default function DiffView({
 
   return (
     <div className="diff-view">
+      {agentActions !== undefined && (
+        <AgentDiffNotices agentActions={agentActions} reasonId={agentReasonId} />
+      )}
       {/* 未解決コンフリクトの combined diff は git apply --cached が必ず
           "No valid patches in input" で失敗するため、ハンク操作を出さない。
           なぜ操作できないのかが分かるよう理由を添える */}
@@ -173,7 +182,16 @@ export default function DiffView({
                 ただし isUntracked の場合、ボタンは patch を使わず
                 gitApi.stageFile(path) でファイル全体を git add するだけなので、
                 この懸念は当てはまらない(打ち切っていても隠さない) */}
-              {canOperateHunk && (
+              {canOperateHunk && agentActions !== undefined && (
+                <AgentHunkRevertAction
+                  agentActions={agentActions}
+                  reasonId={agentReasonId}
+                  disabled={disabled}
+                  hunkHeader={hunk.header}
+                  getPatch={() => buildHunkPatch(parsed, index)}
+                />
+              )}
+              {canOperateHunk && agentActions === undefined && (
                 <span className="diff-view__hunk-actions">
                   <button
                     type="button"

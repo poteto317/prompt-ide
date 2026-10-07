@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { usePanelState } from './usePanelState'
 import { useFileSystem } from './useFileSystem'
 import { usePrompts } from './usePrompts'
@@ -45,6 +45,9 @@ import { useExternalChangeMarks } from './useExternalChangeMarks'
 import { useExternalFileChanges } from './useExternalFileChanges'
 import type { ExternalChangeBannerState } from './useExternalFileChanges'
 import { AGENT_STOP_ON_FOLDER_CHANGE_CONFIRM } from '../lib/agentSessionMessages'
+import { useAgentChangesRecording } from './useAgentChangesRecording'
+import { useAgentChangesWiring } from './useAgentChangesWiring'
+import type { AgentChangesWiring } from './useAgentChangesWiring'
 
 type AppState = {
   quickOpen: ReturnType<typeof useQuickOpen>
@@ -90,7 +93,8 @@ type AppState = {
   isActiveFileConflicted: boolean
   /** 編集中のタブの外部変更の通知 */
   externalChangeBanner: ExternalChangeBannerState | null
-} & Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
+} & AgentChangesWiring &
+  Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
   ReturnType<typeof usePanelState> &
   ReturnType<typeof useFileSystem> &
   ReturnType<typeof usePrompts> &
@@ -112,10 +116,21 @@ export function useAppState(): AppState {
   // 保存の直前の照合で上書きがキャンセルされたタブは、監視と同じ外部変更の確認を通して印を付ける(印を直接付けると
   // 「このまま編集する」で消した後にフォーカスの復帰で出し直す)。保存できたら印を消す
   const externalChangeMarks = useExternalChangeMarks()
+  // 保存できたパスを、エージェントの変更の記録(useAgentChangesRecording。フォルダに依存するため後で作る)へも知らせる
+  const savedPathListenerRef = useRef<(path: string) => void>(() => undefined)
   const fileSystem = useFileSystem({
     onSaveConflict: externalChangeMarks.requestCheck,
-    onSaveSucceeded: externalChangeMarks.clear
+    onSaveSucceeded: (path) => {
+      externalChangeMarks.clear(path)
+      savedPathListenerRef.current(path)
+    }
   })
+  // エージェントの変更の記録・一覧(main の registry の写し)と、記録を始めてから一覧を取る操作(組み立ての前段)
+  const agentChangesRecording = useAgentChangesRecording(fileSystem.folderPath)
+  const { markSaved: markAgentChangesSaved } = agentChangesRecording.changes
+  useLayoutEffect(() => {
+    savedPathListenerRef.current = markAgentChangesSaved
+  }, [markAgentChangesSaved])
   const prompts = usePrompts()
   const progress = useProgressTasks()
   const git = useGitStatus(fileSystem.folderPath)
@@ -175,7 +190,9 @@ export function useAppState(): AppState {
   // 実行方式とエージェント(ターミナル・セッション・送信)。実行方式の切り替えの手順と、フォルダの切り替えの前の停止の確認を持つ
   const agentWorkspace = useAgentWorkspace({
     folderPath: fileSystem.folderPath,
-    isExecuting: execution.isExecuting
+    isExecuting: execution.isExecuting,
+    // プロンプトの「実行」で送る前に、エージェントの変更の記録を始める(記録があれば main は何もしない)
+    beforeAgentSend: agentChangesRecording.beginAndRefresh
   })
   const promptRunner = usePromptRunner({
     openFile: fileSystem.openFile,
@@ -199,6 +216,8 @@ export function useAppState(): AppState {
     const files = git.gitStatus?.files
     if (files === undefined) return
     for (const tab of diffTabs.diffTabs) {
+      // エージェントの変更の diff タブは git status ではなく、エージェントの変更の一覧から消えたときに閉じる
+      if (tab.kind === 'agent') continue
       // 素の Set.has(文字列) だと、Windows のドライブレター大文字小文字違い等の
       // 表記揺れで一致しなくなり、まだ存在するファイルの diff タブを誤って
       // 閉じてしまう(ユーザーが見ている最中のタブが消える)。isSamePath で
@@ -214,7 +233,7 @@ export function useAppState(): AppState {
       // ChangesSection.tsx の一覧フィルタと共有し、片方だけ判定基準がずれる
       // ことを防ぐ
       const stillHasMatchingDiff =
-        file !== undefined && (tab.staged ? isStagedFile(file) : isUnstagedFile(file))
+        file !== undefined && (tab.kind === 'staged' ? isStagedFile(file) : isUnstagedFile(file))
       if (!stillHasMatchingDiff) {
         diffTabs.closeDiffTab(tab)
       }
@@ -429,7 +448,11 @@ export function useAppState(): AppState {
   // (解決済みになれば null)。CLI の rebase / cherry-pick 中(MERGE_HEAD が無い)は ours/theirs の
   // 意味が違うため解決ビューを出さず(getConflictFile も呼ばない)、通常の diff 表示にする。
   // main 側の解決操作もマージ中でなければ拒否する
-  const activeDiffPath = diffTabs.activeDiffTab?.path ?? null
+  // エージェントの変更の diff タブは解決ビューにしない(記録の時点との比較のため)
+  const activeDiffPath =
+    diffTabs.activeDiffTab !== null && diffTabs.activeDiffTab.kind !== 'agent'
+      ? diffTabs.activeDiffTab.path
+      : null
   const conflictActivePath =
     activeDiffPath !== null &&
     git.gitStatus?.mergeInProgress === true &&
@@ -469,6 +492,22 @@ export function useAppState(): AppState {
     marks: externalChangeMarks,
     // main はフォルダが変わると監視を閉じる。タブが残る切り替えでも監視の対象を送り直す
     folderPath: fileSystem.folderPath
+  })
+  // エージェントの変更の組み立ての後段(一覧を取り直す契機・diff タブの同期・戻す操作・表示用の値)。effect の順序を
+  // 変えないため、ほかの hook の後(この位置)で呼ぶ
+  const agentChangesWiring = useAgentChangesWiring({
+    folderPath: fileSystem.folderPath,
+    recording: agentChangesRecording,
+    gitStatus: git.gitStatus,
+    refreshGitStatus: git.refreshGitStatus,
+    agentSessionExit: agentWorkspace.agentTerminal.session.exit,
+    agentRunning: agentWorkspace.agentTerminal.session.status === 'running',
+    isAgentMode: agentWorkspace.executionModePanel.mode === 'agent-cli',
+    diffTabs,
+    refreshDiff: diffOperations.refreshDiff,
+    fileLock: fileOperationLock,
+    fileSystem,
+    showSourceControl: () => panel.showPanel('source-control')
   })
   return {
     quickOpen,
@@ -518,6 +557,7 @@ export function useAppState(): AppState {
     promptRun: agentWorkspace.promptRun,
     bottomPanel: agentWorkspace.bottomPanel,
     agentTerminal: agentWorkspace.agentTerminal,
-    externalChangeBanner
+    externalChangeBanner,
+    ...agentChangesWiring
   }
 }

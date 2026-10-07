@@ -179,9 +179,19 @@ describe('useAgentWorkspace', () => {
       const { result } = renderWorkspace()
       expect(mockUseAgentPromptSender).toHaveBeenLastCalledWith({
         controller: getAgentTerminalController(),
-        onSettled: result.current.agentTerminal.layout.open
+        onSettled: result.current.agentTerminal.layout.open,
+        beforeSend: undefined
       })
       expect(result.current.sendToAgent).toBe(sender.send)
+    })
+
+    // 省略可能な引数のため、渡し忘れを型で検知できない(パターン 155)
+    it('送信の前の準備(beforeAgentSend)を sender の beforeSend へそのまま渡す', () => {
+      const beforeAgentSend = vi.fn(async () => undefined)
+      renderWorkspace({ beforeAgentSend })
+      expect(mockUseAgentPromptSender.mock.lastCall![0]).toMatchObject({
+        beforeSend: beforeAgentSend
+      })
     })
 
     it('送信の後(onSettled)にターミナルのパネルが開く', () => {

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import DiffView from '../DiffView'
 import { parseDiff, buildHunkPatch } from '../../../lib/diffParser'
+import type { AgentDiffActions } from '../../../types'
 
 const SAMPLE_DIFF = [
   'diff --git a/src/index.ts b/src/index.ts',
@@ -567,6 +568,102 @@ describe('DiffView — ハンクの取り消し', () => {
       expect(keyWarnings).toHaveLength(0)
     } finally {
       errorSpy.mockRestore()
+    }
+  })
+})
+
+describe('DiffView — エージェントの変更', () => {
+  const actions = (overrides: Partial<AgentDiffActions> = {}): AgentDiffActions => ({
+    canRevertHunk: true,
+    disabledReason: null,
+    error: null,
+    onRevertHunk: vi.fn(),
+    ...overrides
+  })
+
+  it('ステージ・アンステージ・取り消しを出さず、「このハンクを実行前に戻す」だけを出す', async () => {
+    const agentActions = actions()
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        onDiscardHunk={vi.fn()}
+        canDiscardHunk
+        agentActions={agentActions}
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'このハンクをステージ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'このハンクを取り消す' })).toBeNull()
+    const buttons = screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })
+    expect(buttons).toHaveLength(2)
+    await userEvent.click(buttons[1])
+    const parsed = parseDiff(SAMPLE_DIFF)
+    expect(agentActions.onRevertHunk).toHaveBeenCalledWith(
+      buildHunkPatch(parsed, 1),
+      '@@ -10,1 +10,2 @@'
+    )
+  })
+
+  // ボタンは打ち切り前の全量からパッチを作るため、見えていない行まで戻してしまわないよう、
+  // 一部でも打ち切ったハンクには出さない(ステージ・取り消しと同じ規則)
+  it('打ち切りで一部が表示されていないハンクには出さず、全て表示されているハンクには出す', () => {
+    const hunk = (n: number, count: number): string =>
+      `@@ -${n},0 +${n},${count} @@\n` +
+      Array.from({ length: count }, (_, i) => `+h${n}line${i}`).join('\n') +
+      '\n'
+    render(
+      <DiffView
+        diffText={'diff --git a/big.txt b/big.txt\n' + hunk(1, 10) + hunk(100, 2500)}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        agentActions={actions()}
+      />
+    )
+    expect(screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(1)
+  })
+
+  it('戻せない diff(追加・削除)ではハンクのボタンを出さない', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        agentActions={actions({ canRevertHunk: false })}
+      />
+    )
+    expect(screen.queryAllByRole('button')).toEqual([])
+  })
+
+  it('直前の戻す操作の失敗を role="alert" で出す', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        agentActions={actions({ error: 'ハンクを戻せませんでした' })}
+      />
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('ハンクを戻せませんでした')
+  })
+
+  it('押せないときは理由を 1 か所に出し、ボタンから参照する(パターン 126)', () => {
+    render(
+      <DiffView
+        diffText={SAMPLE_DIFF}
+        staged={false}
+        onStageHunk={vi.fn()}
+        onUnstageHunk={vi.fn()}
+        agentActions={actions({ disabledReason: '他の Git 操作の実行中です' })}
+      />
+    )
+    for (const button of screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })) {
+      expect(button).toBeDisabled()
+      expect(button).toHaveAccessibleDescription('他の Git 操作の実行中です')
     }
   })
 })

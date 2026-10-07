@@ -3,8 +3,10 @@ import type { GitBranch, GitLogEntry, GitStatusResult } from '@shared/types'
 import GitRepoView from './GitRepoView'
 import SourceControlToolbar from './SourceControlToolbar'
 import NotRepositoryView from './NotRepositoryView'
+import type { AgentChangesPanelState } from '../../hooks/useAgentChangesWiring'
 import { getRemoteSetupState } from '../../lib/remoteSetupState'
 import { useRemoteSetupFocus } from '../../hooks/useRemoteSetupFocus'
+import { useAgentChangesClearFocus } from '../../hooks/useAgentChangesClearFocus'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
@@ -61,6 +63,8 @@ interface Props {
   gitTag: GitTagPanelState
   /** リモートの管理の状態と操作(Git 管理外の「リポジトリを初期化」、状態バナー、成功の後のフォーカスの移し先) */
   remoteSetup: RemoteSetupPanelState
+  /** セクション「エージェントの変更」の状態と操作。Git 管理外かはここで決めて渡す */
+  agentChanges?: AgentChangesPanelState
   branchOperationError: Error | null
 }
 
@@ -109,12 +113,15 @@ export default function SourceControlPanel({
   mergeState,
   gitTag,
   remoteSetup,
+  agentChanges,
   branchOperationError
 }: Props): React.JSX.Element {
   // 初期化・追加・初回 push の成功の後に、次の操作のボタン(このパネルの中にある)へフォーカスを移す。
   // 要求する部品(NotRepositoryView・RemoteSetupBanner)へ requestFocus を渡す
   const rootRef = useRef<HTMLDivElement>(null)
   const { requestFocus: requestRemoteSetupFocus } = useRemoteSetupFocus(rootRef)
+  // 「確認を終える」の後のフォーカス移動(従来の方式)。clear を包んだ props を受け取る
+  const panelAgentChanges = useAgentChangesClearFocus(rootRef, agentChanges)
   return (
     <div className="source-control-panel" ref={rootRef}>
       <SourceControlToolbar
@@ -151,6 +158,7 @@ export default function SourceControlPanel({
             remoteSetup={remoteSetup}
             isBlocked={isAnyLocked()}
             requestFocus={requestRemoteSetupFocus}
+            agentChanges={panelAgentChanges}
           />
         ) : (
           <GitRepoView
@@ -189,6 +197,7 @@ export default function SourceControlPanel({
             remoteSetupKind={getRemoteSetupState(gitStatus)}
             remoteSetup={remoteSetup}
             requestRemoteSetupFocus={requestRemoteSetupFocus}
+            agentChanges={panelAgentChanges}
           />
         ))}
       {gitStatus === null && !gitLoading && !gitError && (

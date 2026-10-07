@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as gitApi from '../lib/gitApi'
+import { fetchDiffForTab } from '../lib/diffTabSource'
 import type { GitFileStatus } from '@shared/types'
 import { isSameKey } from './useDiffTabs'
 import type { DiffTabKey } from './useDiffTabs'
@@ -34,9 +35,10 @@ export interface DiffOperationsState {
    *  保存前の古い diffContent から作った patch を「このハンクをステージ」で
    *  送ってしまい、ユーザーが一度も意図していない内容が index に入る */
   refreshDiff: () => void
-  /** 現在開いている diff タブが未追跡ファイルか。DiffView が「表示の打ち切り時に
+  /** 現在開いている diff タブが未追跡ファイルの diff か。DiffView が「表示の打ち切り時に
    *  ハンク操作ボタンを隠す」判定を無効化するために使う(未追跡ファイルの
-   *  stageHunk は patch を使わずファイル全体を git add するだけのため) */
+   *  stageHunk は patch を使わずファイル全体を git add するだけのため)。
+   *  エージェントの変更の diff(kind: 'agent')では常に false */
   isActiveFileUntracked: boolean
 }
 
@@ -62,10 +64,11 @@ export function useDiffOperations(
   // 関数のため、await 後に読む時点では activeDiffTab の最新値を ref 経由で確認する
   const activeDiffTabRef = useLatestRef(activeDiffTab)
   const [diffContent, setDiffContent] = useState<string | null>(null)
-  // diffStaged は activeDiffTab.staged から常に導出できる値のため、専用の state で
+  // diffStaged は activeDiffTab.kind から常に導出できる値のため、専用の state で
   // 二重管理しない。state のままだと getDiff の解決後にのみ同期していたため、
   // 取得中(fetch が未解決の間)は前のタブの staged 値が残り続けてしまっていた
-  const diffStaged = activeDiffTab?.staged ?? false
+  // エージェントの変更の diff(kind: 'agent')は index と無関係のため false(ステージ・アンステージの操作は出さない)
+  const diffStaged = activeDiffTab?.kind === 'staged'
   // diff の取得エラー。タブ切替・再取得のたびにリセットされる
   const [fetchError, setFetchError] = useState<Error | null>(null)
   // ハンク操作(git apply --cached)の失敗。取得エラーと分けているのは、
@@ -186,15 +189,12 @@ export function useDiffOperations(
         // renderer が既に持っている gitStatusFiles(activeFileStatus)から渡す。
         // diff タブを開くたびにリポジトリ全体を再スキャンする無駄を避けるため
         const isUntracked = activeFileStatus !== undefined && isUntrackedFile(activeFileStatus)
-        // ステージ済みリネームは旧パスも渡す。新パスだけだと git がリネーム検出を
-        // せず「新規ファイル + 全行追加」の diff になり、それをアンステージすると
-        // 旧パスの削除だけがステージに残ってファイルが消えてしまう
-        const content = await gitApi.getDiff(
-          activeDiffTab.path,
-          activeDiffTab.staged,
+        // 取得元の選択(agent は記録との比較、ほかは git の index・HEAD との比較。
+        // ステージ済みリネームは旧パスも渡す)は lib/diffTabSource.ts にある
+        const content = await fetchDiffForTab(activeDiffTab, {
           isUntracked,
-          activeFileStatus?.from
-        )
+          renamedFrom: activeFileStatus?.from
+        })
         if (cancelled) return
         setDiffContent(content)
         setFetchError(null)
@@ -325,7 +325,13 @@ export function useDiffOperations(
   // 食い違ってしまう(実測: autocrlf=true のとき git add は LF へ正規化するが、
   // git apply --cached は CRLF のまま記録する)。疑似diffは常に「全行追加」の
   // 1 ハンクなので、git add に置き換えてもステージされる範囲は変わらない
-  const isActiveFileUntracked = activeFileStatus !== undefined && isUntrackedFile(activeFileStatus)
+  // エージェントの変更の diff(kind: 'agent')は記録の時点との比較で、git status の未追跡と無関係
+  // (未追跡として扱うと、DiffView が打ち切ったハンクも戻すパッチに含めてしまう)。
+  // activeFileStatus は agent のタブでも diff を取り直す契機に使うため、ここで打ち消す
+  const isActiveFileUntracked =
+    activeDiffTab?.kind !== 'agent' &&
+    activeFileStatus !== undefined &&
+    isUntrackedFile(activeFileStatus)
 
   // stageHunk / unstageHunk の公開型は従来どおり Promise<void>(runHunkOperation の戻り値は捨てる)
   const stageHunk = async (patch: string): Promise<void> => {
@@ -339,10 +345,11 @@ export function useDiffOperations(
   }
 
   // 未ステージの diff で、追跡済みの変更ファイルだけが対象。未追跡・intent-to-add はゴミ箱へ
-  // 移す対象でハンクでは取り消せず、コンフリクト中は取り消せない(main 側でも弾く)
+  // 移す対象でハンクでは取り消せず、コンフリクト中は取り消せない(main 側でも弾く)。
+  // エージェントの変更の diff(kind: 'agent')は対象外(実行前に戻す操作は DiffView の agentActions が出す)
   const canDiscardHunk =
     activeDiffTab !== null &&
-    !activeDiffTab.staged &&
+    activeDiffTab.kind === 'unstaged' &&
     activeFileStatus !== undefined &&
     canDiscardHunkFor(activeFileStatus)
   const discardHunk = (patch: string): Promise<boolean> =>

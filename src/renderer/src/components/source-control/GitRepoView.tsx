@@ -7,6 +7,8 @@ import StashSection from './StashSection'
 import BranchSwitcher from './BranchSwitcher'
 import MergeBanner from './MergeBanner'
 import RemoteSetupBanner from './RemoteSetupBanner'
+import AgentChangesSection from './AgentChangesSection'
+import type { AgentChangesPanelState } from '../../hooks/useAgentChangesWiring'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
   BranchOperationKind,
@@ -62,6 +64,8 @@ interface Props {
   remoteSetup: RemoteSetupPanelState
   /** 追加・初回 push の成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
   requestRemoteSetupFocus: (target: RemoteSetupFocusTarget) => void
+  /** セクション「エージェントの変更」(バナーの直後・コミットの欄の上に置く) */
+  agentChanges?: AgentChangesPanelState
 }
 
 export default function GitRepoView({
@@ -99,7 +103,8 @@ export default function GitRepoView({
   gitTag,
   remoteSetupKind,
   remoteSetup,
-  requestRemoteSetupFocus
+  requestRemoteSetupFocus,
+  agentChanges
 }: Props): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
@@ -134,6 +139,10 @@ export default function GitRepoView({
         requestFocus={requestRemoteSetupFocus}
         isBlocked={isBlockedByOtherOperation}
       />
+      {/* エージェントの変更の確認 → ステージ → コミットが上から下に並ぶ(設計書「配置の案」A) */}
+      {agentChanges !== undefined && (
+        <AgentChangesSection {...agentChanges} isNotRepository={false} />
+      )}
       <CommitSection
         stagedCount={stagedCount}
         isCommitting={isCommitting}

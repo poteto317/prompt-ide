@@ -89,6 +89,21 @@ describe('EditorPanel: 下部のパネル', () => {
     expect(screen.queryByText('result text')).toBeNull()
   })
 
+  // agentChangesReview は省略可能な props のため、渡し忘れを型で検知できない(パターン 155)
+  it('ターミナルパネルに「変更を確認」を渡す', () => {
+    const onReview = vi.fn()
+    render(
+      <EditorPanel
+        {...baseProps}
+        bottomPanel="agent-terminal"
+        agentTerminal={makeAgentTerminal()}
+        agentChangesReview={{ isRecording: true, onReview }}
+      />
+    )
+    screen.getByRole('button', { name: 'エージェントの変更を確認（ソース管理を開く）' }).click()
+    expect(onReview).toHaveBeenCalledOnce()
+  })
+
   it('none では下部に何も出さない(実行方式の読み込み中)', () => {
     render(<EditorPanel {...baseProps} bottomPanel="none" agentTerminal={makeAgentTerminal()} />)
     expect(screen.queryByRole('region', { name: 'エージェント' })).toBeNull()

@@ -3,9 +3,13 @@
 // 公開する値だけを確かめる。実行方式の切り替えの安全・確認・実行ボタンの状態の組み立ては useAgentWorkspace.test.ts と
 // promptRunState.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import type { GitStatusResult } from '@shared/types'
+import { renderHook, act, waitFor } from '@testing-library/react'
+import type { AgentChangeEntry, GitStatusResult } from '@shared/types'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
+import {
+  makeAgentChangeEntry,
+  makeAgentChangesListResult
+} from '../../__tests__/makeAgentChangesState'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { ApplyOpenedFolderOptions } from '../useFileSystem'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
@@ -16,7 +20,8 @@ const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
     activePanel: 'explorer' as const,
     sidebarOpen: true,
-    handlePanelChange: vi.fn()
+    handlePanelChange: vi.fn(),
+    showPanel: vi.fn()
   }))
 )
 
@@ -319,7 +324,8 @@ describe('useAppState', () => {
       renderHook(() => useAppState())
       expect(mockUseAgentWorkspace).toHaveBeenLastCalledWith({
         folderPath: '/repo',
-        isExecuting: true
+        isExecuting: true,
+        beforeAgentSend: expect.any(Function)
       })
     })
 
@@ -327,7 +333,276 @@ describe('useAppState', () => {
       renderHook(() => useAppState())
       expect(mockUseAgentWorkspace).toHaveBeenLastCalledWith({
         folderPath: null,
-        isExecuting: false
+        isExecuting: false,
+        beforeAgentSend: expect.any(Function)
+      })
+    })
+
+    // beforeAgentSend・agentChangesPanel などは省略可能な引数・props のため、配線の漏れを型で検知できない(パターン 155)
+    describe('エージェントの変更の配線', () => {
+      beforeEach(() => {
+        window.api.getAgentChangesState = vi.fn().mockResolvedValue({ kind: 'none' })
+        window.api.beginAgentChanges = vi
+          .fn()
+          .mockResolvedValue({ kind: 'recording', startedAt: 100 })
+        window.api.listAgentChanges = vi
+          .fn()
+          .mockResolvedValue(makeAgentChangesListResult([makeAgentChangeEntry('a.txt')]))
+        window.api.clearAgentChanges = vi.fn().mockResolvedValue(undefined)
+        mockUseFileSystem.mockReturnValue({ ...defaultUseFileSystem(), folderPath: '/repo' })
+        // 前のテストの mockReturnValue を持ち込まない(パターン 103)
+        mockUseGitStatus.mockReturnValue({
+          gitStatus: null,
+          gitLoading: false,
+          gitError: null,
+          refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+        })
+        mockUsePanelState.mockReturnValue({
+          activePanel: 'explorer',
+          sidebarOpen: true,
+          handlePanelChange: vi.fn(),
+          showPanel: vi.fn()
+        })
+      })
+
+      it('送信の前の準備(beforeAgentSend)は記録を始めてから一覧を取る', async () => {
+        renderHook(() => useAppState())
+        const { beforeAgentSend } = mockUseAgentWorkspace.mock.lastCall![0] as {
+          beforeAgentSend: () => Promise<void>
+        }
+        await act(async () => {
+          await beforeAgentSend()
+        })
+        expect(window.api.beginAgentChanges).toHaveBeenCalledOnce()
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalled())
+      })
+
+      // 送信の関数(useAgentPromptSender.send)の依存になるため、描画のたびに作り直さない(Task 13 の申し送り)
+      it('送信の前の準備(beforeAgentSend)の参照は、描画をまたいで変わらない', async () => {
+        const { rerender } = renderHook(() => useAppState())
+        const first = mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend
+        rerender()
+        expect(mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend).toBe(first)
+        // 記録を始めて状態が変わった後も同じ
+        await act(async () => {
+          await first!()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalled())
+        expect(mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend).toBe(first)
+      })
+
+      // 送信は 10 秒で待つのを打ち切る(useAgentPromptSender)。打ち切った後に記録が終わっても、記録として扱い一覧を取る
+      it('送信の前の準備の記録が遅れて終わっても、記録中になり一覧を取る', async () => {
+        let resolveBegin: (state: { kind: 'recording'; startedAt: number }) => void = () =>
+          undefined
+        window.api.beginAgentChanges = vi.fn().mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveBegin = resolve
+          })
+        )
+        const { result } = renderHook(() => useAppState())
+        const beforeAgentSend = mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend!
+        // 準備の Promise を控えて最後に解決を検査する(.then の中だけで見ると、reject が握り潰されて通ったように見える)
+        const pending = beforeAgentSend()
+        let settled = false
+        void pending.then(
+          () => {
+            settled = true
+          },
+          () => undefined
+        )
+        expect(settled).toBe(false)
+        expect(window.api.listAgentChanges).not.toHaveBeenCalled()
+        await act(async () => {
+          resolveBegin({ kind: 'recording', startedAt: 100 })
+        })
+        await waitFor(() =>
+          expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+            kind: 'recording',
+            list: { totalCount: 1 }
+          })
+        )
+        expect(result.current.agentChangesReview.isRecording).toBe(true)
+        await expect(pending).resolves.toBeUndefined()
+        await waitFor(() => expect(settled).toBe(true))
+      })
+
+      it('「変更を確認」はソース管理パネルを切り替えて開き、git status と一覧を取り直し、フォーカスを依頼する', async () => {
+        const showPanel = vi.fn()
+        mockUsePanelState.mockReturnValue({ ...mockUsePanelState(), showPanel })
+        const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+        mockUseGitStatus.mockReturnValue({ ...mockUseGitStatus(), refreshGitStatus })
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        expect(result.current.agentChangesReview.isRecording).toBe(true)
+        act(() => result.current.agentChangesReview.onReview())
+        expect(showPanel).toHaveBeenCalledWith('source-control')
+        expect(refreshGitStatus).toHaveBeenCalled()
+        expect(result.current.agentChangesPanel.focusRequest.isRequested).toBe(true)
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalled())
+      })
+
+      it('セクションの「更新」は git status と一覧を取り直す(設計書「いつ完了とするか」(2))', async () => {
+        const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+        mockUseGitStatus.mockReturnValue({ ...mockUseGitStatus(), refreshGitStatus })
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledOnce())
+        refreshGitStatus.mockClear()
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.refresh({ announce: true })
+        })
+        expect(refreshGitStatus).toHaveBeenCalledOnce()
+        expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2)
+      })
+
+      it('git status が新しくなったら、記録の一覧を取り直す', async () => {
+        const status = (branch: string): GitStatusResult => ({
+          isRepo: true,
+          mergeInProgress: false,
+          hasOrigin: false,
+          hasRemote: false,
+          upstream: null,
+          detached: false,
+          branch,
+          ahead: 0,
+          behind: 0,
+          files: []
+        })
+        mockUseGitStatus.mockReturnValue({ ...mockUseGitStatus(), gitStatus: status('main') })
+        const { result, rerender } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledOnce())
+        mockUseGitStatus.mockReturnValue({ ...mockUseGitStatus(), gitStatus: status('main') })
+        rerender()
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2))
+      })
+
+      it('エージェントのセッションが終わったら、記録の一覧を取り直す', async () => {
+        const { result, rerender } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledOnce())
+        const workspace = makeAgentWorkspaceState()
+        mockUseAgentWorkspace.mockReturnValue({
+          ...workspace,
+          agentTerminal: {
+            ...workspace.agentTerminal,
+            session: {
+              ...workspace.agentTerminal.session,
+              status: 'exited',
+              exit: { exitCode: 0, reason: 'exited' }
+            }
+          }
+        })
+        rerender()
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2))
+      })
+
+      it('アプリで保存できたパスを、記録の「保存した」に渡す', async () => {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        // useFileSystem のモックは引数を宣言していないため、呼び出しの引数を unknown 経由で読む
+        const [{ onSaveSucceeded }] = mockUseFileSystem.mock.lastCall as unknown as [
+          { onSaveSucceeded: (path: string) => void }
+        ]
+        act(() => onSaveSucceeded('/repo/a.txt'))
+        expect([...result.current.agentChangesPanel.changes.savedPaths]).toEqual(['/repo/a.txt'])
+      })
+
+      it('記録を終えたら、エージェントの変更の diff タブを閉じる', async () => {
+        const closeDiffTab = vi.fn()
+        mockUseDiffTabs.mockReturnValue({
+          ...mockUseDiffTabs(),
+          diffTabs: [
+            { path: 'a.txt', kind: 'agent' },
+            { path: 'a.txt', kind: 'unstaged' }
+          ],
+          closeDiffTab
+        })
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() =>
+          expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+            kind: 'recording',
+            list: { totalCount: 1 }
+          })
+        )
+        expect(closeDiffTab).not.toHaveBeenCalled()
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.clear()
+        })
+        expect(closeDiffTab).toHaveBeenCalledExactlyOnceWith({ path: 'a.txt', kind: 'agent' })
+      })
+
+      it('一覧から消えたパスの agent の diff タブだけを閉じる', async () => {
+        const closeDiffTab = vi.fn()
+        mockUseDiffTabs.mockReturnValue({
+          ...mockUseDiffTabs(),
+          diffTabs: [
+            { path: 'a.txt', kind: 'agent' },
+            { path: 'gone.txt', kind: 'agent' }
+          ],
+          closeDiffTab
+        })
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() =>
+          expect(closeDiffTab).toHaveBeenCalledExactlyOnceWith({ path: 'gone.txt', kind: 'agent' })
+        )
+      })
+
+      it('diff タブのハンクの操作は、開いている agent のタブの行が変更なら戻せる', async () => {
+        mockUseDiffTabs.mockReturnValue({
+          ...mockUseDiffTabs(),
+          activeDiffTab: { path: 'a.txt', kind: 'agent' }
+        })
+        const { result } = renderHook(() => useAppState())
+        expect(result.current.agentDiffActions.canRevertHunk).toBe(false)
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(result.current.agentDiffActions.canRevertHunk).toBe(true))
+      })
+
+      // 追加・削除はファイル単位で戻す。記録していない・フォルダの行はハンクで戻せない(Task 14 の申し送り: 呼び出し側の責務)
+      it.each<[string, Partial<AgentChangeEntry>]>([
+        ['追加', { status: 'A' }],
+        ['削除', { status: 'D' }],
+        ['記録していない', { notRecorded: true }],
+        ['フォルダ', { isDirectory: true }]
+      ])('diff タブの行が%sならハンクで戻せない', async (_label, overrides) => {
+        window.api.listAgentChanges = vi
+          .fn()
+          .mockResolvedValue(makeAgentChangesListResult([makeAgentChangeEntry('a.txt', overrides)]))
+        mockUseDiffTabs.mockReturnValue({
+          ...mockUseDiffTabs(),
+          activeDiffTab: { path: 'a.txt', kind: 'agent' }
+        })
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() =>
+          expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+            kind: 'recording',
+            list: { totalCount: 1 }
+          })
+        )
+        expect(result.current.agentDiffActions.canRevertHunk).toBe(false)
       })
     })
 
@@ -410,7 +685,7 @@ describe('useAppState', () => {
     })
 
     it('diff タブの表示中は useExternalFileChanges に isFileTabActive: false を渡す(通知を出さない)', () => {
-      const diffTab = { path: 'a.ts', staged: false }
+      const diffTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
       mockUseDiffTabs.mockReturnValue({
         ...defaultUseDiffTabs(),
         diffTabs: [diffTab],

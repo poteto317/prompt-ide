@@ -170,7 +170,7 @@ describe('EditorPanel — 出力のエディタへの反映', () => {
   })
 
   it('diff タブをアクティブにすると無効になり、ファイルのタブへ戻ると有効になる', () => {
-    const diff = { path: 'src/index.ts', staged: false }
+    const diff: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { rerender } = render(<EditorPanel {...baseProps} diffTabs={[diff]} />)
     expect(headerButton(/^挿入/)).toBeEnabled()
 

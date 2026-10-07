@@ -139,7 +139,10 @@ export default function App(): React.JSX.Element {
     promptRun,
     bottomPanel,
     agentTerminal,
-    externalChangeBanner
+    externalChangeBanner,
+    agentChangesPanel,
+    agentDiffActions,
+    agentChangesReview
   } = useAppState()
 
   // タブを開く操作(openDiffTab の呼び出し)と、diff 内容の取得(activeDiffTab の変化に対する
@@ -149,7 +152,7 @@ export default function App(): React.JSX.Element {
   // handleOpenDiff が再度 openDiffTab を呼ぶ → … という無限ループが発生していた
   const handleOpenDiff = useCallback(
     (path: string, staged: boolean): void => {
-      openDiffTab({ path, staged })
+      openDiffTab({ path, kind: staged ? 'staged' : 'unstaged' })
     },
     [openDiffTab]
   )
@@ -300,6 +303,7 @@ export default function App(): React.JSX.Element {
               mergeState={mergeState}
               gitTag={gitTag}
               remoteSetup={remoteSetup}
+              agentChanges={agentChangesPanel}
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
@@ -363,6 +367,8 @@ export default function App(): React.JSX.Element {
             bottomPanel={bottomPanel}
             agentTerminal={agentTerminal}
             externalChangeBanner={externalChangeBanner}
+            agentDiffActions={agentDiffActions}
+            agentChangesReview={agentChangesReview}
           />
         </div>
       </div>

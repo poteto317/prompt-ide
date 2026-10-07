@@ -1,6 +1,7 @@
+import type { DiffTabKey } from '../useDiffTabs'
 import { renderHook } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
-import { useCombinedEditorTabs } from '../useCombinedEditorTabs'
+import { diffTabLabel, useCombinedEditorTabs } from '../useCombinedEditorTabs'
 import { encodeDiffTabPath } from '../diffTabPath'
 import type { OpenFile } from '../../types'
 
@@ -51,7 +52,7 @@ describe('useCombinedEditorTabs', () => {
     // 操作するため、diff タブをドラッグ可能にすると範囲外インデックスとして
     // 無言で破棄され、ユーザーには「ドラッグできるのに何も起きない」だけが見える
     const { result } = renderHook(() =>
-      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', staged: false }] }))
+      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', kind: 'unstaged' }] }))
     )
     expect(result.current.combinedTabs.map((t) => t.isReorderable)).toEqual([true, false])
   })
@@ -61,10 +62,10 @@ describe('useCombinedEditorTabs', () => {
     // src/b/index.ts)や、同じファイルの staged/unstaged 両方の diff タブが
     // 全く同じラベル("index.ts (差分)")になり、タブバー上で区別が付かない
     const { result } = renderHook(() =>
-      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', staged: false }] }))
+      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', kind: 'unstaged' }] }))
     )
     expect(result.current.combinedTabs).toContainEqual({
-      path: encodeDiffTabPath({ path: 'src/index.ts', staged: false }),
+      path: encodeDiffTabPath({ path: 'src/index.ts', kind: 'unstaged' }),
       name: 'src/index.ts (未ステージ差分)',
       isDirty: false,
       isReorderable: false
@@ -73,10 +74,10 @@ describe('useCombinedEditorTabs', () => {
 
   it('staged の diff タブは名前に "(ステージ済み差分)" が付く', () => {
     const { result } = renderHook(() =>
-      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', staged: true }] }))
+      useCombinedEditorTabs(makeParams({ diffTabs: [{ path: 'src/index.ts', kind: 'staged' }] }))
     )
     expect(result.current.combinedTabs).toContainEqual({
-      path: encodeDiffTabPath({ path: 'src/index.ts', staged: true }),
+      path: encodeDiffTabPath({ path: 'src/index.ts', kind: 'staged' }),
       name: 'src/index.ts (ステージ済み差分)',
       isDirty: false,
       isReorderable: false
@@ -88,8 +89,8 @@ describe('useCombinedEditorTabs', () => {
       useCombinedEditorTabs(
         makeParams({
           diffTabs: [
-            { path: 'src/a/index.ts', staged: false },
-            { path: 'src/b/index.ts', staged: false }
+            { path: 'src/a/index.ts', kind: 'unstaged' },
+            { path: 'src/b/index.ts', kind: 'unstaged' }
           ]
         })
       )
@@ -120,10 +121,10 @@ describe('useCombinedEditorTabs', () => {
 
   it('activeDiffTab がある場合、activeTabPath はエンコードされた diff タブのパスになる', () => {
     const { result } = renderHook(() =>
-      useCombinedEditorTabs(makeParams({ activeDiffTab: { path: 'src/index.ts', staged: true } }))
+      useCombinedEditorTabs(makeParams({ activeDiffTab: { path: 'src/index.ts', kind: 'staged' } }))
     )
     expect(result.current.activeTabPath).toBe(
-      encodeDiffTabPath({ path: 'src/index.ts', staged: true })
+      encodeDiffTabPath({ path: 'src/index.ts', kind: 'staged' })
     )
   })
 
@@ -135,8 +136,8 @@ describe('useCombinedEditorTabs', () => {
   it('handleActivateTab に diff タブの擬似パスを渡すと onActivateDiffTab がデコードされたキーで呼ばれる', () => {
     const onActivateDiffTab = vi.fn()
     const { result } = renderHook(() => useCombinedEditorTabs(makeParams({ onActivateDiffTab })))
-    result.current.handleActivateTab(encodeDiffTabPath({ path: 'src/index.ts', staged: true }))
-    expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: true })
+    result.current.handleActivateTab(encodeDiffTabPath({ path: 'src/index.ts', kind: 'staged' }))
+    expect(onActivateDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', kind: 'staged' })
   })
 
   it('handleActivateTab に実ファイルパスを渡すと onDeactivateDiffTab と onActivateTab が呼ばれる', () => {
@@ -168,8 +169,8 @@ describe('useCombinedEditorTabs', () => {
   it('handleCloseTab に diff タブの擬似パスを渡すと onCloseDiffTab がデコードされたキーで呼ばれる', () => {
     const onCloseDiffTab = vi.fn()
     const { result } = renderHook(() => useCombinedEditorTabs(makeParams({ onCloseDiffTab })))
-    result.current.handleCloseTab(encodeDiffTabPath({ path: 'src/index.ts', staged: false }))
-    expect(onCloseDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', staged: false })
+    result.current.handleCloseTab(encodeDiffTabPath({ path: 'src/index.ts', kind: 'unstaged' }))
+    expect(onCloseDiffTab).toHaveBeenCalledWith({ path: 'src/index.ts', kind: 'unstaged' })
   })
 
   it('handleCloseTab に実ファイルパスを渡すと onCloseTab が呼ばれる', () => {
@@ -201,7 +202,17 @@ describe('useCombinedEditorTabs', () => {
       initialProps: params
     })
     const firstCombinedTabs = result.current.combinedTabs
-    rerender(makeParams({ diffTabs: [{ path: 'src/index.ts', staged: false }] }))
+    rerender(makeParams({ diffTabs: [{ path: 'src/index.ts', kind: 'unstaged' }] }))
     expect(result.current.combinedTabs).not.toBe(firstCombinedTabs)
+  })
+})
+
+describe('diffTabLabel', () => {
+  it.each<[DiffTabKey, string]>([
+    [{ path: 'src/a.ts', kind: 'unstaged' }, 'src/a.ts (未ステージ差分)'],
+    [{ path: 'src/a.ts', kind: 'staged' }, 'src/a.ts (ステージ済み差分)'],
+    [{ path: 'src/a.ts', kind: 'agent' }, 'src/a.ts (エージェントの変更)']
+  ])('%o → %s', (tab, label) => {
+    expect(diffTabLabel(tab)).toBe(label)
   })
 })

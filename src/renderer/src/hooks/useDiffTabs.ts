@@ -2,9 +2,15 @@ import { useState } from 'react'
 import { computeAdjacentItem } from './computeAdjacentItem'
 import { isSamePath } from '../lib/pathUtils'
 
+/**
+ * diff タブの種類。unstaged: 未ステージ(index → 作業ツリー)、staged: ステージ済み(HEAD → index)、
+ * agent: エージェントの変更(記録の時点 → 作業ツリー。ステージの操作は無く、実行前に戻す操作だけ)
+ */
+export type DiffTabKind = 'unstaged' | 'staged' | 'agent'
+
 export interface DiffTabKey {
   path: string
-  staged: boolean
+  kind: DiffTabKind
 }
 
 export interface DiffTabsState {
@@ -23,7 +29,7 @@ export interface DiffTabsState {
 // useDiffOperations.ts でも同じ DiffTabKey 同士の比較が必要なため export する
 // (別実装で再現すると、path 正規化ルールを変更したときに片方だけ更新されずずれる)
 export function isSameKey(a: DiffTabKey, b: DiffTabKey): boolean {
-  return isSamePath(a.path, b.path) && a.staged === b.staged
+  return isSamePath(a.path, b.path) && a.kind === b.kind
 }
 
 // 既にアクティブなタブと同じキーであれば、新しいオブジェクト参照を作らず既存の

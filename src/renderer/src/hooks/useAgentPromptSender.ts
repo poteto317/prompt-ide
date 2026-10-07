@@ -14,6 +14,8 @@ import { useTransientNotice } from './useTransientNotice'
 
 /** 送信の結果の通知を消すまでの時間 */
 export const AGENT_SEND_NOTICE_DURATION_MS = 3_000
+/** 送信の前の準備(エージェントの変更の記録)を待つ上限。main の記録の打ち切りと同じ 10 秒 */
+export const AGENT_BEFORE_SEND_TIMEOUT_MS = 10_000
 
 export interface AgentPromptSenderState {
   isSending: boolean
@@ -29,12 +31,15 @@ export interface UseAgentPromptSenderOptions {
   controller: AgentTerminalController
   /** 送った後・失敗した後に呼ぶ(ターミナルのパネルを開く) */
   onSettled: () => void
+  /** 送信の手順(消去・貼り付け・Enter)の前に待つ準備(エージェントの変更の記録を始める)。失敗しても・上限を超えても送る */
+  beforeSend?: () => Promise<void>
   clock?: AgentSendClock
 }
 
 export function useAgentPromptSender({
   controller,
   onSettled,
+  beforeSend,
   clock = realClock
 }: UseAgentPromptSenderOptions): AgentPromptSenderState {
   const [isSending, setIsSending] = useState(false)
@@ -50,6 +55,17 @@ export function useAgentPromptSender({
       setIsSending(true)
       setError(null)
       clear()
+      // エージェントが書き始めるのは Enter の後なので、記録はその前に終わらせる(設計書「記録の開始」)。記録はおまけで、
+      // 送ることが主のため、失敗しても上限を超えても送る。待つ間は利用者のキー入力を溜めない
+      if (beforeSend !== undefined) {
+        await Promise.race([
+          // 同期の例外も reject と同じに扱う(try/finally の外で投げて送信中のまま固まらないように)
+          Promise.resolve()
+            .then(beforeSend)
+            .catch(() => undefined),
+          clock.sleep(AGENT_BEFORE_SEND_TIMEOUT_MS)
+        ])
+      }
       // 送信の手順の間は利用者のキー入力を溜める(貼り付けの途中に打鍵が混ざらないように)。finally で必ず解く
       controller.beginSending()
       try {
@@ -83,7 +99,7 @@ export function useAgentPromptSender({
         setIsSending(false)
       }
     },
-    [controller, onSettled, clock, announce, clear]
+    [controller, onSettled, beforeSend, clock, announce, clear]
   )
 
   return { isSending, error, notice, send }

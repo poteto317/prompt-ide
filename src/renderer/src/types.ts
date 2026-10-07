@@ -154,6 +154,25 @@ export interface RemoteSetupPanelState {
 // AI の出力のエディタへの反映(useApplyOutputToEditor)。挿入はカーソルの位置へ、置換は選択範囲を置き換える
 export type ApplyMode = 'insert' | 'replace'
 
+// エージェントの変更の diff タブ(DiffView の agentActions)。ハンクを実行前に戻す操作と、押せない理由
+export interface AgentDiffActions {
+  /** 開いている diff のハンクを戻せるか(変更〈M〉で、記録したファイル。追加・削除・種類の変更はファイル単位で戻す) */
+  canRevertHunk: boolean
+  /** 押せない理由(押せるなら null。パターン 126) */
+  disabledReason: string | null
+  /** 直前の戻す操作の失敗(無ければ null。role="alert" で出す) */
+  error: string | null
+  /** 確認 → 戻す → 成功したときだけ同期(useAgentChangesRevert) */
+  onRevertHunk: (patch: string, hunkHeader: string) => void
+}
+
+// ターミナルの見出しの帯の「変更を確認」(エージェントの変更の記録がある間だけ出す。組み立ては useAgentChangesWiring)
+export interface AgentChangesReviewAction {
+  isRecording: boolean
+  /** ソース管理パネルを開き、一覧を取り直し、セクションへフォーカスを移す */
+  onReview: () => void
+}
+
 // role="status" で読み上げる通知。id は通知ごとに進め、同じ文言が続いても読み上げられるようにする(パターン 87)
 export interface Announcement {
   text: string

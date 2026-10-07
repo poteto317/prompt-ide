@@ -3,6 +3,8 @@ import type { RemoteSetupPanelState } from '../../types'
 import type { RemoteSetupFocusTarget } from '../../lib/remoteSetupState'
 import { useDialogFocusReturn } from '../../hooks/useDialogFocusReturn'
 import InitRepositoryDialog from './InitRepositoryDialog'
+import AgentChangesSection from './AgentChangesSection'
+import type { AgentChangesPanelState } from '../../hooks/useAgentChangesWiring'
 
 interface Props {
   remoteSetup: RemoteSetupPanelState
@@ -10,6 +12,8 @@ interface Props {
   isBlocked: boolean
   /** 成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
   requestFocus: (target: RemoteSetupFocusTarget) => void
+  /** セクション「エージェントの変更」(Git 管理外の理由を出す) */
+  agentChanges?: AgentChangesPanelState
 }
 
 // Git 管理外のフォルダの表示。「リポジトリを初期化」とダイアログの開閉を持つ。初期化に成功すると、ステータスの
@@ -17,7 +21,8 @@ interface Props {
 export default function NotRepositoryView({
   remoteSetup,
   isBlocked,
-  requestFocus
+  requestFocus,
+  agentChanges
 }: Props): React.JSX.Element {
   // 開くときに前回の失敗の表示を消す(キャンセルしたダイアログのエラーを持ち越さない)。キャンセル・Escape・
   // オーバーレイのクリックで閉じたら、初期化中でもなくなった描画の後にボタンへフォーカスを戻す(useDialogFocusReturn)
@@ -56,6 +61,7 @@ export default function NotRepositoryView({
           リポジトリを初期化
         </button>
       </div>
+      {agentChanges !== undefined && <AgentChangesSection {...agentChanges} isNotRepository />}
       {dialog.isOpen && (
         <InitRepositoryDialog
           isRunning={remoteSetup.isInitializing}

@@ -33,6 +33,8 @@ export interface UseAgentWorkspaceOptions {
   isExecuting: boolean
   /** 確認のダイアログ(既定は window.confirm。テストで差し替える) */
   onConfirm?: (message: string) => boolean
+  /** プロンプトをエージェントへ送る前に待つ準備(useAgentChangesRecording の beginAndRefresh。エージェントの変更の記録を始め、一覧を取り直す) */
+  beforeAgentSend?: () => Promise<void>
 }
 
 export interface AgentWorkspaceState {
@@ -54,7 +56,8 @@ export interface AgentWorkspaceState {
 export function useAgentWorkspace({
   folderPath,
   isExecuting,
-  onConfirm = confirm
+  onConfirm = confirm,
+  beforeAgentSend
 }: UseAgentWorkspaceOptions): AgentWorkspaceState {
   const executionMode = useExecutionMode()
   // xterm と IPC の購読を持つ、文書ごとに 1 つの部品(StrictMode・パネルの開閉で作り直さない)
@@ -67,7 +70,8 @@ export function useAgentWorkspace({
   })
   const agentSender = useAgentPromptSender({
     controller: agentController,
-    onSettled: agentLayout.open
+    onSettled: agentLayout.open,
+    beforeSend: beforeAgentSend
   })
   const isAgentMode = executionMode.mode === 'agent-cli'
   const isAgentSessionActive =

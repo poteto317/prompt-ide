@@ -1,0 +1,187 @@
+import { describe, it, expect } from 'vitest'
+import { AGENT_CHANGES_UNAVAILABLE_REASONS } from '@shared/types'
+import type { AgentChangesUnavailableReason } from '@shared/types'
+import {
+  agentRevertAllDisabledReason,
+  agentRevertDisabledReason,
+  canRetryAgentChanges,
+  isAgentChangesSectionVisible
+} from '../agentChangesAvailability'
+import {
+  AGENT_CHANGES_BUSY_GIT,
+  AGENT_CHANGES_BUSY_LOADING,
+  AGENT_CHANGES_BUSY_REVERTING,
+  AGENT_CHANGES_LIST_FAILED,
+  AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_TRUNCATED_REASON
+} from '../agentChangesMessages'
+
+describe('「もう一度試す」を出す理由', () => {
+  it.each([
+    ['timeout', true],
+    ['git-failed', true],
+    ['not-repository', false],
+    ['not-toplevel', false],
+    ['too-many-untracked', false]
+  ] as const)('%s で「もう一度試す」を出すか: %s', (reason, expected) => {
+    expect(canRetryAgentChanges(reason)).toBe(expected)
+  })
+
+  it('記録できない理由をすべて網羅している(理由が増えたらこのテストの表にも足す)', () => {
+    const covered: readonly AgentChangesUnavailableReason[] = [
+      'timeout',
+      'git-failed',
+      'not-repository',
+      'not-toplevel',
+      'too-many-untracked'
+    ]
+    expect([...AGENT_CHANGES_UNAVAILABLE_REASONS].sort()).toEqual([...covered].sort())
+  })
+})
+
+describe('セクション「エージェントの変更」を出すか', () => {
+  it.each([
+    [true, 'none', true],
+    [true, 'unavailable', true],
+    [true, 'recording', true],
+    [false, 'none', false],
+    [false, 'unavailable', false],
+    [false, 'recording', true]
+  ] as const)('エージェント CLI 方式=%s・%s のとき: %s', (isAgentMode, viewKind, expected) => {
+    expect(isAgentChangesSectionVisible(isAgentMode, viewKind)).toBe(expected)
+  })
+})
+
+describe('戻すボタンを押せる条件(押せないなら必ず理由がある。パターン 126)', () => {
+  const flags = [false, true]
+  const combinations = flags.flatMap((isLoading) =>
+    flags.flatMap((isGitBusy) =>
+      flags.flatMap((isReverting) =>
+        flags.flatMap((hasListError) =>
+          flags.flatMap((truncated) =>
+            flags.map((hasNotRecorded) => ({
+              isLoading,
+              isGitBusy,
+              isReverting,
+              hasListError,
+              truncated,
+              hasNotRecorded
+            }))
+          )
+        )
+      )
+    )
+  )
+
+  it.each(combinations)('%o', (availability) => {
+    const blocked =
+      availability.isLoading ||
+      availability.isGitBusy ||
+      availability.isReverting ||
+      availability.hasListError
+    expect(agentRevertDisabledReason(availability) !== null).toBe(blocked)
+    expect(agentRevertAllDisabledReason(availability) !== null).toBe(
+      blocked || availability.truncated || availability.hasNotRecorded
+    )
+  })
+
+  // 優先順位の規則を、表とは別の書き方(先に立っている条件を順に探す)で書き下し、全組み合わせで文言まで一致させる
+  it.each(combinations)('文言は優先順位の規則どおり: %o', (availability) => {
+    const fileOrder: ReadonlyArray<readonly [boolean, string]> = [
+      [availability.isReverting, AGENT_CHANGES_BUSY_REVERTING],
+      [availability.hasListError, AGENT_CHANGES_LIST_FAILED],
+      [availability.isLoading, AGENT_CHANGES_BUSY_LOADING],
+      [availability.isGitBusy, AGENT_CHANGES_BUSY_GIT]
+    ]
+    const allOrder: ReadonlyArray<readonly [boolean, string]> = [
+      ...fileOrder,
+      [availability.truncated, AGENT_CHANGES_TRUNCATED_REASON],
+      [availability.hasNotRecorded, AGENT_CHANGES_NOT_RECORDED_REASON]
+    ]
+    const fileReason = fileOrder.find(([on]) => on)?.[1] ?? null
+    const allReason = allOrder.find(([on]) => on)?.[1] ?? null
+    expect(agentRevertDisabledReason(availability)).toBe(fileReason)
+    expect(agentRevertAllDisabledReason(availability)).toBe(allReason)
+    // ファイル単位の理由があれば、すべて戻すの理由は必ず同じ文言(セクションが 1 か所に出す前提)
+    if (fileReason !== null) expect(allReason).toBe(fileReason)
+  })
+
+  it('理由は実行中 → 一覧の失敗 → 取得中 → 他の Git 操作の順で 1 つ', () => {
+    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+    expect(agentRevertDisabledReason({ ...none, isReverting: true, isLoading: true })).toBe(
+      AGENT_CHANGES_BUSY_REVERTING
+    )
+    expect(agentRevertDisabledReason({ ...none, hasListError: true, isGitBusy: true })).toBe(
+      AGENT_CHANGES_LIST_FAILED
+    )
+    expect(agentRevertDisabledReason({ ...none, isLoading: true, isGitBusy: true })).toBe(
+      AGENT_CHANGES_BUSY_LOADING
+    )
+    expect(agentRevertDisabledReason({ ...none, isGitBusy: true })).toBe(AGENT_CHANGES_BUSY_GIT)
+    expect(agentRevertAllDisabledReason({ ...none, truncated: true, hasNotRecorded: false })).toBe(
+      AGENT_CHANGES_TRUNCATED_REASON
+    )
+  })
+
+  it('一覧の失敗と取得中が同時なら、一覧の失敗を出す(取り直しの間も、古い一覧で戻さない理由を見せる)', () => {
+    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+    expect(agentRevertDisabledReason({ ...none, hasListError: true, isLoading: true })).toBe(
+      AGENT_CHANGES_LIST_FAILED
+    )
+    expect(
+      agentRevertAllDisabledReason({
+        ...none,
+        hasListError: true,
+        isLoading: true,
+        truncated: false,
+        hasNotRecorded: false
+      })
+    ).toBe(AGENT_CHANGES_LIST_FAILED)
+  })
+
+  it('記録していない行を含む一覧では、すべて戻すを押せない(main が必ず全体を中止するため)', () => {
+    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+    expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: true })).toBe(
+      AGENT_CHANGES_NOT_RECORDED_REASON
+    )
+    expect(AGENT_CHANGES_NOT_RECORDED_REASON).toBe(
+      '記録していないファイルがあるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください'
+    )
+    expect(agentRevertDisabledReason({ ...none })).toBeNull()
+  })
+
+  it.each([
+    ['isReverting', AGENT_CHANGES_BUSY_REVERTING],
+    ['hasListError', AGENT_CHANGES_LIST_FAILED],
+    ['isLoading', AGENT_CHANGES_BUSY_LOADING],
+    ['isGitBusy', AGENT_CHANGES_BUSY_GIT]
+  ] as const)(
+    '記録していない行を含んでも、%s の間はその理由を先に出す(行のボタンと同じ文言)',
+    (flag, expected) => {
+      const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+      expect(
+        agentRevertAllDisabledReason({
+          ...none,
+          [flag]: true,
+          truncated: false,
+          hasNotRecorded: true
+        })
+      ).toBe(expected)
+    }
+  )
+
+  it('打ち切りと記録していない行が同時なら、打ち切りを出す', () => {
+    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+    expect(agentRevertAllDisabledReason({ ...none, truncated: true, hasNotRecorded: true })).toBe(
+      AGENT_CHANGES_TRUNCATED_REASON
+    )
+  })
+
+  it('どれも立っていなければ、どちらも押せる', () => {
+    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
+    expect(agentRevertDisabledReason(none)).toBeNull()
+    expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: false })).toBe(
+      null
+    )
+  })
+})

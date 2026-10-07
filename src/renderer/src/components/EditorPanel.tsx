@@ -5,7 +5,7 @@ import { registerSaveCommand } from '../lib/editorShortcuts'
 import { useLatestRef } from '../hooks/useLatestRef'
 import { useEditorFocusManager } from '../hooks/useEditorFocusManager'
 import { useApplyOutputToEditor } from '../hooks/useApplyOutputToEditor'
-import type { OpenFile } from '../types'
+import type { AgentChangesReviewAction, AgentDiffActions, OpenFile } from '../types'
 import WelcomeView from './editor/WelcomeView'
 import EditorTabs from './editor/EditorTabs'
 import OutputPanel from './output/OutputPanel'
@@ -79,6 +79,10 @@ interface Props {
   agentTerminal?: AgentTerminalPanelState
   /** 編集中のタブのファイルがディスク上で変わったときの通知(useExternalFileChanges)。無ければ null */
   externalChangeBanner?: ExternalChangeBannerState | null
+  /** エージェントの変更の diff タブのハンクの操作(アクティブな diff タブが agent のときだけ DiffView に渡す) */
+  agentDiffActions?: AgentDiffActions
+  /** ターミナルの帯の「変更を確認」 */
+  agentChangesReview?: AgentChangesReviewAction
 }
 
 export default function EditorPanel({
@@ -119,7 +123,9 @@ export default function EditorPanel({
   isConflictBlocked,
   bottomPanel = 'output',
   agentTerminal,
-  externalChangeBanner = null
+  externalChangeBanner = null,
+  agentDiffActions,
+  agentChangesReview
 }: Props): React.JSX.Element {
   const openFile = openFiles.find((f) => f.path === activeFilePath) ?? null
   // Monaco の onMount はファイル切替時の再マウント以外では再発火しないため、
@@ -199,9 +205,11 @@ export default function EditorPanel({
                       onStageHunk={onStageHunk}
                       onUnstageHunk={onUnstageHunk}
                       disabled={isHunkOperationInProgress}
+                      // agent のタブでは false(useDiffOperations が判定する)
                       isUntracked={isActiveFileUntracked}
                       onDiscardHunk={onDiscardHunk}
                       canDiscardHunk={canDiscardHunk}
+                      agentActions={activeDiffTab.kind === 'agent' ? agentDiffActions : undefined}
                     />
                   )}
                 </>
@@ -244,7 +252,9 @@ export default function EditorPanel({
           applyOutput={applyOutput}
         />
       )}
-      {showAgentTerminal && <AgentTerminalPanel state={agentTerminal} />}
+      {showAgentTerminal && (
+        <AgentTerminalPanel state={agentTerminal} review={agentChangesReview} />
+      )}
     </div>
   )
 }

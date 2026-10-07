@@ -1,4 +1,4 @@
-import type { DiffTabKey } from './useDiffTabs'
+import type { DiffTabKey, DiffTabKind } from './useDiffTabs'
 
 // EditorPanel のタブバーは実ファイルタブと diff タブを 1 本の文字列キー空間で
 // 扱うため、DiffTabKey <-> 文字列パスの相互変換をここに切り出す。
@@ -13,7 +13,7 @@ const SEPARATOR = '\u0000'
 const MARKER = `${SEPARATOR}diff${SEPARATOR}`
 
 export function encodeDiffTabPath(key: DiffTabKey): string {
-  return `${MARKER}${key.staged ? 'staged' : 'unstaged'}${SEPARATOR}${key.path}`
+  return `${MARKER}${key.kind}${SEPARATOR}${key.path}`
 }
 
 export function isDiffTabPath(path: string): boolean {
@@ -23,7 +23,8 @@ export function isDiffTabPath(path: string): boolean {
 export function decodeDiffTabPath(encodedPath: string): DiffTabKey {
   const rest = encodedPath.slice(MARKER.length)
   const separatorIndex = rest.indexOf(SEPARATOR)
-  const staged = rest.slice(0, separatorIndex) === 'staged'
+  const marker = rest.slice(0, separatorIndex)
+  const kind: DiffTabKind = marker === 'staged' || marker === 'agent' ? marker : 'unstaged'
   const path = rest.slice(separatorIndex + 1)
-  return { path, staged }
+  return { path, kind }
 }
