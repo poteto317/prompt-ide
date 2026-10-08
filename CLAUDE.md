@@ -200,3 +200,15 @@ const useFoo = ({ onConfirm = confirm } = {}) => { ... };
 
 - **`git commit` / `git push` の自動実行** — ユーザーの明示的な指示なしにコミット・プッシュを行わない
 - **Copilot へのレビュー依頼・監視の実行** — `scripts/request-copilot-review.sh` や `scripts/watch-pr-review.sh`、`gh pr review --request` などによる Copilot へのレビュー依頼やその監視は絶対に行わない（2026-10-03 から。理由: トークンの消費量が多く、利用上限にすぐ達するため。スクリプトは削除せず、`ALLOW_COPILOT_REVIEW=1` を付けないと実行できないようにしてある）
+
+# 開発フロー（dev-flow-kit）
+
+機能開発は、dev-flow-kit（https://github.com/poteto317/dev-flow-kit 、ローカルの clone は `$DEV_FLOW_KIT`）の開発ループで進める。
+
+- **起動方法**: Claude Code で `/feature [機能の説明]` を実行する。機能の説明を省くと、ロードマップから次の未完了項目を選ぶ。以降は確認が必要なときだけ止まり、次の順に自動で進む。
+  `feature` → `refactor-srp` → `review-loop` → `commit-ja` → `pr-ja` → `pr-review-loop` → `review-digest` → `lessons-push`
+- **依頼の言い換え**: 「次の機能を実装して」「ロードマップを進めて」「開発ループを回して」などの依頼は、`/feature` の起動として扱い、Skill ツールで `dev-flow-kit:feature` を起動する。途中のステップだけを頼まれた場合（例: 「SRP リファクタリングして」「レビューループを回して」「PR を作って」）は、該当するコマンド（`dev-flow-kit:refactor-srp` など）を起動する。その 1 ステップだけでよい場合は `--only` を付ける。
+- **再開**: 中断したフローは `/dev-flow --resume` で再開する。状態はこのリポジトリの `.claude/dev-flow/` に保存される（git 管理外）。
+- **実装前の確認**: `$DEV_FLOW_KIT/lessons/review-lessons.md` の「優先度 A のチェックリスト」を確認し、今回の変更に関係する項目は本文も読む。
+- **プラグインが使えない環境**（Codex など）: `$DEV_FLOW_KIT/commands/` の各コマンドのファイルを上の順に読み、その手順に従う。
+- **優先順位**: このファイルのほかのルールと dev-flow-kit のコマンドの指示が食い違う場合は、このリポジトリのルールに従う。
