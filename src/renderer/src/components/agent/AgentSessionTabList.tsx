@@ -2,6 +2,7 @@
 import { useEffect, useId, useRef } from 'react'
 import type { AgentSessionTabView } from '../../hooks/useAgentSessions'
 import { describeAgentTabStatus } from '../../lib/agentSessionMessages'
+import { isMacPlatform } from '../../lib/platform'
 
 /** タブ列が描くのは名前と状態と閉じる途中かだけ(controller・終了・エラーは帯とターミナルが使う) */
 type AgentSessionTabListItem = Pick<
@@ -22,12 +23,14 @@ interface AgentSessionTabListProps {
   onSelect: (slotId: string) => void
   onClose: (slotId: string) => void
   onAdd: () => void
+  /** Mac か(Mac の delete キーが送る Backspace でも閉じる。Mac 以外の Backspace は誤操作になりやすいので閉じない) */
+  isMac?: boolean
 }
 
 // ターミナルのパネルの帯のセッションのタブ列(設計書「画面」)。WAI-ARIA の tabs のパターン(選択とフォーカスを一緒に移す)。
 // 閉じるボタン(×)はタブの中に入れず(操作できる要素の入れ子を避ける)、タブの隣に置く。tablist の子を tab だけにし、
 // タブ列で Tab が止まるのを選択中のタブの 1 回にするため、× は支援技術から外し(aria-hidden)Tab の順にも入れない
-// (tabIndex=-1。マウスで押すためのもの)。キーボード・支援技術では、タブで Delete(Mac の delete キーの Backspace も)を
+// (tabIndex=-1。マウスで押すためのもの)。キーボード・支援技術では、タブで Delete(Mac では delete キーの Backspace も)を
 // 押して閉じる(WAI-ARIA の tabs のパターンの「削除できるタブ」)。
 // タブを閉じた後のフォーカスの移し先として useAgentTabCloseFocus が探すのは、選択中のタブ(role="tab"・aria-selected="true")。
 // + で作ったタブ(選択中のタブ)へは、描画の後にフォーカスを移す(4 つ目を作ると + が押せなくなり、フォーカスのある要素が
@@ -42,7 +45,8 @@ export default function AgentSessionTabList({
   addDisabledReason,
   onSelect,
   onClose,
-  onAdd
+  onAdd,
+  isMac = isMacPlatform()
 }: AgentSessionTabListProps): React.JSX.Element {
   const addReasonId = useId()
   const tabRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -75,7 +79,7 @@ export default function AgentSessionTabList({
   const handleKeyDown = (event: React.KeyboardEvent, index: number): void => {
     // 修飾キー付きはブラウザ・OS のショートカット(Alt+← の戻る等)なので奪わない
     if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
-    if (event.key === 'Delete' || event.key === 'Backspace') {
+    if (event.key === 'Delete' || (isMac && event.key === 'Backspace')) {
       const tab = tabs[index]
       if (!isClosable(tab)) return
       event.preventDefault()
@@ -115,7 +119,9 @@ export default function AgentSessionTabList({
                 aria-selected={selected}
                 aria-controls={panelId}
                 aria-label={`${tab.label}（${describeAgentTabStatus(tab.status)}）`}
-                aria-keyshortcuts={isClosable(tab) ? 'Delete' : undefined}
+                aria-keyshortcuts={
+                  isClosable(tab) ? (isMac ? 'Delete Backspace' : 'Delete') : undefined
+                }
                 tabIndex={selected ? 0 : -1}
                 className={[
                   'agent-session-tabs__tab',

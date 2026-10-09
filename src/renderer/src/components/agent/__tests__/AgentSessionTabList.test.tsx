@@ -136,18 +136,32 @@ describe('AgentSessionTabList', () => {
     }
   })
 
-  it.each(['{Delete}', '{Backspace}'])('タブで %s を押すと onClose(slotId)', async (key) => {
-    const { onClose } = renderList()
+  it.each([
+    [false, '{Delete}'],
+    [true, '{Delete}'],
+    [true, '{Backspace}']
+  ])('isMac=%s のタブで %s を押すと onClose(slotId)', async (isMac, key) => {
+    const { onClose } = renderList({ isMac })
     screen.getByRole('tab', { name: 'claude 1（実行中）' }).focus()
     await userEvent.keyboard(key)
     expect(onClose).toHaveBeenCalledExactlyOnceWith('a')
   })
 
-  it('閉じられるタブは Delete のショートカットを aria-keyshortcuts で示す', () => {
-    renderList()
+  it('Mac 以外では Backspace で閉じない', async () => {
+    const { onClose } = renderList({ isMac: false })
+    screen.getByRole('tab', { name: 'claude 1（実行中）' }).focus()
+    await userEvent.keyboard('{Backspace}')
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [false, 'Delete'],
+    [true, 'Delete Backspace']
+  ])('閉じられるタブは isMac=%s のとき aria-keyshortcuts="%s"', (isMac, expected) => {
+    renderList({ isMac })
     expect(screen.getByRole('tab', { name: 'claude 1（実行中）' })).toHaveAttribute(
       'aria-keyshortcuts',
-      'Delete'
+      expected
     )
   })
 
@@ -176,7 +190,7 @@ describe('AgentSessionTabList', () => {
   )
 
   it('修飾キー付きの Delete は奪わない', async () => {
-    const { onClose } = renderList()
+    const { onClose } = renderList({ isMac: true })
     screen.getByRole('tab', { name: 'claude 1（実行中）' }).focus()
     await userEvent.keyboard('{Meta>}{Backspace}{/Meta}')
     await userEvent.keyboard('{Alt>}{Delete}{/Alt}')
