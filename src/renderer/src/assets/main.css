@@ -1048,10 +1048,14 @@ body {
 }
 
 /* 許可待ち・確認待ちがある間の強調(タブの印の橙に揃える。白の文字では読みにくいため濃い文字にする) */
-.status-bar__agent--attention,
-.status-bar__agent--attention:hover {
+.status-bar__agent--attention {
   background: #e08a3c;
   color: #1e1e1e;
+}
+
+/* 通常の hover と詳細度が同じなので、必ずその後ろに置く。橙を少し暗くする(#1e1e1e の文字との比は約 4.89:1) */
+.status-bar__agent--attention:hover {
+  background: #c9772f;
 }
 
 .status-bar__agent--attention:focus-visible {

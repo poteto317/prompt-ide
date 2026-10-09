@@ -319,7 +319,17 @@ describe('ステータスバーのエージェントのまとめの hover(main.c
     expect(hoverBackground('.status-bar__agent:hover')).toBe('rgba(0, 0, 0, 0.15)')
   })
 
-  it('強調ありの hover も橙の背景のまま(濃い文字が読める)', () => {
-    expect(hoverBackground('.status-bar__agent--attention:hover')).toBe('rgb(224, 138, 60)')
+  it('強調ありの hover は橙を少し暗くする(#1e1e1e の文字との比が 4.5:1 以上)', () => {
+    expect(hoverBackground('.status-bar__agent--attention:hover')).toBe('rgb(201, 119, 47)')
+  })
+
+  it('強調ありの hover は通常の hover と詳細度が同じなので、後ろに書いて勝たせる', () => {
+    const selectors = Array.from(styleElement.sheet?.cssRules ?? [])
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .map((rule) => rule.selectorText)
+    const normal = selectors.indexOf('.status-bar__agent:hover')
+    const attention = selectors.indexOf('.status-bar__agent--attention:hover')
+    expect(normal).toBeGreaterThanOrEqual(0)
+    expect(attention).toBeGreaterThan(normal)
   })
 })
