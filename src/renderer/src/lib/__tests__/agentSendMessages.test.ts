@@ -5,6 +5,7 @@ import {
   PROMPT_RUN_ARIA_LABEL_AGENT,
   PROMPT_RUN_ARIA_LABEL_LEGACY,
   RERUN_DISABLED_AGENT_MODE,
+  RUN_DISABLED_CLOSING,
   RUN_DISABLED_LOADING_MODE,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING,
@@ -13,7 +14,12 @@ import {
 } from '../agentSendMessages'
 
 describe('getPromptRunAvailability', () => {
-  const base = { isExecuting: false, isSessionRunning: false, isSending: false }
+  const base = {
+    isExecuting: false,
+    isSessionRunning: false,
+    isSessionClosing: false,
+    isSending: false
+  }
   it.each([
     ['読み込み中', { ...base, mode: null }, { disabled: true, reason: RUN_DISABLED_LOADING_MODE }],
     ['従来の方式・実行中でない', { ...base, mode: 'legacy' }, { disabled: false, reason: null }],
@@ -31,6 +37,16 @@ describe('getPromptRunAvailability', () => {
       'エージェント・送信中',
       { ...base, mode: 'agent-cli', isSessionRunning: true, isSending: true },
       { disabled: true, reason: RUN_DISABLED_SENDING }
+    ],
+    [
+      'エージェント・送り先のタブが閉じる途中(running でも送らない)',
+      { ...base, mode: 'agent-cli', isSessionRunning: true, isSessionClosing: true },
+      { disabled: true, reason: RUN_DISABLED_CLOSING }
+    ],
+    [
+      '従来の方式は閉じる途中を見ない',
+      { ...base, mode: 'legacy', isSessionClosing: true },
+      { disabled: false, reason: null }
     ],
     [
       'エージェント・送れる',

@@ -1,5 +1,7 @@
 import type { AgentStartRequest } from '@shared/types'
 import {
+  AGENT_SLOT_ID_MAX_LENGTH,
+  AGENT_SLOT_ID_PATTERN,
   AGENT_TERMINAL_MAX_COLS,
   AGENT_TERMINAL_MAX_ROWS,
   AGENT_TERMINAL_MIN_COLS,
@@ -19,7 +21,12 @@ const isSessionId = (value: unknown): value is string => typeof value === 'strin
 
 export function parseAgentStartRequest(payload: unknown): AgentStartRequest {
   assertPlainObject(payload)
-  const { folderPath, cols, rows } = payload
+  const { slotId, folderPath, cols, rows } = payload
+  if (typeof slotId !== 'string' || !AGENT_SLOT_ID_PATTERN.test(slotId)) {
+    throw new Error(
+      `slotId は英数字とハイフンの 1〜${AGENT_SLOT_ID_MAX_LENGTH} 文字である必要があります`
+    )
+  }
   if (typeof folderPath !== 'string' || folderPath === '') {
     throw new Error('folderPath は空でない文字列である必要があります')
   }
@@ -36,7 +43,7 @@ export function parseAgentStartRequest(payload: unknown): AgentStartRequest {
       `rows は ${AGENT_TERMINAL_MIN_ROWS}〜${AGENT_TERMINAL_MAX_ROWS} の整数である必要があります`
     )
   }
-  return { folderPath, cols, rows }
+  return { slotId, folderPath, cols, rows }
 }
 
 export function parseAgentSessionId(value: unknown): string {

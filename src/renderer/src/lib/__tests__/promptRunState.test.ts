@@ -6,6 +6,7 @@ const base: PromptRunStateInput = {
   mode: 'legacy',
   isExecuting: false,
   sessionStatus: 'none',
+  isSessionClosing: false,
   isSending: false,
   sendError: null,
   sendNotice: null
@@ -70,6 +71,17 @@ describe('buildPromptRunPanelState', () => {
       expect(state.runDisabledReason).toBe(NO_SESSION)
     }
   )
+
+  it('エージェント CLI 方式で送り先のタブが閉じる途中なら、running でも押せず理由を出す', () => {
+    const state = buildPromptRunPanelState({
+      ...base,
+      mode: 'agent-cli',
+      sessionStatus: 'running',
+      isSessionClosing: true
+    })
+    expect(state.isRunDisabled).toBe(true)
+    expect(state.runDisabledReason).toBe('このタブを閉じています（エージェントを終了しています）')
+  })
 
   it('エージェント CLI 方式でセッションが running なら押せ、ツールの選択を隠し、送信の aria-label にする', () => {
     const notice = { id: 2, text: 'エージェントに送信しました' }

@@ -16,21 +16,21 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-// 偽の app(EventEmitter に quit を足したもの)と、stop・stopAll・hasAny を記録する registry
+// 偽の app(EventEmitter に quit を足したもの)と、stopOwner・stopAll・hasAny を記録する registry
 function setup(options: { hasAny?: boolean; stopAll?: () => Promise<void> } = {}): {
   app: EventEmitter & { quit: ReturnType<typeof vi.fn> }
   registry: AgentSessionRegistry
-  stop: ReturnType<typeof vi.spyOn>
+  stopOwner: ReturnType<typeof vi.spyOn>
   folderAccess: FolderAccessManager
 } {
   const app = Object.assign(new EventEmitter(), { quit: vi.fn() })
   const registry = new AgentSessionRegistry()
-  const stop = vi.spyOn(registry, 'stop').mockResolvedValue(undefined)
+  const stopOwner = vi.spyOn(registry, 'stopOwner').mockResolvedValue(undefined)
   vi.spyOn(registry, 'hasAny').mockReturnValue(options.hasAny ?? false)
   vi.spyOn(registry, 'stopAll').mockImplementation(options.stopAll ?? (async () => undefined))
   const folderAccess = new FolderAccessManager()
   setupAgentSessionLifecycle(app as unknown as App, registry, folderAccess, { quitTimeoutMs: 4000 })
-  return { app, registry, stop, folderAccess }
+  return { app, registry, stopOwner, folderAccess }
 }
 
 function createWebContents(
@@ -104,28 +104,28 @@ const NAVIGATION_EVENTS: Array<[string, (webContents: EventEmitter) => void, boo
 ]
 
 describe('setupAgentSessionLifecycle', () => {
-  it('renderer のプロセスが落ちたら(リロードも閉じもされなくても)そのウィンドウのセッションを止める', () => {
-    const { app, stop } = setup()
+  it('renderer のプロセスが落ちたら(リロードも閉じもされなくても)そのウィンドウのすべてのタブのセッションを止める', () => {
+    const { app, stopOwner } = setup()
     const crashed = createWebContents(app, 1)
     createWebContents(app, 2)
     crashed.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 1 })
-    expect(stop).toHaveBeenCalledExactlyOnceWith(1, 'stopped')
+    expect(stopOwner).toHaveBeenCalledExactlyOnceWith(1, 'stopped')
   })
 
-  it('ウィンドウの破棄でそのウィンドウのセッションを止める', () => {
-    const { app, stop } = setup()
+  it('ウィンドウの破棄でそのウィンドウのすべてのタブのセッションを止める', () => {
+    const { app, stopOwner } = setup()
     const closing = createWebContents(app, 1)
     createWebContents(app, 2)
     closing.emit('destroyed')
-    expect(stop).toHaveBeenCalledExactlyOnceWith(1, 'stopped')
+    expect(stopOwner).toHaveBeenCalledExactlyOnceWith(1, 'stopped')
   })
 
   it.each(NAVIGATION_EVENTS)('%s', (_label, navigate, stopped) => {
-    const { app, stop } = setup()
+    const { app, stopOwner } = setup()
     const navigating = createWebContents(app, 1)
     createWebContents(app, 2)
     navigate(navigating)
-    expect(stop.mock.calls).toEqual(stopped ? [[1, 'stopped']] : [])
+    expect(stopOwner.mock.calls).toEqual(stopped ? [[1, 'stopped']] : [])
   })
 
   it.each(NAVIGATION_EVENTS)(
@@ -140,17 +140,17 @@ describe('setupAgentSessionLifecycle', () => {
   )
 
   it('フォルダが別のパスに変わったら folder-changed で止める。同じパスなら止めない', () => {
-    const { stop, folderAccess } = setup()
+    const { stopOwner, folderAccess } = setup()
     folderAccess.set(1, '/a')
-    stop.mockClear()
+    stopOwner.mockClear()
     folderAccess.set(1, '/a')
-    expect(stop).not.toHaveBeenCalled()
+    expect(stopOwner).not.toHaveBeenCalled()
     folderAccess.set(1, '/b')
-    expect(stop).toHaveBeenCalledExactlyOnceWith(1, 'folder-changed')
+    expect(stopOwner).toHaveBeenCalledExactlyOnceWith(1, 'folder-changed')
   })
 
   it('破棄済みの webContents の id には触れない(destroyed の時点で id を読むと例外になる)', () => {
-    const { app, stop } = setup()
+    const { app, stopOwner } = setup()
     let destroyed = false
     const webContents = Object.assign(new EventEmitter(), {
       get id(): number {
@@ -161,17 +161,17 @@ describe('setupAgentSessionLifecycle', () => {
     app.emit('web-contents-created', {}, webContents)
     destroyed = true
     expect(() => webContents.emit('destroyed')).not.toThrow()
-    expect(stop).toHaveBeenCalledExactlyOnceWith(7, 'stopped')
+    expect(stopOwner).toHaveBeenCalledExactlyOnceWith(7, 'stopped')
   })
 
-  it('セッションが無ければ終了を止めない', () => {
+  it('どのウィンドウにもセッションが無ければ終了を止めない', () => {
     const { app } = setup({ hasAny: false })
     const event = { preventDefault: vi.fn() }
     app.emit('before-quit', event)
     expect(event.preventDefault).not.toHaveBeenCalled()
   })
 
-  it('セッションがあれば終了を止め、止め終わってから quit し直す。2 回目の before-quit は素通しする', async () => {
+  it('どこかのウィンドウのタブにセッションがあれば終了を止め、止め終わってから quit し直す。2 回目の before-quit は素通しする', async () => {
     let release: () => void = () => undefined
     const { app } = setup({
       hasAny: true,
@@ -203,7 +203,7 @@ describe('setupAgentSessionLifecycle', () => {
       kind: 'failed' as const,
       result: { kind: 'error' as const, error: 'no-folder' as const }
     }))
-    await expect(registry.start(1, create)).resolves.toEqual(agentStartCanceled())
+    await expect(registry.start(1, 'slot-1', create)).resolves.toEqual(agentStartCanceled())
     expect(create).not.toHaveBeenCalled()
   })
 
@@ -214,7 +214,10 @@ describe('setupAgentSessionLifecycle', () => {
       kind: 'failed' as const,
       result: { kind: 'error' as const, error: 'no-folder' as const }
     }))
-    await expect(registry.start(1, create)).resolves.toEqual({ kind: 'error', error: 'no-folder' })
+    await expect(registry.start(1, 'slot-1', create)).resolves.toEqual({
+      kind: 'error',
+      error: 'no-folder'
+    })
     expect(create).toHaveBeenCalledOnce()
   })
 

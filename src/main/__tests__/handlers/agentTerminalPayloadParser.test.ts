@@ -6,10 +6,14 @@ import {
   parseAgentWrite
 } from '../../handlers/agentTerminalPayloadParser'
 import { IPC_PATH_MAX_LENGTH } from '../../handlers/payloadValidators'
+import { AGENT_SLOT_ID_MAX_LENGTH } from '@shared/types'
 
 describe('parseAgentStartRequest', () => {
-  it('folderPath・cols・rows を返す', () => {
-    expect(parseAgentStartRequest({ folderPath: '/p', cols: 80, rows: 24 })).toEqual({
+  it('slotId・folderPath・cols・rows を返す', () => {
+    expect(
+      parseAgentStartRequest({ slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 })
+    ).toEqual({
+      slotId: 'slot-1',
       folderPath: '/p',
       cols: 80,
       rows: 24
@@ -17,28 +21,42 @@ describe('parseAgentStartRequest', () => {
   })
   it.each([
     ['オブジェクトでない', null],
-    ['folderPath が空', { folderPath: '', cols: 80, rows: 24 }],
-    ['folderPath が文字列でない', { folderPath: 1, cols: 80, rows: 24 }],
-    ['cols が下限未満', { folderPath: '/p', cols: 1, rows: 24 }],
-    ['cols が上限超え', { folderPath: '/p', cols: 501, rows: 24 }],
-    ['cols が整数でない', { folderPath: '/p', cols: 80.5, rows: 24 }],
-    ['rows が下限未満', { folderPath: '/p', cols: 80, rows: 0 }],
-    ['rows が上限超え', { folderPath: '/p', cols: 80, rows: 301 }],
-    ['rows が文字列', { folderPath: '/p', cols: 80, rows: '24' }]
+    ['slotId が空', { slotId: '', folderPath: '/p', cols: 80, rows: 24 }],
+    ['slotId に使えない文字がある', { slotId: 'a/b', folderPath: '/p', cols: 80, rows: 24 }],
+    [
+      'slotId が上限より 1 文字長い',
+      { slotId: 'a'.repeat(AGENT_SLOT_ID_MAX_LENGTH + 1), folderPath: '/p', cols: 80, rows: 24 }
+    ],
+    ['folderPath が空', { slotId: 'slot-1', folderPath: '', cols: 80, rows: 24 }],
+    ['folderPath が文字列でない', { slotId: 'slot-1', folderPath: 1, cols: 80, rows: 24 }],
+    ['cols が下限未満', { slotId: 'slot-1', folderPath: '/p', cols: 1, rows: 24 }],
+    ['cols が上限超え', { slotId: 'slot-1', folderPath: '/p', cols: 501, rows: 24 }],
+    ['cols が整数でない', { slotId: 'slot-1', folderPath: '/p', cols: 80.5, rows: 24 }],
+    ['rows が下限未満', { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 0 }],
+    ['rows が上限超え', { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 301 }],
+    ['rows が文字列', { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: '24' }]
   ])('%s なら投げる', (_label, payload) => {
     expect(() => parseAgentStartRequest(payload)).toThrow()
   })
   it('folderPath の長さが上限を超えたら投げる(realpath に巨大な文字列を渡さない)', () => {
     const path = '/' + 'a'.repeat(IPC_PATH_MAX_LENGTH - 1)
-    expect(() => parseAgentStartRequest({ folderPath: path, cols: 80, rows: 24 })).not.toThrow()
-    expect(() => parseAgentStartRequest({ folderPath: path + 'a', cols: 80, rows: 24 })).toThrow()
+    expect(() =>
+      parseAgentStartRequest({ slotId: 'slot-1', folderPath: path, cols: 80, rows: 24 })
+    ).not.toThrow()
+    expect(() =>
+      parseAgentStartRequest({ slotId: 'slot-1', folderPath: path + 'a', cols: 80, rows: 24 })
+    ).toThrow()
   })
   it('配列は投げる', () => {
     expect(() => parseAgentStartRequest([])).toThrow()
   })
   it('境界の値(2・500・1・300)は通す', () => {
-    expect(() => parseAgentStartRequest({ folderPath: '/p', cols: 2, rows: 1 })).not.toThrow()
-    expect(() => parseAgentStartRequest({ folderPath: '/p', cols: 500, rows: 300 })).not.toThrow()
+    expect(() =>
+      parseAgentStartRequest({ slotId: 'slot-1', folderPath: '/p', cols: 2, rows: 1 })
+    ).not.toThrow()
+    expect(() =>
+      parseAgentStartRequest({ slotId: 'slot-1', folderPath: '/p', cols: 500, rows: 300 })
+    ).not.toThrow()
   })
 })
 

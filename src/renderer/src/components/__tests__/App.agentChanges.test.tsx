@@ -4,11 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AgentChangesListResult, GitStatusResult } from '@shared/types'
 import type { Panel } from '../../types'
 
-// jsdom では xterm を開けないため、文書ごとの controller を偽物にする(App.agentCli.test.tsx と同じ)
+// jsdom では xterm を開けないため、文書ごとのタブの置き場の controller を偽物にする(App.agentCli.test.tsx と同じ)
 vi.mock('../../lib/xtermFactory', async () => {
-  const { makeFakeController } = await import('../../__tests__/makeFakeAgentTerminal')
-  const controller = makeFakeController()
-  return { getAgentTerminalController: () => controller }
+  const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
+  const tabs = makeFakeAgentSessionTabs()
+  return { getAgentSessionTabs: () => tabs }
 })
 
 import App from '../../App'

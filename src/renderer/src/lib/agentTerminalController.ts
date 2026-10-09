@@ -1,4 +1,4 @@
-import type { AgentSessionData, AgentSessionExit } from '@shared/types'
+import type { AgentSessionData } from '@shared/types'
 import {
   AGENT_TERMINAL_MAX_COLS,
   AGENT_TERMINAL_MAX_ROWS,
@@ -10,8 +10,9 @@ import { readViewportLines } from './agentViewport'
 import { classifyAgentTerminalKey } from './agentTerminalKeys'
 import { createPendingOutputBuffer } from './agentPendingOutput'
 
-// xterm の Terminal とアドオン・IPC の購読を持つ、React の外の部品(文書ごとに 1 つ)。StrictMode の二重マウントやパネルの開閉で
-// xterm を作り直さない(確認の結果 10)。表示の要素への取り付け・取り外し、fit、出力の書き込み、終了の購読、表示中の画面の読み取り、
+// xterm の Terminal とアドオン・IPC の出力の購読を持つ、React の外の部品(タブごとに 1 つ)。StrictMode の二重マウントやパネルの開閉で
+// xterm を作り直さない(確認の結果 10)。タブを閉じたら dispose で購読と xterm を破棄する。終了の購読は hook が持つ(複数の controller が
+// それぞれ購読すると重複して届くため)。表示の要素への取り付け・取り外し、fit、出力の書き込み、表示中の画面の読み取り、
 // 送信中の利用者のキー入力の保留と再送を受け持つ。xterm を直接触るのはこのモジュールと xtermFactory だけ
 
 /** xterm の Terminal のうち、この部品が使うもの(テストでは偽物を渡す。パターン 128) */
@@ -29,6 +30,7 @@ export interface TerminalLike {
   hasSelection(): boolean
   getSelection(): string
   paste(data: string): void
+  dispose(): void
 }
 
 export interface FitAddonLike {
@@ -39,7 +41,6 @@ export interface AgentTerminalApiLike {
   writeAgentSession(sessionId: string, data: string): void
   resizeAgentSession(sessionId: string, cols: number, rows: number): void
   onAgentData(listener: (payload: AgentSessionData) => void): () => void
-  onAgentExit(listener: (payload: AgentSessionExit) => void): () => void
 }
 
 export interface ClipboardLike {
@@ -81,13 +82,14 @@ export interface AgentTerminalController {
   /** 送信の手順の間、利用者のキー入力を溜める。endSending で順に送る */
   beginSending(): void
   endSending(): void
-  onExit(listener: (exit: AgentSessionExit) => void): () => void
   /** F6 でターミナルから抜けるときの移動先 */
   setFocusOutHandler(handler: (() => void) | null): void
   focus(): void
+  /** IPC の購読を外し、xterm を破棄する(閉じたタブ)。以後の取り付け・fit・セッションへの書き込み・2 回目の dispose は何もしない */
+  dispose(): void
 }
 
-/** sessionId が決まるまでに届いた出力を溜める上限(UTF-16 の単位) */
+/** sessionId が決まるまでに届いた出力を溜める、セッションごとの上限(UTF-16 の単位) */
 const MAX_PENDING_OUTPUT = 1_000_000
 
 const clamp = (value: number, min: number, max: number): number =>
@@ -111,26 +113,24 @@ export function createAgentTerminalController({
   // 起動の準備の後、最初の fit が返した大きさ(起動の依頼に含めた大きさ)。sessionId が決まるまでに大きさが変われば、決まったときに送り直す
   let startSize: AgentTerminalSize | null = null
   let focusOutHandler: (() => void) | null = null
-  const exitListeners = new Set<(exit: AgentSessionExit) => void>()
+  let disposed = false
 
   const sizeOf = (): AgentTerminalSize => ({
     cols: clamp(terminal.cols, AGENT_TERMINAL_MIN_COLS, AGENT_TERMINAL_MAX_COLS),
     rows: clamp(terminal.rows, AGENT_TERMINAL_MIN_ROWS, AGENT_TERMINAL_MAX_ROWS)
   })
 
-  api.onAgentData(({ sessionId: from, data }) => {
+  const unsubscribeData = api.onAgentData(({ sessionId: from, data }) => {
+    if (disposed) return
     if (from === sessionId) {
       terminal.write(data)
       return
     }
     pendingOutput.push(from, data)
   })
-  api.onAgentExit((exit) => {
-    for (const listener of [...exitListeners]) listener(exit)
-  })
 
   terminal.onData((data) => {
-    if (sessionId === null) return
+    if (disposed || sessionId === null) return
     if (sending) heldInput.push(data)
     else api.writeAgentSession(sessionId, data)
   })
@@ -167,6 +167,7 @@ export function createAgentTerminalController({
 
   return {
     attach(container) {
+      if (disposed) return
       if (host === null) {
         host = createHost()
         container.appendChild(host)
@@ -179,6 +180,7 @@ export function createAgentTerminalController({
       if (host !== null && host.parentElement === container) container.removeChild(host)
     },
     fit() {
+      if (disposed) return sizeOf()
       // 表示されていない(display: none・取り外した)ときの fit は大きさを測れず、例外や 0 になりうる
       if (host !== null && host.isConnected) {
         try {
@@ -216,7 +218,7 @@ export function createAgentTerminalController({
     readViewport: () => readViewportLines(terminal.buffer.active, terminal.rows),
     isBracketedPasteEnabled: () => terminal.modes.bracketedPasteMode,
     writeToSession(data) {
-      if (sessionId !== null) api.writeAgentSession(sessionId, data)
+      if (!disposed && sessionId !== null) api.writeAgentSession(sessionId, data)
     },
     beginSending() {
       sending = true
@@ -225,20 +227,27 @@ export function createAgentTerminalController({
       sending = false
       const held = heldInput
       heldInput = []
-      if (sessionId === null) return
+      if (disposed || sessionId === null) return
       for (const data of held) api.writeAgentSession(sessionId, data)
-    },
-    onExit(listener) {
-      exitListeners.add(listener)
-      return () => {
-        exitListeners.delete(listener)
-      }
     },
     setFocusOutHandler(handler) {
       focusOutHandler = handler
     },
     focus() {
       terminal.focus()
+    },
+    dispose() {
+      if (disposed) return
+      disposed = true
+      unsubscribeData()
+      // フォーカスのある要素を取り除くと blur が配送されないことがあるため、外す前に blur して
+      // AgentTerminalView の onBlur(メニューのショートカットの無視の解除)を届ける
+      const active = document.activeElement
+      if (host !== null && active instanceof HTMLElement && host.contains(active)) active.blur()
+      host?.remove()
+      host = null
+      terminal.dispose()
+      sessionId = null
     }
   }
 }

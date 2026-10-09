@@ -10,7 +10,7 @@ import type { AgentChangesController } from './useAgentChanges'
 import type { AgentChangesRecording } from './useAgentChangesRecording'
 import { useAgentChangesRevert } from './useAgentChangesRevert'
 import type { AgentChangesRevertOptions, AgentChangesRevertState } from './useAgentChangesRevert'
-import type { AgentSessionExitView } from './useAgentSession'
+import type { AgentLastExit } from './useAgentSessions'
 import type { DiffTabsState } from './useDiffTabs'
 import type { FileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
@@ -60,9 +60,9 @@ export interface AgentChangesWiringOptions {
   recording: AgentChangesRecording
   gitStatus: GitStatusResult | null
   refreshGitStatus: () => Promise<void>
-  /** エージェントのセッションの終了(一覧を取り直す契機) */
-  agentSessionExit: AgentSessionExitView | null
-  /** エージェントのセッションが動いているか(戻すの確認の文言に足す) */
+  /** いずれかのタブのセッションの最後の終了(一覧を取り直す契機。終了のたびに新しいオブジェクト) */
+  agentSessionExit: AgentLastExit | null
+  /** どれかのタブのセッションが動いているか(起動中を含む。戻すの確認の文言に足す) */
   agentRunning: boolean
   /** エージェント CLI 方式か(従来の方式ではセクションは記録がある間だけ出る) */
   isAgentMode: boolean

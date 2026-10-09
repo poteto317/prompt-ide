@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import AgentTerminalPanel from '../AgentTerminalPanel'
@@ -6,7 +6,11 @@ import type { AgentChangesReviewAction } from '../../../types'
 import type { AgentTerminalPanelState } from '../../../hooks/useAgentWorkspace'
 import { makeFakeController } from '../../../__tests__/makeFakeAgentTerminal'
 import type { FakeController } from '../../../__tests__/makeFakeAgentTerminal'
-import { makeAgentSessionState } from '../../../__tests__/makeAgentSessionState'
+import {
+  makeAgentSessionsState,
+  makeAgentSessionTabView
+} from '../../../__tests__/makeAgentSessionsState'
+import type { AgentSessionTabView } from '../../../hooks/useAgentSessions'
 import type { AgentTerminalPanelLayout } from '../../../hooks/useAgentTerminalPanel'
 
 let controller: FakeController
@@ -22,14 +26,22 @@ function makeLayout(overrides: Partial<AgentTerminalPanelLayout> = {}): AgentTer
   }
 }
 
+// 選択中のタブ(帯の状態・起動・終了・エラーの対象)の上書き。controller は既定でテストの偽物
+function makeSessions(
+  selected: Partial<AgentSessionTabView> = {},
+  rest: Parameters<typeof makeAgentSessionsState>[0] = {}
+): AgentTerminalPanelState['sessions'] {
+  return makeAgentSessionsState({ ...rest, selected: { controller, ...selected } })
+}
+
 function renderPanel(
   overrides: Partial<AgentTerminalPanelState> = {},
   review?: AgentChangesReviewAction
 ): AgentTerminalPanelState {
   const state: AgentTerminalPanelState = {
-    controller,
-    session: makeAgentSessionState(),
+    sessions: makeSessions(),
     layout: makeLayout(),
+    sendingSlotId: null,
     ...overrides
   }
   render(<AgentTerminalPanel state={state} review={review} />)
@@ -62,7 +74,7 @@ describe('AgentTerminalPanel', () => {
 
   it('フォルダが無ければ起動を押せず、理由を出して参照する', () => {
     renderPanel({
-      session: makeAgentSessionState({ startDisabledReason: 'フォルダを開いてください' })
+      sessions: makeSessions({}, { startDisabledReason: 'フォルダを開いてください' })
     })
     const start = screen.getByRole('button', { name: /^起動/ })
     expect(start).toBeDisabled()
@@ -71,31 +83,38 @@ describe('AgentTerminalPanel', () => {
     )
   })
 
-  it('起動を押すと start を呼ぶ', async () => {
-    const state = renderPanel()
+  it('起動を押すと選択中のタブの start を呼ぶ', async () => {
+    const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2' }) })
     await userEvent.click(screen.getByRole('button', { name: /^起動/ }))
-    expect(state.session.start).toHaveBeenCalledOnce()
+    expect(state.sessions.start).toHaveBeenCalledExactlyOnceWith('slot-2')
   })
 
-  it('起動中は終了を出し、押すと確認なしで stop を呼ぶ', async () => {
+  it('実行中は終了を出し、押すと確認なしで選択中のタブの stop を呼ぶ', async () => {
     const state = renderPanel({
-      session: makeAgentSessionState({ status: 'running', sessionId: 's1' })
+      sessions: makeSessions({ slotId: 'slot-2', status: 'running' })
     })
-    expect(screen.getByText('起動中')).toBeInTheDocument()
+    expect(screen.getByText('実行中')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^終了/ }))
-    expect(state.session.stop).toHaveBeenCalledOnce()
+    expect(state.sessions.stop).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  it('ターミナルには選択中のタブの controller を表示する', () => {
+    const other = makeFakeController()
+    renderPanel({ sessions: makeSessions({ controller: other }) })
+    expect(other.attach).toHaveBeenCalled()
+    expect(controller.attach).not.toHaveBeenCalled()
   })
 
   it('終了した後は終了コードを出し、起動を出す', () => {
     renderPanel({
-      session: makeAgentSessionState({ status: 'exited', exit: { exitCode: 1, reason: 'exited' } })
+      sessions: makeSessions({ status: 'exited', exit: { exitCode: 1, reason: 'exited' } })
     })
     expect(screen.getByText('終了しました（終了コード 1）')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^起動/ })).toBeEnabled()
   })
 
   it('起動の失敗を role="alert" で出す', () => {
-    renderPanel({ session: makeAgentSessionState({ error: 'claude コマンドが見つかりません。' }) })
+    renderPanel({ sessions: makeSessions({ error: 'claude コマンドが見つかりません。' }) })
     expect(screen.getByRole('alert')).toHaveTextContent('claude コマンドが見つかりません。')
   })
 
@@ -174,5 +193,195 @@ describe('AgentTerminalPanel — 変更を確認', () => {
     renderPanel({ layout }, { isRecording: true, onReview: () => void order.push('review') })
     await userEvent.click(screen.getByRole('button', { name: REVIEW }))
     expect(order).toEqual(['restore', 'review'])
+  })
+
+  describe('セッションのタブ列', () => {
+    const twoTabs = (): AgentTerminalPanelState['sessions'] => {
+      const a = makeAgentSessionTabView({ slotId: 'a', label: 'claude 1', controller })
+      const b = makeAgentSessionTabView({
+        slotId: 'b',
+        label: 'claude 2',
+        controller: makeFakeController()
+      })
+      return makeAgentSessionsState({ tabs: [a, b], selected: a })
+    }
+
+    it('帯にタブ列が出て、+ で addTab を呼ぶ', async () => {
+      const state = renderPanel({ sessions: twoTabs() })
+      expect(screen.getByRole('tablist', { name: 'エージェントのセッション' })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: '新しいセッション' }))
+      expect(state.sessions.addTab).toHaveBeenCalledTimes(1)
+    })
+
+    it('タブの aria-controls は本文を参照する', () => {
+      renderPanel({ sessions: twoTabs() })
+      const controls = screen.getAllByRole('tab')[0].getAttribute('aria-controls') ?? ''
+      expect(document.getElementById(controls)).toHaveClass('agent-terminal-panel__body')
+    })
+
+    it('選択中のタブを × で閉じると、閉じた後に選択中になったタブへフォーカスが移る', async () => {
+      const sessions = twoTabs()
+      const [a, b] = sessions.tabs
+      let current = sessions
+      const { rerender } = render(
+        <AgentTerminalPanel
+          state={{ sessions: current, layout: makeLayout(), sendingSlotId: null }}
+        />
+      )
+      const rerenderWith = (next: typeof sessions): void => {
+        current = next
+        rerender(
+          <AgentTerminalPanel
+            state={{ sessions: current, layout: makeLayout(), sendingSlotId: null }}
+          />
+        )
+      }
+      sessions.closeTab = vi.fn(async () => {
+        rerenderWith(makeAgentSessionsState({ tabs: [b], selected: b }))
+        return true
+      })
+      rerenderWith(sessions)
+      await userEvent.click(screen.getByLabelText('claude 1 を閉じる'))
+      expect(sessions.closeTab).toHaveBeenCalledWith(a.slotId)
+      expect(await screen.findByRole('tab', { name: 'claude 2（未起動）' })).toHaveFocus()
+    })
+
+    it('閉じる前に、ターミナルにフォーカスがあれば開閉のボタンへ移す', async () => {
+      const sessions = twoTabs()
+      let focusAtClose: Element | null = null
+      sessions.closeTab = vi.fn(async () => {
+        focusAtClose = document.activeElement
+        return false
+      })
+      renderPanel({ sessions })
+      const view = document.querySelector('[data-agent-terminal]') as HTMLElement
+      const inner = document.createElement('textarea')
+      view.appendChild(inner)
+      inner.focus()
+      // userEvent.click は mousedown でフォーカスを × へ移すため、フォーカスを動かさない fireEvent で押す
+      fireEvent.click(screen.getByLabelText('claude 1 を閉じる'))
+      await waitFor(() => expect(sessions.closeTab).toHaveBeenCalled())
+      expect(focusAtClose).toBe(
+        screen.getByRole('button', { name: /^▾ エージェント|^エージェント/ })
+      )
+    })
+
+    it('選択中でないタブの × を押して取りやめたら、選択中のタブへフォーカスを戻す', async () => {
+      const sessions = twoTabs()
+      sessions.closeTab = vi.fn(async () => false)
+      renderPanel({ sessions })
+      await userEvent.click(screen.getByLabelText('claude 2 を閉じる'))
+      expect(screen.getByRole('tab', { name: 'claude 1（未起動）' })).toHaveFocus()
+    })
+
+    it('選択中のタブで Delete を押すと、そのタブを閉じる(閉じたら選択中のタブへフォーカス)', async () => {
+      const sessions = twoTabs()
+      const [a, b] = sessions.tabs
+      const { rerender } = render(
+        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+      )
+      sessions.closeTab = vi.fn(async () => {
+        rerender(
+          <AgentTerminalPanel
+            state={{
+              sessions: makeAgentSessionsState({ tabs: [b], selected: b }),
+              layout: makeLayout(),
+              sendingSlotId: null
+            }}
+          />
+        )
+        return true
+      })
+      screen.getByRole('tab', { name: 'claude 1（未起動）' }).focus()
+      await userEvent.keyboard('{Delete}')
+      expect(sessions.closeTab).toHaveBeenCalledWith(a.slotId)
+      expect(await screen.findByRole('tab', { name: 'claude 2（未起動）' })).toHaveFocus()
+    })
+
+    it('本文は tabpanel で、選択中のタブのボタンを aria-labelledby で参照する(閉じていても)', () => {
+      renderPanel({ sessions: twoTabs(), layout: makeLayout({ isOpen: false }) })
+      const body = document.querySelector('.agent-terminal-panel__body') as HTMLElement
+      expect(body).toHaveAttribute('role', 'tabpanel')
+      expect(body).toHaveAttribute('hidden')
+      const label = document.getElementById(body.getAttribute('aria-labelledby') ?? '')
+      expect(label).toBe(screen.getByRole('tab', { name: 'claude 1（未起動）' }))
+    })
+
+    it('選択中でないタブの × で closeTab が reject しても握り、選択中のタブへフォーカスを戻す', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const sessions = twoTabs()
+      sessions.closeTab = vi.fn(async () => {
+        throw new Error('失敗')
+      })
+      renderPanel({ sessions })
+      await userEvent.click(screen.getByLabelText('claude 2 を閉じる'))
+      await waitFor(() => expect(spy).toHaveBeenCalled())
+      expect(screen.getByRole('tab', { name: 'claude 1（未起動）' })).toHaveFocus()
+      spy.mockRestore()
+    })
+
+    it('選択中でないタブを閉じて消えたら、選択中のタブ(変わらない)へフォーカスが移る', async () => {
+      const sessions = twoTabs()
+      const [a, b] = sessions.tabs
+      const { rerender } = render(
+        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+      )
+      sessions.closeTab = vi.fn(async () => {
+        rerender(
+          <AgentTerminalPanel
+            state={{
+              sessions: makeAgentSessionsState({ tabs: [a], selected: a }),
+              layout: makeLayout(),
+              sendingSlotId: null
+            }}
+          />
+        )
+        return true
+      })
+      await userEvent.click(screen.getByLabelText('claude 2 を閉じる'))
+      expect(sessions.closeTab).toHaveBeenCalledWith(b.slotId)
+      expect(await screen.findByRole('tab', { name: 'claude 1（未起動）' })).toHaveFocus()
+    })
+
+    it('選択中のタブが閉じる途中なら、終了・起動も × も押せない', () => {
+      const a = makeAgentSessionTabView({ slotId: 'a', status: 'running', isClosing: true })
+      const b = makeAgentSessionTabView({ slotId: 'b', label: 'claude 2' })
+      renderPanel({ sessions: makeAgentSessionsState({ tabs: [a, b], selected: a }) })
+      expect(screen.getByRole('button', { name: /^終了/ })).toBeDisabled()
+      expect(screen.getByLabelText('claude 1 を閉じる')).toBeDisabled()
+    })
+
+    it('選択中のタブが閉じる途中で終了の通知が先に届いても(exited)、起動を押せない', () => {
+      const a = makeAgentSessionTabView({ slotId: 'a', status: 'exited', isClosing: true })
+      const b = makeAgentSessionTabView({ slotId: 'b', label: 'claude 2' })
+      renderPanel({ sessions: makeAgentSessionsState({ tabs: [a, b], selected: a }) })
+      expect(screen.getByRole('button', { name: /^起動/ })).toBeDisabled()
+    })
+
+    it('送信中のタブの × は押せない', () => {
+      renderPanel({ sessions: twoTabs(), sendingSlotId: 'b' })
+      expect(screen.getByLabelText('claude 2 を閉じる')).toBeDisabled()
+    })
+
+    it('タブを切り替えると、ターミナルの表示は選択中のタブの controller に変わる', () => {
+      const sessions = twoTabs()
+      const [a, b] = sessions.tabs
+      const { rerender } = render(
+        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+      )
+      expect(a.controller.attach).toHaveBeenCalled()
+      expect(b.controller.attach).not.toHaveBeenCalled()
+      rerender(
+        <AgentTerminalPanel
+          state={{
+            sessions: makeAgentSessionsState({ tabs: [a, b], selected: b }),
+            layout: makeLayout(),
+            sendingSlotId: null
+          }}
+        />
+      )
+      expect(a.controller.detach).toHaveBeenCalled()
+      expect(b.controller.attach).toHaveBeenCalled()
+    })
   })
 })

@@ -5,7 +5,7 @@ import type {
   AgentRevertAllEntry,
   AgentSessionData,
   AgentSessionExit,
-  AgentSessionSnapshot,
+  AgentSessionSnapshotEntry,
   AgentStartRequest,
   AgentStartResult,
   CLIOnlyToolId,
@@ -174,7 +174,7 @@ export const api = {
     ipcRenderer.send('agentTerminal:resize', sessionId, cols, rows),
   stopAgentSession: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke('agentTerminal:stop', sessionId),
-  getAgentSession: (): Promise<AgentSessionSnapshot> =>
+  getAgentSessions: (): Promise<AgentSessionSnapshotEntry[]> =>
     ipcRenderer.invoke('agentTerminal:getState'),
   onAgentData: (listener: (payload: AgentSessionData) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {

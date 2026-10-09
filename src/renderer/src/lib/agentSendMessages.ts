@@ -37,6 +37,7 @@ export const RUN_DISABLED_LOADING_MODE = '設定を読み込んでいます'
 export const RUN_DISABLED_NO_SESSION =
   'エージェントが起動していません（ターミナルの「起動」を押してください）'
 export const RUN_DISABLED_SENDING = 'エージェントへ送信しています'
+export const RUN_DISABLED_CLOSING = 'このタブを閉じています（エージェントを終了しています）'
 export const RERUN_DISABLED_AGENT_MODE =
   'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
 
@@ -46,15 +47,18 @@ export interface PromptRunAvailability {
   reason: string | null
 }
 
-/** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」) */
+/** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
+ *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため) */
 export function getPromptRunAvailability(params: {
   mode: PromptExecutionMode | null
   isExecuting: boolean
   isSessionRunning: boolean
+  isSessionClosing: boolean
   isSending: boolean
 }): PromptRunAvailability {
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   if (params.mode === 'legacy') return { disabled: params.isExecuting, reason: null }
+  if (params.isSessionClosing) return { disabled: true, reason: RUN_DISABLED_CLOSING }
   if (!params.isSessionRunning) return { disabled: true, reason: RUN_DISABLED_NO_SESSION }
   if (params.isSending) return { disabled: true, reason: RUN_DISABLED_SENDING }
   return { disabled: false, reason: null }

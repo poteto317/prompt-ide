@@ -4,8 +4,10 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest'
 import AgentTerminalPanel from '../AgentTerminalPanel'
 import type { AgentTerminalPanelState } from '../../../hooks/useAgentWorkspace'
-import { makeFakeController } from '../../../__tests__/makeFakeAgentTerminal'
-import { makeAgentSessionState } from '../../../__tests__/makeAgentSessionState'
+import {
+  makeAgentSessionsState,
+  makeAgentSessionTabView
+} from '../../../__tests__/makeAgentSessionsState'
 import { AGENT_START_DISABLED_NO_FOLDER } from '../../../lib/agentSessionMessages'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する(OutputPanel.styles.test.tsx と同じ流儀)。
@@ -29,8 +31,8 @@ beforeEach(() => {
 // フォルダを開いていない状態(初回の起動で必ず通る)。帯に最も多くの部品が並ぶ
 function renderNoFolder(): HTMLElement {
   const state: AgentTerminalPanelState = {
-    controller: makeFakeController(),
-    session: makeAgentSessionState({ startDisabledReason: AGENT_START_DISABLED_NO_FOLDER }),
+    sessions: makeAgentSessionsState({ startDisabledReason: AGENT_START_DISABLED_NO_FOLDER }),
+    sendingSlotId: null,
     layout: {
       isOpen: true,
       isMaximized: false,
@@ -114,5 +116,60 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       // jsdom は outline の一括指定を個別の値に展開しない
       expect(rule?.style.getPropertyValue('outline')).toContain('solid')
     }
+  })
+
+  describe('セッションのタブ列', () => {
+    function renderTabs(): HTMLElement {
+      const tabs = [
+        makeAgentSessionTabView({ slotId: 'a', label: 'claude 1', status: 'running' }),
+        makeAgentSessionTabView({ slotId: 'b', label: 'claude 2', status: 'starting' }),
+        makeAgentSessionTabView({ slotId: 'c', label: 'claude 3', status: 'exited' })
+      ]
+      const state: AgentTerminalPanelState = {
+        sessions: makeAgentSessionsState({
+          tabs,
+          selected: tabs[0],
+          addDisabledReason: '上限です'
+        }),
+        sendingSlotId: null,
+        layout: {
+          isOpen: true,
+          isMaximized: false,
+          open: vi.fn(),
+          toggleOpen: vi.fn(),
+          toggleMaximized: vi.fn()
+        }
+      }
+      return render(<AgentTerminalPanel state={state} />).container
+    }
+
+    it('タブ列は横にはみ出したらスクロールし、縮められる', () => {
+      const container = renderTabs()
+      const list = styleOf(container, '.agent-session-tabs__list')
+      expect(list.overflowX).toBe('auto')
+      expect(list.minWidth).toBe('0px')
+      const root = styleOf(container, '.agent-session-tabs')
+      expect(root.minWidth).toBe('0px')
+      expect(root.display).toBe('flex')
+    })
+
+    it('選択中のタブには下線があり、状態の印は状態ごとに色が違う', () => {
+      const container = renderTabs()
+      const selected = styleOf(container, '.agent-session-tabs__tab--selected')
+      expect(selected.borderBottomColor).not.toBe('')
+      expect(selected.borderBottomColor).not.toBe('transparent')
+      const colorOf = (status: string): string =>
+        styleOf(container, `.agent-session-tabs__dot--${status}`).backgroundColor
+      expect(colorOf('running')).not.toBe(colorOf('starting'))
+      expect(colorOf('starting')).not.toBe(colorOf('exited'))
+      expect(colorOf('running')).not.toBe('')
+    })
+
+    it('+ を押せない理由は視覚的に隠す(読み上げには残す)', () => {
+      const container = renderTabs()
+      const reason = styleOf(container, '.agent-session-tabs__reason')
+      expect(reason.position).toBe('absolute')
+      expect(reason.width).toBe('1px')
+    })
   })
 })

@@ -15,7 +15,7 @@ const OK_LAUNCH: AgentLaunchResolution = {
   kind: 'ok',
   plan: { file: '/bin/claude', args: ['--x'], env: { PATH: '/p' } }
 }
-const REQUEST: AgentStartRequest = { folderPath: '/work', cols: 90, rows: 20 }
+const REQUEST: AgentStartRequest = { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 }
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve: (value: T) => void = () => undefined
@@ -98,7 +98,7 @@ describe('createAgentSessionStarter(起動の可否)', () => {
       env: { PATH: '/p' }
     })
     expect(isDirectory).toHaveBeenCalledWith('/work')
-    expect(registry.snapshot(1)).toEqual({ sessionId: 'sid-1' })
+    expect(registry.snapshot(1)).toEqual([{ slotId: 'slot-1', sessionId: 'sid-1' }])
   })
 
   it('許可のフォルダが無ければ no-folder(フォルダを確かめずに返す)', async () => {
@@ -161,7 +161,7 @@ describe('createAgentSessionStarter(起動の可否)', () => {
       error: 'spawn-failed',
       detail: 'boom'
     })
-    expect(registry.snapshot(1)).toBeNull()
+    expect(registry.snapshot(1)).toEqual([])
   })
 })
 
@@ -185,11 +185,11 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
     const pending = deferred<string>()
     canonicalize.mockReturnValueOnce(pending.promise)
     const result = makeStarter()(1, REQUEST, makeSink())
-    await registry.stop(1, 'stopped')
+    await registry.stopOwner(1, 'stopped')
     pending.resolve('/work')
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
-    expect(registry.snapshot(1)).toBeNull()
+    expect(registry.snapshot(1)).toEqual([])
   })
 
   it('フォルダの正規化を待つ間に送信先が破棄されたら起動しない', async () => {
@@ -208,7 +208,7 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
     resolveLaunch.mockReturnValueOnce(pending.promise)
     const result = makeStarter()(1, REQUEST, makeSink())
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
-    const stopped = registry.stop(1, 'stopped')
+    const stopped = registry.stopOwner(1, 'stopped')
     pending.resolve(OK_LAUNCH)
     await expect(result).resolves.toEqual(CANCELED)
     await stopped
@@ -238,8 +238,52 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
     expect(spawnPty).not.toHaveBeenCalled()
   })
 
+  it('起動の途中で所有者全体の停止が来ると取り消す(枠の世代も変わる)', async () => {
+    const pending = deferred<AgentLaunchResolution>()
+    resolveLaunch.mockReturnValueOnce(pending.promise)
+    const result = makeStarter()(1, REQUEST, makeSink())
+    await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
+    // 枠の停止の世代(generationOf)は所有者全体の停止でも変わる(起動中の枠には sessionId が無く、枠の stop は届かない)
+    const before = registry.generationOf(1, 'slot-1')
+    const stopped = registry.stopOwner(1, 'stopped')
+    expect(registry.generationOf(1, 'slot-1')).not.toBe(before)
+    pending.resolve(OK_LAUNCH)
+    await expect(result).resolves.toEqual(CANCELED)
+    await stopped
+    expect(spawnPty).not.toHaveBeenCalled()
+  })
+
+  it('別の枠の停止では取り消さない', async () => {
+    const first = makeStarter()(1, { ...REQUEST, slotId: 'slot-a' }, makeSink())
+    await expect(first).resolves.toEqual({ kind: 'started', sessionId: 'sid-1' })
+    const pending = deferred<AgentLaunchResolution>()
+    resolveLaunch.mockReturnValueOnce(pending.promise)
+    const second = makeStarter()(1, { ...REQUEST, slotId: 'slot-b' }, makeSink())
+    await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledTimes(2))
+    // slot-a の枠だけを止める(slot-b の起動は続く)
+    await registry.stop(1, 'stopped', 'sid-1')
+    pending.resolve(OK_LAUNCH)
+    await expect(second).resolves.toMatchObject({ kind: 'started' })
+  })
+
+  it('フォルダの正規化を待つ間にその枠が止められて空になっても、枠を消さずに取り消す(世代が巻き戻らない)', async () => {
+    await expect(makeStarter()(1, REQUEST, makeSink())).resolves.toEqual({
+      kind: 'started',
+      sessionId: 'sid-1'
+    })
+    const pending = deferred<string>()
+    canonicalize.mockReturnValueOnce(pending.promise)
+    const result = makeStarter()(1, REQUEST, makeSink())
+    // 世代を控えた後に枠の停止が完了する(hold が無いと、空になった枠が消えて世代が 0 に戻る)
+    await registry.stop(1, 'stopped', 'sid-1')
+    pending.resolve('/work')
+    await expect(result).resolves.toEqual(CANCELED)
+    expect(spawnPty).toHaveBeenCalledOnce()
+    expect(registry.slotCountOf(1)).toBe(0)
+  })
+
   it('停止の後に届いた新しい依頼は起動する', async () => {
-    await registry.stop(1, 'stopped')
+    await registry.stopOwner(1, 'stopped')
     await expect(makeStarter()(1, REQUEST, makeSink())).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1'

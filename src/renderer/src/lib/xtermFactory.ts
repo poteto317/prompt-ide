@@ -7,14 +7,15 @@ import { isExternalHttpUrl } from '@shared/externalUrl'
 import { createAgentTerminalController } from './agentTerminalController'
 import type { AgentTerminalController } from './agentTerminalController'
 import { isMacPlatform } from './platform'
+import { createAgentSessionTabs } from './agentSessionTabs'
+import type { AgentSessionTabs } from './agentSessionTabs'
+import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
 
-// 実物の xterm で controller を作る(文書ごとに 1 つ)。jsdom では xterm を開けない(matchMedia・canvas が無い)ため、
+// 実物の xterm で controller を作る(タブごとに 1 つ。呼ぶたびに新しい xterm を作る)。jsdom では xterm を開けない(matchMedia・canvas が無い)ため、
 // テストはこのモジュールを読まずに createAgentTerminalController へ偽物を渡す
 
-let instance: AgentTerminalController | null = null
-
-export function getAgentTerminalController(): AgentTerminalController {
-  if (instance !== null) return instance
+// タブの置き場(getAgentSessionTabs)だけが呼ぶ。controller の持ち主は置き場で、タブを消すときに dispose する
+function createXtermAgentTerminalController(): AgentTerminalController {
   const terminal = new Terminal({
     cursorBlink: false,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
@@ -30,7 +31,7 @@ export function getAgentTerminalController(): AgentTerminalController {
   })
   const fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
-  instance = createAgentTerminalController({
+  return createAgentTerminalController({
     terminal,
     fitAddon,
     api: agentTerminalApi,
@@ -42,5 +43,17 @@ export function getAgentTerminalController(): AgentTerminalController {
       return host
     }
   })
-  return instance
+}
+
+let tabs: AgentSessionTabs | null = null
+
+/** エージェントのセッションのタブの置き場(文書ごとに 1 つ) */
+export function getAgentSessionTabs(): AgentSessionTabs {
+  if (tabs !== null) return tabs
+  tabs = createAgentSessionTabs({
+    createController: createXtermAgentTerminalController,
+    createSlotId: () => crypto.randomUUID(),
+    max: AGENT_MAX_SESSIONS_PER_WINDOW
+  })
+  return tabs
 }

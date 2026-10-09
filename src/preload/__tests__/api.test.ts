@@ -433,8 +433,8 @@ describe('エージェントのターミナル・外部変更・実行方式・�
   it.each<[string, () => unknown, unknown[]]>([
     [
       'startAgentSession は agentTerminal:start に依頼を渡す',
-      () => api.startAgentSession({ folderPath: '/p', cols: 80, rows: 24 }),
-      ['agentTerminal:start', { folderPath: '/p', cols: 80, rows: 24 }]
+      () => api.startAgentSession({ slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 }),
+      ['agentTerminal:start', { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 }]
     ],
     [
       'stopAgentSession は agentTerminal:stop に sessionId を渡す',
@@ -442,8 +442,8 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['agentTerminal:stop', 's']
     ],
     [
-      'getAgentSession は agentTerminal:getState を呼ぶ',
-      () => api.getAgentSession(),
+      'getAgentSessions は agentTerminal:getState を呼ぶ',
+      () => api.getAgentSessions(),
       ['agentTerminal:getState']
     ],
     [

@@ -5,8 +5,7 @@ import type { OpenFile } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import EditorPanel from '../EditorPanel'
 import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
-import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
-import { makeAgentSessionState } from '../../__tests__/makeAgentSessionState'
+import { makeAgentSessionsState } from '../../__tests__/makeAgentSessionsState'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
 
 const file: OpenFile = {
@@ -57,8 +56,8 @@ const baseProps = {
 
 function makeAgentTerminal(isMaximized = false): AgentTerminalPanelState {
   return {
-    controller: makeFakeController(),
-    session: makeAgentSessionState(),
+    sessions: makeAgentSessionsState(),
+    sendingSlotId: null,
     layout: {
       isOpen: true,
       isMaximized,

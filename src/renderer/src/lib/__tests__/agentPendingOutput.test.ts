@@ -66,7 +66,16 @@ describe('createPendingOutputBuffer', () => {
     expect(buffer.take('s1')).toEqual(['1234567'])
   })
 
-  it('上限は全セッションの合計で数え、超えていない別のセッションの出力は溜め続ける', () => {
+  it('上限はセッションごとに数え、ほかのセッションの出力が上限に達しても自分の出力は溜める', () => {
+    const buffer = createPendingOutputBuffer(10)
+    buffer.begin()
+    buffer.push('other', '1234567890')
+    buffer.push('other', 'x')
+    buffer.push('s1', 'banner')
+    expect(buffer.take('s1')).toEqual(['banner'])
+  })
+
+  it('上限を超えたセッションがあっても、超えていない別のセッションの出力は溜め続ける', () => {
     const buffer = createPendingOutputBuffer(10)
     buffer.begin()
     buffer.push('s1', '1234567')

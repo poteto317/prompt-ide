@@ -1,14 +1,18 @@
-import type { AgentExitReason, AgentStartResult } from '@shared/types'
+import type { AgentStartResult } from '@shared/types'
+import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
+import type { AgentSessionExitView, AgentSessionStatus } from './agentSessionTabState'
 
 // エージェントのセッションの表示の文言(設計書「エラー処理」「配置の案」)
 
-/** セッションの状態(useAgentSession が持ち、帯の文言の入力にもなる) */
-export type AgentSessionStatus = 'none' | 'starting' | 'running' | 'exited'
-
 export const AGENT_START_DISABLED_NO_FOLDER = 'フォルダを開いてください'
+/** 従来の方式への切り替えの途中(エージェントの停止を待つ間)に、起動・+ を押せない理由 */
+export const AGENT_START_DISABLED_SWITCHING_MODE = '実行方式を切り替えています'
 export const AGENT_EXITED_SOON_NOTE = '起動の直後に終了しました。ターミナルの表示を確かめてください'
-/** 起動の直後とみなす時間(node-pty は起動の失敗を終了コード 1 で返すため。確認の結果 4) */
-export const AGENT_EXITED_SOON_MS = 2_000
+
+/** 同時に動かせるセッションの数の上限に達したときの文言(main が起動を拒否したとき用) */
+export const AGENT_TOO_MANY_SESSIONS = `同時に動かせるエージェントは ${AGENT_MAX_SESSIONS_PER_WINDOW} つまでです`
+/** 「＋」を押せない理由(タブが上限に達している。動いている数ではなくタブの数の制限なので、閉じれば追加できることを伝える) */
+export const AGENT_ADD_TAB_DISABLED_LIMIT = `タブは ${AGENT_MAX_SESSIONS_PER_WINDOW} つまでです（使わないタブを閉じると追加できます）`
 
 /** 起動の失敗(spawn-failed・起動の依頼の例外)の文言の接頭辞。後ろに理由を付ける */
 export const AGENT_START_ERROR_PREFIX = 'エージェントを起動できませんでした: '
@@ -33,20 +37,45 @@ export function describeAgentStartError(
           ? '（ログインシェルから PATH を取得できなかったため、既定の場所だけを探しました）'
           : '')
       )
+    case 'too-many-sessions':
+      return AGENT_TOO_MANY_SESSIONS
     case 'spawn-failed':
       return `${AGENT_START_ERROR_PREFIX}${result.detail ?? ''}`
   }
 }
 
-/** パネルの帯の状態の文言 */
+/** パネルの帯の状態の文言。終了の前はタブの文言と同じで、終了だけ終了コードを添える */
 export function describeAgentStatus(
   status: AgentSessionStatus,
-  exit: { exitCode: number | null; reason: AgentExitReason } | null
+  exit: AgentSessionExitView | null
 ): string {
-  if (status === 'none') return '未起動'
-  if (status === 'starting' || status === 'running') return '起動中'
+  if (status !== 'exited') return describeAgentTabStatus(status)
   if (exit === null || exit.exitCode === null) return '終了しました'
   return `終了しました（終了コード ${exit.exitCode}）`
+}
+
+/** タブの状態の文言(タブの aria-label に含めて読み上げる) */
+export function describeAgentTabStatus(status: AgentSessionStatus): string {
+  switch (status) {
+    case 'none':
+      return '未起動'
+    case 'starting':
+      return '起動中'
+    case 'running':
+      return '実行中'
+    case 'exited':
+      return '終了'
+  }
+}
+
+/** タブのラベル(番号の振り方は agentSessionTabs の AgentSessionTab.number) */
+export function formatAgentTabLabel(number: number): string {
+  return `claude ${number}`
+}
+
+/** タブを閉じる前の確認(実行中のエージェントを終了する) */
+export function agentCloseTabConfirm(label: string): string {
+  return `${label} のエージェントを終了してタブを閉じますか？`
 }
 
 /** フォルダの切り替え(「フォルダを変更」「リポジトリを clone」)の前の確認 */

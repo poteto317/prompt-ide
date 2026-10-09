@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import type { AgentChangeEntry, GitStatusResult } from '@shared/types'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
+import { makeAgentSessionsState } from '../../__tests__/makeAgentSessionsState'
 import {
   makeAgentChangeEntry,
   makeAgentChangesListResult
@@ -298,6 +299,9 @@ const defaultUseFileSystem = mockUseFileSystem.getMockImplementation()!
 const defaultUsePromptExecution = mockUsePromptExecution.getMockImplementation()!
 const defaultUseDiffTabs = mockUseDiffTabs.getMockImplementation()!
 
+// すべて戻すの確認の、エージェントが動いている間の追記
+const AGENT_RUNNING_APPENDIX =
+  'エージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
 const FOLDER_CHANGE_CONFIRM =
   'フォルダを切り替えると、実行中のエージェントを終了します。続けますか？'
 
@@ -484,7 +488,7 @@ describe('useAppState', () => {
         await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2))
       })
 
-      it('エージェントのセッションが終わったら、記録の一覧を取り直す', async () => {
+      it('いずれかのタブ(タブ 2)のセッションが終わったら、記録の一覧を取り直す', async () => {
         const { result, rerender } = renderHook(() => useAppState())
         await act(async () => {
           await result.current.agentChangesPanel.changes.begin()
@@ -495,16 +499,51 @@ describe('useAppState', () => {
           ...workspace,
           agentTerminal: {
             ...workspace.agentTerminal,
-            session: {
-              ...workspace.agentTerminal.session,
-              status: 'exited',
-              exit: { exitCode: 0, reason: 'exited' }
-            }
+            sessions: makeAgentSessionsState({
+              lastExit: { sessionId: 's-2', exitCode: 0, reason: 'exited' }
+            })
           }
         })
         rerender()
         await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2))
       })
+
+      it.each([
+        [true, true],
+        [false, false]
+      ])(
+        'どれかのタブが動いているか(起動中を含む。%s)を、すべて戻すの確認の「エージェントが動いている」の追記に渡す',
+        async (isAnyActive, appended) => {
+          const workspace = makeAgentWorkspaceState()
+          mockUseAgentWorkspace.mockReturnValue({
+            ...workspace,
+            agentTerminal: {
+              ...workspace.agentTerminal,
+              // 選択中のタブは未起動でも、ほかのタブが動いて(起動中を含む)いれば追記する。running のタブは無くてもよい
+              sessions: makeAgentSessionsState({ isAnyActive })
+            }
+          })
+          const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+          try {
+            const { result } = renderHook(() => useAppState())
+            await act(async () => {
+              await result.current.agentChangesPanel.changes.begin()
+            })
+            await waitFor(() =>
+              expect(result.current.agentChangesPanel.revert.revertAllDisabledReason).toBeNull()
+            )
+            await act(async () => {
+              await result.current.agentChangesPanel.revert.revertAll()
+            })
+            expect(confirmSpy).toHaveBeenCalledOnce()
+            expect(String(confirmSpy.mock.calls[0][0]).includes(AGENT_RUNNING_APPENDIX)).toBe(
+              appended
+            )
+          } finally {
+            confirmSpy.mockRestore()
+          }
+        }
+      )
 
       it('アプリで保存できたパスを、記録の「保存した」に渡す', async () => {
         const { result } = renderHook(() => useAppState())

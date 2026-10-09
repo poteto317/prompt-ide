@@ -51,7 +51,7 @@ Object.defineProperty(window, 'api', {
     writeAgentSession: () => {},
     resizeAgentSession: () => {},
     stopAgentSession: () => Promise.resolve(),
-    getAgentSession: () => Promise.resolve(null),
+    getAgentSessions: () => Promise.resolve([]),
     onAgentData: () => () => {},
     onAgentExit: () => () => {},
     setAgentTerminalFocused: () => {},

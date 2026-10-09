@@ -1,11 +1,10 @@
 import { vi } from 'vitest'
 import type { AgentWorkspaceState } from '../hooks/useAgentWorkspace'
-import { makeAgentSessionState } from './makeAgentSessionState'
-import { makeFakeController } from './makeFakeAgentTerminal'
+import { makeAgentSessionsState } from './makeAgentSessionsState'
 
 // useAgentWorkspace の戻り値の型付きの偽物(1 か所から作る。パターン 102)。useAppState のテストは useAgentWorkspace の内側
-// (useExecutionMode・useAgentSession・xterm の controller)ではなく、これを差し替えて組み立てだけを確かめる。
-// 既定は「従来の方式・セッション無し・押せる」状態で、confirmStopAgent は確認せずに true を返す
+// (useExecutionMode・useAgentSessions・xterm の controller)ではなく、これを差し替えて組み立てだけを確かめる。
+// 既定は「従来の方式・どのタブも未起動・押せる」状態で、confirmStopAgent は確認せずに true を返す
 export function makeAgentWorkspaceState(
   overrides: Partial<AgentWorkspaceState> = {}
 ): AgentWorkspaceState {
@@ -29,8 +28,8 @@ export function makeAgentWorkspaceState(
     },
     bottomPanel: 'output',
     agentTerminal: {
-      controller: makeFakeController(),
-      session: makeAgentSessionState(),
+      sessions: makeAgentSessionsState(),
+      sendingSlotId: null,
       layout: {
         isOpen: true,
         isMaximized: false,

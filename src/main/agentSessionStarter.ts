@@ -26,7 +26,7 @@ export interface AgentSessionSink {
 
 export interface AgentSessionStarterDeps {
   folderAccess: Pick<FolderAccessManager, 'get'>
-  registry: Pick<AgentSessionRegistry, 'generationOf' | 'start'>
+  registry: Pick<AgentSessionRegistry, 'generationOf' | 'hold' | 'start'>
   /** 起動のコマンドと環境変数を決める(agentCommand.resolveAgentLaunch に実物の依存を渡したもの) */
   resolveLaunch: () => Promise<AgentLaunchResolution>
   spawnPty: PtySpawn
@@ -71,14 +71,29 @@ export function createAgentSessionStarter({
   isDirectory = isDirectoryOnDisk
 }: AgentSessionStarterDeps): AgentSessionStarter {
   return async (ownerId, request, sink) => {
-    // 停止の世代は最初の await より前に控える(await の間に届いた停止を、起動の直前に見分けるため)
-    const requestedGeneration = registry.generationOf(ownerId)
+    // 枠の停止の世代は最初の await より前に控える(await の間に届いた停止を、起動の直前に見分けるため)。比べ終わるまで
+    // 枠を消さないよう hold する(await の間に枠が空になって消えると、世代が 0 に戻って控えた世代と比べられなくなる)
+    const requestedGeneration = registry.generationOf(ownerId, request.slotId)
+    const release = registry.hold(ownerId, request.slotId)
+    try {
+      return await startHeld(ownerId, request, sink, requestedGeneration)
+    } finally {
+      release()
+    }
+  }
+
+  async function startHeld(
+    ownerId: number,
+    request: AgentStartRequest,
+    sink: AgentSessionSink,
+    requestedGeneration: string
+  ): Promise<AgentStartResult> {
     const allowedFolder = folderAccess.get(ownerId)
     if (allowedFolder === undefined) return { kind: 'error', error: 'no-folder' }
     if ((await canonicalize(request.folderPath)) !== allowedFolder) {
       return { kind: 'error', error: 'folder-mismatch' }
     }
-    return registry.start(ownerId, async (): Promise<AgentSessionCreation> => {
+    return registry.start(ownerId, request.slotId, async (): Promise<AgentSessionCreation> => {
       // 作業ディレクトリは renderer の文字列ではなく許可のフォルダ(main の値)
       if (!(await isDirectory(allowedFolder))) {
         return {
@@ -102,7 +117,7 @@ export function createAgentSessionStarter({
       // 控える世代に含まれてしまい registry では取り消せない。入口で控えた世代・破棄・許可のフォルダを起動の直前に
       // 確かめ直し、所有者のいない・リロード前の・切り替え前のフォルダのセッションを作らない
       if (
-        registry.generationOf(ownerId) !== requestedGeneration ||
+        registry.generationOf(ownerId, request.slotId) !== requestedGeneration ||
         sink.isGone() ||
         folderAccess.get(ownerId) !== allowedFolder
       ) {

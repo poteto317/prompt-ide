@@ -7,7 +7,7 @@ import type {
   TerminalLike
 } from '../lib/agentTerminalController'
 import type { ViewportLine } from '../lib/agentViewport'
-import type { AgentSessionData, AgentSessionExit } from '@shared/types'
+import type { AgentSessionData } from '@shared/types'
 
 // xterm の偽物。open・write・reset などを記録し、onData・キーのハンドラをテストから起こせる
 export interface FakeTerminal extends TerminalLike {
@@ -19,6 +19,7 @@ export interface FakeTerminal extends TerminalLike {
   reset: ReturnType<typeof vi.fn<TerminalLike['reset']>>
   paste: ReturnType<typeof vi.fn<TerminalLike['paste']>>
   focus: ReturnType<typeof vi.fn<TerminalLike['focus']>>
+  dispose: ReturnType<typeof vi.fn<TerminalLike['dispose']>>
   selection: string
   typeKey(data: string): void
   pressKey(init: KeyboardEventInit & { type?: string }): boolean
@@ -40,6 +41,7 @@ export function makeFakeTerminal(): FakeTerminal {
     },
     reset: vi.fn<TerminalLike['reset']>(),
     focus: vi.fn<TerminalLike['focus']>(),
+    dispose: vi.fn<TerminalLike['dispose']>(),
     onData: (listener) => {
       dataListener = listener
       return { dispose: () => undefined }
@@ -56,17 +58,15 @@ export function makeFakeTerminal(): FakeTerminal {
   return fake
 }
 
-// IPC の偽物。出力・終了をテストから起こせる
+// IPC の偽物。出力をテストから起こせる
 export interface FakeAgentApi extends AgentTerminalApiLike {
   writeAgentSession: ReturnType<typeof vi.fn<AgentTerminalApiLike['writeAgentSession']>>
   resizeAgentSession: ReturnType<typeof vi.fn<AgentTerminalApiLike['resizeAgentSession']>>
   emitData(payload: AgentSessionData): void
-  emitExit(payload: AgentSessionExit): void
 }
 
 export function makeFakeAgentApi(): FakeAgentApi {
   const dataListeners = new Set<(payload: AgentSessionData) => void>()
-  const exitListeners = new Set<(payload: AgentSessionExit) => void>()
   return {
     writeAgentSession: vi.fn<AgentTerminalApiLike['writeAgentSession']>(),
     resizeAgentSession: vi.fn<AgentTerminalApiLike['resizeAgentSession']>(),
@@ -74,12 +74,7 @@ export function makeFakeAgentApi(): FakeAgentApi {
       dataListeners.add(listener)
       return () => dataListeners.delete(listener)
     },
-    onAgentExit: (listener) => {
-      exitListeners.add(listener)
-      return () => exitListeners.delete(listener)
-    },
-    emitData: (payload) => dataListeners.forEach((listener) => listener(payload)),
-    emitExit: (payload) => exitListeners.forEach((listener) => listener(payload))
+    emitData: (payload) => dataListeners.forEach((listener) => listener(payload))
   }
 }
 
@@ -104,7 +99,6 @@ export interface FakeController extends AgentTerminalController {
   bracketed: boolean
   sessionId: string | null
   writes: string[]
-  exitListeners: Set<(exit: AgentSessionExit) => void>
   attach: ReturnType<typeof vi.fn<AgentTerminalController['attach']>>
   detach: ReturnType<typeof vi.fn<AgentTerminalController['detach']>>
   fit: ReturnType<typeof vi.fn<AgentTerminalController['fit']>>
@@ -113,7 +107,7 @@ export interface FakeController extends AgentTerminalController {
   endSending: ReturnType<typeof vi.fn<AgentTerminalController['endSending']>>
   setFocusOutHandler: ReturnType<typeof vi.fn<AgentTerminalController['setFocusOutHandler']>>
   focus: ReturnType<typeof vi.fn<AgentTerminalController['focus']>>
-  emitExit(exit: AgentSessionExit): void
+  dispose: ReturnType<typeof vi.fn<AgentTerminalController['dispose']>>
 }
 
 export function makeFakeController(): FakeController {
@@ -122,7 +116,6 @@ export function makeFakeController(): FakeController {
     bracketed: true,
     sessionId: null,
     writes: [],
-    exitListeners: new Set(),
     attach: vi.fn<AgentTerminalController['attach']>(),
     detach: vi.fn<AgentTerminalController['detach']>(),
     fit: vi.fn<AgentTerminalController['fit']>(() => ({ cols: 80, rows: 24 })),
@@ -139,13 +132,9 @@ export function makeFakeController(): FakeController {
     },
     beginSending: vi.fn<AgentTerminalController['beginSending']>(),
     endSending: vi.fn<AgentTerminalController['endSending']>(),
-    onExit: (listener) => {
-      fake.exitListeners.add(listener)
-      return () => fake.exitListeners.delete(listener)
-    },
     setFocusOutHandler: vi.fn<AgentTerminalController['setFocusOutHandler']>(),
     focus: vi.fn<AgentTerminalController['focus']>(),
-    emitExit: (exit) => fake.exitListeners.forEach((listener) => listener(exit))
+    dispose: vi.fn<AgentTerminalController['dispose']>()
   }
   return fake
 }

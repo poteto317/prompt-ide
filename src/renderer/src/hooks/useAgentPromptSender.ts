@@ -18,17 +18,25 @@ export const AGENT_SEND_NOTICE_DURATION_MS = 3_000
 export const AGENT_BEFORE_SEND_TIMEOUT_MS = 10_000
 
 export interface AgentPromptSenderState {
+  /** 送信中か(sendingSlotId が null でない) */
   isSending: boolean
   /** 失敗の文言(プロンプトパネルの上部に role="alert")。次の送信で消える */
   error: string | null
   /** 成功の通知(role="status") */
   notice: Announcement | null
-  /** 送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す */
-  send: (text: string) => Promise<AgentSendOutcome | undefined>
+  /** 送信中のタブ(パネルはそのタブの × を押せなくする)。送信中でなければ null */
+  sendingSlotId: string | null
+  /** target のタブへ送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す */
+  send: (text: string, target: AgentSendTarget) => Promise<AgentSendOutcome | undefined>
+}
+
+/** 送り先のタブ。押した時点の選択中のタブを控え、途中でタブを切り替えても送り先を変えない */
+export interface AgentSendTarget {
+  slotId: string
+  controller: AgentTerminalController
 }
 
 export interface UseAgentPromptSenderOptions {
-  controller: AgentTerminalController
   /** 送った後・失敗した後に呼ぶ(ターミナルのパネルを開く) */
   onSettled: () => void
   /** 送信の手順(消去・貼り付け・Enter)の前に待つ準備(エージェントの変更の記録を始める)。失敗しても・上限を超えても送る */
@@ -37,22 +45,23 @@ export interface UseAgentPromptSenderOptions {
 }
 
 export function useAgentPromptSender({
-  controller,
   onSettled,
   beforeSend,
   clock = realClock
 }: UseAgentPromptSenderOptions): AgentPromptSenderState {
-  const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 送信中のタブ。送信中か(isSending)もここから求め、別の state に持たない
+  const [sendingSlotId, setSendingSlotId] = useState<string | null>(null)
   const { notice, announce, clear } = useTransientNotice(AGENT_SEND_NOTICE_DURATION_MS)
   // 2 つの貼り付けが混ざらないよう、同期的に二重の送信を止める(state は次の描画まで変わらないため ref で)
   const sendingRef = useRef(false)
 
   const send = useCallback(
-    async (text: string): Promise<AgentSendOutcome | undefined> => {
+    async (text: string, target: AgentSendTarget): Promise<AgentSendOutcome | undefined> => {
       if (sendingRef.current) return undefined
+      const { controller } = target
       sendingRef.current = true
-      setIsSending(true)
+      setSendingSlotId(target.slotId)
       setError(null)
       clear()
       // エージェントが書き始めるのは Enter の後なので、記録はその前に終わらせる(設計書「記録の開始」)。記録はおまけで、
@@ -96,11 +105,11 @@ export function useAgentPromptSender({
       } finally {
         controller.endSending()
         sendingRef.current = false
-        setIsSending(false)
+        setSendingSlotId(null)
       }
     },
-    [controller, onSettled, beforeSend, clock, announce, clear]
+    [onSettled, beforeSend, clock, announce, clear]
   )
 
-  return { isSending, error, notice, send }
+  return { isSending: sendingSlotId !== null, error, notice, sendingSlotId, send }
 }

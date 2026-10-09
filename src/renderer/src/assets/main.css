@@ -1862,6 +1862,104 @@ body {
   white-space: nowrap;
 }
 
+/* セッションのタブ列(帯の中。はみ出したら横スクロール)。色は帯の既存の値(#2d2d2d の帯・#007acc の強調)に合わせる */
+.agent-session-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.agent-session-tabs__list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.agent-session-tabs__item {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+.agent-session-tabs__tab,
+.agent-session-tabs__close,
+.agent-session-tabs__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 8px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #969696;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.agent-session-tabs__close,
+.agent-session-tabs__add {
+  justify-content: center;
+  min-width: 24px;
+  padding: 0 4px;
+}
+
+.agent-session-tabs__tab:hover,
+.agent-session-tabs__close:hover:not(:disabled),
+.agent-session-tabs__add:hover:not(:disabled) {
+  color: #ffffff;
+}
+
+.agent-session-tabs__tab--selected {
+  color: #ffffff;
+  border-bottom-color: #007acc;
+}
+
+.agent-session-tabs__close:disabled,
+.agent-session-tabs__add:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 帯は overflow: hidden のため、フォーカスリングは内側に描く */
+.agent-session-tabs__tab:focus-visible,
+.agent-session-tabs__close:focus-visible,
+.agent-session-tabs__add:focus-visible {
+  outline: 2px solid #007acc;
+  outline-offset: -2px;
+}
+
+.agent-session-tabs__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #858585;
+}
+
+.agent-session-tabs__dot--running {
+  background: #4ec9b0;
+}
+
+.agent-session-tabs__dot--starting {
+  background: #cca700;
+}
+
+/* 視覚的には隠し、支援技術には読ませる(+ のボタンの aria-describedby) */
+.agent-session-tabs__reason {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .agent-terminal-panel__error {
   margin: 0;
   padding: 4px 12px;

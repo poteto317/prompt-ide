@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAgentTerminalController } from '../agentTerminalController'
 import type { AgentTerminalController } from '../agentTerminalController'
 import {
@@ -83,6 +83,16 @@ describe('出力', () => {
     controller.setSession('s2')
     api.emitData({ sessionId: 's2', data: 'late' })
     expect(terminal.written).toEqual([head, 'late'])
+  })
+
+  it('ほかのタブのセッションの出力が上限を超えても、自分のセッションの起動直後の出力は溜めて書く', () => {
+    controller.prepareForStart()
+    // 動いているほかのタブ(other)の大量の出力が、起動中のこのタブの保留に届く
+    api.emitData({ sessionId: 'other', data: 'o'.repeat(999_999) })
+    api.emitData({ sessionId: 'other', data: 'oo' })
+    api.emitData({ sessionId: 's2', data: 'banner' })
+    controller.setSession('s2')
+    expect(terminal.written).toEqual(['banner'])
   })
 
   it('起動の準備をしていないときは、知らないセッションの出力を溜めない', () => {
@@ -228,19 +238,86 @@ describe('キー', () => {
   })
 })
 
-describe('読み取り・終了', () => {
+describe('読み取り', () => {
   it('bracketed paste の状態と表示中の画面を読む', () => {
     terminal.modes.bracketedPasteMode = false
     expect(controller.isBracketedPasteEnabled()).toBe(false)
     expect(controller.readViewport()).toHaveLength(24)
   })
+})
 
-  it('終了を購読者へ渡し、解除の後は渡さない', () => {
-    const received: string[] = []
-    const dispose = controller.onExit((exit) => received.push(exit.sessionId))
-    api.emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' })
-    dispose()
-    api.emitExit({ sessionId: 's2', exitCode: 0, signal: null, reason: 'exited' })
-    expect(received).toEqual(['s1'])
+describe('dispose', () => {
+  it('出力の購読を外し、xterm を破棄する', () => {
+    const unsubscribeData = vi.fn()
+    api.onAgentData = () => unsubscribeData
+    controller = create()
+    controller.dispose()
+    expect(unsubscribeData).toHaveBeenCalledTimes(1)
+    expect(terminal.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('破棄の後は書き込み・リサイズ・取り付けをしない', () => {
+    controller.setSession('s-1')
+    controller.dispose()
+    controller.writeToSession('x')
+    controller.fit()
+    controller.attach(document.createElement('div'))
+    expect(api.writeAgentSession).not.toHaveBeenCalled()
+    expect(api.resizeAgentSession).not.toHaveBeenCalled()
+    expect(terminal.open).not.toHaveBeenCalled()
+  })
+
+  it('破棄の後は利用者の入力も送らず、出力も書かない', () => {
+    controller.setSession('s-1')
+    controller.dispose()
+    terminal.typeKey('a')
+    api.emitData({ sessionId: 's-1', data: 'out' })
+    expect(api.writeAgentSession).not.toHaveBeenCalled()
+    expect(terminal.written).toEqual([])
+  })
+
+  it('2 回呼んでも 1 回だけ破棄する', () => {
+    controller.dispose()
+    controller.dispose()
+    expect(terminal.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('フォーカスが host の中にあれば、dispose の前に blur する', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    controller.attach(container)
+    const host = container.firstElementChild as HTMLElement
+    const input = document.createElement('textarea')
+    host.appendChild(input)
+    input.focus()
+    const onBlur = vi.fn(() => {
+      // blur の時点ではまだ host が DOM に付いている(外した後では配送されない)
+      expect(host.isConnected).toBe(true)
+    })
+    input.addEventListener('blur', onBlur)
+    controller.dispose()
+    expect(onBlur).toHaveBeenCalledTimes(1)
+    expect(document.activeElement).not.toBe(input)
+    container.remove()
+  })
+
+  it('フォーカスが host の外にあれば blur しない', () => {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    controller.attach(container)
+    const other = document.createElement('input')
+    document.body.appendChild(other)
+    other.focus()
+    controller.dispose()
+    expect(document.activeElement).toBe(other)
+    other.remove()
+    container.remove()
+  })
+
+  it('取り付けていた要素から host を外す', () => {
+    const container = document.createElement('div')
+    controller.attach(container)
+    controller.dispose()
+    expect(container.childElementCount).toBe(0)
   })
 })

@@ -1,7 +1,7 @@
 import type {
   AgentSessionData,
   AgentSessionExit,
-  AgentSessionSnapshot,
+  AgentSessionSnapshotEntry,
   AgentStartRequest,
   AgentStartResult
 } from '@shared/types'
@@ -24,8 +24,8 @@ export function stopAgentSession(sessionId: string): Promise<void> {
   return window.api.stopAgentSession(sessionId)
 }
 
-export function getAgentSession(): Promise<AgentSessionSnapshot> {
-  return window.api.getAgentSession()
+export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {
+  return window.api.getAgentSessions()
 }
 
 export function onAgentData(listener: (payload: AgentSessionData) => void): () => void {

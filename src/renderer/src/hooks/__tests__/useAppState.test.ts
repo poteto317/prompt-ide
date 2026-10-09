@@ -269,7 +269,7 @@ vi.mock('../useGitTagOperations', () => ({ useGitTagOperations: mockUseGitTagOpe
 vi.mock('../useGitRemoteSetup', () => ({ useGitRemoteSetup: mockUseGitRemoteSetup }))
 vi.mock('../useCloneRepository', () => ({ useCloneRepository: mockUseCloneRepository }))
 // 外部変更の検知・実行方式とエージェント(useAgentWorkspace)は、それぞれのテストで確かめる。ここでは組み立て(渡す値)だけを見る。
-// useAgentWorkspace の内側(useExecutionMode・useAgentSession・xterm)は差し替えない(内側の組み替えでこのテストを壊さない)
+// useAgentWorkspace の内側(useExecutionMode・useAgentSessions・xterm)は差し替えない(内側の組み替えでこのテストを壊さない)
 // mock.calls[0][0] で呼び出し引数を検証するため、引数を受け取る型として宣言する
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mockUseExternalFileChanges = vi.hoisted(() => vi.fn((_options?: unknown) => null))

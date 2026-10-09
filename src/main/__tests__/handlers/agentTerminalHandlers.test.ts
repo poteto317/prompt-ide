@@ -107,7 +107,7 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     // renderer の文字列(realpath が許可と一致する別の表記)ではなく、許可のフォルダを作業ディレクトリにする
     await expect(
-      start(makeEvent(), { folderPath: '/work/.', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work/.', cols: 90, rows: 20 })
     ).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1'
@@ -123,7 +123,9 @@ describe('agentTerminal:start', () => {
 
   it('許可のフォルダが無ければ no-folder', async () => {
     register()
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'error',
       error: 'no-folder'
     })
@@ -133,19 +135,21 @@ describe('agentTerminal:start', () => {
   it('renderer のフォルダの realpath が許可と違えば folder-mismatch', async () => {
     register()
     folderAccess.set(1, '/work')
-    await expect(start(makeEvent(), { folderPath: '/other', cols: 90, rows: 20 })).resolves.toEqual(
-      {
-        kind: 'error',
-        error: 'folder-mismatch'
-      }
-    )
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/other', cols: 90, rows: 20 })
+    ).resolves.toEqual({
+      kind: 'error',
+      error: 'folder-mismatch'
+    })
   })
 
   it('フォルダが無くなっていれば folder-missing(パスを添える)', async () => {
     register()
     folderAccess.set(1, '/work')
     mockStat.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'error',
       error: 'folder-missing',
       detail: '/work'
@@ -156,7 +160,9 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     resolveLaunch.mockResolvedValueOnce({ kind: 'not-found', shellPathUnavailable: true })
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'error',
       error: 'command-not-found',
       shellPathUnavailable: true
@@ -170,19 +176,23 @@ describe('agentTerminal:start', () => {
     spawnPty.mockImplementationOnce(() => {
       throw new Error('posix_spawnp failed.')
     })
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'error',
       error: 'spawn-failed',
       detail: 'posix_spawnp failed.'
     })
   })
 
-  it('同じウィンドウの 2 回目の依頼は起動せず already-running', async () => {
+  it('同じ枠(タブ)への 2 回目の依頼は起動せず already-running', async () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
-    await expect(start(event, { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await expect(
+      start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'already-running',
       sessionId: 'sid-1'
     })
@@ -192,9 +202,11 @@ describe('agentTerminal:start', () => {
   it('不正な入力・サブフレームからの依頼は投げる', async () => {
     register()
     folderAccess.set(1, '/work')
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 0, rows: 20 })).rejects.toThrow()
     await expect(
-      start(makeEvent(1, false), { folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20 })
+    ).rejects.toThrow()
+    await expect(
+      start(makeEvent(1, false), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     ).rejects.toThrow()
   })
 
@@ -202,7 +214,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     pty.emitData('hi')
     expect(event.sender.send).toHaveBeenCalledWith('agentTerminal:data', {
       sessionId: 'sid-1',
@@ -218,7 +230,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     pty.emitExit(1)
     expect(event.sender.send).toHaveBeenCalledWith('agentTerminal:exit', {
       sessionId: 'sid-1',
@@ -232,20 +244,20 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     event.sender.send.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
     expect(() => pty.emitData('x')).not.toThrow()
     expect(() => pty.emitExit(0)).not.toThrow()
-    expect(handles.get('agentTerminal:getState')?.(event)).toBeNull()
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([])
   })
 
   it('isDestroyed が投げても、出力・終了の通知は例外を投げず送らない', async () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     event.sender.isDestroyed.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
@@ -258,12 +270,12 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     event.sender.isDestroyed.mockReturnValue(true)
     event.sender.send.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
-    await expect(registry.stop(1, 'stopped')).resolves.toBeUndefined()
+    await expect(registry.stopOwner(1, 'stopped')).resolves.toBeUndefined()
     expect(event.sender.send).not.toHaveBeenCalled()
   })
 
@@ -273,14 +285,14 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
-    // ウィンドウの破棄(Task 7 のライフサイクルは registry.stop を呼ぶ。セッションが無いので世代だけ進む)
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    // ウィンドウの破棄(agentSessionLifecycle は registry.stopOwner を呼ぶ。セッションが無いので世代だけ進む)
     event.sender.isDestroyed.mockReturnValue(true)
-    await registry.stop(1, 'stopped')
+    await registry.stopOwner(1, 'stopped')
     pending.resolve('/work')
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
-    expect(registry.snapshot(1)).toBeNull()
+    expect(registry.snapshot(1)).toEqual([])
   })
 
   it('realpath を待つ間にフォルダが切り替わったら起動しない', async () => {
@@ -289,9 +301,9 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     folderAccess.set(1, '/other')
-    await registry.stop(1, 'folder-changed')
+    await registry.stopOwner(1, 'folder-changed')
     pending.resolve('/work')
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
@@ -303,7 +315,7 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     event.sender.isDestroyed.mockReturnValue(true)
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
@@ -317,7 +329,7 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     folderAccess.set(1, '/other')
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
@@ -331,12 +343,12 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
-    await registry.stop(1, 'stopped')
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await registry.stopOwner(1, 'stopped')
     pending.resolve('/work')
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
-    expect(registry.snapshot(1)).toBeNull()
+    expect(registry.snapshot(1)).toEqual([])
   })
 
   it('起動のコマンドを探す間にリロード(stop だけ)が来たら起動しない', async () => {
@@ -345,9 +357,9 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
-    const stopped = registry.stop(1, 'stopped')
+    const stopped = registry.stopOwner(1, 'stopped')
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
     await expect(result).resolves.toEqual(CANCELED)
     await stopped
@@ -357,8 +369,10 @@ describe('agentTerminal:start', () => {
   it('リロードの後に届いた新しい依頼は起動する', async () => {
     register()
     folderAccess.set(1, '/work')
-    await registry.stop(1, 'stopped')
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual({
+    await registry.stopOwner(1, 'stopped')
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1'
     })
@@ -369,9 +383,9 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     folderAccess.set(2, '/other')
-    await expect(start(makeEvent(2), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toEqual(
-      { kind: 'error', error: 'folder-mismatch' }
-    )
+    await expect(
+      start(makeEvent(2), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toEqual({ kind: 'error', error: 'folder-mismatch' })
     expect(spawnPty).not.toHaveBeenCalled()
   })
 })
@@ -388,25 +402,25 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
   const sinkOf = (): Parameters<AgentSessionStarter>[2] => startSession.mock.calls[0][2]
 
   it('送信元の id と検証済みの依頼を starter に渡し、結果をそのまま返す', async () => {
-    await expect(start(makeEvent(7), { folderPath: '/work', cols: 90, rows: 20 })).resolves.toBe(
-      STARTED
-    )
+    await expect(
+      start(makeEvent(7), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    ).resolves.toBe(STARTED)
     expect(startSession).toHaveBeenCalledExactlyOnceWith(
       7,
-      { folderPath: '/work', cols: 90, rows: 20 },
+      { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 },
       expect.any(Object)
     )
   })
 
   // starter は最初の await より前に停止の世代を控える。受け口が先に await を挟むと、その間に届いた停止を見分けられない
   it('await を挟まずに(依頼を受けた同じ同期の処理の中で) starter を呼ぶ', () => {
-    void start(makeEvent(), { folderPath: '/work', cols: 90, rows: 20 })
+    void start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     expect(startSession).toHaveBeenCalledOnce()
   })
 
   it('sink: isGone は送信元の破棄、出力・終了は送信元の agentTerminal:data・exit へ送る(破棄済みなら送らない)', async () => {
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     const sink = sinkOf()
     expect(sink.isGone()).toBe(false)
     sink.onData({ sessionId: 's', data: 'hi' })
@@ -423,7 +437,7 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
 
   it('sink: isDestroyed が投げたら破棄済みとして扱う', async () => {
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     event.sender.isDestroyed.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
@@ -431,10 +445,12 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
   })
 
   it('不正な入力・サブフレームからの依頼は starter を呼ばずに投げる', async () => {
-    await expect(start(makeEvent(), { folderPath: '/work', cols: 0, rows: 20 })).rejects.toThrow()
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20 })
+    ).rejects.toThrow()
     await expect(start(makeEvent(), { cols: 90, rows: 20 })).rejects.toThrow()
     await expect(
-      start(makeEvent(1, false), { folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(1, false), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     ).rejects.toThrow()
     expect(startSession).not.toHaveBeenCalled()
   })
@@ -445,7 +461,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     return event
   }
 
@@ -465,12 +481,14 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(pty.resize.mock.calls).toEqual([[100, 30]])
   })
 
-  it('stop は止め終わってから解決し、getState は null になる', async () => {
+  it('getState は枠ごとの一覧を返し、stop は止め終わってから解決して一覧から消す', async () => {
     const event = await started()
-    expect(handles.get('agentTerminal:getState')?.(event)).toEqual({ sessionId: 'sid-1' })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
+      { slotId: 'slot-1', sessionId: 'sid-1' }
+    ])
     await handles.get('agentTerminal:stop')?.(event, 'sid-1')
     expect(stopTree).toHaveBeenCalledOnce()
-    expect(handles.get('agentTerminal:getState')?.(event)).toBeNull()
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([])
     expect(event.sender.send).toHaveBeenCalledWith('agentTerminal:exit', {
       sessionId: 'sid-1',
       exitCode: 0,
@@ -485,11 +503,13 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     listeners.get('agentTerminal:write')?.(other, 'sid-1', 'evil')
     listeners.get('agentTerminal:resize')?.(other, 'sid-1', 100, 30)
     await handles.get('agentTerminal:stop')?.(other, 'sid-1')
-    expect(handles.get('agentTerminal:getState')?.(other)).toBeNull()
+    expect(handles.get('agentTerminal:getState')?.(other)).toEqual([])
     expect(pty.write).not.toHaveBeenCalled()
     expect(pty.resize).not.toHaveBeenCalled()
     expect(stopTree).not.toHaveBeenCalled()
-    expect(handles.get('agentTerminal:getState')?.(event)).toEqual({ sessionId: 'sid-1' })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
+      { slotId: 'slot-1', sessionId: 'sid-1' }
+    ])
   })
 
   it('上限を超える書き込みは捨てる', async () => {
@@ -506,7 +526,9 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     await expect(handles.get('agentTerminal:stop')?.(sub, 'sid-1')).rejects.toThrow()
     expect(() => handles.get('agentTerminal:getState')?.(sub)).toThrow()
     expect(stopTree).not.toHaveBeenCalled()
-    expect(handles.get('agentTerminal:getState')?.(event)).toEqual({ sessionId: 'sid-1' })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
+      { slotId: 'slot-1', sessionId: 'sid-1' }
+    ])
   })
 
   it('stop の sessionId が不正なら投げ、別の sessionId なら止めない', async () => {
@@ -514,7 +536,9 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     await expect(handles.get('agentTerminal:stop')?.(event, 1)).rejects.toThrow()
     await handles.get('agentTerminal:stop')?.(event, 'stale')
     expect(stopTree).not.toHaveBeenCalled()
-    expect(handles.get('agentTerminal:getState')?.(event)).toEqual({ sessionId: 'sid-1' })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
+      { slotId: 'slot-1', sessionId: 'sid-1' }
+    ])
   })
 })
 

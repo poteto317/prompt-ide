@@ -8,6 +8,13 @@ export const AGENT_TERMINAL_MAX_ROWS = 300
 /** 1 回の書き込みの上限(UTF-16 の単位)。貼り付けの本文の上限(20 万文字)と囲みを収める */
 export const AGENT_WRITE_MAX_LENGTH = 1_000_000
 
+/** 1 ウィンドウで同時に動かせるセッションの数(main の起動の拒否と renderer のタブの数の上限) */
+export const AGENT_MAX_SESSIONS_PER_WINDOW = 4
+/** renderer が発行するタブ(枠)の id の長さの上限 */
+export const AGENT_SLOT_ID_MAX_LENGTH = 64
+/** renderer が発行するタブ(枠)の id の形式(英数字とハイフンの 1〜AGENT_SLOT_ID_MAX_LENGTH 文字) */
+export const AGENT_SLOT_ID_PATTERN = new RegExp(`^[A-Za-z0-9-]{1,${AGENT_SLOT_ID_MAX_LENGTH}}$`)
+
 /** 起動の途中で停止された(フォルダの切り替え・実行方式の切り替え・リロード)ときの spawn-failed の detail。renderer はエラーとして出さない */
 export const AGENT_START_CANCELED_DETAIL = '起動の途中で停止されました'
 
@@ -17,8 +24,11 @@ export type AgentTerminalErrorKind =
   | 'folder-missing'
   | 'command-not-found'
   | 'spawn-failed'
+  | 'too-many-sessions'
 
 export interface AgentStartRequest {
+  /** renderer が発行するタブ(枠)の id。1 つの枠に 1 つのセッション */
+  slotId: string
   /** renderer が表示しているフォルダ。main は許可のフォルダと一致するかだけを確かめる(作業ディレクトリには使わない) */
   folderPath: string
   cols: number
@@ -50,7 +60,7 @@ export function isAgentStartCanceled(result: AgentStartResult): boolean {
   )
 }
 
-/** exited: エージェント自身の終了。stopped: 終了ボタン・実行方式の切り替え・リロード・ウィンドウの破棄。folder-changed: フォルダの切り替え */
+/** exited: エージェント自身の終了。stopped: 終了ボタン・タブを閉じる・実行方式の切り替え・リロード・ウィンドウの破棄。folder-changed: フォルダの切り替え */
 export const AGENT_EXIT_REASONS = ['exited', 'stopped', 'folder-changed'] as const
 export type AgentExitReason = (typeof AGENT_EXIT_REASONS)[number]
 
@@ -72,5 +82,8 @@ export interface AgentSessionExit {
   reason: AgentExitReason
 }
 
-/** 現在のセッション(getAgentSession の戻り値)。無ければ null */
-export type AgentSessionSnapshot = { sessionId: string } | null
+/** 生きているセッションと、それを持つ枠(getAgentSessions の戻り値の要素) */
+export interface AgentSessionSnapshotEntry {
+  slotId: string
+  sessionId: string
+}

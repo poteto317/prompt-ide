@@ -1,6 +1,6 @@
 import type { PromptExecutionMode } from '@shared/types'
 import type { Announcement, PromptRunPanelState } from '../types'
-import type { AgentSessionStatus } from './agentSessionMessages'
+import type { AgentSessionStatus } from './agentSessionTabState'
 import {
   PROMPT_RUN_ARIA_LABEL_AGENT,
   PROMPT_RUN_ARIA_LABEL_LEGACY,
@@ -17,6 +17,8 @@ export interface PromptRunStateInput {
   /** 従来の方式で実行しているか */
   isExecuting: boolean
   sessionStatus: AgentSessionStatus
+  /** 送り先のタブが閉じる途中か */
+  isSessionClosing: boolean
   /** エージェントへ送信しているか */
   isSending: boolean
   sendError: string | null
@@ -27,6 +29,7 @@ export function buildPromptRunPanelState({
   mode,
   isExecuting,
   sessionStatus,
+  isSessionClosing,
   isSending,
   sendError,
   sendNotice
@@ -36,6 +39,7 @@ export function buildPromptRunPanelState({
     mode,
     isExecuting,
     isSessionRunning: sessionStatus === 'running',
+    isSessionClosing,
     isSending
   })
   const rerun = getRerunAvailability({ mode, isExecuting })

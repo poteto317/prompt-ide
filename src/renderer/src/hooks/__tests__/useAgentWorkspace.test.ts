@@ -3,7 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import type { RenderHookResult } from '@testing-library/react'
 import type { PromptExecutionMode } from '@shared/types'
-import { makeAgentSessionState } from '../../__tests__/makeAgentSessionState'
+import {
+  makeAgentSessionsState,
+  makeAgentSessionTabView
+} from '../../__tests__/makeAgentSessionsState'
 
 const mockUseExecutionMode = vi.hoisted(() =>
   vi.fn(() => ({
@@ -12,22 +15,24 @@ const mockUseExecutionMode = vi.hoisted(() =>
     changeMode: vi.fn<(mode: PromptExecutionMode) => Promise<boolean>>(async () => true)
   }))
 )
-const mockUseAgentSession = vi.hoisted(() => vi.fn())
+const mockUseAgentSessions = vi.hoisted(() => vi.fn())
 const mockUseAgentPromptSender = vi.hoisted(() => vi.fn())
 vi.mock('../useExecutionMode', () => ({ useExecutionMode: mockUseExecutionMode }))
-vi.mock('../useAgentSession', () => ({ useAgentSession: mockUseAgentSession }))
+vi.mock('../useAgentSessions', () => ({ useAgentSessions: mockUseAgentSessions }))
 vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPromptSender }))
 vi.mock('../../lib/xtermFactory', async () => {
-  const { makeFakeController } = await import('../../__tests__/makeFakeAgentTerminal')
-  const controller = makeFakeController()
-  return { getAgentTerminalController: () => controller }
+  const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
+  const tabs = makeFakeAgentSessionTabs()
+  return { getAgentSessionTabs: () => tabs }
 })
 
 import { useAgentWorkspace } from '../useAgentWorkspace'
 import type { AgentWorkspaceState, UseAgentWorkspaceOptions } from '../useAgentWorkspace'
 import type { AgentPromptSenderState } from '../useAgentPromptSender'
-import { getAgentTerminalController } from '../../lib/xtermFactory'
-import { RUN_DISABLED_SENDING } from '../../lib/agentSendMessages'
+import type { AgentSessionTabView } from '../useAgentSessions'
+import { getAgentSessionTabs } from '../../lib/xtermFactory'
+import { RUN_DISABLED_CLOSING, RUN_DISABLED_SENDING } from '../../lib/agentSendMessages'
+import { AGENT_START_DISABLED_SWITCHING_MODE } from '../../lib/agentSessionMessages'
 
 const defaultUseExecutionMode = mockUseExecutionMode.getMockImplementation()!
 
@@ -35,9 +40,20 @@ const makeSender = (overrides: Partial<AgentPromptSenderState> = {}): AgentPromp
   isSending: false,
   error: null,
   notice: null,
+  sendingSlotId: null,
   send: vi.fn<AgentPromptSenderState['send']>(async () => undefined),
   ...overrides
 })
+
+// 選択中のタブ(タブ 1)は未起動で、選択していないタブ 2 だけが status の状態
+const otherTabIs = (
+  status: AgentSessionTabView['status'],
+  overrides: Parameters<typeof makeAgentSessionsState>[0] = {}
+): ReturnType<typeof makeAgentSessionsState> => {
+  const tab1 = makeAgentSessionTabView()
+  const tab2 = makeAgentSessionTabView({ slotId: 'slot-2', label: 'claude 2', status })
+  return makeAgentSessionsState({ tabs: [tab1, tab2], selected: tab1, ...overrides })
+}
 
 const MODE_CHANGE_CONFIRM =
   '従来の方式に切り替えると、実行中のエージェントを終了します。続けますか？'
@@ -50,7 +66,7 @@ let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 beforeEach(() => {
   vi.clearAllMocks()
   mockUseExecutionMode.mockImplementation(defaultUseExecutionMode)
-  mockUseAgentSession.mockReturnValue(makeAgentSessionState())
+  mockUseAgentSessions.mockReturnValue(makeAgentSessionsState())
   mockUseAgentPromptSender.mockReturnValue(makeSender())
   windowConfirmSpy = null
   consoleErrorSpy = null
@@ -83,19 +99,22 @@ const setMode = (
 
 describe('useAgentWorkspace', () => {
   describe('組み立て', () => {
-    it('useAgentSession に開いているフォルダ・文書ごとの controller・エージェント CLI 方式かを渡す', () => {
+    it('useAgentSessions に開いているフォルダ・文書ごとのタブの置き場・エージェント CLI 方式か・確認を渡す', () => {
       setMode('agent-cli')
-      renderHook(() => useAgentWorkspace({ folderPath: '/p', isExecuting: false }))
-      expect(mockUseAgentSession).toHaveBeenLastCalledWith({
+      const onConfirm = vi.fn(() => true)
+      renderHook(() => useAgentWorkspace({ folderPath: '/p', isExecuting: false, onConfirm }))
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith({
         folderPath: '/p',
-        controller: getAgentTerminalController(),
-        enabled: true
+        tabs: getAgentSessionTabs(),
+        enabled: true,
+        startBlockedReason: null,
+        onConfirm
       })
     })
 
-    it('従来の方式では useAgentSession を無効にする', () => {
+    it('従来の方式では useAgentSessions を無効にする', () => {
       renderHook(() => useAgentWorkspace({ folderPath: null, isExecuting: false }))
-      expect(mockUseAgentSession).toHaveBeenLastCalledWith(
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
         expect.objectContaining({ folderPath: null, enabled: false })
       )
     })
@@ -113,20 +132,34 @@ describe('useAgentWorkspace', () => {
       expect(result.current.executionModePanel.mode).toBe(mode)
     })
 
-    it('ターミナルのパネルに controller・セッション・レイアウトを渡す', () => {
-      const session = makeAgentSessionState({ status: 'running' })
-      mockUseAgentSession.mockReturnValue(session)
+    it('ターミナルのパネルにセッション・レイアウト・送信中のタブを渡す', () => {
+      const sessions = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      mockUseAgentPromptSender.mockReturnValue(makeSender({ sendingSlotId: 'slot-1' }))
       const { result } = renderHook(() =>
         useAgentWorkspace({ folderPath: null, isExecuting: false })
       )
-      expect(result.current.agentTerminal.controller).toBe(getAgentTerminalController())
-      expect(result.current.agentTerminal.session).toBe(session)
+      expect(result.current.agentTerminal.sessions).toBe(sessions)
+      expect(result.current.agentTerminal.sendingSlotId).toBe('slot-1')
       expect(typeof result.current.agentTerminal.layout.open).toBe('function')
+    })
+
+    it('実行ボタンの状態は選択中のタブで決まる(タブ 1 が running でも、選択中のタブ 2 が未起動なら押せない)', () => {
+      setMode('agent-cli')
+      const tab1 = makeAgentSessionTabView({ status: 'running' })
+      const tab2 = makeAgentSessionTabView({ slotId: 'slot-2', label: 'claude 2' })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [tab1, tab2], selected: tab2 })
+      )
+      const { result } = renderWorkspace()
+      expect(result.current.promptRun.isRunDisabled).toBe(true)
     })
 
     it('実行ボタンの状態はセッションの状態と従来の方式の実行中から組み立てる', () => {
       setMode('agent-cli')
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'running' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
       const { result } = renderHook(() =>
         useAgentWorkspace({ folderPath: null, isExecuting: false })
       )
@@ -143,7 +176,7 @@ describe('useAgentWorkspace', () => {
       'エージェント CLI 方式では、セッションの状態(%s)を実行ボタンの状態に渡す(押せないか: %s)',
       (status, disabled) => {
         setMode('agent-cli')
-        mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status }))
+        mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ selected: { status } }))
         const { result } = renderWorkspace()
         expect(result.current.promptRun.isRunDisabled).toBe(disabled)
       }
@@ -173,19 +206,64 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('エージェントへの送信', () => {
-    it('controller と、送信の後にパネルを開く onSettled を渡し、sendToAgent は sender の send そのもの', () => {
-      const sender = makeSender()
-      mockUseAgentPromptSender.mockReturnValue(sender)
+    it('送信の後にパネルを開く onSettled を渡す', () => {
       const { result } = renderWorkspace()
       expect(mockUseAgentPromptSender).toHaveBeenLastCalledWith({
-        controller: getAgentTerminalController(),
         onSettled: result.current.agentTerminal.layout.open,
         beforeSend: undefined
       })
-      expect(result.current.sendToAgent).toBe(sender.send)
+    })
+
+    it('sendToAgent は押した時点の選択中のタブを送り先にする。送信中にタブを切り替えても送り先は変わらない', async () => {
+      let finishSend: () => void = () => undefined
+      const sender = makeSender({
+        send: vi.fn<AgentPromptSenderState['send']>(
+          () => new Promise((resolve) => (finishSend = () => resolve(undefined)))
+        )
+      })
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      const tab1 = makeAgentSessionTabView({ status: 'running' })
+      const tab2 = makeAgentSessionTabView({
+        slotId: 'slot-2',
+        label: 'claude 2',
+        status: 'running'
+      })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [tab1, tab2], selected: tab2 })
+      )
+      const { result, rerender } = renderWorkspace()
+      let sending: Promise<unknown> = Promise.resolve()
+      act(() => {
+        sending = result.current.sendToAgent('hello')
+      })
+      // 送信中にタブ 1 へ切り替える
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [tab1, tab2], selected: tab1 })
+      )
+      rerender()
+      await act(async () => {
+        finishSend()
+        await sending
+      })
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
+        slotId: 'slot-2',
+        controller: tab2.controller
+      })
     })
 
     // 省略可能な引数のため、渡し忘れを型で検知できない(パターン 155)
+    it('sendToAgent は、選択中のタブと sender の send が変わらなければ描画をまたいで同じ参照', () => {
+      const { result, rerender } = renderWorkspace()
+      const first = result.current.sendToAgent
+      rerender()
+      expect(result.current.sendToAgent).toBe(first)
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { slotId: 'slot-2', label: 'claude 2' } })
+      )
+      rerender()
+      expect(result.current.sendToAgent).not.toBe(first)
+    })
+
     it('送信の前の準備(beforeAgentSend)を sender の beforeSend へそのまま渡す', () => {
       const beforeAgentSend = vi.fn(async () => undefined)
       renderWorkspace({ beforeAgentSend })
@@ -207,16 +285,30 @@ describe('useAgentWorkspace', () => {
 
     it('送信中は実行ボタンを押せず、理由は送信中', () => {
       setMode('agent-cli')
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'running' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
       mockUseAgentPromptSender.mockReturnValue(makeSender({ isSending: true }))
       const { result } = renderWorkspace()
       expect(result.current.promptRun.isRunDisabled).toBe(true)
       expect(result.current.promptRun.runDisabledReason).toBe(RUN_DISABLED_SENDING)
     })
 
+    it('選択中のタブが閉じる途中なら、running でも実行ボタンを押せず、理由は閉じる途中', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running', isClosing: true } })
+      )
+      const { result } = renderWorkspace()
+      expect(result.current.promptRun.isRunDisabled).toBe(true)
+      expect(result.current.promptRun.runDisabledReason).toBe(RUN_DISABLED_CLOSING)
+    })
+
     it('送信の失敗と成功の通知を promptRun.agentSend に渡す', () => {
       setMode('agent-cli')
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'running' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
       const notice = { id: 1, text: '送信しました' }
       mockUseAgentPromptSender.mockReturnValue(makeSender({ error: 'e', notice }))
       const { result } = renderWorkspace()
@@ -225,8 +317,8 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('confirmStopAgent', () => {
-    it.each(['none', 'exited'] as const)('セッションが %s なら確認せずに true', (status) => {
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status }))
+    it.each(['none', 'exited'] as const)('どのタブも %s なら確認せずに true', (status) => {
+      mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ selected: { status } }))
       const onConfirm = vi.fn(() => false)
       const { result } = renderWorkspace({ onConfirm })
       expect(result.current.confirmStopAgent('msg')).toBe(true)
@@ -238,8 +330,8 @@ describe('useAgentWorkspace', () => {
       ['running', false],
       ['starting', true],
       ['starting', false]
-    ] as const)('セッションが %s なら確認の答え(%s)を返す', (status, answer) => {
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status }))
+    ] as const)('選択中のタブが %s なら確認の答え(%s)を返す', (status, answer) => {
+      mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ selected: { status } }))
       const onConfirm = vi.fn(() => answer)
       const { result } = renderWorkspace({ onConfirm })
       expect(result.current.confirmStopAgent('msg')).toBe(answer)
@@ -247,11 +339,21 @@ describe('useAgentWorkspace', () => {
     })
 
     it('onConfirm を省略したら window.confirm で確かめる', () => {
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'running' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
       windowConfirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
       const { result } = renderWorkspace()
       expect(result.current.confirmStopAgent('msg')).toBe(false)
       expect(windowConfirmSpy).toHaveBeenCalledExactlyOnceWith('msg')
+    })
+
+    it.each(['running', 'starting'] as const)('選択していないタブが %s でも確認する', (status) => {
+      mockUseAgentSessions.mockReturnValue(otherTabIs(status))
+      const onConfirm = vi.fn(() => false)
+      const { result } = renderWorkspace({ onConfirm })
+      expect(result.current.confirmStopAgent('msg')).toBe(false)
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith('msg')
     })
   })
 
@@ -259,19 +361,20 @@ describe('useAgentWorkspace', () => {
     it('動いているセッションがあれば確認し、OK なら停止を待ってから保存する', async () => {
       const changeMode = setMode('agent-cli')
       const order: string[] = []
-      const session = makeAgentSessionState({
-        status: 'running',
-        stop: vi.fn(async () => {
+      const session = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(async () => {
           // 停止の完了(プロセスの終了の待ち)は非同期
           await Promise.resolve()
           order.push('stopped')
+          return true
         })
       })
       changeMode.mockImplementation(async () => {
         order.push('save')
         return true
       })
-      mockUseAgentSession.mockReturnValue(session)
+      mockUseAgentSessions.mockReturnValue(session)
       const onConfirm = vi.fn(() => true)
       const { result } = renderWorkspace({ onConfirm })
       await select(result, 'legacy')
@@ -282,30 +385,44 @@ describe('useAgentWorkspace', () => {
 
     it('onConfirm を省略したら、従来の方式への切り替えの確認も window.confirm で行う', async () => {
       const changeMode = setMode('agent-cli')
-      const session = makeAgentSessionState({ status: 'running' })
-      mockUseAgentSession.mockReturnValue(session)
+      const session = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(session)
       windowConfirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
       const { result } = renderWorkspace()
       await select(result, 'legacy')
       expect(windowConfirmSpy).toHaveBeenCalledExactlyOnceWith(MODE_CHANGE_CONFIRM)
-      expect(session.stop).not.toHaveBeenCalled()
+      expect(session.stopAll).not.toHaveBeenCalled()
+      expect(changeMode).not.toHaveBeenCalled()
+    })
+
+    it('どれかのタブの停止に失敗したら保存せず(方式を変えず)、ロックを戻す', async () => {
+      const changeMode = setMode('agent-cli')
+      const sessions = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(async () => false)
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      await select(result, 'legacy')
+      await waitFor(() => expect(result.current.executionModePanel.isLocked).toBe(false))
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
       expect(changeMode).not.toHaveBeenCalled()
     })
 
     it('確認でキャンセルしたら止めず、保存もせず、ロックを戻す', async () => {
       const changeMode = setMode('agent-cli')
-      const session = makeAgentSessionState({ status: 'running' })
-      mockUseAgentSession.mockReturnValue(session)
+      const session = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(session)
       const onConfirm = vi.fn(() => false)
       const { result } = renderWorkspace({ onConfirm })
       await select(result, 'legacy')
       await waitFor(() => expect(result.current.executionModePanel.isLocked).toBe(false))
       expect(onConfirm).toHaveBeenCalledOnce()
-      expect(session.stop).not.toHaveBeenCalled()
+      expect(session.stopAll).not.toHaveBeenCalled()
       expect(changeMode).not.toHaveBeenCalled()
     })
 
-    it('セッションが動いていなければ確認せずに保存する', async () => {
+    it('どのタブも動いていなければ確認せずに保存する', async () => {
       const changeMode = setMode('agent-cli')
       const onConfirm = vi.fn(() => true)
       const { result } = renderWorkspace({ onConfirm })
@@ -316,7 +433,9 @@ describe('useAgentWorkspace', () => {
 
     it('エージェント CLI 方式への切り替えは確認しない', async () => {
       const changeMode = setMode('legacy')
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'running' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
       const onConfirm = vi.fn(() => true)
       const { result } = renderWorkspace({ onConfirm })
       await select(result, 'agent-cli')
@@ -343,7 +462,9 @@ describe('useAgentWorkspace', () => {
 
     it('起動中は切り替えず、選択肢も押せない(理由は出さない)', async () => {
       const changeMode = setMode('agent-cli')
-      mockUseAgentSession.mockReturnValue(makeAgentSessionState({ status: 'starting' }))
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'starting' } })
+      )
       // 確認で OK を返しても切り替えない(起動中の判定で止まることを確かめる)
       const onConfirm = vi.fn(() => true)
       const { result } = renderWorkspace({ onConfirm })
@@ -351,6 +472,27 @@ describe('useAgentWorkspace', () => {
       expect(result.current.executionModePanel.lockedReason).toBeNull()
       await select(result, 'legacy')
       expect(onConfirm).not.toHaveBeenCalled()
+      expect(changeMode).not.toHaveBeenCalled()
+    })
+
+    it('選択していないタブだけが動いていても確認し、すべてのタブの停止を待ってから保存する', async () => {
+      const changeMode = setMode('agent-cli')
+      const sessions = otherTabIs('running')
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await select(result, 'legacy')
+      await waitFor(() => expect(changeMode).toHaveBeenCalledWith('legacy'))
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(MODE_CHANGE_CONFIRM)
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+    })
+
+    it('選択していないタブが起動中でも、切り替えず選択肢を押せない', async () => {
+      const changeMode = setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(otherTabIs('starting'))
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      expect(result.current.executionModePanel.isLocked).toBe(true)
+      await select(result, 'legacy')
       expect(changeMode).not.toHaveBeenCalled()
     })
 
@@ -363,16 +505,16 @@ describe('useAgentWorkspace', () => {
     it('停止を待つ間は選択肢を押せず、同じ描画の中でもう一度選んでも確認・停止・保存を重ねない', async () => {
       const changeMode = setMode('agent-cli')
       let finishStop: () => void = () => undefined
-      const session = makeAgentSessionState({
-        status: 'running',
-        stop: vi.fn(
+      const session = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(
           () =>
-            new Promise<void>((resolve) => {
-              finishStop = resolve
+            new Promise<boolean>((resolve) => {
+              finishStop = () => resolve(true)
             })
         )
       })
-      mockUseAgentSession.mockReturnValue(session)
+      mockUseAgentSessions.mockReturnValue(session)
       const onConfirm = vi.fn(() => true)
       const { result } = renderWorkspace({ onConfirm })
       // 同じ描画の関数で 2 回呼ぶ(ref による再入防止)
@@ -385,7 +527,7 @@ describe('useAgentWorkspace', () => {
       // 次の描画の関数でもう一度選んでも重ねない
       await select(result, 'legacy')
       expect(onConfirm).toHaveBeenCalledOnce()
-      expect(session.stop).toHaveBeenCalledOnce()
+      expect(session.stopAll).toHaveBeenCalledOnce()
       expect(changeMode).not.toHaveBeenCalled()
       await act(async () => {
         finishStop()
@@ -394,7 +536,39 @@ describe('useAgentWorkspace', () => {
       expect(changeMode).toHaveBeenCalledOnce()
     })
 
-    // changeMode は失敗を false で返し、stop は reject しない(Task 19)ので本来は投げない。投げても選択肢を押せないまま
+    it('停止を待つ間は、起動・+ を受け付けない理由を useAgentSessions に渡し、終わったら戻す', async () => {
+      setMode('agent-cli')
+      let finishStop: () => void = () => undefined
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          selected: { status: 'running' },
+          stopAll: vi.fn(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishStop = () => resolve(true)
+              })
+          )
+        })
+      )
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startBlockedReason: null })
+      )
+      await select(result, 'legacy')
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startBlockedReason: AGENT_START_DISABLED_SWITCHING_MODE })
+      )
+      await act(async () => {
+        finishStop()
+      })
+      await waitFor(() =>
+        expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+          expect.objectContaining({ startBlockedReason: null })
+        )
+      )
+    })
+
+    // changeMode は失敗を false で返し、stopAll は reject しないので本来は投げない。投げても選択肢を押せないまま
     // 残さず、Promise は捨てる側(onSelect)で記録して握る
     it('保存が投げてもロックを戻し、例外は記録して呼び出し元へ投げない', async () => {
       const changeMode = setMode('legacy')

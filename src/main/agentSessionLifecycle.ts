@@ -28,18 +28,21 @@ export function setupAgentSessionLifecycle(
   { quitTimeoutMs = AGENT_QUIT_TIMEOUT_MS }: AgentSessionLifecycleOptions = {}
 ): void {
   // 停止の失敗は未処理の拒否にしない(止める契機の呼び出し元は結果を待たない)
-  const stop = (ownerId: number, reason: Parameters<AgentSessionRegistry['stop']>[1]): void => {
-    void registry.stop(ownerId, reason).catch(() => undefined)
+  const stopOwner = (
+    ownerId: number,
+    reason: Parameters<AgentSessionRegistry['stopOwner']>[1]
+  ): void => {
+    void registry.stopOwner(ownerId, reason).catch(() => undefined)
   }
 
   // 所有者の文脈が終わる契機(破棄・renderer のプロセスの終了・リロード・フォルダの切り替え。ownerContextLifecycle.ts)で止める。
   // フォルダの切り替えだけ理由を folder-changed にする
   onOwnerContextEnded(app, folderAccess, (end) => {
     if (end.cause === 'folder-changed') {
-      stop(end.ownerId, 'folder-changed')
+      stopOwner(end.ownerId, 'folder-changed')
       return
     }
-    stop(end.ownerId, 'stopped')
+    stopOwner(end.ownerId, 'stopped')
     // ターミナルにフォーカスがあるままリロードすると renderer の blur が届かず、Windows・Linux でメニューのショートカットの
     // 無視(agentTerminal:focus)が残るため解除する(macOS では設定しないので解除しても変わらない)
     if (end.cause === 'reloaded') end.webContents.setIgnoreMenuShortcuts(false)

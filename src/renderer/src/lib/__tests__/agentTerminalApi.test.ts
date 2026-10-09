@@ -6,7 +6,7 @@ const mockApi = {
   writeAgentSession: vi.fn(),
   resizeAgentSession: vi.fn(),
   stopAgentSession: vi.fn(),
-  getAgentSession: vi.fn(),
+  getAgentSessions: vi.fn(),
   onAgentData: vi.fn(),
   onAgentExit: vi.fn(),
   setAgentTerminalFocused: vi.fn()
@@ -19,17 +19,22 @@ beforeEach(() => {
 
 describe('agentTerminalApi', () => {
   it('各関数は window.api の同名の関数へ引数をそのまま渡す', () => {
-    agentTerminalApi.startAgentSession({ folderPath: '/p', cols: 80, rows: 24 })
+    agentTerminalApi.startAgentSession({ slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 })
     agentTerminalApi.writeAgentSession('s', 'x')
     agentTerminalApi.resizeAgentSession('s', 100, 30)
     agentTerminalApi.stopAgentSession('s')
-    agentTerminalApi.getAgentSession()
+    agentTerminalApi.getAgentSessions()
     agentTerminalApi.setAgentTerminalFocused(true)
-    expect(mockApi.startAgentSession).toHaveBeenCalledWith({ folderPath: '/p', cols: 80, rows: 24 })
+    expect(mockApi.startAgentSession).toHaveBeenCalledWith({
+      slotId: 'slot-1',
+      folderPath: '/p',
+      cols: 80,
+      rows: 24
+    })
     expect(mockApi.writeAgentSession).toHaveBeenCalledWith('s', 'x')
     expect(mockApi.resizeAgentSession).toHaveBeenCalledWith('s', 100, 30)
     expect(mockApi.stopAgentSession).toHaveBeenCalledWith('s')
-    expect(mockApi.getAgentSession).toHaveBeenCalledOnce()
+    expect(mockApi.getAgentSessions).toHaveBeenCalledOnce()
     expect(mockApi.setAgentTerminalFocused).toHaveBeenCalledWith(true)
   })
 

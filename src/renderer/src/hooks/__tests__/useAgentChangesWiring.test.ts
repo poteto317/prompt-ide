@@ -124,12 +124,12 @@ describe('useAgentChangesWiring', () => {
       expect(refresh).toHaveBeenCalledTimes(2)
     })
 
-    it('エージェントのセッションが終わったら取り直す(終わっていない間は取り直さない)', () => {
+    it('いずれかのタブのセッションが終わったら取り直す(終わっていない間は取り直さない)', () => {
       const { update, options } = setup()
       const refresh = options().recording.changes.refresh
       update({ agentRunning: true })
       expect(refresh).not.toHaveBeenCalled()
-      update({ agentSessionExit: { exitCode: 0, reason: 'exited' } })
+      update({ agentSessionExit: { sessionId: 's-2', exitCode: 0, reason: 'exited' } })
       expect(refresh).toHaveBeenCalledOnce()
       // 引数なし(件数を読み上げない)
       expect(refresh).toHaveBeenCalledWith()
