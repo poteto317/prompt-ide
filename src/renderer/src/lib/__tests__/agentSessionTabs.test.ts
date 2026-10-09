@@ -50,6 +50,15 @@ describe('createAgentSessionTabs', () => {
     expect(tabs.getSnapshot().selectedSlotId).toBe('slot-2')
   })
 
+  it('3 つあって中央の選択中のタブを消すと、右隣ではなく左隣を選ぶ', () => {
+    const { tabs } = setup()
+    tabs.add() // slot-2
+    tabs.add() // slot-3
+    tabs.select('slot-2')
+    tabs.remove('slot-2')
+    expect(tabs.getSnapshot().selectedSlotId).toBe('slot-1')
+  })
+
   it('先頭の選択中のタブを消すと右隣を選ぶ', () => {
     const { tabs } = setup()
     tabs.add() // slot-2

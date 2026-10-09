@@ -457,6 +457,28 @@ describe('useAgentSessions — 複数のタブ', () => {
     expect(result.current.lastExit).toEqual({ sessionId: 's-2', exitCode: 3, reason: 'exited' })
   })
 
+  it('起動の直後の終了の判定はタブごとの起動時刻で行う(早く起動したタブは案内を出さず、遅いタブは出す)', async () => {
+    const { result } = render()
+    mockStart
+      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
+      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-2' })
+    now = 10_000
+    await startSelected(result)
+    now = 15_000
+    await act(async () => {
+      await result.current.addTab()
+    })
+    now = 15_500
+    // slot-1 は 5.5 秒前の起動なので直後ではない
+    act(() => emitExit({ sessionId: 's-1', exitCode: 1, signal: null, reason: 'exited' }))
+    expect(tabOf(result.current, 'slot-1').error).toBeNull()
+    // slot-2 は 0.5 秒前の起動なので直後
+    act(() => emitExit({ sessionId: 's-2', exitCode: 1, signal: null, reason: 'exited' }))
+    expect(tabOf(result.current, 'slot-2').error).toBe(
+      '起動の直後に終了しました。ターミナルの表示を確かめてください'
+    )
+  })
+
   it('lastExit は終了のたびに新しいオブジェクトになる', async () => {
     const { result } = render()
     act(() => emitExit({ sessionId: 'x', exitCode: 0, signal: null, reason: 'stopped' }))
