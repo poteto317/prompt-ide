@@ -139,6 +139,7 @@ export default function App(): React.JSX.Element {
     promptRun,
     bottomPanel,
     agentTerminal,
+    statusBarAgent,
     externalChangeBanner,
     agentChangesPanel,
     agentDiffActions,
@@ -372,7 +373,7 @@ export default function App(): React.JSX.Element {
           />
         </div>
       </div>
-      <StatusBar />
+      <StatusBar agent={statusBarAgent} />
       <QuickOpenDialog controller={quickOpen} />
     </>
   )

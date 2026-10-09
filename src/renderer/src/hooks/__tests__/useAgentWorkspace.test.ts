@@ -17,9 +17,11 @@ const mockUseExecutionMode = vi.hoisted(() =>
 )
 const mockUseAgentSessions = vi.hoisted(() => vi.fn())
 const mockUseAgentPromptSender = vi.hoisted(() => vi.fn())
+const mockUseAgentActivity = vi.hoisted(() => vi.fn())
 vi.mock('../useExecutionMode', () => ({ useExecutionMode: mockUseExecutionMode }))
 vi.mock('../useAgentSessions', () => ({ useAgentSessions: mockUseAgentSessions }))
 vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPromptSender }))
+vi.mock('../useAgentActivity', () => ({ useAgentActivity: mockUseAgentActivity }))
 vi.mock('../../lib/xtermFactory', async () => {
   const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
   const tabs = makeFakeAgentSessionTabs()
@@ -68,6 +70,7 @@ beforeEach(() => {
   mockUseExecutionMode.mockImplementation(defaultUseExecutionMode)
   mockUseAgentSessions.mockReturnValue(makeAgentSessionsState())
   mockUseAgentPromptSender.mockReturnValue(makeSender())
+  mockUseAgentActivity.mockReturnValue(new Map())
   windowConfirmSpy = null
   consoleErrorSpy = null
 })
@@ -142,6 +145,21 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentTerminal.sessions).toBe(sessions)
       expect(result.current.agentTerminal.sendingSlotId).toBe('slot-1')
       expect(typeof result.current.agentTerminal.layout.open).toBe('function')
+    })
+
+    it('タブごとの活動(useAgentActivity の結果)を agentTerminal.activities に渡す', () => {
+      const tab1 = makeAgentSessionTabView({ status: 'running' })
+      const tab2 = makeAgentSessionTabView({ slotId: 'slot-2', label: 'claude 2', status: 'none' })
+      const sessions = makeAgentSessionsState({ tabs: [tab1, tab2], selected: tab1 })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const activities = new Map([['slot-1', 'permission' as const]])
+      mockUseAgentActivity.mockReturnValue(activities)
+      const { result } = renderHook(() =>
+        useAgentWorkspace({ folderPath: null, isExecuting: false })
+      )
+      expect(result.current.agentTerminal.activities).toBe(activities)
+      // タブの一覧(useAgentSessions が状態の変わったときだけ作り直す)を写し直さずにそのまま渡す
+      expect(mockUseAgentActivity.mock.lastCall?.[0].tabs).toBe(sessions.tabs)
     })
 
     it('実行ボタンの状態は選択中のタブで決まる(タブ 1 が running でも、選択中のタブ 2 が未起動なら押せない)', () => {
@@ -582,6 +600,90 @@ describe('useAgentWorkspace', () => {
       // 再入防止の ref も戻っている(もう一度選べる)
       await select(result, 'agent-cli')
       await waitFor(() => expect(changeMode).toHaveBeenCalledTimes(2))
+    })
+  })
+
+  describe('ステータスバーのまとめ(statusBarAgent)', () => {
+    // useAgentStatusBar への配線(方式・活動・タブの選択・パネルの開き)だけを確かめる。数え方・強調の判定・当たるタブが無いとき・
+    // フォーカスの回数などの細かい振る舞いは useAgentStatusBar.test と agentActivitySummary.test で確かめる(ここで重ねて確かめない)
+    // タブ 1(選択中・作業中)・タブ 2(入力待ち)・タブ 3(許可待ち)。selectTab で選択中のタブが変わる(本物と同じく次の描画から)
+    const setupThreeTabs = (): AgentSessionTabView[] => {
+      const tabs = [1, 2, 3].map((n) =>
+        makeAgentSessionTabView({ slotId: `slot-${n}`, label: `claude ${n}`, status: 'running' })
+      )
+      const sessionsFor = (slotId: string): ReturnType<typeof makeAgentSessionsState> =>
+        makeAgentSessionsState({ tabs, selected: { slotId }, selectTab })
+      const selectTab = vi.fn((slotId: string) => {
+        mockUseAgentSessions.mockReturnValue(sessionsFor(slotId))
+      })
+      mockUseAgentSessions.mockReturnValue(sessionsFor('slot-1'))
+      mockUseAgentActivity.mockReturnValue(
+        new Map([
+          ['slot-1', 'working'],
+          ['slot-2', 'idle'],
+          ['slot-3', 'permission']
+        ])
+      )
+      return tabs
+    }
+
+    it('従来の方式・読み込み中では null', () => {
+      setMode('legacy')
+      setupThreeTabs()
+      expect(renderWorkspace().result.current.statusBarAgent).toBeNull()
+      setMode(null)
+      expect(renderWorkspace().result.current.statusBarAgent).toBeNull()
+    })
+
+    it('エージェント CLI 方式では、running のタブの活動のまとめと強調の要否を返す', () => {
+      setMode('agent-cli')
+      setupThreeTabs()
+      const agent = renderWorkspace().result.current.statusBarAgent!
+      expect(agent.items).toEqual([
+        { activity: 'permission', count: 1 },
+        { activity: 'working', count: 1 },
+        { activity: 'idle', count: 1 }
+      ])
+      expect(agent.needsAttention).toBe(true)
+    })
+
+    it('押すとパネルを開き(最大化は変えない)、許可待ちのタブを選択し、描画の後にそのタブのターミナルへフォーカスを移す', () => {
+      setMode('agent-cli')
+      const tabs = setupThreeTabs()
+      // result.current は renderHook の effect で更新されるため、フォーカスの時点の描画の値は描画の中で控える
+      let rendered: AgentWorkspaceState | null = null
+      const { result } = renderHook(() => {
+        rendered = useAgentWorkspace({ folderPath: null, isExecuting: false })
+        return rendered
+      })
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      expect(result.current.agentTerminal.layout.isOpen).toBe(false)
+      // フォーカスの時点で、パネルが開いて選択が移った描画が終わっていること
+      const seenAtFocus: { selected: string; isOpen: boolean }[] = []
+      vi.mocked(tabs[2].controller.focus).mockImplementation(() => {
+        const latest = rendered!
+        seenAtFocus.push({
+          selected: latest.agentTerminal.sessions.selected.slotId,
+          isOpen: latest.agentTerminal.layout.isOpen
+        })
+      })
+      act(() => result.current.statusBarAgent!.onActivate())
+      expect(result.current.agentTerminal.layout.isOpen).toBe(true)
+      expect(result.current.agentTerminal.layout.isMaximized).toBe(false)
+      expect(result.current.agentTerminal.sessions.selectTab).toHaveBeenCalledWith('slot-3')
+      expect(seenAtFocus).toEqual([{ selected: 'slot-3', isOpen: true }])
+      expect(tabs[0].controller.focus).not.toHaveBeenCalled()
+      expect(tabs[1].controller.focus).not.toHaveBeenCalled()
+    })
+
+    it('最大化していれば最大化のまま開く', () => {
+      setMode('agent-cli')
+      setupThreeTabs()
+      const { result } = renderWorkspace()
+      act(() => result.current.agentTerminal.layout.toggleMaximized())
+      act(() => result.current.statusBarAgent!.onActivate())
+      expect(result.current.agentTerminal.layout.isOpen).toBe(true)
+      expect(result.current.agentTerminal.layout.isMaximized).toBe(true)
     })
   })
 })

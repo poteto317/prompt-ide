@@ -18,7 +18,7 @@ interface Props {
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
 export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
-  const { sessions, layout, sendingSlotId } = state
+  const { sessions, layout, sendingSlotId, activities } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
   const bodyId = useId()
@@ -77,6 +77,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
         </span>
         <AgentSessionTabList
           tabs={sessions.tabs}
+          activities={activities}
           selectedSlotId={session.slotId}
           panelId={bodyId}
           tabIdPrefix={tabIdPrefix}
@@ -87,7 +88,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
           onAdd={() => void sessions.addTab()}
         />
         <span className="agent-terminal-panel__status">
-          {describeAgentStatus(session.status, session.exit)}
+          {describeAgentStatus(session.status, session.exit, activities.get(session.slotId))}
         </span>
         <span className="agent-terminal-panel__actions">
           {startDisabledReason !== null && !isActive && (

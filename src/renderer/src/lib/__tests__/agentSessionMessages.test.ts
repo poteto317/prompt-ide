@@ -8,6 +8,7 @@ import {
   AGENT_START_ERROR_PREFIX,
   AGENT_STOP_ERROR_PREFIX,
   describeAgentStartError,
+  describeAgentActivity,
   describeAgentStatus
 } from '../agentSessionMessages'
 
@@ -61,13 +62,15 @@ describe('+ を押せない理由の文言', () => {
 })
 
 describe('タブの文言', () => {
+  // 活動は必ず渡す(running のときだけ使う。running でないタブに活動の文言を出さない)
   it.each([
-    ['none', '未起動'],
-    ['starting', '起動中'],
-    ['running', '実行中'],
-    ['exited', '終了']
-  ] as const)('%s → %s', (status, expected) => {
-    expect(describeAgentTabStatus(status)).toBe(expected)
+    ['none', 'unknown', '未起動'],
+    ['starting', 'working', '起動中'],
+    ['running', 'unknown', '実行中'],
+    ['running', 'idle', '入力待ち'],
+    ['exited', 'permission', '終了']
+  ] as const)('%s・%s → %s', (status, activity, expected) => {
+    expect(describeAgentTabStatus(status, activity)).toBe(expected)
   })
 
   it('ラベルと閉じる確認', () => {
@@ -75,5 +78,17 @@ describe('タブの文言', () => {
     expect(agentCloseTabConfirm('claude 2')).toBe(
       'claude 2 のエージェントを終了してタブを閉じますか？'
     )
+  })
+})
+
+describe('describeAgentActivity', () => {
+  it.each([
+    ['working', '作業中'],
+    ['idle', '入力待ち'],
+    ['permission', '許可待ち'],
+    ['confirm', '確認待ち'],
+    ['unknown', '実行中']
+  ] as const)('%s → %s', (activity, text) => {
+    expect(describeAgentActivity(activity)).toBe(text)
   })
 })

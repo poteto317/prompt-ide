@@ -33,6 +33,7 @@ function renderNoFolder(): HTMLElement {
   const state: AgentTerminalPanelState = {
     sessions: makeAgentSessionsState({ startDisabledReason: AGENT_START_DISABLED_NO_FOLDER }),
     sendingSlotId: null,
+    activities: new Map(),
     layout: {
       isOpen: true,
       isMaximized: false,
@@ -132,6 +133,7 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
           addDisabledReason: '上限です'
         }),
         sendingSlotId: null,
+        activities: new Map(),
         layout: {
           isOpen: true,
           isMaximized: false,
@@ -158,11 +160,138 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       const selected = styleOf(container, '.agent-session-tabs__tab--selected')
       expect(selected.borderBottomColor).not.toBe('')
       expect(selected.borderBottomColor).not.toBe('transparent')
+      // running のタブの印は活動の class(unknown など)が重なって塗りが変わるため、running の規則の宣言値で比べる
       const colorOf = (status: string): string =>
-        styleOf(container, `.agent-session-tabs__dot--${status}`).backgroundColor
+        status === 'running'
+          ? runningColor()
+          : styleOf(container, `.agent-session-tabs__dot--${status}`).backgroundColor
       expect(colorOf('running')).not.toBe(colorOf('starting'))
       expect(colorOf('starting')).not.toBe(colorOf('exited'))
       expect(colorOf('running')).not.toBe('')
+    })
+
+    // jsdom は animation を computed に出さないため、規則そのものを CSSOM から探す(複数のセレクタの規則も拾う)
+    const findRules = (selector: string): CSSStyleRule[] =>
+      Array.from(styleElement.sheet?.cssRules ?? [])
+        .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+        .filter((rule) => rule.selectorText.split(/,\s*/).includes(selector))
+
+    // running の印の色(running の規則の宣言値。描画したタブの印は活動の class が重なるため computed では取らない)
+    const runningColor = (): string => declaredOf('running', 'background-color')
+
+    // 印の色。working は中抜きの輪(塗りは透明で、内側の影が輪の色)なので、輪の色を印の色とみなす
+    const declaredOf = (activity: string, property: string): string =>
+      findRules(`.agent-session-tabs__dot--${activity}`)
+        .map((rule) => rule.style.getPropertyValue(property))
+        .find((value) => value !== '') ?? ''
+    // box-shadow の色は宣言のまま(#rrggbb)残るため、塗りの色(rgb(...))と比べられるよう rgb に直す
+    const ringColorOf = (activity: string): string => {
+      const color = /rgb\([^)]*\)|#[0-9a-f]{6}/i.exec(declaredOf(activity, 'box-shadow'))?.[0] ?? ''
+      if (!color.startsWith('#')) return color
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16))
+      return `rgb(${r}, ${g}, ${b})`
+    }
+
+    it('活動ごとの印は、working・idle が緑、permission・confirm が同じ橙で、running の色と区別できる', () => {
+      renderTabs()
+      const colorOf = (activity: string): string => {
+        const fill = declaredOf(activity, 'background-color')
+        return fill === '' || fill === 'transparent' ? ringColorOf(activity) : fill
+      }
+      const running = runningColor()
+      for (const activity of ['working', 'idle', 'permission', 'confirm']) {
+        expect(colorOf(activity), activity).not.toBe('')
+        expect(colorOf(activity), activity).not.toBe(running)
+      }
+      expect(colorOf('working')).toBe(colorOf('idle'))
+      expect(colorOf('permission')).toBe(colorOf('confirm'))
+      expect(colorOf('working')).not.toBe(colorOf('permission'))
+    })
+
+    it('working は中抜きの輪、idle は塗りの丸で、点滅が無くても(reduced-motion でも)形で見分けられる', () => {
+      renderTabs()
+      expect(declaredOf('working', 'background-color')).toBe('transparent')
+      expect(declaredOf('working', 'box-shadow')).toContain('inset')
+      expect(ringColorOf('working')).not.toBe('')
+      expect(declaredOf('idle', 'background-color')).not.toBe('transparent')
+      expect(declaredOf('idle', 'box-shadow')).toBe('')
+      // reduced-motion の規則は点滅を止めるだけで、working の形(塗り・輪)を idle に戻さない
+      const reducedRules = Array.from(styleElement.sheet?.cssRules ?? [])
+        .filter(
+          (rule): rule is CSSMediaRule =>
+            rule instanceof CSSMediaRule && rule.conditionText.includes('prefers-reduced-motion')
+        )
+        .flatMap((m) => Array.from(m.cssRules))
+        .filter(
+          (rule): rule is CSSStyleRule =>
+            rule instanceof CSSStyleRule &&
+            rule.selectorText.includes('agent-session-tabs__dot--working')
+        )
+      for (const rule of reducedRules) {
+        expect(rule.style.backgroundColor).toBe('')
+        expect(rule.style.boxShadow).toBe('')
+      }
+    })
+
+    // 印の形。塗り(無し・単色・中心の点)と内側の輪の有無の組。色だけ(色覚の多様性)・動きだけ(reduced-motion)に頼らない
+    const shapeOf = (activity: string): string => {
+      const fill = declaredOf(activity, 'background-color')
+      const image = declaredOf(activity, 'background-image')
+      const fillKind = image.includes('radial-gradient')
+        ? 'center-dot'
+        : fill === '' || fill === 'transparent'
+          ? 'none'
+          : declaredOf(activity, 'border-radius') === '2px'
+            ? 'solid-square'
+            : 'solid'
+      const ring = declaredOf(activity, 'box-shadow').includes('inset') ? 'ring' : 'no-ring'
+      return `${fillKind}/${ring}`
+    }
+
+    it('unknown(実行中)は中心に点のある輪で、working(中抜きの輪)・idle(塗りの丸)・permission/confirm(橙の角の丸い四角)と形で見分けられる', () => {
+      renderTabs()
+      expect(shapeOf('unknown')).toBe('center-dot/ring')
+      expect(shapeOf('working')).toBe('none/ring')
+      expect(shapeOf('idle')).toBe('solid/no-ring')
+      expect(shapeOf('permission')).toBe('solid-square/no-ring')
+      expect(shapeOf('confirm')).toBe('solid-square/no-ring')
+      const shapes = ['unknown', 'working', 'idle', 'permission'].map(shapeOf)
+      expect(new Set(shapes).size).toBe(shapes.length)
+      // unknown の色は running の色(青緑)のまま
+      expect(ringColorOf('unknown')).toBe(runningColor())
+    })
+
+    it('点滅するのは working だけ(idle・permission・confirm は点滅しない)', () => {
+      renderTabs()
+      const animationOf = (activity: string): string =>
+        findRules(`.agent-session-tabs__dot--${activity}`)
+          .map((rule) => rule.style.animation)
+          .find((value) => value !== '') ?? ''
+      expect(animationOf('working')).toContain('infinite')
+      for (const activity of ['idle', 'permission', 'confirm']) {
+        expect(animationOf(activity), activity).toBe('')
+      }
+    })
+
+    it('点滅は prefers-reduced-motion: reduce では止める', () => {
+      const media = Array.from(styleElement.sheet?.cssRules ?? []).filter(
+        (rule): rule is CSSMediaRule =>
+          rule instanceof CSSMediaRule && rule.conditionText.includes('prefers-reduced-motion')
+      )
+      const stops = media
+        .flatMap((m) => Array.from(m.cssRules))
+        .filter(
+          (rule): rule is CSSStyleRule =>
+            rule instanceof CSSStyleRule && rule.selectorText.includes('agent-session-tabs__dot')
+        )
+      expect(stops.length).toBeGreaterThan(0)
+      expect(
+        stops.some(
+          (rule) =>
+            rule.selectorText.includes('agent-session-tabs__dot--working') &&
+            rule.style.animation === 'none'
+        )
+      ).toBe(true)
     })
 
     it('+ を押せない理由は視覚的に隠す(読み上げには残す)', () => {
@@ -171,5 +300,26 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       expect(reason.position).toBe('absolute')
       expect(reason.width).toBe('1px')
     })
+  })
+})
+
+describe('ステータスバーのエージェントのまとめの hover(main.css)', () => {
+  // jsdom は :hover を計算しないので、規則の宣言値を直接読む
+  const hoverBackground = (selector: string): string | undefined =>
+    Array.from(styleElement.sheet?.cssRules ?? [])
+      .filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule)
+      .find((rule) =>
+        rule.selectorText
+          .split(',')
+          .map((s) => s.trim())
+          .includes(selector)
+      )?.style.background
+
+  it('強調なしの hover は背景を暗くする(明るくすると #007acc と白の文字の比が 4.5:1 を割る)', () => {
+    expect(hoverBackground('.status-bar__agent:hover')).toBe('rgba(0, 0, 0, 0.15)')
+  })
+
+  it('強調ありの hover も橙の背景のまま(濃い文字が読める)', () => {
+    expect(hoverBackground('.status-bar__agent--attention:hover')).toBe('rgb(224, 138, 60)')
   })
 })

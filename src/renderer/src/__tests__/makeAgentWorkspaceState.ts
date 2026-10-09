@@ -30,6 +30,7 @@ export function makeAgentWorkspaceState(
     agentTerminal: {
       sessions: makeAgentSessionsState(),
       sendingSlotId: null,
+      activities: new Map(),
       layout: {
         isOpen: true,
         isMaximized: false,
@@ -38,6 +39,7 @@ export function makeAgentWorkspaceState(
         toggleMaximized: vi.fn()
       }
     },
+    statusBarAgent: null,
     sendToAgent: vi.fn<AgentWorkspaceState['sendToAgent']>(async () => undefined),
     ...overrides
   }

@@ -655,7 +655,8 @@ describe('useAppState', () => {
           onSelect: vi.fn()
         },
         promptRun: { ...makeAgentWorkspaceState().promptRun, isRunDisabled: true },
-        bottomPanel: 'agent-terminal'
+        bottomPanel: 'agent-terminal',
+        statusBarAgent: { items: [], needsAttention: false, onActivate: vi.fn() }
       })
       mockUseAgentWorkspace.mockReturnValue(workspace)
       const { result } = renderHook(() => useAppState())
@@ -663,6 +664,7 @@ describe('useAppState', () => {
       expect(result.current.promptRun).toBe(workspace.promptRun)
       expect(result.current.bottomPanel).toBe('agent-terminal')
       expect(result.current.agentTerminal).toBe(workspace.agentTerminal)
+      expect(result.current.statusBarAgent).toBe(workspace.statusBarAgent)
     })
 
     it('下部のパネルが none なら none を公開する', () => {

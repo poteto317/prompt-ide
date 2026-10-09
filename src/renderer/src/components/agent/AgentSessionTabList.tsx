@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useId, useRef } from 'react'
+import type { AgentActivity } from '../../lib/agentActivity'
 import type { AgentSessionTabView } from '../../hooks/useAgentSessions'
 import { describeAgentTabStatus } from '../../lib/agentSessionMessages'
 import { isMacPlatform } from '../../lib/platform'
@@ -12,6 +13,8 @@ type AgentSessionTabListItem = Pick<
 
 interface AgentSessionTabListProps {
   tabs: readonly AgentSessionTabListItem[]
+  /** タブごとの活動(running のタブの印と読み上げの名前に使う。無いタブは unknown) */
+  activities: ReadonlyMap<string, AgentActivity>
   selectedSlotId: string
   /** ターミナルの本体の id(aria-controls) */
   panelId: string
@@ -38,6 +41,7 @@ interface AgentSessionTabListProps {
 // ローカルレビュー第 6 周の指摘 2 で追加
 export default function AgentSessionTabList({
   tabs,
+  activities,
   selectedSlotId,
   panelId,
   tabIdPrefix,
@@ -106,6 +110,8 @@ export default function AgentSessionTabList({
       >
         {tabs.map((tab, index) => {
           const selected = tab.slotId === selectedSlotId
+          const activity =
+            tab.status === 'running' ? (activities.get(tab.slotId) ?? 'unknown') : 'unknown'
           return (
             <span key={tab.slotId} role="presentation" className="agent-session-tabs__item">
               <button
@@ -118,7 +124,7 @@ export default function AgentSessionTabList({
                 id={`${tabIdPrefix}-${tab.slotId}`}
                 aria-selected={selected}
                 aria-controls={panelId}
-                aria-label={`${tab.label}（${describeAgentTabStatus(tab.status)}）`}
+                aria-label={`${tab.label}（${describeAgentTabStatus(tab.status, activity)}）`}
                 aria-keyshortcuts={
                   isClosable(tab) ? (isMac ? 'Delete Backspace' : 'Delete') : undefined
                 }
@@ -134,7 +140,14 @@ export default function AgentSessionTabList({
               >
                 <span
                   aria-hidden="true"
-                  className={`agent-session-tabs__dot agent-session-tabs__dot--${tab.status}`}
+                  className={[
+                    'agent-session-tabs__dot',
+                    `agent-session-tabs__dot--${tab.status}`,
+                    // 活動の印(running のときだけ。unknown も入力待ちと形で見分けられるよう class を付ける)
+                    tab.status === 'running' ? `agent-session-tabs__dot--${activity}` : ''
+                  ]
+                    .filter((name) => name !== '')
+                    .join(' ')}
                 />
                 {tab.label}
               </button>

@@ -26,6 +26,7 @@ function renderList(
         tabIdPrefix="tabs"
         sendingSlotId={null}
         addDisabledReason={null}
+        activities={new Map()}
         {...handlers}
         {...overrides}
       />
@@ -66,6 +67,71 @@ describe('AgentSessionTabList', () => {
     const tab = screen.getByRole('tab', { name: 'claude 1（実行中）' })
     expect(screen.getByRole('tab', { name: 'claude 2（未起動）' })).toBeInTheDocument()
     expect(tab.querySelector('[aria-hidden="true"]')).not.toBeNull()
+  })
+
+  it('running のタブの名前と印の class は活動に従う(許可待ち・作業中)', () => {
+    const running = [
+      makeAgentSessionTabView({ slotId: 'a', label: 'claude 1', status: 'running' }),
+      makeAgentSessionTabView({ slotId: 'b', label: 'claude 2', status: 'running' })
+    ]
+    renderList({
+      tabs: running,
+      activities: new Map([
+        ['a', 'permission'],
+        ['b', 'working']
+      ])
+    })
+    expect(
+      screen
+        .getByRole('tab', { name: 'claude 1（許可待ち）' })
+        .querySelector('.agent-session-tabs__dot')
+    ).toHaveClass('agent-session-tabs__dot--permission')
+    expect(
+      screen
+        .getByRole('tab', { name: 'claude 2（作業中）' })
+        .querySelector('.agent-session-tabs__dot')
+    ).toHaveClass('agent-session-tabs__dot--working')
+  })
+
+  it('running 以外のタブは活動が入っていても無視する(名前も印も従来どおり)', () => {
+    renderList({
+      activities: new Map([
+        ['b', 'working'],
+        ['c', 'working']
+      ])
+    })
+    const tabB = screen.getByRole('tab', { name: 'claude 2（未起動）' })
+    expect(tabB.querySelector('.agent-session-tabs__dot')).not.toHaveClass(
+      'agent-session-tabs__dot--working'
+    )
+    const tabC = screen.getByRole('tab', { name: 'claude 3（起動中）' })
+    expect(tabC.querySelector('.agent-session-tabs__dot')).not.toHaveClass(
+      'agent-session-tabs__dot--working'
+    )
+  })
+
+  // unknown の印は入力待ち(塗りの丸)と形で見分けられるよう、活動の class(中心に点のある輪)を付ける
+  it('活動が unknown(または未判定)の running のタブは名前が「実行中」で、印に unknown の class を付ける', () => {
+    renderList({ activities: new Map([['a', 'unknown']]) })
+    const tab = screen.getByRole('tab', { name: 'claude 1（実行中）' })
+    const dot = tab.querySelector('.agent-session-tabs__dot')
+    expect(dot).toHaveClass('agent-session-tabs__dot--running')
+    expect(dot).toHaveClass('agent-session-tabs__dot--unknown')
+    // 未判定(Map に無い)も unknown と同じ印
+    const undecided = screen
+      .getAllByRole('tab')
+      .map((element) => element.querySelector('.agent-session-tabs__dot'))
+      .filter((element) => element?.classList.contains('agent-session-tabs__dot--running'))
+    for (const element of undecided) expect(element).toHaveClass('agent-session-tabs__dot--unknown')
+  })
+
+  it('running でないタブには unknown の class を付けない', () => {
+    renderList({ activities: new Map() })
+    for (const name of ['claude 2（未起動）', 'claude 3（起動中）']) {
+      expect(
+        screen.getByRole('tab', { name }).querySelector('.agent-session-tabs__dot')
+      ).not.toHaveClass('agent-session-tabs__dot--unknown')
+    }
   })
 
   it('タブのクリックで onSelect(slotId)', async () => {
@@ -216,6 +282,7 @@ describe('AgentSessionTabList', () => {
           panelId="panel"
           tabIdPrefix="tabs"
           sendingSlotId={null}
+          activities={new Map()}
           addDisabledReason={items.length >= 4 ? 'タブは 4 つまでです' : null}
           onSelect={setSelected}
           onClose={vi.fn()}

@@ -4,10 +4,14 @@ import type { ExecutionModePanelState, PromptRunPanelState } from '../types'
 import { useExecutionMode } from './useExecutionMode'
 import { useAgentSessions } from './useAgentSessions'
 import type { AgentSessionsState } from './useAgentSessions'
+import { useAgentActivity } from './useAgentActivity'
+import { useAgentStatusBar } from './useAgentStatusBar'
+import type { AgentStatusBarState } from './useAgentStatusBar'
 import { useAgentPromptSender } from './useAgentPromptSender'
 import type { AgentPromptSenderState } from './useAgentPromptSender'
 import { useAgentTerminalPanel } from './useAgentTerminalPanel'
 import type { AgentTerminalPanelLayout } from './useAgentTerminalPanel'
+import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
 import { buildPromptRunPanelState } from '../lib/promptRunState'
 import {
@@ -16,7 +20,7 @@ import {
   EXECUTION_MODE_LOCKED_WHILE_EXECUTING
 } from '../lib/agentSessionMessages'
 
-// 実行方式とエージェント(ターミナル・セッション・送信)の組み立て。useAppState から使う。実行方式の切り替えの手順(再入防止・
+// 実行方式とエージェント(ターミナル・セッション・活動・ステータスバーのまとめ・送信)の組み立て。useAppState から使う。実行方式の切り替えの手順(再入防止・
 // 確認・停止を待ってから保存)と、フォルダの切り替えの前のエージェントの停止の確認を持つ
 
 // ターミナルのパネルへ渡す状態(useAgentWorkspace が組み立て、EditorPanel → AgentTerminalPanel へ渡す)
@@ -25,6 +29,8 @@ export interface AgentTerminalPanelState {
   layout: AgentTerminalPanelLayout
   /** 送信中のタブ(× を押せない)。送信中でなければ null */
   sendingSlotId: string | null
+  /** タブごとの claude の活動(画面から判定。running でないタブ・未判定は 'unknown') */
+  activities: ReadonlyMap<string, AgentActivity>
 }
 
 export interface UseAgentWorkspaceOptions {
@@ -50,6 +56,8 @@ export interface AgentWorkspaceState {
   /** エディタの領域の下部のパネル */
   bottomPanel: 'output' | 'agent-terminal' | 'none'
   agentTerminal: AgentTerminalPanelState
+  /** ステータスバーのエージェントのまとめ。エージェント CLI 方式でなければ null */
+  statusBarAgent: AgentStatusBarState | null
   /** プロンプトを、押した時点の選択中のタブのエージェントへ送る(usePromptRunner に渡す) */
   sendToAgent: (text: string) => ReturnType<AgentPromptSenderState['send']>
 }
@@ -76,6 +84,9 @@ export function useAgentWorkspace({
     startBlockedReason: isSwitchingMode ? AGENT_START_DISABLED_SWITCHING_MODE : null,
     onConfirm
   })
+  // タブの一覧は useAgentSessions がタブの状態の変わったときだけ作り直すため、そのまま渡す
+  // (useAgentActivity はタブの配列が変わったときだけ区切りを見直す)
+  const activities = useAgentActivity({ tabs: agentSessions.tabs })
   const agentSender = useAgentPromptSender({
     onSettled: agentLayout.open,
     beforeSend: beforeAgentSend
@@ -90,6 +101,14 @@ export function useAgentWorkspace({
     [sendAgentPrompt, selectedSlotId, selectedController]
   )
   const isAgentMode = executionMode.mode === 'agent-cli'
+  const statusBarAgent = useAgentStatusBar({
+    enabled: isAgentMode,
+    tabs: agentSessions.tabs,
+    selected: agentSessions.selected,
+    selectTab: agentSessions.selectTab,
+    activities,
+    openPanel: agentLayout.open
+  })
   const isAnyAgentSessionActive = agentSessions.isAnyActive
   const isAnyAgentStarting = agentSessions.isAnyStarting
   // 実行ボタンの押せる条件は選択中のタブ(送り先)の状態で決まる
@@ -146,8 +165,10 @@ export function useAgentWorkspace({
     agentTerminal: {
       sessions: agentSessions,
       layout: agentLayout,
-      sendingSlotId: agentSender.sendingSlotId
+      sendingSlotId: agentSender.sendingSlotId,
+      activities
     },
+    statusBarAgent,
     sendToAgent
   }
 }

@@ -58,6 +58,7 @@ function makeAgentTerminal(isMaximized = false): AgentTerminalPanelState {
   return {
     sessions: makeAgentSessionsState(),
     sendingSlotId: null,
+    activities: new Map(),
     layout: {
       isOpen: true,
       isMaximized,

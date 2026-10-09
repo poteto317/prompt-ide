@@ -557,6 +557,7 @@ export function useAppState(): AppState {
     promptRun: agentWorkspace.promptRun,
     bottomPanel: agentWorkspace.bottomPanel,
     agentTerminal: agentWorkspace.agentTerminal,
+    statusBarAgent: agentWorkspace.statusBarAgent,
     externalChangeBanner,
     ...agentChangesWiring
   }

@@ -1,8 +1,9 @@
 import type { AgentStartResult } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
+import type { AgentActivity } from './agentActivity'
 import type { AgentSessionExitView, AgentSessionStatus } from './agentSessionTabState'
 
-// エージェントのセッションの表示の文言(設計書「エラー処理」「配置の案」)
+// エージェントのセッションの表示の文言(設計書「エラー処理」「配置の案」、活動の文言は状態表示の設計書の「状態」)
 
 export const AGENT_START_DISABLED_NO_FOLDER = 'フォルダを開いてください'
 /** 従来の方式への切り替えの途中(エージェントの停止を待つ間)に、起動・+ を押せない理由 */
@@ -47,24 +48,45 @@ export function describeAgentStartError(
 /** パネルの帯の状態の文言。終了の前はタブの文言と同じで、終了だけ終了コードを添える */
 export function describeAgentStatus(
   status: AgentSessionStatus,
-  exit: AgentSessionExitView | null
+  exit: AgentSessionExitView | null,
+  activity: AgentActivity = 'unknown'
 ): string {
-  if (status !== 'exited') return describeAgentTabStatus(status)
+  if (status !== 'exited') return describeAgentTabStatus(status, activity)
   if (exit === null || exit.exitCode === null) return '終了しました'
   return `終了しました（終了コード ${exit.exitCode}）`
 }
 
-/** タブの状態の文言(タブの aria-label に含めて読み上げる) */
-export function describeAgentTabStatus(status: AgentSessionStatus): string {
+/** タブの状態の文言(タブの aria-label に含めて読み上げる)。running のときだけ、判定した活動の文言になる。
+ * 活動は省略させない(呼び出し側が活動を渡し忘れると、running のタブが常に「実行中」になるため) */
+export function describeAgentTabStatus(
+  status: AgentSessionStatus,
+  activity: AgentActivity
+): string {
   switch (status) {
     case 'none':
       return '未起動'
     case 'starting':
       return '起動中'
     case 'running':
-      return '実行中'
+      return describeAgentActivity(activity)
     case 'exited':
       return '終了'
+  }
+}
+
+/** 実行中(running)のセッションの活動の文言(タブの読み上げの名前・パネルの帯・ステータスバーのまとめ。unknown は従来の「実行中」) */
+export function describeAgentActivity(activity: AgentActivity): string {
+  switch (activity) {
+    case 'working':
+      return '作業中'
+    case 'idle':
+      return '入力待ち'
+    case 'permission':
+      return '許可待ち'
+    case 'confirm':
+      return '確認待ち'
+    case 'unknown':
+      return '実行中'
   }
 }
 

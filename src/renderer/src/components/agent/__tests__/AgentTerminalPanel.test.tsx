@@ -42,6 +42,7 @@ function renderPanel(
     sessions: makeSessions(),
     layout: makeLayout(),
     sendingSlotId: null,
+    activities: new Map(),
     ...overrides
   }
   render(<AgentTerminalPanel state={state} review={review} />)
@@ -96,6 +97,23 @@ describe('AgentTerminalPanel', () => {
     expect(screen.getByText('実行中')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^終了/ }))
     expect(state.sessions.stop).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  it('実行中の帯の状態は選択中のタブの活動の文言になる(unknown は従来の「実行中」)', () => {
+    renderPanel({
+      sessions: makeSessions({ slotId: 'slot-2', status: 'running' }),
+      activities: new Map([['slot-2', 'confirm']])
+    })
+    expect(screen.getByText('確認待ち')).toBeInTheDocument()
+    expect(screen.queryByText('実行中')).not.toBeInTheDocument()
+  })
+
+  it('実行中でないタブの帯は活動を無視する', () => {
+    renderPanel({
+      sessions: makeSessions({ slotId: 'slot-2', status: 'starting' }),
+      activities: new Map([['slot-2', 'working']])
+    })
+    expect(screen.getByText('起動中')).toBeInTheDocument()
   })
 
   it('ターミナルには選択中のタブの controller を表示する', () => {
@@ -225,14 +243,24 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       let current = sessions
       const { rerender } = render(
         <AgentTerminalPanel
-          state={{ sessions: current, layout: makeLayout(), sendingSlotId: null }}
+          state={{
+            sessions: current,
+            layout: makeLayout(),
+            sendingSlotId: null,
+            activities: new Map()
+          }}
         />
       )
       const rerenderWith = (next: typeof sessions): void => {
         current = next
         rerender(
           <AgentTerminalPanel
-            state={{ sessions: current, layout: makeLayout(), sendingSlotId: null }}
+            state={{
+              sessions: current,
+              layout: makeLayout(),
+              sendingSlotId: null,
+              activities: new Map()
+            }}
           />
         )
       }
@@ -278,7 +306,9 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+        <AgentTerminalPanel
+          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
+        />
       )
       sessions.closeTab = vi.fn(async () => {
         rerender(
@@ -286,7 +316,8 @@ describe('AgentTerminalPanel — 変更を確認', () => {
             state={{
               sessions: makeAgentSessionsState({ tabs: [b], selected: b }),
               layout: makeLayout(),
-              sendingSlotId: null
+              sendingSlotId: null,
+              activities: new Map()
             }}
           />
         )
@@ -324,7 +355,9 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+        <AgentTerminalPanel
+          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
+        />
       )
       sessions.closeTab = vi.fn(async () => {
         rerender(
@@ -332,7 +365,8 @@ describe('AgentTerminalPanel — 変更を確認', () => {
             state={{
               sessions: makeAgentSessionsState({ tabs: [a], selected: a }),
               layout: makeLayout(),
-              sendingSlotId: null
+              sendingSlotId: null,
+              activities: new Map()
             }}
           />
         )
@@ -367,7 +401,9 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel state={{ sessions, layout: makeLayout(), sendingSlotId: null }} />
+        <AgentTerminalPanel
+          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
+        />
       )
       expect(a.controller.attach).toHaveBeenCalled()
       expect(b.controller.attach).not.toHaveBeenCalled()
@@ -376,7 +412,8 @@ describe('AgentTerminalPanel — 変更を確認', () => {
           state={{
             sessions: makeAgentSessionsState({ tabs: [a, b], selected: b }),
             layout: makeLayout(),
-            sendingSlotId: null
+            sendingSlotId: null,
+            activities: new Map()
           }}
         />
       )
