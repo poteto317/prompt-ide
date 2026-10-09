@@ -10,6 +10,13 @@
 
 **設計書:** `docs/superpowers/specs/2026-10-09-agent-session-activity-design.md`（実装の前に必ず読む）
 
+> **注（PR poteto317/prompt-ide#49 のレビュー対応で追記）:** このプランは実装を始めた時点の計画で、コード例はその時点の名前・型のままにしている。その後の SRP リファクタリングとローカルレビューで、次のように変わった。現在の名前・型と判定の規則は設計書と実装を正とする。
+> - controller の通知の口 `onRender` は `onOutputWritten` に改名した（xterm の `onRender`〈画面の再描画〉と意味が違うため）。
+> - `pickAttentionTab` は `pickWaitingTab` に改名し、選択中のタブを優先する引数を足した。閉じる途中のタブは数えず選ばない。
+> - `useAgentActivity` のタブの入力から `sessionId` を外した（区切りは `status` で取る）。`classify` の引数は `readonly ViewportLine[]` にした。
+> - `StatusBar` の props `agent` は省略できない `agent: AgentStatusBarState | null` にし、型は `useAgentStatusBar.ts` に置いた。
+> - 判定の上限の待ち `AGENT_ACTIVITY_MAX_WAIT_MS`（500ms）を足した。
+
 ## Global Constraints
 
 - コメント・文言は日本語。既存のコメントの密度と書き方に合わせる。型だけの import は `import type`
