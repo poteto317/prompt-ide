@@ -6,7 +6,7 @@ import type {
   FitAddonLike,
   TerminalLike
 } from '../lib/agentTerminalController'
-import type { ViewportLine } from '../lib/agentViewport'
+import type { ViewportBufferLike, ViewportLine } from '../lib/agentViewport'
 import type { AgentSessionData } from '@shared/types'
 
 // xterm の偽物。open・write・reset などを記録し、onData・キーのハンドラをテストから起こせる
@@ -14,7 +14,10 @@ export interface FakeTerminal extends TerminalLike {
   cols: number
   rows: number
   modes: { bracketedPasteMode: boolean }
+  buffer: { active: ViewportBufferLike }
   written: string[]
+  /** 溜めておいた write のコールバック(xterm が出力をバッファに反映し終えた合図。画面の再描画とは別)を呼ぶ */
+  flushWrites(): void
   open: ReturnType<typeof vi.fn<TerminalLike['open']>>
   reset: ReturnType<typeof vi.fn<TerminalLike['reset']>>
   paste: ReturnType<typeof vi.fn<TerminalLike['paste']>>
@@ -28,16 +31,22 @@ export interface FakeTerminal extends TerminalLike {
 export function makeFakeTerminal(): FakeTerminal {
   let dataListener: (data: string) => void = () => undefined
   let keyHandler: (event: KeyboardEvent) => boolean = () => true
+  const pendingWriteCallbacks: Array<() => void> = []
   const fake: FakeTerminal = {
     cols: 80,
     rows: 24,
     modes: { bracketedPasteMode: true },
-    buffer: { active: { viewportY: 0, getLine: () => undefined } },
+    buffer: { active: { viewportY: 0, baseY: 0, getLine: () => undefined } },
     written: [],
+    flushWrites: () => {
+      const callbacks = pendingWriteCallbacks.splice(0)
+      for (const callback of callbacks) callback()
+    },
     selection: '',
     open: vi.fn<TerminalLike['open']>(),
-    write: (data) => {
+    write: (data, callback) => {
       fake.written.push(data)
+      if (callback !== undefined) pendingWriteCallbacks.push(callback)
     },
     reset: vi.fn<TerminalLike['reset']>(),
     focus: vi.fn<TerminalLike['focus']>(),
@@ -96,6 +105,12 @@ export const makeFakeFitAddon = (): FitAddonLike & {
 /** hook・部品のテスト用の、controller そのものの偽物(画面の行は viewport で差し替える) */
 export interface FakeController extends AgentTerminalController {
   viewport: ViewportLine[]
+  /** readScreen が返す画面の末尾の行 */
+  screen: ViewportLine[]
+  /** 張られている書き込みの通知の購読(解除の確認に使う) */
+  outputWrittenListeners: Set<() => void>
+  /** 書き込みの通知(onOutputWritten)をテストから起こす */
+  emitOutputWritten(): void
   bracketed: boolean
   sessionId: string | null
   writes: string[]
@@ -113,6 +128,8 @@ export interface FakeController extends AgentTerminalController {
 export function makeFakeController(): FakeController {
   const fake: FakeController = {
     viewport: [],
+    screen: [],
+    outputWrittenListeners: new Set(),
     bracketed: true,
     sessionId: null,
     writes: [],
@@ -126,6 +143,14 @@ export function makeFakeController(): FakeController {
     },
     getSessionId: () => fake.sessionId,
     readViewport: () => fake.viewport,
+    readScreen: () => fake.screen,
+    onOutputWritten: (listener) => {
+      fake.outputWrittenListeners.add(listener)
+      return () => {
+        fake.outputWrittenListeners.delete(listener)
+      }
+    },
+    emitOutputWritten: () => fake.outputWrittenListeners.forEach((listener) => listener()),
     isBracketedPasteEnabled: () => fake.bracketed,
     writeToSession: (data) => {
       fake.writes.push(data)

@@ -28,8 +28,17 @@ const isBlank = (line: ViewportLine): boolean => lineText(line).trim() === ''
 const isContinuation = (line: ViewportLine): boolean =>
   CONTINUATION.test(lineText(line)) || isBlank(line)
 
-/** 画面の下から入力欄を探す。見つからなければ null(確認画面・選択の画面など。何も送らない) */
-export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
+/** 入力欄と、画面の中での罫線の位置(活動の判定がスピナーの行・案内の行を入力欄の上下だけで見るのに使う) */
+export interface LocatedInputBox {
+  box: InputBox
+  /** 上の罫線の行番号。入力欄の行が画面の高さを超えて上の罫線が見えないときは null */
+  top: number | null
+  /** 下の罫線の行番号 */
+  bottom: number
+}
+
+/** 画面の下から入力欄を探し、罫線の位置とともに返す。見つからなければ null */
+export function locateInputBox(lines: readonly ViewportLine[]): LocatedInputBox | null {
   let bottom = -1
   for (let y = lines.length - 1; y >= 0; y--) {
     if (isBorder(lines[y])) {
@@ -49,7 +58,7 @@ export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
     // 入力欄の行が画面の高さを超えた: 下の罫線の上が画面の上端まですべて字下げの行なら、入力欄はあるが空ではない
     const visible = lines.slice(0, bottom)
     return visible.every(isContinuation) && visible.some((line) => !isBlank(line))
-      ? { symbol: null, lines: [...visible] }
+      ? { box: { symbol: null, lines: [...visible] }, top: null, bottom }
       : null
   }
   const body = lines.slice(top + 1, bottom)
@@ -57,7 +66,12 @@ export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
   const match = SYMBOL_LINE.exec(lineText(body[0]))
   if (match === null) return null
   if (!body.slice(1).every(isContinuation)) return null
-  return { symbol: match[1] === '❯' ? 'prompt' : 'shell', lines: [...body] }
+  return { box: { symbol: match[1] === '❯' ? 'prompt' : 'shell', lines: [...body] }, top, bottom }
+}
+
+/** 画面の下から入力欄を探す。見つからなければ null(確認画面・選択の画面など。何も送らない) */
+export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
+  return locateInputBox(lines)?.box ?? null
 }
 
 /**

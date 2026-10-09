@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { Terminal } from '@xterm/headless'
-import { lineText, readViewportLines } from '../agentViewport'
+import { lineText, readScreenLines, readViewportLines } from '../agentViewport'
 
 // 実物の xterm のバッファ(@xterm/headless)で、dim・反転・全角・スクロールの読み取りを確かめる
 let terminal: Terminal | null = null
@@ -39,5 +39,28 @@ describe('readViewportLines', () => {
     await write(terminal, 'l1\r\nl2\r\nl3')
     const lines = readViewportLines(terminal.buffer.active, 2)
     expect(lines.map((line) => lineText(line).trimEnd())).toEqual(['l2', 'l3'])
+  })
+})
+
+describe('readScreenLines', () => {
+  it('利用者がスクロールで戻していても、baseY から rows 行(現在の画面)を読む', async () => {
+    terminal = new Terminal({ cols: 10, rows: 2, allowProposedApi: true })
+    await write(terminal, 'l1\r\nl2\r\nl3')
+    terminal.scrollToTop()
+    // 前提: スクロールで戻している(表示中の範囲と画面の末尾がずれている)
+    expect(terminal.buffer.active.viewportY).toBe(0)
+    expect(terminal.buffer.active.baseY).toBe(1)
+    const lines = readScreenLines(terminal.buffer.active, 2)
+    expect(lines.map((line) => lineText(line).trimEnd())).toEqual(['l2', 'l3'])
+  })
+
+  it('バッファに無い行(読めない行)は例外にせず空の行にする(判定には空の行として渡る)', async () => {
+    terminal = new Terminal({ cols: 10, rows: 2, allowProposedApi: true })
+    await write(terminal, 'l1')
+    // 前提: 画面の末尾から 4 行を読むと、後ろの 2 行はバッファに無い
+    expect(terminal.buffer.active.getLine(3)).toBeUndefined()
+    const lines = readScreenLines(terminal.buffer.active, 4)
+    expect(lines.slice(2)).toEqual([[], []])
+    expect(lines.map((line) => lineText(line).trimEnd())).toEqual(['l1', '', '', ''])
   })
 })

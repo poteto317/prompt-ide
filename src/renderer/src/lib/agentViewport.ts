@@ -1,4 +1,4 @@
-// xterm の表示中の画面を、入力欄の判定(agentInputBox)が読む行の配列にする。xterm の型に依らない最小の
+// xterm の画面(表示中の範囲・画面の末尾)を、入力欄の判定(agentInputBox)・活動の判定(agentActivity)が読む行の配列にする。xterm の型に依らない最小の
 // インターフェースで受ける(テストでは @xterm/headless の実物のバッファを渡せる。パターン 128)
 
 export interface ViewportCell {
@@ -25,14 +25,15 @@ export interface BufferLineLike {
 
 export interface ViewportBufferLike {
   readonly viewportY: number
+  /** 画面の先頭の行番号(スクロールバックの行数)。claude が描いている現在の画面はここから始まる */
+  readonly baseY: number
   getLine(y: number): BufferLineLike | undefined
 }
 
-/** 表示中の rows 行を読む(スクロールで戻していても、画面に見えている範囲) */
-export function readViewportLines(buffer: ViewportBufferLike, rows: number): ViewportLine[] {
+function readLines(buffer: ViewportBufferLike, startY: number, rows: number): ViewportLine[] {
   const lines: ViewportLine[] = []
   for (let y = 0; y < rows; y++) {
-    const line = buffer.getLine(buffer.viewportY + y)
+    const line = buffer.getLine(startY + y)
     const cells: ViewportCell[] = []
     if (line !== undefined) {
       for (let x = 0; x < line.length; x++) {
@@ -49,6 +50,16 @@ export function readViewportLines(buffer: ViewportBufferLike, rows: number): Vie
     lines.push(cells)
   }
   return lines
+}
+
+/** 表示中の rows 行を読む(スクロールで戻していても、画面に見えている範囲) */
+export function readViewportLines(buffer: ViewportBufferLike, rows: number): ViewportLine[] {
+  return readLines(buffer, buffer.viewportY, rows)
+}
+
+/** 画面の末尾(claude が描いている現在の画面。baseY から rows 行)を読む。利用者のスクロールに左右されない */
+export function readScreenLines(buffer: ViewportBufferLike, rows: number): ViewportLine[] {
+  return readLines(buffer, buffer.baseY, rows)
 }
 
 /** 行の文字列(セルの文字を連結したもの。末尾の空白も残す) */

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAgentTerminalController } from '../agentTerminalController'
 import type { AgentTerminalController } from '../agentTerminalController'
+import type { ViewportBufferLike } from '../agentViewport'
 import {
   makeFakeAgentApi,
   makeFakeClipboard,
@@ -99,6 +100,49 @@ describe('出力', () => {
     api.emitData({ sessionId: 's3', data: 'x' })
     controller.setSession('s3')
     expect(terminal.written).toEqual([])
+  })
+})
+
+describe('書き込みの通知', () => {
+  it('出力を書くと、xterm が反映し終えたとき(write のコールバック)に listener を呼ぶ', () => {
+    const listener = vi.fn()
+    controller.onOutputWritten(listener)
+    controller.setSession('s1')
+    api.emitData({ sessionId: 's1', data: 'a' })
+    expect(listener).not.toHaveBeenCalled()
+    terminal.flushWrites()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('保留の出力を setSession で書き出したときも呼ぶ', () => {
+    const listener = vi.fn()
+    controller.onOutputWritten(listener)
+    controller.prepareForStart()
+    api.emitData({ sessionId: 's2', data: 'early' })
+    controller.setSession('s2')
+    expect(listener).not.toHaveBeenCalled()
+    terminal.flushWrites()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('解除した listener は呼ばない', () => {
+    const listener = vi.fn()
+    const unsubscribe = controller.onOutputWritten(listener)
+    controller.setSession('s1')
+    api.emitData({ sessionId: 's1', data: 'a' })
+    unsubscribe()
+    terminal.flushWrites()
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('dispose の後のコールバックでは呼ばない', () => {
+    const listener = vi.fn()
+    controller.onOutputWritten(listener)
+    controller.setSession('s1')
+    api.emitData({ sessionId: 's1', data: 'a' })
+    controller.dispose()
+    terminal.flushWrites()
+    expect(listener).not.toHaveBeenCalled()
   })
 })
 
@@ -243,6 +287,13 @@ describe('読み取り', () => {
     terminal.modes.bracketedPasteMode = false
     expect(controller.isBracketedPasteEnabled()).toBe(false)
     expect(controller.readViewport()).toHaveLength(24)
+  })
+
+  it('readScreen は利用者のスクロール位置(viewportY)ではなく baseY から rows 行を読む', () => {
+    const getLine = vi.fn<ViewportBufferLike['getLine']>(() => undefined)
+    terminal.buffer = { active: { viewportY: 2, baseY: 7, getLine } }
+    expect(controller.readScreen()).toHaveLength(24)
+    expect(getLine.mock.calls.map(([y]) => y)).toEqual(Array.from({ length: 24 }, (_, i) => 7 + i))
   })
 })
 

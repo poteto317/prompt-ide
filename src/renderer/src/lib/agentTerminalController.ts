@@ -6,13 +6,13 @@ import {
   AGENT_TERMINAL_MIN_ROWS
 } from '@shared/types'
 import type { ViewportBufferLike, ViewportLine } from './agentViewport'
-import { readViewportLines } from './agentViewport'
+import { readScreenLines, readViewportLines } from './agentViewport'
 import { classifyAgentTerminalKey } from './agentTerminalKeys'
 import { createPendingOutputBuffer } from './agentPendingOutput'
 
 // xterm の Terminal とアドオン・IPC の出力の購読を持つ、React の外の部品(タブごとに 1 つ)。StrictMode の二重マウントやパネルの開閉で
 // xterm を作り直さない(確認の結果 10)。タブを閉じたら dispose で購読と xterm を破棄する。終了の購読は hook が持つ(複数の controller が
-// それぞれ購読すると重複して届くため)。表示の要素への取り付け・取り外し、fit、出力の書き込み、表示中の画面の読み取り、
+// それぞれ購読すると重複して届くため)。表示の要素への取り付け・取り外し、fit、出力の書き込みとその完了の通知、表示中の画面・画面の末尾の読み取り、
 // 送信中の利用者のキー入力の保留と再送を受け持つ。xterm を直接触るのはこのモジュールと xtermFactory だけ
 
 /** xterm の Terminal のうち、この部品が使うもの(テストでは偽物を渡す。パターン 128) */
@@ -22,7 +22,7 @@ export interface TerminalLike {
   readonly modes: { readonly bracketedPasteMode: boolean }
   readonly buffer: { readonly active: ViewportBufferLike }
   open(parent: HTMLElement): void
-  write(data: string): void
+  write(data: string, callback?: () => void): void
   reset(): void
   focus(): void
   onData(listener: (data: string) => void): { dispose(): void }
@@ -76,6 +76,10 @@ export interface AgentTerminalController {
   setSession(sessionId: string | null): void
   getSessionId(): string | null
   readViewport(): ViewportLine[]
+  /** 画面の末尾(claude の現在の画面)を読む。利用者のスクロールに左右されない */
+  readScreen(): ViewportLine[]
+  /** 書いた出力を xterm がバッファに反映し終えたら呼ぶ(活動の判定のきっかけ。xterm の onRender〈画面の再描画〉とは別)。dispose の後は呼ばない。解除の関数を返す */
+  onOutputWritten(listener: () => void): () => void
   isBracketedPasteEnabled(): boolean
   /** 送信の手順の書き込み(利用者のキー入力の保留とは別に、直接 pty へ送る) */
   writeToSession(data: string): void
@@ -114,6 +118,12 @@ export function createAgentTerminalController({
   let startSize: AgentTerminalSize | null = null
   let focusOutHandler: (() => void) | null = null
   let disposed = false
+  const outputWrittenListeners = new Set<() => void>()
+
+  // xterm が書き込みをバッファに反映し終えた合図(write のコールバック)。dispose で Set を空にするので、その後は何も呼ばない
+  const notifyOutputWritten = (): void => {
+    for (const listener of [...outputWrittenListeners]) listener()
+  }
 
   const sizeOf = (): AgentTerminalSize => ({
     cols: clamp(terminal.cols, AGENT_TERMINAL_MIN_COLS, AGENT_TERMINAL_MAX_COLS),
@@ -123,7 +133,7 @@ export function createAgentTerminalController({
   const unsubscribeData = api.onAgentData(({ sessionId: from, data }) => {
     if (disposed) return
     if (from === sessionId) {
-      terminal.write(data)
+      terminal.write(data, notifyOutputWritten)
       return
     }
     pendingOutput.push(from, data)
@@ -207,7 +217,7 @@ export function createAgentTerminalController({
       sessionId = next
       const pending = pendingOutput.take(next)
       if (next !== null) {
-        for (const data of pending) terminal.write(data)
+        for (const data of pending) terminal.write(data, notifyOutputWritten)
         // 起動の依頼に含めた大きさを送った大きさとして控え、待つ間に大きさが変わっていれば今の大きさを送る
         lastSentSize = startSize ?? sizeOf()
         sendResizeIfChanged()
@@ -216,6 +226,13 @@ export function createAgentTerminalController({
     },
     getSessionId: () => sessionId,
     readViewport: () => readViewportLines(terminal.buffer.active, terminal.rows),
+    readScreen: () => readScreenLines(terminal.buffer.active, terminal.rows),
+    onOutputWritten(listener) {
+      outputWrittenListeners.add(listener)
+      return () => {
+        outputWrittenListeners.delete(listener)
+      }
+    },
     isBracketedPasteEnabled: () => terminal.modes.bracketedPasteMode,
     writeToSession(data) {
       if (!disposed && sessionId !== null) api.writeAgentSession(sessionId, data)
@@ -239,6 +256,7 @@ export function createAgentTerminalController({
     dispose() {
       if (disposed) return
       disposed = true
+      outputWrittenListeners.clear()
       unsubscribeData()
       // フォーカスのある要素を取り除くと blur が配送されないことがあるため、外す前に blur して
       // AgentTerminalView の onBlur(メニューのショートカットの無視の解除)を届ける
