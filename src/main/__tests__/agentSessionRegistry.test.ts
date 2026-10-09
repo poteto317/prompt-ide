@@ -650,6 +650,104 @@ describe('枠(タブ)ごとのセッション', () => {
     await stopping
   })
 
+  // 上限まで起動して、すべてを止め始める(停止は release を呼ぶまで終わらない)
+  const startAllThenStopSlowly = async (
+    registry: AgentSessionRegistry
+  ): Promise<{ olds: ReturnType<typeof makeSlowStoppingSession>[]; stops: Promise<void>[] }> => {
+    const olds = Array.from({ length: AGENT_MAX_SESSIONS_PER_WINDOW }, (_, i) =>
+      makeSlowStoppingSession(`old-${i}`)
+    )
+    for (const [i, old] of olds.entries()) {
+      await registry.start(1, `old-${i}`, created(old.session))
+    }
+    const stops = olds.map((_, i) => registry.stop(1, 'stopped', `old-${i}`))
+    await flush()
+    return { olds, stops }
+  }
+
+  it(`上限まで止めている間の別の枠の起動は、1 つが止まりきるまで待ってから起動する(生きている + 止めているで ${AGENT_MAX_SESSIONS_PER_WINDOW} つまで)`, async () => {
+    const registry = new AgentSessionRegistry()
+    const { olds, stops } = await startAllThenStopSlowly(registry)
+    const create = created(makeSession('s-new').session)
+    let settled = false
+    const start = registry.start(1, 'new', create).then((result) => {
+      settled = true
+      return result
+    })
+    await flush()
+    expect(create).not.toHaveBeenCalled()
+    expect(settled).toBe(false)
+    olds[0].release()
+    await stops[0]
+    await expect(start).resolves.toEqual({ kind: 'started', sessionId: 's-new' })
+    expect(create).toHaveBeenCalledTimes(1)
+    olds.slice(1).forEach((old) => old.release())
+    await Promise.all(stops)
+  })
+
+  it('止めている枠の完了を待つ間の stopOwner・close で、その起動は取り消しになる', async () => {
+    for (const cancel of ['stopOwner', 'close'] as const) {
+      const registry = new AgentSessionRegistry()
+      const { olds, stops } = await startAllThenStopSlowly(registry)
+      const create = created(makeSession('s-new').session)
+      const start = registry.start(1, 'new', create)
+      await flush()
+      const owner = cancel === 'stopOwner' ? registry.stopOwner(1, 'stopped') : undefined
+      if (cancel === 'close') registry.close()
+      olds.forEach((old) => old.release())
+      await Promise.all(stops)
+      await owner
+      await expect(start).resolves.toMatchObject({
+        kind: 'error',
+        detail: AGENT_START_CANCELED_DETAIL
+      })
+      expect(create).not.toHaveBeenCalled()
+    }
+  })
+
+  it('止める → 別の枠で起動 を繰り返しても、生きている + 止めているの合計は上限を超えない', async () => {
+    const registry = new AgentSessionRegistry()
+    // create が呼ばれてから終了するまでを、動いている pty として数える
+    const live = new Set<string>()
+    let max = 0
+    const sessions = new Map<string, ReturnType<typeof makeSlowStoppingSession>>()
+    const createFor = (id: string): (() => Promise<AgentSessionCreation>) => {
+      const s = makeSlowStoppingSession(id)
+      sessions.set(id, s)
+      return async () => {
+        live.add(id)
+        max = Math.max(max, live.size)
+        void s.session.exited.then(() => live.delete(id))
+        return { kind: 'created', session: s.session }
+      }
+    }
+    const stops: Promise<void>[] = []
+    let ids = Array.from({ length: AGENT_MAX_SESSIONS_PER_WINDOW }, (_, i) => `r0-${i}`)
+    await Promise.all(ids.map((id) => registry.start(1, id, createFor(id))))
+    for (let round = 1; round <= 3; round++) {
+      // 止め始めて(止まりきらないうちに)、別の枠で同じ数を起動する
+      stops.push(...ids.map((id) => registry.stop(1, 'stopped', id)))
+      const previous = ids
+      ids = Array.from({ length: AGENT_MAX_SESSIONS_PER_WINDOW }, (_, i) => `r${round}-${i}`)
+      const starts = ids.map((id) => registry.start(1, id, createFor(id)))
+      await flush()
+      expect(max).toBeLessThanOrEqual(AGENT_MAX_SESSIONS_PER_WINDOW)
+      // 1 つ止まりきるごとに、待っていた起動が 1 つ進む
+      for (const id of previous) {
+        sessions.get(id)?.release()
+        await flush()
+        expect(max).toBeLessThanOrEqual(AGENT_MAX_SESSIONS_PER_WINDOW)
+      }
+      for (const result of await Promise.all(starts)) {
+        expect(result).toMatchObject({ kind: 'started' })
+      }
+    }
+    expect(max).toBe(AGENT_MAX_SESSIONS_PER_WINDOW)
+    stops.push(...ids.map((id) => registry.stop(1, 'stopped', id)))
+    sessions.forEach((s) => s.release())
+    await Promise.all(stops)
+  })
+
   it('停止中のセッションへの 2 回目の stop は、すぐには解決せず、その停止の完了を待つ(終了の途中の × ・方式の切り替え)', async () => {
     const registry = new AgentSessionRegistry()
     const old = makeSlowStoppingSession('old')

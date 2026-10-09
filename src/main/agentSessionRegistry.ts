@@ -39,7 +39,7 @@ const isDisposableSlot = (slot: SlotState): boolean =>
   slot.stopping === undefined &&
   slot.holders === 0
 
-/** 生きているセッションか起動中の依頼(取り消し済みを含む)を持つ(hasAny に数える) */
+/** 生きているセッションか起動中の依頼(取り消し済みを含む)を持つ(hasAny に数える。上限の数え方は countActive) */
 const isActiveSlot = (slot: SlotState): boolean =>
   slot.session?.isAlive() === true || slot.pending !== undefined
 
@@ -67,7 +67,8 @@ export class AgentSessionRegistry {
   /**
    * 枠のセッションを起動する。生きているセッション・同じ世代の起動中の依頼があれば、新しく起動せず既存の sessionId を返す。
    * 停止中のセッション・取り消された(古い世代の)起動中の依頼があれば、その完了を待ってから新しく起動する。
-   * 所有者の生きている・起動中の枠が上限に達していたら too-many-sessions を返し、create を呼ばない
+   * 所有者の生きている・起動中・止めているセッションが上限に達していたら、止めているセッションがあればどれか 1 つが
+   * 止まりきるのを待って数え直し、無ければ too-many-sessions を返して create を呼ばない
    */
   async start(
     ownerId: number,
@@ -120,7 +121,14 @@ export class AgentSessionRegistry {
     // ループを抜けてから pending を置くまで await を挟まない(同時に届いた別の枠の依頼が、同じ空きを数えないため)
     const owner = this.ownerOf(ownerId)
     if (this.countActive(ownerId, owner) >= AGENT_MAX_SESSIONS_PER_WINDOW) {
-      return { kind: 'error', error: 'too-many-sessions' }
+      // 止めているセッションが上限をふさいでいるなら、どれか 1 つが止まりきるのを待って(失敗も待ち終える)数え直す。
+      // 止めているセッションが無ければ断る。PR #48 のレビュー指摘(上限を止めている pty も含めた数にする)で追加
+      const stoppings = [...owner.slots.values()].flatMap((s) => [...s.stoppingSessions.values()])
+      if (stoppings.length === 0) return { kind: 'error', error: 'too-many-sessions' }
+      await Promise.race(stoppings.map((stop) => stop.catch(() => undefined)))
+      if (isSuperseded()) return agentStartCanceled()
+      // 待った後は、終了の始まり・同じ枠の新しいセッション・停止を確かめるところから数え直す
+      return this.startHeld(ownerId, slotId, requested, create)
     }
     const slot = this.slotOf(owner, slotId)
     const run = (async (): Promise<AgentStartResult> => {
@@ -329,7 +337,9 @@ export class AgentSessionRegistry {
   }
 
   /**
-   * 上限に数える枠の数。生きているセッションと、現在の世代の起動中の依頼を数える(停止中だけの枠は数えない)。
+   * 上限に数えるセッションの数。生きているセッション、現在の世代の起動中の依頼、止めている(停止を始めて、まだ止まりきって
+   * いない)セッションを数える。止めているセッションも pty とプロセスが残っているため数える(数えないと、止める → 別の枠で
+   * 起動 を繰り返して、止まりきるまでの数秒に上限を超える数が並ぶ。PR #48 のレビュー指摘で変更)。
    * 取り消し済み(古い世代)の起動中の依頼は数えない。セッションにならない(starter が起動の直前に世代を比べて取り消し、
    * 作られても isSuperseded ですぐ止める)ため、数えなくても上限は破れない。数えると、リロードの直後に
    * ログインシェルの PATH の取得(最大 5 秒)が終わるまで空きをふさぐ。ローカルレビュー第 6 周の指摘 1 で変更
@@ -341,6 +351,7 @@ export class AgentSessionRegistry {
       const current =
         slot.pending !== undefined && slot.pending.generation === this.generationOf(ownerId, slotId)
       if (alive || current) count += 1
+      count += slot.stoppingSessions.size
     }
     return count
   }

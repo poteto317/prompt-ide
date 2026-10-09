@@ -8,7 +8,10 @@ export const AGENT_TERMINAL_MAX_ROWS = 300
 /** 1 回の書き込みの上限(UTF-16 の単位)。貼り付けの本文の上限(20 万文字)と囲みを収める */
 export const AGENT_WRITE_MAX_LENGTH = 1_000_000
 
-/** 1 ウィンドウで同時に動かせるセッションの数(main の起動の拒否と renderer のタブの数の上限) */
+/**
+ * 1 ウィンドウで同時に動かせるセッションの数(main の起動の拒否と renderer のタブの数の上限)。
+ * main は止めている(まだ止まりきっていない)セッションも数え、その分は止まりきるまで新しい起動を待たせる
+ */
 export const AGENT_MAX_SESSIONS_PER_WINDOW = 4
 /** renderer が発行するタブ(枠)の id の長さの上限 */
 export const AGENT_SLOT_ID_MAX_LENGTH = 64
