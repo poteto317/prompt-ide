@@ -22,6 +22,7 @@ describe('parseAgentStartRequest', () => {
   it.each([
     ['オブジェクトでない', null],
     ['slotId が空', { slotId: '', folderPath: '/p', cols: 80, rows: 24 }],
+    ['slotId が文字列でない', { slotId: 1, folderPath: '/p', cols: 80, rows: 24 }],
     ['slotId に使えない文字がある', { slotId: 'a/b', folderPath: '/p', cols: 80, rows: 24 }],
     [
       'slotId が上限より 1 文字長い',

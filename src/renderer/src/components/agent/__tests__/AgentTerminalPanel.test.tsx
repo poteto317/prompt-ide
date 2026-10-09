@@ -383,5 +383,17 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       expect(a.controller.detach).toHaveBeenCalled()
       expect(b.controller.attach).toHaveBeenCalled()
     })
+
+    it('2 つ目のタブを選ぶと、そのタブが aria-selected で、tabpanel もそのタブを指す', () => {
+      const [a, b] = twoTabs().tabs
+      renderPanel({ sessions: makeAgentSessionsState({ tabs: [a, b], selected: b }) })
+      const second = screen.getByRole('tab', { name: 'claude 2（未起動）' })
+      expect(second).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tab', { name: 'claude 1（未起動）' })).toHaveAttribute(
+        'aria-selected',
+        'false'
+      )
+      expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', second.id)
+    })
   })
 })
