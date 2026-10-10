@@ -159,6 +159,23 @@ describe('ExplorerPanel', () => {
       )
       expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     })
+
+    it('onAddReference を渡すと、ファイルの「参照として添える」を選んだときに対象ノードで呼ぶ', async () => {
+      const onAddReference = vi.fn()
+      render(<ExplorerPanel {...openedProps} onAddReference={onAddReference} />)
+      fireEvent.contextMenu(screen.getByText('package.json'))
+      await userEvent.click(screen.getByRole('menuitem', { name: '参照として添える' }))
+      expect(onAddReference).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ path: '/p/package.json' })
+      )
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+
+    it('onAddReference が無ければ「参照として添える」を出さない', () => {
+      render(<ExplorerPanel {...openedProps} />)
+      fireEvent.contextMenu(screen.getByText('package.json'))
+      expect(screen.queryByRole('menuitem', { name: '参照として添える' })).not.toBeInTheDocument()
+    })
   })
 
   describe('新規作成・リネームのダイアログ', () => {

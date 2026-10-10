@@ -330,7 +330,7 @@ describe('useAgentWorkspace', () => {
       const { result, rerender } = renderWorkspace()
       let sending: Promise<unknown> = Promise.resolve()
       act(() => {
-        sending = result.current.sendToAgent('hello', null)
+        sending = result.current.sendToAgent('hello', { promptId: null, unsavedPaths: [] })
       })
       // 送信中にタブ 1 へ切り替える
       mockUseAgentSessions.mockReturnValue(
@@ -439,7 +439,7 @@ describe('useAgentWorkspace', () => {
 
     const openConfirm = async (result: Rendered['result']): Promise<void> => {
       await act(async () => {
-        await result.current.sendToAgent('hello', 'p1')
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
       })
     }
 
@@ -457,7 +457,8 @@ describe('useAgentWorkspace', () => {
         text: 'hello',
         slotId: 'slot-2',
         label: 'claude 2',
-        promptId: 'p1'
+        promptId: 'p1',
+        unsavedPaths: []
       })
       expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBeNull()
     })
@@ -721,6 +722,93 @@ describe('useAgentWorkspace', () => {
       })
     })
 
+    it('設定がオフなら、すぐ送って送れた(sent)ときだけ onSent を呼ぶ', async () => {
+      setMode('agent-cli')
+      setSendConfirmEnabled(false)
+      const sender = makeSender({
+        send: vi.fn<AgentPromptSenderState['send']>(async () => ({
+          kind: 'sent',
+          clearedDraft: false
+        }))
+      })
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
+      const onSent = vi.fn()
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
+      })
+      expect(onSent).toHaveBeenCalledOnce()
+    })
+
+    it('設定がオフで送信が失敗したら onSent を呼ばない', async () => {
+      setMode('agent-cli')
+      setSendConfirmEnabled(false)
+      mockUseAgentPromptSender.mockReturnValue(
+        makeSender({
+          send: vi.fn<AgentPromptSenderState['send']>(async () => ({
+            kind: 'failed',
+            reason: 'input-not-found'
+          }))
+        })
+      )
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
+      const onSent = vi.fn()
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
+      })
+      expect(onSent).not.toHaveBeenCalled()
+    })
+
+    it('確認を開いたら、未保存の一覧を確認の状態に持たせ、確認から送れたときだけ onSent を呼ぶ', async () => {
+      setMode('agent-cli')
+      mockUseAgentPromptSender.mockReturnValue(
+        makeSender({
+          send: vi.fn<AgentPromptSenderState['send']>(async () => ({
+            kind: 'sent',
+            clearedDraft: false
+          }))
+        })
+      )
+      const { tab1, tab2 } = twoRunningTabs()
+      setTabs([tab1, tab2], 'slot-2')
+      const onSent = vi.fn()
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', {
+          promptId: 'p1',
+          unsavedPaths: ['src/a.ts'],
+          onSent
+        })
+      })
+      expect(result.current.agentSendConfirmDialog.pending?.unsavedPaths).toEqual(['src/a.ts'])
+      expect(onSent).not.toHaveBeenCalled()
+      act(() => result.current.agentSendConfirmDialog.onConfirm())
+      await waitFor(() => expect(onSent).toHaveBeenCalledOnce())
+    })
+
+    it('確認をキャンセルしたら onSent を呼ばない', async () => {
+      setMode('agent-cli')
+      const sender = makeSender()
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running' } })
+      )
+      const onSent = vi.fn()
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
+      })
+      act(() => result.current.agentSendConfirmDialog.onCancel())
+      expect(sender.send).not.toHaveBeenCalled()
+      expect(onSent).not.toHaveBeenCalled()
+    })
+
     it('確認のキャンセルで閉じ、送らない', async () => {
       setMode('agent-cli')
       const sender = makeSender()
@@ -743,7 +831,7 @@ describe('useAgentWorkspace', () => {
       const { result } = renderWorkspace()
       await openConfirm(result)
       await act(async () => {
-        await result.current.sendToAgent('second', 'p2')
+        await result.current.sendToAgent('second', { promptId: 'p2', unsavedPaths: [] })
       })
       expect(result.current.agentSendConfirmDialog.pending?.text).toBe('hello')
     })
@@ -1218,7 +1306,7 @@ describe('useAgentWorkspace', () => {
       )
       const { result } = renderWorkspace()
       await act(async () => {
-        await result.current.sendToAgent('hello', 'p1')
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
       })
       expect(result.current.agentSendConfirmDialog.pending).not.toBeNull()
       const { activateTab } = mockUseAgentNotifications.mock.calls.at(-1)![0] as {

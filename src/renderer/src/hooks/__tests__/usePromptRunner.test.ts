@@ -1,6 +1,9 @@
 import { renderHook } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import type { HistoryEntry, OpenFile, Prompt } from '../../types'
+import type { AgentSendOptions } from '../../lib/agentPromptRequest'
+import type { PreparedAgentReferences } from '../../lib/agentReferenceCandidates'
+import { makeAgentReferencesState } from '../../__tests__/makeAgentReferencesState'
 import { usePromptRunner } from '../usePromptRunner'
 
 const prompt: Prompt = {
@@ -42,7 +45,8 @@ describe('usePromptRunner', () => {
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
 
@@ -69,7 +73,8 @@ describe('usePromptRunner', () => {
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
 
@@ -97,7 +102,8 @@ describe('usePromptRunner', () => {
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
 
@@ -134,12 +140,17 @@ describe('usePromptRunner: 実行方式', () => {
         executePrompt,
         addHistoryEntry,
         executionMode: 'agent-cli',
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
     await result.current.runPrompt('送る本文', 'claude', prompt)
     // ファイル内容を添付しない(C2)・履歴に記録しない(C11)。プロンプトの id は確認の戻り先を探すため
-    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文', 'p1')
+    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文', {
+      promptId: 'p1',
+      unsavedPaths: [],
+      onSent: expect.any(Function)
+    })
     expect(executePrompt).not.toHaveBeenCalled()
     expect(addHistoryEntry).not.toHaveBeenCalled()
   })
@@ -153,7 +164,8 @@ describe('usePromptRunner: 実行方式', () => {
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: null,
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
     await result.current.runPrompt('本文', 'claude', prompt)
@@ -171,11 +183,64 @@ describe('usePromptRunner: 実行方式', () => {
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: 'agent-cli',
-        sendToAgent
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
       })
     )
     await result.current.rerunHistoryEntry(historyEntry)
     expect(executePrompt).not.toHaveBeenCalled()
     expect(sendToAgent).not.toHaveBeenCalled()
+  })
+  it('エージェント CLI 方式では、押した時点の参照を本文の末尾に足し、未保存の一覧と送れたときの知らせを添えて送る', async () => {
+    const prepared: PreparedAgentReferences = {
+      references: [
+        { path: 'src/app.ts', lineRange: null },
+        { path: 'src/app.ts', lineRange: '#L10-20' },
+        { path: 'docs/notes.md', lineRange: null }
+      ],
+      unsavedPaths: ['src/app.ts'],
+      addedPaths: ['/repo/docs/notes.md']
+    }
+    const agentReferences = makeAgentReferencesState({ prepare: vi.fn(() => prepared) })
+    const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+      async () => undefined
+    )
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        executePrompt: vi.fn(),
+        addHistoryEntry: vi.fn(),
+        executionMode: 'agent-cli',
+        sendToAgent,
+        agentReferences
+      })
+    )
+    await result.current.runPrompt('送る本文', 'claude', prompt)
+    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith(
+      '送る本文\n\n参照:\n- @src/app.ts\n- @src/app.ts#L10-20\n- @docs/notes.md',
+      { promptId: 'p1', unsavedPaths: ['src/app.ts'], onSent: expect.any(Function) }
+    )
+    // 足したファイルを外すのは送れたときだけ(押した時点の写しを渡す。L-407)
+    expect(agentReferences.markSent).not.toHaveBeenCalled()
+    sendToAgent.mock.calls[0][1].onSent?.()
+    expect(agentReferences.markSent).toHaveBeenCalledExactlyOnceWith(prepared)
+  })
+
+  it('従来の方式では参照を足さず、参照の写しも取らない', async () => {
+    const executePrompt = vi.fn()
+    const agentReferences = makeAgentReferencesState()
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        executePrompt,
+        addHistoryEntry: vi.fn(),
+        executionMode: 'legacy',
+        sendToAgent: vi.fn(async () => undefined),
+        agentReferences
+      })
+    )
+    await result.current.runPrompt('実行する内容', 'claude', prompt)
+    expect(agentReferences.prepare).not.toHaveBeenCalled()
+    expect(executePrompt.mock.calls[0][0]).toBe('実行する内容')
   })
 })

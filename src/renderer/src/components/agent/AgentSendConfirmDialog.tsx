@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { AgentSendConfirmDialogState, AgentSendConfirmPending } from '../../types'
 import { buildAgentSendPreview } from '../../lib/agentSendPreview'
+import { formatAgentUnsavedNotice } from '../../lib/agentReferenceMessages'
 import { findPromptRunButton } from '../../lib/promptRunButton'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
@@ -65,12 +66,20 @@ function AgentSendConfirmDialogBody({
   const titleId = useId()
   const reasonId = useId()
   const targetId = useId()
+  const unsavedId = useId()
 
   // 本文は最大 20 万字になりうるため、描画のたびに正規化し直さない
   const preview = useMemo(() => buildAgentSendPreview(pending.text), [pending.text])
   // 本文の理由はキャンセルして直すしかないため先に出す。1 つだけ出す
   const reason = preview.rejection ?? targetBlockedReason
   const isSubmitDisabled = reason !== null
+  // 参照として添えたファイルの未保存の注意(送信は止めない)。実行を押した時点の写し
+  const hasUnsaved = pending.unsavedPaths.length > 0
+  // 開いたときのフォーカスは送信(送れない理由があるとキャンセル)なので、送り先・未保存の注意・送れない理由をこの順に説明として
+  // 読ませる(本文は最大 20 万字になりうるので含めない)
+  const describedBy = [targetId, hasUnsaved ? unsavedId : null, reason !== null ? reasonId : null]
+    .filter((id): id is string => id !== null)
+    .join(' ')
 
   const handleCancel = (): void => {
     findReturnFocusTarget(opener, pending.promptId)?.focus()
@@ -135,9 +144,7 @@ function AgentSendConfirmDialogBody({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        // 開いたときのフォーカスは送信なので、送り先を説明として読ませる(本文は最大 20 万字になりうるので含めない)
-        // 送れない理由があると開いたときのフォーカスはキャンセルなので、理由も説明に含めて読ませる
-        aria-describedby={reason !== null ? `${targetId} ${reasonId}` : targetId}
+        aria-describedby={describedBy}
         // ダイアログの中の文字・余白をクリックしたときも、フォーカスが body に落ちず Esc が届くようにする(Tab の順には入らない)
         tabIndex={-1}
         // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の送信を押し、全文を読む前に
@@ -170,6 +177,11 @@ function AgentSendConfirmDialogBody({
           {preview.text}
         </pre>
         <p className="agent-send-confirm__count">{LENGTH_FORMAT.format(preview.length)} 文字</p>
+        {hasUnsaved && (
+          <p id={unsavedId} className="agent-send-confirm__unsaved">
+            {formatAgentUnsavedNotice(pending.unsavedPaths)}
+          </p>
+        )}
         {reason !== null && (
           <p id={reasonId} className="agent-send-confirm__reason" role="alert">
             {reason}

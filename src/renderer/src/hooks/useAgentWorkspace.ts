@@ -8,6 +8,7 @@ import type {
   ExecutionModePanelState,
   PromptRunPanelState
 } from '../types'
+import type { AgentSendOptions } from '../lib/agentPromptRequest'
 import { useAgentNotificationSetting } from './useAgentNotificationSetting'
 import { useAgentSendConfirmSetting } from './useAgentSendConfirmSetting'
 import { useAgentSendConfirm } from './useAgentSendConfirm'
@@ -30,6 +31,7 @@ import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
 import { buildPromptRunPanelState } from '../lib/promptRunState'
 import { getPromptRunAvailability } from '../lib/agentSendMessages'
+import { notifyAgentSent } from '../lib/agentSendCallbacks'
 import {
   AGENT_START_DISABLED_SWITCHING_MODE,
   AGENT_STOP_ON_MODE_CHANGE_CONFIRM,
@@ -83,8 +85,12 @@ export interface AgentWorkspaceState {
   /** 送信前の確認のダイアログ(App が描画する) */
   agentSendConfirmDialog: AgentSendConfirmDialogState
   /** プロンプトを送る(usePromptRunner に渡す)。送信前の確認の設定がオン(読み込み中は既定に従う)なら送らずに確認を開き、undefined で
-   *  resolve する。オフなら押した時点の選択中のタブへすぐ送る。promptId は確認をキャンセルで閉じたとき・確認からの送信が失敗したときのフォーカスの戻り先を探すのに使う */
-  sendToAgent: (text: string, promptId: string | null) => ReturnType<AgentPromptSenderState['send']>
+   *  resolve する。オフなら押した時点の選択中のタブへすぐ送る。options の promptId は確認をキャンセルで閉じたとき・確認からの送信が
+   *  失敗したときのフォーカスの戻り先、unsavedPaths は確認のダイアログの未保存の注意、onSent は送れた(sent)ときだけ呼ぶ知らせ */
+  sendToAgent: (
+    text: string,
+    options: AgentSendOptions
+  ) => ReturnType<AgentPromptSenderState['send']>
 }
 
 export function useAgentWorkspace({
@@ -156,14 +162,20 @@ export function useAgentWorkspace({
   // 設定がオンなら、すぐには送らず確認を開く。読み込み中(null)は設定の既定に従う(既定はオン)
   const isSendConfirmRequired = sendConfirmSetting.enabled ?? DEFAULT_AGENT_SEND_CONFIRM_ENABLED
   const sendToAgent = useCallback(
-    async (text: string, promptId: string | null): ReturnType<AgentPromptSenderState['send']> => {
+    async (text: string, options: AgentSendOptions): ReturnType<AgentPromptSenderState['send']> => {
       if (isSendConfirmRequired) {
         // 送るまで send の setError(null) が呼ばれないので、前の送信の結果をここで消す(今のプロンプトの文言に見えないように)
         clearSendResult()
-        requestSendConfirm(text, promptId)
+        requestSendConfirm(text, options)
         return undefined
       }
-      return sendAgentPrompt(text, { slotId: selectedSlotId, controller: selectedController })
+      const outcome = await sendAgentPrompt(text, {
+        slotId: selectedSlotId,
+        controller: selectedController
+      })
+      // 確認を開かない分岐でも、送れたときだけ知らせる(確認から送ったときは useAgentSendConfirm が知らせる)
+      notifyAgentSent(outcome, options.onSent)
+      return outcome
     },
     [
       isSendConfirmRequired,
@@ -313,7 +325,8 @@ export function useAgentWorkspace({
               text: pendingSend.text,
               slotId: pendingSend.target.slotId,
               label: pendingSend.label,
-              promptId: pendingSend.promptId
+              promptId: pendingSend.promptId,
+              unsavedPaths: pendingSend.unsavedPaths
             },
       targetBlockedReason,
       onConfirm: sendConfirm.confirm,

@@ -223,6 +223,51 @@ export type AgentNotificationPanelState = BooleanSettingPanelState
 // エージェントへの送信前の確認の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
 export type AgentSendConfirmPanelState = BooleanSettingPanelState
 
+// 参照のチップ(開いているファイル・選択範囲)の状態と操作(useAgentReferences が組み立て、Sidebar → PromptsPanel → AgentReferenceChips へ渡す)。
+// 押せるか(disabledReason)と表示の参照(label)は必ず対で変わるため、食い違う組み合わせを型で作れないようにする
+export type AgentReferenceChipState = {
+  /** オンか(押せないときも保つ。タブを切り替えてもオンのまま) */
+  pressed: boolean
+  onToggle: () => void
+} & (
+  | {
+      /** チップに出す参照(`@src/app.ts`・`@src/app.ts#L10-20`) */
+      label: string
+      disabledReason: null
+      /** オンで、そのファイルに未保存の変更があるか(チップに「未保存」の印を付ける) */
+      unsaved: boolean
+    }
+  | {
+      label: null
+      /** 押せない理由(title と aria-describedby で出す。押せるかの判定にも使う) */
+      disabledReason: string
+      unsaved: false
+    }
+)
+
+/** エクスプローラから足したファイル */
+export interface AgentAddedReference {
+  /** 絶対パス(外すときの識別子・React の key) */
+  path: string
+  /** チップに出す参照(`@docs/notes.md`) */
+  label: string
+  /** そのファイルのタブに未保存の変更があるか(チップに未保存の印を付ける) */
+  unsaved: boolean
+}
+
+// プロンプトパネルの参照の行の状態と操作(useAgentReferences が組み立てる。エージェント CLI 方式でフォルダを開いているときだけで、
+// それ以外は null)。Sidebar がプロンプトパネル(チップ)とエクスプローラ(右クリックの「参照として添える」)へ渡す
+export interface AgentReferencesPanelState {
+  openFile: AgentReferenceChipState
+  selection: AgentReferenceChipState
+  /** エクスプローラから足したファイル(足した順) */
+  added: AgentAddedReference[]
+  /** エクスプローラから足したファイルを外す(絶対パス) */
+  onRemove: (path: string) => void
+  /** エクスプローラの右クリックの「参照として添える」(絶対パス。すでにあれば何もしない) */
+  onAddFromExplorer: (path: string) => void
+}
+
 // 送信前の確認のダイアログで開いている依頼(useAgentWorkspace が useAgentSendConfirm の pending から組み立てる)
 export interface AgentSendConfirmPending {
   /** 送る全文(正規化の前。ダイアログが正規化して表示する) */
@@ -233,6 +278,8 @@ export interface AgentSendConfirmPending {
   label: string
   /** 開いた元のプロンプトの id(キャンセルで閉じたとき・送信が失敗したときのフォーカスの戻り先) */
   promptId: string | null
+  /** 未保存の変更がある、参照として添えたファイル(表示用の相対パス)。実行を押した時点の写しで、開いている間に保存しても変えない */
+  unsavedPaths: readonly string[]
 }
 
 // 送信前の確認のダイアログの状態と操作(useAgentWorkspace が組み立て、App が描画する。省略できない形で渡す。L-060)

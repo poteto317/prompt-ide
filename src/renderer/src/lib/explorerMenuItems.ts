@@ -1,5 +1,6 @@
 import type { FileTreeNode } from '../types'
 import type { ContextMenuItem } from '../components/explorer/ExplorerContextMenu'
+import { AGENT_REFERENCE_MENU_LABEL } from './agentReferenceMessages'
 
 export interface ExplorerMenuActions {
   onCreateFile: (parentPath: string) => void
@@ -7,6 +8,8 @@ export interface ExplorerMenuActions {
   onRename: (node: FileTreeNode) => void
   onDelete: (node: FileTreeNode) => void
   onAddToGitignore: (node: FileTreeNode) => void
+  /** 参照として添える(エージェント CLI 方式のときだけ渡す。ファイルにだけ出す) */
+  onAddReference?: (node: FileTreeNode) => void
 }
 
 // エクスプローラーの右クリックメニューに表示する項目を、対象ノードの種類に応じて構築する。
@@ -41,6 +44,15 @@ export function buildMenuItems(
         onSelect: () => actions.onAddToGitignore(node)
       }
     )
+  }
+  // エージェントへ送るプロンプトの参照として足す(ファイルだけ。フォルダ・空白には出さない)
+  const { onAddReference } = actions
+  if (node !== null && node.type === 'file' && onAddReference !== undefined) {
+    items.push({
+      id: 'addReference',
+      label: AGENT_REFERENCE_MENU_LABEL,
+      onSelect: () => onAddReference(node)
+    })
   }
   return items
 }

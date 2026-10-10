@@ -267,6 +267,113 @@ body {
   background: #0062a3;
 }
 
+/* ---- 参照の行(エージェントへ送るプロンプトに添える @ 参照のチップ) ---- */
+
+.agent-references {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+/* 足したファイルを全部外した後のフォーカスの置き場。キーボードのフォーカスには、ほかの要素と同じ枠を行の内側に出す */
+.agent-references:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: -1px;
+}
+
+.agent-references:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.agent-references__label {
+  margin-right: 4px;
+  font-size: 11px;
+  color: #aaaaaa;
+}
+
+/* チップの見た目(形・色)だけ。押せるチップ(__toggle)と足したファイルのチップ(--added)が共有する */
+.agent-references__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  max-width: 100%;
+  padding: 0 10px;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 16px;
+  color: #cccccc;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* 押せるチップ(開いているファイル・選択範囲のボタン)の操作の状態(押せる・ホバー・フォーカス・オン・押せない) */
+.agent-references__toggle {
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-references__toggle:hover:not(:disabled) {
+  background: #4a4a4a;
+}
+
+.agent-references__toggle:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: 1px;
+}
+
+.agent-references__toggle--pressed {
+  background: #007acc;
+  border-color: #007acc;
+  color: #ffffff;
+}
+
+.agent-references__toggle--pressed:hover:not(:disabled) {
+  background: #0062a3;
+}
+
+.agent-references__toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 足したファイルのチップ(押せない入れ物)。右端は × のボタンが埋める */
+.agent-references__chip--added {
+  padding-right: 0;
+}
+
+.agent-references__unsaved {
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #5a4a1a;
+  color: #e2c08d;
+  font-size: 10px;
+}
+
+.agent-references__remove {
+  min-width: 32px;
+  min-height: 32px;
+  background: transparent;
+  border: none;
+  border-radius: 16px;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.agent-references__remove:hover {
+  background: #4a4a4a;
+}
+
+.agent-references__remove:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: -2px;
+}
+
 .prompt-item {
   padding: 8px 12px;
   border-bottom: 1px solid #3c3c3c;
@@ -3043,6 +3150,14 @@ body {
   margin: 0;
   font-size: 12px;
   color: #f48771;
+  overflow-wrap: anywhere;
+}
+
+/* 参照として添えたファイルの未保存の注意(送信は止めないので、送れない理由の赤より弱い黄系) */
+.agent-send-confirm__unsaved {
+  margin: 0;
+  font-size: 12px;
+  color: #e2c08d;
   overflow-wrap: anywhere;
 }
 

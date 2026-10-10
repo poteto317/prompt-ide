@@ -51,7 +51,8 @@ const baseProps = {
   isActiveFileUntracked: false,
   isActiveFileConflicted: false,
   conflictFile: makeConflictFileState(),
-  isConflictBlocked: false
+  isConflictBlocked: false,
+  onEditorMount: vi.fn()
 }
 
 function makeAgentTerminal(isMaximized = false): AgentTerminalPanelState {

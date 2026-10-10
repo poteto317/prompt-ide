@@ -1,7 +1,8 @@
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
-import type { Prompt } from '../../../types'
+import type { AgentReferencesPanelState, Prompt } from '../../../types'
+import { makeAgentReferencesPanelState } from '../../../__tests__/makeAgentReferencesState'
 import PromptsPanel from '../PromptsPanel'
 
 // DndContext に渡された onDragEnd を捕捉し、テストから直接起動できるようにする
@@ -58,7 +59,8 @@ const defaultProps = {
   onReorder: vi.fn(),
   onTogglePin: vi.fn(),
   onExport: vi.fn(),
-  onImport: vi.fn()
+  onImport: vi.fn(),
+  agentReferences: null as AgentReferencesPanelState | null
 }
 
 const samplePrompt: Prompt = {
@@ -518,5 +520,28 @@ describe('PromptsPanel: エージェント CLI 方式', () => {
   it('従来の方式(agentSend が null)では通知の領域を置かない', () => {
     render(<PromptsPanel {...defaultProps} />)
     expect(screen.queryByRole('status')).toBeNull()
+  })
+})
+
+describe('PromptsPanel: 参照の行', () => {
+  it('参照の状態が無ければ(従来の方式・フォルダを開いていない)参照の行を出さない', () => {
+    render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+    expect(screen.queryByRole('group', { name: '参照' })).toBeNull()
+  })
+
+  it('参照の状態があれば、プロンプトの一覧より前に参照の行を出す', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        agentReferences={makeAgentReferencesPanelState()}
+      />
+    )
+    const group = screen.getByRole('group', { name: '参照' })
+    expect(within(group).getByRole('button', { name: '@src/app.ts' })).toBeInTheDocument()
+    expect(
+      group.compareDocumentPosition(screen.getByText('テストタイトル')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 })

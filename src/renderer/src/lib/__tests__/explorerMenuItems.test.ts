@@ -1,11 +1,19 @@
 import { describe, it, expect, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import type { FileTreeNode } from '../../types'
 import { buildMenuItems } from '../explorerMenuItems'
 
 const fileNode: FileTreeNode = { name: 'index.ts', path: '/project/src/index.ts', type: 'file' }
 const dirNode: FileTreeNode = { name: 'src', path: '/project/src', type: 'directory', children: [] }
 
-function makeActions() {
+type BaseActionName =
+  | 'onCreateFile'
+  | 'onCreateDirectory'
+  | 'onRename'
+  | 'onDelete'
+  | 'onAddToGitignore'
+
+function makeActions(): Record<BaseActionName, Mock> {
   return {
     onCreateFile: vi.fn(),
     onCreateDirectory: vi.fn(),
@@ -75,6 +83,39 @@ describe('buildMenuItems', () => {
     const items = buildMenuItems('/project', dirNode, actions)
     items.find((i) => i.label === '削除')?.onSelect()
     expect(actions.onDelete).toHaveBeenCalledWith(dirNode)
+  })
+
+  describe('参照として添える(エージェント CLI 方式のときだけ onAddReference を渡す)', () => {
+    it('onAddReference があれば、ファイルのメニューの末尾に出し、選ぶとそのノードを渡す', () => {
+      const onAddReference = vi.fn()
+      const items = buildMenuItems('/project', fileNode, { ...makeActions(), onAddReference })
+      expect(items.map((i) => i.label)).toEqual([
+        'リネーム',
+        '削除',
+        '.gitignore に追加',
+        '参照として添える'
+      ])
+      expect(items.at(-1)?.id).toBe('addReference')
+      items.at(-1)?.onSelect()
+      expect(onAddReference).toHaveBeenCalledExactlyOnceWith(fileNode)
+    })
+
+    it('フォルダ・ツリーの空白には出さない', () => {
+      const onAddReference = vi.fn()
+      const actions = { ...makeActions(), onAddReference }
+      expect(buildMenuItems('/project', dirNode, actions).map((i) => i.label)).not.toContain(
+        '参照として添える'
+      )
+      expect(buildMenuItems('/project', null, actions).map((i) => i.label)).not.toContain(
+        '参照として添える'
+      )
+    })
+
+    it('onAddReference が無ければ出さない', () => {
+      expect(buildMenuItems('/project', fileNode, makeActions()).map((i) => i.label)).not.toContain(
+        '参照として添える'
+      )
+    })
   })
 })
 

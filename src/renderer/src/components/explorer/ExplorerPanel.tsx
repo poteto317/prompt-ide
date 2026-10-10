@@ -24,6 +24,8 @@ interface Props {
   onAddToGitignore: (node: FileTreeNode) => void
   /** リポジトリの clone の状態と操作(「リポジトリを clone」とダイアログ) */
   clone: CloneRepositoryPanelState
+  /** 右クリックの「参照として添える」(エージェント CLI 方式でフォルダを開いているときだけ渡す。ファイルにだけ出す) */
+  onAddReference?: (node: FileTreeNode) => void
 }
 
 type DialogState =
@@ -49,7 +51,8 @@ export default function ExplorerPanel({
   onRenameEntry,
   onDeleteEntry,
   onAddToGitignore,
-  clone
+  clone,
+  onAddReference
 }: Props): React.JSX.Element {
   const { menu, openMenu, closeMenu } = useContextMenu()
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -123,7 +126,8 @@ export default function ExplorerPanel({
             onCreateDirectory: (parentPath) => setDialog({ mode: 'createDirectory', parentPath }),
             onRename: (node) => setDialog({ mode: 'rename', node }),
             onDelete: onDeleteEntry,
-            onAddToGitignore
+            onAddToGitignore,
+            onAddReference
           })}
           onClose={closeMenu}
         />

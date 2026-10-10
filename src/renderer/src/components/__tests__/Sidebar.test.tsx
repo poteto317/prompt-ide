@@ -1,12 +1,18 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import Sidebar from '../Sidebar'
-import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../types'
+import type {
+  AgentReferencesPanelState,
+  DiscardAllState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../../types'
 import { sidebarTitles } from '../../config/sidebarTitles'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
+import { makeAgentReferencesPanelState } from '../../__tests__/makeAgentReferencesState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -119,7 +125,8 @@ const defaultProps = {
   modelSettings: { modelId: 'claude-haiku-4-5' as const, maxTokens: 4096 },
   modelSettingsLoaded: true,
   onSaveModelSettings: vi.fn(),
-  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() }
+  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() },
+  agentReferences: null as AgentReferencesPanelState | null
 }
 
 describe('Sidebar', () => {
@@ -287,6 +294,48 @@ describe('Sidebar', () => {
       />
     )
     expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+  })
+
+  describe('参照(エージェントへ送るプロンプトの @ 参照)', () => {
+    it('prompts: 参照の状態をプロンプトパネルの参照の行へ渡す', () => {
+      render(
+        <Sidebar
+          activePanel="prompts"
+          {...defaultProps}
+          agentReferences={makeAgentReferencesPanelState()}
+        />
+      )
+      expect(screen.getByRole('group', { name: '参照' })).toBeInTheDocument()
+    })
+
+    it('explorer: 参照の状態があれば、ファイルの「参照として添える」で onAddFromExplorer に絶対パスを渡す', async () => {
+      const agentReferences = makeAgentReferencesPanelState()
+      render(
+        <Sidebar
+          activePanel="explorer"
+          {...defaultProps}
+          folderPath="/p"
+          fileTree={[{ name: 'a.ts', path: '/p/a.ts', type: 'file' }]}
+          agentReferences={agentReferences}
+        />
+      )
+      fireEvent.contextMenu(screen.getByText('a.ts'))
+      await userEvent.click(screen.getByRole('menuitem', { name: '参照として添える' }))
+      expect(agentReferences.onAddFromExplorer).toHaveBeenCalledExactlyOnceWith('/p/a.ts')
+    })
+
+    it('explorer: 参照の状態が無ければ「参照として添える」を出さない', () => {
+      render(
+        <Sidebar
+          activePanel="explorer"
+          {...defaultProps}
+          folderPath="/p"
+          fileTree={[{ name: 'a.ts', path: '/p/a.ts', type: 'file' }]}
+        />
+      )
+      fireEvent.contextMenu(screen.getByText('a.ts'))
+      expect(screen.queryByRole('menuitem', { name: '参照として添える' })).toBeNull()
+    })
   })
 })
 

@@ -1,4 +1,5 @@
 import Editor from '@monaco-editor/react'
+import type { SelectionRangeEditor } from '../hooks/useEditorSelectionRange'
 import type { OpenedFileSignal } from '../hooks/useFileSystem'
 import { editorOptions } from '../lib/editorOptions'
 import { registerSaveCommand } from '../lib/editorShortcuts'
@@ -72,6 +73,9 @@ interface Props {
   conflictFile: ConflictFileState
   /** 他の操作中(ロック中)か。解決ビューの全ボタンを無効化する(ハンク操作の isHunkOperationInProgress と同じ扱い) */
   isConflictBlocked: boolean
+  /** 現在のファイルのエディタがマウントされたときに呼ぶ(useAppState の attachEditorSelection。エージェントへ送るプロンプトの参照の
+   *  「選択範囲」を追う)。filePath はマウントの時点の openFile.path(エディタはファイルごとに付け替わる)。省略できない(L-060) */
+  onEditorMount: (editor: SelectionRangeEditor, filePath: string) => void
   /**
    * 下部に置くパネル。output: 出力パネル(従来の方式)、agent-terminal: ターミナルパネル(エージェント CLI 方式)、
    * none: 何も置かない(実行方式の読み込み中)。省略時は output
@@ -123,6 +127,7 @@ export default function EditorPanel({
   isActiveFileConflicted,
   conflictFile,
   isConflictBlocked,
+  onEditorMount,
   bottomPanel = 'output',
   agentTerminal,
   externalChangeBanner = null,
@@ -244,6 +249,7 @@ export default function EditorPanel({
                     const isCurrent = handleEditorMount(editorInstance, openFile.path)
                     if (!isCurrent) return
                     attachEditor(editorInstance)
+                    onEditorMount(editorInstance, openFile.path)
                     registerSaveCommand(editorInstance, monaco, () => onSaveRef.current())
                     focusEditorIfPending()
                   }}

@@ -14,6 +14,7 @@ import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
 import { APPLY_DISABLED_REASONS } from '../../lib/applyDisabledReason'
 import { selectionOf } from '../../__tests__/makeFakeApplyEditor'
 import type { ApplySelection } from '../../lib/applyToEditor'
+import type { SelectionRangeEditor } from '../../hooks/useEditorSelectionRange'
 
 // EditorPanel.test.tsx と同じく、dnd-kit は jsdom 上でクリックの伝播を阻害するためモックする
 vi.mock('@dnd-kit/core', () => ({
@@ -92,7 +93,8 @@ const baseProps = {
   isActiveFileUntracked: false,
   isActiveFileConflicted: false,
   conflictFile: makeConflictFileState(),
-  isConflictBlocked: false
+  isConflictBlocked: false,
+  onEditorMount: vi.fn<(editor: SelectionRangeEditor, filePath: string) => void>()
 }
 
 const select = (selection: ApplySelection): void => {

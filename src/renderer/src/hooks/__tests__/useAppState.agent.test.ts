@@ -8,6 +8,10 @@ import type { AgentChangeEntry, GitStatusResult } from '@shared/types'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
 import { makeAgentSessionsState } from '../../__tests__/makeAgentSessionsState'
 import {
+  makeAgentReferencesPanelState,
+  makeAgentReferencesState
+} from '../../__tests__/makeAgentReferencesState'
+import {
   makeAgentChangeEntry,
   makeAgentChangesListResult
 } from '../../__tests__/makeAgentChangesState'
@@ -289,6 +293,11 @@ const mockUseAgentWorkspace = vi.hoisted(() =>
   vi.fn<typeof import('../useAgentWorkspace').useAgentWorkspace>()
 )
 vi.mock('../useAgentWorkspace', () => ({ useAgentWorkspace: mockUseAgentWorkspace }))
+// 参照の状態の組み立ては useAgentReferences.test.ts で確かめる。ここでは渡す値と公開する値だけを見る
+const mockUseAgentReferences = vi.hoisted(() =>
+  vi.fn<typeof import('../useAgentReferences').useAgentReferences>()
+)
+vi.mock('../useAgentReferences', () => ({ useAgentReferences: mockUseAgentReferences }))
 vi.mock('../useExternalFileChanges', () => ({ useExternalFileChanges: mockUseExternalFileChanges }))
 
 import { useAppState } from '../useAppState'
@@ -315,6 +324,7 @@ beforeEach(() => {
   // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
   mockUseStashPanel.mockReturnValue(mockStashPanel)
   mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState())
+  mockUseAgentReferences.mockReturnValue(makeAgentReferencesState())
   mockUseFileSystem.mockImplementation(defaultUseFileSystem)
   mockUsePromptExecution.mockImplementation(defaultUsePromptExecution)
   mockUseDiffTabs.mockImplementation(defaultUseDiffTabs)
@@ -696,7 +706,13 @@ describe('useAppState', () => {
     it('送信前の確認のダイアログを、useAgentWorkspace の戻り値のまま公開する', () => {
       const workspace = makeAgentWorkspaceState({
         agentSendConfirmDialog: {
-          pending: { text: '本文', slotId: 'slot-1', label: 'claude 1', promptId: 'p1' },
+          pending: {
+            text: '本文',
+            slotId: 'slot-1',
+            label: 'claude 1',
+            promptId: 'p1',
+            unsavedPaths: []
+          },
           targetBlockedReason: null,
           onConfirm: vi.fn(),
           onCancel: vi.fn()
@@ -743,6 +759,77 @@ describe('useAppState', () => {
         expect(args.sendToAgent).toBe(workspace.sendToAgent)
       }
     )
+
+    it('useAgentReferences に、開いているフォルダ・エージェント CLI 方式か・差分のタブの表示中か・選択を渡す', () => {
+      mockUseFileSystem.mockReturnValue({ ...defaultUseFileSystem(), folderPath: '/repo' })
+      mockUseAgentWorkspace.mockReturnValue(
+        makeAgentWorkspaceState({
+          executionModePanel: {
+            ...makeAgentWorkspaceState().executionModePanel,
+            mode: 'agent-cli'
+          }
+        })
+      )
+      mockUseDiffTabs.mockReturnValue({
+        ...defaultUseDiffTabs(),
+        diffTabs: [{ path: '/repo/a.ts', kind: 'unstaged' }],
+        activeDiffTab: { path: '/repo/a.ts', kind: 'unstaged' }
+      })
+      renderHook(() => useAppState())
+      expect(mockUseAgentReferences).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          folderPath: '/repo',
+          isAgentMode: true,
+          activeFile: null,
+          isDiffTabActive: true,
+          selection: null
+        })
+      )
+    })
+
+    it('useAgentReferences に、useFileSystem の openFile と openFiles をそのまま渡す', () => {
+      const openFile = { path: '/repo/a.ts', content: 'a', savedContent: 'a' }
+      const openFiles = [openFile, { path: '/repo/b.ts', content: 'b', savedContent: 'b' }]
+      // モックの戻り値の型は openFile: null で推論されるため、固有の値を返すために型を広げる
+      mockUseFileSystem.mockReturnValue({
+        ...defaultUseFileSystem(),
+        openFile,
+        openFiles
+      } as unknown as ReturnType<typeof defaultUseFileSystem>)
+      renderHook(() => useAppState())
+      const options = mockUseAgentReferences.mock.lastCall?.[0]
+      expect(options?.activeFile).toBe(openFile)
+      expect(options?.openFiles).toBe(openFiles)
+    })
+
+    it.each(['legacy', null] as const)(
+      '実行方式が %s なら useAgentReferences にエージェント CLI 方式でないと渡す',
+      (mode) => {
+        mockUseAgentWorkspace.mockReturnValue(
+          makeAgentWorkspaceState({
+            executionModePanel: { ...makeAgentWorkspaceState().executionModePanel, mode }
+          })
+        )
+        renderHook(() => useAppState())
+        expect(mockUseAgentReferences).toHaveBeenLastCalledWith(
+          expect.objectContaining({ isAgentMode: false, isDiffTabActive: false })
+        )
+      }
+    )
+
+    it('usePromptRunner に参照の状態(prepare・markSent)を渡し、参照の行と読み上げの文言を公開する', () => {
+      const panel = makeAgentReferencesPanelState()
+      const references = makeAgentReferencesState({
+        panel,
+        announcement: { id: 1, text: '参照に @a.ts を足しました' }
+      })
+      mockUseAgentReferences.mockReturnValue(references)
+      const { result } = renderHook(() => useAppState())
+      const args = mockUsePromptRunner.mock.calls[0][0] as { agentReferences: unknown }
+      expect(args.agentReferences).toBe(references)
+      expect(result.current.agentReferences).toBe(panel)
+      expect(result.current.agentReferenceAnnouncement).toBe('参照に @a.ts を足しました')
+    })
 
     it('useFileSystem に保存の照合の取り消し・保存の成功の通知を渡し、useExternalFileChanges に開いているタブの操作を渡す', () => {
       // 外部変更の確認が使うタブの操作は、useFileSystem の戻り値そのもの(自分の保存を外部変更と誤認しないための

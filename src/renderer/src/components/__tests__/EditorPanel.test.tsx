@@ -12,6 +12,7 @@ import {
 import type { OpenedFileEvent } from '../../hooks/useFileSystem'
 import type { OpenFile } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
+import type { SelectionRangeEditor } from '../../hooks/useEditorSelectionRange'
 import EditorPanel from '../EditorPanel'
 import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
 import { useOnChange } from '../../hooks/useOnChange'
@@ -95,7 +96,8 @@ const defaultProps = {
   isActiveFileUntracked: false,
   isActiveFileConflicted: false,
   conflictFile: makeConflictFileState(),
-  isConflictBlocked: false
+  isConflictBlocked: false,
+  onEditorMount: vi.fn()
 }
 
 /** openFile 単体を渡す旧APIのテストをそのまま活かすためのヘルパー。
@@ -1407,5 +1409,38 @@ describe('EditorPanel — ハンクを戻した後のフォーカス(実機と�
     revertApi.resolve()
     await settle()
     expect(within(container).getByRole('button', { name: '外' })).toHaveFocus()
+  })
+})
+
+describe('EditorPanel: エディタのマウントの通知(onEditorMount)', () => {
+  it('現在のファイルのエディタがマウントされたら、そのエディタとマウントの時点のファイルのパスを渡す', () => {
+    const onEditorMount = vi.fn<(editor: SelectionRangeEditor, filePath: string) => void>()
+    render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        onEditorMount={onEditorMount}
+      />
+    )
+    expect(onEditorMount).toHaveBeenCalledOnce()
+    const [instance, filePath] = onEditorMount.mock.calls[0]
+    expect(filePath).toBe(mockOpenFile.path)
+    expect(instance.getModel()).toBe(mockEditorModel.current)
+  })
+
+  it('差分のタブの表示中はエディタをマウントしないので呼ばない', () => {
+    const onEditorMount = vi.fn<(editor: SelectionRangeEditor, filePath: string) => void>()
+    const diffTab: DiffTabKey = { path: mockOpenFile.path, kind: 'unstaged' }
+    render(
+      <EditorPanel
+        {...defaultProps}
+        {...withOpenFile(mockOpenFile)}
+        diffTabs={[diffTab]}
+        activeDiffTab={diffTab}
+        diffContent=""
+        onEditorMount={onEditorMount}
+      />
+    )
+    expect(onEditorMount).not.toHaveBeenCalled()
   })
 })

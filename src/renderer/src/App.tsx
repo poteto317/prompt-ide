@@ -147,6 +147,9 @@ export default function App(): React.JSX.Element {
     statusBarAgent,
     agentAnnouncement,
     externalChangeBanner,
+    attachEditorSelection,
+    agentReferences,
+    agentReferenceAnnouncement,
     agentChangesPanel,
     agentDiffActions,
     agentChangesReview
@@ -335,6 +338,7 @@ export default function App(): React.JSX.Element {
               executionMode={executionModePanel}
               agentNotification={agentNotificationPanel}
               agentSendConfirm={agentSendConfirmPanel}
+              agentReferences={agentReferences}
             />
           )}
           <EditorPanel
@@ -378,11 +382,14 @@ export default function App(): React.JSX.Element {
             externalChangeBanner={externalChangeBanner}
             agentDiffActions={agentDiffActions}
             agentChangesReview={agentChangesReview}
+            onEditorMount={attachEditorSelection}
           />
         </div>
       </div>
       <StatusBar agent={statusBarAgent} />
       <AgentAnnouncer message={agentAnnouncement} />
+      {/* エクスプローラから参照を足したときの読み上げ。エクスプローラを開いている間はプロンプトパネルが隠れるため、パネルの外に常設する */}
+      <AgentAnnouncer message={agentReferenceAnnouncement} />
       <QuickOpenDialog controller={quickOpen} />
       <AgentSendConfirmDialog state={agentSendConfirmDialog} />
     </>

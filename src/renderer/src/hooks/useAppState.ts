@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { usePanelState } from './usePanelState'
+import { useEditorSelectionRange } from './useEditorSelectionRange'
+import { useAgentReferences } from './useAgentReferences'
+import { toAnnouncementText } from '../lib/announcementText'
+import type { EditorSelectionRangeState } from './useEditorSelectionRange'
 import { useFileSystem } from './useFileSystem'
 import { usePrompts } from './usePrompts'
 import { useProgressTasks } from './useProgressTasks'
@@ -31,6 +35,7 @@ import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isAnyGitOperationRunning } from '../lib/gitOperationActivity'
 import { isSamePath } from '../lib/pathUtils'
 import type {
+  AgentReferencesPanelState,
   CloneRepositoryPanelState,
   DiscardAllState,
   GitTagPanelState,
@@ -93,6 +98,13 @@ type AppState = {
   isActiveFileConflicted: boolean
   /** 編集中のタブの外部変更の通知 */
   externalChangeBanner: ExternalChangeBannerState | null
+  /** エディタのマウントの通知(EditorPanel の onEditorMount)。アクティブなエディタの選択の行の範囲を追い、参照の「選択範囲」に使う */
+  attachEditorSelection: EditorSelectionRangeState['attachEditor']
+  /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
+   *  フォルダを開いているときだけで、それ以外は null。Sidebar へ渡す */
+  agentReferences: AgentReferencesPanelState | null
+  /** エクスプローラから参照を足したときの読み上げの文言(App が常設の aria-live の領域に出す) */
+  agentReferenceAnnouncement: string
 } & AgentChangesWiring &
   Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
   ReturnType<typeof usePanelState> &
@@ -194,12 +206,26 @@ export function useAppState(): AppState {
     // プロンプトの「実行」で送る前に、エージェントの変更の記録を始める(記録があれば main は何もしない)
     beforeAgentSend: agentChangesRecording.beginAndRefresh
   })
+  // アクティブなエディタの選択の行の範囲(エージェントへ送るプロンプトの参照の「選択範囲」)
+  const editorSelection = useEditorSelectionRange()
+  // エージェントへ送るプロンプトに添える参照(チップ・エクスプローラから足したファイル)。実行の時点の写しを usePromptRunner が本文へ足す。
+  // 実行方式は読み込みが終わるまで null で、読み込んだ後に null へ戻ることは無いため、方式の判定が一時的に false へ揺れて参照が
+  // リセットされることは無い(useExecutionMode)
+  const references = useAgentReferences({
+    folderPath: fileSystem.folderPath,
+    isAgentMode: agentWorkspace.executionModePanel.mode === 'agent-cli',
+    activeFile: fileSystem.openFile,
+    isDiffTabActive: diffTabs.activeDiffTab !== null,
+    openFiles: fileSystem.openFiles,
+    selection: editorSelection.selection
+  })
   const promptRunner = usePromptRunner({
     openFile: fileSystem.openFile,
     executePrompt: execution.executePrompt,
     addHistoryEntry: history.addHistoryEntry,
     executionMode: agentWorkspace.executionModePanel.mode,
-    sendToAgent: agentWorkspace.sendToAgent
+    sendToAgent: agentWorkspace.sendToAgent,
+    agentReferences: references
   })
   const { confirmStopAgent } = agentWorkspace
   const openFolder: typeof fileSystem.openFolder = async () => {
@@ -563,6 +589,9 @@ export function useAppState(): AppState {
     statusBarAgent: agentWorkspace.statusBarAgent,
     agentAnnouncement: agentWorkspace.agentAnnouncement,
     externalChangeBanner,
+    attachEditorSelection: editorSelection.attachEditor,
+    agentReferences: references.panel,
+    agentReferenceAnnouncement: toAnnouncementText(references.announcement),
     ...agentChangesWiring
   }
 }

@@ -14,12 +14,18 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy
 } from '@dnd-kit/sortable'
-import type { AgentSendFeedback, PromptToolId, Prompt } from '../../types'
+import type {
+  AgentReferencesPanelState,
+  AgentSendFeedback,
+  PromptToolId,
+  Prompt
+} from '../../types'
 import PromptItem from './PromptItem'
 import AddPromptForm from './AddPromptForm'
 import PromptsToolbar from './PromptsToolbar'
 import ExecutionToolSelector from './ExecutionToolSelector'
 import PromptsTagFilter from './PromptsTagFilter'
+import AgentReferenceChips from './AgentReferenceChips'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
 import { useSelectedTool } from '../../hooks/useSelectedTool'
@@ -46,6 +52,8 @@ interface Props {
   showToolSelector?: boolean
   /** 実行ボタンの aria-label。省略時は従来の「プロンプトを実行」 */
   runAriaLabel?: string
+  /** 参照の行(エージェント CLI 方式でフォルダを開いているときだけ。それ以外は null で行を出さない)。省略できない(L-060) */
+  agentReferences: AgentReferencesPanelState | null
 }
 
 export default function PromptsPanel({
@@ -63,7 +71,8 @@ export default function PromptsPanel({
   runDisabledReason = null,
   agentSend = null,
   showToolSelector = true,
-  runAriaLabel
+  runAriaLabel,
+  agentReferences
 }: Props): React.JSX.Element {
   const runReasonId = useId()
   const { selectedTool, selectTool } = useSelectedTool()
@@ -127,6 +136,8 @@ export default function PromptsPanel({
           {toAnnouncementText(agentSend.notice)}
         </p>
       )}
+      {/* プロンプトの一覧の上(検索欄の前)に、実行のときに本文へ足す参照のチップを出す */}
+      {agentReferences !== null && <AgentReferenceChips state={agentReferences} />}
       <div className="prompts-panel__search">
         <input
           className="prompts-panel__search-input"

@@ -34,7 +34,13 @@ describe('App: 送信前の確認の配線', () => {
     mockUseAgentWorkspace.mockReturnValue(
       makeAgentWorkspaceState({
         agentSendConfirmDialog: {
-          pending: { text: '本文', slotId: 'slot-1', label: 'claude 1', promptId: 'p1' },
+          pending: {
+            text: '本文',
+            slotId: 'slot-1',
+            label: 'claude 1',
+            promptId: 'p1',
+            unsavedPaths: []
+          },
           targetBlockedReason: null,
           onConfirm,
           onCancel
@@ -54,7 +60,13 @@ describe('App: 送信前の確認の配線', () => {
     mockUseAgentWorkspace.mockReturnValue(
       makeAgentWorkspaceState({
         agentSendConfirmDialog: {
-          pending: { text: '本文', slotId: 'slot-1', label: 'claude 1', promptId: 'p1' },
+          pending: {
+            text: '本文',
+            slotId: 'slot-1',
+            label: 'claude 1',
+            promptId: 'p1',
+            unsavedPaths: []
+          },
           targetBlockedReason:
             'エージェントが起動していません（ターミナルの「起動」を押してください）',
           onConfirm: vi.fn(),

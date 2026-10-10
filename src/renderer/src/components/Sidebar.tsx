@@ -25,7 +25,8 @@ import type {
   PromptRunPanelState,
   ExecutionModePanelState,
   AgentNotificationPanelState,
-  AgentSendConfirmPanelState
+  AgentSendConfirmPanelState,
+  AgentReferencesPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -131,6 +132,9 @@ interface Props {
   agentNotification?: AgentNotificationPanelState
   /** エージェントへの送信前の確認の設定(省略できない。L-060) */
   agentSendConfirm: AgentSendConfirmPanelState
+  /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
+   *  フォルダを開いているときだけで、それ以外は null。省略できない(L-060) */
+  agentReferences: AgentReferencesPanelState | null
 }
 
 export default function Sidebar({
@@ -226,7 +230,8 @@ export default function Sidebar({
   promptRun,
   executionMode,
   agentNotification,
-  agentSendConfirm
+  agentSendConfirm,
+  agentReferences
 }: Props): React.JSX.Element {
   return (
     <div className="sidebar">
@@ -246,6 +251,11 @@ export default function Sidebar({
           onDeleteEntry={onDeleteEntry}
           onAddToGitignore={onAddToGitignore}
           clone={clone}
+          onAddReference={
+            agentReferences === null
+              ? undefined
+              : (node) => agentReferences.onAddFromExplorer(node.path)
+          }
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'prompts'}>
@@ -265,6 +275,7 @@ export default function Sidebar({
           showToolSelector={promptRun?.showToolSelector ?? true}
           runAriaLabel={promptRun?.runAriaLabel}
           isActive={activePanel === 'prompts'}
+          agentReferences={agentReferences}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'progress'}>

@@ -19,6 +19,7 @@ const makePending = (
   slotId: 'slot-2',
   label: 'claude 2',
   promptId: 'p1',
+  unsavedPaths: [],
   ...overrides
 })
 
@@ -133,6 +134,40 @@ describe('AgentSendConfirmDialog', () => {
       render(<AgentSendConfirmDialog state={makeState()} />)
       expect(screen.queryByRole('alert')).toBeNull()
       expect(submitButton()).toBeEnabled()
+    })
+  })
+
+  describe('未保存の注意', () => {
+    const NOTICE =
+      '未保存の変更があるファイルは、保存するまで claude に見えません: src/app.ts、docs/a.md'
+
+    it('未保存のファイルがあれば注意を出し、ダイアログの説明に含める(送信は止めない)', () => {
+      render(
+        <AgentSendConfirmDialog
+          state={makeState({ pending: makePending({ unsavedPaths: ['src/app.ts', 'docs/a.md'] }) })}
+        />
+      )
+      expect(within(getDialog()).getByText(NOTICE)).toBeInTheDocument()
+      expect(getDialog()).toHaveAccessibleDescription(`送り先: claude 2 ${NOTICE}`)
+      expect(submitButton()).toBeEnabled()
+    })
+
+    it('未保存の注意と送れない理由が両方あれば、送り先・未保存の注意・理由の順に説明に含める', () => {
+      render(
+        <AgentSendConfirmDialog
+          state={makeState({
+            pending: makePending({ text: '!ls', unsavedPaths: ['src/app.ts', 'docs/a.md'] })
+          })}
+        />
+      )
+      expect(getDialog()).toHaveAccessibleDescription(
+        `送り先: claude 2 ${NOTICE} ${AGENT_SEND_FAILURE_MESSAGES['leading-bang']}`
+      )
+    })
+
+    it('未保存のファイルが無ければ注意を出さない', () => {
+      render(<AgentSendConfirmDialog state={makeState()} />)
+      expect(screen.queryByText(/未保存の変更があるファイル/)).toBeNull()
     })
   })
 
