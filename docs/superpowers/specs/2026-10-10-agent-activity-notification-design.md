@@ -120,7 +120,7 @@
 - 型と既定値: `src/shared/types/settings.ts` に `DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true`。
 - 保存: `settingsFileStore.ts` の `SettingsFile` に `agentNotificationsEnabled?: boolean` を足し、`agentNotificationSettingStore.ts`（新規。`executionModeStore.ts` と同じ形。読めない・型が違えば既定値）。
 - IPC: `settings:getAgentNotificationsEnabled`・`settings:setAgentNotificationsEnabled`（`boolean` 以外は例外）。preload と `settingsApi.ts` に足す。
-- hook: `useAgentNotificationSetting`（`useExecutionMode` と同じ形。読み込み中は `null`、変更は楽観的に反映して保存し、失敗したら元に戻す）。
+- hook: `useAgentNotificationSetting`（`useExecutionMode` と同じ形。読み込み中は `null`、変更は楽観的に反映して保存し、失敗したら最後に保存できた値に戻す。続けて変えたとき、後の変更が進行中なら戻さずその結果に任せる）。
 - 設定画面: `SettingsPanel` に「エージェントの通知」の節（チェックボックス「ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する」）。説明に「Dock のバッジ（macOS）・タスクバーの点滅（Windows・Linux）も、この設定でまとめてオン・オフします」と書く（点滅は通知と同時に main が起こすので、オフで通知を頼まなければ点滅もしない）。
 
 ### 読み上げの領域
@@ -159,7 +159,7 @@
 - `useAgentNotifications`: 出来事のときに show を送る・設定がオフ・読み込み中なら送らない（読み上げはする）・閉じる途中・`running` でないタブは知らせない・セッションが変わると記録を忘れる・`unknown` のまま終了して再起動しても `done` を出さない・バッジの数（最後の確かな活動が許可待ち・確認待ちのタブだけ、一時的な `unknown` で揺れない、閉じる途中を除く、オフで 0、アンマウントで 0）・押されたときに今あるタブなら `activateTab`、無ければ何もしない・タブの一覧から消えたタブで dismiss を送る（マウントの直後・取り付け直し・`running` でない・閉じる途中では送らない、オフでも送る）・許可・選択に答えたタブ（許可待ち・確認待ち → `working`・`idle`）で dismiss を送る（`unknown`・`permission` → `confirm`・作業の完了では送らない、オフでも送る）・許可待ちのまま終了したタブで 1 回だけ dismiss を送る・設定がオフ・読み込み中なら出来事のタブで dismiss を送る（show は送らない）・エージェント CLI 方式でなければ読み上げ・show を送らず、バッジは 0、方式が変わった回に 1 度だけ一覧のタブすべてへ dismiss を送り（マウントでは送らない）、押しても `activateTab` を呼ばない（戻ると呼ぶ）・購読の後始末・IPC の失敗で止まらない。
 - `useAgentTabActivation`: 既存の `useAgentStatusBar` のフォーカスのテストを移し、タブ指定で呼べること。
 - main: 入力の検証（PayloadParser）、送信元の確認、フォーカスがあれば出さない（前の通知は閉じる。通知に対応していないときも）、同じタブの前の通知を閉じる、押したときに前面化して activated を送る、タブを閉じたときにそのタブの通知だけを閉じる、Windows・Linux で点滅し、フォーカスで止める、dismiss・前面のときの show・後始末でそのウィンドウの通知が無くなれば止める（ほかのタブの通知が残っていれば止めない）、バッジ（macOS だけ）、ウィンドウを閉じたとき・リロードのときの後始末。`Notification`・`app.dock` はモックするので、実物の表示は実機テスト仕様書で確かめる（L-059）。
-- 設定: ストアの既定値・不正値・保存、IPC の検証、hook の楽観的な反映と失敗時の戻し、設定画面のチェックボックス。
+- 設定: ストアの既定値・不正値・保存、IPC の検証、hook の楽観的な反映と失敗時の戻し（続けた変更で、最後に保存できた値へ戻る）、設定画面のチェックボックス。
 - 読み上げの領域: 出来事の文言が入る、常設である（パネルを閉じても残る）。
 
 ## 気をつける知見（dev-flow-kit の review-lessons.md）

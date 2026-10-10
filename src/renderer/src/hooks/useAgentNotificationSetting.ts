@@ -13,7 +13,7 @@ export interface AgentNotificationSettingState {
   enabled: boolean | null
   /** 保存の失敗の文言。次の保存で消える */
   saveError: string | null
-  /** すぐ保存する。失敗したら保存前の値に戻し、false を返す */
+  /** すぐ保存する。失敗したら最後に保存できた値に戻し、false を返す */
   changeEnabled: (next: boolean) => Promise<boolean>
 }
 
@@ -21,6 +21,10 @@ export function useAgentNotificationSetting(): AgentNotificationSettingState {
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const enabledRef = useRef<boolean | null>(null)
+  // 最後に保存できた(または読み込んだ)値。失敗したときはここへ戻す
+  const savedRef = useRef<boolean | null>(null)
+  // 変更の通し番号。後から別の変更が始まっていたら、失敗しても戻さずその結果に任せる
+  const changeSeqRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
@@ -30,12 +34,14 @@ export function useAgentNotificationSetting(): AgentNotificationSettingState {
       .then((loaded) => {
         if (cancelled) return
         enabledRef.current = loaded
+        savedRef.current = loaded
         setEnabled(loaded)
       })
       .catch((err) => {
         console.error('[useAgentNotificationSetting] getAgentNotificationsEnabled failed:', err)
         if (cancelled) return
         enabledRef.current = DEFAULT_AGENT_NOTIFICATIONS_ENABLED
+        savedRef.current = DEFAULT_AGENT_NOTIFICATIONS_ENABLED
         setEnabled(DEFAULT_AGENT_NOTIFICATIONS_ENABLED)
       })
     return () => {
@@ -44,16 +50,19 @@ export function useAgentNotificationSetting(): AgentNotificationSettingState {
   }, [])
 
   const changeEnabled = useCallback(async (next: boolean): Promise<boolean> => {
-    const previous = enabledRef.current
+    const seq = ++changeSeqRef.current
     enabledRef.current = next
     setEnabled(next)
     setSaveError(null)
     try {
       await settingsApi.setAgentNotificationsEnabled(next)
+      savedRef.current = next
       return true
     } catch (err) {
-      enabledRef.current = previous
-      setEnabled(previous)
+      if (seq === changeSeqRef.current) {
+        enabledRef.current = savedRef.current
+        setEnabled(savedRef.current)
+      }
       setSaveError(`${AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX}${toError(err).message}`)
       return false
     }

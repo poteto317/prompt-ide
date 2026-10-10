@@ -63,6 +63,107 @@ describe('useAgentNotificationSetting', () => {
     expect(result.current.saveError).toBe('通知の設定を保存できませんでした: EACCES')
   })
 
+  describe('続けて変えたとき', () => {
+    const deferred = (): {
+      promise: Promise<void>
+      resolve: () => void
+      reject: (e: Error) => void
+    } => {
+      let resolve!: () => void
+      let reject!: (e: Error) => void
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    const setup = async (): Promise<
+      ReturnType<typeof renderHook<ReturnType<typeof useAgentNotificationSetting>, unknown>>
+    > => {
+      mockGet.mockResolvedValueOnce(true)
+      const hook = renderHook(() => useAgentNotificationSetting())
+      await waitFor(() => expect(hook.result.current.enabled).toBe(true))
+      return hook
+    }
+
+    it('2 回とも失敗したら、最後に保存できた値(読み込んだ値)へ戻る', async () => {
+      const a = deferred()
+      const b = deferred()
+      mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = await setup()
+      let pa!: Promise<boolean>
+      let pb!: Promise<boolean>
+      act(() => {
+        pa = result.current.changeEnabled(false)
+      })
+      act(() => {
+        pb = result.current.changeEnabled(true)
+      })
+      await act(async () => {
+        a.reject(new Error('A'))
+        await pa
+      })
+      // 後の変更が進行中なので戻さない
+      expect(result.current.enabled).toBe(true)
+      await act(async () => {
+        b.reject(new Error('B'))
+        await pb
+      })
+      // 保存できた値は読み込んだ true。B の直前の値(A の false)ではない
+      expect(result.current.enabled).toBe(true)
+      expect(result.current.saveError).toBe('通知の設定を保存できませんでした: B')
+    })
+
+    it('A 成功・B 失敗なら、A の値へ戻る', async () => {
+      const a = deferred()
+      const b = deferred()
+      mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = await setup()
+      let pa!: Promise<boolean>
+      let pb!: Promise<boolean>
+      act(() => {
+        pa = result.current.changeEnabled(false)
+      })
+      act(() => {
+        pb = result.current.changeEnabled(true)
+      })
+      await act(async () => {
+        a.resolve()
+        await pa
+      })
+      await act(async () => {
+        b.reject(new Error('B'))
+        await pb
+      })
+      expect(result.current.enabled).toBe(false)
+    })
+
+    it('A 失敗・B 成功なら、B の値のまま', async () => {
+      const a = deferred()
+      const b = deferred()
+      mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+      const { result } = await setup()
+      let pa!: Promise<boolean>
+      let pb!: Promise<boolean>
+      act(() => {
+        pa = result.current.changeEnabled(false)
+      })
+      act(() => {
+        pb = result.current.changeEnabled(true)
+      })
+      await act(async () => {
+        a.reject(new Error('A'))
+        await pa
+      })
+      await act(async () => {
+        b.resolve()
+        await pb
+      })
+      expect(result.current.enabled).toBe(true)
+    })
+  })
+
   it('保存の失敗の接頭辞', () => {
     expect(AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX).toBe('通知の設定を保存できませんでした: ')
   })
