@@ -35,6 +35,10 @@ export const AGENT_REFERENCE_MENU_LABEL = '参照として添える'
 export const formatAgentReferenceAddedAnnouncement = (label: string): string =>
   `参照に ${label} を足しました`
 
+/** エクスプローラからすでに足してあるファイルをもう一度足そうとしたときの読み上げ */
+export const formatAgentReferenceAlreadyAddedAnnouncement = (label: string): string =>
+  `${label} はすでに参照にあります`
+
 /** エクスプローラから足したファイルを外すボタンの名前 */
 export const formatAgentReferenceRemoveLabel = (label: string): string => `${label} を参照から外す`
 

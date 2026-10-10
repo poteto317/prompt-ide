@@ -4,7 +4,10 @@ import { useLatestRef } from './useLatestRef'
 import { useOnChange } from './useOnChange'
 import { formatAgentReference, toWorkspaceRelativePath } from '../lib/agentReferences'
 import type { EditorLineSelection } from '../lib/agentReferences'
-import { formatAgentReferenceAddedAnnouncement } from '../lib/agentReferenceMessages'
+import {
+  formatAgentReferenceAddedAnnouncement,
+  formatAgentReferenceAlreadyAddedAnnouncement
+} from '../lib/agentReferenceMessages'
 import {
   EMPTY_PREPARED_AGENT_REFERENCES,
   buildPreparedAgentReferences,
@@ -45,7 +48,7 @@ export interface UseAgentReferencesOptions {
 export interface AgentReferencesState {
   /** プロンプトパネルの参照の行。エージェント CLI 方式でフォルダを開いているときだけで、それ以外は null */
   panel: AgentReferencesPanelState | null
-  /** エクスプローラから足したときの読み上げ(App の常設の aria-live に出す)。まだ無ければ null */
+  /** エクスプローラから足したとき・すでに足してあったときの読み上げ(App の常設の aria-live に出す)。まだ無ければ null */
   announcement: Announcement | null
   /** 今の参照の写し(実行を押した時点で呼ぶ)。描画をまたいで同じ参照 */
   prepare: () => PreparedAgentReferences
@@ -105,12 +108,16 @@ export function useAgentReferences({
     if (workspace === null) return
     const path = toWorkspaceRelativePath(workspace, absolutePath)
     if (path === null) return
-    if (hasAddedPath(addedPaths, absolutePath)) return
-    setAddedPaths((prev) => appendAddedPath(prev, absolutePath))
+    const label = formatAgentReference({ path, lineRange: null })
+    // すでに足してあるときも、プロンプトパネルが隠れている間に結果が伝わるよう読み上げる
+    const alreadyAdded = hasAddedPath(addedPaths, absolutePath)
+    if (!alreadyAdded) setAddedPaths((prev) => appendAddedPath(prev, absolutePath))
     // 同じ文言が続いても読み上げ直すよう、id を進める(toAnnouncementText。パターン 87)
     setAnnouncement((prev) => ({
       id: (prev?.id ?? 0) + 1,
-      text: formatAgentReferenceAddedAnnouncement(formatAgentReference({ path, lineRange: null }))
+      text: alreadyAdded
+        ? formatAgentReferenceAlreadyAddedAnnouncement(label)
+        : formatAgentReferenceAddedAnnouncement(label)
     }))
   }
 

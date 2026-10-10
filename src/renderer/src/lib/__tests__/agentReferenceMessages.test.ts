@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatAgentReferenceAddedAnnouncement,
+  formatAgentReferenceAlreadyAddedAnnouncement,
   formatAgentReferenceRemoveLabel,
   formatAgentUnsavedNotice
 } from '../agentReferenceMessages'
@@ -9,6 +10,14 @@ describe('formatAgentReferenceAddedAnnouncement', () => {
   it('足した参照を読み上げの文に埋め込む', () => {
     expect(formatAgentReferenceAddedAnnouncement('@docs/notes.md')).toBe(
       '参照に @docs/notes.md を足しました'
+    )
+  })
+})
+
+describe('formatAgentReferenceAlreadyAddedAnnouncement', () => {
+  it('すでに足してある参照を読み上げの文に埋め込む', () => {
+    expect(formatAgentReferenceAlreadyAddedAnnouncement('@docs/notes.md')).toBe(
+      '@docs/notes.md はすでに参照にあります'
     )
   })
 })

@@ -165,7 +165,7 @@ describe('useAgentReferences: 選択範囲', () => {
 })
 
 describe('useAgentReferences: エクスプローラから足したファイル', () => {
-  it('足すと末尾に加えて読み上げの文言を出し、同じファイルはもう一度足しても何もしない', () => {
+  it('足すと末尾に加えて読み上げの文言を出し、同じファイルはもう一度足しても一覧は変えず、すでにあることを読み上げる', () => {
     const { result } = renderReferences()
     act(() => panelOf(result).onAddFromExplorer('/repo/docs/notes.md'))
     expect(panelOf(result).added).toEqual([
@@ -177,13 +177,23 @@ describe('useAgentReferences: エクスプローラから足したファイル',
     })
     act(() => panelOf(result).onAddFromExplorer('/repo/docs/notes.md'))
     expect(panelOf(result).added).toHaveLength(1)
-    expect(result.current.announcement?.id).toBe(1)
+    expect(result.current.announcement).toEqual({
+      id: 2,
+      text: '@docs/notes.md はすでに参照にあります'
+    })
+    // 同じ文言が続いても読み上げ直すよう、id は進める
+    act(() => panelOf(result).onAddFromExplorer('/repo/docs/notes.md'))
+    expect(panelOf(result).added).toHaveLength(1)
+    expect(result.current.announcement).toEqual({
+      id: 3,
+      text: '@docs/notes.md はすでに参照にあります'
+    })
     act(() => panelOf(result).onAddFromExplorer('/repo/src/app.ts'))
     expect(panelOf(result).added.map((item) => item.label)).toEqual([
       '@docs/notes.md',
       '@src/app.ts'
     ])
-    expect(result.current.announcement).toEqual({ id: 2, text: '参照に @src/app.ts を足しました' })
+    expect(result.current.announcement).toEqual({ id: 4, text: '参照に @src/app.ts を足しました' })
     expect(result.current.prepare()).toMatchObject({
       references: [
         { path: 'docs/notes.md', lineRange: null },
