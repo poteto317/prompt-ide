@@ -388,7 +388,7 @@ export default function App(): React.JSX.Element {
       </div>
       <StatusBar agent={statusBarAgent} />
       <AgentAnnouncer message={agentAnnouncement} />
-      {/* エクスプローラから参照を足したときの読み上げ。エクスプローラを開いている間はプロンプトパネルが隠れるため、パネルの外に常設する */}
+      {/* エクスプローラから参照を足したとき・すでに足してあったときの読み上げ。エクスプローラを開いている間はプロンプトパネルが隠れるため、パネルの外に常設する */}
       <AgentAnnouncer message={agentReferenceAnnouncement} />
       <QuickOpenDialog controller={quickOpen} />
       <AgentSendConfirmDialog state={agentSendConfirmDialog} />

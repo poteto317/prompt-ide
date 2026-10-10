@@ -103,7 +103,7 @@ type AppState = {
   /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
    *  フォルダを開いているときだけで、それ以外は null。Sidebar へ渡す */
   agentReferences: AgentReferencesPanelState | null
-  /** エクスプローラから参照を足したときの読み上げの文言(App が常設の aria-live の領域に出す) */
+  /** エクスプローラから参照を足したとき・すでに足してあったときの読み上げの文言(App が常設の aria-live の領域に出す) */
   agentReferenceAnnouncement: string
 } & AgentChangesWiring &
   Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
