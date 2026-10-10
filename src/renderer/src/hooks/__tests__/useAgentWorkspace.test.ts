@@ -18,10 +18,16 @@ const mockUseExecutionMode = vi.hoisted(() =>
 const mockUseAgentSessions = vi.hoisted(() => vi.fn())
 const mockUseAgentPromptSender = vi.hoisted(() => vi.fn())
 const mockUseAgentActivity = vi.hoisted(() => vi.fn())
+const mockUseAgentNotificationSetting = vi.hoisted(() => vi.fn())
+vi.mock('../useAgentNotificationSetting', () => ({
+  useAgentNotificationSetting: mockUseAgentNotificationSetting
+}))
 vi.mock('../useExecutionMode', () => ({ useExecutionMode: mockUseExecutionMode }))
 vi.mock('../useAgentSessions', () => ({ useAgentSessions: mockUseAgentSessions }))
 vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPromptSender }))
 vi.mock('../useAgentActivity', () => ({ useAgentActivity: mockUseAgentActivity }))
+const mockUseAgentNotifications = vi.hoisted(() => vi.fn<(options: unknown) => string>(() => ''))
+vi.mock('../useAgentNotifications', () => ({ useAgentNotifications: mockUseAgentNotifications }))
 vi.mock('../../lib/xtermFactory', async () => {
   const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
   const tabs = makeFakeAgentSessionTabs()
@@ -71,6 +77,12 @@ beforeEach(() => {
   mockUseAgentSessions.mockReturnValue(makeAgentSessionsState())
   mockUseAgentPromptSender.mockReturnValue(makeSender())
   mockUseAgentActivity.mockReturnValue(new Map())
+  mockUseAgentNotifications.mockReturnValue('')
+  mockUseAgentNotificationSetting.mockReturnValue({
+    enabled: true,
+    saveError: null,
+    changeEnabled: vi.fn<(next: boolean) => Promise<boolean>>(async () => true)
+  })
   windowConfirmSpy = null
   consoleErrorSpy = null
 })
@@ -101,6 +113,24 @@ const setMode = (
 }
 
 describe('useAgentWorkspace', () => {
+  describe('通知の設定(agentNotificationPanel)', () => {
+    it('設定の値と保存の失敗を渡し、変更を changeEnabled へ渡す', () => {
+      const changeEnabled = vi.fn<(next: boolean) => Promise<boolean>>(async () => true)
+      mockUseAgentNotificationSetting.mockReturnValue({
+        enabled: false,
+        saveError: '通知の設定を保存できませんでした: x',
+        changeEnabled
+      })
+      const { result } = renderWorkspace()
+      expect(result.current.agentNotificationPanel.enabled).toBe(false)
+      expect(result.current.agentNotificationPanel.saveError).toBe(
+        '通知の設定を保存できませんでした: x'
+      )
+      act(() => result.current.agentNotificationPanel.onChange(true))
+      expect(changeEnabled).toHaveBeenCalledWith(true)
+    })
+  })
+
   describe('組み立て', () => {
     it('useAgentSessions に開いているフォルダ・文書ごとのタブの置き場・エージェント CLI 方式か・確認を渡す', () => {
       setMode('agent-cli')
@@ -603,6 +633,72 @@ describe('useAgentWorkspace', () => {
     })
   })
 
+  describe('通知(useAgentNotifications)', () => {
+    it('タブ・活動・通知の設定を渡し、読み上げの文言を返す', () => {
+      const sessions = otherTabIs('running')
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const activities = new Map([['slot-2', 'permission']])
+      mockUseAgentActivity.mockReturnValue(activities)
+      mockUseAgentNotificationSetting.mockReturnValue({
+        enabled: false,
+        saveError: null,
+        changeEnabled: vi.fn(async () => true)
+      })
+      mockUseAgentNotifications.mockReturnValue('claude 2 が許可待ちになりました')
+      const { result } = renderWorkspace()
+      const options = mockUseAgentNotifications.mock.calls.at(-1)![0] as {
+        tabs: unknown
+        activities: unknown
+        enabled: unknown
+      }
+      expect(options.tabs).toBe(sessions.tabs)
+      expect(options.activities).toBe(activities)
+      expect(options.enabled).toBe(false)
+      expect(result.current.agentAnnouncement).toBe('claude 2 が許可待ちになりました')
+    })
+
+    it.each([
+      ['agent-cli', true],
+      ['legacy', false],
+      [null, false]
+    ] as const)('実行方式が %s なら isAgentMode に %s を渡す', (mode, expected) => {
+      setMode(mode)
+      renderWorkspace()
+      const options = mockUseAgentNotifications.mock.calls.at(-1)![0] as { isAgentMode: unknown }
+      expect(options.isAgentMode).toBe(expected)
+    })
+
+    it('通知を押したときの activateTab は、パネルを開いてタブを選び、描画の後にそのターミナルへフォーカスを移す', () => {
+      setMode('agent-cli')
+      const tabs = [1, 2].map((n) =>
+        makeAgentSessionTabView({
+          slotId: `slot-${n}`,
+          label: `claude ${n}`,
+          number: n,
+          status: 'running'
+        })
+      )
+      const selectTab = vi.fn((slotId: string) => {
+        mockUseAgentSessions.mockReturnValue(
+          makeAgentSessionsState({ tabs, selected: { slotId }, selectTab })
+        )
+      })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs, selected: { slotId: 'slot-1' }, selectTab })
+      )
+      const { result } = renderWorkspace()
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      const { activateTab } = mockUseAgentNotifications.mock.calls.at(-1)![0] as {
+        activateTab: (slotId: string) => void
+      }
+      act(() => activateTab('slot-2'))
+      expect(result.current.agentTerminal.layout.isOpen).toBe(true)
+      expect(selectTab).toHaveBeenCalledWith('slot-2')
+      expect(tabs[1].controller.focus).toHaveBeenCalledTimes(1)
+      expect(tabs[0].controller.focus).not.toHaveBeenCalled()
+    })
+  })
+
   describe('ステータスバーのまとめ(statusBarAgent)', () => {
     // useAgentStatusBar への配線(方式・活動・タブの選択・パネルの開き)だけを確かめる。数え方・強調の判定・当たるタブが無いとき・
     // フォーカスの回数などの細かい振る舞いは useAgentStatusBar.test と agentActivitySummary.test で確かめる(ここで重ねて確かめない)
@@ -674,6 +770,26 @@ describe('useAgentWorkspace', () => {
       expect(seenAtFocus).toEqual([{ selected: 'slot-3', isOpen: true }])
       expect(tabs[0].controller.focus).not.toHaveBeenCalled()
       expect(tabs[1].controller.focus).not.toHaveBeenCalled()
+    })
+
+    it('同じ優先の活動のタブが複数あれば、選択中のタブへ移る(選択中のタブを useAgentStatusBar へ渡す)', () => {
+      setMode('agent-cli')
+      const tabs = [1, 2].map((n) =>
+        makeAgentSessionTabView({ slotId: `slot-${n}`, label: `claude ${n}`, status: 'running' })
+      )
+      const selectTab = vi.fn()
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs, selected: { slotId: 'slot-2' }, selectTab })
+      )
+      mockUseAgentActivity.mockReturnValue(
+        new Map([
+          ['slot-1', 'permission'],
+          ['slot-2', 'permission']
+        ])
+      )
+      const { result } = renderWorkspace()
+      act(() => result.current.statusBarAgent!.onActivate())
+      expect(selectTab).toHaveBeenCalledExactlyOnceWith('slot-2')
     })
 
     it('最大化していれば最大化のまま開く', () => {

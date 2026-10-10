@@ -1799,7 +1799,8 @@ body {
 
 /* 通知の文言の読み上げ(視覚的に隠す。.agent-terminal-panel__hint と同じ規則) */
 .external-change-banner__live,
-.agent-diff__live {
+.agent-diff__live,
+.agent-announcer {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2460,6 +2461,17 @@ body {
 .settings-panel__note {
   font-size: 11px;
   color: #969696;
+}
+
+/* エージェントの通知のチェックボックス(タッチで押せる 32px 以上) */
+.agent-notification-section__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  font-size: 13px;
+  color: #cccccc;
+  cursor: pointer;
 }
 
 /* ---- プロンプトの実行の理由・結果(プロンプトパネルの上部) ---- */

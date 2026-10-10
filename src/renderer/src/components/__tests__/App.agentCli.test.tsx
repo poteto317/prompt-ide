@@ -43,6 +43,25 @@ describe('App: エージェント CLI 方式の配線', () => {
     window.api.onExternalFileChange = vi.fn(() => () => {})
   })
 
+  it('設定にエージェントの通知を出し、既定でオンになっている', async () => {
+    render(<App />)
+    await userEvent.click(panelButton('settings'))
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する'
+    })
+    await waitFor(() => expect(checkbox).toBeChecked())
+  })
+
+  it('エージェントの状態の変化の読み上げの領域を、パネルの外(ステータスバーの隣)に常設する', async () => {
+    const { container } = render(<App />)
+    await screen.findByRole('region', { name: 'エージェント' })
+    const region = container.querySelector('.agent-announcer')
+    expect(region).not.toBeNull()
+    expect(region).toHaveAttribute('aria-live', 'polite')
+    // パネル(region「エージェント」)の中ではない
+    expect(screen.getByRole('region', { name: 'エージェント' }).contains(region)).toBe(false)
+  })
+
   it('エディタの下部にターミナルパネル(エージェント)を出し、出力パネルを出さない', async () => {
     render(<App />)
     expect(await screen.findByRole('region', { name: 'エージェント' })).toBeInTheDocument()

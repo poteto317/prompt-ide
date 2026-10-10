@@ -1,10 +1,9 @@
-import { useState } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import type { AgentActivity } from '../../lib/agentActivity'
 import type { AgentSessionTabView } from '../useAgentSessions'
 import { useAgentStatusBar } from '../useAgentStatusBar'
-import type { AgentStatusBarState } from '../useAgentStatusBar'
+import type { UseAgentStatusBarOptions } from '../useAgentStatusBar'
 import { makeAgentSessionTabView } from '../../__tests__/makeAgentSessionsState'
 
 // タブ 1・2・3 はすべて running。既定の活動はタブ 1 が作業中・タブ 2 が入力待ち・タブ 3 が許可待ち
@@ -19,56 +18,36 @@ const DEFAULT_ACTIVITIES: [string, AgentActivity][] = [
   ['slot-3', 'permission']
 ]
 
-interface Setup {
-  tabs: AgentSessionTabView[]
+interface SetupResult {
+  result: { readonly current: ReturnType<typeof useAgentStatusBar> }
   openPanel: ReturnType<typeof vi.fn<() => void>>
-  selectTab: ReturnType<typeof vi.fn<(slotId: string) => void>>
-  result: { readonly current: AgentStatusBarState | null }
-  /** 利用者がほかの操作でタブを選び直した(次の描画から反映) */
-  reselect: (slotId: string) => void
-  /** 最後の描画で選択中だったタブの slotId */
-  renderedSelectedSlotId: () => string
-  rerender: () => void
+  activateTab: ReturnType<typeof vi.fn<(slotId: string) => void>>
 }
 
-// 選択中のタブは本物(useAgentSessions)と同じく state に持ち、selectTab は次の描画から反映する
 const setup = (
-  overrides: { enabled?: boolean; activities?: [string, AgentActivity][] } = {}
-): Setup => {
-  const tabs = makeTabs()
-  const activities = new Map(overrides.activities ?? DEFAULT_ACTIVITIES)
+  overrides: {
+    enabled?: boolean
+    activities?: [string, AgentActivity][]
+    selectedSlotId?: string
+  } = {}
+): SetupResult => {
   const openPanel = vi.fn<() => void>()
-  let setSelectedSlotId: (slotId: string) => void = () => undefined
-  const selectTab = vi.fn((slotId: string) => setSelectedSlotId(slotId))
-  let renderedSelectedSlotId = ''
-  const { result, rerender } = renderHook(() => {
-    const [selectedSlotId, setSelected] = useState('slot-1')
-    setSelectedSlotId = setSelected
-    renderedSelectedSlotId = selectedSlotId
-    return useAgentStatusBar({
-      enabled: overrides.enabled ?? true,
-      tabs,
-      selected: tabs.find((tab) => tab.slotId === selectedSlotId)!,
-      selectTab,
-      activities,
-      openPanel
-    })
-  })
-  return {
-    tabs,
+  const activateTab = vi.fn<(slotId: string) => void>()
+  const options: UseAgentStatusBarOptions = {
+    enabled: overrides.enabled ?? true,
+    tabs: makeTabs(),
+    selectedSlotId: overrides.selectedSlotId ?? 'slot-1',
+    activities: new Map(overrides.activities ?? DEFAULT_ACTIVITIES),
     openPanel,
-    selectTab,
-    result,
-    reselect: (slotId) => setSelectedSlotId(slotId),
-    renderedSelectedSlotId: () => renderedSelectedSlotId,
-    rerender: () => rerender()
+    activateTab
   }
+  const { result } = renderHook(() => useAgentStatusBar(options))
+  return { result, openPanel, activateTab }
 }
 
 describe('useAgentStatusBar', () => {
   it('無効(エージェント CLI 方式でない)なら null', () => {
-    const { result } = setup({ enabled: false })
-    expect(result.current).toBeNull()
+    expect(setup({ enabled: false }).result.current).toBeNull()
   })
 
   it('running のタブの活動のまとめと強調の要否を返す', () => {
@@ -91,76 +70,37 @@ describe('useAgentStatusBar', () => {
     expect(result.current!.needsAttention).toBe(false)
   })
 
-  it('押すとパネルを開き、許可待ちのタブを選び、選択が描画された後にそのタブのターミナルへフォーカスを移す', () => {
-    const { tabs, openPanel, selectTab, result, renderedSelectedSlotId } = setup()
-    // フォーカスの時点で、選択(state)が許可待ちのタブへ移った描画が終わっていること
-    const selectedAtFocus: string[] = []
-    vi.mocked(tabs[2].controller.focus).mockImplementation(() => {
-      selectedAtFocus.push(renderedSelectedSlotId())
-    })
+  it('押すと許可待ちのタブへ移る(パネルを開くのは activateTab)', () => {
+    const { result, openPanel, activateTab } = setup()
     act(() => result.current!.onActivate())
-    expect(selectedAtFocus).toEqual(['slot-3'])
-    expect(openPanel).toHaveBeenCalledTimes(1)
-    expect(selectTab).toHaveBeenCalledWith('slot-3')
-    expect(tabs[2].controller.focus).toHaveBeenCalledTimes(1)
-    expect(tabs[0].controller.focus).not.toHaveBeenCalled()
+    expect(activateTab).toHaveBeenCalledTimes(1)
+    expect(activateTab).toHaveBeenCalledWith('slot-3')
+    expect(openPanel).not.toHaveBeenCalled()
   })
 
-  it('選んだタブが既に選択中でも(選択の描画が起きなくても)、押した後の描画でフォーカスを移す', () => {
-    const { tabs, result } = setup({
-      activities: [
-        ['slot-1', 'permission'],
-        ['slot-2', 'idle']
-      ]
-    })
-    act(() => result.current!.onActivate())
-    expect(tabs[0].controller.focus).toHaveBeenCalledTimes(1)
-  })
-
-  it('選択中のタブが、ほかのタブと同じ優先の活動なら、選択中のタブのままフォーカスを移す', () => {
-    const { tabs, selectTab, result, reselect } = setup({
+  it('選択中のタブが、ほかのタブと同じ優先の活動なら、選択中のタブへ移る', () => {
+    const { result, activateTab } = setup({
+      selectedSlotId: 'slot-3',
       activities: [
         ['slot-1', 'idle'],
         ['slot-2', 'working'],
         ['slot-3', 'idle']
       ]
     })
-    act(() => reselect('slot-3'))
     act(() => result.current!.onActivate())
-    expect(selectTab).toHaveBeenCalledWith('slot-3')
-    expect(tabs[2].controller.focus).toHaveBeenCalledTimes(1)
-    expect(tabs[0].controller.focus).not.toHaveBeenCalled()
+    expect(activateTab).toHaveBeenCalledTimes(1)
+    expect(activateTab).toHaveBeenCalledWith('slot-3')
   })
 
-  it('当たるタブが無ければパネルを開くだけで、選択もフォーカスもしない', () => {
-    const { tabs, openPanel, selectTab, result, rerender } = setup({
+  it('当たるタブが無ければパネルを開くだけで、タブへは移らない', () => {
+    const { result, openPanel, activateTab } = setup({
       activities: [
         ['slot-1', 'working'],
         ['slot-2', 'working']
       ]
     })
     act(() => result.current!.onActivate())
-    act(() => rerender())
     expect(openPanel).toHaveBeenCalledTimes(1)
-    expect(selectTab).not.toHaveBeenCalled()
-    for (const tab of tabs) expect(tab.controller.focus).not.toHaveBeenCalled()
-  })
-
-  it('フォーカスは 1 回だけで、後の描画で繰り返さない', () => {
-    const { tabs, result, rerender } = setup()
-    act(() => result.current!.onActivate())
-    act(() => rerender())
-    act(() => rerender())
-    expect(tabs[2].controller.focus).toHaveBeenCalledTimes(1)
-  })
-
-  it('描画までに選択が別のタブへ移っていたら、フォーカスを移さない', () => {
-    const { tabs, result, reselect } = setup()
-    // 押した直後、描画の前に別のタブ(タブ 2)が選び直される
-    act(() => {
-      result.current!.onActivate()
-      reselect('slot-2')
-    })
-    for (const tab of tabs) expect(tab.controller.focus).not.toHaveBeenCalled()
+    expect(activateTab).not.toHaveBeenCalled()
   })
 })

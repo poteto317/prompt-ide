@@ -12,6 +12,7 @@ export function makeAgentSessionTabView(
 ): AgentSessionTabView {
   return {
     slotId: 'slot-1',
+    number: 1,
     label: formatAgentTabLabel(1),
     status: 'none',
     exit: null,

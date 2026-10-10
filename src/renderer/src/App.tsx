@@ -6,6 +6,7 @@ import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
 import StatusBar from './components/StatusBar'
+import AgentAnnouncer from './components/agent/AgentAnnouncer'
 import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
 import * as fileSystemApi from './lib/fileSystemApi'
 import { toError } from './lib/errorUtils'
@@ -136,10 +137,12 @@ export default function App(): React.JSX.Element {
     rerunHistoryEntry,
     quickOpen,
     executionModePanel,
+    agentNotificationPanel,
     promptRun,
     bottomPanel,
     agentTerminal,
     statusBarAgent,
+    agentAnnouncement,
     externalChangeBanner,
     agentChangesPanel,
     agentDiffActions,
@@ -327,6 +330,7 @@ export default function App(): React.JSX.Element {
               onSaveModelSettings={saveModelSettings}
               promptRun={promptRun}
               executionMode={executionModePanel}
+              agentNotification={agentNotificationPanel}
             />
           )}
           <EditorPanel
@@ -374,6 +378,7 @@ export default function App(): React.JSX.Element {
         </div>
       </div>
       <StatusBar agent={statusBarAgent} />
+      <AgentAnnouncer message={agentAnnouncement} />
       <QuickOpenDialog controller={quickOpen} />
     </>
   )

@@ -15,3 +15,11 @@ export function getPromptExecutionMode(): Promise<PromptExecutionMode> {
 export function setPromptExecutionMode(mode: PromptExecutionMode): Promise<void> {
   return window.api.setPromptExecutionMode(mode)
 }
+
+export function getAgentNotificationsEnabled(): Promise<boolean> {
+  return window.api.getAgentNotificationsEnabled()
+}
+
+export function setAgentNotificationsEnabled(enabled: boolean): Promise<void> {
+  return window.api.setAgentNotificationsEnabled(enabled)
+}

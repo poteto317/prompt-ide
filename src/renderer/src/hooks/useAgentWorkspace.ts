@@ -1,11 +1,18 @@
 import { useCallback, useRef, useState } from 'react'
 import type { PromptExecutionMode } from '@shared/types'
-import type { ExecutionModePanelState, PromptRunPanelState } from '../types'
+import type {
+  AgentNotificationPanelState,
+  ExecutionModePanelState,
+  PromptRunPanelState
+} from '../types'
+import { useAgentNotificationSetting } from './useAgentNotificationSetting'
 import { useExecutionMode } from './useExecutionMode'
 import { useAgentSessions } from './useAgentSessions'
 import type { AgentSessionsState } from './useAgentSessions'
 import { useAgentActivity } from './useAgentActivity'
 import { useAgentStatusBar } from './useAgentStatusBar'
+import { useAgentTabActivation } from './useAgentTabActivation'
+import { useAgentNotifications } from './useAgentNotifications'
 import type { AgentStatusBarState } from './useAgentStatusBar'
 import { useAgentPromptSender } from './useAgentPromptSender'
 import type { AgentPromptSenderState } from './useAgentPromptSender'
@@ -49,6 +56,8 @@ export interface AgentWorkspaceState {
    *  従来の方式の実行中。lockedReason は従来の方式の実行中だけ。onSelect は従来の方式へ切り替えるとき、実行中の
    *  エージェントがあれば確認してから止める */
   executionModePanel: ExecutionModePanelState
+  /** 設定パネルのエージェントの通知の項目 */
+  agentNotificationPanel: AgentNotificationPanelState
   /** フォルダの切り替えの前に、実行中(起動中を含む)のエージェントを終了してよいかを確かめる。無ければ確認せずに true */
   confirmStopAgent: (message: string) => boolean
   /** 実行ボタン・再実行の押せる条件と送信の結果 */
@@ -58,6 +67,8 @@ export interface AgentWorkspaceState {
   agentTerminal: AgentTerminalPanelState
   /** ステータスバーのエージェントのまとめ。エージェント CLI 方式でなければ null */
   statusBarAgent: AgentStatusBarState | null
+  /** エージェントの状態の変化の読み上げの文言(App がステータスバーの隣の常設の aria-live の領域に出す) */
+  agentAnnouncement: string
   /** プロンプトを、押した時点の選択中のタブのエージェントへ送る(usePromptRunner に渡す) */
   sendToAgent: (text: string) => ReturnType<AgentPromptSenderState['send']>
 }
@@ -69,6 +80,7 @@ export function useAgentWorkspace({
   beforeAgentSend
 }: UseAgentWorkspaceOptions): AgentWorkspaceState {
   const executionMode = useExecutionMode()
+  const notificationSetting = useAgentNotificationSetting()
   // タブの一覧と xterm の controller を持つ、文書ごとに 1 つの置き場(StrictMode・パネルの開閉で作り直さない)
   const [agentTabs] = useState(getAgentSessionTabs)
   const agentLayout = useAgentTerminalPanel()
@@ -101,13 +113,28 @@ export function useAgentWorkspace({
     [sendAgentPrompt, selectedSlotId, selectedController]
   )
   const isAgentMode = executionMode.mode === 'agent-cli'
+  // タブへ移る(パネルを開く・選ぶ・描画の後のフォーカス)。ステータスバーのまとめと、通知を押したときに使う
+  const activateAgentTab = useAgentTabActivation({
+    selected: agentSessions.selected,
+    selectTab: agentSessions.selectTab,
+    openPanel: agentLayout.open
+  })
   const statusBarAgent = useAgentStatusBar({
     enabled: isAgentMode,
     tabs: agentSessions.tabs,
-    selected: agentSessions.selected,
-    selectTab: agentSessions.selectTab,
+    selectedSlotId: agentSessions.selected.slotId,
     activities,
-    openPanel: agentLayout.open
+    openPanel: agentLayout.open,
+    activateTab: activateAgentTab
+  })
+  // 完了・許可待ちの知らせ(読み上げ・OS の通知・バッジ)。通知を押したときはステータスバーと同じくタブへ移る。
+  // ステータスバーと同じく、エージェント CLI 方式でなければ知らせない
+  const agentAnnouncement = useAgentNotifications({
+    tabs: agentSessions.tabs,
+    activities,
+    enabled: notificationSetting.enabled,
+    isAgentMode,
+    activateTab: activateAgentTab
   })
   const isAnyAgentSessionActive = agentSessions.isAnyActive
   const isAnyAgentStarting = agentSessions.isAnyStarting
@@ -159,6 +186,14 @@ export function useAgentWorkspace({
         })
       }
     },
+    agentNotificationPanel: {
+      enabled: notificationSetting.enabled,
+      saveError: notificationSetting.saveError,
+      // changeEnabled は失敗を false で返し、拒否しない(失敗は saveError に出る)
+      onChange: (enabled) => {
+        void notificationSetting.changeEnabled(enabled)
+      }
+    },
     confirmStopAgent,
     promptRun,
     bottomPanel: executionMode.mode === null ? 'none' : isAgentMode ? 'agent-terminal' : 'output',
@@ -169,6 +204,7 @@ export function useAgentWorkspace({
       activities
     },
     statusBarAgent,
+    agentAnnouncement,
     sendToAgent
   }
 }

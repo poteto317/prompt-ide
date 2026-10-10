@@ -667,6 +667,27 @@ describe('useAppState', () => {
       expect(result.current.statusBarAgent).toBe(workspace.statusBarAgent)
     })
 
+    it('通知の設定の項目を、useAgentWorkspace の戻り値のまま公開する', () => {
+      const workspace = makeAgentWorkspaceState({
+        agentNotificationPanel: {
+          enabled: false,
+          saveError: '通知の設定を保存できませんでした: x',
+          onChange: vi.fn()
+        }
+      })
+      mockUseAgentWorkspace.mockReturnValue(workspace)
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentNotificationPanel).toBe(workspace.agentNotificationPanel)
+    })
+
+    it('読み上げの文言を、useAgentWorkspace の戻り値のまま公開する', () => {
+      mockUseAgentWorkspace.mockReturnValue(
+        makeAgentWorkspaceState({ agentAnnouncement: 'claude 1 が許可待ちになりました' })
+      )
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentAnnouncement).toBe('claude 1 が許可待ちになりました')
+    })
+
     it('下部のパネルが none なら none を公開する', () => {
       mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState({ bottomPanel: 'none' }))
       const { result } = renderHook(() => useAppState())

@@ -1,4 +1,5 @@
 import type { AgentActivity } from './agentActivity'
+import { isAgentActivityWaitingForUser } from './agentActivity'
 import type { AgentSessionStatus } from './agentSessionTabState'
 import { describeAgentActivity } from './agentSessionMessages'
 
@@ -30,15 +31,14 @@ const SUMMARY_RANK: Record<AgentActivity, number> = {
 const SUMMARY_ORDER: readonly AgentActivity[] = (Object.keys(SUMMARY_RANK) as AgentActivity[]).sort(
   (a, b) => SUMMARY_RANK[a] - SUMMARY_RANK[b]
 )
-/** 利用者を待っている活動(押したときに選ぶ。作業中・不明のタブは選ばない) */
-const WAITING: ReadonlySet<AgentActivity> = new Set(['permission', 'confirm', 'idle'])
+/** 押したときに選ぶ活動。利用者の操作を待っている活動(isAgentActivityWaitingForUser。強調・通知に使う)に加え、次の指示を待つ
+ * idle も選ぶ(作業中・不明のタブは選ばない)。強調・通知の集まりとは別物なので、片方へまとめない */
+const PICKABLE: ReadonlySet<AgentActivity> = new Set(['permission', 'confirm', 'idle'])
 /** 押したときに選ぶタブの優先。並び順はまとめの並び(SUMMARY_ORDER)に従う(まとめで先に出る活動と、押したときに
  * 選ばれるタブを食い違わせないため、並び順を 2 か所に書かない) */
-const WAITING_ORDER: readonly AgentActivity[] = SUMMARY_ORDER.filter((activity) =>
-  WAITING.has(activity)
+const PICK_ORDER: readonly AgentActivity[] = SUMMARY_ORDER.filter((activity) =>
+  PICKABLE.has(activity)
 )
-/** 強調する活動(利用者の操作が必要) */
-const NEEDS_ATTENTION: ReadonlySet<AgentActivity> = new Set(['permission', 'confirm'])
 
 /** running で、閉じる途中でないタブの活動(未判定は unknown)。閉じる途中のタブは間もなく消えるので除く */
 function runningActivities(
@@ -62,7 +62,7 @@ export function summarizeAgentActivities(
   })).filter((item) => item.count > 0)
 }
 
-/** 押したときに選ぶタブ(WAITING_ORDER の順で最初に当たる running で閉じる途中でないタブ。同じ活動なら選択中のタブ、選択中のタブが
+/** 押したときに選ぶタブ(PICK_ORDER の順で最初に当たる running で閉じる途中でないタブ。同じ活動なら選択中のタブ、選択中のタブが
  * 当たらなければタブの並びの先頭)。無ければ null。選択中を先にするのは、同時に起きやすい入力待ちなどで、押すたびに
  * 見ていたタブから外れないため。選択中のタブは省略させない(渡し忘れると常に並びの先頭へ移るため) */
 export function pickWaitingTab(
@@ -71,7 +71,7 @@ export function pickWaitingTab(
   selectedSlotId: string | null
 ): string | null {
   const running = runningActivities(tabs, activities)
-  for (const activity of WAITING_ORDER) {
+  for (const activity of PICK_ORDER) {
     const matches = running.filter((tab) => tab.activity === activity)
     if (matches.length === 0) continue
     return (matches.find((tab) => tab.slotId === selectedSlotId) ?? matches[0]).slotId
@@ -81,7 +81,7 @@ export function pickWaitingTab(
 
 /** 操作が必要な活動(許可待ち・確認待ち)が 1 つでもあるか(強調の色) */
 export function needsAgentAttention(items: readonly AgentActivitySummaryItem[]): boolean {
-  return items.some((item) => NEEDS_ATTENTION.has(item.activity))
+  return items.some((item) => isAgentActivityWaitingForUser(item.activity))
 }
 
 const partsOf = (items: readonly AgentActivitySummaryItem[]): string[] =>

@@ -209,6 +209,14 @@ export interface ExecutionModePanelState {
   onSelect: (mode: PromptExecutionMode) => void
 }
 
+// エージェントの通知の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
+export interface AgentNotificationPanelState {
+  /** 読み込み中は null(押せない) */
+  enabled: boolean | null
+  saveError: string | null
+  onChange: (enabled: boolean) => void
+}
+
 // プロンプトの実行ボタン・履歴の再実行の押せる条件と、エージェント CLI 方式の送信の結果(lib/promptRunState.ts の
 // buildPromptRunPanelState が組み立て〈useAgentWorkspace から呼ぶ〉、Sidebar → PromptsPanel・HistoryPanel へ渡す)
 export interface PromptRunPanelState {

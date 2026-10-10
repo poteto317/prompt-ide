@@ -33,6 +33,8 @@ import type {
 
 export interface AgentSessionTabView {
   slotId: string
+  /** タブの番号(agentSessionTabs の AgentSessionTab.number。通知の題・読み上げに使う) */
+  number: number
   /** formatAgentTabLabel(番号) */
   label: string
   status: AgentSessionStatus
@@ -393,6 +395,7 @@ export function useAgentSessions({
       snapshot.tabs.map(
         (tab): AgentSessionTabView => ({
           slotId: tab.slotId,
+          number: tab.number,
           label: formatAgentTabLabel(tab.number),
           ...agentTabSessionFieldsOf(states, tab.slotId),
           isClosing: closingSlotIds.has(tab.slotId),

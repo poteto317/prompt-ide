@@ -90,10 +90,8 @@ export function describeAgentActivity(activity: AgentActivity): string {
   }
 }
 
-/** タブのラベル(番号の振り方は agentSessionTabs の AgentSessionTab.number) */
-export function formatAgentTabLabel(number: number): string {
-  return `claude ${number}`
-}
+/** タブのラベル。main の OS の通知の題でも使うため共有に置き、ここから再 export する */
+export { formatAgentTabLabel } from '@shared/agentTabLabel'
 
 /** タブを閉じる前の確認(実行中のエージェントを終了する) */
 export function agentCloseTabConfirm(label: string): string {

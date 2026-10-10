@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyAgentScreen } from '../agentActivity'
+import { classifyAgentScreen, isAgentActivityWaitingForUser } from '../agentActivity'
 import type { AgentActivity } from '../agentActivity'
 import { agentScreen, makeLine } from './fixtures/agentScreens'
 import type { AgentScreenName } from './fixtures/agentScreens'
@@ -472,5 +472,12 @@ describe('classifyAgentScreen', () => {
   it('記録済みの全画面がいずれかの期待に含まれている', () => {
     const covered = new Set<string>(Object.values(EXPECTED).flat())
     expect(Object.keys(data.screens).sort()).toEqual([...covered].sort())
+  })
+})
+
+describe('isAgentActivityWaitingForUser', () => {
+  it('許可待ち・確認待ちだけが利用者の操作を待っている(ステータスバーの強調・通知・バッジが同じ集まりを使う)', () => {
+    const activities: AgentActivity[] = ['working', 'idle', 'permission', 'confirm', 'unknown']
+    expect(activities.filter(isAgentActivityWaitingForUser)).toEqual(['permission', 'confirm'])
   })
 })

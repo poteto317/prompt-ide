@@ -554,10 +554,12 @@ export function useAppState(): AppState {
     isActiveFileConflicted,
     openFolder,
     executionModePanel: agentWorkspace.executionModePanel,
+    agentNotificationPanel: agentWorkspace.agentNotificationPanel,
     promptRun: agentWorkspace.promptRun,
     bottomPanel: agentWorkspace.bottomPanel,
     agentTerminal: agentWorkspace.agentTerminal,
     statusBarAgent: agentWorkspace.statusBarAgent,
+    agentAnnouncement: agentWorkspace.agentAnnouncement,
     externalChangeBanner,
     ...agentChangesWiring
   }

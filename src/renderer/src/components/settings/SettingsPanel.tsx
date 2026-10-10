@@ -1,9 +1,10 @@
 import type { ModelSettings } from '@shared/types'
-import type { ExecutionModePanelState } from '../../types'
+import type { AgentNotificationPanelState, ExecutionModePanelState } from '../../types'
 import { useApiKeyForm } from '../../hooks/useApiKeyForm'
 import { useModelSettingsForm } from '../../hooks/useModelSettingsForm'
 import ModelSettingsSection from './ModelSettingsSection'
 import ExecutionModeSection from './ExecutionModeSection'
+import AgentNotificationSection from './AgentNotificationSection'
 
 interface Props {
   hasKey: boolean
@@ -15,6 +16,8 @@ interface Props {
   onSaveModelSettings: (settings: ModelSettings) => Promise<void>
   /** プロンプトの実行方式(省略時は出さない) */
   executionMode?: ExecutionModePanelState
+  /** エージェントの通知の設定(省略時は出さない) */
+  agentNotification?: AgentNotificationPanelState
 }
 
 export default function SettingsPanel({
@@ -25,7 +28,8 @@ export default function SettingsPanel({
   modelSettings,
   modelSettingsLoaded,
   onSaveModelSettings,
-  executionMode
+  executionMode,
+  agentNotification
 }: Props): React.JSX.Element {
   const { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave } =
     useApiKeyForm({ apiKeyLoaded, keyStoreError, onSave })
@@ -44,6 +48,13 @@ export default function SettingsPanel({
           isLocked={executionMode.isLocked}
           lockedReason={executionMode.lockedReason}
           onSelect={executionMode.onSelect}
+        />
+      )}
+      {agentNotification !== undefined && (
+        <AgentNotificationSection
+          enabled={agentNotification.enabled}
+          saveError={agentNotification.saveError}
+          onChange={agentNotification.onChange}
         />
       )}
       <div className="settings-panel__section">

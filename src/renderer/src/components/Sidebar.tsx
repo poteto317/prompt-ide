@@ -23,7 +23,8 @@ import type {
   RemoteSetupPanelState,
   CloneRepositoryPanelState,
   PromptRunPanelState,
-  ExecutionModePanelState
+  ExecutionModePanelState,
+  AgentNotificationPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -125,6 +126,8 @@ interface Props {
   promptRun?: PromptRunPanelState
   /** プロンプトの実行方式の設定。省略時は設定パネルに実行方式を出さない */
   executionMode?: ExecutionModePanelState
+  /** エージェントの通知の設定。省略時は設定パネルに出さない */
+  agentNotification?: AgentNotificationPanelState
 }
 
 export default function Sidebar({
@@ -218,7 +221,8 @@ export default function Sidebar({
   modelSettingsLoaded,
   onSaveModelSettings,
   promptRun,
-  executionMode
+  executionMode,
+  agentNotification
 }: Props): React.JSX.Element {
   return (
     <div className="sidebar">
@@ -341,6 +345,7 @@ export default function Sidebar({
           modelSettingsLoaded={modelSettingsLoaded}
           onSaveModelSettings={onSaveModelSettings}
           executionMode={executionMode}
+          agentNotification={agentNotification}
         />
       </PanelContainer>
     </div>

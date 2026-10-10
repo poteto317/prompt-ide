@@ -47,6 +47,8 @@ Object.defineProperty(window, 'api', {
     // 既存のテストは従来の方式の画面を前提にしている。エージェント CLI 方式の画面のテストは個別に差し替える
     getPromptExecutionMode: () => Promise.resolve('legacy'),
     setPromptExecutionMode: () => Promise.resolve(),
+    getAgentNotificationsEnabled: () => Promise.resolve(true),
+    setAgentNotificationsEnabled: () => Promise.resolve(),
     startAgentSession: () => Promise.resolve({ kind: 'error', error: 'no-folder' }),
     writeAgentSession: () => {},
     resizeAgentSession: () => {},
@@ -55,6 +57,11 @@ Object.defineProperty(window, 'api', {
     onAgentData: () => () => {},
     onAgentExit: () => () => {},
     setAgentTerminalFocused: () => {},
+    // エージェントの通知。既定は何もしない(個別のテストで差し替える)
+    showAgentNotification: () => Promise.resolve(),
+    setAgentNotificationBadge: () => Promise.resolve(),
+    dismissAgentNotification: () => Promise.resolve(),
+    onAgentNotificationActivated: () => () => {},
     writeFileChecked: () => Promise.resolve({ kind: 'written' }),
     setWatchedFiles: () => Promise.resolve(),
     onExternalFileChange: () => () => {},

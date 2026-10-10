@@ -1,15 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ModelSettings } from '@shared/types'
 import {
+  getAgentNotificationsEnabled,
   getModelSettings,
   getPromptExecutionMode,
+  setAgentNotificationsEnabled,
   setModelSettings,
   setPromptExecutionMode
 } from '../settingsApi'
 
 const mockApi = {
   getModelSettings: vi.fn(),
-  setModelSettings: vi.fn()
+  setModelSettings: vi.fn(),
+  getAgentNotificationsEnabled: vi.fn(),
+  setAgentNotificationsEnabled: vi.fn()
 }
 
 beforeEach(() => {
@@ -49,5 +53,15 @@ describe('実行方式', () => {
     await expect(getPromptExecutionMode()).resolves.toBe('legacy')
     await setPromptExecutionMode('agent-cli')
     expect(api.setPromptExecutionMode).toHaveBeenCalledWith('agent-cli')
+  })
+})
+
+describe('getAgentNotificationsEnabled / setAgentNotificationsEnabled', () => {
+  it('window.api の同名の関数へ委ねる', async () => {
+    mockApi.getAgentNotificationsEnabled.mockResolvedValue(false)
+    mockApi.setAgentNotificationsEnabled.mockResolvedValue(undefined)
+    await expect(getAgentNotificationsEnabled()).resolves.toBe(false)
+    await setAgentNotificationsEnabled(true)
+    expect(mockApi.setAgentNotificationsEnabled).toHaveBeenCalledWith(true)
   })
 })

@@ -16,6 +16,11 @@ export function makeAgentWorkspaceState(
       lockedReason: null,
       onSelect: vi.fn<AgentWorkspaceState['executionModePanel']['onSelect']>()
     },
+    agentNotificationPanel: {
+      enabled: true,
+      saveError: null,
+      onChange: vi.fn<AgentWorkspaceState['agentNotificationPanel']['onChange']>()
+    },
     confirmStopAgent: vi.fn<AgentWorkspaceState['confirmStopAgent']>(() => true),
     promptRun: {
       isRunDisabled: false,
@@ -40,6 +45,7 @@ export function makeAgentWorkspaceState(
       }
     },
     statusBarAgent: null,
+    agentAnnouncement: '',
     sendToAgent: vi.fn<AgentWorkspaceState['sendToAgent']>(async () => undefined),
     ...overrides
   }

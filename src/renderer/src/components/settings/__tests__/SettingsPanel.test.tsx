@@ -242,4 +242,25 @@ describe('SettingsPanel: 実行方式', () => {
     render(<SettingsPanel {...defaultProps} />)
     expect(screen.queryByRole('radiogroup', { name: 'プロンプトの実行方式' })).toBeNull()
   })
+
+  it('agentNotification を渡すとエージェントの通知の節を出し、変更を onChange へ渡す', async () => {
+    const onChange = vi.fn()
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        agentNotification={{ enabled: true, saveError: null, onChange }}
+      />
+    )
+    await userEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する'
+      })
+    )
+    expect(onChange).toHaveBeenCalledWith(false)
+  })
+
+  it('agentNotification を省略すると節を出さない', () => {
+    render(<SettingsPanel {...defaultProps} />)
+    expect(screen.queryByText('エージェントの通知')).toBeNull()
+  })
 })

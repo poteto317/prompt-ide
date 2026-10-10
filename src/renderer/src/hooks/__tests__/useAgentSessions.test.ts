@@ -1038,7 +1038,8 @@ describe('useAgentSessions — 複数のタブ', () => {
       expect(controllerOf('slot-1').sessionId).toBe('s-1')
       expect(tabOf(result.current, 'restored')).toMatchObject({
         status: 'running',
-        label: 'claude 2'
+        label: 'claude 2',
+        number: 2
       })
       expect(controllerOf('restored').sessionId).toBe('s-9')
       // 選択は変えない
