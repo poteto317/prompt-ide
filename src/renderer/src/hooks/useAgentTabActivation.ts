@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
 
 // エージェントのタブへ移る(通知の設計書「タブへ移る」)。パネルを開き、タブを選び、描画の後にそのタブのターミナルへフォーカスを
-// 移す。ステータスバーのまとめ(useAgentStatusBar)と、OS の通知を押したとき(useAgentNotifications)が同じ関数を使う
+// 移す。ステータスバーのまとめ(useAgentStatusBar)、OS の通知を押したとき(useAgentNotifications。送信前の確認を閉じてから呼ぶ)、
+// 送信前の確認から送れたとき(useAgentWorkspace の handleSendSettled)が同じ関数を使う
 
 export interface UseAgentTabActivationOptions {
   /** 選択中のタブ(フォーカスを移す前に、選択が依頼のタブのままかを slotId で見て controller へ移す) */

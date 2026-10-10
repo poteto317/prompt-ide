@@ -209,12 +209,42 @@ export interface ExecutionModePanelState {
   onSelect: (mode: PromptExecutionMode) => void
 }
 
-// エージェントの通知の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
-export interface AgentNotificationPanelState {
+// 設定パネルの真偽値の設定の節(BooleanSettingSection)へ渡す値と操作(useBooleanSetting の値から組み立てる)
+export interface BooleanSettingPanelState {
   /** 読み込み中は null(押せない) */
   enabled: boolean | null
   saveError: string | null
   onChange: (enabled: boolean) => void
+}
+
+// エージェントの通知の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
+export type AgentNotificationPanelState = BooleanSettingPanelState
+
+// エージェントへの送信前の確認の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
+export type AgentSendConfirmPanelState = BooleanSettingPanelState
+
+// 送信前の確認のダイアログで開いている依頼(useAgentWorkspace が useAgentSendConfirm の pending から組み立てる)
+export interface AgentSendConfirmPending {
+  /** 送る全文(正規化の前。ダイアログが正規化して表示する) */
+  text: string
+  /** 送り先のタブ */
+  slotId: string
+  /** 送り先のタブの名前(開いた時点で固定) */
+  label: string
+  /** 開いた元のプロンプトの id(キャンセルで閉じたとき・送信が失敗したときのフォーカスの戻り先) */
+  promptId: string | null
+}
+
+// 送信前の確認のダイアログの状態と操作(useAgentWorkspace が組み立て、App が描画する。省略できない形で渡す。L-060)
+export interface AgentSendConfirmDialogState {
+  /** 開いている確認。閉じていれば null */
+  pending: AgentSendConfirmPending | null
+  /** 送り先のタブが今は送れない理由(終了した・閉じる途中・送信中)。送れるなら null */
+  targetBlockedReason: string | null
+  /** 控えた送り先へ送って閉じる。フォーカスは送信が終わってから移す(送れたら送り先のタブのターミナル、失敗したら同じプロンプトの `実行`。送信中に利用者が別の場所へ移していれば移さない) */
+  onConfirm: () => void
+  /** 送らずに閉じる */
+  onCancel: () => void
 }
 
 // プロンプトの実行ボタン・履歴の再実行の押せる条件と、エージェント CLI 方式の送信の結果(lib/promptRunState.ts の

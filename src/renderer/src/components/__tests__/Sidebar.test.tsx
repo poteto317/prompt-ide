@@ -118,7 +118,8 @@ const defaultProps = {
   onSaveApiKey: vi.fn(),
   modelSettings: { modelId: 'claude-haiku-4-5' as const, maxTokens: 4096 },
   modelSettingsLoaded: true,
-  onSaveModelSettings: vi.fn()
+  onSaveModelSettings: vi.fn(),
+  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() }
 }
 
 describe('Sidebar', () => {

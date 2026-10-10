@@ -1,5 +1,10 @@
 import type { ModelSettings } from '@shared/types'
-import type { AgentNotificationPanelState, ExecutionModePanelState } from '../../types'
+import type {
+  AgentNotificationPanelState,
+  AgentSendConfirmPanelState,
+  ExecutionModePanelState
+} from '../../types'
+import AgentSendConfirmSection from './AgentSendConfirmSection'
 import { useApiKeyForm } from '../../hooks/useApiKeyForm'
 import { useModelSettingsForm } from '../../hooks/useModelSettingsForm'
 import ModelSettingsSection from './ModelSettingsSection'
@@ -18,6 +23,8 @@ interface Props {
   executionMode?: ExecutionModePanelState
   /** エージェントの通知の設定(省略時は出さない) */
   agentNotification?: AgentNotificationPanelState
+  /** エージェントへの送信前の確認の設定(省略できない。配線の漏れを型で検出する。L-060) */
+  agentSendConfirm: AgentSendConfirmPanelState
 }
 
 export default function SettingsPanel({
@@ -29,7 +36,8 @@ export default function SettingsPanel({
   modelSettingsLoaded,
   onSaveModelSettings,
   executionMode,
-  agentNotification
+  agentNotification,
+  agentSendConfirm
 }: Props): React.JSX.Element {
   const { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave } =
     useApiKeyForm({ apiKeyLoaded, keyStoreError, onSave })
@@ -57,6 +65,11 @@ export default function SettingsPanel({
           onChange={agentNotification.onChange}
         />
       )}
+      <AgentSendConfirmSection
+        enabled={agentSendConfirm.enabled}
+        saveError={agentSendConfirm.saveError}
+        onChange={agentSendConfirm.onChange}
+      />
       <div className="settings-panel__section">
         <p className="settings-panel__label">Anthropic API キー</p>
         <p className="settings-panel__note">従来の方式で使います</p>

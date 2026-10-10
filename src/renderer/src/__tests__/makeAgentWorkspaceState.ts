@@ -21,6 +21,11 @@ export function makeAgentWorkspaceState(
       saveError: null,
       onChange: vi.fn<AgentWorkspaceState['agentNotificationPanel']['onChange']>()
     },
+    agentSendConfirmPanel: {
+      enabled: true,
+      saveError: null,
+      onChange: vi.fn<AgentWorkspaceState['agentSendConfirmPanel']['onChange']>()
+    },
     confirmStopAgent: vi.fn<AgentWorkspaceState['confirmStopAgent']>(() => true),
     promptRun: {
       isRunDisabled: false,
@@ -46,6 +51,12 @@ export function makeAgentWorkspaceState(
     },
     statusBarAgent: null,
     agentAnnouncement: '',
+    agentSendConfirmDialog: {
+      pending: null,
+      targetBlockedReason: null,
+      onConfirm: vi.fn<AgentWorkspaceState['agentSendConfirmDialog']['onConfirm']>(),
+      onCancel: vi.fn<AgentWorkspaceState['agentSendConfirmDialog']['onCancel']>()
+    },
     sendToAgent: vi.fn<AgentWorkspaceState['sendToAgent']>(async () => undefined),
     ...overrides
   }

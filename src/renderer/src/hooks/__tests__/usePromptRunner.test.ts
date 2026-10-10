@@ -138,8 +138,8 @@ describe('usePromptRunner: 実行方式', () => {
       })
     )
     await result.current.runPrompt('送る本文', 'claude', prompt)
-    // ファイル内容を添付しない(C2)・履歴に記録しない(C11)
-    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文')
+    // ファイル内容を添付しない(C2)・履歴に記録しない(C11)。プロンプトの id は確認の戻り先を探すため
+    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文', 'p1')
     expect(executePrompt).not.toHaveBeenCalled()
     expect(addHistoryEntry).not.toHaveBeenCalled()
   })

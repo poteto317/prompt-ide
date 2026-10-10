@@ -24,7 +24,8 @@ import type {
   CloneRepositoryPanelState,
   PromptRunPanelState,
   ExecutionModePanelState,
-  AgentNotificationPanelState
+  AgentNotificationPanelState,
+  AgentSendConfirmPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -128,6 +129,8 @@ interface Props {
   executionMode?: ExecutionModePanelState
   /** エージェントの通知の設定。省略時は設定パネルに出さない */
   agentNotification?: AgentNotificationPanelState
+  /** エージェントへの送信前の確認の設定(省略できない。L-060) */
+  agentSendConfirm: AgentSendConfirmPanelState
 }
 
 export default function Sidebar({
@@ -222,7 +225,8 @@ export default function Sidebar({
   onSaveModelSettings,
   promptRun,
   executionMode,
-  agentNotification
+  agentNotification,
+  agentSendConfirm
 }: Props): React.JSX.Element {
   return (
     <div className="sidebar">
@@ -346,6 +350,7 @@ export default function Sidebar({
           onSaveModelSettings={onSaveModelSettings}
           executionMode={executionMode}
           agentNotification={agentNotification}
+          agentSendConfirm={agentSendConfirm}
         />
       </PanelContainer>
     </div>

@@ -25,7 +25,7 @@ export interface UseAgentNotificationsOptions {
   enabled: boolean | null
   /** エージェント CLI 方式か。false(従来の方式・方式の読み込み中)なら読み上げ・通知・バッジを出さず、押してもタブへ移らない */
   isAgentMode: boolean
-  /** 通知を押したときにタブへ移る(useAgentTabActivation) */
+  /** 通知を押したときにタブへ移る(useAgentWorkspace が useAgentTabActivation の関数を、送信前の確認を閉じてから呼ぶ関数で包んで渡す) */
   activateTab: (slotId: string) => void
 }
 

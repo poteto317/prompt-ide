@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ModelSettings } from '@shared/types'
 import {
   getAgentNotificationsEnabled,
+  getAgentSendConfirmEnabled,
   getModelSettings,
   getPromptExecutionMode,
   setAgentNotificationsEnabled,
+  setAgentSendConfirmEnabled,
   setModelSettings,
   setPromptExecutionMode
 } from '../settingsApi'
@@ -13,7 +15,9 @@ const mockApi = {
   getModelSettings: vi.fn(),
   setModelSettings: vi.fn(),
   getAgentNotificationsEnabled: vi.fn(),
-  setAgentNotificationsEnabled: vi.fn()
+  setAgentNotificationsEnabled: vi.fn(),
+  getAgentSendConfirmEnabled: vi.fn(),
+  setAgentSendConfirmEnabled: vi.fn()
 }
 
 beforeEach(() => {
@@ -63,5 +67,15 @@ describe('getAgentNotificationsEnabled / setAgentNotificationsEnabled', () => {
     await expect(getAgentNotificationsEnabled()).resolves.toBe(false)
     await setAgentNotificationsEnabled(true)
     expect(mockApi.setAgentNotificationsEnabled).toHaveBeenCalledWith(true)
+  })
+})
+
+describe('getAgentSendConfirmEnabled / setAgentSendConfirmEnabled', () => {
+  it('window.api の同名の関数へ委ねる', async () => {
+    mockApi.getAgentSendConfirmEnabled.mockResolvedValue(false)
+    mockApi.setAgentSendConfirmEnabled.mockResolvedValue(undefined)
+    await expect(getAgentSendConfirmEnabled()).resolves.toBe(false)
+    await setAgentSendConfirmEnabled(true)
+    expect(mockApi.setAgentSendConfirmEnabled).toHaveBeenCalledWith(true)
   })
 })

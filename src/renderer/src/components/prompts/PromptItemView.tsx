@@ -78,6 +78,12 @@ export default function PromptItemView({
           aria-describedby={runDisabledReasonId}
           disabled={isRunDisabled}
           onClick={onRun}
+          // 確認の `キャンセル` を Enter で押し続けると、フォーカスが戻ったこのボタンへリピートの keydown が届き、確認が開き直る。リピートの Enter・Space では押さない
+          onKeyDown={(e) => {
+            if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault()
+          }}
+          // 送信前の確認をキャンセルで閉じたとき・確認からの送信が失敗したときのフォーカスの戻り先の目印(変数のフォームから開いた場合、フォームは閉じているため。lib/promptRunButton.ts が探す)
+          data-prompt-run={prompt.id}
         >
           実行
         </button>

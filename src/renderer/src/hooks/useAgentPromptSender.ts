@@ -20,7 +20,7 @@ export const AGENT_BEFORE_SEND_TIMEOUT_MS = 10_000
 export interface AgentPromptSenderState {
   /** 送信中か(sendingSlotId が null でない) */
   isSending: boolean
-  /** 失敗の文言(プロンプトパネルの上部に role="alert")。次の送信で消える */
+  /** 失敗の文言(プロンプトパネルの上部に role="alert")。次の送信、または clearResult(送信前の確認を開いたとき)で消える */
   error: string | null
   /** 成功の通知(role="status") */
   notice: Announcement | null
@@ -28,6 +28,8 @@ export interface AgentPromptSenderState {
   sendingSlotId: string | null
   /** target のタブへ送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す */
   send: (text: string, target: AgentSendTarget) => Promise<AgentSendOutcome | undefined>
+  /** 前の送信の結果(失敗の文言・成功の通知)を消す。送信前の確認を開いたとき、今のプロンプトの文言に見えないように呼ぶ */
+  clearResult: () => void
 }
 
 /** 送り先のタブ。押した時点の選択中のタブを控え、途中でタブを切り替えても送り先を変えない */
@@ -111,5 +113,10 @@ export function useAgentPromptSender({
     [onSettled, beforeSend, clock, announce, clear]
   )
 
-  return { isSending: sendingSlotId !== null, error, notice, sendingSlotId, send }
+  const clearResult = useCallback((): void => {
+    setError(null)
+    clear()
+  }, [clear])
+
+  return { isSending: sendingSlotId !== null, error, notice, sendingSlotId, send, clearResult }
 }

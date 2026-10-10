@@ -680,6 +680,33 @@ describe('useAppState', () => {
       expect(result.current.agentNotificationPanel).toBe(workspace.agentNotificationPanel)
     })
 
+    it('送信前の確認の設定の項目を、useAgentWorkspace の戻り値のまま公開する', () => {
+      const workspace = makeAgentWorkspaceState({
+        agentSendConfirmPanel: {
+          enabled: false,
+          saveError: '送信前の確認の設定を保存できませんでした: x',
+          onChange: vi.fn()
+        }
+      })
+      mockUseAgentWorkspace.mockReturnValue(workspace)
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentSendConfirmPanel).toBe(workspace.agentSendConfirmPanel)
+    })
+
+    it('送信前の確認のダイアログを、useAgentWorkspace の戻り値のまま公開する', () => {
+      const workspace = makeAgentWorkspaceState({
+        agentSendConfirmDialog: {
+          pending: { text: '本文', slotId: 'slot-1', label: 'claude 1', promptId: 'p1' },
+          targetBlockedReason: null,
+          onConfirm: vi.fn(),
+          onCancel: vi.fn()
+        }
+      })
+      mockUseAgentWorkspace.mockReturnValue(workspace)
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentSendConfirmDialog).toBe(workspace.agentSendConfirmDialog)
+    })
+
     it('読み上げの文言を、useAgentWorkspace の戻り値のまま公開する', () => {
       mockUseAgentWorkspace.mockReturnValue(
         makeAgentWorkspaceState({ agentAnnouncement: 'claude 1 が許可待ちになりました' })

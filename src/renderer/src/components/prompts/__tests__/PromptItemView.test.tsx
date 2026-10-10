@@ -24,6 +24,14 @@ const defaultProps = {
 }
 
 describe('PromptItemView', () => {
+  it('実行ボタンに、送信前の確認を閉じたときの戻り先の目印(data-prompt-run=プロンプトの id)を付ける', () => {
+    render(<PromptItemView {...defaultProps} />)
+    expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toHaveAttribute(
+      'data-prompt-run',
+      'p1'
+    )
+  })
+
   it('タイトルとプレビューが表示される', () => {
     render(<PromptItemView {...defaultProps} />)
     expect(screen.getByText('テストタイトル')).toBeInTheDocument()
@@ -74,6 +82,17 @@ describe('PromptItemView', () => {
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
     expect(onRun).toHaveBeenCalledOnce()
   })
+
+  it.each(['Enter', ' '])(
+    '実行ボタンへのキーリピートの %j の keydown は既定の動作(押す)を止める。最初の keydown は止めない',
+    (key) => {
+      render(<PromptItemView {...defaultProps} />)
+      const run = screen.getByRole('button', { name: 'プロンプトを実行' })
+      expect(fireEvent.keyDown(run, { key, repeat: true })).toBe(false)
+      expect(fireEvent.keyDown(run, { key })).toBe(true)
+      expect(fireEvent.keyDown(run, { key: 'a', repeat: true })).toBe(true)
+    }
+  )
 
   it('isRunDisabled=true のとき実行ボタンが disabled', () => {
     render(<PromptItemView {...defaultProps} isRunDisabled />)

@@ -555,6 +555,8 @@ export function useAppState(): AppState {
     openFolder,
     executionModePanel: agentWorkspace.executionModePanel,
     agentNotificationPanel: agentWorkspace.agentNotificationPanel,
+    agentSendConfirmPanel: agentWorkspace.agentSendConfirmPanel,
+    agentSendConfirmDialog: agentWorkspace.agentSendConfirmDialog,
     promptRun: agentWorkspace.promptRun,
     bottomPanel: agentWorkspace.bottomPanel,
     agentTerminal: agentWorkspace.agentTerminal,

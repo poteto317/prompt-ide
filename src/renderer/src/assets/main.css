@@ -2463,8 +2463,8 @@ body {
   color: #969696;
 }
 
-/* エージェントの通知のチェックボックス(タッチで押せる 32px 以上) */
-.agent-notification-section__option {
+/* 設定のチェックボックス(BooleanSettingSection。タッチで押せる 32px 以上) */
+.boolean-setting-section__option {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2965,6 +2965,131 @@ body {
   padding: 8px 10px;
   font-size: 12px;
   color: #8c8c8c;
+}
+
+/* エージェントへの送信前の確認(QuickOpenDialog・NameInputDialog と同じ系統の色。動きは付けないので prefers-reduced-motion の
+   対応は要らない。ボタンはタッチで押せる 32px 以上) */
+.agent-send-confirm__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.agent-send-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 640px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  padding: 16px;
+  background: #252526;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.agent-send-confirm:focus {
+  outline: none;
+}
+
+.agent-send-confirm__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #cccccc;
+}
+
+.agent-send-confirm__target,
+.agent-send-confirm__count {
+  margin: 0;
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+.agent-send-confirm__body {
+  flex: 1 1 auto;
+  /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(12px × 1.5 × 3)を残す */
+  min-height: 6em;
+  max-height: 50vh;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 2px;
+  color: #d4d4d4;
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-send-confirm__body:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: -1px;
+}
+
+.agent-send-confirm__reason {
+  margin: 0;
+  font-size: 12px;
+  color: #f48771;
+  overflow-wrap: anywhere;
+}
+
+.agent-send-confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.agent-send-confirm__submit,
+.agent-send-confirm__cancel {
+  min-height: 32px;
+  min-width: 64px;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-send-confirm__submit {
+  background: #0e639c;
+  color: #ffffff;
+  border: none;
+}
+
+.agent-send-confirm__submit:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.agent-send-confirm__submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.agent-send-confirm__cancel {
+  background: none;
+  color: #cccccc;
+  border: 1px solid #555555;
+}
+
+.agent-send-confirm__cancel:hover {
+  border-color: #888888;
+}
+
+.agent-send-confirm__submit:focus-visible,
+.agent-send-confirm__cancel:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: 2px;
 }
 
 .source-control-panel__amend-label {

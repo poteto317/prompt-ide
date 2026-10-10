@@ -1,73 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_AGENT_NOTIFICATIONS_ENABLED } from '@shared/types'
 import * as settingsApi from '../lib/settingsApi'
-import { toError } from '../lib/errorUtils'
+import { useBooleanSetting } from './useBooleanSetting'
+import type { BooleanSettingState } from './useBooleanSetting'
 
-// エージェントの通知のオン・オフ(設計書「設定」)。useExecutionMode と同じ形で、変更は楽観的に反映して保存し、失敗したら戻す
+// エージェントの通知のオン・オフ(通知の設計書「設定」)。読み込み・保存・失敗の戻しは useBooleanSetting
 
 /** 通知の設定の保存の失敗の文言の接頭辞。後ろに理由を付ける */
 export const AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX = '通知の設定を保存できませんでした: '
 
-export interface AgentNotificationSettingState {
-  /** 読み込みが終わるまでは null(通知もバッジも出さない) */
-  enabled: boolean | null
-  /** 保存の失敗の文言。次の保存で消える */
-  saveError: string | null
-  /** すぐ保存する。失敗したら最後に保存できた値に戻し、false を返す */
-  changeEnabled: (next: boolean) => Promise<boolean>
-}
+/** enabled は読み込みが終わるまでは null(通知もバッジも出さない) */
+export type AgentNotificationSettingState = BooleanSettingState
 
 export function useAgentNotificationSetting(): AgentNotificationSettingState {
-  const [enabled, setEnabled] = useState<boolean | null>(null)
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const enabledRef = useRef<boolean | null>(null)
-  // 最後に保存できた(または読み込んだ)値。失敗したときはここへ戻す
-  const savedRef = useRef<boolean | null>(null)
-  // 変更の通し番号。後から別の変更が始まっていたら、失敗しても戻さずその結果に任せる
-  const changeSeqRef = useRef(0)
-
-  useEffect(() => {
-    let cancelled = false
-    // 設定ファイルの JSON が壊れていると main は例外を投げる。画面が起動できなくならないよう、既定(オン)で続ける
-    settingsApi
-      .getAgentNotificationsEnabled()
-      .then((loaded) => {
-        if (cancelled) return
-        enabledRef.current = loaded
-        savedRef.current = loaded
-        setEnabled(loaded)
-      })
-      .catch((err) => {
-        console.error('[useAgentNotificationSetting] getAgentNotificationsEnabled failed:', err)
-        if (cancelled) return
-        enabledRef.current = DEFAULT_AGENT_NOTIFICATIONS_ENABLED
-        savedRef.current = DEFAULT_AGENT_NOTIFICATIONS_ENABLED
-        setEnabled(DEFAULT_AGENT_NOTIFICATIONS_ENABLED)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const changeEnabled = useCallback(async (next: boolean): Promise<boolean> => {
-    const seq = ++changeSeqRef.current
-    enabledRef.current = next
-    setEnabled(next)
-    setSaveError(null)
-    try {
-      await settingsApi.setAgentNotificationsEnabled(next)
-      savedRef.current = next
-      return true
-    } catch (err) {
-      // 後から別の変更が始まっていれば、値も失敗の文言もその結果に任せる
-      if (seq === changeSeqRef.current) {
-        enabledRef.current = savedRef.current
-        setEnabled(savedRef.current)
-        setSaveError(`${AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX}${toError(err).message}`)
-      }
-      return false
-    }
-  }, [])
-
-  return { enabled, saveError, changeEnabled }
+  return useBooleanSetting({
+    load: settingsApi.getAgentNotificationsEnabled,
+    save: settingsApi.setAgentNotificationsEnabled,
+    defaultValue: DEFAULT_AGENT_NOTIFICATIONS_ENABLED,
+    saveErrorPrefix: AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX,
+    logLabel: '[useAgentNotificationSetting] getAgentNotificationsEnabled failed:'
+  })
 }

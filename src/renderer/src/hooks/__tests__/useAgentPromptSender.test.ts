@@ -83,6 +83,23 @@ describe('useAgentPromptSender', () => {
     expect(onSettled).toHaveBeenCalledOnce()
   })
 
+  it('clearResult は前の送信の失敗の文言と成功の通知を消す', async () => {
+    const failing = makeFakeController()
+    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    await act(async () => {
+      await result.current.send('hello', { slotId: 'a', controller: failing })
+    })
+    expect(result.current.error).not.toBeNull()
+    act(() => result.current.clearResult())
+    expect(result.current.error).toBeNull()
+    await act(async () => {
+      await result.current.send('hello', { slotId: 'a', controller: controllerWithEmptyInput() })
+    })
+    expect(result.current.notice).not.toBeNull()
+    act(() => result.current.clearResult())
+    expect(result.current.notice).toBeNull()
+  })
+
   it('書きかけを消して送ったときは、その旨を(参考として)通知する', async () => {
     const controller = controllerWithEmptyInput()
     const border = makeLine('─'.repeat(40))

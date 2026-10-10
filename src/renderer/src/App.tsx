@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
 import StatusBar from './components/StatusBar'
 import AgentAnnouncer from './components/agent/AgentAnnouncer'
+import AgentSendConfirmDialog from './components/agent/AgentSendConfirmDialog'
 import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
 import * as fileSystemApi from './lib/fileSystemApi'
 import { toError } from './lib/errorUtils'
@@ -138,6 +139,8 @@ export default function App(): React.JSX.Element {
     quickOpen,
     executionModePanel,
     agentNotificationPanel,
+    agentSendConfirmPanel,
+    agentSendConfirmDialog,
     promptRun,
     bottomPanel,
     agentTerminal,
@@ -331,6 +334,7 @@ export default function App(): React.JSX.Element {
               promptRun={promptRun}
               executionMode={executionModePanel}
               agentNotification={agentNotificationPanel}
+              agentSendConfirm={agentSendConfirmPanel}
             />
           )}
           <EditorPanel
@@ -380,6 +384,7 @@ export default function App(): React.JSX.Element {
       <StatusBar agent={statusBarAgent} />
       <AgentAnnouncer message={agentAnnouncement} />
       <QuickOpenDialog controller={quickOpen} />
+      <AgentSendConfirmDialog state={agentSendConfirmDialog} />
     </>
   )
 }

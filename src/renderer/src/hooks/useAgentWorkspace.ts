@@ -1,11 +1,18 @@
 import { useCallback, useRef, useState } from 'react'
+import { DEFAULT_AGENT_SEND_CONFIRM_ENABLED } from '@shared/types'
 import type { PromptExecutionMode } from '@shared/types'
 import type {
   AgentNotificationPanelState,
+  AgentSendConfirmDialogState,
+  AgentSendConfirmPanelState,
   ExecutionModePanelState,
   PromptRunPanelState
 } from '../types'
 import { useAgentNotificationSetting } from './useAgentNotificationSetting'
+import { useAgentSendConfirmSetting } from './useAgentSendConfirmSetting'
+import { useAgentSendConfirm } from './useAgentSendConfirm'
+import type { AgentSendSettled } from './useAgentSendConfirm'
+import { usePromptRunFocus } from './usePromptRunFocus'
 import { useExecutionMode } from './useExecutionMode'
 import { useAgentSessions } from './useAgentSessions'
 import type { AgentSessionsState } from './useAgentSessions'
@@ -18,17 +25,19 @@ import { useAgentPromptSender } from './useAgentPromptSender'
 import type { AgentPromptSenderState } from './useAgentPromptSender'
 import { useAgentTerminalPanel } from './useAgentTerminalPanel'
 import type { AgentTerminalPanelLayout } from './useAgentTerminalPanel'
+import { useOnChange } from './useOnChange'
 import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
 import { buildPromptRunPanelState } from '../lib/promptRunState'
+import { getPromptRunAvailability } from '../lib/agentSendMessages'
 import {
   AGENT_START_DISABLED_SWITCHING_MODE,
   AGENT_STOP_ON_MODE_CHANGE_CONFIRM,
   EXECUTION_MODE_LOCKED_WHILE_EXECUTING
 } from '../lib/agentSessionMessages'
 
-// 実行方式とエージェント(ターミナル・セッション・活動・ステータスバーのまとめ・送信)の組み立て。useAppState から使う。実行方式の切り替えの手順(再入防止・
-// 確認・停止を待ってから保存)と、フォルダの切り替えの前のエージェントの停止の確認を持つ
+// 実行方式とエージェント(ターミナル・セッション・活動・ステータスバーのまとめ・送信前の確認・送信)の組み立て。useAppState から使う。
+// 実行方式の切り替えの手順(再入防止・確認・停止を待ってから保存)と、フォルダの切り替えの前のエージェントの停止の確認を持つ
 
 // ターミナルのパネルへ渡す状態(useAgentWorkspace が組み立て、EditorPanel → AgentTerminalPanel へ渡す)
 export interface AgentTerminalPanelState {
@@ -58,6 +67,8 @@ export interface AgentWorkspaceState {
   executionModePanel: ExecutionModePanelState
   /** 設定パネルのエージェントの通知の項目 */
   agentNotificationPanel: AgentNotificationPanelState
+  /** 設定パネルの送信前の確認の項目 */
+  agentSendConfirmPanel: AgentSendConfirmPanelState
   /** フォルダの切り替えの前に、実行中(起動中を含む)のエージェントを終了してよいかを確かめる。無ければ確認せずに true */
   confirmStopAgent: (message: string) => boolean
   /** 実行ボタン・再実行の押せる条件と送信の結果 */
@@ -69,8 +80,11 @@ export interface AgentWorkspaceState {
   statusBarAgent: AgentStatusBarState | null
   /** エージェントの状態の変化の読み上げの文言(App がステータスバーの隣の常設の aria-live の領域に出す) */
   agentAnnouncement: string
-  /** プロンプトを、押した時点の選択中のタブのエージェントへ送る(usePromptRunner に渡す) */
-  sendToAgent: (text: string) => ReturnType<AgentPromptSenderState['send']>
+  /** 送信前の確認のダイアログ(App が描画する) */
+  agentSendConfirmDialog: AgentSendConfirmDialogState
+  /** プロンプトを送る(usePromptRunner に渡す)。送信前の確認の設定がオン(読み込み中は既定に従う)なら送らずに確認を開き、undefined で
+   *  resolve する。オフなら押した時点の選択中のタブへすぐ送る。promptId は確認をキャンセルで閉じたとき・確認からの送信が失敗したときのフォーカスの戻り先を探すのに使う */
+  sendToAgent: (text: string, promptId: string | null) => ReturnType<AgentPromptSenderState['send']>
 }
 
 export function useAgentWorkspace({
@@ -81,6 +95,7 @@ export function useAgentWorkspace({
 }: UseAgentWorkspaceOptions): AgentWorkspaceState {
   const executionMode = useExecutionMode()
   const notificationSetting = useAgentNotificationSetting()
+  const sendConfirmSetting = useAgentSendConfirmSetting()
   // タブの一覧と xterm の controller を持つ、文書ごとに 1 つの置き場(StrictMode・パネルの開閉で作り直さない)
   const [agentTabs] = useState(getAgentSessionTabs)
   const agentLayout = useAgentTerminalPanel()
@@ -103,22 +118,89 @@ export function useAgentWorkspace({
     onSettled: agentLayout.open,
     beforeSend: beforeAgentSend
   })
-  // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
-  // usePromptRunner の useCallback の依存に入るため、選択中のタブと send が変わらなければ同じ参照を返す
-  const { slotId: selectedSlotId, controller: selectedController } = agentSessions.selected
-  const sendAgentPrompt = agentSender.send
-  const sendToAgent = useCallback(
-    (text: string): ReturnType<AgentPromptSenderState['send']> =>
-      sendAgentPrompt(text, { slotId: selectedSlotId, controller: selectedController }),
-    [sendAgentPrompt, selectedSlotId, selectedController]
-  )
   const isAgentMode = executionMode.mode === 'agent-cli'
-  // タブへ移る(パネルを開く・選ぶ・描画の後のフォーカス)。ステータスバーのまとめと、通知を押したときに使う
+  // タブへ移る(パネルを開く・選ぶ・描画の後のフォーカス)。ステータスバーのまとめ・通知を押したとき・送信前の確認の送信で使う
   const activateAgentTab = useAgentTabActivation({
     selected: agentSessions.selected,
     selectTab: agentSessions.selectTab,
     openPanel: agentLayout.open
   })
+  // 確認からの送信が失敗したときのフォーカスの戻り先(同じプロンプトの一覧の実行)。送信中が解けた描画の後に移す
+  const focusPromptRun = usePromptRunFocus({ isBlocked: agentSender.isSending })
+  // 送信前の確認(設計書「流れ」)。送り先は確認を開いた時点の選択中のタブ。確認は送信を押した時点で閉じるが、フォーカスは送信が
+  // 終わるまで移さない(送信の前の準備〈変更の記録。最大 10 秒〉の間は sender がキー入力を保留しないため、先にターミナルへ移すと
+  // 打った文字が claude へ直接届く)。送れたらそのタブのターミナルへ、失敗したら同じプロンプトの実行へ戻す。
+  // ただし、フォーカスが閉じたダイアログから body へ落ちたままのときだけ移す。送信中に利用者が別の場所(エディタ・
+  // クイックオープン・通知で選んだ別のタブ など)へ移していれば、送れてもタブの選択を戻さず、フォーカスも奪わない
+  // (見えているモーダルの背後や別のタブへ、続けて打った文字が届かないように。パネルを開くのは sender の onSettled)
+  const handleSendSettled = useCallback(
+    ({ slotId, promptId, outcome }: AgentSendSettled): void => {
+      const active = document.activeElement
+      if (active !== null && active !== document.body) return
+      if (outcome?.kind === 'sent') activateAgentTab(slotId)
+      else if (promptId !== null) focusPromptRun(promptId)
+    },
+    [activateAgentTab, focusPromptRun]
+  )
+  const sendConfirm = useAgentSendConfirm({
+    selected: agentSessions.selected,
+    send: agentSender.send,
+    onSendSettled: handleSendSettled
+  })
+  // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
+  // usePromptRunner の useCallback の依存に入るため、選択中のタブ・send・確認の要否が変わらなければ同じ参照を返す
+  const { slotId: selectedSlotId, controller: selectedController } = agentSessions.selected
+  const sendAgentPrompt = agentSender.send
+  const requestSendConfirm = sendConfirm.request
+  const clearSendResult = agentSender.clearResult
+  // 設定がオンなら、すぐには送らず確認を開く。読み込み中(null)は設定の既定に従う(既定はオン)
+  const isSendConfirmRequired = sendConfirmSetting.enabled ?? DEFAULT_AGENT_SEND_CONFIRM_ENABLED
+  const sendToAgent = useCallback(
+    async (text: string, promptId: string | null): ReturnType<AgentPromptSenderState['send']> => {
+      if (isSendConfirmRequired) {
+        // 送るまで send の setError(null) が呼ばれないので、前の送信の結果をここで消す(今のプロンプトの文言に見えないように)
+        clearSendResult()
+        requestSendConfirm(text, promptId)
+        return undefined
+      }
+      return sendAgentPrompt(text, { slotId: selectedSlotId, controller: selectedController })
+    },
+    [
+      isSendConfirmRequired,
+      clearSendResult,
+      requestSendConfirm,
+      sendAgentPrompt,
+      selectedSlotId,
+      selectedController
+    ]
+  )
+  // 確認を開いている間に、元の状態が終わったら閉じる(送らない。L-405): 従来の方式への切り替え・フォルダの切り替え・送り先の
+  // タブを閉じた。送り先のセッションが終わっただけ(タブは残る)なら閉じず、下の理由で送信を押せなくする。設定をオフにしても閉じない
+  const cancelSendConfirm = sendConfirm.cancel
+  useOnChange(isAgentMode, () => {
+    if (!isAgentMode) cancelSendConfirm()
+  })
+  useOnChange(folderPath, cancelSendConfirm)
+  const pendingSend = sendConfirm.pending
+  const pendingTab =
+    pendingSend === null
+      ? undefined
+      : agentSessions.tabs.find((tab) => tab.slotId === pendingSend.target.slotId)
+  const isPendingTabClosed = pendingSend !== null && pendingTab === undefined
+  useOnChange(isPendingTabClosed, () => {
+    if (isPendingTabClosed) cancelSendConfirm()
+  })
+  // 送り先のタブが今は送れない理由。控えた slotId のタブの今の状態と、全体で 1 つの送信中から、実行ボタンと同じ規則で求める
+  const targetBlockedReason =
+    pendingTab === undefined
+      ? null
+      : getPromptRunAvailability({
+          mode: executionMode.mode,
+          isExecuting,
+          isSessionRunning: pendingTab.status === 'running',
+          isSessionClosing: pendingTab.isClosing,
+          isSending: agentSender.isSending
+        }).reason
   const statusBarAgent = useAgentStatusBar({
     enabled: isAgentMode,
     tabs: agentSessions.tabs,
@@ -127,6 +209,16 @@ export function useAgentWorkspace({
     openPanel: agentLayout.open,
     activateTab: activateAgentTab
   })
+  // 通知を押したときのタブへの移動。送信前の確認が開いていれば、送らずに先に閉じる(利用者が別の作業へ移ったため。L-405)。
+  // 確認はモーダルで背後を覆うので、開いたままターミナルへフォーカスを移すと、閉じるつもりの Esc・Enter が claude へ届く。
+  // ステータスバーのまとめは、確認の背景に覆われて押せないため包まない
+  const activateAgentTabFromNotification = useCallback(
+    (slotId: string): void => {
+      cancelSendConfirm()
+      activateAgentTab(slotId)
+    },
+    [cancelSendConfirm, activateAgentTab]
+  )
   // 完了・許可待ちの知らせ(読み上げ・OS の通知・バッジ)。通知を押したときはステータスバーと同じくタブへ移る。
   // ステータスバーと同じく、エージェント CLI 方式でなければ知らせない
   const agentAnnouncement = useAgentNotifications({
@@ -134,7 +226,7 @@ export function useAgentWorkspace({
     activities,
     enabled: notificationSetting.enabled,
     isAgentMode,
-    activateTab: activateAgentTab
+    activateTab: activateAgentTabFromNotification
   })
   const isAnyAgentSessionActive = agentSessions.isAnyActive
   const isAnyAgentStarting = agentSessions.isAnyStarting
@@ -194,6 +286,14 @@ export function useAgentWorkspace({
         void notificationSetting.changeEnabled(enabled)
       }
     },
+    agentSendConfirmPanel: {
+      enabled: sendConfirmSetting.enabled,
+      saveError: sendConfirmSetting.saveError,
+      // changeEnabled は失敗を false で返し、拒否しない(失敗は saveError に出る)
+      onChange: (enabled) => {
+        void sendConfirmSetting.changeEnabled(enabled)
+      }
+    },
     confirmStopAgent,
     promptRun,
     bottomPanel: executionMode.mode === null ? 'none' : isAgentMode ? 'agent-terminal' : 'output',
@@ -205,6 +305,20 @@ export function useAgentWorkspace({
     },
     statusBarAgent,
     agentAnnouncement,
+    agentSendConfirmDialog: {
+      pending:
+        pendingSend === null
+          ? null
+          : {
+              text: pendingSend.text,
+              slotId: pendingSend.target.slotId,
+              label: pendingSend.label,
+              promptId: pendingSend.promptId
+            },
+      targetBlockedReason,
+      onConfirm: sendConfirm.confirm,
+      onCancel: sendConfirm.cancel
+    },
     sendToAgent
   }
 }

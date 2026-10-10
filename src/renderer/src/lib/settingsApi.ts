@@ -23,3 +23,11 @@ export function getAgentNotificationsEnabled(): Promise<boolean> {
 export function setAgentNotificationsEnabled(enabled: boolean): Promise<void> {
   return window.api.setAgentNotificationsEnabled(enabled)
 }
+
+export function getAgentSendConfirmEnabled(): Promise<boolean> {
+  return window.api.getAgentSendConfirmEnabled()
+}
+
+export function setAgentSendConfirmEnabled(enabled: boolean): Promise<void> {
+  return window.api.setAgentSendConfirmEnabled(enabled)
+}

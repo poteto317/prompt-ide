@@ -12,10 +12,30 @@ const defaultProps = {
   onSave: vi.fn(),
   modelSettings: { modelId: 'claude-haiku-4-5' as const, maxTokens: 4096 },
   modelSettingsLoaded: true,
-  onSaveModelSettings: vi.fn().mockResolvedValue(undefined)
+  onSaveModelSettings: vi.fn().mockResolvedValue(undefined),
+  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() }
 }
 
 describe('SettingsPanel', () => {
+  // 値・保存の失敗も見る(既定と同じ enabled: true・saveError: null だけでは、節へ渡し忘れても気付けない)
+  it('送信前の確認の節へ agentSendConfirm の値・保存の失敗を渡し、変更を onChange へ渡す', async () => {
+    const onChange = vi.fn()
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        agentSendConfirm={{ enabled: false, saveError: '保存できませんでした', onChange }}
+      />
+    )
+    expect(screen.getByRole('group', { name: '送信前の確認' })).toBeInTheDocument()
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'エージェントへ送る前に、送る内容を確認する'
+    })
+    expect(checkbox).not.toBeChecked()
+    expect(screen.getByRole('alert')).toHaveTextContent('保存できませんでした')
+    await userEvent.click(checkbox)
+    expect(onChange).toHaveBeenCalledWith(true)
+  })
+
   it('API キー入力フィールドが表示される', () => {
     render(<SettingsPanel {...defaultProps} />)
     expect(screen.getByLabelText('API キー')).toBeInTheDocument()
@@ -243,20 +263,26 @@ describe('SettingsPanel: 実行方式', () => {
     expect(screen.queryByRole('radiogroup', { name: 'プロンプトの実行方式' })).toBeNull()
   })
 
-  it('agentNotification を渡すとエージェントの通知の節を出し、変更を onChange へ渡す', async () => {
+  // 送信前の確認(defaultProps はオン・失敗なし)と違う値を与え、通知の節へ送信前の確認の値を渡し違えても気付けるようにする
+  it('agentNotification を渡すとエージェントの通知の節へ値・保存の失敗を渡し、変更を onChange へ渡す', async () => {
     const onChange = vi.fn()
     render(
       <SettingsPanel
         {...defaultProps}
-        agentNotification={{ enabled: true, saveError: null, onChange }}
+        agentNotification={{
+          enabled: false,
+          saveError: '通知の設定を保存できませんでした',
+          onChange
+        }}
       />
     )
-    await userEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する'
-      })
-    )
-    expect(onChange).toHaveBeenCalledWith(false)
+    const checkbox = screen.getByRole('checkbox', {
+      name: 'ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する'
+    })
+    expect(checkbox).not.toBeChecked()
+    expect(screen.getByRole('alert')).toHaveTextContent('通知の設定を保存できませんでした')
+    await userEvent.click(checkbox)
+    expect(onChange).toHaveBeenCalledWith(true)
   })
 
   it('agentNotification を省略すると節を出さない', () => {

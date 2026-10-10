@@ -52,6 +52,15 @@ describe('App: エージェント CLI 方式の配線', () => {
     await waitFor(() => expect(checkbox).toBeChecked())
   })
 
+  it('設定に送信前の確認を出し、既定でオンになっている', async () => {
+    render(<App />)
+    await userEvent.click(panelButton('settings'))
+    const checkbox = await screen.findByRole('checkbox', {
+      name: 'エージェントへ送る前に、送る内容を確認する'
+    })
+    await waitFor(() => expect(checkbox).toBeChecked())
+  })
+
   it('エージェントの状態の変化の読み上げの領域を、パネルの外(ステータスバーの隣)に常設する', async () => {
     const { container } = render(<App />)
     await screen.findByRole('region', { name: 'エージェント' })

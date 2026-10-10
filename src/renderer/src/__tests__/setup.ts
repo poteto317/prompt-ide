@@ -49,6 +49,8 @@ Object.defineProperty(window, 'api', {
     setPromptExecutionMode: () => Promise.resolve(),
     getAgentNotificationsEnabled: () => Promise.resolve(true),
     setAgentNotificationsEnabled: () => Promise.resolve(),
+    getAgentSendConfirmEnabled: () => Promise.resolve(true),
+    setAgentSendConfirmEnabled: () => Promise.resolve(),
     startAgentSession: () => Promise.resolve({ kind: 'error', error: 'no-folder' }),
     writeAgentSession: () => {},
     resizeAgentSession: () => {},

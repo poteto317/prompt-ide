@@ -9,8 +9,9 @@ interface Deps {
   addHistoryEntry: (entry: Omit<HistoryEntry, 'id'>) => void
   /** 実行方式。読み込み中は null(何もしない) */
   executionMode: PromptExecutionMode | null
-  /** エージェント CLI 方式の送信(useAgentPromptSender.send)。ファイル内容は添付しない(C2) */
-  sendToAgent: (text: string) => Promise<unknown>
+  /** エージェント CLI 方式の送信(useAgentWorkspace.sendToAgent。送信前の確認の設定がオンなら、送る前に確認を開く)。プロンプトの
+   *  id は、確認をキャンセルで閉じたとき・確認からの送信が失敗したときのフォーカスの戻り先を探すのに使う。ファイル内容は添付しない(C2) */
+  sendToAgent: (text: string, promptId: string) => Promise<unknown>
 }
 
 interface PromptRunner {
@@ -39,7 +40,7 @@ export function usePromptRunner({
   const runPrompt = useCallback(
     async (content: string, toolId: PromptToolId, prompt: Prompt): Promise<void> => {
       if (executionMode === 'agent-cli') {
-        await sendToAgent(content)
+        await sendToAgent(content, prompt.id)
         return
       }
       if (executionMode !== 'legacy') return
