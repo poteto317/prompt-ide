@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   assertPlainObject,
   assertRequestId,
-  IPC_PATH_MAX_LENGTH
+  IPC_PATH_MAX_LENGTH,
+  isIntegerInRange
 } from '../../handlers/payloadValidators'
 
 describe('assertPlainObject', () => {
@@ -44,5 +45,21 @@ describe('assertRequestId', () => {
 describe('IPC_PATH_MAX_LENGTH', () => {
   it('Windows の長いパスの上限(32,767)に合わせる', () => {
     expect(IPC_PATH_MAX_LENGTH).toBe(32_767)
+  })
+})
+
+describe('isIntegerInRange', () => {
+  it.each([
+    [0, true],
+    [4, true],
+    [2, true],
+    [-1, false],
+    [5, false],
+    [1.5, false],
+    ['1', false],
+    [Number.NaN, false],
+    [null, false]
+  ])('%s は 0〜4 の整数か: %s', (value, expected) => {
+    expect(isIntegerInRange(value, 0, 4)).toBe(expected)
   })
 })

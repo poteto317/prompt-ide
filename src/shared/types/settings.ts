@@ -31,3 +31,6 @@ export const DEFAULT_PROMPT_EXECUTION_MODE: PromptExecutionMode = 'agent-cli'
 export function isPromptExecutionMode(value: unknown): value is PromptExecutionMode {
   return typeof value === 'string' && (PROMPT_EXECUTION_MODES as readonly string[]).includes(value)
 }
+
+/** エージェントの完了・許可待ちの通知(OS の通知と Dock のバッジ)の既定。オン */
+export const DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true

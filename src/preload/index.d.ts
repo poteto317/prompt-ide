@@ -1,4 +1,7 @@
 import type {
+  AgentNotificationActivated,
+  AgentNotificationDismissRequest,
+  AgentNotificationShowRequest,
   AgentChangesListResult,
   AgentChangesState,
   AgentRevertAllEntry,
@@ -118,6 +121,8 @@ declare global {
       saveHistory(entries: HistoryEntry[]): Promise<void>
       getPromptExecutionMode(): Promise<PromptExecutionMode>
       setPromptExecutionMode(mode: PromptExecutionMode): Promise<void>
+      getAgentNotificationsEnabled(): Promise<boolean>
+      setAgentNotificationsEnabled(enabled: boolean): Promise<void>
       startAgentSession(request: AgentStartRequest): Promise<AgentStartResult>
       writeAgentSession(sessionId: string, data: string): void
       resizeAgentSession(sessionId: string, cols: number, rows: number): void
@@ -126,6 +131,12 @@ declare global {
       onAgentData(listener: (payload: AgentSessionData) => void): () => void
       onAgentExit(listener: (payload: AgentSessionExit) => void): () => void
       setAgentTerminalFocused(focused: boolean): void
+      showAgentNotification(request: AgentNotificationShowRequest): Promise<void>
+      setAgentNotificationBadge(count: number): Promise<void>
+      dismissAgentNotification(request: AgentNotificationDismissRequest): Promise<void>
+      onAgentNotificationActivated(
+        listener: (payload: AgentNotificationActivated) => void
+      ): () => void
       writeFileChecked(
         path: string,
         content: string,

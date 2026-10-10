@@ -7,6 +7,7 @@ export type * from './types/history'
 export type * from './types/settings'
 export type * from './types/agentTerminal'
 export type * from './types/agentChanges'
+export type * from './types/agentNotification'
 export { PROMPT_EXPORT_KIND } from './types/prompt'
 export { EXECUTION_TOOLS, CLI_ONLY_TOOL_IDS } from './types/cli'
 export {
@@ -14,6 +15,7 @@ export {
   DEFAULT_MODEL_SETTINGS,
   PROMPT_EXECUTION_MODES,
   DEFAULT_PROMPT_EXECUTION_MODE,
+  DEFAULT_AGENT_NOTIFICATIONS_ENABLED,
   isPromptExecutionMode
 } from './types/settings'
 export {
@@ -39,3 +41,4 @@ export {
   toAgentChangeRelativePath
 } from './types/agentChanges'
 export { CONFLICT_CHOICES, TAG_KINDS } from './types/git'
+export { AGENT_NOTIFICATION_KINDS, isAgentNotificationKind } from './types/agentNotification'

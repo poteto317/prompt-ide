@@ -21,6 +21,13 @@ vi.mock('../../executionModeStore', () => ({
   setPromptExecutionMode: mockSetPromptExecutionMode
 }))
 
+const mockGetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
+const mockSetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
+vi.mock('../../agentNotificationSettingStore', () => ({
+  getAgentNotificationsEnabled: mockGetAgentNotificationsEnabled,
+  setAgentNotificationsEnabled: mockSetAgentNotificationsEnabled
+}))
+
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
 
 const mockIpcMain = { handle: mockHandle } as never
@@ -41,6 +48,26 @@ beforeEach(() => {
 })
 
 describe('registerSettingsHandlers', () => {
+  it('settings:getAgentNotificationsEnabled は保存された設定を返す', async () => {
+    mockGetAgentNotificationsEnabled.mockResolvedValueOnce(false)
+    await expect(
+      getRegisteredHandler('settings:getAgentNotificationsEnabled')(makeEvent(1))
+    ).resolves.toBe(false)
+  })
+
+  it('settings:setAgentNotificationsEnabled は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetAgentNotificationsEnabled.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setAgentNotificationsEnabled')(makeEvent(1), true)
+    expect(mockSetAgentNotificationsEnabled).toHaveBeenCalledWith(true)
+  })
+
+  it('settings:setAgentNotificationsEnabled は store の拒否をそのまま返す', async () => {
+    mockSetAgentNotificationsEnabled.mockRejectedValueOnce(new Error('通知の設定が不正です: x'))
+    await expect(
+      getRegisteredHandler('settings:setAgentNotificationsEnabled')(makeEvent(1), 'x')
+    ).rejects.toThrow('通知の設定が不正です')
+  })
+
   describe('settings:hasApiKey', () => {
     it('getApiKey がキーを返すとき true を返す', async () => {
       mockGetApiKey.mockResolvedValue('sk-ant-test')

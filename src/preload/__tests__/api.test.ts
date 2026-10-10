@@ -472,9 +472,34 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['settings:setPromptExecutionMode', 'legacy']
     ],
     [
+      'getAgentNotificationsEnabled は settings:getAgentNotificationsEnabled を呼ぶ',
+      () => api.getAgentNotificationsEnabled(),
+      ['settings:getAgentNotificationsEnabled']
+    ],
+    [
+      'setAgentNotificationsEnabled は settings:setAgentNotificationsEnabled に値を渡す',
+      () => api.setAgentNotificationsEnabled(false),
+      ['settings:setAgentNotificationsEnabled', false]
+    ],
+    [
       'openExternalLink は shell:openExternalLink に URL を渡す',
       () => api.openExternalLink('https://x'),
       ['shell:openExternalLink', 'https://x']
+    ],
+    [
+      'showAgentNotification は agentNotification:show に依頼を渡す',
+      () => api.showAgentNotification({ slotId: 's-1', tabNumber: 1, kind: 'done' }),
+      ['agentNotification:show', { slotId: 's-1', tabNumber: 1, kind: 'done' }]
+    ],
+    [
+      'setAgentNotificationBadge は agentNotification:setBadge に数を包んで渡す',
+      () => api.setAgentNotificationBadge(2),
+      ['agentNotification:setBadge', { count: 2 }]
+    ],
+    [
+      'dismissAgentNotification は agentNotification:dismiss に依頼を渡す',
+      () => api.dismissAgentNotification({ slotId: 's-1' }),
+      ['agentNotification:dismiss', { slotId: 's-1' }]
     ]
   ])('%s', (_name, call, expectedArgs) => {
     call()
@@ -525,6 +550,13 @@ describe.each([
     (l: (p: unknown) => void) => api.onExternalFileChange(l),
     { paths: ['/a'] },
     [null, { paths: '/a' }, { paths: [1] }]
+  ],
+  [
+    'onAgentNotificationActivated',
+    'agentNotification:activated',
+    (l: (p: unknown) => void) => api.onAgentNotificationActivated(l),
+    { slotId: 'slot-1' },
+    [null, { slotId: 1 }, { slotId: 'a b' }, {}]
   ]
 ])('%s', (_name, channel, subscribe, valid, invalids) => {
   it(`${channel} を購読し、検証を通った payload で呼び、解除関数で removeListener する`, () => {

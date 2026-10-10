@@ -1,6 +1,10 @@
 import { ipcRenderer } from 'electron'
 import type {
   AgentChangesListResult,
+  AgentNotificationActivated,
+  AgentNotificationBadgeRequest,
+  AgentNotificationDismissRequest,
+  AgentNotificationShowRequest,
   AgentChangesState,
   AgentRevertAllEntry,
   AgentSessionData,
@@ -31,7 +35,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
-import { isAgentExitReason } from '@shared/types'
+import { AGENT_SLOT_ID_PATTERN, isAgentExitReason } from '@shared/types'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -164,6 +168,10 @@ export const api = {
     ipcRenderer.invoke('settings:getPromptExecutionMode'),
   setPromptExecutionMode: (mode: PromptExecutionMode): Promise<void> =>
     ipcRenderer.invoke('settings:setPromptExecutionMode', mode),
+  getAgentNotificationsEnabled: (): Promise<boolean> =>
+    ipcRenderer.invoke('settings:getAgentNotificationsEnabled'),
+  setAgentNotificationsEnabled: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('settings:setAgentNotificationsEnabled', enabled),
   // エージェントのセッション。起動のコマンド・作業ディレクトリ・環境変数は main が決める
   startAgentSession: (request: AgentStartRequest): Promise<AgentStartResult> =>
     ipcRenderer.invoke('agentTerminal:start', request),
@@ -208,6 +216,30 @@ export const api = {
   },
   setAgentTerminalFocused: (focused: boolean): void =>
     ipcRenderer.send('agentTerminal:focus', focused),
+  // エージェントの完了・許可待ちの通知。題・本文・出すかどうかは main が決める
+  showAgentNotification: (request: AgentNotificationShowRequest): Promise<void> =>
+    ipcRenderer.invoke('agentNotification:show', request),
+  setAgentNotificationBadge: (count: number): Promise<void> =>
+    // 入力の形は main の parseAgentNotificationBadgeRequest と共有の型で合わせる
+    ipcRenderer.invoke('agentNotification:setBadge', {
+      count
+    } satisfies AgentNotificationBadgeRequest),
+  dismissAgentNotification: (request: AgentNotificationDismissRequest): Promise<void> =>
+    ipcRenderer.invoke('agentNotification:dismiss', request),
+  onAgentNotificationActivated: (
+    listener: (payload: AgentNotificationActivated) => void
+  ): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (typeof payload !== 'object' || payload === null) return
+      const { slotId } = payload as Record<string, unknown>
+      if (typeof slotId !== 'string' || !AGENT_SLOT_ID_PATTERN.test(slotId)) return
+      listener({ slotId })
+    }
+    ipcRenderer.on('agentNotification:activated', wrapped)
+    return () => {
+      ipcRenderer.removeListener('agentNotification:activated', wrapped)
+    }
+  },
   // baseContent はタブが最後にディスクと一致した内容。null は照合せずに書く(上書きの確認の後)
   writeFileChecked: (
     path: string,

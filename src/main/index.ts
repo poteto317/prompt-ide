@@ -6,6 +6,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers } from './ipcHandlers'
 import { isAllowedNavigation } from './navigationPolicy'
 import { openExternalLink } from './handlers/shellHandlers'
+import { APP_USER_MODEL_ID } from './appIdentity'
 
 function createWindow(): void {
   // Create the browser window.
@@ -58,7 +59,8 @@ function createWindow(): void {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
   // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  // Windows の通知の送り元。electron-builder.yml の appId と同じ値(appIdentity.ts)
+  electronApp.setAppUserModelId(APP_USER_MODEL_ID)
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

@@ -36,9 +36,30 @@ vi.mock('../handlers/agentChangesHandlers', () => ({
   registerAgentChangesHandlers: mockRegisterAgentChangesHandlers
 }))
 vi.mock('../trash', () => ({ moveToTrash: mockMoveToTrash }))
+const mockCreateAgentNotificationCenter = vi.hoisted(() =>
+  vi.fn<(deps: unknown) => object>(() => ({ marker: 'center' }))
+)
+const mockSetupAgentNotificationLifecycle = vi.hoisted(() => vi.fn())
+const mockRegisterAgentNotificationHandlers = vi.hoisted(() => vi.fn())
+const mockFromWebContents = vi.hoisted(() => vi.fn())
+vi.mock('../agentNotifications', () => ({
+  createAgentNotificationCenter: mockCreateAgentNotificationCenter
+}))
+const mockCreateElectronAgentNotification = vi.hoisted(() => vi.fn())
+vi.mock('../agentNotificationRuntime', () => ({
+  createElectronAgentNotification: mockCreateElectronAgentNotification
+}))
+vi.mock('../agentNotificationLifecycle', () => ({
+  setupAgentNotificationLifecycle: mockSetupAgentNotificationLifecycle
+}))
+vi.mock('../handlers/agentNotificationHandlers', () => ({
+  registerAgentNotificationHandlers: mockRegisterAgentNotificationHandlers
+}))
 vi.mock('electron', () => ({
   app: {},
-  shell: { openExternal: vi.fn() }
+  shell: { openExternal: vi.fn() },
+  BrowserWindow: { fromWebContents: mockFromWebContents },
+  Notification: vi.fn()
 }))
 vi.mock('../agentSessionLifecycle', () => ({
   setupAgentSessionLifecycle: mockSetupAgentSessionLifecycle
@@ -185,6 +206,24 @@ describe('registerIpcHandlers', () => {
     expect(deps).toEqual({ registry, startSession: mockStartAgentSession })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
+  })
+
+  it('通知の center を寿命の後始末と IPC の受け口に渡し、送信元のウィンドウは BrowserWindow.fromWebContents で引く', () => {
+    registerIpcHandlers(mockIpcMain)
+    const center = mockCreateAgentNotificationCenter.mock.results[0].value
+    expect(mockSetupAgentNotificationLifecycle).toHaveBeenCalledWith(expect.any(Object), center)
+    const [ipcMain, deps] = mockRegisterAgentNotificationHandlers.mock.calls[0]
+    expect(ipcMain).toBe(mockIpcMain)
+    expect(deps.center).toBe(center)
+    const sender = { id: 7 }
+    mockFromWebContents.mockReturnValueOnce({ marker: 'window' })
+    expect(deps.windowOf(sender)).toEqual({ marker: 'window' })
+    expect(mockFromWebContents).toHaveBeenCalledWith(sender)
+    expect(mockCreateAgentNotificationCenter.mock.calls[0][0]).toMatchObject({
+      platform: process.platform,
+      // 通知の実物は agentNotificationRuntime.ts のものを注入する
+      createNotification: mockCreateElectronAgentNotification
+    })
   })
 
   it('エージェントの変更の記録の寿命と IPC に、ファイル操作と同じ FolderAccessManager・同じ記録の registry・ゴミ箱を渡す', () => {

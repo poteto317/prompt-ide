@@ -2,6 +2,10 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { getApiKey, setApiKey } from '../apiKeyStore'
 import { getModelSettings, setModelSettings } from '../modelSettingsStore'
 import { parseModelSettingsPayload } from './settingsPayloadParser'
+import {
+  getAgentNotificationsEnabled,
+  setAgentNotificationsEnabled
+} from '../agentNotificationSettingStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
@@ -34,5 +38,15 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'settings:setPromptExecutionMode',
     async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptExecutionMode(mode)
+  )
+
+  ipcMain.handle('settings:getAgentNotificationsEnabled', async () =>
+    getAgentNotificationsEnabled()
+  )
+
+  ipcMain.handle(
+    'settings:setAgentNotificationsEnabled',
+    async (_event: IpcMainInvokeEvent, enabled: unknown): Promise<void> =>
+      setAgentNotificationsEnabled(enabled)
   )
 }

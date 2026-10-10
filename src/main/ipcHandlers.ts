@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { watch } from 'node:fs'
 import type { IpcMain } from 'electron'
-import { app, shell } from 'electron'
+import { app, shell, BrowserWindow, Notification } from 'electron'
 import { FolderAccessManager } from './folderAccessManager'
 import { setupFolderAccessLifecycle } from './folderAccessLifecycle'
 import { registerFileSystemHandlers } from './handlers/fileSystemHandlers'
@@ -37,6 +37,10 @@ import {
 } from './agentBaselineSnapshot'
 import { registerAgentChangesHandlers } from './handlers/agentChangesHandlers'
 import { moveToTrash } from './trash'
+import { createAgentNotificationCenter } from './agentNotifications'
+import { createElectronAgentNotification } from './agentNotificationRuntime'
+import { setupAgentNotificationLifecycle } from './agentNotificationLifecycle'
+import { registerAgentNotificationHandlers } from './handlers/agentNotificationHandlers'
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   const folderAccess = new FolderAccessManager()
@@ -72,6 +76,18 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   registerAgentTerminalHandlers(ipcMain, {
     registry: agentRegistry,
     startSession: startAgentSession
+  })
+  // エージェントの完了・許可待ちの通知。Electron の Notification・Dock・BrowserWindow をここで注入する
+  const agentNotificationCenter = createAgentNotificationCenter({
+    platform: process.platform,
+    isSupported: () => Notification.isSupported(),
+    createNotification: createElectronAgentNotification,
+    setDockBadge: (text) => app.dock?.setBadge(text)
+  })
+  setupAgentNotificationLifecycle(app, agentNotificationCenter)
+  registerAgentNotificationHandlers(ipcMain, {
+    center: agentNotificationCenter,
+    windowOf: (sender) => BrowserWindow.fromWebContents(sender)
   })
   // 開いているタブの外部変更の検知(保存の直前の照合と、親ディレクトリの監視)
   const openFileWatcher = new OpenFileWatcher({

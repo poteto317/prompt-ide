@@ -8,25 +8,27 @@ import {
   AGENT_TERMINAL_MIN_ROWS,
   AGENT_WRITE_MAX_LENGTH
 } from '@shared/types'
-import { assertPlainObject, IPC_PATH_MAX_LENGTH } from './payloadValidators'
+import { assertPlainObject, IPC_PATH_MAX_LENGTH, isIntegerInRange } from './payloadValidators'
 
 // agentTerminal:* の入力の検証(設計書「入力の検証」)。invoke は例外で拒否し、send(write・resize・focus)は null を返して捨てる
 // (send の listener で投げると main の例外の出力になるだけで、renderer には届かない)
 
-function isIntegerInRange(value: unknown, min: number, max: number): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
-}
-
 const isSessionId = (value: unknown): value is string => typeof value === 'string' && value !== ''
 
-export function parseAgentStartRequest(payload: unknown): AgentStartRequest {
-  assertPlainObject(payload)
-  const { slotId, folderPath, cols, rows } = payload
-  if (typeof slotId !== 'string' || !AGENT_SLOT_ID_PATTERN.test(slotId)) {
+/** renderer が発行するタブ(枠)の id。通知の受け口(agentNotificationPayloadParser)も同じ規則で検証する */
+export function parseAgentSlotId(value: unknown): string {
+  if (typeof value !== 'string' || !AGENT_SLOT_ID_PATTERN.test(value)) {
     throw new Error(
       `slotId は英数字とハイフンの 1〜${AGENT_SLOT_ID_MAX_LENGTH} 文字である必要があります`
     )
   }
+  return value
+}
+
+export function parseAgentStartRequest(payload: unknown): AgentStartRequest {
+  assertPlainObject(payload)
+  const { folderPath, cols, rows } = payload
+  const slotId = parseAgentSlotId(payload.slotId)
   if (typeof folderPath !== 'string' || folderPath === '') {
     throw new Error('folderPath は空でない文字列である必要があります')
   }

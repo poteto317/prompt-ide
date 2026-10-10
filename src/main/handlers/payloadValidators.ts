@@ -19,3 +19,8 @@ export function assertRequestId(requestId: unknown): asserts requestId is string
  * Windows の長いパスの上限(32,767)に合わせ、macOS・Linux の PATH_MAX(1,024・4,096)より十分に大きい
  */
 export const IPC_PATH_MAX_LENGTH = 32_767
+
+/** 範囲の内の整数か(NaN・小数・文字列は false) */
+export function isIntegerInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
+}

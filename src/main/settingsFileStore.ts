@@ -11,6 +11,8 @@ export interface SettingsFile {
   maxTokens?: number
   /** プロンプトの実行方式(executionModeStore が検証する) */
   promptExecutionMode?: string
+  /** エージェントの通知のオン・オフ(agentNotificationSettingStore が検証する) */
+  agentNotificationsEnabled?: boolean
 }
 
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')
