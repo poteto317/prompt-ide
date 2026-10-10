@@ -264,7 +264,7 @@ export interface AgentReferencesPanelState {
   added: AgentAddedReference[]
   /** エクスプローラから足したファイルを外す(絶対パス) */
   onRemove: (path: string) => void
-  /** エクスプローラの右クリックの「参照として添える」(絶対パス。すでにあれば何もしない) */
+  /** エクスプローラの右クリックの「参照として添える」(絶対パス。すでにあれば一覧は変えず、すでにあることを読み上げる) */
   onAddFromExplorer: (path: string) => void
 }
 
