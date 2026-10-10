@@ -3,6 +3,7 @@ import { useId } from 'react'
 import type { AgentReferenceChipState, AgentReferencesPanelState } from '../../types'
 import {
   AGENT_REFERENCE_CHIP_FALLBACK_LABELS,
+  AGENT_REFERENCE_DISABLED_REASONS,
   AGENT_REFERENCE_GROUP_LABEL,
   AGENT_REFERENCE_TOGGLE_TITLES,
   AGENT_REFERENCE_UNSAVED_MARK,
@@ -12,6 +13,22 @@ import { useRemovedItemFocus } from '../../hooks/useRemovedItemFocus'
 
 // 足したファイルのチップの × (外したときのフォーカスの移し先を探す目印)
 const REMOVE_BUTTON_SELECTOR = '[data-reference-remove]'
+
+// 画面にも文字で出す押せない理由。見ただけでは分からないものだけ(開いているファイルが無い・範囲を選んでいないは見れば分かる)。
+// title と読み上げの説明だけでは、タッチ・キーボードだけで使う晴眼の利用者に届かない
+const VISIBLE_DISABLED_REASONS: ReadonlySet<string> = new Set([
+  AGENT_REFERENCE_DISABLED_REASONS.diffTab,
+  AGENT_REFERENCE_DISABLED_REASONS.outsideFolder
+])
+
+// 開いているファイル・選択範囲のチップの理由のうち、画面に出すもの(同じ理由は 1 回だけ。差分のタブでは両方が同じ理由)
+const visibleDisabledReasons = (chips: readonly AgentReferenceChipState[]): string[] => [
+  ...new Set(
+    chips
+      .map((chip) => chip.disabledReason)
+      .filter((reason): reason is string => reason !== null && VISIBLE_DISABLED_REASONS.has(reason))
+  )
+]
 
 interface Props {
   state: AgentReferencesPanelState
@@ -35,7 +52,8 @@ function UnsavedMark(): React.JSX.Element {
   )
 }
 
-// 開いているファイル・選択範囲のチップ(オン・オフ)。押せないときは理由を title と aria-describedby で出す(hidden の要素)
+// 開いているファイル・選択範囲のチップ(オン・オフ)。押せないときは理由を title と aria-describedby で出す(hidden の要素)。
+// 見ただけでは分からない理由は、参照の行にも画面の文字として出す(AgentReferenceChips)
 function ReferenceToggle({ chip, fallbackLabel, title }: ToggleProps): React.JSX.Element {
   const reasonId = useId()
   return (
@@ -116,6 +134,12 @@ export default function AgentReferenceChips({ state }: Props): React.JSX.Element
             ×
           </button>
         </span>
+      ))}
+      {visibleDisabledReasons([state.openFile, state.selection]).map((reason) => (
+        // 読み上げはチップの説明(aria-describedby)で届くので、見える文字は読み上げの順番に出さない(二重に読まれないように)
+        <p key={reason} className="agent-references__visible-reason" aria-hidden="true">
+          {reason}
+        </p>
       ))}
     </div>
   )

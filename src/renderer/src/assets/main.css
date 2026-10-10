@@ -374,6 +374,14 @@ body {
   outline-offset: -2px;
 }
 
+/* 押せないチップの理由のうち画面にも出すもの。チップの下の行に、プロンプトの実行の理由(.prompts-panel__run-reason)と同じ見た目で出す */
+.agent-references__visible-reason {
+  flex-basis: 100%;
+  margin: 0;
+  color: #969696;
+  font-size: 12px;
+}
+
 .prompt-item {
   padding: 8px 12px;
   border-bottom: 1px solid #3c3c3c;

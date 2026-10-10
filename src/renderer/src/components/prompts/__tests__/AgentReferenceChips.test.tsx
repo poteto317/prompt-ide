@@ -253,6 +253,91 @@ describe('AgentReferenceChips', () => {
     }
   })
 
+  it('差分のタブ・フォルダの外の理由は、参照の行に画面の文字として出す(読み上げは説明だけで、見える文字は aria-hidden)', () => {
+    for (const reason of [
+      '差分のタブは参照にできません',
+      'フォルダの外のファイルは参照にできません'
+    ]) {
+      const { unmount } = render(
+        <AgentReferenceChips
+          state={makeAgentReferencesPanelState({
+            openFile: disabledChip(reason),
+            selection: disabledChip('エディタで範囲を選ぶと添えられます')
+          })}
+        />
+      )
+      const group = getGroup()
+      const visible = Array.from(group.querySelectorAll('.agent-references__visible-reason'))
+      expect(visible).toHaveLength(1)
+      expect(visible[0]).toHaveTextContent(reason)
+      expect(visible[0]).toBeVisible()
+      // 説明として読まれるので、見える文字は読み上げの順番に出さない(二重に読まれないように)
+      expect(visible[0]).toHaveAttribute('aria-hidden', 'true')
+      // 読み上げの説明は hidden の要素から引いたまま
+      const button = within(group).getByRole('button', { name: '開いているファイル' })
+      expect(button).toHaveAccessibleDescription(reason)
+      expect(
+        document.getElementById(button.getAttribute('aria-describedby') ?? '')
+      ).toHaveAttribute('hidden')
+      unmount()
+    }
+  })
+
+  it('開いているファイルが無い・範囲を選んでいない(見れば分かる理由)は、画面の文字として出さない', () => {
+    render(
+      <AgentReferenceChips
+        state={makeAgentReferencesPanelState({
+          openFile: disabledChip('開いているファイルがありません'),
+          selection: disabledChip('エディタで範囲を選ぶと添えられます')
+        })}
+      />
+    )
+    expect(getGroup().querySelector('.agent-references__visible-reason')).toBeNull()
+  })
+
+  it('2 つのチップが同じ理由で押せないとき(差分のタブ)は、画面の文字を 1 回だけ出す', () => {
+    render(
+      <AgentReferenceChips
+        state={makeAgentReferencesPanelState({
+          openFile: disabledChip('差分のタブは参照にできません'),
+          selection: disabledChip('差分のタブは参照にできません')
+        })}
+      />
+    )
+    const visible = getGroup().querySelectorAll('.agent-references__visible-reason')
+    expect(visible).toHaveLength(1)
+    expect(visible[0]).toHaveTextContent('差分のタブは参照にできません')
+    // 説明は両方のチップから引ける
+    expect(screen.getByRole('button', { name: '開いているファイル' })).toHaveAccessibleDescription(
+      '差分のタブは参照にできません'
+    )
+    expect(screen.getByRole('button', { name: '選択範囲' })).toHaveAccessibleDescription(
+      '差分のタブは参照にできません'
+    )
+  })
+
+  it('画面に出す理由は、プロンプトの実行の理由と同じ見た目で、チップの下の行に出す', () => {
+    const style = document.createElement('style')
+    style.textContent = readFileSync(resolve(__dirname, '../../../assets/main.css'), 'utf-8')
+    document.head.appendChild(style)
+    try {
+      render(
+        <AgentReferenceChips
+          state={makeAgentReferencesPanelState({
+            openFile: disabledChip('差分のタブは参照にできません')
+          })}
+        />
+      )
+      const visible = getGroup().querySelector('.agent-references__visible-reason') as HTMLElement
+      const computed = getComputedStyle(visible)
+      expect(computed.color).toBe('rgb(150, 150, 150)')
+      expect(computed.fontSize).toBe('12px')
+      expect(computed.flexBasis).toBe('100%')
+    } finally {
+      style.remove()
+    }
+  })
+
   it('チップと外すボタンはタッチで押せる大きさ(32px 以上)', () => {
     const style = document.createElement('style')
     style.textContent = readFileSync(resolve(__dirname, '../../../assets/main.css'), 'utf-8')

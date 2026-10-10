@@ -17,7 +17,7 @@ export const AGENT_REFERENCE_TOGGLE_TITLES = {
   selection: '選択範囲を参照として添える'
 } as const
 
-/** チップを押せない理由(title と aria-describedby で出す) */
+/** チップを押せない理由(title と aria-describedby で出す。差分のタブ・フォルダの外は参照の行に画面の文字としても出す) */
 export const AGENT_REFERENCE_DISABLED_REASONS = {
   noOpenFile: '開いているファイルがありません',
   diffTab: '差分のタブは参照にできません',
