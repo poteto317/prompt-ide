@@ -120,7 +120,7 @@
 - 型と既定値: `src/shared/types/settings.ts` に `DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true`。
 - 保存: `settingsFileStore.ts` の `SettingsFile` に `agentNotificationsEnabled?: boolean` を足し、`agentNotificationSettingStore.ts`（新規。`executionModeStore.ts` と同じ形。読めない・型が違えば既定値）。
 - IPC: `settings:getAgentNotificationsEnabled`・`settings:setAgentNotificationsEnabled`（`boolean` 以外は例外）。preload と `settingsApi.ts` に足す。
-- hook: `useAgentNotificationSetting`（`useExecutionMode` と同じ形。読み込み中は `null`、変更は楽観的に反映して保存し、失敗したら最後に保存できた値に戻す。続けて変えたとき、後の変更が進行中なら戻さずその結果に任せる）。
+- hook: `useAgentNotificationSetting`（`useExecutionMode` と同じ形。読み込み中は `null`、変更は楽観的に反映して保存し、失敗したら最後に保存できた値に戻す。続けて変えたとき、後の変更が進行中なら戻さず、失敗の文言も出さずにその結果に任せる）。
 - 設定画面: `SettingsPanel` に「エージェントの通知」の節（チェックボックス「ウィンドウが背面のとき、許可待ち・確認待ち・作業の完了を通知する」）。説明に「Dock のバッジ（macOS）・タスクバーの点滅（Windows・Linux）も、この設定でまとめてオン・オフします」と書く（点滅は通知と同時に main が起こすので、オフで通知を頼まなければ点滅もしない）。
 
 ### 読み上げの領域

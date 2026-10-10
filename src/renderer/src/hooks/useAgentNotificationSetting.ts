@@ -59,11 +59,12 @@ export function useAgentNotificationSetting(): AgentNotificationSettingState {
       savedRef.current = next
       return true
     } catch (err) {
+      // 後から別の変更が始まっていれば、値も失敗の文言もその結果に任せる
       if (seq === changeSeqRef.current) {
         enabledRef.current = savedRef.current
         setEnabled(savedRef.current)
+        setSaveError(`${AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX}${toError(err).message}`)
       }
-      setSaveError(`${AGENT_NOTIFICATION_SETTING_SAVE_ERROR_PREFIX}${toError(err).message}`)
       return false
     }
   }, [])

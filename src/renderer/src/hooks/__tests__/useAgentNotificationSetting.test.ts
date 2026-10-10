@@ -161,6 +161,8 @@ describe('useAgentNotificationSetting', () => {
         await pb
       })
       expect(result.current.enabled).toBe(true)
+      // 後の変更が保存できたので、先の変更の失敗の文言は出さない
+      expect(result.current.saveError).toBeNull()
     })
   })
 
