@@ -4,6 +4,7 @@ import {
   AGENT_PROMPT_MAX_LENGTH,
   AGENT_SUBMIT_KEY,
   buildAgentPasteBytes,
+  cleanAgentPromptText,
   normalizeAgentPrompt
 } from '../agentPasteText'
 
@@ -69,5 +70,16 @@ describe('送るキーの定数', () => {
 
   it('送信は \\r', () => {
     expect(AGENT_SUBMIT_KEY).toBe('\r')
+  })
+})
+
+describe('cleanAgentPromptText', () => {
+  it('改行を \\n にそろえ、改行・タブ以外の制御文字を除く(拒否の判定はしない)', () => {
+    expect(cleanAgentPromptText('!a\r\nb\rc\td\x1b[201~\x7f')).toBe('!a\nb\nc\td[201~')
+  })
+
+  it('normalizeAgentPrompt が ok のときの text と同じ', () => {
+    const raw = 'line1\r\nline2\x07'
+    expect(normalizeAgentPrompt(raw)).toEqual({ kind: 'ok', text: cleanAgentPromptText(raw) })
   })
 })

@@ -6,6 +6,10 @@ import {
   getAgentNotificationsEnabled,
   setAgentNotificationsEnabled
 } from '../agentNotificationSettingStore'
+import {
+  getAgentSendConfirmEnabled,
+  setAgentSendConfirmEnabled
+} from '../agentSendConfirmSettingStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
@@ -48,5 +52,13 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
     'settings:setAgentNotificationsEnabled',
     async (_event: IpcMainInvokeEvent, enabled: unknown): Promise<void> =>
       setAgentNotificationsEnabled(enabled)
+  )
+
+  ipcMain.handle('settings:getAgentSendConfirmEnabled', async () => getAgentSendConfirmEnabled())
+
+  ipcMain.handle(
+    'settings:setAgentSendConfirmEnabled',
+    async (_event: IpcMainInvokeEvent, enabled: unknown): Promise<void> =>
+      setAgentSendConfirmEnabled(enabled)
   )
 }

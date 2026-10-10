@@ -172,6 +172,10 @@ export const api = {
     ipcRenderer.invoke('settings:getAgentNotificationsEnabled'),
   setAgentNotificationsEnabled: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('settings:setAgentNotificationsEnabled', enabled),
+  getAgentSendConfirmEnabled: (): Promise<boolean> =>
+    ipcRenderer.invoke('settings:getAgentSendConfirmEnabled'),
+  setAgentSendConfirmEnabled: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('settings:setAgentSendConfirmEnabled', enabled),
   // エージェントのセッション。起動のコマンド・作業ディレクトリ・環境変数は main が決める
   startAgentSession: (request: AgentStartRequest): Promise<AgentStartResult> =>
     ipcRenderer.invoke('agentTerminal:start', request),

@@ -482,6 +482,16 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['settings:setAgentNotificationsEnabled', false]
     ],
     [
+      'getAgentSendConfirmEnabled は settings:getAgentSendConfirmEnabled を呼ぶ',
+      () => api.getAgentSendConfirmEnabled(),
+      ['settings:getAgentSendConfirmEnabled']
+    ],
+    [
+      'setAgentSendConfirmEnabled は settings:setAgentSendConfirmEnabled に値を渡す',
+      () => api.setAgentSendConfirmEnabled(false),
+      ['settings:setAgentSendConfirmEnabled', false]
+    ],
+    [
       'openExternalLink は shell:openExternalLink に URL を渡す',
       () => api.openExternalLink('https://x'),
       ['shell:openExternalLink', 'https://x']

@@ -123,6 +123,8 @@ declare global {
       setPromptExecutionMode(mode: PromptExecutionMode): Promise<void>
       getAgentNotificationsEnabled(): Promise<boolean>
       setAgentNotificationsEnabled(enabled: boolean): Promise<void>
+      getAgentSendConfirmEnabled(): Promise<boolean>
+      setAgentSendConfirmEnabled(enabled: boolean): Promise<void>
       startAgentSession(request: AgentStartRequest): Promise<AgentStartResult>
       writeAgentSession(sessionId: string, data: string): void
       resizeAgentSession(sessionId: string, cols: number, rows: number): void

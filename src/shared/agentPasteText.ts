@@ -24,11 +24,19 @@ export type NormalizedAgentPrompt =
 const CONTROL_CHARACTERS = /[\x00-\x08\x0b-\x1f\x7f-\x9f]/g
 
 /**
+ * 本文の改行を \n にそろえ(\r\n・\r)、制御文字を取り除く。拒否の判定はしない(送信前の確認の画面は、送れない本文も
+ * 正規化した後の全文と文字数を出すため、normalizeAgentPrompt と同じ正規化をここから使う)
+ */
+export function cleanAgentPromptText(raw: string): string {
+  return raw.replace(/\r\n?/g, '\n').replace(CONTROL_CHARACTERS, '')
+}
+
+/**
  * 本文を正規化する。\r\n・\r を \n に統一し、制御文字を取り除く。前後の空白だけ・上限を超える・1 文字目が「!」なら拒否する
  * (「!」で始まる本文は claude のシェルのモードに入り、Enter でシェルのコマンドとして実行される。確認の結果 23)
  */
 export function normalizeAgentPrompt(raw: string): NormalizedAgentPrompt {
-  const text = raw.replace(/\r\n?/g, '\n').replace(CONTROL_CHARACTERS, '')
+  const text = cleanAgentPromptText(raw)
   if (text.trim() === '') return { kind: 'rejected', reason: 'empty' }
   if (text.length > AGENT_PROMPT_MAX_LENGTH) return { kind: 'rejected', reason: 'too-long' }
   if (text.startsWith('!')) return { kind: 'rejected', reason: 'leading-bang' }

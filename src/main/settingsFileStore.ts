@@ -13,6 +13,8 @@ export interface SettingsFile {
   promptExecutionMode?: string
   /** エージェントの通知のオン・オフ(agentNotificationSettingStore が検証する) */
   agentNotificationsEnabled?: boolean
+  /** エージェントへの送信前の確認のオン・オフ(agentSendConfirmSettingStore が検証する) */
+  agentSendConfirmEnabled?: boolean
 }
 
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')

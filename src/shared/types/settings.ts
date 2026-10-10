@@ -34,3 +34,6 @@ export function isPromptExecutionMode(value: unknown): value is PromptExecutionM
 
 /** エージェントの完了・許可待ちの通知(OS の通知と Dock のバッジ)の既定。オン */
 export const DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true
+
+/** エージェントへの送信前の確認(送る前に全文と送り先を確かめるダイアログ)の既定。オン */
+export const DEFAULT_AGENT_SEND_CONFIRM_ENABLED = true

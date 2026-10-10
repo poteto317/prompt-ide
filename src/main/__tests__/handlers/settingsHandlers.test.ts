@@ -28,6 +28,13 @@ vi.mock('../../agentNotificationSettingStore', () => ({
   setAgentNotificationsEnabled: mockSetAgentNotificationsEnabled
 }))
 
+const mockGetAgentSendConfirmEnabled = vi.hoisted(() => vi.fn())
+const mockSetAgentSendConfirmEnabled = vi.hoisted(() => vi.fn())
+vi.mock('../../agentSendConfirmSettingStore', () => ({
+  getAgentSendConfirmEnabled: mockGetAgentSendConfirmEnabled,
+  setAgentSendConfirmEnabled: mockSetAgentSendConfirmEnabled
+}))
+
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
 
 const mockIpcMain = { handle: mockHandle } as never
@@ -66,6 +73,28 @@ describe('registerSettingsHandlers', () => {
     await expect(
       getRegisteredHandler('settings:setAgentNotificationsEnabled')(makeEvent(1), 'x')
     ).rejects.toThrow('通知の設定が不正です')
+  })
+
+  it('settings:getAgentSendConfirmEnabled は保存された設定を返す', async () => {
+    mockGetAgentSendConfirmEnabled.mockResolvedValueOnce(false)
+    await expect(
+      getRegisteredHandler('settings:getAgentSendConfirmEnabled')(makeEvent(1))
+    ).resolves.toBe(false)
+  })
+
+  it('settings:setAgentSendConfirmEnabled は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetAgentSendConfirmEnabled.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setAgentSendConfirmEnabled')(makeEvent(1), true)
+    expect(mockSetAgentSendConfirmEnabled).toHaveBeenCalledWith(true)
+  })
+
+  it('settings:setAgentSendConfirmEnabled は store の拒否をそのまま返す', async () => {
+    mockSetAgentSendConfirmEnabled.mockRejectedValueOnce(
+      new Error('送信前の確認の設定が不正です: x')
+    )
+    await expect(
+      getRegisteredHandler('settings:setAgentSendConfirmEnabled')(makeEvent(1), 'x')
+    ).rejects.toThrow('送信前の確認の設定が不正です')
   })
 
   describe('settings:hasApiKey', () => {
