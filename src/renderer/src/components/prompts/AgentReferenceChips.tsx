@@ -21,14 +21,20 @@ const VISIBLE_DISABLED_REASONS: ReadonlySet<string> = new Set([
   AGENT_REFERENCE_DISABLED_REASONS.outsideFolder
 ])
 
-// 開いているファイル・選択範囲のチップの理由のうち、画面に出すもの(同じ理由は 1 回だけ。差分のタブでは両方が同じ理由)
-const visibleDisabledReasons = (chips: readonly AgentReferenceChipState[]): string[] => [
-  ...new Set(
-    chips
-      .map((chip) => chip.disabledReason)
-      .filter((reason): reason is string => reason !== null && VISIBLE_DISABLED_REASONS.has(reason))
-  )
-]
+// 開いているファイル・選択範囲のチップの理由のうち、画面に出すもの(同じ理由は 1 回だけ。差分のタブでは両方が同じ理由)。
+// key は表示文言ではなく、理由を最初に出したチップの種類にする
+const visibleDisabledReasons = (
+  chips: readonly { id: 'openFile' | 'selection'; chip: AgentReferenceChipState }[]
+): { id: 'openFile' | 'selection'; reason: string }[] => {
+  const items: { id: 'openFile' | 'selection'; reason: string }[] = []
+  for (const { id, chip } of chips) {
+    const reason = chip.disabledReason
+    if (reason === null || !VISIBLE_DISABLED_REASONS.has(reason)) continue
+    if (items.some((item) => item.reason === reason)) continue
+    items.push({ id, reason })
+  }
+  return items
+}
 
 interface Props {
   state: AgentReferencesPanelState
@@ -135,9 +141,12 @@ export default function AgentReferenceChips({ state }: Props): React.JSX.Element
           </button>
         </span>
       ))}
-      {visibleDisabledReasons([state.openFile, state.selection]).map((reason) => (
+      {visibleDisabledReasons([
+        { id: 'openFile', chip: state.openFile },
+        { id: 'selection', chip: state.selection }
+      ]).map(({ id, reason }) => (
         // 読み上げはチップの説明(aria-describedby)で届くので、見える文字は読み上げの順番に出さない(二重に読まれないように)
-        <p key={reason} className="agent-references__visible-reason" aria-hidden="true">
+        <p key={id} className="agent-references__visible-reason" aria-hidden="true">
           {reason}
         </p>
       ))}
