@@ -295,7 +295,8 @@ export function useAgentWorkspace({
   const getHistoryActions = (entry: HistoryEntry): HistoryEntryActions => {
     // 再実行の送り先は選択中のタブ(一覧の 実行 と同じ)
     const rerun = getHistoryRerunAvailability({
-      isAgentEntry: entry.agent !== null,
+      recordedFolderPath: entry.agent?.folderPath ?? null,
+      folderPath,
       mode: executionMode.mode,
       isExecuting,
       isSessionRunning: agentSessions.selected.status === 'running',

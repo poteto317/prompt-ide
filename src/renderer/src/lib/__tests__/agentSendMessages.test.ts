@@ -13,7 +13,8 @@ import {
   RUN_DISABLED_SENDING,
   getHistoryRerunAvailability,
   getPromptRunAvailability,
-  getRerunAvailability
+  getRerunAvailability,
+  rerunDisabledAgentEntryFolderMismatch
 } from '../agentSendMessages'
 
 describe('getPromptRunAvailability', () => {
@@ -113,12 +114,13 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
     isExecuting: false,
     isSessionRunning: true,
     isSessionClosing: false,
-    isSending: false
+    isSending: false,
+    folderPath: '/repo'
   }
 
   it('従来のエントリは今のまま(エージェント CLI 方式では押せない)', () => {
     expect(
-      getHistoryRerunAvailability({ ...base, isAgentEntry: false, mode: 'agent-cli' })
+      getHistoryRerunAvailability({ ...base, recordedFolderPath: null, mode: 'agent-cli' })
     ).toEqual({
       disabled: true,
       reason: RERUN_DISABLED_AGENT_MODE
@@ -126,7 +128,7 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
     expect(
       getHistoryRerunAvailability({
         ...base,
-        isAgentEntry: false,
+        recordedFolderPath: null,
         mode: 'legacy',
         isExecuting: true
       })
@@ -134,14 +136,18 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
   })
 
   it('エージェントのエントリは、従来の方式では押せず、読み込み中は読み込みの理由', () => {
-    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: 'legacy' })).toEqual({
+    expect(
+      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: 'legacy' })
+    ).toEqual({
       disabled: true,
       reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE
     })
     expect(RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE).toBe(
       'エージェント CLI 方式で記録した履歴は、エージェント CLI 方式でだけ再実行できます'
     )
-    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: null })).toEqual({
+    expect(
+      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: null })
+    ).toEqual({
       disabled: true,
       reason: RUN_DISABLED_LOADING_MODE
     })
@@ -150,13 +156,13 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
   it('エージェントのエントリは、未知の方式(方式を足したとき)をエージェント CLI 方式として押せるようにしない', () => {
     // 型の外の値(方式の列挙を足したときに、この関数を直し忘れた場合)
     const unknownMode = 'remote' as unknown as PromptExecutionMode
-    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: unknownMode })).toEqual(
-      { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE }
-    )
+    expect(
+      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: unknownMode })
+    ).toEqual({ disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE })
   })
 
   it('エージェントのエントリは、エージェント CLI 方式では一覧の 実行 と同じ条件(L-048)', () => {
-    const agent = { ...base, isAgentEntry: true, mode: 'agent-cli' as const }
+    const agent = { ...base, recordedFolderPath: '/repo', mode: 'agent-cli' as const }
     expect(getHistoryRerunAvailability(agent)).toEqual({ disabled: false, reason: null })
     expect(getHistoryRerunAvailability({ ...agent, isSessionRunning: false })).toEqual({
       disabled: true,
@@ -170,5 +176,30 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
       disabled: true,
       reason: RUN_DISABLED_SENDING
     })
+  })
+
+  it('エージェントのエントリは、記録したフォルダと違うフォルダ・フォルダを開いていないときは押せない(全文の @相対パス が別のファイルを指すため)', () => {
+    const agent = { ...base, recordedFolderPath: '/repo', mode: 'agent-cli' as const }
+    const mismatch = { disabled: true, reason: rerunDisabledAgentEntryFolderMismatch('/repo') }
+    expect(getHistoryRerunAvailability({ ...agent, folderPath: '/other' })).toEqual(mismatch)
+    expect(getHistoryRerunAvailability({ ...agent, folderPath: null })).toEqual(mismatch)
+    // セッションが無いときもフォルダ違いを先に出す(フォルダを開き直さないと直らないため。このセッションで再開 と同じ順)
+    expect(
+      getHistoryRerunAvailability({ ...agent, folderPath: '/other', isSessionRunning: false })
+    ).toEqual(mismatch)
+    expect(rerunDisabledAgentEntryFolderMismatch('/repo')).toBe(
+      '記録したフォルダ（/repo）を開いているときだけ再実行できます'
+    )
+  })
+
+  it('従来のエントリはフォルダに関係なく今のまま', () => {
+    expect(
+      getHistoryRerunAvailability({
+        ...base,
+        recordedFolderPath: null,
+        mode: 'legacy',
+        folderPath: null
+      })
+    ).toEqual({ disabled: false, reason: null })
   })
 })

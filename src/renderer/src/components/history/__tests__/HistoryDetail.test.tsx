@@ -3,6 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import HistoryDetail from '../HistoryDetail'
 import type { HistoryEntry, HistoryEntryActions } from '../../../types'
+import { rerunDisabledAgentEntryFolderMismatch } from '../../../lib/agentSendMessages'
+import { agentResumeEntryFolderMismatch } from '../../../lib/agentSessionMessages'
 
 const successEntry: HistoryEntry = {
   id: 'h1',
@@ -207,6 +209,29 @@ describe('HistoryDetail: エージェントのエントリ', () => {
     )
     await userEvent.click(resume)
     expect(onResume).not.toHaveBeenCalled()
+  })
+
+  it('記録したフォルダと違うときは、再実行・このセッションで再開 のどちらにもフォルダ違いの理由を見える文字で結ぶ', () => {
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        entry={agentEntry}
+        actions={actions(
+          { disabled: true, reason: rerunDisabledAgentEntryFolderMismatch('/w') },
+          { disabled: true, reason: agentResumeEntryFolderMismatch('/w') }
+        )}
+      />
+    )
+    const rerun = screen.getByRole('button', { name: '再実行' })
+    const resume = screen.getByRole('button', { name: 'このセッションで再開' })
+    expect(rerun).toBeDisabled()
+    expect(resume).toBeDisabled()
+    expect(document.getElementById(rerun.getAttribute('aria-describedby') ?? '')).toHaveTextContent(
+      '記録したフォルダ（/w）を開いているときだけ再実行できます'
+    )
+    expect(
+      document.getElementById(resume.getAttribute('aria-describedby') ?? '')
+    ).toHaveTextContent('記録したフォルダ（/w）を開いているときだけ再開できます')
   })
 
   it('従来のエントリ(resume が null)には このセッションで再開 を出さない', () => {

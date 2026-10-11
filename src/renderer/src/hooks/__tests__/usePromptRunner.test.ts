@@ -52,6 +52,7 @@ describe('usePromptRunner', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
@@ -80,6 +81,7 @@ describe('usePromptRunner', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile: null,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
@@ -109,6 +111,7 @@ describe('usePromptRunner', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry,
         executionMode: 'legacy',
@@ -147,6 +150,7 @@ describe('usePromptRunner: 実行方式', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry,
         executionMode: 'agent-cli',
@@ -171,6 +175,7 @@ describe('usePromptRunner: 実行方式', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: null,
@@ -190,6 +195,7 @@ describe('usePromptRunner: 実行方式', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: 'agent-cli',
@@ -218,6 +224,7 @@ describe('usePromptRunner: 実行方式', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt: vi.fn(),
         addHistoryEntry: vi.fn(),
         executionMode: 'agent-cli',
@@ -242,6 +249,7 @@ describe('usePromptRunner: 実行方式', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: 'legacy',
@@ -281,6 +289,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt: vi.fn(),
         addHistoryEntry,
         executionMode: 'agent-cli',
@@ -369,6 +378,7 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt: vi.fn(),
         addHistoryEntry,
         executionMode: 'agent-cli',
@@ -408,6 +418,7 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
     const { result } = renderHook(() =>
       usePromptRunner({
         openFile,
+        folderPath: '/repo',
         executePrompt,
         addHistoryEntry: vi.fn(),
         executionMode: 'legacy',
@@ -418,5 +429,24 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
     await result.current.rerunHistoryEntry(agentEntry)
     expect(executePrompt).not.toHaveBeenCalled()
     expect(sendToAgent).not.toHaveBeenCalled()
+  })
+
+  it('記録したフォルダと違うフォルダ・フォルダを開いていないときは送らない(処理の側の守り。L-058)', async () => {
+    for (const folderPath of ['/other', null]) {
+      const sendToAgent = vi.fn(async () => undefined)
+      const { result } = renderHook(() =>
+        usePromptRunner({
+          openFile,
+          folderPath,
+          executePrompt: vi.fn(),
+          addHistoryEntry: vi.fn(),
+          executionMode: 'agent-cli',
+          sendToAgent,
+          agentReferences: makeAgentReferencesState()
+        })
+      )
+      await result.current.rerunHistoryEntry(agentEntry)
+      expect(sendToAgent).not.toHaveBeenCalled()
+    }
   })
 })

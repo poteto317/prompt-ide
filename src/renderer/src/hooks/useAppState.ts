@@ -221,6 +221,7 @@ export function useAppState(): AppState {
   })
   const promptRunner = usePromptRunner({
     openFile: fileSystem.openFile,
+    folderPath: fileSystem.folderPath,
     executePrompt: execution.executePrompt,
     addHistoryEntry: history.addHistoryEntry,
     executionMode: agentWorkspace.executionModePanel.mode,

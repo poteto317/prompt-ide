@@ -1,5 +1,6 @@
 import type { PromptExecutionMode } from '@shared/types'
 import type { AgentSendFailure } from './agentPromptSend'
+import { isSamePath } from './pathUtils'
 
 // プロンプトの送信の文言(設計書「プロンプトの送信」「セッションが無いときのボタン」「エラー処理」)
 
@@ -43,6 +44,14 @@ export const RERUN_DISABLED_AGENT_MODE =
 /** エージェント CLI 方式で記録した履歴(agent のあるエントリ)を、従来の方式で再実行しようとしたとき */
 export const RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE =
   'エージェント CLI 方式で記録した履歴は、エージェント CLI 方式でだけ再実行できます'
+/**
+ * エージェントのエントリを、記録したフォルダと違うフォルダで(またはフォルダを開かずに)再実行しようとしたとき。記録した全文の
+ * @相対パス は記録したフォルダからのもので、別のフォルダの claude には別のファイルとして解釈されるため(このセッションで再開 の
+ * agentResumeEntryFolderMismatch と同じ形)
+ */
+export function rerunDisabledAgentEntryFolderMismatch(folderPath: string): string {
+  return `記録したフォルダ（${folderPath}）を開いているときだけ再実行できます`
+}
 
 export interface PromptRunAvailability {
   disabled: boolean
@@ -79,24 +88,32 @@ export function getRerunAvailability(params: {
 
 /**
  * 履歴のエントリごとの 再実行 を押せるか(セッションの再開の設計書「エージェントのエントリの 再実行 の押せない理由」)。
- * 従来のエントリは getRerunAvailability のまま。エージェントのエントリは、エージェント CLI 方式では一覧の 実行 と同じ条件
- * (選択中のタブへ送るため。L-048)、エージェント CLI 方式でない(従来の方式)ときは押せない
+ * 従来のエントリは getRerunAvailability のまま。エージェントのエントリは、エージェント CLI 方式でない(従来の方式)ときと、
+ * 記録したフォルダを開いていない(isSamePath。このセッションで再開 と同じ判定・同じ順)ときは押せず、それ以外は一覧の 実行 と
+ * 同じ条件(選択中のタブへ送るため。L-048)
  */
 export function getHistoryRerunAvailability(params: {
-  isAgentEntry: boolean
+  /** エージェントのエントリの記録したフォルダ(entry.agent.folderPath)。従来のエントリ(agent が null)は null */
+  recordedFolderPath: string | null
+  /** 今開いているフォルダ。開いていなければ null */
+  folderPath: string | null
   mode: PromptExecutionMode | null
   isExecuting: boolean
   isSessionRunning: boolean
   isSessionClosing: boolean
   isSending: boolean
 }): PromptRunAvailability {
-  if (!params.isAgentEntry) {
+  const { recordedFolderPath, folderPath } = params
+  if (recordedFolderPath === null) {
     return getRerunAvailability({ mode: params.mode, isExecuting: params.isExecuting })
   }
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   // 方式を足したときに選択中のタブへ送れる扱いにしないよう、エージェント CLI 方式でないものはすべて止める
   if (params.mode !== 'agent-cli') {
     return { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE }
+  }
+  if (folderPath === null || !isSamePath(folderPath, recordedFolderPath)) {
+    return { disabled: true, reason: rerunDisabledAgentEntryFolderMismatch(recordedFolderPath) }
   }
   return getPromptRunAvailability(params)
 }

@@ -6,9 +6,12 @@ import type { AgentReferencesState } from './useAgentReferences'
 import { buildAgentPromptRequest } from '../lib/agentPromptRequest'
 import type { AgentSendOptions } from '../lib/agentPromptRequest'
 import { buildAgentSentHistoryEntry } from '../lib/historyEntryFactory'
+import { isSamePath } from '../lib/pathUtils'
 
 interface Deps {
   openFile: OpenFile | null
+  /** 今開いているフォルダ(開いていなければ null)。エージェントのエントリの再実行は、記録したフォルダを開いているときだけ送る */
+  folderPath: string | null
   executePrompt: PromptExecutionState['executePrompt']
   /** 履歴に足す(従来の方式は実行の結果、エージェント CLI 方式は送れたとき) */
   addHistoryEntry: (entry: Omit<HistoryEntry, 'id'>) => void
@@ -29,6 +32,7 @@ interface PromptRunner {
 
 export function usePromptRunner({
   openFile,
+  folderPath,
   executePrompt,
   addHistoryEntry,
   executionMode,
@@ -103,13 +107,14 @@ export function usePromptRunner({
 
   // 履歴からの再実行。従来のエントリは「実行時のファイル内容スナップショット」をそのまま再現する（現在開いているファイルではなく
   // entry.fileContent を使う）。エージェントのエントリは、今の選択中のタブへ同じ全文を送り(参照は全文に含まれているので足し直さない)、
-  // 送れたら新しいエントリとして記録する。方式とエントリの種類が合わないものは何もしない(ボタンは押せないが、処理の側でも
-  // 同じ条件で守る。L-058)
+  // 送れたら新しいエントリとして記録する。方式とエントリの種類が合わないもの・記録したフォルダを開いていないもの(全文の @相対パス が
+  // 別のファイルを指すため)は何もしない(ボタンは押せないが、処理の側でも同じ条件で守る。L-058)
   const rerunHistoryEntry = useCallback(
     async (entry: HistoryEntry): Promise<void> => {
       const context: ExecutionContext = { promptId: entry.promptId, promptTitle: entry.promptTitle }
       if (executionMode === 'agent-cli') {
         if (entry.agent === null) return
+        if (folderPath === null || !isSamePath(folderPath, entry.agent.folderPath)) return
         await sendToAgent(entry.promptContent, {
           promptId: entry.promptId,
           // 記録した全文をそのまま送る。全文から参照を解析し直すのは脆いので、未保存の注意は出さない(既知の制約。設計書の「既知の制約」)
@@ -122,7 +127,7 @@ export function usePromptRunner({
       if (entry.agent !== null) return
       await run(entry.promptContent, entry.fileContent, entry.toolId, context)
     },
-    [run, executionMode, sendToAgent, recordAgentSent]
+    [run, executionMode, folderPath, sendToAgent, recordAgentSent]
   )
 
   return { runPrompt, rerunHistoryEntry }

@@ -17,7 +17,8 @@ import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { prepareClaudeScreen as prepareClaudeScreenOf } from '../../__tests__/prepareClaudeScreen'
 import {
   AGENT_SEND_FAILURE_MESSAGES,
-  PROMPT_RUN_ARIA_LABEL_AGENT
+  PROMPT_RUN_ARIA_LABEL_AGENT,
+  rerunDisabledAgentEntryFolderMismatch
 } from '../../lib/agentSendMessages'
 import { AGENT_RESUME_LAST_ARIA_LABEL } from '../../lib/agentSessionMessages'
 import { activityBarPanels } from '../../config/activityBarPanels'
@@ -194,6 +195,39 @@ describe('App: セッションの再開と履歴の配線', () => {
     await userEvent.click(panelButton('history'))
     expect(screen.getByRole('alert')).toBe(alert)
     expect(visibleIn('.history-panel')).toHaveTextContent(message)
+  })
+
+  it('記録したフォルダと違うフォルダを開いているとき、エージェントのエントリの 再実行 は押せず、フォルダ違いの理由を見える文字で結ぶ', async () => {
+    window.api.loadHistory = vi.fn().mockResolvedValue([
+      {
+        id: 'h1',
+        promptId: 'p1',
+        promptTitle: '要約',
+        promptContent: '要約して\n\n参照:\n- @a.ts',
+        fileContent: null,
+        toolId: 'claude',
+        status: 'sent',
+        resultText: null,
+        errorMessage: null,
+        executedAt: 1000000,
+        agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/other' }
+      }
+    ])
+    render(<App />)
+    await screen.findByRole('region', { name: 'エージェント' })
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    await screen.findByRole('tree')
+    await userEvent.click(
+      screen.getByRole('button', { name: '起動（開いているフォルダで claude を起動）' })
+    )
+    await screen.findByRole('button', { name: '終了（エージェントを止める）' })
+    await userEvent.click(panelButton('history'))
+    await userEvent.click(await screen.findByRole('radio', { name: /要約/ }))
+    const rerun = screen.getByRole('button', { name: '再実行' })
+    expect(rerun).toBeDisabled()
+    expect(document.getElementById(rerun.getAttribute('aria-describedby') ?? '')).toHaveTextContent(
+      rerunDisabledAgentEntryFolderMismatch('/other')
+    )
   })
 
   it('前回の続きから: 開いたフォルダの前回のセッションを本物の useAgentLastSession で取り、押すと resume を依頼し、動いている間は理由を見える文字で結ぶ', async () => {
