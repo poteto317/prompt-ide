@@ -130,3 +130,13 @@
 ## 気をつける知見（dev-flow-kit の review-lessons.md）
 
 - L-406（楽観的な更新の巻き戻しの競合）、L-156（見える文字を含むアクセシブルな名前）、L-053（途中の例外で後続が止まらない）、L-405（開いた UI を元の状態が終わる契機〈方式・フォルダ・タブ〉で閉じる）、L-060（配線の漏れを検出するテスト）、L-297（実機テスト仕様書の項目が確かめたい経路を通ること）。
+
+## その後の変更（2026-10-11、セッションの再開と履歴への記録の機能で変更）
+
+この設計書の本文は 2026-10-10 時点の記録で、書き換えていない。次の点は、その後の変更（ローカルレビュー第 9 周。送信の結果の表示先と読み上げは第 16・17 周）で現行の挙動と変わっている。現行の挙動は `2026-10-11-agent-session-resume-design.md` の「エージェントのエントリの `再実行` の押せない理由」を参照する。
+
+- 変更の理由: 履歴の詳細の `再実行` から確認を開くと、プロンプトの一覧のパネルは `display: none` で隠れており、一覧の `実行` へ `focus()` を呼んでも移らず、フォーカスが body に落ちるため。
+- 閉じた後のフォーカスの戻り先（上の「流れ」3・「閉じたときのフォーカス」・「エラーと境界の扱い」の `送信` を押した後の失敗の記述）: キャンセル（`キャンセル`・`Esc`・背景）と、確認からの送信の失敗（`failed`・結果なし）で同じ戻り先にする。確認を開いた時点の要素（opener）が DOM に残っていて、disabled でなく、見えていれば（`checkVisibility()`。無い環境では見えているとみなす）opener へ、無ければ見えている同じプロンプトの一覧の `実行` へ、どちらも無ければ移さない。失敗のときに常に一覧の `実行` へ戻す、キャンセルの条件が「DOM にあり disabled でなければ」だけ、という本文の記述は過去の挙動。
+- 関数名: 戻り先を探す関数は、`lib/promptRunButton.ts` の `findSendConfirmReturnTarget(opener, promptId)` に一本化した。本文の `findPromptRunButton`（今は非公開で、`findSendConfirmReturnTarget` の中でだけ使う）・ダイアログ内の `findReturnFocusTarget`（削除）は、その前の名前。
+- 型: `PendingAgentSend` に `opener`（開いた時点の `document.activeElement`。`useAgentSendConfirm.request` が控える）を足し、`AgentSendSettled` も `opener` を持つ（`onSendSettled({ slotId, promptId, outcome, opener })`）。本文の `onSendSettled({ slotId, promptId, outcome })` は変更前の形。送れたとき（`sent`）は従来どおり送り先のターミナルへ移し、opener は使わない。
+- 送信の結果の表示先と読み上げ（ローカルレビュー第 16・17 周で変更）: 送信の失敗・成功の見える文字は、プロンプトのパネルに加えて実行履歴のパネルの上部にも出す（見えている側のパネルの 1 か所だけ。`AgentSendFeedbackMessages`。`aria-hidden`）。読み上げ（失敗の `role="alert"`・成功の `role="status"`）は、`Sidebar` がパネルの外に常に置く 1 か所（`AgentSendFeedbackAnnouncer`）だけが担い、パネルを切り替えても読み上げ直さない。上の「エラーと境界の扱い」の「プロンプトパネルの `role="alert"` に出す」は過去の挙動で、パネルの中に `role="alert"` を戻すと、切り替えのたびに古い失敗が読み上げ直される。詳しくは `2026-10-11-agent-session-resume-design.md` の「エージェントのエントリの `再実行` の押せない理由」の送信の結果の項目を参照する。
