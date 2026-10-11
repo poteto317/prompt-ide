@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest'
+import type { PromptExecutionMode } from '@shared/types'
 import {
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
   PROMPT_RUN_ARIA_LABEL_AGENT,
   PROMPT_RUN_ARIA_LABEL_LEGACY,
+  RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
   RERUN_DISABLED_AGENT_MODE,
   RUN_DISABLED_CLOSING,
   RUN_DISABLED_LOADING_MODE,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING,
+  getHistoryRerunAvailability,
   getPromptRunAvailability,
   getRerunAvailability
 } from '../agentSendMessages'
@@ -102,5 +105,70 @@ describe('実行ボタンの aria-label', () => {
 
   it('従来の方式は「プロンプトを実行」', () => {
     expect(PROMPT_RUN_ARIA_LABEL_LEGACY).toBe('プロンプトを実行')
+  })
+})
+
+describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)', () => {
+  const base = {
+    isExecuting: false,
+    isSessionRunning: true,
+    isSessionClosing: false,
+    isSending: false
+  }
+
+  it('従来のエントリは今のまま(エージェント CLI 方式では押せない)', () => {
+    expect(
+      getHistoryRerunAvailability({ ...base, isAgentEntry: false, mode: 'agent-cli' })
+    ).toEqual({
+      disabled: true,
+      reason: RERUN_DISABLED_AGENT_MODE
+    })
+    expect(
+      getHistoryRerunAvailability({
+        ...base,
+        isAgentEntry: false,
+        mode: 'legacy',
+        isExecuting: true
+      })
+    ).toEqual({ disabled: true, reason: null })
+  })
+
+  it('エージェントのエントリは、従来の方式では押せず、読み込み中は読み込みの理由', () => {
+    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: 'legacy' })).toEqual({
+      disabled: true,
+      reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE
+    })
+    expect(RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE).toBe(
+      'エージェント CLI 方式で記録した履歴は、エージェント CLI 方式でだけ再実行できます'
+    )
+    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: null })).toEqual({
+      disabled: true,
+      reason: RUN_DISABLED_LOADING_MODE
+    })
+  })
+
+  it('エージェントのエントリは、未知の方式(方式を足したとき)をエージェント CLI 方式として押せるようにしない', () => {
+    // 型の外の値(方式の列挙を足したときに、この関数を直し忘れた場合)
+    const unknownMode = 'remote' as unknown as PromptExecutionMode
+    expect(getHistoryRerunAvailability({ ...base, isAgentEntry: true, mode: unknownMode })).toEqual(
+      { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE }
+    )
+  })
+
+  it('エージェントのエントリは、エージェント CLI 方式では一覧の 実行 と同じ条件(L-048)', () => {
+    const agent = { ...base, isAgentEntry: true, mode: 'agent-cli' as const }
+    expect(getHistoryRerunAvailability(agent)).toEqual({ disabled: false, reason: null })
+    expect(getHistoryRerunAvailability({ ...agent, isSessionRunning: false })).toEqual({
+      disabled: true,
+      reason: RUN_DISABLED_NO_SESSION
+    })
+    expect(getHistoryRerunAvailability({ ...agent, isSessionClosing: true })).toEqual({
+      disabled: true,
+      reason: RUN_DISABLED_CLOSING
+    })
+    expect(getHistoryRerunAvailability({ ...agent, isSending: true })).toEqual({
+      disabled: true,
+      reason: RUN_DISABLED_SENDING
+    })
   })
 })

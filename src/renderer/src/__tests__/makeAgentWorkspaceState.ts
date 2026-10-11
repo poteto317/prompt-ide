@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import type { AgentWorkspaceState } from '../hooks/useAgentWorkspace'
-import { makeAgentSessionsState } from './makeAgentSessionsState'
+import { makeAgentTerminalPanelState } from './makeAgentTerminalPanelState'
 
 // useAgentWorkspace の戻り値の型付きの偽物(1 か所から作る。パターン 102)。useAppState のテストは useAgentWorkspace の内側
 // (useExecutionMode・useAgentSessions・xterm の controller)ではなく、これを差し替えて組み立てだけを確かめる。
@@ -32,23 +32,10 @@ export function makeAgentWorkspaceState(
       runDisabledReason: null,
       agentSend: null,
       showToolSelector: true,
-      runAriaLabel: 'プロンプトを実行',
-      isRerunDisabled: false,
-      rerunDisabledReason: null
+      runAriaLabel: 'プロンプトを実行'
     },
     bottomPanel: 'output',
-    agentTerminal: {
-      sessions: makeAgentSessionsState(),
-      sendingSlotId: null,
-      activities: new Map(),
-      layout: {
-        isOpen: true,
-        isMaximized: false,
-        open: vi.fn(),
-        toggleOpen: vi.fn(),
-        toggleMaximized: vi.fn()
-      }
-    },
+    agentTerminal: makeAgentTerminalPanelState(),
     statusBarAgent: null,
     agentAnnouncement: '',
     agentSendConfirmDialog: {
@@ -58,6 +45,11 @@ export function makeAgentWorkspaceState(
       onCancel: vi.fn<AgentWorkspaceState['agentSendConfirmDialog']['onCancel']>()
     },
     sendToAgent: vi.fn<AgentWorkspaceState['sendToAgent']>(async () => undefined),
+    getHistoryActions: vi.fn<AgentWorkspaceState['getHistoryActions']>(() => ({
+      rerun: { disabled: false, reason: null },
+      resume: null
+    })),
+    onResume: vi.fn<AgentWorkspaceState['onResume']>(),
     ...overrides
   }
 }

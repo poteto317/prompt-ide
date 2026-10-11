@@ -1,4 +1,4 @@
-import type { AgentExitReason, AgentSessionSnapshotEntry, AgentStartResult } from '@shared/types'
+import type { AgentExitReason, AgentStartResult } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, agentStartCanceled } from '@shared/types'
 import type { AgentSession } from './agentSession'
 
@@ -10,6 +10,19 @@ export type AgentSessionCreation =
   | { kind: 'created'; session: AgentSession }
   | { kind: 'failed'; result: Extract<AgentStartResult, { kind: 'error' }> }
 
+/**
+ * registry の起動の結果。registry は pty の sessionId しか知らないため、成功は sessionId だけを返す(claude の会話の ID は
+ * starter が足して共有の AgentStartResult にする)。エラーは共有の型と同じ
+ */
+export type AgentRegistryStartResult =
+  | { kind: 'started' | 'already-running'; sessionId: string }
+  | Extract<AgentStartResult, { kind: 'error' }>
+
+/** registry の snapshot の要素(pty の sessionId だけ。claude の会話の ID は IPC の受け口が starter から足す) */
+export interface AgentRegistrySnapshotEntry {
+  slotId: string
+  sessionId: string
+}
 // 1 つの枠(タブ)の状態。session・pending・stopping がいずれも無く、世代を控えている者(holders)もいなくなったら消す
 // (renderer はタブを作るたびに新しい slotId を使うため、消さないとタブの開け閉め・リロードのたびに増え続ける)。
 // 消すと世代は 0 に戻るが、世代を控えている間(IPC の受け口の hold から、registry.start の終わりまで)は消さないので、
@@ -20,7 +33,7 @@ interface SlotState {
   // 停止の宛先の照合(findBySessionId)、already-running の返却、snapshot、上限の数え方(countActive)に使う
   session?: AgentSession
   // 起動中の依頼。どの世代の依頼かを一緒に持つ(stop の後の新しい依頼を、取り消された古い依頼にまとめないため)
-  pending?: { generation: string; run: Promise<AgentStartResult> }
+  pending?: { generation: string; run: Promise<AgentRegistryStartResult> }
   // 停止を始めたセッション(session から外したもの)の停止の完了。start はこれを待ってから新しく起動する
   stopping?: Promise<void>
   // 停止中のセッションの id → そのセッションの停止の完了。停止を待つ間に同じ sessionId へ 2 回目の stop が来たら
@@ -74,7 +87,7 @@ export class AgentSessionRegistry {
     ownerId: number,
     slotId: string,
     create: () => Promise<AgentSessionCreation>
-  ): Promise<AgentStartResult> {
+  ): Promise<AgentRegistryStartResult> {
     // この依頼の世代。待っている間に新しい stop(ウィンドウの破棄・再度のリロード)が来たら(isSuperseded)、起動せずに取り消す。
     // 世代を比べ終わるまで枠を消さない(停止の完了を待つ間に枠が空になって消え、世代が 0 に戻ると比べられなくなる)
     const requested = this.generationOf(ownerId, slotId)
@@ -91,7 +104,7 @@ export class AgentSessionRegistry {
     slotId: string,
     requested: string,
     create: () => Promise<AgentSessionCreation>
-  ): Promise<AgentStartResult> {
+  ): Promise<AgentRegistryStartResult> {
     const isSuperseded = (): boolean => this.generationOf(ownerId, slotId) !== requested
     for (;;) {
       // 終了を始めた後(停止・取り消された起動の完了を待っている間を含む)は起動せずに取り消す
@@ -131,7 +144,7 @@ export class AgentSessionRegistry {
       return this.startHeld(ownerId, slotId, requested, create)
     }
     const slot = this.slotOf(owner, slotId)
-    const run = (async (): Promise<AgentStartResult> => {
+    const run = (async (): Promise<AgentRegistryStartResult> => {
       const creation = await create()
       if (creation.kind === 'failed') return creation.result
       const { session } = creation
@@ -247,10 +260,10 @@ export class AgentSessionRegistry {
   }
 
   /** 生きているセッションを持つ枠を、枠を作った順に返す */
-  snapshot(ownerId: number): AgentSessionSnapshotEntry[] {
+  snapshot(ownerId: number): AgentRegistrySnapshotEntry[] {
     const owner = this.owners.get(ownerId)
     if (owner === undefined) return []
-    const entries: AgentSessionSnapshotEntry[] = []
+    const entries: AgentRegistrySnapshotEntry[] = []
     for (const [slotId, slot] of owner.slots) {
       if (slot.session?.isAlive()) entries.push({ slotId, sessionId: slot.session.id })
     }

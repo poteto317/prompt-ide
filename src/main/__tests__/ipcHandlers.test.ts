@@ -13,7 +13,25 @@ const mockSetupCloneLifecycle = vi.hoisted(() => vi.fn())
 const mockSetupAgentSessionLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterAgentTerminalHandlers = vi.hoisted(() => vi.fn())
 const mockStartAgentSession = vi.hoisted(() => vi.fn())
-const mockCreateAgentSessionStarter = vi.hoisted(() => vi.fn(() => mockStartAgentSession))
+const mockClaudeSessionIdOf = vi.hoisted(() => vi.fn())
+const mockLastSessionOf = vi.hoisted(() => vi.fn())
+const mockCreateAgentSessionStarter = vi.hoisted(() =>
+  vi.fn(() => ({
+    start: mockStartAgentSession,
+    claudeSessionIdOf: mockClaudeSessionIdOf,
+    lastSessionOf: mockLastSessionOf
+  }))
+)
+const mockAgentSessionRecords = vi.hoisted(() => ({ marker: 'records' }))
+const mockAgentSessionRecordIo = vi.hoisted(() => ({ marker: 'record-io' }))
+const mockCreateAgentSessionRecordStore = vi.hoisted(() => vi.fn(() => mockAgentSessionRecords))
+const mockCreateAgentSessionRecordFileIo = vi.hoisted(() => vi.fn(() => mockAgentSessionRecordIo))
+vi.mock('../agentSessionRecordStore', () => ({
+  createAgentSessionRecordStore: mockCreateAgentSessionRecordStore
+}))
+vi.mock('../agentSessionRecordFileIo', () => ({
+  createAgentSessionRecordFileIo: mockCreateAgentSessionRecordFileIo
+}))
 const mockRuntime = vi.hoisted(() => ({
   resolveAgentLaunchFromSystem: vi.fn(),
   spawnAgentPty: vi.fn(),
@@ -56,7 +74,7 @@ vi.mock('../handlers/agentNotificationHandlers', () => ({
   registerAgentNotificationHandlers: mockRegisterAgentNotificationHandlers
 }))
 vi.mock('electron', () => ({
-  app: {},
+  app: { getPath: vi.fn(() => '/mock/userData') },
   shell: { openExternal: vi.fn() },
   BrowserWindow: { fromWebContents: mockFromWebContents },
   Notification: vi.fn()
@@ -119,6 +137,7 @@ vi.mock('../handlers/claudeHandlers', () => ({
 }))
 
 import { registerIpcHandlers } from '../ipcHandlers'
+import { isClaudeSessionId } from '@shared/types'
 import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
@@ -202,10 +221,17 @@ describe('registerIpcHandlers', () => {
     expect(lifecycleFolderAccess).toBe(folderAccess)
     const [ipcMain, deps] = mockRegisterAgentTerminalHandlers.mock.calls[0]
     expect(ipcMain).toBe(mockIpcMain)
-    // IPC の受け口には registry と組み立てた starter だけを渡す
-    expect(deps).toEqual({ registry, startSession: mockStartAgentSession })
+    // IPC の受け口には registry と、組み立てた starter の起動・ID の引き当て・「前回」の取得だけを渡す
+    expect(deps).toEqual({
+      registry,
+      startSession: mockStartAgentSession,
+      claudeSessionIdOf: mockClaudeSessionIdOf,
+      getLastSession: mockLastSessionOf
+    })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
+    expect(deps.claudeSessionIdOf).toBe(mockClaudeSessionIdOf)
+    expect(deps.getLastSession).toBe(mockLastSessionOf)
   })
 
   it('通知の center を寿命の後始末と IPC の受け口に渡し、送信元のウィンドウは BrowserWindow.fromWebContents で引く', () => {
@@ -258,6 +284,23 @@ describe('registerIpcHandlers', () => {
     const first = createSessionId()
     expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     expect(createSessionId()).not.toBe(first)
+    // 起動の記録は userData の agent-sessions.json(読み込みは組み立ての時点で一度だけ始める)
+    expect(mockCreateAgentSessionRecordFileIo).toHaveBeenCalledExactlyOnceWith('/mock/userData')
+    expect(mockCreateAgentSessionRecordStore).toHaveBeenCalledExactlyOnceWith(
+      mockAgentSessionRecordIo
+    )
+    expect(starterDeps.records).toBe(mockAgentSessionRecords)
+    // 予約の集合は 1 つ(同じ ID の 2 回目は null)
+    const reservations = starterDeps.reservations as {
+      tryReserve: (id: string) => (() => void) | null
+    }
+    expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).not.toBeNull()
+    expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).toBeNull()
+    // claude のセッション ID は呼ぶたびに別の小文字の UUID v4
+    const createClaudeSessionId = starterDeps.createClaudeSessionId as () => string
+    const claudeId = createClaudeSessionId()
+    expect(isClaudeSessionId(claudeId)).toBe(true)
+    expect(createClaudeSessionId()).not.toBe(claudeId)
   })
 
   it('外部変更の IPC と監視の寿命に、同じ FolderAccessManager と同じ OpenFileWatcher を渡す', () => {

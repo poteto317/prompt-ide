@@ -20,7 +20,7 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
   return call[1] as (...args: unknown[]) => unknown
 }
 
-function makeEvent() {
+function makeEvent(): { sender: { id: number } } {
   return { sender: { id: 1 } }
 }
 
@@ -34,7 +34,27 @@ const sampleEntry: HistoryEntry = {
   status: 'success',
   resultText: '結果',
   errorMessage: null,
-  executedAt: 1000
+  executedAt: 1000,
+  agent: null
+}
+
+const agentEntry: HistoryEntry = {
+  ...sampleEntry,
+  id: 'h-agent',
+  toolId: 'claude',
+  status: 'sent',
+  resultText: null,
+  agent: {
+    claudeSessionId: '11111111-1111-4111-8111-111111111111',
+    tabLabel: 'claude 2',
+    folderPath: '/work'
+  }
+}
+// agent の無い古い形式の値(保存済みの古い history.json の要素)
+const withoutAgent = (entry: HistoryEntry): Record<string, unknown> => {
+  const legacy: Record<string, unknown> = { ...entry }
+  delete legacy.agent
+  return legacy
 }
 
 beforeEach(() => {
@@ -60,6 +80,16 @@ describe('registerHistoryHandlers', () => {
   })
 
   describe('history:save', () => {
+    it('エージェントのエントリは agent を残したまま saveHistory に渡す(L-015)', async () => {
+      await getRegisteredHandler('history:save')(makeEvent(), [agentEntry, sampleEntry])
+      expect(mockSaveHistory).toHaveBeenCalledWith([agentEntry, sampleEntry])
+    })
+
+    it('agent の無い古い形式は agent: null にして saveHistory に渡す', async () => {
+      await getRegisteredHandler('history:save')(makeEvent(), [withoutAgent(sampleEntry)])
+      expect(mockSaveHistory).toHaveBeenCalledWith([sampleEntry])
+    })
+
     it('履歴配列を saveHistory に渡す', async () => {
       mockSaveHistory.mockResolvedValue(undefined)
       await getRegisteredHandler('history:save')(makeEvent(), [sampleEntry])
@@ -80,16 +110,14 @@ describe('registerHistoryHandlers', () => {
     })
 
     it('不正な形式の要素があると saveHistory は呼ばれない', async () => {
-      await expect(
-        getRegisteredHandler('history:save')(makeEvent(), [{ id: 1 }])
-      ).rejects.toThrow()
+      await expect(getRegisteredHandler('history:save')(makeEvent(), [{ id: 1 }])).rejects.toThrow()
       expect(mockSaveHistory).not.toHaveBeenCalled()
     })
 
     it('不正な形式の要素があると "履歴データの形式が不正です" というエラーを完全一致でスロー（二重メッセージ化しない）', async () => {
-      await expect(
-        getRegisteredHandler('history:save')(makeEvent(), [{ id: 1 }])
-      ).rejects.toThrow(/^履歴データの形式が不正です$/)
+      await expect(getRegisteredHandler('history:save')(makeEvent(), [{ id: 1 }])).rejects.toThrow(
+        /^履歴データの形式が不正です$/
+      )
       expect(mockSaveHistory).not.toHaveBeenCalled()
     })
 

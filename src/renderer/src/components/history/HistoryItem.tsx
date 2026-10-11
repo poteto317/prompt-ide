@@ -1,7 +1,12 @@
 'use client'
 import type { HistoryEntry } from '../../types'
 import { truncatePreview } from '../../lib/promptUtils'
-import { getToolLabel, formatExecutedAt, getStatusLabel } from '../../lib/historyFormatters'
+import {
+  getHistoryToolLabel,
+  getHistoryPreviewSource,
+  formatExecutedAt,
+  getStatusLabel
+} from '../../lib/historyFormatters'
 
 interface Props {
   entry: HistoryEntry
@@ -10,10 +15,15 @@ interface Props {
   itemRef?: (el: HTMLButtonElement | null) => void
 }
 
-export default function HistoryItem({ entry, isSelected, onSelect, itemRef }: Props) {
-  const toolLabel = getToolLabel(entry.toolId)
+export default function HistoryItem({
+  entry,
+  isSelected,
+  onSelect,
+  itemRef
+}: Props): React.JSX.Element {
+  const toolLabel = getHistoryToolLabel(entry)
   const statusLabel = getStatusLabel(entry.status)
-  const preview = truncatePreview(entry.resultText ?? entry.errorMessage ?? '')
+  const preview = truncatePreview(getHistoryPreviewSource(entry))
 
   return (
     <button

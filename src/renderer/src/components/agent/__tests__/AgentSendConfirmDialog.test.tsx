@@ -435,6 +435,17 @@ describe('AgentSendConfirmDialog', () => {
       expect(screen.getByRole('button', { name: '一覧の実行' })).toHaveFocus()
     })
 
+    it('開いた時点の要素が見えていなければ(checkVisibility が false)、同じプロンプトの一覧の実行へ戻す', async () => {
+      const { rerender } = render(<Harness state={makeState({ pending: null })} />)
+      const opener = screen.getByRole('button', { name: '開いた元' })
+      opener.focus()
+      rerender(<Harness state={makeState()} />)
+      Object.defineProperty(opener, 'checkVisibility', { value: () => false })
+      await userEvent.click(cancelButton())
+      expect(opener).not.toHaveFocus()
+      expect(screen.getByRole('button', { name: '一覧の実行' })).toHaveFocus()
+    })
+
     it('戻り先がどちらも無ければフォーカスを動かさず、閉じる依頼だけを出す', async () => {
       const { rerender } = render(<Harness state={makeState({ pending: null })} />)
       screen.getByRole('button', { name: '開いた元' }).focus()

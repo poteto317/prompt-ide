@@ -1,3 +1,4 @@
+import type { AgentHistoryInfo } from '@shared/types'
 import type { PreparedAgentReferences } from './agentReferenceCandidates'
 import { appendAgentReferences } from './agentReferences'
 
@@ -14,8 +15,9 @@ export interface AgentSendOptions {
   promptId: string | null
   /** 未保存の変更がある、参照として添えたファイル(表示用の相対パス)。送信前の確認のダイアログに注意として出す */
   unsavedPaths: readonly string[]
-  /** 送れた(結果が sent)ときだけ呼ぶ。確認のキャンセル・閉じた(フォルダの切り替えなど)・送信の失敗では呼ばない */
-  onSent?: () => void
+  /** 送れた(結果が sent)ときだけ、送信の手順を始める時点に控えた送り先(控えられなかったら null)を渡して呼ぶ。確認のキャンセル・
+   *  閉じた(フォルダの切り替えなど)・送信の失敗では呼ばない */
+  onSent?: (sentTo: AgentHistoryInfo | null) => void
 }
 
 export interface AgentPromptRequest {
@@ -27,7 +29,7 @@ export function buildAgentPromptRequest(
   content: string,
   promptId: string,
   prepared: PreparedAgentReferences,
-  onSent: () => void
+  onSent: (sentTo: AgentHistoryInfo | null) => void
 ): AgentPromptRequest {
   return {
     text: appendAgentReferences(content, prepared.references),

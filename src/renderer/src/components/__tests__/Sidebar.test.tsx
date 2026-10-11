@@ -5,6 +5,8 @@ import Sidebar from '../Sidebar'
 import type {
   AgentReferencesPanelState,
   DiscardAllState,
+  HistoryEntry,
+  HistoryEntryActions,
   MergeStatePanelState,
   StashPanelState
 } from '../../types'
@@ -73,6 +75,10 @@ const defaultProps = {
   onDeleteHistoryEntry: vi.fn(),
   onClearHistory: vi.fn(),
   onRerunHistoryEntry: vi.fn(),
+  getHistoryActions: vi.fn(
+    (): HistoryEntryActions => ({ rerun: { disabled: false, reason: null }, resume: null })
+  ),
+  onResumeHistoryEntry: vi.fn(),
   gitStatus: null,
   gitLoading: false,
   gitError: null,
@@ -345,10 +351,7 @@ describe('Sidebar: プロンプトの実行の状態の受け渡し', () => {
     runDisabledReason: 'エージェントが起動していません（ターミナルの「起動」を押してください）',
     agentSend: { error: null, notice: null },
     showToolSelector: false,
-    runAriaLabel: '実行（エージェントに送信）',
-    isRerunDisabled: true,
-    rerunDisabledReason:
-      'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
+    runAriaLabel: '実行（エージェントに送信）'
   }
 
   it('プロンプトパネルへ押せない理由・ツールの選択の有無を渡す', () => {
@@ -393,5 +396,47 @@ describe('Sidebar: プロンプトの実行の状態の受け渡し', () => {
     expect(screen.getByRole('radio', { name: /^従来の方式/ })).toHaveAccessibleDescription(
       '従来の方式で実行している間は、実行方式を切り替えられません'
     )
+  })
+})
+
+describe('Sidebar: 履歴のエントリごとの操作の受け渡し', () => {
+  it('getHistoryActions と onResumeHistoryEntry を履歴のパネルへ渡す(取り違え・渡し忘れを確かめる。L-060)', async () => {
+    const entry: HistoryEntry = {
+      id: 'h1',
+      promptId: 'p1',
+      promptTitle: '要約',
+      promptContent: '本文',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'sent',
+      resultText: null,
+      errorMessage: null,
+      executedAt: 1000,
+      agent: {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        tabLabel: 'claude 1',
+        folderPath: '/w'
+      }
+    }
+    const onResumeHistoryEntry = vi.fn()
+    const onRerunHistoryEntry = vi.fn()
+    render(
+      <Sidebar
+        {...defaultProps}
+        activePanel="history"
+        history={[entry]}
+        onRerunHistoryEntry={onRerunHistoryEntry}
+        onResumeHistoryEntry={onResumeHistoryEntry}
+        getHistoryActions={() => ({
+          rerun: { disabled: true, reason: '再実行の理由' },
+          resume: { disabled: false, reason: null }
+        })}
+      />
+    )
+    await userEvent.click(screen.getByRole('radio'))
+    expect(screen.getByText('再実行の理由')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'このセッションで再開' }))
+    expect(onResumeHistoryEntry).toHaveBeenCalledExactlyOnceWith(entry)
+    expect(onRerunHistoryEntry).not.toHaveBeenCalled()
   })
 })

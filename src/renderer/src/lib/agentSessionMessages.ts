@@ -14,6 +14,36 @@ export const AGENT_EXITED_SOON_NOTE = '起動の直後に終了しました。�
 export const AGENT_TOO_MANY_SESSIONS = `同時に動かせるエージェントは ${AGENT_MAX_SESSIONS_PER_WINDOW} つまでです`
 /** 「＋」を押せない理由(タブが上限に達している。動いている数ではなくタブの数の制限なので、閉じれば追加できることを伝える) */
 export const AGENT_ADD_TAB_DISABLED_LIMIT = `タブは ${AGENT_MAX_SESSIONS_PER_WINDOW} つまでです（使わないタブを閉じると追加できます）`
+/** 再開の ID が main の起動の記録に無い(main が unknown-session で拒んだ) */
+export const AGENT_UNKNOWN_SESSION =
+  'このセッションは再開できません（アプリの起動の記録にありません）'
+/** 同じ ID の claude がほかのタブかウィンドウで動いている(main が session-in-use で拒んだ) */
+export const AGENT_SESSION_IN_USE = 'このセッションはほかのタブかウィンドウで動いています'
+
+/** ターミナルのタブの「前回の続きから」(このフォルダで最後に起動が確定した claude のセッションを再開する) */
+export const AGENT_RESUME_LAST_LABEL = '前回の続きから'
+/** 可視の文言「前回の続きから」で始める(パターン 76) */
+export const AGENT_RESUME_LAST_ARIA_LABEL =
+  '前回の続きから（このフォルダで最後に起動した claude のセッションを再開）'
+export const AGENT_RESUME_LAST_LOADING = '前回のセッションを確かめています'
+export const AGENT_RESUME_LAST_NO_RECORD = 'このフォルダで前回起動したセッションの記録がありません'
+/** 前回のセッションがほかのタブで起動中・実行中のとき(label はそのタブの名前) */
+export function agentResumeLastInUse(label: string): string {
+  return `前回のセッションは ${label} で動いています`
+}
+
+/** 実行の履歴の詳細の「このセッションで再開」(新しいタブを開いて、エントリの claude のセッションを再開する) */
+export const AGENT_RESUME_ENTRY_LABEL = 'このセッションで再開'
+export const AGENT_RESUME_ENTRY_LEGACY_MODE =
+  'エージェント CLI 方式でだけ再開できます（設定で切り替えると使えます）'
+/** 開いているフォルダが記録したフォルダと違う・フォルダを開いていない */
+export function agentResumeEntryFolderMismatch(folderPath: string): string {
+  return `記録したフォルダ（${folderPath}）を開いているときだけ再開できます`
+}
+/** エントリのセッションがほかのタブで起動中・実行中(label はそのタブの名前) */
+export function agentResumeEntryInUse(label: string): string {
+  return `このセッションは ${label} で動いています`
+}
 
 /** 起動の失敗(spawn-failed・起動の依頼の例外)の文言の接頭辞。後ろに理由を付ける */
 export const AGENT_START_ERROR_PREFIX = 'エージェントを起動できませんでした: '
@@ -40,6 +70,10 @@ export function describeAgentStartError(
       )
     case 'too-many-sessions':
       return AGENT_TOO_MANY_SESSIONS
+    case 'unknown-session':
+      return AGENT_UNKNOWN_SESSION
+    case 'session-in-use':
+      return AGENT_SESSION_IN_USE
     case 'spawn-failed':
       return `${AGENT_START_ERROR_PREFIX}${result.detail ?? ''}`
   }

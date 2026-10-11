@@ -16,17 +16,21 @@ export interface AgentSessionExitView {
   reason: AgentExitReason
 }
 
-/** タブごとの起動・停止・終了の状態(slotId をキーにして持つ)。sessionId は持たない(useAgentSessions の ref と controller が持つ) */
+/** タブごとの起動・停止・終了の状態(slotId をキーにして持つ)。pty の sessionId は持たない(useAgentSessions の ref と controller が持つ) */
 export interface AgentTabSessionFields {
   status: AgentSessionStatus
   exit: AgentSessionExitView | null
   error: string | null
+  /** 起動中(resume は依頼した ID、new は結果が届いてから)・実行中のセッションの claude の会話の ID。終了・起動の失敗・取り消しで
+   *  null に戻す(送信の時点の送り先の控えと、同じ ID が動いているかの判定に使う。終了した後の ID はどこにも使わない) */
+  claudeSessionId: string | null
 }
 
 export const INITIAL_AGENT_TAB_SESSION_FIELDS: AgentTabSessionFields = {
   status: 'none',
   exit: null,
-  error: null
+  error: null,
+  claudeSessionId: null
 }
 
 /** タブの状態。まだ状態の無いタブは初期値 */
@@ -47,6 +51,15 @@ export const isAnyAgentSessionActive = (tabs: readonly { status: AgentSessionSta
 export const isAnyAgentSessionStarting = (
   tabs: readonly { status: AgentSessionStatus }[]
 ): boolean => tabs.some((tab) => tab.status === 'starting')
+
+/** claudeSessionId のセッションが起動中・実行中のタブ(前回の続きから・このセッションで再開 の押せない理由)。無ければ undefined */
+export function findActiveAgentTabByClaudeSessionId<
+  T extends { status: AgentSessionStatus; claudeSessionId: string | null }
+>(tabs: readonly T[], claudeSessionId: string): T | undefined {
+  return tabs.find(
+    (tab) => tab.claudeSessionId === claudeSessionId && isActiveAgentSessionStatus(tab.status)
+  )
+}
 
 /** 起動の直後とみなす時間(node-pty は起動の失敗を終了コード 1 で返すため。確認の結果 4) */
 export const AGENT_EXITED_SOON_MS = 2_000

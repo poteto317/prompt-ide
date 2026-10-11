@@ -16,7 +16,20 @@ import {
   agentCloseTabConfirm
 } from '../../lib/agentSessionMessages'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, AGENT_START_CANCELED_DETAIL } from '@shared/types'
-import type { AgentSessionExit, AgentSessionSnapshotEntry, AgentStartResult } from '@shared/types'
+import type {
+  AgentLaunchRequest,
+  AgentSessionExit,
+  AgentSessionSnapshotEntry,
+  AgentStartResult
+} from '@shared/types'
+
+const CSID = '11111111-1111-4111-8111-111111111111'
+const CSID2 = '22222222-2222-4222-9222-222222222222'
+const NEW: AgentLaunchRequest = { kind: 'new' }
+const resumeOf = (claudeSessionId: string): AgentLaunchRequest => ({
+  kind: 'resume',
+  claudeSessionId
+})
 
 const mockStart = vi.mocked(agentTerminalApi.startAgentSession)
 const mockStop = vi.mocked(agentTerminalApi.stopAgentSession)
@@ -76,15 +89,15 @@ const renderStrict = (): Rendered =>
 // タブ 1 つの場合: 選択中のタブ(slot-1)を起動する
 const startSelected = async (result: Rendered['result']): Promise<void> => {
   await act(async () => {
-    await result.current.start(result.current.selected.slotId)
+    await result.current.start(result.current.selected.slotId, NEW)
   })
 }
 
 // タブ 2 つを s-1・s-2 で動かす
 const runTwoTabs = async (result: Rendered['result']): Promise<void> => {
   mockStart
-    .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
-    .mockResolvedValueOnce({ kind: 'started', sessionId: 's-2' })
+    .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
+    .mockResolvedValueOnce({ kind: 'started', sessionId: 's-2', claudeSessionId: CSID })
   await startSelected(result)
   await act(async () => {
     await result.current.addTab()
@@ -111,7 +124,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('起動の直前に画面を消し、測った桁数・行数で起動し、running にしてセッションを controller に渡す', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     const { result } = render()
     await startSelected(result)
     expect(controllerOf('slot-1').prepareForStart).toHaveBeenCalledOnce()
@@ -119,7 +132,8 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       slotId: 'slot-1',
       folderPath: '/work',
       cols: 80,
-      rows: 24
+      rows: 24,
+      launch: NEW
     })
     expect(result.current.selected.status).toBe('running')
     expect(controllerOf('slot-1').sessionId).toBe('s1')
@@ -159,18 +173,18 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     const { result } = render()
     let first: Promise<void> = Promise.resolve()
     act(() => {
-      first = result.current.start('slot-1')
+      first = result.current.start('slot-1', NEW)
     })
     expect(result.current.selected.status).toBe('starting')
     await act(async () => {
-      await result.current.start('slot-1')
+      await result.current.start('slot-1', NEW)
     })
     await act(async () => {
-      resolve({ kind: 'started', sessionId: 's1' })
+      resolve({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
       await first
     })
     await act(async () => {
-      await result.current.start('slot-1')
+      await result.current.start('slot-1', NEW)
     })
     expect(mockStart).toHaveBeenCalledOnce()
   })
@@ -182,7 +196,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('自分のセッションの終了で exited にし、終了コードを持つ。ほかのセッションの終了は無視する', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     const { result } = render()
     await startSelected(result)
     act(() => emitExit({ sessionId: 'other', exitCode: 1, signal: null, reason: 'exited' }))
@@ -196,7 +210,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('起動の直後(2 秒以内)に終了コード ≠ 0 で終わったら案内を添える', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     const { result } = render()
     await startSelected(result)
     now = 1_999
@@ -214,7 +228,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     })
     expect(stopped).toBe(true)
     expect(mockStop).not.toHaveBeenCalled()
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     await startSelected(result)
     await act(async () => {
       stopped = await result.current.stop('slot-1')
@@ -225,7 +239,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
 
   it('stop が失敗したら false を返し、終了の失敗の接頭辞に理由を付けてそのタブに出す', async () => {
     const { result } = render()
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     await startSelected(result)
     mockStop.mockRejectedValueOnce(new Error('ipc down'))
     let stopped: boolean | undefined
@@ -237,7 +251,9 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('部品の作り直しの後、main のセッションに合わせる', async () => {
-    mockGetState.mockResolvedValueOnce([{ slotId: 'slot-1', sessionId: 's9' }])
+    mockGetState.mockResolvedValueOnce([
+      { slotId: 'slot-1', sessionId: 's9', claudeSessionId: CSID }
+    ])
     const { result } = render()
     await waitFor(() => expect(result.current.selected.status).toBe('running'))
     expect(controllerOf('slot-1').sessionId).toBe('s9')
@@ -263,7 +279,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     }
     mockStart.mockImplementationOnce(async () => {
       calls.push('start')
-      return { kind: 'started', sessionId: 's1' }
+      return { kind: 'started', sessionId: 's1', claudeSessionId: CSID }
     })
     const { result } = render()
     await startSelected(result)
@@ -272,12 +288,17 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       slotId: 'slot-1',
       folderPath: '/work',
       cols: 100,
-      rows: 30
+      rows: 30,
+      launch: NEW
     })
   })
 
   it('already-running は何も出さず、既存のセッションに合わせる', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'already-running', sessionId: 's7' })
+    mockStart.mockResolvedValueOnce({
+      kind: 'already-running',
+      sessionId: 's7',
+      claudeSessionId: CSID
+    })
     const { result } = render()
     await startSelected(result)
     expect(result.current.selected.status).toBe('running')
@@ -315,12 +336,12 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('終了した後にもう一度起動でき、前の終了と案内を消す', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     const { result } = render()
     await startSelected(result)
     act(() => emitExit({ sessionId: 's1', exitCode: 1, signal: null, reason: 'exited' }))
     expect(result.current.selected.error).not.toBeNull()
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's2' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's2', claudeSessionId: CSID })
     await startSelected(result)
     expect(mockStart).toHaveBeenCalledTimes(2)
     expect(controllerOf('slot-1').prepareForStart).toHaveBeenCalledTimes(2)
@@ -333,7 +354,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   it('終了の通知が起動の結果より先に届いても exited にする', async () => {
     mockStart.mockImplementationOnce(async () => {
       emitExit({ sessionId: 's1', exitCode: 1, signal: null, reason: 'exited' })
-      return { kind: 'started', sessionId: 's1' }
+      return { kind: 'started', sessionId: 's1', claudeSessionId: CSID }
     })
     const { result } = render()
     await startSelected(result)
@@ -345,6 +366,31 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     expect(controllerOf('slot-1').sessionId).toBeNull()
   })
 
+  it('起動の結果(started・already-running)を受けるたびに startConfirmedCount を増やし、起動の結果より先に終了が届いても増やす。失敗では増やさない', async () => {
+    const { result } = render()
+    expect(result.current.startConfirmedCount).toBe(0)
+    mockStart.mockImplementationOnce(async () => {
+      emitExit({ sessionId: 's1', exitCode: 1, signal: null, reason: 'exited' })
+      return { kind: 'started', sessionId: 's1', claudeSessionId: CSID }
+    })
+    await startSelected(result)
+    expect(result.current.selected.status).toBe('exited')
+    expect(result.current.startConfirmedCount).toBe(1)
+    mockStart.mockResolvedValueOnce({
+      kind: 'already-running',
+      sessionId: 's2',
+      claudeSessionId: CSID2
+    })
+    await startSelected(result)
+    expect(result.current.startConfirmedCount).toBe(2)
+    act(() => emitExit({ sessionId: 's2', exitCode: 0, signal: null, reason: 'exited' }))
+    mockStart.mockResolvedValueOnce({ kind: 'error', error: 'spawn-failed', detail: 'x' })
+    await startSelected(result)
+    mockStart.mockRejectedValueOnce(new Error('ipc down'))
+    await startSelected(result)
+    expect(result.current.startConfirmedCount).toBe(2)
+  })
+
   it('起動中に main のセッションの問い合わせが返っても、起動の結果を待つ', async () => {
     let resolveSnapshot: (value: AgentSessionSnapshotEntry[]) => void = () => undefined
     mockGetState.mockReset()
@@ -354,10 +400,10 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     const { result } = render()
     let first: Promise<void> = Promise.resolve()
     act(() => {
-      first = result.current.start('slot-1')
+      first = result.current.start('slot-1', NEW)
     })
     await act(async () => {
-      resolveSnapshot([{ slotId: 'slot-1', sessionId: 's1' }])
+      resolveSnapshot([{ slotId: 'slot-1', sessionId: 's1', claudeSessionId: CSID }])
     })
     expect(result.current.selected.status).toBe('starting')
     await act(async () => {
@@ -369,7 +415,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('StrictMode の二重マウントでも終了の購読は 1 つで、アンマウントで解除する', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
     const { result, unmount } = renderStrict()
     await waitFor(() => expect(mockGetState).toHaveBeenCalled())
     expect(exitListeners.size).toBe(1)
@@ -382,7 +428,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   })
 
   it('StrictMode でも main のセッションに 1 回だけ合わせる', async () => {
-    mockGetState.mockResolvedValue([{ slotId: 'slot-1', sessionId: 's9' }])
+    mockGetState.mockResolvedValue([{ slotId: 'slot-1', sessionId: 's9', claudeSessionId: CSID }])
     const controller = controllerOf('slot-1')
     const setSession = vi.fn(controller.setSession)
     controller.setSession = setSession
@@ -406,7 +452,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     )
     rerender({ enabled: false })
     await act(async () => {
-      resolveSnapshot([{ slotId: 'slot-1', sessionId: 's9' }])
+      resolveSnapshot([{ slotId: 'slot-1', sessionId: 's9', claudeSessionId: CSID }])
     })
     expect(result.current.selected.status).toBe('none')
     expect(controllerOf('slot-1').sessionId).toBeNull()
@@ -419,11 +465,11 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     const { result, unmount } = render()
     let first: Promise<void> = Promise.resolve()
     act(() => {
-      first = result.current.start('slot-1')
+      first = result.current.start('slot-1', NEW)
     })
     unmount()
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's1' })
+      resolveStart({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
       await first
     })
     expect(controllerOf('slot-1').sessionId).toBe('s1')
@@ -460,8 +506,8 @@ describe('useAgentSessions — 複数のタブ', () => {
   it('起動の直後の終了の判定はタブごとの起動時刻で行う(早く起動したタブは案内を出さず、遅いタブは出す)', async () => {
     const { result } = render()
     mockStart
-      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
-      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-2' })
+      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
+      .mockResolvedValueOnce({ kind: 'started', sessionId: 's-2', claudeSessionId: CSID })
     now = 10_000
     await startSelected(result)
     now = 15_000
@@ -489,7 +535,7 @@ describe('useAgentSessions — 複数のタブ', () => {
   })
 
   it('addTab はタブを作って選択し、そのタブで起動の依頼を出す', async () => {
-    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-2' })
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-2', claudeSessionId: CSID })
     const { result } = render()
     await act(async () => {
       await result.current.addTab()
@@ -542,11 +588,11 @@ describe('useAgentSessions — 複数のタブ', () => {
     expect(result.current.isAnyActive).toBe(false)
     let first: Promise<void> = Promise.resolve()
     act(() => {
-      first = result.current.start('slot-1')
+      first = result.current.start('slot-1', NEW)
     })
     expect(result.current.isAnyActive).toBe(true)
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's-1' })
+      resolveStart({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
       await first
     })
     expect(result.current.isAnyActive).toBe(true)
@@ -559,11 +605,11 @@ describe('useAgentSessions — 複数のタブ', () => {
     expect(result.current.isAnyStarting).toBe(false)
     let first: Promise<void> = Promise.resolve()
     act(() => {
-      first = result.current.start('slot-1')
+      first = result.current.start('slot-1', NEW)
     })
     expect(result.current.isAnyStarting).toBe(true)
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's-1' })
+      resolveStart({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
       await first
     })
     expect(result.current.isAnyStarting).toBe(false)
@@ -644,7 +690,7 @@ describe('useAgentSessions — 複数のタブ', () => {
 
     it('最後の 1 つは消さない(確認も停止もしない)', async () => {
       const onConfirm = vi.fn(() => true)
-      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
+      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
       const { result } = render({ onConfirm })
       await startSelected(result)
       let closed: boolean | undefined
@@ -659,7 +705,7 @@ describe('useAgentSessions — 複数のタブ', () => {
 
     it('起動中のタブは、起動の結果(sessionId)を待ってから止めて消す', async () => {
       const onConfirm = vi.fn(() => true)
-      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
+      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
       const { result } = render({ onConfirm })
       await startSelected(result)
       let resolveStart: (value: AgentStartResult) => void = () => undefined
@@ -682,7 +728,7 @@ describe('useAgentSessions — 複数のタブ', () => {
       expect(result.current.tabs).toHaveLength(2)
       let closed: boolean | undefined
       await act(async () => {
-        resolveStart({ kind: 'started', sessionId: 's-2' })
+        resolveStart({ kind: 'started', sessionId: 's-2', claudeSessionId: CSID })
         await adding
         closed = await closing
       })
@@ -693,7 +739,7 @@ describe('useAgentSessions — 複数のタブ', () => {
 
     it('起動中のタブの起動が取り消しになったら、止めずに消す', async () => {
       const onConfirm = vi.fn(() => true)
-      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
+      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
       const { result } = render({ onConfirm })
       await startSelected(result)
       let resolveStart: (value: AgentStartResult) => void = () => undefined
@@ -786,7 +832,7 @@ describe('useAgentSessions — 複数のタブ', () => {
       expect(tabOf(result.current, 'slot-2').status).toBe('exited')
       mockStart.mockClear()
       await act(async () => {
-        await result.current.start('slot-2')
+        await result.current.start('slot-2', NEW)
       })
       expect(mockStart).not.toHaveBeenCalled()
       await act(async () => {
@@ -956,14 +1002,17 @@ describe('useAgentSessions — 複数のタブ', () => {
     })
 
     it.each([
-      ['起動し終えた', { kind: 'started', sessionId: 's-2' } as AgentStartResult],
+      [
+        '起動し終えた',
+        { kind: 'started', sessionId: 's-2', claudeSessionId: CSID } as AgentStartResult
+      ],
       ['起動中の', null]
     ])(
       '止めている間に%sタブがあれば、false(実行方式を切り替えない)',
       async (_label, startResult) => {
         const { result } = render()
         mockStart
-          .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1' })
+          .mockResolvedValueOnce({ kind: 'started', sessionId: 's-1', claudeSessionId: CSID })
           .mockResolvedValueOnce({ kind: 'error', error: 'no-folder' })
         await startSelected(result)
         await act(async () => {
@@ -981,7 +1030,7 @@ describe('useAgentSessions — 複数のタブ', () => {
           mockStart.mockImplementationOnce(() => new Promise(() => undefined))
         else mockStart.mockResolvedValueOnce(startResult)
         await act(async () => {
-          void result.current.start('slot-2')
+          void result.current.start('slot-2', NEW)
           await Promise.resolve()
         })
         let stopped: boolean | undefined
@@ -1029,8 +1078,8 @@ describe('useAgentSessions — 複数のタブ', () => {
   describe('マウント時の同期', () => {
     it('一覧の slotId のタブに合わせ、置き場に無い slotId はタブを作って合わせる', async () => {
       mockGetState.mockResolvedValueOnce([
-        { slotId: 'slot-1', sessionId: 's-1' },
-        { slotId: 'restored', sessionId: 's-9' }
+        { slotId: 'slot-1', sessionId: 's-1', claudeSessionId: CSID },
+        { slotId: 'restored', sessionId: 's-9', claudeSessionId: CSID }
       ])
       const { result } = render()
       await waitFor(() => expect(result.current.tabs).toHaveLength(2))
@@ -1059,7 +1108,9 @@ describe('useAgentSessions — 複数のタブ', () => {
     })
 
     it('復元したタブのセッションの終了も、そのタブへ振り分ける', async () => {
-      mockGetState.mockResolvedValueOnce([{ slotId: 'restored', sessionId: 's-9' }])
+      mockGetState.mockResolvedValueOnce([
+        { slotId: 'restored', sessionId: 's-9', claudeSessionId: CSID }
+      ])
       const { result } = render()
       await waitFor(() => expect(result.current.tabs).toHaveLength(2))
       await waitFor(() => expect(tabOf(result.current, 'restored').status).toBe('running'))
@@ -1067,5 +1118,181 @@ describe('useAgentSessions — 複数のタブ', () => {
       expect(tabOf(result.current, 'restored').status).toBe('exited')
       expect(tabOf(result.current, 'slot-1').status).toBe('none')
     })
+  })
+})
+
+describe('useAgentSessions — claude のセッション ID', () => {
+  it('start は起動の指定(launch)をそのまま main へ渡す', async () => {
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID))
+    })
+    expect(mockStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ slotId: 'slot-1', launch: resumeOf(CSID) })
+    )
+  })
+
+  it('new は結果が届いてから、resume は起動中から、タブに claudeSessionId を持つ', async () => {
+    let resolveStart: (value: AgentStartResult) => void = () => undefined
+    mockStart.mockImplementationOnce(() => new Promise((r) => (resolveStart = r)))
+    const { result } = render()
+    let first: Promise<void> = Promise.resolve()
+    act(() => {
+      first = result.current.start('slot-1', NEW)
+    })
+    expect(result.current.selected).toMatchObject({ status: 'starting', claudeSessionId: null })
+    await act(async () => {
+      resolveStart({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+      await first
+    })
+    expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID })
+    act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
+    mockStart.mockImplementationOnce(() => new Promise((r) => (resolveStart = r)))
+    act(() => {
+      first = result.current.start('slot-1', resumeOf(CSID))
+    })
+    expect(result.current.selected).toMatchObject({ status: 'starting', claudeSessionId: CSID })
+    await act(async () => {
+      resolveStart({ kind: 'started', sessionId: 's2', claudeSessionId: CSID })
+      await first
+    })
+    expect(result.current.selected.claudeSessionId).toBe(CSID)
+  })
+
+  it('resume に already-running が返り、ID が依頼と違えば結果の ID で上書きする(そのタブで動いているのは結果のセッション)', async () => {
+    mockStart.mockResolvedValueOnce({
+      kind: 'already-running',
+      sessionId: 's7',
+      claudeSessionId: CSID2
+    })
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID))
+    })
+    expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID2 })
+  })
+
+  it.each([
+    ['終了', 'exit'],
+    ['起動の失敗', 'error'],
+    ['起動の取り消し', 'canceled'],
+    ['起動の依頼の例外', 'throw']
+  ])('%s で claudeSessionId を null に戻す', async (_label, kind) => {
+    if (kind === 'exit')
+      mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+    else if (kind === 'error')
+      mockStart.mockResolvedValueOnce({ kind: 'error', error: 'unknown-session' })
+    else if (kind === 'canceled')
+      mockStart.mockResolvedValueOnce({
+        kind: 'error',
+        error: 'spawn-failed',
+        detail: AGENT_START_CANCELED_DETAIL
+      })
+    else mockStart.mockRejectedValueOnce(new Error('ipc down'))
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID))
+    })
+    if (kind === 'exit')
+      act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
+    expect(result.current.selected.claudeSessionId).toBeNull()
+  })
+
+  it('unknown-session・session-in-use は、そのタブのエラーとして文言を出す', async () => {
+    mockStart.mockResolvedValueOnce({ kind: 'error', error: 'session-in-use' })
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID))
+    })
+    expect(result.current.selected).toMatchObject({
+      status: 'none',
+      error: 'このセッションはほかのタブかウィンドウで動いています'
+    })
+  })
+
+  it('ほかのタブで同じ ID が起動中・実行中なら、resume は何もしない(処理の側の守り。L-058)', async () => {
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', NEW)
+    })
+    let slot2 = ''
+    act(() => {
+      slot2 = tabs.add()!.slotId
+    })
+    mockStart.mockClear()
+    await act(async () => {
+      await result.current.start(slot2, resumeOf(CSID))
+    })
+    expect(mockStart).not.toHaveBeenCalled()
+    expect(tabOf(result.current, slot2).status).toBe('none')
+  })
+
+  it('resumeInNewTab はタブを足して選択し、そのタブで resume を始めて slotId を返す(完了は待たない)', async () => {
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+    const { result } = render()
+    let slotId: string | null = null
+    act(() => {
+      slotId = result.current.resumeInNewTab(CSID)
+    })
+    expect(slotId).toBe('slot-2')
+    expect(result.current.selected.slotId).toBe('slot-2')
+    expect(mockStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ slotId: 'slot-2', launch: resumeOf(CSID) })
+    )
+    await waitFor(() =>
+      expect(tabOf(result.current, 'slot-2')).toMatchObject({
+        status: 'running',
+        claudeSessionId: CSID
+      })
+    )
+  })
+
+  it.each([
+    ['タブが上限', { folderPath: '/work' }, true],
+    ['起動を受け付けない間', { startBlockedReason: '実行方式を切り替えています' }, false],
+    ['フォルダが無い', { folderPath: null }, false]
+  ])('resumeInNewTab は %s なら何もせず null を返す', (_label, options, fill) => {
+    const { result } = render(options)
+    if (fill) {
+      act(() => {
+        while (tabs.add() !== null) {
+          // 上限まで足す
+        }
+      })
+    }
+    const before = tabs.getSnapshot().tabs.length
+    let slotId: string | null = 'x'
+    act(() => {
+      slotId = result.current.resumeInNewTab(CSID)
+    })
+    expect(slotId).toBeNull()
+    expect(tabs.getSnapshot().tabs).toHaveLength(before)
+    expect(mockStart).not.toHaveBeenCalled()
+  })
+
+  it('resumeInNewTab は同じ ID のタブが起動中・実行中なら何もせず null を返す', async () => {
+    mockStart.mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: CSID })
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', NEW)
+    })
+    let slotId: string | null = 'x'
+    act(() => {
+      slotId = result.current.resumeInNewTab(CSID)
+    })
+    expect(slotId).toBeNull()
+    expect(tabs.getSnapshot().tabs).toHaveLength(1)
+  })
+
+  it('作り直しの後の合わせ込みで、タブの claudeSessionId も合わせる', async () => {
+    mockGetState.mockResolvedValueOnce([
+      { slotId: 'slot-1', sessionId: 's-1', claudeSessionId: CSID2 }
+    ])
+    const { result } = render()
+    await waitFor(() =>
+      expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID2 })
+    )
   })
 })

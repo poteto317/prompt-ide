@@ -1,4 +1,5 @@
 import type {
+  AgentLastSession,
   AgentSessionData,
   AgentSessionExit,
   AgentSessionSnapshotEntry,
@@ -26,6 +27,10 @@ export function stopAgentSession(sessionId: string): Promise<void> {
 
 export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {
   return window.api.getAgentSessions()
+}
+
+export function getLastAgentSession(folderPath: string): Promise<AgentLastSession | null> {
+  return window.api.getLastAgentSession(folderPath)
 }
 
 export function onAgentData(listener: (payload: AgentSessionData) => void): () => void {

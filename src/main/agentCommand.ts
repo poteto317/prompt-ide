@@ -10,11 +10,12 @@ import {
   isAbsolute as win32IsAbsolute,
   join as win32Join
 } from 'node:path/win32'
+import type { AgentLaunchRequest } from '@shared/types'
 import { appendSearchPaths, getCliSearchPaths } from './cliSearchPaths'
 
 // エージェントの起動のコマンドと環境変数を main で決める(設計書「セキュリティ」「PATH の継承」)。renderer からは受け取らない
 
-/** 起動するコマンドの名前。引数は空で固定する(--dangerously-skip-permissions などを付けない) */
+/** 起動するコマンドの名前。引数は main が決めたセッションの指定(--session-id / --resume と UUID)だけ。--dangerously-skip-permissions などは付けない */
 export const AGENT_COMMAND_NAME = 'claude'
 
 /** 取り除く環境変数(完全一致)。親の Claude Code のセッションの通信先と token、VS Code の端末から引き継ぐもの(確認の結果 12) */
@@ -119,7 +120,7 @@ function getEnvIgnoreCase(env: NodeJS.ProcessEnv, name: string): string | undefi
 export interface AgentLaunchPlan {
   /** 起動する claude の絶対パス */
   file: string
-  /** 引数(空で固定) */
+  /** 引数(空。セッションの指定は starter が buildAgentLaunchArgs で後ろに足す) */
   args: string[]
   env: Record<string, string>
 }
@@ -133,6 +134,27 @@ export interface ResolveAgentLaunchDeps {
   platform: NodeJS.Platform
   readLoginShellPath: () => Promise<string | null>
   isExecutable: ExecutableProbe
+}
+
+/**
+ * claude のセッションの指定の引数(設計書「起動の流れ」3)。新しく起動するときは main が振った ID を --session-id で、
+ * 再開は記録と照合した ID を --resume で渡す。claudeSessionId は検証を通った値をそのまま使い、別の場所で読み直さない(L-018)。
+ * 起動の種類を足したときに既定の --session-id へ流さないよう、kind ごとに分けて未知の kind は投げる(L-044)
+ */
+export function buildAgentLaunchArgs(
+  launch: AgentLaunchRequest,
+  claudeSessionId: string
+): string[] {
+  switch (launch.kind) {
+    case 'new':
+      return ['--session-id', claudeSessionId]
+    case 'resume':
+      return ['--resume', claudeSessionId]
+    default: {
+      const unknownLaunch: never = launch
+      throw new Error(`未知の起動の指定です: ${JSON.stringify(unknownLaunch)}`)
+    }
+  }
 }
 
 /**

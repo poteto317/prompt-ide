@@ -6,6 +6,7 @@ import SourceControlPanel from './source-control/SourceControlPanel'
 import type { AgentChangesPanelState } from '../hooks/useAgentChangesWiring'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
+import AgentSendFeedbackAnnouncer from './agent/AgentSendFeedbackAnnouncer'
 import { sidebarTitles } from '../config/sidebarTitles'
 import type {
   PromptToolId,
@@ -15,6 +16,7 @@ import type {
   Task,
   StageId,
   HistoryEntry,
+  HistoryEntryActions,
   BranchOperationKind,
   StashPanelState,
   DiscardAllState,
@@ -68,6 +70,10 @@ interface Props {
   onDeleteHistoryEntry: (id: string) => void
   onClearHistory: () => void
   onRerunHistoryEntry: (entry: HistoryEntry) => void
+  /** 履歴のエントリごとの 再実行・このセッションで再開 の押せる条件(useAgentWorkspace の getHistoryActions。省略できない。L-060) */
+  getHistoryActions: (entry: HistoryEntry) => HistoryEntryActions
+  /** 履歴の このセッションで再開(useAgentWorkspace の onResume。省略できない。L-060) */
+  onResumeHistoryEntry: (entry: HistoryEntry) => void
   gitStatus: GitStatusResult | null
   gitLoading: boolean
   gitError: Error | null
@@ -124,7 +130,7 @@ interface Props {
   modelSettings: ModelSettings
   modelSettingsLoaded: boolean
   onSaveModelSettings: (settings: ModelSettings) => Promise<void>
-  /** 実行ボタン・再実行の押せる条件と送信の結果。省略時は isExecuting で押せなくする(従来どおり) */
+  /** 実行ボタンの押せる条件と送信の結果。省略時は isExecuting で押せなくする(従来どおり) */
   promptRun?: PromptRunPanelState
   /** プロンプトの実行方式の設定。省略時は設定パネルに実行方式を出さない */
   executionMode?: ExecutionModePanelState
@@ -173,6 +179,8 @@ export default function Sidebar({
   onDeleteHistoryEntry,
   onClearHistory,
   onRerunHistoryEntry,
+  getHistoryActions,
+  onResumeHistoryEntry,
   gitStatus,
   gitLoading,
   gitError,
@@ -233,9 +241,14 @@ export default function Sidebar({
   agentSendConfirm,
   agentReferences
 }: Props): React.JSX.Element {
+  // 送信の結果の見える文字は、見えているパネル(プロンプト・実行履歴)の 1 か所だけに出す。読み上げはパネルの外に常に置いた
+  // 1 か所(AgentSendFeedbackAnnouncer)だけが担う。パネルの中に置くと、隠れたパネル(display: none)では読まれず、
+  // 切り替えのたびにマウントし直して古い失敗を読み直すため
+  const agentSend = promptRun?.agentSend ?? null
   return (
     <div className="sidebar">
       <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
+      {agentSend !== null && <AgentSendFeedbackAnnouncer feedback={agentSend} />}
       <PanelContainer isActive={activePanel === 'explorer'}>
         <ExplorerPanel
           folderPath={folderPath}
@@ -271,7 +284,7 @@ export default function Sidebar({
           onRun={onRunPrompt}
           isRunDisabled={promptRun?.isRunDisabled ?? isExecuting}
           runDisabledReason={promptRun?.runDisabledReason ?? null}
-          agentSend={promptRun?.agentSend ?? null}
+          agentSend={activePanel === 'prompts' ? agentSend : null}
           showToolSelector={promptRun?.showToolSelector ?? true}
           runAriaLabel={promptRun?.runAriaLabel}
           isActive={activePanel === 'prompts'}
@@ -296,8 +309,9 @@ export default function Sidebar({
           onDelete={onDeleteHistoryEntry}
           onClear={onClearHistory}
           onRerun={onRerunHistoryEntry}
-          isRerunDisabled={promptRun?.isRerunDisabled ?? isExecuting}
-          rerunDisabledReason={promptRun?.rerunDisabledReason ?? null}
+          getHistoryActions={getHistoryActions}
+          onResume={onResumeHistoryEntry}
+          agentSend={activePanel === 'history' ? agentSend : null}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'source-control'}>

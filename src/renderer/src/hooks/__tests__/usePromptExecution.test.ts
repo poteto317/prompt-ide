@@ -364,7 +364,8 @@ describe('usePromptExecution', () => {
           toolId: 'claude',
           status: 'success',
           resultText: '回答テキスト',
-          errorMessage: null
+          errorMessage: null,
+          agent: null
         })
       )
       expect(typeof onExecuted.mock.calls[0][0].executedAt).toBe('number')
@@ -381,7 +382,8 @@ describe('usePromptExecution', () => {
         expect.objectContaining({
           status: 'error',
           resultText: null,
-          errorMessage: 'invoke error'
+          errorMessage: 'invoke error',
+          agent: null
         })
       )
     })

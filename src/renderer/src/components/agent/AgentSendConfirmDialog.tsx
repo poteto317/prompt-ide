@@ -4,7 +4,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 import type { AgentSendConfirmDialogState, AgentSendConfirmPending } from '../../types'
 import { buildAgentSendPreview } from '../../lib/agentSendPreview'
 import { formatAgentUnsavedNotice } from '../../lib/agentReferenceMessages'
-import { findPromptRunButton } from '../../lib/promptRunButton'
+import { findSendConfirmReturnTarget } from '../../lib/promptRunButton'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
@@ -13,23 +13,6 @@ interface Props {
 }
 
 const LENGTH_FORMAT = new Intl.NumberFormat('ja-JP')
-
-// キャンセルで閉じたときのフォーカスの戻り先。開いた時点の要素が DOM に残っていて押せればそこ、無ければ(変数のフォームの
-// 実行から開いた場合、フォームは閉じている)同じプロンプトの一覧の「実行」(data-prompt-run)。どちらも無ければ null
-function findReturnFocusTarget(
-  opener: Element | null,
-  promptId: string | null
-): HTMLElement | null {
-  if (
-    opener instanceof HTMLElement &&
-    opener !== document.body &&
-    opener.isConnected &&
-    !opener.matches(':disabled')
-  ) {
-    return opener
-  }
-  return promptId === null ? null : findPromptRunButton(promptId)
-}
 
 // 送信前の確認(設計書「ダイアログ」)。開閉は useAgentSendConfirm の pending が持つので、開いている間だけ本体をマウントする
 export default function AgentSendConfirmDialog({ state }: Props): React.JSX.Element | null {
@@ -82,7 +65,7 @@ function AgentSendConfirmDialogBody({
     .join(' ')
 
   const handleCancel = (): void => {
-    findReturnFocusTarget(opener, pending.promptId)?.focus()
+    findSendConfirmReturnTarget(opener, pending.promptId)?.focus()
     onCancel()
   }
   const handleConfirm = (): void => {

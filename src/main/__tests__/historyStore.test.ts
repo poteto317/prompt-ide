@@ -28,7 +28,8 @@ const sampleEntry: HistoryEntry = {
   status: 'success',
   resultText: '結果テキスト',
   errorMessage: null,
-  executedAt: 1000000
+  executedAt: 1000000,
+  agent: null
 }
 
 beforeEach(() => {

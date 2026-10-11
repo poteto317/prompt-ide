@@ -18,6 +18,16 @@ export const AGENT_SLOT_ID_MAX_LENGTH = 64
 /** renderer が発行するタブ(枠)の id の形式(英数字とハイフンの 1〜AGENT_SLOT_ID_MAX_LENGTH 文字) */
 export const AGENT_SLOT_ID_PATTERN = new RegExp(`^[A-Za-z0-9-]{1,${AGENT_SLOT_ID_MAX_LENGTH}}$`)
 
+/** claude の会話の ID の形式(小文字の UUID v4 の厳密な形式)。main は新しい ID を crypto.randomUUID() で作り、再開の依頼の ID も
+ *  この形式で検証する(`-` 始まりの値が claude のオプションとして解釈される経路を断つ。L-034) */
+export const CLAUDE_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+/** claude の会話の ID の形式に当たる文字列か */
+export function isClaudeSessionId(value: unknown): value is string {
+  return typeof value === 'string' && CLAUDE_SESSION_ID_PATTERN.test(value)
+}
+
 /** 起動の途中で停止された(フォルダの切り替え・実行方式の切り替え・リロード)ときの spawn-failed の detail。renderer はエラーとして出さない */
 export const AGENT_START_CANCELED_DETAIL = '起動の途中で停止されました'
 
@@ -28,6 +38,13 @@ export type AgentTerminalErrorKind =
   | 'command-not-found'
   | 'spawn-failed'
   | 'too-many-sessions'
+  /** 再開の ID が許可のフォルダの起動の記録に無い(main が振った ID でない・ほかのフォルダの ID・古くなって記録から落ちた) */
+  | 'unknown-session'
+  /** 同じ ID の claude がほかのタブかウィンドウで起動中・実行中・止まりきる前 */
+  | 'session-in-use'
+
+/** 起動の指定。renderer は列挙型だけを渡し、コマンドと引数の並び(--session-id / --resume)は main が決める(L-019) */
+export type AgentLaunchRequest = { kind: 'new' } | { kind: 'resume'; claudeSessionId: string }
 
 export interface AgentStartRequest {
   /** renderer が発行するタブ(枠)の id。1 つの枠に 1 つのセッション */
@@ -36,10 +53,17 @@ export interface AgentStartRequest {
   folderPath: string
   cols: number
   rows: number
+  /** 新しく起動するか、起動の記録にある claude のセッションを再開するか(省略できない。既定の new に流さない。L-044) */
+  launch: AgentLaunchRequest
 }
 
 export type AgentStartResult =
-  | { kind: 'started' | 'already-running'; sessionId: string }
+  | {
+      kind: 'started' | 'already-running'
+      sessionId: string
+      /** そのセッションの claude の会話の ID。already-running は動いているセッションの ID(依頼の launch は使わない) */
+      claudeSessionId: string
+    }
   | {
       kind: 'error'
       error: AgentTerminalErrorKind
@@ -89,4 +113,11 @@ export interface AgentSessionExit {
 export interface AgentSessionSnapshotEntry {
   slotId: string
   sessionId: string
+  /** そのセッションの claude の会話の ID(作り直しの後の合わせ込みで、タブの claudeSessionId を合わせる) */
+  claudeSessionId: string
+}
+
+/** このフォルダで最後に起動が確定した claude のセッション(「前回の続きから」の再開の相手) */
+export interface AgentLastSession {
+  claudeSessionId: string
 }

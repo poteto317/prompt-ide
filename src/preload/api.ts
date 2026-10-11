@@ -7,6 +7,7 @@ import type {
   AgentNotificationShowRequest,
   AgentChangesState,
   AgentRevertAllEntry,
+  AgentLastSession,
   AgentSessionData,
   AgentSessionExit,
   AgentSessionSnapshotEntry,
@@ -188,6 +189,9 @@ export const api = {
     ipcRenderer.invoke('agentTerminal:stop', sessionId),
   getAgentSessions: (): Promise<AgentSessionSnapshotEntry[]> =>
     ipcRenderer.invoke('agentTerminal:getState'),
+  // このフォルダで最後に起動が確定した claude のセッション(前回の続きから)。照合は main が許可のフォルダで行う
+  getLastAgentSession: (folderPath: string): Promise<AgentLastSession | null> =>
+    ipcRenderer.invoke('agentTerminal:getLastSession', folderPath),
   onAgentData: (listener: (payload: AgentSessionData) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
       if (typeof payload !== 'object' || payload === null) return

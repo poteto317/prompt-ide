@@ -503,7 +503,7 @@ describe('PromptsPanel: エージェント CLI 方式', () => {
     expect(screen.queryByRole('combobox', { name: '実行ツールを選択' })).toBeNull()
   })
 
-  it('送信の失敗を role="alert" で、成功を role="status" で出す', () => {
+  it('送信の失敗と成功を見える文字で出す(読み上げは Sidebar の常設の領域が担うので、ここでは role を持たず aria-hidden)', () => {
     render(
       <PromptsPanel
         {...defaultProps}
@@ -513,13 +513,16 @@ describe('PromptsPanel: エージェント CLI 方式', () => {
         }}
       />
     )
-    expect(screen.getByRole('alert')).toHaveTextContent('送信する内容がありません')
-    expect(screen.getByRole('status')).toHaveTextContent('エージェントに送信しました')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
+    const error = screen.getByText('送信する内容がありません')
+    expect(error).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByText('エージェントに送信しました')).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('従来の方式(agentSend が null)では通知の領域を置かない', () => {
-    render(<PromptsPanel {...defaultProps} />)
-    expect(screen.queryByRole('status')).toBeNull()
+  it('従来の方式(agentSend が null)では送信の結果の文字を置かない', () => {
+    const { container } = render(<PromptsPanel {...defaultProps} />)
+    expect(container.querySelector('.agent-send-feedback__notice')).toBeNull()
   })
 })
 

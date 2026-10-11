@@ -20,6 +20,9 @@ import { AgentSessionRegistry } from './agentSessionRegistry'
 import { setupAgentSessionLifecycle } from './agentSessionLifecycle'
 import { registerAgentTerminalHandlers } from './handlers/agentTerminalHandlers'
 import { createAgentSessionStarter } from './agentSessionStarter'
+import { createAgentSessionRecordStore } from './agentSessionRecordStore'
+import { createAgentSessionRecordFileIo } from './agentSessionRecordFileIo'
+import { createClaudeSessionReservations } from './claudeSessionReservations'
 import { resolveAgentLaunchFromSystem, spawnAgentPty, stopAgentPtyTree } from './agentRuntime'
 import { OpenFileWatcher } from './openFileWatcher'
 import { setupOpenFileWatcherLifecycle } from './openFileWatcherLifecycle'
@@ -63,19 +66,30 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   // エージェントのセッション。作業ディレクトリは開いているフォルダ(同じ FolderAccessManager)で、フォルダの切り替えで止める
   const agentRegistry = new AgentSessionRegistry()
   setupAgentSessionLifecycle(app, agentRegistry, folderAccess)
-  // 起動の規則(許可のフォルダとの照合・起動の途中の取り消し)と pty の配線は agentSessionStarter.ts。IPC の受け口は
-  // registry(書き込み・リサイズ・停止・状態の取得)と、組み立てた starter だけを受け取る
-  const startAgentSession = createAgentSessionStarter({
+  // claude のセッションの起動の記録(userData/agent-sessions.json)。読み込みはここで一度だけ始める
+  const agentSessionRecords = createAgentSessionRecordStore(
+    createAgentSessionRecordFileIo(app.getPath('userData'))
+  )
+  // 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線は
+  // agentSessionStarter.ts。IPC の受け口は registry(書き込み・リサイズ・停止・状態の取得)と、組み立てた starter の起動・ID の
+  // 引き当て・「前回」の取得だけを受け取る
+  const agentStarter = createAgentSessionStarter({
     folderAccess,
     registry: agentRegistry,
     resolveLaunch: resolveAgentLaunchFromSystem,
     spawnPty: spawnAgentPty,
     stopTree: stopAgentPtyTree,
-    createSessionId: randomUUID
+    createSessionId: randomUUID,
+    records: agentSessionRecords,
+    // 全ウィンドウで共有する(別のウィンドウで同じ会話を同時に開かせない)
+    reservations: createClaudeSessionReservations(),
+    createClaudeSessionId: randomUUID
   })
   registerAgentTerminalHandlers(ipcMain, {
     registry: agentRegistry,
-    startSession: startAgentSession
+    startSession: agentStarter.start,
+    claudeSessionIdOf: agentStarter.claudeSessionIdOf,
+    getLastSession: agentStarter.lastSessionOf
   })
   // エージェントの完了・許可待ちの通知。Electron の Notification・Dock・BrowserWindow をここで注入する
   const agentNotificationCenter = createAgentNotificationCenter({

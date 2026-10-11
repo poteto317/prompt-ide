@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import { resolve as resolvePath } from 'node:path'
 
 const mockRealpath = vi.hoisted(() => vi.fn())
@@ -21,6 +22,13 @@ import type { PtySpawn, StopTree } from '../../agentSession'
 import type { AgentLaunchResolution } from '../../agentCommand'
 import { makeFakePty } from '../helpers/fakePty'
 import type { FakePty } from '../helpers/fakePty'
+import { createAgentSessionRecordStore } from '../../agentSessionRecordStore'
+import type { AgentSessionRecordStore } from '../../agentSessionRecordStore'
+import { makeFakeRecordIo } from '../helpers/fakeAgentSessionRecordIo'
+import { createClaudeSessionReservations } from '../../claudeSessionReservations'
+
+const NEW = { kind: 'new' } as const
+const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
 
 type Listener = (...args: unknown[]) => unknown
 const handles = new Map<string, Listener>()
@@ -49,6 +57,7 @@ let registry: AgentSessionRegistry
 let pty: FakePty
 let spawnPty: ReturnType<typeof vi.fn<PtySpawn>>
 let resolveLaunch: ReturnType<typeof vi.fn<() => Promise<AgentLaunchResolution>>>
+let records: AgentSessionRecordStore
 const stopTree = vi.fn<StopTree>(async (target, exited) => {
   ;(target as FakePty).emitExit(0, 15)
   await exited
@@ -57,16 +66,23 @@ const stopTree = vi.fn<StopTree>(async (target, exited) => {
 // 起動の規則の本体のテストは agentSessionStarter.test.ts。ここでは実物の starter(既定の realpath・stat。node:fs/promises は
 // 上で差し替え)を渡し、IPC の受け口を通した起動を統合として確かめる(受け口だけの確認は下の「委譲」の describe)
 function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
+  const starter = createAgentSessionStarter({
+    folderAccess,
+    registry,
+    resolveLaunch,
+    spawnPty,
+    stopTree,
+    createSessionId: () => 'sid-1',
+    records,
+    reservations: createClaudeSessionReservations(),
+    createClaudeSessionId: () => CLAUDE_ID,
+    platform: 'linux'
+  })
   registerAgentTerminalHandlers(ipcMain as never, {
     registry,
-    startSession: createAgentSessionStarter({
-      folderAccess,
-      registry,
-      resolveLaunch,
-      spawnPty,
-      stopTree,
-      createSessionId: () => 'sid-1'
-    }),
+    startSession: starter.start,
+    claudeSessionIdOf: starter.claudeSessionIdOf,
+    getLastSession: starter.lastSessionOf,
     platform: 'linux',
     ...overrides
   })
@@ -99,6 +115,8 @@ beforeEach(() => {
     kind: 'ok' as const,
     plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } }
   }))
+  // 記録のファイルが無い(空の記録)
+  records = createAgentSessionRecordStore(makeFakeRecordIo())
 })
 
 describe('agentTerminal:start', () => {
@@ -107,12 +125,19 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     // renderer の文字列(realpath が許可と一致する別の表記)ではなく、許可のフォルダを作業ディレクトリにする
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work/.', cols: 90, rows: 20 })
+      start(makeEvent(), {
+        slotId: 'slot-1',
+        folderPath: '/work/.',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
     ).resolves.toEqual({
       kind: 'started',
-      sessionId: 'sid-1'
+      sessionId: 'sid-1',
+      claudeSessionId: CLAUDE_ID
     })
-    expect(spawnPty).toHaveBeenCalledWith('/bin/claude', [], {
+    expect(spawnPty).toHaveBeenCalledWith('/bin/claude', ['--session-id', CLAUDE_ID], {
       name: 'xterm-256color',
       cols: 90,
       rows: 20,
@@ -124,7 +149,7 @@ describe('agentTerminal:start', () => {
   it('許可のフォルダが無ければ no-folder', async () => {
     register()
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'error',
       error: 'no-folder'
@@ -136,7 +161,13 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/other', cols: 90, rows: 20 })
+      start(makeEvent(), {
+        slotId: 'slot-1',
+        folderPath: '/other',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
     ).resolves.toEqual({
       kind: 'error',
       error: 'folder-mismatch'
@@ -148,7 +179,7 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     mockStat.mockRejectedValueOnce(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'error',
       error: 'folder-missing',
@@ -161,7 +192,7 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     resolveLaunch.mockResolvedValueOnce({ kind: 'not-found', shellPathUnavailable: true })
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'error',
       error: 'command-not-found',
@@ -177,7 +208,7 @@ describe('agentTerminal:start', () => {
       throw new Error('posix_spawnp failed.')
     })
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'error',
       error: 'spawn-failed',
@@ -189,12 +220,13 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     await expect(
-      start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'already-running',
-      sessionId: 'sid-1'
+      sessionId: 'sid-1',
+      claudeSessionId: CLAUDE_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -203,10 +235,16 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20, launch: NEW })
     ).rejects.toThrow()
     await expect(
-      start(makeEvent(1, false), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(1, false), {
+        slotId: 'slot-1',
+        folderPath: '/work',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
     ).rejects.toThrow()
   })
 
@@ -214,7 +252,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     pty.emitData('hi')
     expect(event.sender.send).toHaveBeenCalledWith('agentTerminal:data', {
       sessionId: 'sid-1',
@@ -230,7 +268,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     pty.emitExit(1)
     expect(event.sender.send).toHaveBeenCalledWith('agentTerminal:exit', {
       sessionId: 'sid-1',
@@ -244,7 +282,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     event.sender.send.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
@@ -257,7 +295,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     event.sender.isDestroyed.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
@@ -270,7 +308,7 @@ describe('agentTerminal:start', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     event.sender.isDestroyed.mockReturnValue(true)
     event.sender.send.mockImplementation(() => {
       throw new Error('Object has been destroyed')
@@ -285,7 +323,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     // ウィンドウの破棄(agentSessionLifecycle は registry.stopOwner を呼ぶ。セッションが無いので世代だけ進む)
     event.sender.isDestroyed.mockReturnValue(true)
     await registry.stopOwner(1, 'stopped')
@@ -301,7 +345,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     folderAccess.set(1, '/other')
     await registry.stopOwner(1, 'folder-changed')
     pending.resolve('/work')
@@ -315,7 +365,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     event.sender.isDestroyed.mockReturnValue(true)
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
@@ -329,7 +385,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     folderAccess.set(1, '/other')
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
@@ -343,7 +405,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<string>()
     mockRealpath.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     await registry.stopOwner(1, 'stopped')
     pending.resolve('/work')
     await expect(result).resolves.toEqual(CANCELED)
@@ -357,7 +425,13 @@ describe('agentTerminal:start', () => {
     const event = makeEvent()
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
-    const result = start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    const result = start(event, {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     const stopped = registry.stopOwner(1, 'stopped')
     pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
@@ -371,10 +445,11 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     await registry.stopOwner(1, 'stopped')
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'started',
-      sessionId: 'sid-1'
+      sessionId: 'sid-1',
+      claudeSessionId: CLAUDE_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -384,14 +459,24 @@ describe('agentTerminal:start', () => {
     folderAccess.set(1, '/work')
     folderAccess.set(2, '/other')
     await expect(
-      start(makeEvent(2), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(2), {
+        slotId: 'slot-1',
+        folderPath: '/work',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
     ).resolves.toEqual({ kind: 'error', error: 'folder-mismatch' })
     expect(spawnPty).not.toHaveBeenCalled()
   })
 })
 
 describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の組み立て・委譲)', () => {
-  const STARTED: AgentStartResult = { kind: 'started', sessionId: 'sid-x' }
+  const STARTED: AgentStartResult = {
+    kind: 'started',
+    sessionId: 'sid-x',
+    claudeSessionId: CLAUDE_ID
+  }
   let startSession: ReturnType<typeof vi.fn<AgentSessionStarter>>
 
   beforeEach(() => {
@@ -403,24 +488,36 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
 
   it('送信元の id と検証済みの依頼を starter に渡し、結果をそのまま返す', async () => {
     await expect(
-      start(makeEvent(7), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(7), {
+        slotId: 'slot-1',
+        folderPath: '/work',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
     ).resolves.toBe(STARTED)
     expect(startSession).toHaveBeenCalledExactlyOnceWith(
       7,
-      { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 },
+      { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW },
       expect.any(Object)
     )
   })
 
   // starter は最初の await より前に停止の世代を控える。受け口が先に await を挟むと、その間に届いた停止を見分けられない
   it('await を挟まずに(依頼を受けた同じ同期の処理の中で) starter を呼ぶ', () => {
-    void start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    void start(makeEvent(), {
+      slotId: 'slot-1',
+      folderPath: '/work',
+      cols: 90,
+      rows: 20,
+      launch: NEW
+    })
     expect(startSession).toHaveBeenCalledOnce()
   })
 
   it('sink: isGone は送信元の破棄、出力・終了は送信元の agentTerminal:data・exit へ送る(破棄済みなら送らない)', async () => {
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     const sink = sinkOf()
     expect(sink.isGone()).toBe(false)
     sink.onData({ sessionId: 's', data: 'hi' })
@@ -437,7 +534,7 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
 
   it('sink: isDestroyed が投げたら破棄済みとして扱う', async () => {
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     event.sender.isDestroyed.mockImplementation(() => {
       throw new Error('Object has been destroyed')
     })
@@ -446,11 +543,20 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
 
   it('不正な入力・サブフレームからの依頼は starter を呼ばずに投げる', async () => {
     await expect(
-      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20 })
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 0, rows: 20, launch: NEW })
     ).rejects.toThrow()
-    await expect(start(makeEvent(), { cols: 90, rows: 20 })).rejects.toThrow()
+    await expect(start(makeEvent(), { cols: 90, rows: 20, launch: NEW })).rejects.toThrow()
     await expect(
-      start(makeEvent(1, false), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+      start(makeEvent(1, false), {
+        slotId: 'slot-1',
+        folderPath: '/work',
+        cols: 90,
+        rows: 20,
+        launch: NEW
+      })
+    ).rejects.toThrow()
+    await expect(
+      start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
     ).rejects.toThrow()
     expect(startSession).not.toHaveBeenCalled()
   })
@@ -461,7 +567,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     register()
     folderAccess.set(1, '/work')
     const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20 })
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     return event
   }
 
@@ -484,7 +590,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
   it('getState は枠ごとの一覧を返し、stop は止め終わってから解決して一覧から消す', async () => {
     const event = await started()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1' }
+      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
     ])
     await handles.get('agentTerminal:stop')?.(event, 'sid-1')
     expect(stopTree).toHaveBeenCalledOnce()
@@ -508,7 +614,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(pty.resize).not.toHaveBeenCalled()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1' }
+      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
     ])
   })
 
@@ -527,7 +633,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(() => handles.get('agentTerminal:getState')?.(sub)).toThrow()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1' }
+      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
     ])
   })
 
@@ -537,7 +643,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     await handles.get('agentTerminal:stop')?.(event, 'stale')
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1' }
+      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
     ])
   })
 })
@@ -564,5 +670,57 @@ describe('agentTerminal:focus', () => {
     const event = makeEvent(1, false)
     listeners.get('agentTerminal:focus')?.(event, true)
     expect(event.sender.setIgnoreMenuShortcuts).not.toHaveBeenCalled()
+  })
+})
+
+describe('agentTerminal:getLastSession', () => {
+  const getLast = (event: ReturnType<typeof makeEvent>, folderPath: unknown): Promise<unknown> =>
+    handles.get('agentTerminal:getLastSession')?.(event, folderPath) as Promise<unknown>
+
+  it('許可のフォルダ(realpath が一致)のときだけ記録の先頭を返す', async () => {
+    register()
+    folderAccess.set(1, '/work')
+    await records.whenLoaded()
+    records.record('/work', CLAUDE_ID)
+    await expect(getLast(makeEvent(), '/work/.')).resolves.toEqual({ claudeSessionId: CLAUDE_ID })
+    await expect(getLast(makeEvent(), '/other')).resolves.toBeNull()
+    // 別のウィンドウ(許可のフォルダが無い)
+    await expect(getLast(makeEvent(2), '/work')).resolves.toBeNull()
+  })
+
+  it('記録が無ければ null', async () => {
+    register()
+    folderAccess.set(1, '/work')
+    await expect(getLast(makeEvent(), '/work')).resolves.toBeNull()
+  })
+
+  it('不正な folderPath・サブフレームからの依頼は投げる', async () => {
+    register()
+    folderAccess.set(1, '/work')
+    await expect(getLast(makeEvent(), '')).rejects.toThrow()
+    await expect(getLast(makeEvent(), 1)).rejects.toThrow()
+    await expect(getLast(makeEvent(1, false), '/work')).rejects.toThrow()
+  })
+})
+
+describe('agentTerminal:getState(claude のセッション ID)', () => {
+  let consoleWarnSpy: MockInstance<typeof console.warn> | null = null
+
+  afterEach(() => {
+    consoleWarnSpy?.mockRestore()
+    consoleWarnSpy = null
+  })
+
+  it('starter の Map に無いセッションは、例外にせず一覧から外してログを残す(合わせ込みの全体を止めない)', async () => {
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    register({ claudeSessionIdOf: () => undefined })
+    folderAccess.set(1, '/work')
+    const event = makeEvent()
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([])
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      '[agentTerminal:getState] claude のセッション ID が見つからないセッションを一覧から外します:',
+      'sid-1'
+    )
   })
 })

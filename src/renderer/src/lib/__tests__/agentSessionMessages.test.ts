@@ -92,3 +92,15 @@ describe('describeAgentActivity', () => {
     expect(describeAgentActivity(activity)).toBe(text)
   })
 })
+
+describe('再開の失敗の文言', () => {
+  it.each([
+    [
+      'unknown-session' as const,
+      'このセッションは再開できません（アプリの起動の記録にありません）'
+    ],
+    ['session-in-use' as const, 'このセッションはほかのタブかウィンドウで動いています']
+  ])('%s', (error, message) => {
+    expect(describeAgentStartError({ kind: 'error', error })).toBe(message)
+  })
+})

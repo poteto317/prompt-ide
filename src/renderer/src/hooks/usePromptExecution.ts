@@ -19,6 +19,8 @@ export interface ExecutionOutcome extends ExecutionContext {
   resultText: string | null
   errorMessage: string | null
   executedAt: number
+  /** 従来の方式の実行はエージェントへ送ったエントリではない(履歴の HistoryEntry.agent を省略させない。L-060) */
+  agent: null
 }
 
 export interface PromptExecutionState {
@@ -44,7 +46,15 @@ function buildOutcome(
   toolId: PromptToolId,
   result: Pick<ExecutionOutcome, 'status' | 'resultText' | 'errorMessage'>
 ): ExecutionOutcome {
-  return { ...context, promptContent, fileContent, toolId, executedAt: Date.now(), ...result }
+  return {
+    ...context,
+    promptContent,
+    fileContent,
+    toolId,
+    executedAt: Date.now(),
+    agent: null,
+    ...result
+  }
 }
 
 export function usePromptExecution(): PromptExecutionState {

@@ -1,7 +1,11 @@
 'use client'
 import { useCallback, useId, useRef } from 'react'
 import { isInsideAgentTerminal } from '../../lib/agentTerminalKeys'
-import { describeAgentStatus } from '../../lib/agentSessionMessages'
+import {
+  AGENT_RESUME_LAST_ARIA_LABEL,
+  AGENT_RESUME_LAST_LABEL,
+  describeAgentStatus
+} from '../../lib/agentSessionMessages'
 import { isActiveAgentSessionStatus } from '../../lib/agentSessionTabState'
 import { useAgentTabCloseFocus } from '../../hooks/useAgentTabCloseFocus'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
@@ -18,7 +22,7 @@ interface Props {
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
 export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
-  const { sessions, layout, sendingSlotId, activities } = state
+  const { sessions, layout, sendingSlotId, activities, resumeLast } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
   const bodyId = useId()
@@ -27,6 +31,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
   const reasonId = useId()
   const toggleRef = useRef<HTMLButtonElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
+  const primaryButtonRef = useRef<HTMLButtonElement>(null)
 
   // 消える要素にフォーカスを残さない(パターン 86)
   const moveFocusOutOfTerminal = (): void => {
@@ -44,6 +49,9 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
   // 閉じる途中のタブは起動しない(useAgentSessions も弾く。直後の削除で controller が捨てられるため)
   const startDisabled =
     startDisabledReason !== null || session.status === 'starting' || session.isClosing
+  // 帯の理由は 1 か所(L-057)。起動の理由を優先し、無ければ 前回の続きから の理由を出す。どちらのボタンも同じ領域を参照する
+  const visibleReason = startDisabledReason ?? resumeLast.disabledReason
+  const resumeDisabled = resumeLast.disabledReason !== null || session.isClosing
 
   return (
     <section
@@ -91,17 +99,26 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
           {describeAgentStatus(session.status, session.exit, activities.get(session.slotId))}
         </span>
         <span className="agent-terminal-panel__actions">
-          {startDisabledReason !== null && !isActive && (
-            <span
-              id={reasonId}
-              className="agent-terminal-panel__reason"
-              title={startDisabledReason}
-            >
-              {startDisabledReason}
-            </span>
+          {visibleReason !== null && !isActive && (
+            <>
+              {/* 読み上げはボタンの説明(aria-describedby)で届くので、見える文字は読み上げの順番に出さない(二重に読まれないように) */}
+              <span
+                className="agent-terminal-panel__reason"
+                title={visibleReason}
+                aria-hidden="true"
+              >
+                {visibleReason}
+              </span>
+              {/* 説明の参照先。hidden で読み上げの順番に出さない。aria-describedby は隠した要素の文言も説明として使える */}
+              <span id={reasonId} hidden>
+                {visibleReason}
+              </span>
+            </>
           )}
+          {/* 起動 と 終了 は同じ位置の 1 つの button として描く(押すと同じ要素が使い回され、フォーカスが 終了 に残る) */}
           {isActive ? (
             <button
+              ref={primaryButtonRef}
               type="button"
               className="agent-terminal-panel__button"
               aria-label="終了（エージェントを止める）"
@@ -112,15 +129,40 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
             </button>
           ) : (
             <button
+              ref={primaryButtonRef}
               type="button"
               className="agent-terminal-panel__button"
               aria-label="起動（開いているフォルダで claude を起動）"
               disabled={startDisabled}
               aria-describedby={startDisabledReason !== null ? reasonId : undefined}
               title={startDisabledReason ?? undefined}
-              onClick={() => void sessions.start(session.slotId)}
+              onClick={() => void sessions.start(session.slotId, { kind: 'new' })}
             >
               起動
+            </button>
+          )}
+          {!isActive && (
+            <button
+              type="button"
+              className="agent-terminal-panel__button agent-terminal-panel__button--resume"
+              aria-label={AGENT_RESUME_LAST_ARIA_LABEL}
+              disabled={resumeDisabled}
+              aria-describedby={resumeLast.disabledReason !== null ? reasonId : undefined}
+              title={resumeLast.disabledReason ?? undefined}
+              onClick={() => {
+                // 押すとこのボタンは消える。先に 起動 へ移し、同じ要素が 終了 に替わってフォーカスが残るようにする(body に落とさない)。
+                // 押せるときは 起動 も押せる(起動の理由があれば 前回の続きから も押せない)
+                primaryButtonRef.current?.focus()
+                resumeLast.onResume(session.slotId)
+              }}
+            >
+              {/* 理由が無いときは、ラベルの文字にマウスを載せると全文が出る(狭い幅で省略されても分かる)。
+                  ボタンの title にすると説明になり、名前の後に重ねて読まれるため、子の要素に付ける */}
+              <span
+                title={resumeLast.disabledReason === null ? AGENT_RESUME_LAST_LABEL : undefined}
+              >
+                {AGENT_RESUME_LAST_LABEL}
+              </span>
             </button>
           )}
           {review?.isRecording === true && (

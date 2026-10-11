@@ -5,7 +5,10 @@ import type { OpenFile } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import EditorPanel from '../EditorPanel'
 import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
-import { makeAgentSessionsState } from '../../__tests__/makeAgentSessionsState'
+import {
+  makeAgentTerminalPanelLayout,
+  makeAgentTerminalPanelState
+} from '../../__tests__/makeAgentTerminalPanelState'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
 
 const file: OpenFile = {
@@ -56,18 +59,7 @@ const baseProps = {
 }
 
 function makeAgentTerminal(isMaximized = false): AgentTerminalPanelState {
-  return {
-    sessions: makeAgentSessionsState(),
-    sendingSlotId: null,
-    activities: new Map(),
-    layout: {
-      isOpen: true,
-      isMaximized,
-      open: vi.fn(),
-      toggleOpen: vi.fn(),
-      toggleMaximized: vi.fn()
-    }
-  }
+  return makeAgentTerminalPanelState({ layout: makeAgentTerminalPanelLayout({ isMaximized }) })
 }
 
 describe('EditorPanel: 下部のパネル', () => {

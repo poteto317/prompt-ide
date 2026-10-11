@@ -1,18 +1,23 @@
 'use client'
 import { useRef } from 'react'
-import type { HistoryEntry } from '../../types'
+import type { AgentSendFeedback, HistoryEntry, HistoryEntryActions } from '../../types'
 import { useSelectedHistoryEntry } from '../../hooks/useSelectedHistoryEntry'
 import HistoryItem from './HistoryItem'
 import HistoryDetail from './HistoryDetail'
+import AgentSendFeedbackMessages from '../agent/AgentSendFeedbackMessages'
 
 interface Props {
   history: HistoryEntry[]
   onDelete: (id: string) => void
   onClear: () => void
   onRerun: (entry: HistoryEntry) => void
-  isRerunDisabled?: boolean
-  /** 再実行を押せない理由(エージェント CLI 方式)。詳細に表示し、aria-describedby で参照する */
-  rerunDisabledReason?: string | null
+  /** エントリごとの 再実行・このセッションで再開 の押せる条件(省略できない。L-060) */
+  getHistoryActions: (entry: HistoryEntry) => HistoryEntryActions
+  /** このセッションで再開(省略できない。L-060) */
+  onResume: (entry: HistoryEntry) => void
+  /** エージェントのエントリの 再実行 の送信の結果の見える文字(プロンプトのパネルと同じ状態。読み上げは Sidebar の常設の領域)。
+   *  従来の方式と、履歴のパネルが隠れているときは null(文字を置かない)。省略できない(L-060) */
+  agentSend: AgentSendFeedback | null
 }
 
 export default function HistoryPanel({
@@ -20,8 +25,9 @@ export default function HistoryPanel({
   onDelete,
   onClear,
   onRerun,
-  isRerunDisabled = false,
-  rerunDisabledReason = null
+  getHistoryActions,
+  onResume,
+  agentSend
 }: Props): React.JSX.Element {
   const { selectedEntry, selectEntry, deselectIfMatches } = useSelectedHistoryEntry(history)
   // id → ボタン要素の参照を保持する。DOM文字列セレクタでの検索を避けるため
@@ -65,6 +71,7 @@ export default function HistoryPanel({
           すべて削除
         </button>
       </div>
+      {agentSend !== null && <AgentSendFeedbackMessages feedback={agentSend} />}
       <div className="history-panel__body">
         {history.length === 0 ? (
           <p className="history-panel__empty">履歴がありません</p>
@@ -89,10 +96,10 @@ export default function HistoryPanel({
             {selectedEntry && (
               <HistoryDetail
                 entry={selectedEntry}
+                actions={getHistoryActions(selectedEntry)}
                 onRerun={onRerun}
+                onResume={onResume}
                 onDelete={handleDelete}
-                isRerunDisabled={isRerunDisabled}
-                rerunDisabledReason={rerunDisabledReason}
               />
             )}
           </>

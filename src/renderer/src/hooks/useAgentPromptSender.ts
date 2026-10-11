@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState } from 'react'
+import type { AgentHistoryInfo } from '@shared/types'
 import type { Announcement } from '../types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
 import { sendAgentPrompt, realClock } from '../lib/agentPromptSend'
-import type { AgentSendClock, AgentSendOutcome } from '../lib/agentPromptSend'
+import type { AgentPromptSendResult, AgentSendClock } from '../lib/agentPromptSend'
 import {
   AGENT_SEND_ERROR_PREFIX,
   AGENT_SEND_FAILURE_MESSAGES,
@@ -20,14 +21,16 @@ export const AGENT_BEFORE_SEND_TIMEOUT_MS = 10_000
 export interface AgentPromptSenderState {
   /** 送信中か(sendingSlotId が null でない) */
   isSending: boolean
-  /** 失敗の文言(プロンプトパネルの上部に role="alert")。次の送信、または clearResult(送信前の確認を開いたとき)で消える */
+  /** 失敗の文言。見える文字は見えているパネル(プロンプト・実行履歴)の上部(AgentSendFeedbackMessages。aria-hidden)、読み上げは
+   *  Sidebar がパネルの外に常に置く AgentSendFeedbackAnnouncer の role="alert"。次の送信、または clearResult(送信前の確認を開いたとき)で消える */
   error: string | null
-  /** 成功の通知(role="status") */
+  /** 成功の通知(見える文字と読み上げの置き場は error と同じ。読み上げは AgentSendFeedbackAnnouncer の role="status") */
   notice: Announcement | null
   /** 送信中のタブ(パネルはそのタブの × を押せなくする)。送信中でなければ null */
   sendingSlotId: string | null
-  /** target のタブへ送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す */
-  send: (text: string, target: AgentSendTarget) => Promise<AgentSendOutcome | undefined>
+  /** target のタブへ送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す。
+   *  送れたときは、送信の手順を始める時点に控えた送り先(sentTo)を結果に載せる */
+  send: (text: string, target: AgentSendTarget) => Promise<AgentPromptSendResult | undefined>
   /** 前の送信の結果(失敗の文言・成功の通知)を消す。送信前の確認を開いたとき、今のプロンプトの文言に見えないように呼ぶ */
   clearResult: () => void
 }
@@ -36,6 +39,12 @@ export interface AgentPromptSenderState {
 export interface AgentSendTarget {
   slotId: string
   controller: AgentTerminalController
+  /**
+   * 送り先のタブの今の claude の会話の ID・名前・フォルダ(履歴の HistoryEntry.agent と同じ形)。送信の手順を始める時点
+   * (beginSending の直前)に呼んで控える(送信の後で読むと、その間にタブが起動し直した・閉じた・フォルダが変わったときに、
+   * 届いた先と違う ID を記録するため。L-037)
+   */
+  describeSession: () => AgentHistoryInfo | null
 }
 
 export interface UseAgentPromptSenderOptions {
@@ -59,7 +68,7 @@ export function useAgentPromptSender({
   const sendingRef = useRef(false)
 
   const send = useCallback(
-    async (text: string, target: AgentSendTarget): Promise<AgentSendOutcome | undefined> => {
+    async (text: string, target: AgentSendTarget): Promise<AgentPromptSendResult | undefined> => {
       if (sendingRef.current) return undefined
       const { controller } = target
       sendingRef.current = true
@@ -76,6 +85,13 @@ export function useAgentPromptSender({
             .catch(() => undefined),
           clock.sleep(AGENT_BEFORE_SEND_TIMEOUT_MS)
         ])
+      }
+      // 送り先は送信の手順を始める時点で控える(準備〈変更の記録〉の後。L-037)。控えられなくても送る(記録だけが抜ける)
+      let sentTo: AgentHistoryInfo | null = null
+      try {
+        sentTo = target.describeSession()
+      } catch (err) {
+        console.error('[useAgentPromptSender] describeSession failed:', err)
       }
       // 送信の手順の間は利用者のキー入力を溜める(貼り付けの途中に打鍵が混ざらないように)。finally で必ず解く
       controller.beginSending()
@@ -96,7 +112,7 @@ export function useAgentPromptSender({
           setError(AGENT_SEND_FAILURE_MESSAGES[outcome.reason])
         }
         onSettled()
-        return outcome
+        return outcome.kind === 'sent' ? { ...outcome, sentTo } : outcome
       } catch (err) {
         // write・readViewport が例外を投げると sendAgentPrompt は reject する。実行ボタンの処理へ
         // 未処理の拒否として漏らさず、理由を出してパネルを開く

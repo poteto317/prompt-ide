@@ -1,10 +1,12 @@
 import type { IpcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
-import type { AgentSessionSnapshotEntry, AgentStartResult } from '@shared/types'
+import type { AgentLastSession, AgentSessionSnapshotEntry, AgentStartResult } from '@shared/types'
 import type { AgentSessionRegistry } from '../agentSessionRegistry'
-import type { AgentSessionStarter } from '../agentSessionStarter'
+import type { AgentSessionStarter, AgentSessionStarterService } from '../agentSessionStarter'
 import { isDestroyedSafely, sendSafely } from '../safeWebContentsSend'
+import { attachClaudeSessionIds } from '../agentSessionSnapshot'
 import { isMainFrameSender } from './ipcSenderGuard'
 import {
+  parseAgentFolderPath,
   parseAgentResize,
   parseAgentSessionId,
   parseAgentStartRequest,
@@ -12,14 +14,18 @@ import {
 } from './agentTerminalPayloadParser'
 
 // エージェントのセッションの IPC の受け口(設計書「IPC」)。起動のコマンド・作業ディレクトリ・環境変数は main で決め、
-// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・書き込む文字列・sessionId だけを受け取る
+// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
   /** 書き込み・リサイズ・停止・状態の取得の相手(所有者・枠ごとのセッション) */
   registry: Pick<AgentSessionRegistry, 'write' | 'resize' | 'stop' | 'snapshot'>
-  /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し)と pty の配線。組み立ては ipcHandlers.ts
-   *  (agentSessionStarter.createAgentSessionStarter) */
+  /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
+   *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
   startSession: AgentSessionStarter
+  /** pty の sessionId → claude の会話の ID(starter の Map)。作り直しの後の合わせ込み(getState)で足す */
+  claudeSessionIdOf: AgentSessionStarterService['claudeSessionIdOf']
+  /** 「前回」の取得(starter の lastSessionOf。許可のフォルダとの照合は starter が行う) */
+  getLastSession: AgentSessionStarterService['lastSessionOf']
   platform?: NodeJS.Platform
 }
 
@@ -27,7 +33,13 @@ const NOT_MAIN_FRAME = 'メインフレーム以外からの依頼は受け付�
 
 export function registerAgentTerminalHandlers(
   ipcMain: IpcMain,
-  { registry, startSession, platform = process.platform }: AgentTerminalHandlerDeps
+  {
+    registry,
+    startSession,
+    claudeSessionIdOf,
+    getLastSession,
+    platform = process.platform
+  }: AgentTerminalHandlerDeps
 ): void {
   ipcMain.handle(
     'agentTerminal:start',
@@ -73,7 +85,15 @@ export function registerAgentTerminalHandlers(
     'agentTerminal:getState',
     (event: IpcMainInvokeEvent): AgentSessionSnapshotEntry[] => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
-      return registry.snapshot(event.sender.id)
+      return attachClaudeSessionIds(registry.snapshot(event.sender.id), claudeSessionIdOf)
+    }
+  )
+
+  ipcMain.handle(
+    'agentTerminal:getLastSession',
+    async (event: IpcMainInvokeEvent, folderPath: unknown): Promise<AgentLastSession | null> => {
+      if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
+      return getLastSession(event.sender.id, parseAgentFolderPath(folderPath))
     }
   )
 

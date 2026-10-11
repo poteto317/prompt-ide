@@ -14,7 +14,8 @@ const successEntry: HistoryEntry = {
   status: 'success',
   resultText: '成功結果テキスト',
   errorMessage: null,
-  executedAt: new Date('2024-01-01T00:00:00').getTime()
+  executedAt: new Date('2024-01-01T00:00:00').getTime(),
+  agent: null
 }
 
 const errorEntry: HistoryEntry = {
@@ -84,5 +85,30 @@ describe('HistoryItem', () => {
       <HistoryItem entry={entry} isSelected={false} onSelect={vi.fn()} />
     )
     expect(container.querySelector('.history-item__preview')).toHaveTextContent('')
+  })
+})
+
+describe('HistoryItem: エージェントのエントリ', () => {
+  const agentEntry: HistoryEntry = {
+    ...successEntry,
+    id: 'h-agent',
+    promptContent: '送った全文',
+    status: 'sent',
+    resultText: null,
+    agent: {
+      claudeSessionId: '11111111-1111-4111-8111-111111111111',
+      tabLabel: 'claude 2',
+      folderPath: '/w'
+    }
+  }
+
+  it('ツールの欄に エージェント（claude 2）、状態に 送信済み(中立の色の印)、プレビューに送った全文を出す', () => {
+    const { container } = render(
+      <HistoryItem entry={agentEntry} isSelected={false} onSelect={vi.fn()} />
+    )
+    expect(screen.getByText('エージェント（claude 2）')).toBeInTheDocument()
+    expect(screen.getByText('送信済み')).toBeInTheDocument()
+    expect(container.querySelector('.history-item__status--sent')).not.toBeNull()
+    expect(screen.getByText('送った全文')).toBeInTheDocument()
   })
 })

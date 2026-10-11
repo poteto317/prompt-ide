@@ -20,7 +20,8 @@ const makeEntry = (id: string): Omit<HistoryEntry, 'id'> => ({
   status: 'success',
   resultText: '結果',
   errorMessage: null,
-  executedAt: 1000
+  executedAt: 1000,
+  agent: null
 })
 
 beforeEach(() => {
@@ -29,7 +30,9 @@ beforeEach(() => {
   mockSave.mockImplementation(() => {})
 })
 
-async function mountLoaded() {
+async function mountLoaded(): Promise<
+  ReturnType<typeof renderHook<ReturnType<typeof useHistory>, unknown>>
+> {
   const hook = renderHook(() => useHistory())
   await waitFor(() => expect(hook.result.current.historyLoaded).toBe(true))
   return hook

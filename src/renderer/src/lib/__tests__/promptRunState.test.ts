@@ -15,8 +15,6 @@ const base: PromptRunStateInput = {
 const LOADING = '設定を読み込んでいます'
 const NO_SESSION = 'エージェントが起動していません（ターミナルの「起動」を押してください）'
 const SENDING = 'エージェントへ送信しています'
-const RERUN_AGENT =
-  'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
 
 describe('buildPromptRunPanelState', () => {
   it('従来の方式で実行していなければ押せ、ツールの選択を出し、送信の結果は null', () => {
@@ -25,19 +23,15 @@ describe('buildPromptRunPanelState', () => {
       runDisabledReason: null,
       agentSend: null,
       showToolSelector: true,
-      runAriaLabel: 'プロンプトを実行',
-      isRerunDisabled: false,
-      rerunDisabledReason: null
+      runAriaLabel: 'プロンプトを実行'
     })
   })
 
-  it('従来の方式の実行中は、実行も再実行も押せない(理由は出さない)', () => {
+  it('従来の方式の実行中は、実行を押せない(理由は出さない)', () => {
     const state = buildPromptRunPanelState({ ...base, isExecuting: true })
     expect(state).toMatchObject({
       isRunDisabled: true,
-      runDisabledReason: null,
-      isRerunDisabled: true,
-      rerunDisabledReason: null
+      runDisabledReason: null
     })
   })
 
@@ -50,13 +44,11 @@ describe('buildPromptRunPanelState', () => {
     expect(state.agentSend).toBeNull()
   })
 
-  it('実行方式の読み込み中は、実行も再実行も押せず理由を出す', () => {
+  it('実行方式の読み込み中は、実行を押せず理由を出す', () => {
     const state = buildPromptRunPanelState({ ...base, mode: null })
     expect(state).toMatchObject({
       isRunDisabled: true,
       runDisabledReason: LOADING,
-      isRerunDisabled: true,
-      rerunDisabledReason: LOADING,
       showToolSelector: true,
       runAriaLabel: 'プロンプトを実行',
       agentSend: null
@@ -97,9 +89,7 @@ describe('buildPromptRunPanelState', () => {
       runDisabledReason: null,
       agentSend: { error: 'err', notice },
       showToolSelector: false,
-      runAriaLabel: '実行（エージェントに送信）',
-      isRerunDisabled: true,
-      rerunDisabledReason: RERUN_AGENT
+      runAriaLabel: '実行（エージェントに送信）'
     })
   })
 
@@ -130,8 +120,7 @@ describe('buildPromptRunPanelState', () => {
       (input) => {
         const state = buildPromptRunPanelState({ ...base, ...input })
         const pairs: Array<[boolean, string | null]> = [
-          [state.isRunDisabled, state.runDisabledReason],
-          [state.isRerunDisabled, state.rerunDisabledReason]
+          [state.isRunDisabled, state.runDisabledReason]
         ]
         for (const [disabled, reason] of pairs) {
           if (reason !== null) expect(disabled).toBe(true)

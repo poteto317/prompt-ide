@@ -1,9 +1,12 @@
 import { renderHook } from '@testing-library/react'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import type { Mock, MockInstance } from 'vitest'
+import type { AgentHistoryInfo } from '@shared/types'
 import type { HistoryEntry, OpenFile, Prompt } from '../../types'
 import type { AgentSendOptions } from '../../lib/agentPromptRequest'
 import type { PreparedAgentReferences } from '../../lib/agentReferenceCandidates'
 import { makeAgentReferencesState } from '../../__tests__/makeAgentReferencesState'
+import type { AgentReferencesState } from '../useAgentReferences'
 import { usePromptRunner } from '../usePromptRunner'
 
 const prompt: Prompt = {
@@ -23,7 +26,14 @@ const historyEntry: HistoryEntry = {
   status: 'success',
   resultText: '結果',
   errorMessage: null,
-  executedAt: 2000
+  executedAt: 2000,
+  agent: null
+}
+
+const SENT_TO: AgentHistoryInfo = {
+  claudeSessionId: '11111111-1111-4111-8111-111111111111',
+  tabLabel: 'claude 2',
+  folderPath: '/repo'
 }
 
 const openFile: OpenFile = {
@@ -130,7 +140,7 @@ describe('usePromptRunner', () => {
 })
 
 describe('usePromptRunner: 実行方式', () => {
-  it('エージェント CLI 方式では本文だけをエージェントへ送り、従来の実行と履歴の記録をしない', async () => {
+  it('エージェント CLI 方式では本文だけをエージェントへ送り、従来の実行をしない。送っただけでは履歴に記録しない(送れたときの onSent でだけ記録する)', async () => {
     const executePrompt = vi.fn()
     const addHistoryEntry = vi.fn()
     const sendToAgent = vi.fn(async () => undefined)
@@ -145,7 +155,7 @@ describe('usePromptRunner: 実行方式', () => {
       })
     )
     await result.current.runPrompt('送る本文', 'claude', prompt)
-    // ファイル内容を添付しない(C2)・履歴に記録しない(C11)。プロンプトの id は確認の戻り先を探すため
+    // ファイル内容を添付しない(C2)・送れたときの onSent で記録する。プロンプトの id は確認の戻り先を探すため
     expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文', {
       promptId: 'p1',
       unsavedPaths: [],
@@ -174,7 +184,7 @@ describe('usePromptRunner: 実行方式', () => {
     expect(executePrompt).not.toHaveBeenCalled()
   })
 
-  it('エージェント CLI 方式では履歴の再実行をしない', async () => {
+  it('エージェント CLI 方式では従来のエントリ(agent が null)を再実行しない(処理の側の守り。L-058)', async () => {
     const executePrompt = vi.fn()
     const sendToAgent = vi.fn(async () => undefined)
     const { result } = renderHook(() =>
@@ -222,7 +232,7 @@ describe('usePromptRunner: 実行方式', () => {
     )
     // 足したファイルを外すのは送れたときだけ(押した時点の写しを渡す。L-407)
     expect(agentReferences.markSent).not.toHaveBeenCalled()
-    sendToAgent.mock.calls[0][1].onSent?.()
+    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO)
     expect(agentReferences.markSent).toHaveBeenCalledExactlyOnceWith(prepared)
   })
 
@@ -242,5 +252,171 @@ describe('usePromptRunner: 実行方式', () => {
     await result.current.runPrompt('実行する内容', 'claude', prompt)
     expect(agentReferences.prepare).not.toHaveBeenCalled()
     expect(executePrompt.mock.calls[0][0]).toBe('実行する内容')
+  })
+})
+
+describe('usePromptRunner: 送れたときの履歴への記録', () => {
+  type AddHistoryEntry = (entry: Omit<HistoryEntry, 'id'>) => void
+  // runPrompt で送り、sendToAgent に渡した onSent を返す
+  const runAndTakeOnSent = async ({
+    addHistoryEntry = vi.fn<AddHistoryEntry>(),
+    agentReferences = makeAgentReferencesState({
+      prepare: vi.fn(() => ({
+        references: [{ path: 'src/app.ts', lineRange: null }],
+        unsavedPaths: [],
+        addedPaths: []
+      }))
+    })
+  }: {
+    addHistoryEntry?: Mock<AddHistoryEntry>
+    agentReferences?: AgentReferencesState
+  } = {}): Promise<{
+    onSent: NonNullable<AgentSendOptions['onSent']>
+    addHistoryEntry: Mock<AddHistoryEntry>
+    agentReferences: AgentReferencesState
+  }> => {
+    const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+      async () => undefined
+    )
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        executePrompt: vi.fn(),
+        addHistoryEntry,
+        executionMode: 'agent-cli',
+        sendToAgent,
+        agentReferences
+      })
+    )
+    await result.current.runPrompt('送る本文', 'claude', prompt)
+    const onSent = sendToAgent.mock.calls[0][1].onSent
+    if (onSent === undefined) throw new Error('onSent がありません')
+    return { onSent, addHistoryEntry, agentReferences }
+  }
+
+  let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+  afterEach(() => {
+    consoleErrorSpy?.mockRestore()
+    consoleErrorSpy = null
+  })
+
+  it('送れたら(onSent)、送った全文(参照を含む)と控えた送り先を status: sent で記録する', async () => {
+    const { onSent, addHistoryEntry } = await runAndTakeOnSent()
+    expect(addHistoryEntry).not.toHaveBeenCalled()
+    onSent(SENT_TO)
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith({
+      promptId: 'p1',
+      promptTitle: 'プロンプトタイトル',
+      promptContent: '送る本文\n\n参照:\n- @src/app.ts',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'sent',
+      resultText: null,
+      errorMessage: null,
+      executedAt: expect.any(Number),
+      agent: SENT_TO
+    })
+  })
+
+  it('送り先を控えられなかった(null)ときは、参照の後始末だけ行い、記録を省いてログに残す', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
+    onSent(null)
+    expect(agentReferences.markSent).toHaveBeenCalledOnce()
+    expect(addHistoryEntry).not.toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalled()
+  })
+
+  it('参照の後始末が投げても記録し、記録が投げても参照の後始末は済んでいる(段ごとに別の try。L-053)', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const first = await runAndTakeOnSent({
+      agentReferences: makeAgentReferencesState({
+        markSent: vi.fn(() => {
+          throw new Error('markSent broken')
+        })
+      })
+    })
+    expect(() => first.onSent(SENT_TO)).not.toThrow()
+    expect(first.addHistoryEntry).toHaveBeenCalledOnce()
+
+    const addHistoryEntry = vi.fn<AddHistoryEntry>(() => {
+      throw new Error('addHistoryEntry broken')
+    })
+    const agentReferences = makeAgentReferencesState()
+    const second = await runAndTakeOnSent({ addHistoryEntry, agentReferences })
+    expect(() => second.onSent(SENT_TO)).not.toThrow()
+    expect(agentReferences.markSent).toHaveBeenCalledOnce()
+  })
+})
+
+describe('usePromptRunner: エージェントのエントリの再実行', () => {
+  const agentEntry: HistoryEntry = {
+    ...historyEntry,
+    id: 'h-agent',
+    promptContent: '送った全文\n\n参照:\n- @src/app.ts',
+    fileContent: null,
+    status: 'sent',
+    resultText: null,
+    agent: SENT_TO
+  }
+
+  it('エージェント CLI 方式では今の送り先へ同じ全文を送り(参照は足し直さない)、送れたら新しいエントリとして記録する', async () => {
+    const addHistoryEntry = vi.fn()
+    const agentReferences = makeAgentReferencesState()
+    const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+      async () => undefined
+    )
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        executePrompt: vi.fn(),
+        addHistoryEntry,
+        executionMode: 'agent-cli',
+        sendToAgent,
+        agentReferences
+      })
+    )
+    await result.current.rerunHistoryEntry(agentEntry)
+    expect(agentReferences.prepare).not.toHaveBeenCalled()
+    expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送った全文\n\n参照:\n- @src/app.ts', {
+      promptId: 'p2',
+      unsavedPaths: [],
+      onSent: expect.any(Function)
+    })
+    expect(addHistoryEntry).not.toHaveBeenCalled()
+    const resent = {
+      ...SENT_TO,
+      claudeSessionId: '22222222-2222-4222-9222-222222222222',
+      tabLabel: 'claude 1'
+    }
+    sendToAgent.mock.calls[0][1].onSent?.(resent)
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        promptId: 'p2',
+        promptTitle: '履歴タイトル',
+        promptContent: '送った全文\n\n参照:\n- @src/app.ts',
+        status: 'sent',
+        agent: resent
+      })
+    )
+    expect(agentReferences.markSent).not.toHaveBeenCalled()
+  })
+
+  it('従来の方式ではエージェントのエントリを再実行しない(処理の側の守り。L-058)', async () => {
+    const executePrompt = vi.fn()
+    const sendToAgent = vi.fn(async () => undefined)
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        executePrompt,
+        addHistoryEntry: vi.fn(),
+        executionMode: 'legacy',
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
+      })
+    )
+    await result.current.rerunHistoryEntry(agentEntry)
+    expect(executePrompt).not.toHaveBeenCalled()
+    expect(sendToAgent).not.toHaveBeenCalled()
   })
 })

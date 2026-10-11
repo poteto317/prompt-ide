@@ -2,7 +2,8 @@ import { renderHook, act } from '@testing-library/react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
 import { AGENT_BEFORE_SEND_TIMEOUT_MS, useAgentPromptSender } from '../useAgentPromptSender'
-import type { AgentSendClock } from '../../lib/agentPromptSend'
+import type { AgentHistoryInfo } from '@shared/types'
+import type { AgentPromptSendResult, AgentSendClock } from '../../lib/agentPromptSend'
 import { AGENT_SENT_AFTER_CLEAR_NOTICE, AGENT_SENT_NOTICE } from '../../lib/agentSendMessages'
 import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
@@ -13,6 +14,9 @@ afterEach(() => {
 })
 
 // 仮想の時計(sleep で時間を進めるだけ)
+// 送り先の claude のセッションを控えない(送信の手順だけを確かめるテスト用)
+const noSession = (): AgentHistoryInfo | null => null
+
 const clock: AgentSendClock = (() => {
   let now = 0
   return { now: () => now, sleep: async (ms: number) => void (now += ms) }
@@ -38,7 +42,7 @@ describe('useAgentPromptSender', () => {
     const onSettled = vi.fn()
     const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
     await act(async () => {
-      await result.current.send('hello', { slotId: 'a', controller })
+      await result.current.send('hello', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(controller.beginSending).toHaveBeenCalledOnce()
     expect(controller.endSending).toHaveBeenCalledOnce()
@@ -63,7 +67,7 @@ describe('useAgentPromptSender', () => {
     }
     const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
     await act(async () => {
-      await result.current.send('hello', { slotId: 'a', controller })
+      await result.current.send('hello', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(heldAtWrite).toEqual([true, true, true])
     expect(holding).toBe(false)
@@ -74,7 +78,7 @@ describe('useAgentPromptSender', () => {
     const onSettled = vi.fn()
     const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
     await act(async () => {
-      await result.current.send('hello', { slotId: 'a', controller })
+      await result.current.send('hello', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(result.current.error).toBe(
       'エージェントの入力欄が見つかりません。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
@@ -87,13 +91,21 @@ describe('useAgentPromptSender', () => {
     const failing = makeFakeController()
     const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
     await act(async () => {
-      await result.current.send('hello', { slotId: 'a', controller: failing })
+      await result.current.send('hello', {
+        slotId: 'a',
+        controller: failing,
+        describeSession: noSession
+      })
     })
     expect(result.current.error).not.toBeNull()
     act(() => result.current.clearResult())
     expect(result.current.error).toBeNull()
     await act(async () => {
-      await result.current.send('hello', { slotId: 'a', controller: controllerWithEmptyInput() })
+      await result.current.send('hello', {
+        slotId: 'a',
+        controller: controllerWithEmptyInput(),
+        describeSession: noSession
+      })
     })
     expect(result.current.notice).not.toBeNull()
     act(() => result.current.clearResult())
@@ -112,7 +124,7 @@ describe('useAgentPromptSender', () => {
     }
     const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
     await act(async () => {
-      await result.current.send('p', { slotId: 'a', controller })
+      await result.current.send('p', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_AFTER_CLEAR_NOTICE)
   })
@@ -127,7 +139,7 @@ describe('useAgentPromptSender', () => {
     const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
     await act(async () => {
       await expect(
-        result.current.send('hello', { slotId: 'a', controller })
+        result.current.send('hello', { slotId: 'a', controller, describeSession: noSession })
       ).resolves.toBeUndefined()
     })
     expect(controller.endSending).toHaveBeenCalledOnce()
@@ -136,7 +148,7 @@ describe('useAgentPromptSender', () => {
     expect(onSettled).toHaveBeenCalledOnce()
     // 保留が解けていれば、次の送信を受け付ける
     await act(async () => {
-      await result.current.send('again', { slotId: 'a', controller })
+      await result.current.send('again', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(controller.beginSending).toHaveBeenCalledTimes(2)
     consoleSpy.mockRestore()
@@ -154,11 +166,13 @@ describe('useAgentPromptSender', () => {
     )
     let first: Promise<unknown> = Promise.resolve()
     act(() => {
-      first = result.current.send('a', { slotId: 'a', controller })
+      first = result.current.send('a', { slotId: 'a', controller, describeSession: noSession })
     })
     expect(result.current.isSending).toBe(true)
     await act(async () => {
-      await expect(result.current.send('b', { slotId: 'a', controller })).resolves.toBeUndefined()
+      await expect(
+        result.current.send('b', { slotId: 'a', controller, describeSession: noSession })
+      ).resolves.toBeUndefined()
     })
     expect(controller.beginSending).toHaveBeenCalledOnce()
     // 1 回目を終わらせる(待ちを解き続ける)
@@ -185,13 +199,21 @@ describe('useAgentPromptSender', () => {
     expect(result.current.sendingSlotId).toBeNull()
     let first: Promise<unknown> = Promise.resolve()
     act(() => {
-      first = result.current.send('a', { slotId: 'a', controller: controllerA })
+      first = result.current.send('a', {
+        slotId: 'a',
+        controller: controllerA,
+        describeSession: noSession
+      })
     })
     expect(result.current.sendingSlotId).toBe('a')
     // 送信中に別のタブへ送っても何もしない
     await act(async () => {
       await expect(
-        result.current.send('b', { slotId: 'b', controller: controllerB })
+        result.current.send('b', {
+          slotId: 'b',
+          controller: controllerB,
+          describeSession: noSession
+        })
       ).resolves.toBeUndefined()
     })
     expect(result.current.sendingSlotId).toBe('a')
@@ -235,7 +257,11 @@ describe('useAgentPromptSender', () => {
       )
       let sending: Promise<unknown> = Promise.resolve()
       act(() => {
-        sending = result.current.send('hello', { slotId: 'a', controller })
+        sending = result.current.send('hello', {
+          slotId: 'a',
+          controller,
+          describeSession: noSession
+        })
       })
       await act(async () => undefined)
       expect(beforeSend).toHaveBeenCalledOnce()
@@ -257,7 +283,7 @@ describe('useAgentPromptSender', () => {
         useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
       )
       await act(async () => {
-        await result.current.send('hello', { slotId: 'a', controller })
+        await result.current.send('hello', { slotId: 'a', controller, describeSession: noSession })
       })
       expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
       expect(result.current.error).toBeNull()
@@ -272,7 +298,7 @@ describe('useAgentPromptSender', () => {
         useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
       )
       await act(async () => {
-        await result.current.send('a', { slotId: 'a', controller })
+        await result.current.send('a', { slotId: 'a', controller, describeSession: noSession })
       })
       expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~a\x1b[201~', '\r'])
       expect(result.current.isSending).toBe(false)
@@ -288,7 +314,11 @@ describe('useAgentPromptSender', () => {
       )
       let sending: Promise<unknown> = Promise.resolve()
       act(() => {
-        sending = result.current.send('hello', { slotId: 'a', controller })
+        sending = result.current.send('hello', {
+          slotId: 'a',
+          controller,
+          describeSession: noSession
+        })
       })
       await act(async () => undefined)
       expect(controller.writes).toEqual([])
@@ -299,5 +329,72 @@ describe('useAgentPromptSender', () => {
       expect(testClock.slept[0]).toBe(AGENT_BEFORE_SEND_TIMEOUT_MS)
       expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
     })
+  })
+})
+
+describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
+  const SENT_TO: AgentHistoryInfo = {
+    claudeSessionId: '11111111-1111-4111-8111-111111111111',
+    tabLabel: 'claude 1',
+    folderPath: '/work'
+  }
+
+  it('送信の手順を始める時点(準備の後・beginSending の直前)に describeSession で控え、sent の結果に載せる(L-037)', async () => {
+    const controller = controllerWithEmptyInput()
+    const order: string[] = []
+    controller.beginSending.mockImplementation(() => void order.push('begin'))
+    const describeSession = vi.fn(() => {
+      order.push('describe')
+      return SENT_TO
+    })
+    const beforeSend = vi.fn(async () => {
+      order.push('before')
+    })
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock })
+    )
+    let outcome: AgentPromptSendResult | undefined = undefined
+    await act(async () => {
+      outcome = await result.current.send('hello', { slotId: 'a', controller, describeSession })
+    })
+    expect(order).toEqual(['before', 'describe', 'begin'])
+    expect(describeSession).toHaveBeenCalledOnce()
+    expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: SENT_TO })
+  })
+
+  it('送れなかったときは結果に sentTo を載せない', async () => {
+    const controller = makeFakeController()
+    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    let outcome: AgentPromptSendResult | undefined = undefined
+    await act(async () => {
+      outcome = await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: () => SENT_TO
+      })
+    })
+    expect(outcome).toEqual({ kind: 'failed', reason: 'input-not-found' })
+  })
+
+  it('describeSession が投げても送り、sentTo は null にしてログに残す', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const controller = controllerWithEmptyInput()
+      const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+      let outcome: AgentPromptSendResult | undefined = undefined
+      await act(async () => {
+        outcome = await result.current.send('hello', {
+          slotId: 'a',
+          controller,
+          describeSession: () => {
+            throw new Error('broken')
+          }
+        })
+      })
+      expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: null })
+      expect(consoleErrorSpy).toHaveBeenCalled()
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
   })
 })

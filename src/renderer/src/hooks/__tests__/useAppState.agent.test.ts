@@ -672,6 +672,8 @@ describe('useAppState', () => {
       const { result } = renderHook(() => useAppState())
       expect(result.current.executionModePanel).toBe(workspace.executionModePanel)
       expect(result.current.promptRun).toBe(workspace.promptRun)
+      expect(result.current.getHistoryActions).toBe(workspace.getHistoryActions)
+      expect(result.current.onResume).toBe(workspace.onResume)
       expect(result.current.bottomPanel).toBe('agent-terminal')
       expect(result.current.agentTerminal).toBe(workspace.agentTerminal)
       expect(result.current.statusBarAgent).toBe(workspace.statusBarAgent)

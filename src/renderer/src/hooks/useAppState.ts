@@ -588,6 +588,8 @@ export function useAppState(): AppState {
     agentTerminal: agentWorkspace.agentTerminal,
     statusBarAgent: agentWorkspace.statusBarAgent,
     agentAnnouncement: agentWorkspace.agentAnnouncement,
+    getHistoryActions: agentWorkspace.getHistoryActions,
+    onResume: agentWorkspace.onResume,
     externalChangeBanner,
     attachEditorSelection: editorSelection.attachEditor,
     agentReferences: references.panel,

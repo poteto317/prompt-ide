@@ -16,7 +16,8 @@ export type {
   StageKind,
   StageStatus,
   HistoryEntry,
-  HistoryStatus
+  HistoryStatus,
+  AgentHistoryInfo
 } from '@shared/types'
 
 export type FileNode = FileTreeNode & { type: 'file' }
@@ -193,7 +194,7 @@ export interface ApplyOutputState {
   notice: Announcement | null
 }
 
-// エージェント CLI 方式の送信の失敗(role="alert")と成功の通知(role="status")
+// エージェント CLI 方式の送信の失敗と成功の通知(読み上げは Sidebar の常設の AgentSendFeedbackAnnouncer の role="alert"・role="status")
 export interface AgentSendFeedback {
   error: string | null
   notice: Announcement | null
@@ -288,24 +289,38 @@ export interface AgentSendConfirmDialogState {
   pending: AgentSendConfirmPending | null
   /** 送り先のタブが今は送れない理由(終了した・閉じる途中・送信中)。送れるなら null */
   targetBlockedReason: string | null
-  /** 控えた送り先へ送って閉じる。フォーカスは送信が終わってから移す(送れたら送り先のタブのターミナル、失敗したら同じプロンプトの `実行`。送信中に利用者が別の場所へ移していれば移さない) */
+  /** 控えた送り先へ送って閉じる。フォーカスは送信が終わってから移す(送れたら送り先のタブのターミナル、失敗したら確認を開いた時点の要素〈履歴の詳細の `再実行` など〉、無ければ同じプロンプトの `実行`。送信中に利用者が別の場所へ移していれば移さない) */
   onConfirm: () => void
   /** 送らずに閉じる */
   onCancel: () => void
 }
 
-// プロンプトの実行ボタン・履歴の再実行の押せる条件と、エージェント CLI 方式の送信の結果(lib/promptRunState.ts の
-// buildPromptRunPanelState が組み立て〈useAgentWorkspace から呼ぶ〉、Sidebar → PromptsPanel・HistoryPanel へ渡す)
+// プロンプトの実行ボタンの押せる条件と、エージェント CLI 方式の送信の結果(lib/promptRunState.ts の
+// buildPromptRunPanelState が組み立て〈useAgentWorkspace から呼ぶ〉、Sidebar → PromptsPanel へ渡す。送信の結果〈agentSend〉は、Sidebar が
+// 見えている側のパネル〈PromptsPanel / HistoryPanel〉の見える文言と、パネルの外に常に置く AgentSendFeedbackAnnouncer の読み上げに渡す。
+// 履歴の再実行の押せる条件はエントリごとに HistoryEntryActions)
 export interface PromptRunPanelState {
   isRunDisabled: boolean
   /** 押せない理由(プロンプトパネルの上部に 1 か所だけ表示し、無効のボタンの aria-describedby から参照する) */
   runDisabledReason: string | null
-  /** エージェント CLI 方式の送信の失敗(role="alert")と成功の通知(role="status")。従来の方式では null */
+  /** エージェント CLI 方式の送信の失敗と成功の通知(読み上げは AgentSendFeedbackAnnouncer の role="alert"・role="status"、見える文言は
+   *  見えている側のパネルに aria-hidden で出す)。従来の方式では null */
   agentSend: AgentSendFeedback | null
   /** 実行ツールの選択を出すか(従来の方式だけ。C3) */
   showToolSelector: boolean
   /** 実行ボタンの aria-label(可視の文言「実行」で始める。パターン 76) */
   runAriaLabel: string
-  isRerunDisabled: boolean
-  rerunDisabledReason: string | null
+}
+
+/** 履歴の操作の押せる条件(押せない理由は詳細に見える文字で出し、ボタンの aria-describedby で結ぶ) */
+export interface HistoryActionAvailability {
+  disabled: boolean
+  reason: string | null
+}
+
+/** 履歴のエントリごとの操作の押せる条件(useAgentWorkspace の getHistoryActions。Sidebar → HistoryPanel → HistoryDetail) */
+export interface HistoryEntryActions {
+  rerun: HistoryActionAvailability
+  /** このセッションで再開。従来のエントリ(agent が null)は null(ボタンを出さない) */
+  resume: HistoryActionAvailability | null
 }

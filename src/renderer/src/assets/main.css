@@ -1915,7 +1915,8 @@ body {
 /* 通知の文言の読み上げ(視覚的に隠す。.agent-terminal-panel__hint と同じ規則) */
 .external-change-banner__live,
 .agent-diff__live,
-.agent-announcer {
+.agent-announcer,
+.agent-send-feedback__live {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1974,18 +1975,16 @@ body {
   font-size: 12px;
 }
 
-/* 狭い幅では、起動できない理由が状態の文言より先に縮む(flex-shrink を大きく)。ボタンは共通の規則の flex: none で縮まない(パターン 124) */
+/* 操作群は箱を作らず、理由とボタンを帯の直接の子として並べる。
+   縮められる箱に縮まないボタンを入れると、箱だけが縮んでボタンが帯の外へはみ出し、右端の最大化が切れていた */
 .agent-terminal-panel__actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 100 auto;
-  min-width: 0;
+  display: contents;
 }
 
-/* 可変の文言は 1 行で省略する(全文は title と、起動のボタンの aria-describedby で残る) */
+/* 可変の文言は 1 行で省略する(全文は title と、起動・前回の続きからのボタンの aria-describedby で残る)。
+   狭い幅では、状態の文言・タブ列より先に縮む(flex-shrink を大きく)。ボタンは共通の規則の flex: none で縮まない(パターン 124) */
 .agent-terminal-panel__reason {
-  flex: 0 1 auto;
+  flex: 0 100 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1996,6 +1995,15 @@ body {
 
 .agent-terminal-panel__button {
   white-space: nowrap;
+}
+
+/* 前回の続きからは文字が長いため、理由の次に(状態の文言・タブ列より先に)縮んで末尾を省略する。
+   最初の数文字と省略記号が入る幅は残す。名前は aria-label で全文が読まれ、マウスではラベルの文字の title で全文(押せないときはボタンの title で理由)が出る */
+.agent-terminal-panel__button--resume {
+  flex: 0 10 auto;
+  min-width: 4em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 帯は上下の余白が無く overflow: hidden のため、既定のフォーカスリング(外側)は上下が切れる。内側に描く */
@@ -2589,10 +2597,10 @@ body {
   cursor: pointer;
 }
 
-/* ---- プロンプトの実行の理由・結果(プロンプトパネルの上部) ---- */
+/* ---- プロンプトの実行の理由・結果(プロンプトパネルの上部。送信の結果は実行履歴のパネルの上部にも出す) ---- */
 
 .prompts-panel__run-reason,
-.prompts-panel__run-notice {
+.agent-send-feedback__notice {
   margin: 0;
   padding: 2px 12px;
   color: #969696;
@@ -2600,21 +2608,40 @@ body {
 }
 
 /* 空の通知も DOM に残す(ライブリージョンは先に在る必要がある。パターン 87)。余白だけを消す */
-.prompts-panel__run-notice:empty {
+.agent-send-feedback__notice:empty {
   padding: 0;
 }
 
-.prompts-panel__run-error {
+.agent-send-feedback__error {
   margin: 0;
   padding: 2px 12px;
   color: #f48771;
   font-size: 12px;
 }
 
-.history-detail__rerun-reason {
+/* 再実行・このセッションで再開の押せない理由。同じ詳細の中に並ぶので、見た目は 1 つの規則で揃える */
+.history-detail__rerun-reason,
+.history-detail__resume-reason {
   margin: 4px 0;
   color: #969696;
   font-size: 12px;
+}
+
+/* エージェント CLI 方式で送ったエントリの状態。結果を知らないので、成功・エラーと区別する中立の色にする */
+.history-item__status--sent {
+  color: #969696;
+}
+
+/* 選んでコピーできる(claude --resume で手動で開くときなど) */
+.history-detail__session {
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+/* 送った全文(読むだけ)。長い本文は枠の中でスクロールする。枠の見た目は送信前の確認の本文と 1 つの規則(.agent-send-confirm__body の並び) */
+.history-detail__sent {
+  max-height: 40vh;
 }
 
 /* ---- PromptItem 実行ボタン ---- */
@@ -3130,11 +3157,10 @@ body {
   color: #a0a0a0;
 }
 
-.agent-send-confirm__body {
-  flex: 1 1 auto;
-  /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(12px × 1.5 × 3)を残す */
-  min-height: 6em;
-  max-height: 50vh;
+/* 送る・送った全文を読むだけの枠(送信前の確認の本文・履歴の詳細の送った内容)。同じ本文を出すので、見た目は 1 つの規則で揃える。
+   高さはそれぞれの規則(.history-detail__sent は履歴の詳細の側) */
+.agent-send-confirm__body,
+.history-detail__sent {
   overflow: auto;
   margin: 0;
   padding: 8px;
@@ -3149,9 +3175,17 @@ body {
   overflow-wrap: anywhere;
 }
 
-.agent-send-confirm__body:focus-visible {
+.agent-send-confirm__body:focus-visible,
+.history-detail__sent:focus-visible {
   outline: 1px solid #007acc;
   outline-offset: -1px;
+}
+
+.agent-send-confirm__body {
+  flex: 1 1 auto;
+  /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(12px × 1.5 × 3)を残す */
+  min-height: 6em;
+  max-height: 50vh;
 }
 
 .agent-send-confirm__reason {

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import HistoryDetail from '../HistoryDetail'
-import type { HistoryEntry } from '../../../types'
+import type { HistoryEntry, HistoryEntryActions } from '../../../types'
 
 const successEntry: HistoryEntry = {
   id: 'h1',
@@ -14,7 +14,8 @@ const successEntry: HistoryEntry = {
   status: 'success',
   resultText: '成功結果テキスト',
   errorMessage: null,
-  executedAt: new Date('2024-01-01T00:00:00').getTime()
+  executedAt: new Date('2024-01-01T00:00:00').getTime(),
+  agent: null
 }
 
 const errorEntry: HistoryEntry = {
@@ -25,11 +26,17 @@ const errorEntry: HistoryEntry = {
   errorMessage: 'エラーメッセージ本文'
 }
 
+const enabledActions: HistoryEntryActions = {
+  rerun: { disabled: false, reason: null },
+  resume: null
+}
+
 const defaultProps = {
   entry: successEntry,
+  actions: enabledActions,
   onRerun: vi.fn(),
-  onDelete: vi.fn(),
-  isRerunDisabled: false
+  onResume: vi.fn(),
+  onDelete: vi.fn()
 }
 
 describe('HistoryDetail', () => {
@@ -56,8 +63,13 @@ describe('HistoryDetail', () => {
     expect(onRerun).toHaveBeenCalledWith(successEntry)
   })
 
-  it('isRerunDisabled のとき再実行ボタンが無効化される', () => {
-    render(<HistoryDetail {...defaultProps} isRerunDisabled={true} />)
+  it('再実行を押せないとき再実行ボタンが無効化される', () => {
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        actions={{ rerun: { disabled: true, reason: null }, resume: null }}
+      />
+    )
     expect(screen.getByRole('button', { name: '再実行' })).toBeDisabled()
   })
 
@@ -91,8 +103,14 @@ describe('HistoryDetail: 再実行を押せない理由', () => {
     render(
       <HistoryDetail
         {...defaultProps}
-        isRerunDisabled
-        rerunDisabledReason="エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）"
+        actions={{
+          rerun: {
+            disabled: true,
+            reason:
+              'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
+          },
+          resume: null
+        }}
       />
     )
     const rerun = screen.getByRole('button', { name: '再実行' })
@@ -103,7 +121,97 @@ describe('HistoryDetail: 再実行を押せない理由', () => {
   })
 
   it('理由が無ければ表示しない(従来の方式の実行中)', () => {
-    render(<HistoryDetail {...defaultProps} isRerunDisabled />)
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        actions={{ rerun: { disabled: true, reason: null }, resume: null }}
+      />
+    )
     expect(screen.getByRole('button', { name: '再実行' })).not.toHaveAttribute('aria-describedby')
+  })
+})
+
+describe('HistoryDetail: エージェントのエントリ', () => {
+  const ID = '11111111-1111-4111-8111-111111111111'
+  const agentEntry: HistoryEntry = {
+    ...successEntry,
+    id: 'h-agent',
+    toolId: 'claude',
+    promptContent: '送った全文\n\n参照:\n- @src/app.ts',
+    status: 'sent',
+    resultText: null,
+    agent: { claudeSessionId: ID, tabLabel: 'claude 2', folderPath: '/w' }
+  }
+  const actions = (
+    rerun: HistoryEntryActions['rerun'],
+    resume: HistoryEntryActions['resume']
+  ): HistoryEntryActions => ({ rerun, resume })
+
+  it('メタ情報にタブ名(ツールの欄)とセッション ID を、本文に送った全文を読むだけの領域で出す', () => {
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        entry={agentEntry}
+        actions={actions({ disabled: false, reason: null }, { disabled: false, reason: null })}
+      />
+    )
+    expect(screen.getByText('エージェント（claude 2）')).toBeInTheDocument()
+    expect(screen.getByText(`セッション: ${ID}`)).toBeInTheDocument()
+    const sent = screen.getByRole('region', { name: '送った内容' })
+    expect(sent.textContent).toBe('送った全文\n\n参照:\n- @src/app.ts')
+    expect(sent).toHaveAttribute('tabindex', '0')
+  })
+
+  it('このセッションで再開 を押すと onResume にエントリを渡す', async () => {
+    const onResume = vi.fn()
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        entry={agentEntry}
+        onResume={onResume}
+        actions={actions({ disabled: false, reason: null }, { disabled: false, reason: null })}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'このセッションで再開' }))
+    expect(onResume).toHaveBeenCalledExactlyOnceWith(agentEntry)
+  })
+
+  it('2 つのボタンの押せない理由を、別の段落・別の id で見える文字にして結ぶ(L-057)', async () => {
+    const onResume = vi.fn()
+    render(
+      <HistoryDetail
+        {...defaultProps}
+        entry={agentEntry}
+        onResume={onResume}
+        actions={actions(
+          {
+            disabled: true,
+            reason: 'エージェントが起動していません（ターミナルの「起動」を押してください）'
+          },
+          { disabled: true, reason: 'このセッションは claude 2 で動いています' }
+        )}
+      />
+    )
+    const rerun = screen.getByRole('button', { name: '再実行' })
+    const resume = screen.getByRole('button', { name: 'このセッションで再開' })
+    expect(rerun).toBeDisabled()
+    expect(resume).toBeDisabled()
+    const rerunReason = rerun.getAttribute('aria-describedby')
+    const resumeReason = resume.getAttribute('aria-describedby')
+    expect(rerunReason).not.toBe(resumeReason)
+    expect(document.getElementById(rerunReason ?? '')).toHaveTextContent(
+      'エージェントが起動していません'
+    )
+    expect(document.getElementById(resumeReason ?? '')).toHaveTextContent(
+      'このセッションは claude 2 で動いています'
+    )
+    await userEvent.click(resume)
+    expect(onResume).not.toHaveBeenCalled()
+  })
+
+  it('従来のエントリ(resume が null)には このセッションで再開 を出さない', () => {
+    render(<HistoryDetail {...defaultProps} />)
+    expect(screen.queryByRole('button', { name: 'このセッションで再開' })).toBeNull()
+    expect(screen.queryByText(/^セッション: /)).toBeNull()
   })
 })

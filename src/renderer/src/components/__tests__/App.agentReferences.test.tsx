@@ -14,7 +14,7 @@ vi.mock('../../lib/xtermFactory', async () => {
 import App from '../../App'
 import { getAgentSessionTabs } from '../../lib/xtermFactory'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
-import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
+import { prepareClaudeScreen as prepareClaudeScreenOf } from '../../__tests__/prepareClaudeScreen'
 import { PROMPT_RUN_ARIA_LABEL_AGENT } from '../../lib/agentSendMessages'
 import { activityBarPanels } from '../../config/activityBarPanels'
 import { mockEditor } from '../../__tests__/__mocks__/@monaco-editor/react'
@@ -39,30 +39,12 @@ const openFolder = async (): Promise<HTMLElement> => {
 
 const prompt: Prompt = { id: 'p1', title: '要約', content: '要約して', createdAt: 1000000 }
 
-// 偽のタブの controller(xterm の境界)を、空の入力欄の claude の画面にし、貼り付けを書き込むと本文の 1 行目が入力欄に
-// 出るようにする(useAgentPromptSender.test と同じ流儀)。本物の sendAgentPrompt がこの画面を読んで Enter まで送る
-// タブの置き場はファイルで共有しているため、上書きする前の writeToSession・viewport・sessionId を控え、afterEach(restoreControllerState)で戻す
+// 選択中のタブの偽の controller を空の入力欄の claude の画面にする(共有の prepareClaudeScreen。useAgentPromptSender.test と同じ流儀)。
+// 本物の sendAgentPrompt がこの画面を読んで Enter まで送る。上書きの前に戻す restore を控え、afterEach(restoreControllerState)で戻す
 let restoreControllerState: (() => void) | null = null
 const prepareClaudeScreen = (): FakeController => {
-  const { tabs, selectedSlotId } = getAgentSessionTabs().getSnapshot()
-  const tab = tabs.find((t) => t.slotId === selectedSlotId)
-  if (tab === undefined) throw new Error('selected tab not found')
-  const controller = tab.controller as FakeController
-  const { writeToSession, viewport, sessionId, writes } = controller
-  restoreControllerState = () => {
-    controller.writeToSession = writeToSession
-    controller.viewport = viewport
-    controller.sessionId = sessionId
-    controller.writes = writes
-  }
-  const border = makeLine('─'.repeat(40))
-  controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
-  controller.writes = []
-  controller.writeToSession = (data) => {
-    controller.writes.push(data)
-    if (data.startsWith('\x1b[200~'))
-      controller.viewport = [border, makeLine(`❯\xa0${data.slice(6).split('\n')[0]}`), border]
-  }
+  const { controller, restore } = prepareClaudeScreenOf(getAgentSessionTabs())
+  restoreControllerState = restore
   return controller
 }
 
@@ -96,7 +78,11 @@ describe('App: 参照の配線', () => {
     restoreControllerState = null
     // 3・4 件目は確認のダイアログが出ることを前提にするため、既定に頼らず明示する
     window.api.getAgentSendConfirmEnabled = vi.fn().mockResolvedValue(true)
-    window.api.startAgentSession = vi.fn().mockResolvedValue({ kind: 'started', sessionId: 's1' })
+    window.api.startAgentSession = vi.fn().mockResolvedValue({
+      kind: 'started',
+      sessionId: 's1',
+      claudeSessionId: '11111111-1111-4111-8111-111111111111'
+    })
     window.api.getPromptExecutionMode = vi.fn().mockResolvedValue('agent-cli')
     window.api.loadPrompts = vi.fn().mockResolvedValue([])
     window.api.openFolder = vi.fn().mockResolvedValue('/project')

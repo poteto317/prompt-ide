@@ -12,8 +12,19 @@ afterEach(() => {
 describe('notifyAgentSent', () => {
   it('送れた(sent)ときだけ onSent を呼ぶ', () => {
     const onSent = vi.fn()
-    notifyAgentSent({ kind: 'sent', clearedDraft: false }, onSent)
-    expect(onSent).toHaveBeenCalledOnce()
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it('送れたときは、結果の sentTo(控えた送り先)を onSent に渡す', () => {
+    const onSent = vi.fn()
+    const sentTo = {
+      claudeSessionId: '11111111-1111-4111-8111-111111111111',
+      tabLabel: 'claude 1',
+      folderPath: '/work'
+    }
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo)
   })
 
   it('失敗・結果なし(undefined)では呼ばない', () => {
@@ -24,7 +35,9 @@ describe('notifyAgentSent', () => {
   })
 
   it('onSent が無ければ何もしない', () => {
-    expect(() => notifyAgentSent({ kind: 'sent', clearedDraft: false }, undefined)).not.toThrow()
+    expect(() =>
+      notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, undefined)
+    ).not.toThrow()
   })
 
   it('onSent が投げても呼び出し元へ投げず、理由を記録する(L-053)', () => {
@@ -32,7 +45,9 @@ describe('notifyAgentSent', () => {
     const onSent = vi.fn(() => {
       throw new Error('broken')
     })
-    expect(() => notifyAgentSent({ kind: 'sent', clearedDraft: false }, onSent)).not.toThrow()
+    expect(() =>
+      notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, onSent)
+    ).not.toThrow()
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[notifyAgentSent] onSent failed:',
       expect.any(Error)

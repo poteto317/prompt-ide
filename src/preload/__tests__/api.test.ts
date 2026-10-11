@@ -433,8 +433,18 @@ describe('エージェントのターミナル・外部変更・実行方式・�
   it.each<[string, () => unknown, unknown[]]>([
     [
       'startAgentSession は agentTerminal:start に依頼を渡す',
-      () => api.startAgentSession({ slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 }),
-      ['agentTerminal:start', { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24 }]
+      () =>
+        api.startAgentSession({
+          slotId: 'slot-1',
+          folderPath: '/p',
+          cols: 80,
+          rows: 24,
+          launch: { kind: 'new' }
+        }),
+      [
+        'agentTerminal:start',
+        { slotId: 'slot-1', folderPath: '/p', cols: 80, rows: 24, launch: { kind: 'new' } }
+      ]
     ],
     [
       'stopAgentSession は agentTerminal:stop に sessionId を渡す',
@@ -445,6 +455,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       'getAgentSessions は agentTerminal:getState を呼ぶ',
       () => api.getAgentSessions(),
       ['agentTerminal:getState']
+    ],
+    [
+      'getLastAgentSession は agentTerminal:getLastSession にフォルダを渡す',
+      () => api.getLastAgentSession('/p'),
+      ['agentTerminal:getLastSession', '/p']
     ],
     [
       'writeFileChecked は fs:writeFileChecked に path・content・baseContent を渡す',

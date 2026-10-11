@@ -26,11 +26,11 @@ import PromptsToolbar from './PromptsToolbar'
 import ExecutionToolSelector from './ExecutionToolSelector'
 import PromptsTagFilter from './PromptsTagFilter'
 import AgentReferenceChips from './AgentReferenceChips'
+import AgentSendFeedbackMessages from '../agent/AgentSendFeedbackMessages'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
 import { useSelectedTool } from '../../hooks/useSelectedTool'
 import { sortByPinned, crossesPinBoundary } from '../../lib/promptUtils'
-import { toAnnouncementText } from '../../lib/announcementText'
 
 interface Props {
   prompts: Prompt[]
@@ -46,7 +46,7 @@ interface Props {
   isActive?: boolean
   /** 実行ボタンを押せない理由。上部に 1 か所だけ表示し、無効のボタンの aria-describedby から参照する(パターン 126) */
   runDisabledReason?: string | null
-  /** エージェント CLI 方式の送信の失敗と成功の通知。従来の方式では null(通知の領域を置かない) */
+  /** エージェント CLI 方式の送信の失敗と成功の通知の見える文字(読み上げは Sidebar の常設の領域)。従来の方式と、プロンプトのパネルが隠れているときは null(文字を置かない) */
   agentSend?: AgentSendFeedback | null
   /** 実行ツールの選択を出すか(エージェント CLI 方式では出さない。C3) */
   showToolSelector?: boolean
@@ -126,16 +126,7 @@ export default function PromptsPanel({
           {runDisabledReason}
         </p>
       )}
-      {agentSend !== null && agentSend.error !== null && (
-        <p className="prompts-panel__run-error" role="alert">
-          {agentSend.error}
-        </p>
-      )}
-      {agentSend !== null && (
-        <p className="prompts-panel__run-notice" role="status">
-          {toAnnouncementText(agentSend.notice)}
-        </p>
-      )}
+      {agentSend !== null && <AgentSendFeedbackMessages feedback={agentSend} />}
       {/* プロンプトの一覧の上(検索欄の前)に、実行のときに本文へ足す参照のチップを出す */}
       {agentReferences !== null && <AgentReferenceChips state={agentReferences} />}
       <div className="prompts-panel__search">

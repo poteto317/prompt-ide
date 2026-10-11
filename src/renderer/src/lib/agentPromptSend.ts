@@ -5,6 +5,7 @@ import {
   normalizeAgentPrompt
 } from '@shared/agentPasteText'
 import type { AgentPromptRejection } from '@shared/agentPasteText'
+import type { AgentHistoryInfo } from '@shared/types'
 import type { ViewportLine } from './agentViewport'
 import { findInputBox, isInputBoxEmpty, isPasteEchoed } from './agentInputBox'
 
@@ -35,6 +36,14 @@ export type AgentSendFailure =
 export type AgentSendOutcome =
   | { kind: 'sent'; clearedDraft: boolean }
   | { kind: 'failed'; reason: AgentSendFailure }
+
+/**
+ * 送信の手順を含めた送信(useAgentPromptSender.send)の結果。送れたときは、送信の手順を始める時点に控えた送り先(履歴の
+ * HistoryEntry.agent と同じ形。控えられなかったら null)を足す。純粋な sendAgentPrompt の AgentSendOutcome は変えない
+ */
+export type AgentPromptSendResult =
+  | (Extract<AgentSendOutcome, { kind: 'sent' }> & { sentTo: AgentHistoryInfo | null })
+  | Extract<AgentSendOutcome, { kind: 'failed' }>
 
 /** 送り先(agentTerminalController の一部)。write は利用者のキー入力の保留とは別に、直接 pty へ送る */
 export interface AgentSendTarget {

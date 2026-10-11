@@ -1,11 +1,13 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { DEFAULT_AGENT_SEND_CONFIRM_ENABLED } from '@shared/types'
-import type { PromptExecutionMode } from '@shared/types'
+import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import type {
   AgentNotificationPanelState,
   AgentSendConfirmDialogState,
   AgentSendConfirmPanelState,
   ExecutionModePanelState,
+  HistoryEntry,
+  HistoryEntryActions,
   PromptRunPanelState
 } from '../types'
 import type { AgentSendOptions } from '../lib/agentPromptRequest'
@@ -27,11 +29,15 @@ import type { AgentPromptSenderState } from './useAgentPromptSender'
 import { useAgentTerminalPanel } from './useAgentTerminalPanel'
 import type { AgentTerminalPanelLayout } from './useAgentTerminalPanel'
 import { useOnChange } from './useOnChange'
+import { useAgentResume } from './useAgentResume'
+import type { AgentResumeLastState } from './useAgentResume'
+import { useLatestRef } from './useLatestRef'
 import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
 import { buildPromptRunPanelState } from '../lib/promptRunState'
-import { getPromptRunAvailability } from '../lib/agentSendMessages'
+import { getHistoryRerunAvailability, getPromptRunAvailability } from '../lib/agentSendMessages'
 import { notifyAgentSent } from '../lib/agentSendCallbacks'
+import { describeAgentTabSession } from '../lib/agentTabSessionInfo'
 import {
   AGENT_START_DISABLED_SWITCHING_MODE,
   AGENT_STOP_ON_MODE_CHANGE_CONFIRM,
@@ -49,6 +55,8 @@ export interface AgentTerminalPanelState {
   sendingSlotId: string | null
   /** タブごとの claude の活動(画面から判定。running でないタブ・未判定は 'unknown') */
   activities: ReadonlyMap<string, AgentActivity>
+  /** 「前回の続きから」の押せない理由と操作 */
+  resumeLast: AgentResumeLastState
 }
 
 export interface UseAgentWorkspaceOptions {
@@ -73,7 +81,7 @@ export interface AgentWorkspaceState {
   agentSendConfirmPanel: AgentSendConfirmPanelState
   /** フォルダの切り替えの前に、実行中(起動中を含む)のエージェントを終了してよいかを確かめる。無ければ確認せずに true */
   confirmStopAgent: (message: string) => boolean
-  /** 実行ボタン・再実行の押せる条件と送信の結果 */
+  /** 実行ボタンの押せる条件と送信の結果(履歴の再実行の押せる条件はエントリごとに getHistoryActions) */
   promptRun: PromptRunPanelState
   /** エディタの領域の下部のパネル */
   bottomPanel: 'output' | 'agent-terminal' | 'none'
@@ -91,6 +99,12 @@ export interface AgentWorkspaceState {
     text: string,
     options: AgentSendOptions
   ) => ReturnType<AgentPromptSenderState['send']>
+  /** 履歴のエントリごとの 再実行・このセッションで再開 の押せる条件と理由(Sidebar → HistoryPanel → HistoryDetail)。エントリによって
+   *  押せる条件が変わるため、全体で 1 つの値にしない */
+  getHistoryActions: (entry: HistoryEntry) => HistoryEntryActions
+  /** 履歴の このセッションで再開。押した時点の理由を求め直し、押せるときだけ新しいタブで再開して、パネルを開き、そのタブの
+   *  ターミナルへ移る(+ と同じ。L-048・L-058) */
+  onResume: (entry: HistoryEntry) => void
 }
 
 export function useAgentWorkspace({
@@ -131,31 +145,63 @@ export function useAgentWorkspace({
     selectTab: agentSessions.selectTab,
     openPanel: agentLayout.open
   })
-  // 確認からの送信が失敗したときのフォーカスの戻り先(同じプロンプトの一覧の実行)。送信中が解けた描画の後に移す
+  // セッションの再開(前回の続きから・このセッションで再開)。足したタブへはステータスバーと同じく activateAgentTab で移る
+  const agentResume = useAgentResume({
+    folderPath,
+    mode: executionMode.mode,
+    sessions: agentSessions,
+    activateTab: activateAgentTab
+  })
+  // 確認からの送信が失敗したときのフォーカスの戻り先(確認を開いた時点の要素、無ければ同じプロンプトの一覧の実行)。送信中が解けた描画の後に移す
   const focusPromptRun = usePromptRunFocus({ isBlocked: agentSender.isSending })
   // 送信前の確認(設計書「流れ」)。送り先は確認を開いた時点の選択中のタブ。確認は送信を押した時点で閉じるが、フォーカスは送信が
   // 終わるまで移さない(送信の前の準備〈変更の記録。最大 10 秒〉の間は sender がキー入力を保留しないため、先にターミナルへ移すと
-  // 打った文字が claude へ直接届く)。送れたらそのタブのターミナルへ、失敗したら同じプロンプトの実行へ戻す。
+  // 打った文字が claude へ直接届く)。送れたらそのタブのターミナルへ、失敗したら確認を開いた時点の要素(履歴の詳細の再実行 など。
+  // 一覧は隠れていることがある)へ、それが無ければ同じプロンプトの実行へ戻す。
   // ただし、フォーカスが閉じたダイアログから body へ落ちたままのときだけ移す。送信中に利用者が別の場所(エディタ・
   // クイックオープン・通知で選んだ別のタブ など)へ移していれば、送れてもタブの選択を戻さず、フォーカスも奪わない
   // (見えているモーダルの背後や別のタブへ、続けて打った文字が届かないように。パネルを開くのは sender の onSettled)
   const handleSendSettled = useCallback(
-    ({ slotId, promptId, outcome }: AgentSendSettled): void => {
+    ({ slotId, promptId, opener, outcome }: AgentSendSettled): void => {
       const active = document.activeElement
       if (active !== null && active !== document.body) return
       if (outcome?.kind === 'sent') activateAgentTab(slotId)
-      else if (promptId !== null) focusPromptRun(promptId)
+      else focusPromptRun(promptId, opener)
     },
     [activateAgentTab, focusPromptRun]
   )
+  // 送り先の claude のセッションを控える関数(設計書「履歴への記録」)。slotId のタブの今の状態と開いているフォルダを ref から引き、
+  // sender が送信の手順を始める時点(beginSending の直前)に呼ぶ(L-037)。タブの状態(useAgentSessions)は送信の手段を知らないままにする
+  const describeSourceRef = useLatestRef({ tabs: agentSessions.tabs, folderPath })
+  const describeSessionOf = useCallback(
+    (slotId: string) => (): AgentHistoryInfo | null => {
+      const { tabs, folderPath: currentFolder } = describeSourceRef.current
+      return describeAgentTabSession(tabs, slotId, currentFolder)
+    },
+    [describeSourceRef]
+  )
+  // 選択中のタブを送り先にするところ(すぐ送るときの target と、確認へ渡す selected)。選択中のタブが変わらなければ同じ参照
+  const {
+    slotId: selectedSlotId,
+    controller: selectedController,
+    label: selectedLabel
+  } = agentSessions.selected
+  const selectedTarget = useMemo(
+    () => ({
+      slotId: selectedSlotId,
+      controller: selectedController,
+      label: selectedLabel,
+      describeSession: describeSessionOf(selectedSlotId)
+    }),
+    [selectedSlotId, selectedController, selectedLabel, describeSessionOf]
+  )
   const sendConfirm = useAgentSendConfirm({
-    selected: agentSessions.selected,
+    selected: selectedTarget,
     send: agentSender.send,
     onSendSettled: handleSendSettled
   })
   // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
   // usePromptRunner の useCallback の依存に入るため、選択中のタブ・send・確認の要否が変わらなければ同じ参照を返す
-  const { slotId: selectedSlotId, controller: selectedController } = agentSessions.selected
   const sendAgentPrompt = agentSender.send
   const requestSendConfirm = sendConfirm.request
   const clearSendResult = agentSender.clearResult
@@ -170,21 +216,15 @@ export function useAgentWorkspace({
         return undefined
       }
       const outcome = await sendAgentPrompt(text, {
-        slotId: selectedSlotId,
-        controller: selectedController
+        slotId: selectedTarget.slotId,
+        controller: selectedTarget.controller,
+        describeSession: selectedTarget.describeSession
       })
       // 確認を開かない分岐でも、送れたときだけ知らせる(確認から送ったときは useAgentSendConfirm が知らせる)
       notifyAgentSent(outcome, options.onSent)
       return outcome
     },
-    [
-      isSendConfirmRequired,
-      clearSendResult,
-      requestSendConfirm,
-      sendAgentPrompt,
-      selectedSlotId,
-      selectedController
-    ]
+    [isSendConfirmRequired, clearSendResult, requestSendConfirm, sendAgentPrompt, selectedTarget]
   )
   // 確認を開いている間に、元の状態が終わったら閉じる(送らない。L-405): 従来の方式への切り替え・フォルダの切り替え・送り先の
   // タブを閉じた。送り先のセッションが終わっただけ(タブは残る)なら閉じず、下の理由で送信を押せなくする。設定をオフにしても閉じない
@@ -252,6 +292,18 @@ export function useAgentWorkspace({
     sendError: agentSender.error,
     sendNotice: agentSender.notice
   })
+  const getHistoryActions = (entry: HistoryEntry): HistoryEntryActions => {
+    // 再実行の送り先は選択中のタブ(一覧の 実行 と同じ)
+    const rerun = getHistoryRerunAvailability({
+      isAgentEntry: entry.agent !== null,
+      mode: executionMode.mode,
+      isExecuting,
+      isSessionRunning: agentSessions.selected.status === 'running',
+      isSessionClosing: agentSessions.selected.isClosing,
+      isSending: agentSender.isSending
+    })
+    return { rerun, resume: agentResume.resumeActionOf(entry) }
+  }
   // フォルダの切り替え・従来の方式への切り替えの前に、実行中のエージェントを終了してよいかを確かめる
   const confirmStopAgent = (message: string): boolean =>
     !isAnyAgentSessionActive || onConfirm(message)
@@ -313,7 +365,8 @@ export function useAgentWorkspace({
       sessions: agentSessions,
       layout: agentLayout,
       sendingSlotId: agentSender.sendingSlotId,
-      activities
+      activities,
+      resumeLast: agentResume.resumeLast
     },
     statusBarAgent,
     agentAnnouncement,
@@ -332,6 +385,8 @@ export function useAgentWorkspace({
       onConfirm: sendConfirm.confirm,
       onCancel: sendConfirm.cancel
     },
-    sendToAgent
+    sendToAgent,
+    getHistoryActions,
+    onResume: agentResume.onResumeEntry
   }
 }

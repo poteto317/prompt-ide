@@ -136,6 +136,8 @@ export default function App(): React.JSX.Element {
     clearHistory,
     runPrompt,
     rerunHistoryEntry,
+    getHistoryActions,
+    onResume,
     quickOpen,
     executionModePanel,
     agentNotificationPanel,
@@ -280,6 +282,8 @@ export default function App(): React.JSX.Element {
               onDeleteHistoryEntry={deleteHistoryEntry}
               onClearHistory={clearHistory}
               onRerunHistoryEntry={rerunHistoryEntry}
+              getHistoryActions={getHistoryActions}
+              onResumeHistoryEntry={onResume}
               gitStatus={gitStatus}
               gitLoading={gitLoading}
               gitError={gitError}

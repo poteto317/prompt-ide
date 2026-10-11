@@ -8,6 +8,7 @@ import {
   makeAgentSessionsState,
   makeAgentSessionTabView
 } from '../../../__tests__/makeAgentSessionsState'
+import { makeAgentTerminalPanelState } from '../../../__tests__/makeAgentTerminalPanelState'
 import { AGENT_START_DISABLED_NO_FOLDER } from '../../../lib/agentSessionMessages'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する(OutputPanel.styles.test.tsx と同じ流儀)。
@@ -30,18 +31,10 @@ beforeEach(() => {
 
 // フォルダを開いていない状態(初回の起動で必ず通る)。帯に最も多くの部品が並ぶ
 function renderNoFolder(): HTMLElement {
-  const state: AgentTerminalPanelState = {
+  const state: AgentTerminalPanelState = makeAgentTerminalPanelState({
     sessions: makeAgentSessionsState({ startDisabledReason: AGENT_START_DISABLED_NO_FOLDER }),
-    sendingSlotId: null,
-    activities: new Map(),
-    layout: {
-      isOpen: true,
-      isMaximized: false,
-      open: vi.fn(),
-      toggleOpen: vi.fn(),
-      toggleMaximized: vi.fn()
-    }
-  }
+    resumeLast: { disabledReason: AGENT_START_DISABLED_NO_FOLDER, onResume: vi.fn() }
+  })
   // 帯に最も多くの部品が並ぶよう、記録がある間の「変更を確認」も出す
   const { container } = render(
     <AgentTerminalPanel state={state} review={{ isRecording: true, onReview: vi.fn() }} />
@@ -74,17 +67,37 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       AGENT_START_DISABLED_NO_FOLDER
     )
 
-    // 理由を入れた操作群も縮められる(縮まない入れ物の中では理由が縮めない)
+    // 操作群は箱を作らず(display: contents)、理由とボタンを帯の直接の子として並べる。
+    // 縮められる箱の中に縮まないボタンを入れると、箱だけが縮んでボタンが帯の外へはみ出し、右端の最大化が切れていた
     const actions = styleOf(container, '.agent-terminal-panel__actions')
-    expect(actions.minWidth).toBe('0px')
-    expect(actions.flexShrink).not.toBe('0')
+    expect(actions.display).toBe('contents')
   })
 
-  it('状態の文言より先に、起動できない理由が縮む', () => {
+  it('状態の文言・タブ列より先に、起動できない理由が縮む', () => {
     const container = renderNoFolder()
-    const actionsShrink = Number(styleOf(container, '.agent-terminal-panel__actions').flexShrink)
+    const reasonShrink = Number(styleOf(container, '.agent-terminal-panel__reason').flexShrink)
     const statusShrink = Number(styleOf(container, '.agent-terminal-panel__status').flexShrink)
-    expect(actionsShrink).toBeGreaterThan(statusShrink)
+    const tabsShrink = Number(styleOf(container, '.agent-session-tabs').flexShrink)
+    expect(reasonShrink).toBeGreaterThan(statusShrink)
+    expect(reasonShrink).toBeGreaterThan(tabsShrink)
+  })
+
+  it('前回の続きからのボタンは、理由の次に縮んで文字を省略する(最大化などの縮まないボタンを帯の外へ押し出さない)', () => {
+    renderNoFolder()
+    const resume = getComputedStyle(screen.getByRole('button', { name: /^前回の続きから/ }))
+    expect(resume.whiteSpace).toBe('nowrap')
+    expect(resume.overflow).toBe('hidden')
+    expect(resume.textOverflow).toBe('ellipsis')
+    // 枠が潰れて押せなくならないよう、最初の数文字と省略記号が入る幅は残す
+    expect(resume.minWidth).toBe('4em')
+    const container = document.body
+    const resumeShrink = Number(resume.flexShrink)
+    const reasonShrink = Number(styleOf(container, '.agent-terminal-panel__reason').flexShrink)
+    const statusShrink = Number(styleOf(container, '.agent-terminal-panel__status').flexShrink)
+    const tabsShrink = Number(styleOf(container, '.agent-session-tabs').flexShrink)
+    expect(resumeShrink).toBeLessThan(reasonShrink)
+    expect(resumeShrink).toBeGreaterThan(statusShrink)
+    expect(resumeShrink).toBeGreaterThan(tabsShrink)
   })
 
   it('開閉・起動・変更を確認・最大化のボタンは縮まず、折り返さない', () => {
@@ -126,22 +139,13 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
         makeAgentSessionTabView({ slotId: 'b', label: 'claude 2', status: 'starting' }),
         makeAgentSessionTabView({ slotId: 'c', label: 'claude 3', status: 'exited' })
       ]
-      const state: AgentTerminalPanelState = {
+      const state: AgentTerminalPanelState = makeAgentTerminalPanelState({
         sessions: makeAgentSessionsState({
           tabs,
           selected: tabs[0],
           addDisabledReason: '上限です'
-        }),
-        sendingSlotId: null,
-        activities: new Map(),
-        layout: {
-          isOpen: true,
-          isMaximized: false,
-          open: vi.fn(),
-          toggleOpen: vi.fn(),
-          toggleMaximized: vi.fn()
-        }
-      }
+        })
+      })
       return render(<AgentTerminalPanel state={state} />).container
     }
 

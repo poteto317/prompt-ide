@@ -5,11 +5,13 @@ import { join } from 'node:path'
 import {
   AGENT_COMMAND_NAME,
   buildAgentEnv,
+  buildAgentLaunchArgs,
   findExecutableInPath,
   isExecutableRegularFile,
   resolveAgentLaunch
 } from '../agentCommand'
 import type { ExecutableProbe } from '../agentCommand'
+import type { AgentLaunchRequest } from '@shared/types'
 
 const probeOf = (executables: string[]): ExecutableProbe =>
   vi.fn<ExecutableProbe>(async (path) => executables.includes(path))
@@ -201,7 +203,7 @@ describe('buildAgentEnv', () => {
 })
 
 describe('resolveAgentLaunch', () => {
-  it('ログインシェルの PATH の後ろに既定の探索先を足して探し、引数は空で固定する', async () => {
+  it('ログインシェルの PATH の後ろに既定の探索先を足して探し、引数は空で返す(セッションの指定は starter が足す)', async () => {
     const isExecutable = probeOf(['/home/u/.local/bin/claude'])
     const result = await resolveAgentLaunch({
       env: { HOME: '/home/u', PATH: '/usr/bin' },
@@ -304,5 +306,21 @@ describe.skipIf(process.platform === 'win32')('isExecutableRegularFile(実 fs)',
     await expect(isExecutableRegularFile(join(root, 'sub'))).resolves.toBe(false)
     await expect(isExecutableRegularFile(join(root, 'broken'))).resolves.toBe(false)
     await expect(isExecutableRegularFile(join(root, 'nothing'))).resolves.toBe(false)
+  })
+})
+
+describe('buildAgentLaunchArgs', () => {
+  const ID = '11111111-1111-4111-8111-111111111111'
+  it('new は --session-id、resume は --resume に、渡した ID をそのまま続ける', () => {
+    expect(buildAgentLaunchArgs({ kind: 'new' }, ID)).toEqual(['--session-id', ID])
+    expect(buildAgentLaunchArgs({ kind: 'resume', claudeSessionId: ID }, ID)).toEqual([
+      '--resume',
+      ID
+    ])
+  })
+
+  it('未知の kind は既定の --session-id へ流さず投げる', () => {
+    const unknownLaunch = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
+    expect(() => buildAgentLaunchArgs(unknownLaunch, ID)).toThrow('未知の起動の指定です')
   })
 })

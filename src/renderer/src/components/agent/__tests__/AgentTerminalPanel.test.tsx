@@ -11,20 +11,12 @@ import {
   makeAgentSessionTabView
 } from '../../../__tests__/makeAgentSessionsState'
 import type { AgentSessionTabView } from '../../../hooks/useAgentSessions'
-import type { AgentTerminalPanelLayout } from '../../../hooks/useAgentTerminalPanel'
+import {
+  makeAgentTerminalPanelLayout,
+  makeAgentTerminalPanelState
+} from '../../../__tests__/makeAgentTerminalPanelState'
 
 let controller: FakeController
-
-function makeLayout(overrides: Partial<AgentTerminalPanelLayout> = {}): AgentTerminalPanelLayout {
-  return {
-    isOpen: true,
-    isMaximized: false,
-    open: vi.fn(),
-    toggleOpen: vi.fn(),
-    toggleMaximized: vi.fn(),
-    ...overrides
-  }
-}
 
 // 選択中のタブ(帯の状態・起動・終了・エラーの対象)の上書き。controller は既定でテストの偽物
 function makeSessions(
@@ -38,13 +30,7 @@ function renderPanel(
   overrides: Partial<AgentTerminalPanelState> = {},
   review?: AgentChangesReviewAction
 ): AgentTerminalPanelState {
-  const state: AgentTerminalPanelState = {
-    sessions: makeSessions(),
-    layout: makeLayout(),
-    sendingSlotId: null,
-    activities: new Map(),
-    ...overrides
-  }
+  const state = makeAgentTerminalPanelState({ sessions: makeSessions(), ...overrides })
   render(<AgentTerminalPanel state={state} review={review} />)
   return state
 }
@@ -79,15 +65,13 @@ describe('AgentTerminalPanel', () => {
     })
     const start = screen.getByRole('button', { name: /^起動/ })
     expect(start).toBeDisabled()
-    expect(document.getElementById(start.getAttribute('aria-describedby') ?? '')).toHaveTextContent(
-      'フォルダを開いてください'
-    )
+    expect(start).toHaveAccessibleDescription('フォルダを開いてください')
   })
 
-  it('起動を押すと選択中のタブの start を呼ぶ', async () => {
+  it('起動を押すと選択中のタブを新しいセッション(new)で start する', async () => {
     const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2' }) })
     await userEvent.click(screen.getByRole('button', { name: /^起動/ }))
-    expect(state.sessions.start).toHaveBeenCalledExactlyOnceWith('slot-2')
+    expect(state.sessions.start).toHaveBeenCalledExactlyOnceWith('slot-2', { kind: 'new' })
   })
 
   it('実行中は終了を出し、押すと確認なしで選択中のタブの stop を呼ぶ', async () => {
@@ -137,7 +121,7 @@ describe('AgentTerminalPanel', () => {
   })
 
   it('閉じているときは本文を隠す(xterm は取り外さない)', () => {
-    renderPanel({ layout: makeLayout({ isOpen: false }) })
+    renderPanel({ layout: makeAgentTerminalPanelLayout({ isOpen: false }) })
     const toggle = screen.getByRole('button', { name: /エージェント/ })
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(document.getElementById(toggle.getAttribute('aria-controls') ?? '')).not.toBeVisible()
@@ -158,7 +142,7 @@ describe('AgentTerminalPanel', () => {
   })
 
   it('最大化を元に戻すと、フォーカスは押したボタンに残り、ターミナルの中には残らない', async () => {
-    const state = renderPanel({ layout: makeLayout({ isMaximized: true }) })
+    const state = renderPanel({ layout: makeAgentTerminalPanelLayout({ isMaximized: true }) })
     const terminalArea = screen.getByRole('group', { name: 'エージェントのターミナル' })
     const inner = document.createElement('textarea')
     terminalArea.appendChild(inner)
@@ -204,7 +188,7 @@ describe('AgentTerminalPanel — 変更を確認', () => {
 
   it('最大化の間に押したら、最大化を元に戻してから移る', async () => {
     const order: string[] = []
-    const layout = makeLayout({
+    const layout = makeAgentTerminalPanelLayout({
       isMaximized: true,
       toggleMaximized: vi.fn(() => void order.push('restore'))
     })
@@ -242,27 +226,11 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const [a, b] = sessions.tabs
       let current = sessions
       const { rerender } = render(
-        <AgentTerminalPanel
-          state={{
-            sessions: current,
-            layout: makeLayout(),
-            sendingSlotId: null,
-            activities: new Map()
-          }}
-        />
+        <AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: current })} />
       )
       const rerenderWith = (next: typeof sessions): void => {
         current = next
-        rerender(
-          <AgentTerminalPanel
-            state={{
-              sessions: current,
-              layout: makeLayout(),
-              sendingSlotId: null,
-              activities: new Map()
-            }}
-          />
-        )
+        rerender(<AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: current })} />)
       }
       sessions.closeTab = vi.fn(async () => {
         rerenderWith(makeAgentSessionsState({ tabs: [b], selected: b }))
@@ -306,19 +274,14 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel
-          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
-        />
+        <AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: sessions })} />
       )
       sessions.closeTab = vi.fn(async () => {
         rerender(
           <AgentTerminalPanel
-            state={{
-              sessions: makeAgentSessionsState({ tabs: [b], selected: b }),
-              layout: makeLayout(),
-              sendingSlotId: null,
-              activities: new Map()
-            }}
+            state={makeAgentTerminalPanelState({
+              sessions: makeAgentSessionsState({ tabs: [b], selected: b })
+            })}
           />
         )
         return true
@@ -330,7 +293,7 @@ describe('AgentTerminalPanel — 変更を確認', () => {
     })
 
     it('本文は tabpanel で、選択中のタブのボタンを aria-labelledby で参照する(閉じていても)', () => {
-      renderPanel({ sessions: twoTabs(), layout: makeLayout({ isOpen: false }) })
+      renderPanel({ sessions: twoTabs(), layout: makeAgentTerminalPanelLayout({ isOpen: false }) })
       const body = document.querySelector('.agent-terminal-panel__body') as HTMLElement
       expect(body).toHaveAttribute('role', 'tabpanel')
       expect(body).toHaveAttribute('hidden')
@@ -355,19 +318,14 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel
-          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
-        />
+        <AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: sessions })} />
       )
       sessions.closeTab = vi.fn(async () => {
         rerender(
           <AgentTerminalPanel
-            state={{
-              sessions: makeAgentSessionsState({ tabs: [a], selected: a }),
-              layout: makeLayout(),
-              sendingSlotId: null,
-              activities: new Map()
-            }}
+            state={makeAgentTerminalPanelState({
+              sessions: makeAgentSessionsState({ tabs: [a], selected: a })
+            })}
           />
         )
         return true
@@ -401,20 +359,15 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       const sessions = twoTabs()
       const [a, b] = sessions.tabs
       const { rerender } = render(
-        <AgentTerminalPanel
-          state={{ sessions, layout: makeLayout(), sendingSlotId: null, activities: new Map() }}
-        />
+        <AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: sessions })} />
       )
       expect(a.controller.attach).toHaveBeenCalled()
       expect(b.controller.attach).not.toHaveBeenCalled()
       rerender(
         <AgentTerminalPanel
-          state={{
-            sessions: makeAgentSessionsState({ tabs: [a, b], selected: b }),
-            layout: makeLayout(),
-            sendingSlotId: null,
-            activities: new Map()
-          }}
+          state={makeAgentTerminalPanelState({
+            sessions: makeAgentSessionsState({ tabs: [a, b], selected: b })
+          })}
         />
       )
       expect(a.controller.detach).toHaveBeenCalled()
@@ -432,5 +385,149 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       )
       expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', second.id)
     })
+  })
+})
+
+describe('AgentTerminalPanel: 前回の続きから', () => {
+  const RESUME_LABEL = '前回の続きから（このフォルダで最後に起動した claude のセッションを再開）'
+
+  it('動いていないタブで 起動 の隣に出し、押すと選択中のタブで onResume を呼ぶ', async () => {
+    const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2', status: 'exited' }) })
+    const button = screen.getByRole('button', { name: RESUME_LABEL })
+    expect(button).toHaveTextContent('前回の続きから')
+    await userEvent.click(button)
+    expect(state.resumeLast.onResume).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  it.each([
+    ['押せるとき', {}],
+    ['閉じる途中で押せないとき', { isClosing: true }]
+  ] as const)(
+    '%s(理由が無い)も、ラベルの文字にマウスを載せると全文が出る。ボタンの説明は増やさない(名前の後に重ねて読まれないように)',
+    (_, selected) => {
+      renderPanel({ sessions: makeSessions({ status: 'exited', ...selected }) })
+      const button = screen.getByRole('button', { name: RESUME_LABEL })
+      expect(button).toHaveAccessibleDescription('')
+      expect(button).not.toHaveAttribute('title')
+      // ツールチップはラベルを包む要素に出す(子の title はボタンの説明にならない)
+      const label = button.querySelector('[title]')
+      expect(label).toHaveAttribute('title', '前回の続きから')
+      expect(label).toHaveTextContent('前回の続きから')
+    }
+  )
+
+  it('押せない理由があるときは、ボタンの title に理由を出し、ラベルの要素には全文のツールチップを出さない', () => {
+    renderPanel({
+      resumeLast: {
+        disabledReason: 'このフォルダで前回起動したセッションの記録がありません',
+        onResume: vi.fn()
+      }
+    })
+    const button = screen.getByRole('button', { name: RESUME_LABEL })
+    expect(button).toHaveAttribute(
+      'title',
+      'このフォルダで前回起動したセッションの記録がありません'
+    )
+    expect(button.querySelector('[title]')).toBeNull()
+  })
+
+  it.each(['starting', 'running'] as const)('%s のタブでは出さない', (status) => {
+    renderPanel({ sessions: makeSessions({ status }) })
+    expect(screen.queryByRole('button', { name: RESUME_LABEL })).toBeNull()
+  })
+
+  it('押せない理由を帯の理由の領域に見える文字で 1 か所だけ出し、disabled と aria-describedby で結ぶ(L-057・L-058)', async () => {
+    const state = renderPanel({
+      resumeLast: {
+        disabledReason: 'このフォルダで前回起動したセッションの記録がありません',
+        onResume: vi.fn()
+      }
+    })
+    const button = screen.getByRole('button', { name: RESUME_LABEL })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAccessibleDescription(
+      'このフォルダで前回起動したセッションの記録がありません'
+    )
+    // 説明は hidden の要素から引く(読み上げの順番には出さない)
+    expect(document.getElementById(button.getAttribute('aria-describedby') ?? '')).toHaveAttribute(
+      'hidden'
+    )
+    // 見える文字は帯の理由の欄に 1 か所だけで、aria-hidden(説明と二重に読まれないように)
+    const visible = document.querySelectorAll('.agent-terminal-panel__reason')
+    expect(visible).toHaveLength(1)
+    expect(visible[0]).toHaveTextContent('このフォルダで前回起動したセッションの記録がありません')
+    expect(visible[0]).toBeVisible()
+    expect(visible[0]).toHaveAttribute('aria-hidden', 'true')
+    // 起動は押せる(起動の説明には結ばない)
+    expect(screen.getByRole('button', { name: /^起動/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^起動/ })).not.toHaveAttribute('aria-describedby')
+    await userEvent.click(button)
+    expect(state.resumeLast.onResume).not.toHaveBeenCalled()
+  })
+
+  it('起動の理由があるときは、同じ理由の領域を両方のボタンから参照する(理由の文字は 1 か所)', () => {
+    renderPanel({
+      sessions: makeSessions({}, { startDisabledReason: 'フォルダを開いてください' }),
+      resumeLast: { disabledReason: 'フォルダを開いてください', onResume: vi.fn() }
+    })
+    const start = screen.getByRole('button', { name: /^起動/ })
+    const resume = screen.getByRole('button', { name: RESUME_LABEL })
+    expect(resume.getAttribute('aria-describedby')).toBe(start.getAttribute('aria-describedby'))
+    expect(start).toHaveAccessibleDescription('フォルダを開いてください')
+    expect(resume).toHaveAccessibleDescription('フォルダを開いてください')
+    expect(document.getElementById(start.getAttribute('aria-describedby') ?? '')).toHaveAttribute(
+      'hidden'
+    )
+    // 見える文字は 1 か所で、読み上げの順番には出さない(テキストと説明で 3 回読まれないように)
+    const visible = document.querySelectorAll('.agent-terminal-panel__reason')
+    expect(visible).toHaveLength(1)
+    expect(visible[0]).toHaveTextContent('フォルダを開いてください')
+    expect(visible[0]).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('閉じる途中のタブでは押せない', () => {
+    renderPanel({ sessions: makeSessions({ isClosing: true }) })
+    expect(screen.getByRole('button', { name: RESUME_LABEL })).toBeDisabled()
+  })
+})
+
+// 起動・前回の続きからを押すと、ボタンが 終了 に替わる。押したボタンの位置の 終了 にフォーカスを残す(body に落とさない)
+describe('AgentTerminalPanel: 起動した後のフォーカス', () => {
+  const RESUME_LABEL = '前回の続きから（このフォルダで最後に起動した claude のセッションを再開）'
+
+  // start・onResume を押すと、選択中のタブを starting にして描き直す
+  function renderStartable(): void {
+    const starting = makeAgentTerminalPanelState({ sessions: makeSessions({ status: 'starting' }) })
+    const sessions = makeSessions({ status: 'none' })
+    const { rerender } = render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({
+          sessions: {
+            ...sessions,
+            start: vi.fn(async () => rerender(<AgentTerminalPanel state={starting} />))
+          },
+          resumeLast: {
+            disabledReason: null,
+            onResume: vi.fn(() => rerender(<AgentTerminalPanel state={starting} />))
+          }
+        })}
+      />
+    )
+  }
+
+  it('起動を押した後、フォーカスは同じ位置の 終了 にある', async () => {
+    renderStartable()
+    await userEvent.click(screen.getByRole('button', { name: /^起動/ }))
+    const stop = screen.getByRole('button', { name: /^終了/ })
+    expect(document.activeElement).not.toBe(document.body)
+    expect(stop).toHaveFocus()
+  })
+
+  it('前回の続きからを押した後も、フォーカスは 終了 にある', async () => {
+    renderStartable()
+    await userEvent.click(screen.getByRole('button', { name: RESUME_LABEL }))
+    const stop = screen.getByRole('button', { name: /^終了/ })
+    expect(document.activeElement).not.toBe(document.body)
+    expect(stop).toHaveFocus()
   })
 })

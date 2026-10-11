@@ -40,6 +40,10 @@ vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPr
 vi.mock('../useAgentActivity', () => ({ useAgentActivity: mockUseAgentActivity }))
 const mockUseAgentNotifications = vi.hoisted(() => vi.fn<(options: unknown) => string>(() => ''))
 vi.mock('../useAgentNotifications', () => ({ useAgentNotifications: mockUseAgentNotifications }))
+const mockUseAgentLastSession = vi.hoisted(() =>
+  vi.fn<(options: unknown) => AgentLastSessionLookup>(() => ({ kind: 'none' }))
+)
+vi.mock('../useAgentLastSession', () => ({ useAgentLastSession: mockUseAgentLastSession }))
 vi.mock('../../lib/xtermFactory', async () => {
   const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
   const tabs = makeFakeAgentSessionTabs()
@@ -49,10 +53,15 @@ vi.mock('../../lib/xtermFactory', async () => {
 import { useAgentWorkspace } from '../useAgentWorkspace'
 import type { AgentWorkspaceState, UseAgentWorkspaceOptions } from '../useAgentWorkspace'
 import type { AgentPromptSenderState } from '../useAgentPromptSender'
-import type { AgentSendOutcome } from '../../lib/agentPromptSend'
+import type { AgentPromptSendResult } from '../../lib/agentPromptSend'
 import type { AgentSessionTabView } from '../useAgentSessions'
+import type { AgentSessionsState } from '../useAgentSessions'
+import type { HistoryEntry } from '../../types'
+import type { AgentLastSessionLookup } from '../../lib/agentResumeAvailability'
 import { getAgentSessionTabs } from '../../lib/xtermFactory'
 import {
+  RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
+  RERUN_DISABLED_AGENT_MODE,
   RUN_DISABLED_CLOSING,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING
@@ -106,6 +115,7 @@ beforeEach(() => {
   mockUseAgentPromptSender.mockReturnValue(makeSender())
   mockUseAgentActivity.mockReturnValue(new Map())
   mockUseAgentNotifications.mockReturnValue('')
+  mockUseAgentLastSession.mockReturnValue({ kind: 'none' })
   mockUseAgentNotificationSetting.mockReturnValue({
     enabled: true,
     saveError: null,
@@ -277,15 +287,11 @@ describe('useAgentWorkspace', () => {
       }
     )
 
-    it.each([true, false])(
-      '従来の方式では、実行中(%s)を実行ボタン・再実行の状態に渡す',
-      (isExecuting) => {
-        setMode('legacy')
-        const { result } = renderWorkspace({ isExecuting })
-        expect(result.current.promptRun.isRunDisabled).toBe(isExecuting)
-        expect(result.current.promptRun.isRerunDisabled).toBe(isExecuting)
-      }
-    )
+    it.each([true, false])('従来の方式では、実行中(%s)を実行ボタンの状態に渡す', (isExecuting) => {
+      setMode('legacy')
+      const { result } = renderWorkspace({ isExecuting })
+      expect(result.current.promptRun.isRunDisabled).toBe(isExecuting)
+    })
 
     it('保存の失敗をそのまま返す', () => {
       mockUseExecutionMode.mockReturnValue({
@@ -343,7 +349,8 @@ describe('useAgentWorkspace', () => {
       })
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
-        controller: tab2.controller
+        controller: tab2.controller,
+        describeSession: expect.any(Function)
       })
     })
 
@@ -517,13 +524,14 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentSendConfirmDialog.pending).toBeNull()
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
-        controller: tab2.controller
+        controller: tab2.controller,
+        describeSession: expect.any(Function)
       })
     })
 
     it('確認の送信で、控えた送り先へ送って閉じ、送れたら(sent)パネルを開いてそのタブのターミナルへフォーカスを移す', async () => {
       setMode('agent-cli')
-      let resolveSend: (outcome: AgentSendOutcome | undefined) => void = () => undefined
+      let resolveSend: (outcome: AgentPromptSendResult | undefined) => void = () => undefined
       const sender = makeSender({
         send: vi.fn<AgentPromptSenderState['send']>(
           () => new Promise((resolve) => (resolveSend = resolve))
@@ -540,12 +548,13 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentSendConfirmDialog.pending).toBeNull()
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
-        controller: tab2.controller
+        controller: tab2.controller,
+        describeSession: expect.any(Function)
       })
       // 送信が終わるまではターミナルへフォーカスを移さない(送信の前の準備の間のキー入力が claude へ直接届かないように)
       expect(tab2.controller.focus).not.toHaveBeenCalled()
       await act(async () => {
-        resolveSend({ kind: 'sent', clearedDraft: false })
+        resolveSend({ kind: 'sent', clearedDraft: false, sentTo: null })
       })
       expect(result.current.agentTerminal.layout.isOpen).toBe(true)
       expect(selectTab).toHaveBeenCalledWith('slot-2')
@@ -570,9 +579,9 @@ describe('useAgentWorkspace', () => {
         overrides: Partial<AgentPromptSenderState> = {}
       ): {
         sender: AgentPromptSenderState
-        resolve: (outcome: AgentSendOutcome | undefined) => void
+        resolve: (outcome: AgentPromptSendResult | undefined) => void
       } => {
-        let resolveSend: (outcome: AgentSendOutcome | undefined) => void = () => undefined
+        let resolveSend: (outcome: AgentPromptSendResult | undefined) => void = () => undefined
         const sender = makeSender({
           ...overrides,
           send: vi.fn<AgentPromptSenderState['send']>(
@@ -595,7 +604,7 @@ describe('useAgentWorkspace', () => {
         const other = addButton()
         other.focus()
         await act(async () => {
-          resolve({ kind: 'sent', clearedDraft: false })
+          resolve({ kind: 'sent', clearedDraft: false, sentTo: null })
         })
         expect(selectTab).not.toHaveBeenCalled()
         expect(tab1.controller.focus).not.toHaveBeenCalled()
@@ -666,7 +675,7 @@ describe('useAgentWorkspace', () => {
       }
 
       it.each([
-        ['failed', { kind: 'failed', reason: 'input-not-found' } as AgentSendOutcome],
+        ['failed', { kind: 'failed', reason: 'input-not-found' } as AgentPromptSendResult],
         ['undefined(例外・送信中)', undefined]
       ])(
         '結果が %s なら、ターミナルへ移さず同じプロンプトの実行ボタンへ戻す',
@@ -690,6 +699,97 @@ describe('useAgentWorkspace', () => {
           expect(button).toHaveFocus()
         }
       )
+
+      describe('確認を開いた時点の要素(履歴の詳細の 再実行 など)', () => {
+        let opener: HTMLButtonElement | null = null
+        afterEach(() => {
+          opener?.remove()
+          opener = null
+        })
+        // 確認を開いた元(履歴の詳細の 再実行)。送信中は disabled
+        const addOpener = (disabled = false): HTMLButtonElement => {
+          const button = document.createElement('button')
+          document.body.append(button)
+          button.focus()
+          button.disabled = disabled
+          opener = button
+          return button
+        }
+        const renderFailing = (isSending: boolean): ReturnType<typeof renderWorkspace> => {
+          setMode('agent-cli')
+          mockUseAgentPromptSender.mockReturnValue(
+            makeSender({
+              isSending,
+              sendingSlotId: isSending ? 'slot-2' : null,
+              send: vi.fn<AgentPromptSenderState['send']>(async () => ({
+                kind: 'failed',
+                reason: 'input-not-found'
+              }))
+            })
+          )
+          const { tab1, tab2 } = twoRunningTabs()
+          setTabs([tab1, tab2], 'slot-2')
+          return renderWorkspace()
+        }
+
+        it('失敗したら、一覧の実行ではなく確認を開いた時点の要素へ戻す(一覧が隠れていても戻り先が残る)', async () => {
+          const button = addRunButton('p1')
+          const origin = addOpener()
+          const { result } = renderFailing(false)
+          await openConfirm(result)
+          // 確認のダイアログへ移ったフォーカスは、閉じると body へ落ちる
+          origin.blur()
+          await act(async () => {
+            result.current.agentSendConfirmDialog.onConfirm()
+          })
+          expect(origin).toHaveFocus()
+          expect(button).not.toHaveFocus()
+        })
+
+        it('開いた時点の要素も送信中は disabled なので、送信中が解けた描画の後に戻す', async () => {
+          addRunButton('p1', true)
+          const origin = addOpener()
+          const { result, rerender } = renderFailing(true)
+          await openConfirm(result)
+          origin.blur()
+          origin.disabled = true
+          await act(async () => {
+            result.current.agentSendConfirmDialog.onConfirm()
+          })
+          expect(origin).not.toHaveFocus()
+          origin.disabled = false
+          mockUseAgentPromptSender.mockReturnValue(
+            makeSender({ isSending: false, sendingSlotId: null })
+          )
+          rerender()
+          expect(origin).toHaveFocus()
+        })
+
+        it('開いた時点の要素が見えていなければ(checkVisibility が false)、同じプロンプトの一覧の実行へ戻す', async () => {
+          const button = addRunButton('p1')
+          const origin = addOpener()
+          const { result } = renderFailing(false)
+          await openConfirm(result)
+          origin.blur()
+          Object.defineProperty(origin, 'checkVisibility', { value: () => false })
+          await act(async () => {
+            result.current.agentSendConfirmDialog.onConfirm()
+          })
+          expect(origin).not.toHaveFocus()
+          expect(button).toHaveFocus()
+        })
+
+        it('一覧の実行が見えていなければ(隠れたパネルの中)、そこへも移さない', async () => {
+          const button = addRunButton('p1')
+          Object.defineProperty(button, 'checkVisibility', { value: () => false })
+          const { result } = renderFailing(false)
+          await openConfirm(result)
+          await act(async () => {
+            result.current.agentSendConfirmDialog.onConfirm()
+          })
+          expect(button).not.toHaveFocus()
+        })
+      })
 
       it('送信中(実行ボタンが disabled)の描画では移さず、送信中が解けた描画の後に移す', async () => {
         setMode('agent-cli')
@@ -728,7 +828,8 @@ describe('useAgentWorkspace', () => {
       const sender = makeSender({
         send: vi.fn<AgentPromptSenderState['send']>(async () => ({
           kind: 'sent',
-          clearedDraft: false
+          clearedDraft: false,
+          sentTo: null
         }))
       })
       mockUseAgentPromptSender.mockReturnValue(sender)
@@ -740,7 +841,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
       })
-      expect(onSent).toHaveBeenCalledOnce()
+      expect(onSent).toHaveBeenCalledExactlyOnceWith(null)
     })
 
     it('設定がオフで送信が失敗したら onSent を呼ばない', async () => {
@@ -771,7 +872,8 @@ describe('useAgentWorkspace', () => {
         makeSender({
           send: vi.fn<AgentPromptSenderState['send']>(async () => ({
             kind: 'sent',
-            clearedDraft: false
+            clearedDraft: false,
+            sentTo: null
           }))
         })
       )
@@ -1420,6 +1522,253 @@ describe('useAgentWorkspace', () => {
       act(() => result.current.statusBarAgent!.onActivate())
       expect(result.current.agentTerminal.layout.isOpen).toBe(true)
       expect(result.current.agentTerminal.layout.isMaximized).toBe(true)
+    })
+  })
+
+  describe('前回の続きから(agentTerminal.resumeLast)', () => {
+    const ID = '11111111-1111-4111-8111-111111111111'
+
+    it('useAgentLastSession に開いているフォルダ・エージェント CLI 方式か・起動の確定の回数だけの取り直しの契機を渡す(動いているタブの ID は含めない)', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          tabs: [
+            makeAgentSessionTabView({ status: 'running', claudeSessionId: ID }),
+            makeAgentSessionTabView({
+              slotId: 'slot-2',
+              label: 'claude 2',
+              status: 'starting',
+              claudeSessionId: 'x'
+            })
+          ],
+          startConfirmedCount: 3
+        })
+      )
+      renderWorkspace({ folderPath: '/p' })
+      expect(mockUseAgentLastSession).toHaveBeenLastCalledWith({
+        folderPath: '/p',
+        enabled: true,
+        refreshKey: '3'
+      })
+    })
+
+    // 押せない理由の規則は agentResumeAvailability.test、組み立て(起動の理由の優先・押した時点の守り)は useAgentResume.test。
+    // ここでは useAgentResume の結果を agentTerminal.resumeLast へ渡す配線だけを確かめる
+    it('useAgentResume の理由を agentTerminal.resumeLast.disabledReason に渡す', () => {
+      setMode('agent-cli')
+      mockUseAgentLastSession.mockReturnValue({ kind: 'none' })
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.agentTerminal.resumeLast.disabledReason).toBe(
+        'このフォルダで前回起動したセッションの記録がありません'
+      )
+    })
+
+    it('押せるときは、そのタブで前回の ID を resume で起動する', () => {
+      setMode('agent-cli')
+      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      const sessions = makeAgentSessionsState()
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      act(() => result.current.agentTerminal.resumeLast.onResume('slot-1'))
+      expect(sessions.start).toHaveBeenCalledExactlyOnceWith('slot-1', {
+        kind: 'resume',
+        claudeSessionId: ID
+      })
+    })
+  })
+
+  describe('送り先の控え(describeSession)', () => {
+    const ID = '11111111-1111-4111-8111-111111111111'
+
+    it('送り先の describeSession は、呼んだ時点のタブの claude の会話の ID・名前・開いているフォルダを返す', async () => {
+      setMode('agent-cli')
+      setSendConfirmEnabled(false)
+      const sender = makeSender()
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
+      const { result, rerender } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      const describeSession = vi.mocked(sender.send).mock.calls[0][1].describeSession
+      expect(describeSession()).toEqual({
+        claudeSessionId: ID,
+        tabLabel: 'claude 1',
+        folderPath: '/p'
+      })
+      // タブが起動し直した後に呼ぶと、その時点の ID を返す(控えるのは sender が送信の手順を始める時点)
+      const restarted = { ...tab, claudeSessionId: '22222222-2222-4222-9222-222222222222' }
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [restarted], selected: restarted })
+      )
+      rerender()
+      expect(describeSession()?.claudeSessionId).toBe('22222222-2222-4222-9222-222222222222')
+    })
+
+    it('タブに claude の会話の ID が無い・タブが閉じられたら null', async () => {
+      setMode('agent-cli')
+      setSendConfirmEnabled(false)
+      const sender = makeSender()
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: null })
+      mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
+      const { result, rerender } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      const describeSession = vi.mocked(sender.send).mock.calls[0][1].describeSession
+      expect(describeSession()).toBeNull()
+      const other = makeAgentSessionTabView({
+        slotId: 'slot-9',
+        status: 'running',
+        claudeSessionId: ID
+      })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [other], selected: other })
+      )
+      rerender()
+      expect(describeSession()).toBeNull()
+    })
+
+    it('確認を経由した送信でも、送り先に describeSession を付ける', async () => {
+      setMode('agent-cli')
+      const sender = makeSender()
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      act(() => result.current.agentSendConfirmDialog.onConfirm())
+      await waitFor(() => expect(sender.send).toHaveBeenCalledOnce())
+      expect(vi.mocked(sender.send).mock.calls[0][1].describeSession()).toEqual({
+        claudeSessionId: ID,
+        tabLabel: 'claude 1',
+        folderPath: '/p'
+      })
+    })
+  })
+
+  describe('履歴のエントリごとの操作(getHistoryActions・onResume)', () => {
+    // 再開の押せない理由の規則と押した時点の守り(L-058)は useAgentResume.test・agentResumeAvailability.test。ここは再実行の
+    // 条件(選択中のタブ)と、再開の結果の合成・足したタブへ移る配線を確かめる
+    const ID = '11111111-1111-4111-8111-111111111111'
+    const legacyEntry: HistoryEntry = {
+      id: 'h1',
+      promptId: 'p1',
+      promptTitle: '要約',
+      promptContent: '本文',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'success',
+      resultText: '結果',
+      errorMessage: null,
+      executedAt: 1000,
+      agent: null
+    }
+    const agentEntry: HistoryEntry = {
+      ...legacyEntry,
+      id: 'h2',
+      status: 'sent',
+      resultText: null,
+      agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/p' }
+    }
+
+    it('従来のエントリは、再実行は今のまま・このセッションで再開は出さない(null)', () => {
+      setMode('agent-cli')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(legacyEntry)).toEqual({
+        rerun: { disabled: true, reason: RERUN_DISABLED_AGENT_MODE },
+        resume: null
+      })
+    })
+
+    it.each([true, false])(
+      '従来の方式では、実行中(%s)を従来のエントリの再実行の押せる状態に渡す',
+      (isExecuting) => {
+        setMode('legacy')
+        const { result } = renderWorkspace({ folderPath: '/p', isExecuting })
+        expect(result.current.getHistoryActions(legacyEntry).rerun).toEqual({
+          disabled: isExecuting,
+          reason: null
+        })
+      }
+    )
+
+    it('従来の方式では、エージェントのエントリの再実行・再開とも押せない理由を出す', () => {
+      setMode('legacy')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(agentEntry)).toEqual({
+        rerun: { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE },
+        resume: {
+          disabled: true,
+          reason: 'エージェント CLI 方式でだけ再開できます（設定で切り替えると使えます）'
+        }
+      })
+    })
+
+    it('エージェント CLI 方式では、再実行は選択中のタブの状態で、再開はフォルダ・動いているタブ・タブの上限で決まる', () => {
+      setMode('agent-cli')
+      const running = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [running], selected: running })
+      )
+      const { result, rerender } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(agentEntry)).toEqual({
+        rerun: { disabled: false, reason: null },
+        resume: { disabled: true, reason: 'このセッションは claude 1 で動いています' }
+      })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          addDisabledReason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）'
+        })
+      )
+      rerender()
+      expect(result.current.getHistoryActions(agentEntry).resume).toEqual({
+        disabled: true,
+        reason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）'
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: true,
+        reason: RUN_DISABLED_NO_SESSION
+      })
+    })
+
+    it('送信中は、エージェントのエントリの再実行を押せない(一覧の 実行 と同じ理由)', () => {
+      setMode('agent-cli')
+      mockUseAgentPromptSender.mockReturnValue(
+        makeSender({ isSending: true, sendingSlotId: 'slot-1' })
+      )
+      const running = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ tabs: [running], selected: running })
+      )
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: true,
+        reason: RUN_DISABLED_SENDING
+      })
+    })
+
+    it('onResume は新しいタブで再開し、パネルを開いてそのタブを選ぶ(+ と同じ。L-048)', () => {
+      setMode('agent-cli')
+      const selectTab = vi.fn<(slotId: string) => void>()
+      const sessions = makeAgentSessionsState({
+        selectTab,
+        resumeInNewTab: vi.fn<AgentSessionsState['resumeInNewTab']>(() => 'slot-2')
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      // useAgentTerminalPanel の初期は開いている(isOpen: true)。閉じてから、onResume で開き直すことを確かめる
+      expect(result.current.agentTerminal.layout.isOpen).toBe(true)
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      expect(result.current.agentTerminal.layout.isOpen).toBe(false)
+      act(() => result.current.onResume(agentEntry))
+      expect(sessions.resumeInNewTab).toHaveBeenCalledExactlyOnceWith(ID)
+      expect(selectTab).toHaveBeenCalledWith('slot-2')
+      expect(result.current.agentTerminal.layout.isOpen).toBe(true)
     })
   })
 })

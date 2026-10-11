@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import HistoryPanel from '../HistoryPanel'
-import type { HistoryEntry } from '../../../types'
+import type { HistoryEntry, HistoryEntryActions } from '../../../types'
 
 const entry1: HistoryEntry = {
   id: 'h1',
@@ -14,7 +14,8 @@ const entry1: HistoryEntry = {
   status: 'success',
   resultText: '結果1',
   errorMessage: null,
-  executedAt: 2000
+  executedAt: 2000,
+  agent: null
 }
 
 const entry2: HistoryEntry = {
@@ -27,16 +28,22 @@ const entry2: HistoryEntry = {
   status: 'success',
   resultText: '結果2',
   errorMessage: null,
-  executedAt: 1000
+  executedAt: 1000,
+  agent: null
 }
 
 const handlers = {
   onDelete: vi.fn(),
   onClear: vi.fn(),
-  onRerun: vi.fn()
+  onRerun: vi.fn(),
+  onResume: vi.fn(),
+  agentSend: null,
+  getHistoryActions: vi.fn(
+    (): HistoryEntryActions => ({ rerun: { disabled: false, reason: null }, resume: null })
+  )
 }
 
-function getDetail(container: HTMLElement) {
+function getDetail(container: HTMLElement): HTMLElement {
   return container.querySelector('.history-detail') as HTMLElement
 }
 
@@ -190,5 +197,72 @@ describe('HistoryPanel', () => {
     await userEvent.keyboard('{ArrowUp}')
     expect(radios[0]).toHaveFocus()
     expect(radios[0]).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
+describe('HistoryPanel: エントリごとの操作', () => {
+  it('選んだエントリの getHistoryActions の結果で詳細のボタンを出し、このセッションで再開 を onResume へ渡す', async () => {
+    const agentEntry: HistoryEntry = {
+      ...entry1,
+      status: 'sent',
+      resultText: null,
+      agent: {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        tabLabel: 'claude 1',
+        folderPath: '/w'
+      }
+    }
+    const getHistoryActions = vi.fn(
+      (entry: HistoryEntry): HistoryEntryActions => ({
+        rerun: { disabled: false, reason: null },
+        resume: entry.agent === null ? null : { disabled: false, reason: null }
+      })
+    )
+    const onResume = vi.fn()
+    render(
+      <HistoryPanel
+        history={[agentEntry]}
+        {...handlers}
+        getHistoryActions={getHistoryActions}
+        onResume={onResume}
+      />
+    )
+    await userEvent.click(screen.getByRole('radio'))
+    expect(getHistoryActions).toHaveBeenCalledWith(agentEntry)
+    await userEvent.click(screen.getByRole('button', { name: 'このセッションで再開' }))
+    expect(onResume).toHaveBeenCalledExactlyOnceWith(agentEntry)
+  })
+
+  it('2 件目を選ぶとそのエントリの getHistoryActions の結果を出し、1 件目に戻すとそのエントリの結果に戻る(先頭と取り違えない)', async () => {
+    const agentEntry: HistoryEntry = {
+      ...entry2,
+      status: 'sent',
+      resultText: null,
+      agent: {
+        claudeSessionId: '22222222-2222-4222-8222-222222222222',
+        tabLabel: 'claude 1',
+        folderPath: '/w'
+      }
+    }
+    const getHistoryActions = vi.fn(
+      (entry: HistoryEntry): HistoryEntryActions => ({
+        rerun: { disabled: false, reason: null },
+        resume: entry.agent === null ? null : { disabled: false, reason: null }
+      })
+    )
+    render(
+      <HistoryPanel
+        history={[entry1, agentEntry]}
+        {...handlers}
+        getHistoryActions={getHistoryActions}
+      />
+    )
+    expect(screen.queryByRole('button', { name: 'このセッションで再開' })).toBeNull()
+    await userEvent.click(screen.getByText('タイトル2'))
+    expect(getHistoryActions).toHaveBeenLastCalledWith(agentEntry)
+    expect(screen.getByRole('button', { name: 'このセッションで再開' })).toBeInTheDocument()
+    await userEvent.click(screen.getByText('タイトル1'))
+    expect(getHistoryActions).toHaveBeenLastCalledWith(entry1)
+    expect(screen.queryByRole('button', { name: 'このセッションで再開' })).toBeNull()
   })
 })

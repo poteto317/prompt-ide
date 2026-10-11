@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type { AgentSendTarget } from './useAgentPromptSender'
-import type { AgentSendOutcome } from '../lib/agentPromptSend'
+import type { AgentPromptSendResult } from '../lib/agentPromptSend'
 import type { AgentSendOptions } from '../lib/agentPromptRequest'
 import { notifyAgentSent } from '../lib/agentSendCallbacks'
 import { useLatestRef } from './useLatestRef'
@@ -16,6 +16,8 @@ export interface PendingAgentSend extends AgentSendOptions {
   target: AgentSendTarget
   /** 開いた時点の送り先のタブの名前(表示はこれで固定) */
   label: string
+  /** 開いた時点のフォーカスのある要素(一覧の実行・履歴の詳細の再実行 など)。確認からの送信が失敗したときの戻り先 */
+  opener: Element | null
 }
 
 /** 確認からの送信が終わったときの知らせ */
@@ -24,15 +26,17 @@ export interface AgentSendSettled {
   slotId: string
   /** 開いた元のプロンプトの id */
   promptId: string | null
+  /** 開いた時点のフォーカスのある要素(失敗したときの戻り先。一覧が隠れていても戻れるように、一覧の実行より先に試す) */
+  opener: Element | null
   /** 送信の結果。send が undefined を返した・投げた・拒否したときは undefined */
-  outcome: AgentSendOutcome | undefined
+  outcome: AgentPromptSendResult | undefined
 }
 
 export interface UseAgentSendConfirmOptions {
   /** 選択中のタブ(request の時点の値を送り先として控える) */
   selected: AgentSendTarget & { label: string }
   /** 控えた送り先へ送る(useAgentPromptSender.send) */
-  send: (text: string, target: AgentSendTarget) => Promise<AgentSendOutcome | undefined>
+  send: (text: string, target: AgentSendTarget) => Promise<AgentPromptSendResult | undefined>
   /** 確認からの送信が終わった後に呼ぶ(結果に応じてフォーカスを移す)。閉じるのは送信を押した時点で、これは待たない */
   onSendSettled: (settled: AgentSendSettled) => void
 }
@@ -63,8 +67,15 @@ export function useAgentSendConfirm({
   const request = useCallback(
     (text: string, options: AgentSendOptions): void => {
       if (pendingRef.current !== null) return
-      const { slotId, controller, label } = selectedRef.current
-      const next: PendingAgentSend = { ...options, text, target: { slotId, controller }, label }
+      const { slotId, controller, describeSession, label } = selectedRef.current
+      // 送り先は開いた時点のタブ。送り先の控え(describeSession)も写す(写し忘れると確認を経由した送信だけ履歴の記録が抜ける)
+      const next: PendingAgentSend = {
+        ...options,
+        text,
+        target: { slotId, controller, describeSession },
+        label,
+        opener: document.activeElement
+      }
       pendingRef.current = next
       setPending(next)
     },
@@ -82,9 +93,9 @@ export function useAgentSendConfirm({
     pendingRef.current = null
     setPending(null)
     // send は拒否しない約束だが、同期で投げても・拒否しても、後続(フォーカスの移動)は止めない(L-053)
-    const { text, target, promptId, onSent } = current
+    const { text, target, promptId, opener, onSent } = current
     void (async (): Promise<void> => {
-      let outcome: AgentSendOutcome | undefined
+      let outcome: AgentPromptSendResult | undefined
       try {
         outcome = await send(text, target)
       } catch (err) {
@@ -92,7 +103,7 @@ export function useAgentSendConfirm({
       } finally {
         // 送れたときだけ知らせる(エクスプローラから足した参照を外す)。知らせが投げてもフォーカスの移動は止めない(L-053)
         notifyAgentSent(outcome, onSent)
-        onSendSettledRef.current({ slotId: target.slotId, promptId, outcome })
+        onSendSettledRef.current({ slotId: target.slotId, promptId, opener, outcome })
       }
     })()
   }, [send, onSendSettledRef])

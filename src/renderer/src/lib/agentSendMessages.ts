@@ -40,6 +40,9 @@ export const RUN_DISABLED_SENDING = 'エージェントへ送信しています'
 export const RUN_DISABLED_CLOSING = 'このタブを閉じています（エージェントを終了しています）'
 export const RERUN_DISABLED_AGENT_MODE =
   'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
+/** エージェント CLI 方式で記録した履歴(agent のあるエントリ)を、従来の方式で再実行しようとしたとき */
+export const RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE =
+  'エージェント CLI 方式で記録した履歴は、エージェント CLI 方式でだけ再実行できます'
 
 export interface PromptRunAvailability {
   disabled: boolean
@@ -64,7 +67,7 @@ export function getPromptRunAvailability(params: {
   return { disabled: false, reason: null }
 }
 
-/** 履歴の再実行を押せるか(設計書「決定した点」5) */
+/** 従来のエントリ(agent が null)の履歴の再実行を押せるか(設計書「決定した点」5。エージェントのエントリは getHistoryRerunAvailability) */
 export function getRerunAvailability(params: {
   mode: PromptExecutionMode | null
   isExecuting: boolean
@@ -72,4 +75,28 @@ export function getRerunAvailability(params: {
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   if (params.mode === 'agent-cli') return { disabled: true, reason: RERUN_DISABLED_AGENT_MODE }
   return { disabled: params.isExecuting, reason: null }
+}
+
+/**
+ * 履歴のエントリごとの 再実行 を押せるか(セッションの再開の設計書「エージェントのエントリの 再実行 の押せない理由」)。
+ * 従来のエントリは getRerunAvailability のまま。エージェントのエントリは、エージェント CLI 方式では一覧の 実行 と同じ条件
+ * (選択中のタブへ送るため。L-048)、エージェント CLI 方式でない(従来の方式)ときは押せない
+ */
+export function getHistoryRerunAvailability(params: {
+  isAgentEntry: boolean
+  mode: PromptExecutionMode | null
+  isExecuting: boolean
+  isSessionRunning: boolean
+  isSessionClosing: boolean
+  isSending: boolean
+}): PromptRunAvailability {
+  if (!params.isAgentEntry) {
+    return getRerunAvailability({ mode: params.mode, isExecuting: params.isExecuting })
+  }
+  if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
+  // 方式を足したときに選択中のタブへ送れる扱いにしないよう、エージェント CLI 方式でないものはすべて止める
+  if (params.mode !== 'agent-cli') {
+    return { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE }
+  }
+  return getPromptRunAvailability(params)
 }

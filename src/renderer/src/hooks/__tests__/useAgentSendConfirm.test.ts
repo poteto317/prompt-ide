@@ -5,13 +5,30 @@ import type { Mock, MockInstance } from 'vitest'
 import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { useAgentSendConfirm } from '../useAgentSendConfirm'
 import type { AgentSendConfirmState, UseAgentSendConfirmOptions } from '../useAgentSendConfirm'
-import type { AgentSendOutcome } from '../../lib/agentPromptSend'
+import type { AgentHistoryInfo } from '@shared/types'
+import type { AgentPromptSendResult } from '../../lib/agentPromptSend'
 import type { AgentSendOptions } from '../../lib/agentPromptRequest'
 
-const tab1 = { slotId: 'slot-1', label: 'claude 1', controller: makeFakeController() }
-const tab2 = { slotId: 'slot-2', label: 'claude 2', controller: makeFakeController() }
+const SENT_TO_1: AgentHistoryInfo = {
+  claudeSessionId: '11111111-1111-4111-8111-111111111111',
+  tabLabel: 'claude 1',
+  folderPath: '/work'
+}
 
-const SENT: AgentSendOutcome = { kind: 'sent', clearedDraft: false }
+const tab1 = {
+  slotId: 'slot-1',
+  label: 'claude 1',
+  controller: makeFakeController(),
+  describeSession: vi.fn((): AgentHistoryInfo | null => SENT_TO_1)
+}
+const tab2 = {
+  slotId: 'slot-2',
+  label: 'claude 2',
+  controller: makeFakeController(),
+  describeSession: vi.fn((): AgentHistoryInfo | null => null)
+}
+
+const SENT: AgentPromptSendResult = { kind: 'sent', clearedDraft: false, sentTo: null }
 
 // request の第 2 引数(送る元のプロンプト・未保存の一覧)
 const opts = (promptId: string | null, unsavedPaths: readonly string[] = []): AgentSendOptions => ({
@@ -50,12 +67,41 @@ describe('useAgentSendConfirm', () => {
     act(() => result.current.request('hello', opts('p1')))
     expect(result.current.pending).toEqual({
       text: 'hello',
-      target: { slotId: 'slot-1', controller: tab1.controller },
+      target: {
+        slotId: 'slot-1',
+        controller: tab1.controller,
+        describeSession: tab1.describeSession
+      },
       label: 'claude 1',
       promptId: 'p1',
-      unsavedPaths: []
+      unsavedPaths: [],
+      opener: document.body
     })
     expect(send).not.toHaveBeenCalled()
+  })
+
+  it('request の時点でフォーカスのある要素を控え、送信が終わったら onSendSettled に渡す(送信の失敗のときの戻り先)', async () => {
+    const opener = document.createElement('button')
+    document.body.append(opener)
+    try {
+      opener.focus()
+      const { result, onSendSettled } = renderConfirm()
+      act(() => result.current.request('hello', opts('p1')))
+      expect(result.current.pending?.opener).toBe(opener)
+      // 確認を開くとフォーカスはダイアログへ移るが、控えた要素は変えない
+      opener.blur()
+      await act(async () => {
+        result.current.confirm()
+      })
+      expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
+        slotId: 'slot-1',
+        promptId: 'p1',
+        opener,
+        outcome: SENT
+      })
+    } finally {
+      opener.remove()
+    }
   })
 
   it('開いている間の request は無視する(二重に開かない。同じ描画の中で 2 回呼んでも)', () => {
@@ -70,7 +116,7 @@ describe('useAgentSendConfirm', () => {
   })
 
   it('confirm で閉じ、控えた送り先へ送り、送信が終わってから onSendSettled に送り先・プロンプト・結果を渡す(開いた後にタブを切り替えても送り先は変わらない)', async () => {
-    let resolveSend: (outcome: AgentSendOutcome | undefined) => void = () => undefined
+    let resolveSend: (outcome: AgentPromptSendResult | undefined) => void = () => undefined
     const send = vi.fn<UseAgentSendConfirmOptions['send']>(
       () => new Promise((resolve) => (resolveSend = resolve))
     )
@@ -82,20 +128,22 @@ describe('useAgentSendConfirm', () => {
     expect(result.current.pending).toBeNull()
     expect(send).toHaveBeenCalledExactlyOnceWith('hello', {
       slotId: 'slot-1',
-      controller: tab1.controller
+      controller: tab1.controller,
+      describeSession: tab1.describeSession
     })
     // 送信が終わるまではフォーカスを移さない(送信の前の準備の間のキー入力がターミナルへ届かないように)
     await act(async () => {
       await Promise.resolve()
     })
     expect(onSendSettled).not.toHaveBeenCalled()
-    const failed: AgentSendOutcome = { kind: 'failed', reason: 'input-not-found' }
+    const failed: AgentPromptSendResult = { kind: 'failed', reason: 'input-not-found' }
     await act(async () => {
       resolveSend(failed)
     })
     expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
       slotId: 'slot-1',
       promptId: 'p1',
+      opener: document.body,
       outcome: failed
     })
   })
@@ -151,6 +199,7 @@ describe('useAgentSendConfirm', () => {
       expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
         slotId: 'slot-1',
         promptId: null,
+        opener: document.body,
         outcome: undefined
       })
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -239,8 +288,28 @@ describe('useAgentSendConfirm: 未保存の一覧と送れたときの知らせ(
       expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
         slotId: 'slot-1',
         promptId: 'p1',
+        opener: document.body,
         outcome: SENT
       })
     )
+  })
+})
+
+describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
+  it('request の時点の選択中のタブの describeSession を送り先に写し、確認から送るときもその関数のまま送る(写し忘れると確認を経由した送信だけ記録が抜ける)', async () => {
+    const send = vi.fn<UseAgentSendConfirmOptions['send']>(async () => ({
+      kind: 'sent',
+      clearedDraft: false,
+      sentTo: SENT_TO_1
+    }))
+    const onSent = vi.fn()
+    const { result, rerender, onSendSettled } = renderConfirm({ send })
+    act(() => result.current.request('hello', { ...opts('p1'), onSent }))
+    expect(result.current.pending?.target.describeSession).toBe(tab1.describeSession)
+    rerender({ selected: tab2, send, onSendSettled })
+    act(() => result.current.confirm())
+    await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
+    expect(send.mock.calls[0][1].describeSession).toBe(tab1.describeSession)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1)
   })
 })

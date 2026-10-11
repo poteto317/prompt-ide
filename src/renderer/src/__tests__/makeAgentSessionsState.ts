@@ -17,6 +17,7 @@ export function makeAgentSessionTabView(
     status: 'none',
     exit: null,
     error: null,
+    claudeSessionId: null,
     isClosing: false,
     controller: makeFakeController(),
     ...overrides
@@ -53,12 +54,14 @@ export function makeAgentSessionsState(
     start: vi.fn<AgentSessionsState['start']>(async () => undefined),
     stop: vi.fn<AgentSessionsState['stop']>(async () => true),
     addTab: vi.fn<AgentSessionsState['addTab']>(async () => undefined),
+    resumeInNewTab: vi.fn<AgentSessionsState['resumeInNewTab']>(() => null),
     closeTab: vi.fn<AgentSessionsState['closeTab']>(async () => true),
     selectTab: vi.fn<AgentSessionsState['selectTab']>(),
     stopAll: vi.fn<AgentSessionsState['stopAll']>(async () => true),
     isAnyActive: isAnyAgentSessionActive(tabs),
     isAnyStarting: isAnyAgentSessionStarting(tabs),
     lastExit: null,
+    startConfirmedCount: 0,
     ...rest
   }
 }
