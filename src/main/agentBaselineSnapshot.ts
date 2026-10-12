@@ -123,15 +123,20 @@ export async function copyIndexPreservingTimes(
   indexPath: string,
   { required }: { required: boolean }
 ): Promise<boolean> {
+  // 更新時刻は写す前に読む。写した後に読むと、その間に写しの元が書き直されたとき(git status の index の更新など)、
+  // 古い中身に新しい時刻が付いて racy-git の守りが外れる。写す前の時刻なら、書き直されても守りが広がるだけ
+  const missingAsNull = (error: NodeJS.ErrnoException): null => {
+    if (required || error.code !== 'ENOENT') throw error
+    return null
+  }
+  const sourceStat = await stat(sourceIndex).catch(missingAsNull)
+  if (sourceStat === null) return false
+  // 読んだ後に消えた場合も、無いときと同じに扱う
   const copied = await copyFile(sourceIndex, indexPath, fsConstants.COPYFILE_EXCL).then(
     () => true,
-    (error: NodeJS.ErrnoException) => {
-      if (required || error.code !== 'ENOENT') throw error
-      return false
-    }
+    missingAsNull
   )
-  if (!copied) return false
-  const sourceStat = await stat(sourceIndex)
+  if (copied === null) return false
   await utimes(indexPath, sourceStat.atime, sourceStat.mtime)
   return true
 }
