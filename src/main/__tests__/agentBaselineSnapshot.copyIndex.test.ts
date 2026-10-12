@@ -20,7 +20,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 import { copyIndexPreservingTimes } from '../agentBaselineSnapshot'
 
-describe('copyIndexPreservingTimes(写しの元が写しの直後に書き直されたとき)', () => {
+describe('copyIndexPreservingTimes(写しの最中に写しの元が書き直された・消えたとき)', () => {
   let dir: string | null = null
   afterEach(() => {
     copyHooks.before = null
