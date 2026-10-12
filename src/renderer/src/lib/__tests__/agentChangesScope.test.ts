@@ -56,4 +56,11 @@ describe('encodeAgentChangesScopeValue / decodeAgentChangesScopeValue', () => {
     expect(decodeAgentChangesScopeValue('run:abc')).toBeNull()
     expect(decodeAgentChangesScopeValue('run:1.5')).toBeNull()
   })
+
+  it('エンコードの形(run: の後に 1 以上の 10 進の整数)でなければ null(Number が受け付ける形も通さない)', () => {
+    for (const value of ['run:', 'run:0', 'run:-1', 'run: 3', 'run:1e1', 'run:0x10', 'run:01']) {
+      expect(decodeAgentChangesScopeValue(value)).toBeNull()
+    }
+    expect(decodeAgentChangesScopeValue('run:9007199254740993')).toBeNull()
+  })
 })

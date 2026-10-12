@@ -24,16 +24,19 @@ export function findAgentChangesRun(
 
 const ALL_SCOPE_VALUE = 'all'
 const RUN_SCOPE_VALUE_PREFIX = 'run:'
+// エンコードの形だけを通す(Number は空文字・空白・符号・指数・16 進も受け付けるため、正規表現で形を確かめる)
+const RUN_SCOPE_VALUE_PATTERN = /^run:([1-9]\d*)$/
 
 /** 範囲の選択(<select>)の項目の値。累積は 'all'、実行は 'run:<runId>' */
 export function encodeAgentChangesScopeValue(scope: AgentChangesScope): string {
   return scope.kind === 'all' ? ALL_SCOPE_VALUE : `${RUN_SCOPE_VALUE_PREFIX}${scope.runId}`
 }
 
-/** 範囲の選択の項目の値を範囲に戻す。形が違えば null(選択を変えない) */
+/** 範囲の選択の項目の値を範囲に戻す。エンコードの形(run: の後に 1 以上の 10 進の整数)でなければ null(選択を変えない) */
 export function decodeAgentChangesScopeValue(value: string): AgentChangesScope | null {
   if (value === ALL_SCOPE_VALUE) return { kind: 'all' }
-  if (!value.startsWith(RUN_SCOPE_VALUE_PREFIX)) return null
-  const runId = Number(value.slice(RUN_SCOPE_VALUE_PREFIX.length))
+  const match = RUN_SCOPE_VALUE_PATTERN.exec(value)
+  if (match === null) return null
+  const runId = Number(match[1])
   return Number.isSafeInteger(runId) ? { kind: 'run', runId } : null
 }
