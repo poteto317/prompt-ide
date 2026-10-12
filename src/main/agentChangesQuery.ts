@@ -2,12 +2,13 @@ import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SimpleGit } from 'simple-git'
 import type { AgentChangeEntry, AgentChangeStatus, AgentChangesList } from '@shared/types'
-import { AGENT_CHANGES_LIST_LIMIT } from '@shared/types'
+import { AGENT_CHANGES_LIST_LIMIT, toAgentChangeRelativePath } from '@shared/types'
 import {
   assertBaselineIndex,
   containsNotRecorded,
   hasIgnoredInside,
   isIgnoredAtBaseline,
+  isNotRecordedPath,
   toBaselineQueryError
 } from './agentBaselineCoverage'
 import { createBaselineGit, createRepoGit } from './agentBaselineGit'
@@ -20,6 +21,10 @@ import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
 // - `git ls-files -z --others --exclude-standard --directory --no-empty-directory`: 記録の後に現れたファイル。
 //   新しいフォルダは 1 行('<dir>/')にまとめる
 // どちらも blob を書かず、利用者の .git/index を変えない。リネームは削除 + 追加の 2 行になる
+
+// 一覧の並び(パスの順。git の表記のままバイト順に近い比較)
+const byPath = (a: AgentChangeEntry, b: AgentChangeEntry): number =>
+  a.path < b.path ? -1 : a.path > b.path ? 1 : 0
 
 // name-status の 1 文字。記録のインデックスはコンフリクトのエントリを持たない(add -A が解消する)。
 // 未知の文字は内容が変わったものとして M にする
@@ -190,7 +195,7 @@ export async function collectAgentChangeEntries(
     }
   }
   if (movedAway.size > 0) await markMovedExcluded(folderPath, entries, movedAway)
-  return entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  return entries.sort(byPath)
 }
 
 /** 記録の時点 → いまの作業ツリーの変更の一覧。AGENT_CHANGES_LIST_LIMIT 件で打ち切り、HEAD が変わったかを添える */
@@ -207,5 +212,108 @@ export async function listAgentChanges(
     totalCount: entries.length,
     truncated: entries.length > AGENT_CHANGES_LIST_LIMIT,
     headChanged: head !== snapshot.head
+  }
+}
+
+// 途中の実行の、記録から除外した(5MB を超える)ファイルの変化。両端の控え(有無・大きさ・更新時刻)で分かるものだけを出す。
+// 片方の端にだけ控えがあるときは、もう片方の端で別の理由(ignore 済み・入れ子のリポジトリ)で記録していなければ、出現・削除とする
+function excludedChangesBetween(
+  start: BaselineSnapshot,
+  end: BaselineSnapshot
+): AgentChangeEntry[] {
+  const before = new Map(start.excluded.map((file) => [file.path, file]))
+  const after = new Map(end.excluded.map((file) => [file.path, file]))
+  const result: AgentChangeEntry[] = []
+  for (const path of new Set([...before.keys(), ...after.keys()])) {
+    const b = before.get(path)
+    const a = after.get(path)
+    let status: AgentChangeStatus | null
+    if (b !== undefined && a !== undefined) {
+      status = b.size !== a.size || b.mtimeMs !== a.mtimeMs ? 'M' : null
+    } else if (a !== undefined) {
+      status = isNotRecordedPath(start, path) ? null : 'A'
+    } else {
+      status = isNotRecordedPath(end, path) ? null : 'D'
+    }
+    if (status !== null) result.push({ path, status, isDirectory: false, notRecorded: true })
+  }
+  return result
+}
+
+// 途中の実行の、コミットの無い入れ子のリポジトリ('<dir>/')の出現・削除。中身を記録していないため有無だけで見る
+// (両端にあるときは出さない。中身が変わっても分からない。既知の制約)
+function skippedRepoChangesBetween(
+  start: BaselineSnapshot,
+  end: BaselineSnapshot
+): AgentChangeEntry[] {
+  const result: AgentChangeEntry[] = []
+  for (const repo of new Set([...start.skippedRepos, ...end.skippedRepos])) {
+    const inStart = start.skippedRepos.includes(repo)
+    const inEnd = end.skippedRepos.includes(repo)
+    if (inStart === inEnd) continue
+    // もう片方の端で ignore 済みなどで記録していなければ、有無が分からないため出さない
+    if (isNotRecordedPath(inEnd ? start : end, toAgentChangeRelativePath(repo))) continue
+    result.push({ path: repo, status: inEnd ? 'A' : 'D', isDirectory: true, notRecorded: true })
+  }
+  return result
+}
+
+/**
+ * 途中の実行(開始の区切り start → 次の区切り end)の変更のすべて(打ち切らない)。パスの順。
+ * `git diff-tree` で tree どうしを比べ、利用者の index と作業ツリーを読まない(設計書「範囲ごとの一覧と diff」)。
+ * 新しいフォルダを 1 行にまとめない。どちらかの端で記録しなかったパスは、tree の差分の行から外して notRecorded の行にする。
+ * ignore 済みのファイルの出現・削除は、累積の一覧と同じく出さない。使うのは listAgentChangesBetween だけ
+ * (戻す操作は累積の範囲だけで、collectAgentChangeEntries と違い agentChangesRevert からは使わない)
+ */
+async function collectAgentChangeEntriesBetween(
+  start: BaselineSnapshot,
+  end: BaselineSnapshot,
+  options: BaselineGitOptions = {}
+): Promise<AgentChangeEntry[]> {
+  // 記録の git と同じ環境(利用者の別のリポジトリ・object の置き場を指す変数を除く)で問い合わせる。diff-tree は index を読まない
+  const git = createBaselineGit(start.folderPath, start.indexPath, options)
+  const tracked = parseNameStatus(
+    await git
+      .raw(['diff-tree', '-r', '-z', '--name-status', '--no-renames', start.tree, end.tree])
+      .catch((error: unknown) => {
+        throw toBaselineQueryError(error)
+      })
+  )
+  const entries: AgentChangeEntry[] = []
+  const listed = new Set<string>()
+  const add = (entry: AgentChangeEntry): void => {
+    entries.push(entry)
+    listed.add(toAgentChangeRelativePath(entry.path))
+  }
+  for (const { path, status } of tracked) {
+    // どちらかの端で記録しなかったパスは、片方は tree・もう片方は記録の外にある(両端に何かがある)。中身を比べられないため
+    // M の notRecorded の 1 行にする
+    if (isNotRecordedPath(start, path) || isNotRecordedPath(end, path)) {
+      add({ path, status: 'M', isDirectory: false, notRecorded: true })
+    } else {
+      add({ path, status, isDirectory: false, notRecorded: false })
+    }
+  }
+  for (const entry of [
+    ...excludedChangesBetween(start, end),
+    ...skippedRepoChangesBetween(start, end)
+  ]) {
+    if (!listed.has(toAgentChangeRelativePath(entry.path))) add(entry)
+  }
+  return entries.sort(byPath)
+}
+
+/** 途中の実行の変更の一覧。AGENT_CHANGES_LIST_LIMIT 件で打ち切り、範囲の両端で HEAD が変わったかを添える */
+export async function listAgentChangesBetween(
+  start: BaselineSnapshot,
+  end: BaselineSnapshot,
+  options: BaselineGitOptions = {}
+): Promise<AgentChangesList> {
+  const entries = await collectAgentChangeEntriesBetween(start, end, options)
+  return {
+    entries: entries.slice(0, AGENT_CHANGES_LIST_LIMIT),
+    totalCount: entries.length,
+    truncated: entries.length > AGENT_CHANGES_LIST_LIMIT,
+    headChanged: start.head !== end.head
   }
 }

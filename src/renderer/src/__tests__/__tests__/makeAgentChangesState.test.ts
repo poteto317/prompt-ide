@@ -6,7 +6,13 @@ import {
   makeAgentChangesListResult,
   makeAgentChangesController,
   makeAgentChangesRevertState,
-  makeAgentChangesPanelState
+  makeAgentChangesPanelState,
+  makeAgentChangesPanelChanges,
+  makeAgentChangesRun,
+  makeAgentChangesRecordingState,
+  makeAgentChangesScopeUnavailableView,
+  makeAgentChangesScopeUnavailableListResult,
+  makeAgentDiffActions
 } from '../makeAgentChangesState'
 
 describe('makeAgentChangeEntry', () => {
@@ -56,7 +62,15 @@ describe('makeAgentChangesRecordingView', () => {
     expect(makeAgentChangesRecordingView(entries)).toEqual({
       kind: 'recording',
       startedAt: 100,
-      list: { entries, totalCount: 1, truncated: false, headChanged: false }
+      runs: [],
+      list: {
+        kind: 'listed',
+        scope: { kind: 'all' },
+        entries,
+        totalCount: 1,
+        truncated: false,
+        headChanged: false
+      }
     })
   })
 
@@ -64,6 +78,7 @@ describe('makeAgentChangesRecordingView', () => {
     expect(makeAgentChangesRecordingView(null, { startedAt: 1 })).toEqual({
       kind: 'recording',
       startedAt: 1,
+      runs: [],
       list: null
     })
   })
@@ -74,8 +89,62 @@ describe('makeAgentChangesRecordingView', () => {
     ).toEqual({
       kind: 'recording',
       startedAt: 5,
-      list: { entries: [], totalCount: 9, truncated: false, headChanged: true }
+      runs: [],
+      list: {
+        kind: 'listed',
+        scope: { kind: 'all' },
+        entries: [],
+        totalCount: 9,
+        truncated: false,
+        headChanged: true
+      }
     })
+  })
+})
+
+describe('makeAgentChangesRecordingState', () => {
+  it('既定は startedAt 100・実行なしの記録中の状態', () => {
+    expect(makeAgentChangesRecordingState()).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: []
+    })
+  })
+
+  it('startedAt と実行の一覧を上書きする', () => {
+    const run = makeAgentChangesRun({ runId: 2 })
+    expect(makeAgentChangesRecordingState({ startedAt: 5, runs: [run] })).toEqual({
+      kind: 'recording',
+      startedAt: 5,
+      runs: [run]
+    })
+  })
+})
+
+describe('makeAgentChangesScopeUnavailableView', () => {
+  it('既定は startedAt 100・実行なしで、一覧は範囲と理由を持つ scope-unavailable', () => {
+    expect(
+      makeAgentChangesScopeUnavailableView({ kind: 'run', runId: 2 }, 'end-not-recorded')
+    ).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      list: {
+        kind: 'scope-unavailable',
+        scope: { kind: 'run', runId: 2 },
+        reason: 'end-not-recorded'
+      }
+    })
+  })
+
+  it('startedAt と実行の一覧を上書きする', () => {
+    const run = makeAgentChangesRun()
+    expect(
+      makeAgentChangesScopeUnavailableView({ kind: 'run', runId: 1 }, 'start-not-recorded', {
+        startedAt: 1,
+        runs: [run]
+      })
+    ).toMatchObject({ startedAt: 1, runs: [run] })
   })
 })
 
@@ -85,6 +154,8 @@ describe('makeAgentChangesListResult', () => {
     expect(makeAgentChangesListResult(entries)).toEqual({
       kind: 'recording',
       startedAt: 100,
+      runs: [],
+      scope: { kind: 'all' },
       entries,
       totalCount: 1,
       truncated: false,
@@ -96,6 +167,8 @@ describe('makeAgentChangesListResult', () => {
     expect(makeAgentChangesListResult([], { startedAt: 7, truncated: true })).toEqual({
       kind: 'recording',
       startedAt: 7,
+      runs: [],
+      scope: { kind: 'all' },
       entries: [],
       totalCount: 0,
       truncated: true,
@@ -112,13 +185,17 @@ describe('makeAgentChangesController', () => {
       isLoading: false,
       isBeginning: false,
       listError: null,
-      notice: null
+      notice: null,
+      quietRefreshCount: 0
     })
     expect(controller.savedPaths.size).toBe(0)
-    for (const fn of [controller.begin, controller.refresh, controller.clear]) {
+    for (const fn of [controller.refresh, controller.clear]) {
       expect(vi.isMockFunction(fn)).toBe(true)
       await expect(fn()).resolves.toBeUndefined()
     }
+    await expect(controller.begin('manual')).resolves.toBeUndefined()
+    expect(controller.scope).toEqual({ kind: 'all' })
+    expect(vi.isMockFunction(controller.selectScope)).toBe(true)
     expect(vi.isMockFunction(controller.markSaved)).toBe(true)
     expect(vi.isMockFunction(controller.announce)).toBe(true)
   })
@@ -146,7 +223,7 @@ describe('makeAgentChangesRevertState', () => {
       revertAllDisabledReason: null
     })
     await expect(state.revertFile(makeAgentChangeEntry('a.txt'))).resolves.toBeUndefined()
-    await expect(state.revertHunk('a.txt', 'patch', '@@')).resolves.toBeUndefined()
+    await expect(state.revertHunk('a.txt', 'patch', '@@', { kind: 'all' })).resolves.toBeUndefined()
     await expect(state.revertAll()).resolves.toBeUndefined()
     expect(vi.isMockFunction(state.revertFile)).toBe(true)
     expect(vi.isMockFunction(state.revertHunk)).toBe(true)
@@ -174,10 +251,83 @@ describe('makeAgentChangesPanelState', () => {
   })
 
   it('指定した項目だけを上書きする', () => {
-    const changes = makeAgentChangesController({ isLoading: true })
+    const changes = makeAgentChangesPanelChanges({ isLoading: true })
     const state = makeAgentChangesPanelState({ changes, isAgentMode: false })
     expect(state.changes).toBe(changes)
     expect(state.isAgentMode).toBe(false)
     expect(state.folderPath).toBe('/repo')
+  })
+})
+
+describe('makeAgentChangesPanelChanges', () => {
+  it('begin は引数なしで resolve する vi.fn で、ほかは controller の既定。指定した項目だけを上書きする', async () => {
+    const changes = makeAgentChangesPanelChanges({ isLoading: true })
+    expect(vi.isMockFunction(changes.begin)).toBe(true)
+    await expect(changes.begin()).resolves.toBeUndefined()
+    expect(changes.isLoading).toBe(true)
+    expect(changes.view).toEqual({ kind: 'none' })
+  })
+})
+
+describe('makeAgentChangesRun', () => {
+  it('既定は runId・number 1、開始 100、最後の実行、選べる。指定した項目だけを上書きする', () => {
+    expect(makeAgentChangesRun()).toEqual({
+      runId: 1,
+      number: 1,
+      startedAt: 100,
+      endedAt: null,
+      availability: { kind: 'available' }
+    })
+    expect(makeAgentChangesRun({ runId: 3, endedAt: 200 })).toMatchObject({
+      runId: 3,
+      number: 1,
+      endedAt: 200
+    })
+  })
+})
+
+describe('makeAgentChangesScopeUnavailableListResult', () => {
+  it('既定は startedAt 100・実行なしで、範囲と理由を持つ IPC の scope-unavailable の結果', () => {
+    expect(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 2 }, 'run-missing')
+    ).toEqual({
+      kind: 'scope-unavailable',
+      startedAt: 100,
+      runs: [],
+      scope: { kind: 'run', runId: 2 },
+      reason: 'run-missing'
+    })
+  })
+
+  it('startedAt と実行の一覧を上書きする', () => {
+    const run = makeAgentChangesRun({ runId: 3 })
+    expect(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'end-not-recorded', {
+        startedAt: 5,
+        runs: [run]
+      })
+    ).toMatchObject({ startedAt: 5, runs: [run] })
+  })
+})
+
+describe('makeAgentDiffActions', () => {
+  it('既定は戻せる・実行の番号なし・理由も失敗も通知もなしで、onRevertHunk は vi.fn', () => {
+    const actions = makeAgentDiffActions()
+    expect(actions).toMatchObject({
+      canRevertHunk: true,
+      contentRunNumber: null,
+      disabledReason: null,
+      error: null,
+      notice: null
+    })
+    expect(vi.isMockFunction(actions.onRevertHunk)).toBe(true)
+  })
+
+  it('指定した項目だけを上書きする', () => {
+    expect(makeAgentDiffActions({ canRevertHunk: false, contentRunNumber: 2 })).toMatchObject({
+      canRevertHunk: false,
+      contentRunNumber: 2,
+      disabledReason: null
+    })
   })
 })

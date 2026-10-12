@@ -1,11 +1,12 @@
 import type { AgentChangesUnavailableReason } from '@shared/types'
-import type { AgentChangesView } from '../hooks/useAgentChanges'
+import type { AgentChangesView } from '../types'
 import {
   AGENT_CHANGES_BUSY_GIT,
   AGENT_CHANGES_BUSY_LOADING,
   AGENT_CHANGES_BUSY_REVERTING,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON
 } from './agentChangesMessages'
 
@@ -37,6 +38,8 @@ export interface AgentRevertAvailability {
   isReverting: boolean
   /** 直前の一覧の取得が失敗した(古い一覧で戻さない) */
   hasListError: boolean
+  /** 選んでいる範囲か、表示中の一覧の範囲が実行(実行ごとの表示は見るだけ) */
+  isRunScope: boolean
 }
 
 /** ファイル・ハンクを戻すボタンを押せない理由(押せるなら null)。セクションの上に 1 か所で出す */
@@ -45,6 +48,7 @@ export function agentRevertDisabledReason(availability: AgentRevertAvailability)
   if (availability.hasListError) return AGENT_CHANGES_LIST_FAILED
   if (availability.isLoading) return AGENT_CHANGES_BUSY_LOADING
   if (availability.isGitBusy) return AGENT_CHANGES_BUSY_GIT
+  if (availability.isRunScope) return AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
   return null
 }
 

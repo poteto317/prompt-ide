@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as gitApi from '../lib/gitApi'
 import { fetchDiffForTab } from '../lib/diffTabSource'
-import type { GitFileStatus } from '@shared/types'
+import type { AgentChangesScope, GitFileStatus } from '@shared/types'
+import { isSameAgentChangesScope } from '@shared/types'
 import { isSameKey } from './useDiffTabs'
 import type { DiffTabKey } from './useDiffTabs'
 import { useFileOperationLock } from './useFileOperationLock'
@@ -11,6 +12,12 @@ import { toError } from '../lib/errorUtils'
 import { isUntrackedFile } from '../lib/gitUtils'
 import { canDiscardHunkFor } from '../lib/discardTarget'
 import { useLatestRef } from './useLatestRef'
+
+/** diff の取り直しの選択肢 */
+export interface DiffRefreshOptions {
+  /** 静かに取り直す(前の内容を出したまま。設計書「自動の取り直し」) */
+  quiet?: boolean
+}
 
 export interface DiffOperationsState {
   diffContent: string | null
@@ -33,24 +40,33 @@ export interface DiffOperationsState {
    *  (既に " M" のファイルを編集・保存しても " M" のまま)ため、
    *  activeFileStatusKey 依存の自動再取得では検知できない。取り直さないと、
    *  保存前の古い diffContent から作った patch を「このハンクをステージ」で
-   *  送ってしまい、ユーザーが一度も意図していない内容が index に入る */
-  refreshDiff: () => void
+   *  送ってしまい、ユーザーが一度も意図していない内容が index に入る。
+   *  quiet(エージェントの変更の自動の取り直しの後)なら、同じタブの内容を出したまま取り直し、届いた内容が同じなら置き換えない
+   *  (読み込み中に差し替えず、DiffView のスクロールとフォーカスを保つ)。取得の失敗を出しているタブでは、エラーを出したまま取り直す。
+   *  同じ描画で手動の取り直しも頼まれたら手動を優先する */
+  refreshDiff: (options?: DiffRefreshOptions) => void
   /** 現在開いている diff タブが未追跡ファイルの diff か。DiffView が「表示の打ち切り時に
    *  ハンク操作ボタンを隠す」判定を無効化するために使う(未追跡ファイルの
    *  stageHunk は patch を使わずファイル全体を git add するだけのため)。
    *  エージェントの変更の diff(kind: 'agent')では常に false */
   isActiveFileUntracked: boolean
+  /** 表示中の diff の内容を取った範囲(エージェントの変更の diff だけ。内容が無い間・agent でないタブは null)。
+   *  セクションで今選んでいる範囲ではなく、内容と組で持つ(範囲を切り替えた直後の古い内容から、累積でないハンクを戻さない) */
+  agentDiffScope: AgentChangesScope | null
 }
 
 /**
  * diff タブの内容取得と、ハンク単位のステージ/アンステージを担う。
  * activeDiffTab が変わるたびに diff を再取得し、ハンク操作後は明示的な
  * トリガー(diffRefreshSignal)で同じタブのまま再取得する。
+ * agentScope はエージェントの変更の diff の範囲。取得の effect の依存には入れない
+ * (範囲を変えた後は一覧の取り直しの後の refreshDiff で取り直す)。
  */
 export function useDiffOperations(
   activeDiffTab: DiffTabKey | null,
   refreshGitStatus: () => Promise<void>,
   gitStatusFiles: GitFileStatus[],
+  agentScope: AgentChangesScope,
   fileLock?: FileOperationLock
 ): DiffOperationsState {
   // fileLock が渡されなければ(単体テスト等)このフック内だけで完結するローカルな
@@ -63,13 +79,17 @@ export function useDiffOperations(
   // 判定する必要があるが、runHunkOperation 自体は毎レンダー再生成される通常の
   // 関数のため、await 後に読む時点では activeDiffTab の最新値を ref 経由で確認する
   const activeDiffTabRef = useLatestRef(activeDiffTab)
+  // 取得の時点の範囲を読む(effect の依存に入れず、範囲を変えただけでは取り直さない)
+  const agentScopeRef = useLatestRef(agentScope)
+  const [agentDiffScope, setAgentDiffScope] = useState<AgentChangesScope | null>(null)
   const [diffContent, setDiffContent] = useState<string | null>(null)
   // diffStaged は activeDiffTab.kind から常に導出できる値のため、専用の state で
   // 二重管理しない。state のままだと getDiff の解決後にのみ同期していたため、
   // 取得中(fetch が未解決の間)は前のタブの staged 値が残り続けてしまっていた
   // エージェントの変更の diff(kind: 'agent')は index と無関係のため false(ステージ・アンステージの操作は出さない)
   const diffStaged = activeDiffTab?.kind === 'staged'
-  // diff の取得エラー。タブ切替・再取得のたびにリセットされる
+  // diff の取得エラー。タブ切替・手動の再取得のたびにリセットする。静かな取り直しでは、同じタブの結果が届くまで残す
+  // (同じ文言の失敗なら参照を保つ)
   const [fetchError, setFetchError] = useState<Error | null>(null)
   // ハンク操作(git apply --cached)の失敗。取得エラーと分けているのは、
   // 操作失敗の直後に diff の再取得をトリガーしている(古い diffContent を
@@ -126,6 +146,17 @@ export function useDiffOperations(
   // 明示的なトリガー。activeDiffTab 自体は変わらないため、依存配列に activeDiffTab だけを
   // 置いた effect では変化を検知できない
   const [diffRefreshSignal, setDiffRefreshSignal] = useState(0)
+  // 次の取得の頼まれ方(静かに・手動。ハンク操作の後の取り直しも手動)。手動が 1 つでもあれば手動を優先する。取得の effect が読んで none に戻す
+  const refreshModeRef = useRef<'none' | 'quiet' | 'loud'>('none')
+  const requestRefresh = (mode: 'quiet' | 'loud'): void => {
+    if (mode === 'loud' || refreshModeRef.current === 'none') refreshModeRef.current = mode
+    setDiffRefreshSignal((n) => n + 1)
+  }
+  // 今の表示(diffContent か、取得の失敗の diffError)を取ったタブ(どちらも無い間は null)。
+  // 静かな取り直しは、同じタブの結果を出しているときだけ、届くまでそれを出したままにする
+  const contentTabRef = useRef<DiffTabKey | null>(null)
+  // 今の表示を取ったときのエージェントの変更の範囲(agent のタブだけが使う)。範囲を変えた後の静かな取り直しで、前の範囲の内容を残さない
+  const contentScopeRef = useRef<AgentChangesScope | null>(null)
   // ChangesSection/StagedSection からのファイル全体 stage/unstage(useGitOperations
   // 経由)は refreshGitStatus は呼ぶが、diffRefreshSignal(ハンク操作専用のトリガー)は
   // 更新しない。それを無視すると、開いている diff タブの内容が古いまま残り、その後
@@ -172,8 +203,20 @@ export function useDiffOperations(
         setStaleTab(null)
       }
       clearStaleTabForClosedDiffTab()
+      refreshModeRef.current = 'none'
+      contentTabRef.current = null
       return
     }
+    // 静かな取り直しは、同じタブの結果(内容かエラー)を出しているときだけ(タブを切り替えた直後は、前のタブの内容を残さない)
+    // agent のタブは、範囲も同じときだけ(範囲を変えた直後に静かに頼まれても、前の範囲の内容を出し続けない)
+    const quiet =
+      refreshModeRef.current === 'quiet' &&
+      contentTabRef.current !== null &&
+      isSameKey(contentTabRef.current, activeDiffTab) &&
+      (activeDiffTab.kind !== 'agent' ||
+        (contentScopeRef.current !== null &&
+          isSameAgentChangesScope(contentScopeRef.current, agentScopeRef.current)))
+    refreshModeRef.current = 'none'
     // タブ切替中に古い fetch が後から解決しても、現在のタブの表示を上書きしないよう
     // cancelled フラグで無効化する
     let cancelled = false
@@ -181,9 +224,15 @@ export function useDiffOperations(
       // 前のタブの内容を残したままにすると、取得中の空白期間にユーザーが「この
       // ハンクをステージ」を押した場合、古い diffContent から組み立てた patch が
       // 新しい activeDiffTab 宛てに送られ、誤ったファイルを操作してしまう。
-      // 即座にクリアする
-      setDiffContent(null)
-      setFetchError(null)
+      // 即座にクリアする(静かな取り直しは同じタブのため消さない。届くまで前の内容を出したままにする)
+      if (!quiet) {
+        contentTabRef.current = null
+        setDiffContent(null)
+        setAgentDiffScope(null)
+        setFetchError(null)
+      }
+      // 取得の時点の範囲(成功・失敗のどちらでも、その結果を取った範囲として控える)
+      const scopeAtFetch = agentScopeRef.current
       try {
         // 未追跡かどうかは、main プロセス側で改めて git status を取り直さず、
         // renderer が既に持っている gitStatusFiles(activeFileStatus)から渡す。
@@ -193,14 +242,32 @@ export function useDiffOperations(
         // ステージ済みリネームは旧パスも渡す)は lib/diffTabSource.ts にある
         const content = await fetchDiffForTab(activeDiffTab, {
           isUntracked,
-          renamedFrom: activeFileStatus?.from
+          renamedFrom: activeFileStatus?.from,
+          agentScope: scopeAtFetch
         })
         if (cancelled) return
+        // 内容は文字列のため、同じなら React が描画を省く(静かな取り直しで DiffView を作り直さない)。範囲も同じなら参照を保つ
+        contentTabRef.current = activeDiffTab
+        contentScopeRef.current = scopeAtFetch
         setDiffContent(content)
+        const nextScope = activeDiffTab.kind === 'agent' ? scopeAtFetch : null
+        setAgentDiffScope((current) =>
+          current !== null && nextScope !== null && isSameAgentChangesScope(current, nextScope)
+            ? current
+            : nextScope
+        )
         setFetchError(null)
       } catch (err) {
         if (cancelled) return
-        setFetchError(toError(err))
+        // 失敗の表示は手動の取り直しと同じ(内容と範囲を消してエラーを出す。古い内容からハンクを戻させない)。
+        // エラーを出しているタブとして控え、次の静かな取り直しは届くまでエラーを出したままにする(読み込み中... に変えない)。
+        // 同じ文言の失敗が続いたら、前のエラーの参照を保つ(描画し直さない)
+        contentTabRef.current = activeDiffTab
+        contentScopeRef.current = scopeAtFetch
+        setDiffContent(null)
+        setAgentDiffScope(null)
+        const error = toError(err)
+        setFetchError((current) => (current?.message === error.message ? current : error))
       } finally {
         // このタブが表示している内容は最新化された(取得が成功・失敗いずれでも
         // diffContent/diffError は現在の状態を反映している)。runHunkOperation が
@@ -287,7 +354,7 @@ export function useDiffOperations(
       // targetTab を再度開いたときは通常の取得 effect が最新の diff を取り直す)
       if (activeDiffTabRef.current !== null && isSameKey(activeDiffTabRef.current, targetTab)) {
         setStaleTab(targetTab)
-        setDiffRefreshSignal((n) => n + 1)
+        requestRefresh('loud')
       }
       return true
     } catch (err) {
@@ -304,10 +371,11 @@ export function useDiffOperations(
         // 既に実体と食い違っている可能性のある古いハンクに対してユーザーが誤って
         // 再操作を試みてしまう
         setDiffContent(null)
+        setAgentDiffScope(null)
         // ここで diffRefreshSignal を bump しないと、activeDiffTab/diffRefreshSignal/
         // activeFileStatusKey のいずれも変化しないため再取得の effect が発火せず、
         // タブを閉じて開き直すまで永久に空白の diff タブが残ってしまう
-        setDiffRefreshSignal((n) => n + 1)
+        requestRefresh('loud')
       }
       setStaleTab(targetTab)
       return false
@@ -357,8 +425,9 @@ export function useDiffOperations(
 
   // ハンク操作後の再取得と同じトリガーを使う。diff タブが開いていない場合は
   // 上の effect が activeDiffTab === null で即 return するため、呼んでも無害
-  const refreshDiff = (): void => {
-    setDiffRefreshSignal((n) => n + 1)
+  const refreshDiff = (options: DiffRefreshOptions = {}): void => {
+    // 同じ描画で手動と静かの両方を頼まれたら、手動(内容を消してから取る)を優先する
+    requestRefresh(options.quiet === true ? 'quiet' : 'loud')
   }
 
   return {
@@ -371,6 +440,7 @@ export function useDiffOperations(
     discardHunk,
     canDiscardHunk,
     refreshDiff,
-    isActiveFileUntracked
+    isActiveFileUntracked,
+    agentDiffScope
   }
 }

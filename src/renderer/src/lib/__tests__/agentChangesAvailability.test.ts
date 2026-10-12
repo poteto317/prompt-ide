@@ -7,12 +7,14 @@ import {
   canRetryAgentChanges,
   isAgentChangesSectionVisible
 } from '../agentChangesAvailability'
+import type { AgentRevertAvailability } from '../agentChangesAvailability'
 import {
   AGENT_CHANGES_BUSY_GIT,
   AGENT_CHANGES_BUSY_LOADING,
   AGENT_CHANGES_BUSY_REVERTING,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON
 } from '../agentChangesMessages'
 
@@ -53,20 +55,31 @@ describe('セクション「エージェントの変更」を出すか', () => {
 })
 
 describe('戻すボタンを押せる条件(押せないなら必ず理由がある。パターン 126)', () => {
+  // どの理由も立っていない状態(ファイル単位の判定の入力)。各テストは立てる理由だけを上書きする
+  const none: AgentRevertAvailability = {
+    isLoading: false,
+    isGitBusy: false,
+    isReverting: false,
+    hasListError: false,
+    isRunScope: false
+  }
   const flags = [false, true]
   const combinations = flags.flatMap((isLoading) =>
     flags.flatMap((isGitBusy) =>
       flags.flatMap((isReverting) =>
         flags.flatMap((hasListError) =>
           flags.flatMap((truncated) =>
-            flags.map((hasNotRecorded) => ({
-              isLoading,
-              isGitBusy,
-              isReverting,
-              hasListError,
-              truncated,
-              hasNotRecorded
-            }))
+            flags.flatMap((hasNotRecorded) =>
+              flags.map((isRunScope) => ({
+                isLoading,
+                isGitBusy,
+                isReverting,
+                hasListError,
+                truncated,
+                hasNotRecorded,
+                isRunScope
+              }))
+            )
           )
         )
       )
@@ -78,7 +91,8 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
       availability.isLoading ||
       availability.isGitBusy ||
       availability.isReverting ||
-      availability.hasListError
+      availability.hasListError ||
+      availability.isRunScope
     expect(agentRevertDisabledReason(availability) !== null).toBe(blocked)
     expect(agentRevertAllDisabledReason(availability) !== null).toBe(
       blocked || availability.truncated || availability.hasNotRecorded
@@ -91,7 +105,8 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
       [availability.isReverting, AGENT_CHANGES_BUSY_REVERTING],
       [availability.hasListError, AGENT_CHANGES_LIST_FAILED],
       [availability.isLoading, AGENT_CHANGES_BUSY_LOADING],
-      [availability.isGitBusy, AGENT_CHANGES_BUSY_GIT]
+      [availability.isGitBusy, AGENT_CHANGES_BUSY_GIT],
+      [availability.isRunScope, AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE]
     ]
     const allOrder: ReadonlyArray<readonly [boolean, string]> = [
       ...fileOrder,
@@ -107,7 +122,6 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
   })
 
   it('理由は実行中 → 一覧の失敗 → 取得中 → 他の Git 操作の順で 1 つ', () => {
-    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
     expect(agentRevertDisabledReason({ ...none, isReverting: true, isLoading: true })).toBe(
       AGENT_CHANGES_BUSY_REVERTING
     )
@@ -124,7 +138,6 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
   })
 
   it('一覧の失敗と取得中が同時なら、一覧の失敗を出す(取り直しの間も、古い一覧で戻さない理由を見せる)', () => {
-    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
     expect(agentRevertDisabledReason({ ...none, hasListError: true, isLoading: true })).toBe(
       AGENT_CHANGES_LIST_FAILED
     )
@@ -140,7 +153,6 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
   })
 
   it('記録していない行を含む一覧では、すべて戻すを押せない(main が必ず全体を中止するため)', () => {
-    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
     expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: true })).toBe(
       AGENT_CHANGES_NOT_RECORDED_REASON
     )
@@ -158,7 +170,6 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
   ] as const)(
     '記録していない行を含んでも、%s の間はその理由を先に出す(行のボタンと同じ文言)',
     (flag, expected) => {
-      const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
       expect(
         agentRevertAllDisabledReason({
           ...none,
@@ -171,14 +182,12 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
   )
 
   it('打ち切りと記録していない行が同時なら、打ち切りを出す', () => {
-    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
     expect(agentRevertAllDisabledReason({ ...none, truncated: true, hasNotRecorded: true })).toBe(
       AGENT_CHANGES_TRUNCATED_REASON
     )
   })
 
   it('どれも立っていなければ、どちらも押せる', () => {
-    const none = { isLoading: false, isGitBusy: false, isReverting: false, hasListError: false }
     expect(agentRevertDisabledReason(none)).toBeNull()
     expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: false })).toBe(
       null

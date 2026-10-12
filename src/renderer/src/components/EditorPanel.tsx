@@ -154,6 +154,7 @@ export default function EditorPanel({
     isDirty,
     diffTabs,
     activeDiffTab,
+    agentDiffRunNumber: agentDiffActions?.contentRunNumber ?? null,
     onActivateTab,
     onCloseTab,
     onActivateDiffTab,

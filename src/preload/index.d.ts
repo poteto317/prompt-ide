@@ -2,7 +2,9 @@ import type {
   AgentNotificationActivated,
   AgentNotificationDismissRequest,
   AgentNotificationShowRequest,
+  AgentChangesBeginTrigger,
   AgentChangesListResult,
+  AgentChangesScope,
   AgentChangesState,
   AgentRevertAllEntry,
   AgentLastSession,
@@ -149,13 +151,16 @@ declare global {
       setWatchedFiles(paths: string[]): Promise<void>
       onExternalFileChange(listener: (event: ExternalFileChangeEvent) => void): () => void
       openExternalLink(url: string): Promise<boolean>
-      beginAgentChanges(): Promise<AgentChangesState>
+      beginAgentChanges(trigger: AgentChangesBeginTrigger): Promise<AgentChangesState>
       getAgentChangesState(): Promise<AgentChangesState>
-      listAgentChanges(): Promise<AgentChangesListResult>
-      getAgentChangeDiff(path: string): Promise<string>
-      revertAgentChange(path: string): Promise<void>
-      revertAgentChangeHunk(path: string, patch: string): Promise<void>
-      revertAllAgentChanges(expected: AgentRevertAllEntry[]): Promise<DiscardAllResult>
+      listAgentChanges(scope: AgentChangesScope): Promise<AgentChangesListResult>
+      getAgentChangeDiff(path: string, scope: AgentChangesScope): Promise<string>
+      revertAgentChange(path: string, scope: AgentChangesScope): Promise<void>
+      revertAgentChangeHunk(path: string, patch: string, scope: AgentChangesScope): Promise<void>
+      revertAllAgentChanges(
+        expected: AgentRevertAllEntry[],
+        scope: AgentChangesScope
+      ): Promise<DiscardAllResult>
       clearAgentChanges(): Promise<void>
     }
   }

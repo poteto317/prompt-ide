@@ -7,6 +7,8 @@ vi.mock('../../lib/agentChangesApi')
 import * as gitApi from '../../lib/gitApi'
 import * as agentChangesApi from '../../lib/agentChangesApi'
 import { useDiffOperations } from '../useDiffOperations'
+import type { DiffOperationsState } from '../useDiffOperations'
+import type { AgentChangesScope, GitFileStatus } from '@shared/types'
 import type { FileOperationLock } from '../useFileOperationLock'
 import type { DiffTabKey } from '../useDiffTabs'
 
@@ -15,6 +17,17 @@ const mockStageHunk = vi.mocked(gitApi.stageHunk)
 const mockUnstageHunk = vi.mocked(gitApi.unstageHunk)
 const mockStageFile = vi.mocked(gitApi.stageFile)
 const mockDiscardHunk = vi.mocked(gitApi.discardHunk)
+
+// 既存のテストは累積の範囲で呼ぶ(範囲を試すテストは useDiffOperations を直接呼ぶ)
+const ALL_SCOPE: AgentChangesScope = { kind: 'all' }
+function useDiffOperationsForTest(
+  activeDiffTab: DiffTabKey | null,
+  refreshGitStatus: () => Promise<void>,
+  gitStatusFiles: GitFileStatus[],
+  fileLock?: FileOperationLock
+): DiffOperationsState {
+  return useDiffOperations(activeDiffTab, refreshGitStatus, gitStatusFiles, ALL_SCOPE, fileLock)
+}
 
 // 各テストが FileOperationLock の一部の挙動だけを差し替えられるよう、
 // デフォルト値(何もロックされていない状態)に overrides をマージして返す
@@ -41,7 +54,7 @@ describe('diff の取得', () => {
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
     expect(mockGetDiff).toHaveBeenCalledWith('src/index.ts', false, false, undefined)
     expect(result.current.diffStaged).toBe(false)
@@ -55,7 +68,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: '?', workingDir: '?' }
       ])
     )
@@ -68,7 +81,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: '?', workingDir: '?' }
       ])
     )
@@ -81,7 +94,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'src/index.ts', index: ' ', workingDir: 'M' }
       ])
     )
@@ -99,7 +112,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'C:\\project\\new.txt', kind: 'unstaged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'c:/project/new.txt', index: '?', workingDir: '?' }
       ])
     )
@@ -115,7 +128,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'staged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'new.txt', index: 'R', workingDir: ' ', from: 'old.txt' }
       ])
     )
@@ -138,7 +151,7 @@ describe('diff の取得', () => {
         files
       }: {
         files: Array<{ path: string; index: string; workingDir: string; from: string }>
-      }) => useDiffOperations(activeTab, refreshGitStatus, files),
+      }) => useDiffOperationsForTest(activeTab, refreshGitStatus, files),
       {
         initialProps: {
           files: [{ path: 'new.txt', index: 'R', workingDir: ' ', from: 'old-a.txt' }]
@@ -159,7 +172,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'a.ts', kind: 'staged' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [
         { path: 'a.ts', index: 'M', workingDir: ' ' }
       ])
     )
@@ -169,7 +182,7 @@ describe('diff の取得', () => {
 
   it('activeDiffTab が null のときは getDiff を呼ばない', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    renderHook(() => useDiffOperations(null, refreshGitStatus, []))
+    renderHook(() => useDiffOperationsForTest(null, refreshGitStatus, []))
     expect(mockGetDiff).not.toHaveBeenCalled()
   })
 
@@ -181,7 +194,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       {
         initialProps: { tab: tabA }
       }
@@ -204,7 +217,7 @@ describe('diff の取得', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       {
         initialProps: { tab: tabA }
       }
@@ -231,7 +244,7 @@ describe('diff の取得', () => {
     const activeTab: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
       ({ files }: { files: Array<{ path: string; index: string; workingDir: string }> }) =>
-        useDiffOperations(activeTab, refreshGitStatus, files),
+        useDiffOperationsForTest(activeTab, refreshGitStatus, files),
       { initialProps: { files: [{ path: 'a.ts', index: ' ', workingDir: 'M' }] } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_UNSTAGED'))
@@ -252,7 +265,7 @@ describe('diff の取得', () => {
     mockGetDiff.mockResolvedValue('OLD_DIFF')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('OLD_DIFF'))
 
     mockGetDiff.mockResolvedValue('NEW_DIFF')
@@ -270,7 +283,7 @@ describe('diff の取得', () => {
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffError?.message).toBe('diff failed'))
   })
 })
@@ -285,7 +298,7 @@ describe('stageHunk', () => {
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     await act(async () => {
@@ -311,7 +324,7 @@ describe('stageHunk', () => {
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const gitStatusFiles = [{ path: 'new.txt', index: '?', workingDir: '?' }]
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, gitStatusFiles)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, gitStatusFiles)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_UNTRACKED'))
     expect(mockGetDiff).toHaveBeenCalledTimes(1)
@@ -345,7 +358,7 @@ describe('stageHunk', () => {
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_BEFORE'))
 
     let resolveSecondGetDiff: (value: string) => void = () => {}
@@ -382,7 +395,7 @@ describe('stageHunk', () => {
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({ isLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [], fileLock)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -410,7 +423,7 @@ describe('stageHunk', () => {
       isAnyLocked: vi.fn().mockReturnValue(true)
     })
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [], fileLock)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -423,7 +436,7 @@ describe('stageHunk', () => {
 
   it('activeDiffTab が null のときは stageHunk を呼ばない', async () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(null, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(null, refreshGitStatus, []))
     await act(async () => {
       await result.current.stageHunk('PATCH_TEXT')
     })
@@ -439,7 +452,7 @@ describe('stageHunk', () => {
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     // stageHunk 失敗後は diff の再取得がトリガーされる。ここでも実体がまだ壊れた
@@ -468,7 +481,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_A'))
@@ -517,7 +530,7 @@ describe('stageHunk', () => {
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'unstaged' }
     const untrackedStatus = [{ path: 'new.txt', index: '?', workingDir: '?' }]
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, untrackedStatus)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, untrackedStatus)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('UNTRACKED_PSEUDO_DIFF'))
 
@@ -535,7 +548,7 @@ describe('stageHunk', () => {
     const activeTab: DiffTabKey = { path: 'tracked.ts', kind: 'unstaged' }
     const trackedStatus = [{ path: 'tracked.ts', index: ' ', workingDir: 'M' }]
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, trackedStatus)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, trackedStatus)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -556,7 +569,7 @@ describe('stageHunk', () => {
     mockStageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockRejectedValue(new Error('git status failed'))
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     await act(async () => {
@@ -578,7 +591,7 @@ describe('stageHunk', () => {
     mockStageHunk.mockRejectedValue(new Error('patch does not apply'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     await act(async () => {
@@ -597,7 +610,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
@@ -619,7 +632,7 @@ describe('stageHunk', () => {
     mockStageHunk.mockRejectedValue(new Error('apply failed'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     mockGetDiff.mockResolvedValueOnce('DIFF_AFTER_FAILURE')
@@ -646,7 +659,7 @@ describe('stageHunk', () => {
     // effect の依存配列([activeDiffTab, ...])が変化を誤検知して diff を再取得してしまう
     // (成功時に diffError を null へ戻すため、直前に catch でセットしたエラーが消える)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     let firstCall: Promise<void> = Promise.resolve()
@@ -686,7 +699,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
@@ -717,7 +730,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_A'))
@@ -748,7 +761,7 @@ describe('stageHunk', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }: { tab: DiffTabKey | null }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }: { tab: DiffTabKey | null }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA as DiffTabKey | null } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_BEFORE'))
@@ -792,7 +805,7 @@ describe('stageHunk', () => {
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const fileLock = makeFileLock({ isLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [], fileLock)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -814,7 +827,7 @@ describe('stageHunk', () => {
       isAnyLocked: vi.fn().mockReturnValue(true)
     })
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, [], fileLock)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, [], fileLock)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -840,7 +853,7 @@ describe('stageHunk', () => {
     const unstagedTab: DiffTabKey = { path: 'src/index.ts', kind: 'unstaged' }
     const stagedTab: DiffTabKey = { path: 'src/index.ts', kind: 'staged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: unstagedTab } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_UNSTAGED'))
@@ -876,7 +889,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_A'))
@@ -934,7 +947,7 @@ describe('stageHunk', () => {
     const tabA: DiffTabKey = { path: 'a.ts', kind: 'unstaged' }
     const tabB: DiffTabKey = { path: 'b.ts', kind: 'unstaged' }
     const { result, rerender } = renderHook(
-      ({ tab }) => useDiffOperations(tab, refreshGitStatus, []),
+      ({ tab }) => useDiffOperationsForTest(tab, refreshGitStatus, []),
       { initialProps: { tab: tabA } }
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_A'))
@@ -968,7 +981,7 @@ describe('unstageHunk', () => {
     mockUnstageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const activeTab: DiffTabKey = { path: 'src/index.ts', kind: 'staged' }
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, []))
+    const { result } = renderHook(() => useDiffOperationsForTest(activeTab, refreshGitStatus, []))
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     await act(async () => {
@@ -988,7 +1001,9 @@ describe('discardHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockDiscardHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    const { result } = renderHook(() =>
+      useDiffOperationsForTest(activeTab, refreshGitStatus, modified)
+    )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
     expect(mockGetDiff).toHaveBeenCalledTimes(1)
 
@@ -1007,7 +1022,9 @@ describe('discardHunk', () => {
     mockGetDiff.mockResolvedValue('DIFF_TEXT')
     mockDiscardHunk.mockRejectedValue(new Error('取り消せませんでした'))
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    const { result } = renderHook(() =>
+      useDiffOperationsForTest(activeTab, refreshGitStatus, modified)
+    )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     let ok = true
@@ -1030,7 +1047,9 @@ describe('discardHunk', () => {
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    const { result } = renderHook(() =>
+      useDiffOperationsForTest(activeTab, refreshGitStatus, modified)
+    )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     let first: Promise<boolean> = Promise.resolve(false)
@@ -1056,7 +1075,7 @@ describe('discardHunk', () => {
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, refreshGitStatus, modified, lock)
+      useDiffOperationsForTest(activeTab, refreshGitStatus, modified, lock)
     )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
@@ -1074,7 +1093,9 @@ describe('discardHunk', () => {
     mockStageHunk.mockResolvedValue(undefined)
     mockUnstageHunk.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(activeTab, refreshGitStatus, modified))
+    const { result } = renderHook(() =>
+      useDiffOperationsForTest(activeTab, refreshGitStatus, modified)
+    )
     await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
 
     let staged: unknown = 'x'
@@ -1097,7 +1118,7 @@ describe('canDiscardHunk', () => {
   ): boolean => {
     mockGetDiff.mockResolvedValue('DIFF')
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
-    const { result } = renderHook(() => useDiffOperations(tab, refreshGitStatus, files))
+    const { result } = renderHook(() => useDiffOperationsForTest(tab, refreshGitStatus, files))
     return result.current.canDiscardHunk
   }
 
@@ -1137,10 +1158,12 @@ describe('useDiffOperations — エージェントの変更の diff タブ', () 
     vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('agent diff')
     const activeTab: DiffTabKey = { path: 'src/a.ts', kind: 'agent' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, vi.fn(), [{ path: 'src/a.ts', index: ' ', workingDir: 'M' }])
+      useDiffOperationsForTest(activeTab, vi.fn(), [
+        { path: 'src/a.ts', index: ' ', workingDir: 'M' }
+      ])
     )
     await waitFor(() => expect(result.current.diffContent).toBe('agent diff'))
-    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('src/a.ts')
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('src/a.ts', { kind: 'all' })
     expect(mockGetDiff).not.toHaveBeenCalled()
     expect(result.current.canDiscardHunk).toBe(false)
     expect(result.current.diffStaged).toBe(false)
@@ -1152,9 +1175,209 @@ describe('useDiffOperations — エージェントの変更の diff タブ', () 
     vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('agent diff')
     const activeTab: DiffTabKey = { path: 'new.txt', kind: 'agent' }
     const { result } = renderHook(() =>
-      useDiffOperations(activeTab, vi.fn(), [{ path: 'new.txt', index: '?', workingDir: '?' }])
+      useDiffOperationsForTest(activeTab, vi.fn(), [
+        { path: 'new.txt', index: '?', workingDir: '?' }
+      ])
     )
     await waitFor(() => expect(result.current.diffContent).toBe('agent diff'))
     expect(result.current.isActiveFileUntracked).toBe(false)
+  })
+})
+
+describe('エージェントの変更の diff の範囲', () => {
+  const RUN: AgentChangesScope = { kind: 'run', runId: 2 }
+  const tab: DiffTabKey = { path: 'a.txt', kind: 'agent' }
+  const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+
+  it('agent のタブは取得の時点の範囲で取り、内容と組で agentDiffScope を返す', async () => {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('AGENT_DIFF')
+    const { result } = renderHook(() => useDiffOperations(tab, refreshGitStatus, [], RUN))
+    expect(result.current.agentDiffScope).toBeNull()
+    await waitFor(() => expect(result.current.diffContent).toBe('AGENT_DIFF'))
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('a.txt', RUN)
+    expect(result.current.agentDiffScope).toEqual(RUN)
+  })
+
+  it('範囲を変えただけでは取り直さず、refreshDiff で新しい範囲で取り直す', async () => {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('AGENT_DIFF')
+    const { result, rerender } = renderHook<DiffOperationsState, { scope: AgentChangesScope }>(
+      ({ scope }) => useDiffOperations(tab, refreshGitStatus, [], scope),
+      { initialProps: { scope: ALL_SCOPE } }
+    )
+    await waitFor(() => expect(result.current.agentDiffScope).toEqual(ALL_SCOPE))
+    rerender({ scope: RUN })
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledTimes(1)
+    expect(result.current.agentDiffScope).toEqual(ALL_SCOPE)
+    act(() => result.current.refreshDiff())
+    await waitFor(() => expect(result.current.agentDiffScope).toEqual(RUN))
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenLastCalledWith('a.txt', RUN)
+  })
+
+  it('agent でないタブの agentDiffScope は null', async () => {
+    mockGetDiff.mockResolvedValue('DIFF_TEXT')
+    const unstaged: DiffTabKey = { path: 'a.txt', kind: 'unstaged' }
+    const { result } = renderHook(() => useDiffOperations(unstaged, refreshGitStatus, [], RUN))
+    await waitFor(() => expect(result.current.diffContent).toBe('DIFF_TEXT'))
+    expect(result.current.agentDiffScope).toBeNull()
+    expect(agentChangesApi.getAgentChangeDiff).not.toHaveBeenCalled()
+  })
+})
+
+// 自動の取り直し(静かな取り直し)の後の diff の取り直し。前の内容を出したまま取り、読み込み中(diffContent が null)にしない
+describe('静かな diff の取り直し(refreshDiff({ quiet: true }))', () => {
+  const tab: DiffTabKey = { path: 'a.txt', kind: 'agent' }
+  const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+
+  function deferredDiff(): {
+    promise: Promise<string>
+    resolve: (value: string) => void
+    reject: (error: Error) => void
+  } {
+    let resolve: (value: string) => void = () => undefined
+    let reject: (error: Error) => void = () => undefined
+    const promise = new Promise<string>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  async function renderAgentDiff(): Promise<{ current: DiffOperationsState }> {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('OLD_DIFF')
+    const { result } = renderHook(() => useDiffOperationsForTest(tab, refreshGitStatus, []))
+    await waitFor(() => expect(result.current.diffContent).toBe('OLD_DIFF'))
+    return result
+  }
+
+  it('取り直しの間も前の内容を出したままにし、届いた新しい内容に置き換える', async () => {
+    const result = await renderAgentDiff()
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => result.current.refreshDiff({ quiet: true }))
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledTimes(2)
+    expect(result.current.diffContent).toBe('OLD_DIFF')
+    await act(async () => {
+      pending.resolve('NEW_DIFF')
+      await pending.promise
+    })
+    expect(result.current.diffContent).toBe('NEW_DIFF')
+  })
+
+  it('届いた内容が同じなら、内容と範囲の参照を保つ(一度も null にしない)', async () => {
+    const result = await renderAgentDiff()
+    const scopeBefore = result.current.agentDiffScope
+    const seen: (string | null)[] = []
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => result.current.refreshDiff({ quiet: true }))
+    seen.push(result.current.diffContent)
+    await act(async () => {
+      pending.resolve('OLD_DIFF')
+      await pending.promise
+    })
+    seen.push(result.current.diffContent)
+    expect(seen).toEqual(['OLD_DIFF', 'OLD_DIFF'])
+    expect(result.current.agentDiffScope).toBe(scopeBefore)
+  })
+
+  it('同じ描画で手動の取り直しも頼まれたら、手動を優先して内容を消してから取る', async () => {
+    const result = await renderAgentDiff()
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => {
+      result.current.refreshDiff({ quiet: true })
+      result.current.refreshDiff()
+    })
+    expect(result.current.diffContent).toBeNull()
+    await act(async () => {
+      pending.resolve('NEW_DIFF')
+      await pending.promise
+    })
+    expect(result.current.diffContent).toBe('NEW_DIFF')
+  })
+
+  // 失敗したら手動と同じく内容を消してエラーを出す(エラーの横に古い diff を残すと、古い内容からハンクを戻せてしまう)
+  it('静かな取り直しが失敗したら、内容と範囲を消して(戻せない)エラーを出し、次の静かな取り直しはエラーを出したまま取り直す', async () => {
+    const result = await renderAgentDiff()
+    expect(result.current.agentDiffScope).toEqual(ALL_SCOPE)
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockRejectedValueOnce(new Error('diff failed'))
+    await act(async () => {
+      result.current.refreshDiff({ quiet: true })
+    })
+    await waitFor(() => expect(result.current.diffError?.message).toBe('diff failed'))
+    expect(result.current.diffContent).toBeNull()
+    // 範囲が null なら、wiring は canRevertHunk を false にし、onRevertHunk も止める(isCumulativeAgentDiffScope)
+    expect(result.current.agentDiffScope).toBeNull()
+
+    // 同じタブのエラーを出している間の静かな取り直しは、届くまでエラーを出したままにする(読み込み中... に変えない)。
+    // 同じ文言の失敗が続いたら、前のエラーの参照を保つ
+    const errorBefore = result.current.diffError
+    const failing = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(failing.promise)
+    act(() => result.current.refreshDiff({ quiet: true }))
+    expect(result.current.diffError).toBe(errorBefore)
+    await act(async () => {
+      failing.reject(new Error('diff failed'))
+      await failing.promise.catch(() => undefined)
+    })
+    expect(result.current.diffError).toBe(errorBefore)
+    expect(result.current.diffContent).toBeNull()
+
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => result.current.refreshDiff({ quiet: true }))
+    expect(result.current.diffError).toBe(errorBefore)
+    expect(result.current.agentDiffScope).toBeNull()
+    await act(async () => {
+      pending.resolve('NEW_DIFF')
+      await pending.promise
+    })
+    expect(result.current.diffContent).toBe('NEW_DIFF')
+    expect(result.current.diffError).toBeNull()
+    expect(result.current.agentDiffScope).toEqual(ALL_SCOPE)
+  })
+
+  it('範囲を変えた後の静かな取り直しは、前の範囲の内容と範囲を残さずに取る', async () => {
+    const run2: AgentChangesScope = { kind: 'run', runId: 2 }
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('ALL_DIFF')
+    const { result, rerender } = renderHook<DiffOperationsState, { scope: AgentChangesScope }>(
+      ({ scope }) => useDiffOperations(tab, refreshGitStatus, [], scope),
+      { initialProps: { scope: ALL_SCOPE } }
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('ALL_DIFF'))
+    rerender({ scope: run2 })
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => result.current.refreshDiff({ quiet: true }))
+    expect(result.current.diffContent).toBeNull()
+    expect(result.current.agentDiffScope).toBeNull()
+    await act(async () => {
+      pending.resolve('RUN_DIFF')
+      await pending.promise
+    })
+    expect(result.current.diffContent).toBe('RUN_DIFF')
+    expect(result.current.agentDiffScope).toEqual(run2)
+  })
+
+  it('別のタブへ切り替えたときは、静かに頼まれていても前のタブの内容を残さない', async () => {
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockResolvedValue('A_DIFF')
+    const other: DiffTabKey = { path: 'b.txt', kind: 'agent' }
+    const { result, rerender } = renderHook<DiffOperationsState, { active: DiffTabKey }>(
+      ({ active }) => useDiffOperationsForTest(active, refreshGitStatus, []),
+      { initialProps: { active: tab } }
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('A_DIFF'))
+    const pending = deferredDiff()
+    vi.mocked(agentChangesApi.getAgentChangeDiff).mockReturnValueOnce(pending.promise)
+    act(() => {
+      result.current.refreshDiff({ quiet: true })
+      rerender({ active: other })
+    })
+    expect(result.current.diffContent).toBeNull()
+    await act(async () => {
+      pending.resolve('B_DIFF')
+      await pending.promise
+    })
+    expect(result.current.diffContent).toBe('B_DIFF')
   })
 })

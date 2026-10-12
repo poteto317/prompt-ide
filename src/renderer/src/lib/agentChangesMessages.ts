@@ -1,5 +1,6 @@
 import type {
   AgentChangeStatus,
+  AgentChangesRun,
   AgentChangesState,
   AgentChangesUnavailableReason
 } from '@shared/types'
@@ -54,6 +55,78 @@ export function buildAgentChangesHeading(
   return `${AGENT_CHANGES_HEADING}${count}${since}`
 }
 
+/** 範囲の選択の見える文字のラベル */
+export const AGENT_CHANGES_SCOPE_LABEL = '表示'
+/** 実行の範囲の空の文言 */
+export const AGENT_CHANGES_RUN_EMPTY = 'この実行では、変わったファイルはありません'
+/** 実行の範囲の HEAD の帯(実行ごとの表示は戻せないため「戻すのはファイルの内容だけです」は付けない) */
+export const AGENT_CHANGES_RUN_HEAD_CHANGED =
+  'この実行の間に HEAD が変わりました（コミット・ブランチの切り替えなど）'
+export const AGENT_CHANGES_START_NOT_RECORDED = '開始の状態を記録できませんでした'
+export const AGENT_CHANGES_END_NOT_RECORDED = '次の実行の開始を記録できなかったため比べられません'
+
+/** 区切りを取れなかった理由の短い形(選択の項目の文字に含める。L-057) */
+export const AGENT_CHANGES_RUN_UNAVAILABLE_SHORT: Record<AgentChangesUnavailableReason, string> = {
+  'not-repository': 'Git 管理外のフォルダです',
+  'not-toplevel': 'リポジトリの最上位のフォルダではありません',
+  'too-many-untracked': '未追跡のファイルが多すぎます',
+  timeout: '時間がかかりすぎました',
+  'git-failed': 'git を実行できませんでした'
+}
+
+// 開始の区切りを取れなかった理由の文字(選択の項目と、範囲の一覧が取れないときの理由で同じ文字にする)
+const startNotRecordedText = (reason: AgentChangesUnavailableReason): string =>
+  `${AGENT_CHANGES_START_NOT_RECORDED}: ${AGENT_CHANGES_RUN_UNAVAILABLE_SHORT[reason]}`
+
+/** 選択の累積の項目 */
+export function formatAgentChangesAllScopeOption(startedAt: number): string {
+  return `すべて（累積・${formatAgentChangesStartedAt(startedAt)} から）`
+}
+
+// 実行の期間(HH:MM から・HH:MM〜HH:MM)
+const runPeriod = (run: AgentChangesRun): string =>
+  run.endedAt === null
+    ? `${formatAgentChangesStartedAt(run.startedAt)} から`
+    : `${formatAgentChangesStartedAt(run.startedAt)}〜${formatAgentChangesStartedAt(run.endedAt)}`
+
+/** 選択の実行の項目。選べない実行は理由を含める */
+export function formatAgentChangesRunOption(run: AgentChangesRun): string {
+  const start = formatAgentChangesStartedAt(run.startedAt)
+  switch (run.availability.kind) {
+    case 'start-not-recorded':
+      return `実行 ${run.number}（${start}・${startNotRecordedText(run.availability.reason)}）`
+    case 'end-not-recorded':
+      return `実行 ${run.number}（${start}〜・${AGENT_CHANGES_END_NOT_RECORDED}）`
+    case 'available':
+      return `実行 ${run.number}（${runPeriod(run)}）`
+    default: {
+      // 未知の種類を「選べる」項目の文字に黙って流さない
+      const unknownAvailability: never = run.availability
+      throw new Error(`未知の実行の選べるかの種類です: ${JSON.stringify(unknownAvailability)}`)
+    }
+  }
+}
+
+/** 実行の範囲の見出し。変更があれば件数(打ち切る前の全件数)を添える */
+export function buildAgentChangesRunHeading(
+  run: AgentChangesRun,
+  totalCount: number | null
+): string {
+  const count = totalCount !== null && totalCount > 0 ? ` (${totalCount})` : ''
+  return `${AGENT_CHANGES_HEADING}${count}（実行 ${run.number}・${runPeriod(run)}）`
+}
+
+/** 範囲の一覧が取れない理由(選択の項目と同じ理由。写しの実行に理由があれば添える) */
+export function describeAgentChangesScopeUnavailable(
+  reason: 'start-not-recorded' | 'end-not-recorded',
+  run: AgentChangesRun | undefined
+): string {
+  if (reason === 'end-not-recorded') return AGENT_CHANGES_END_NOT_RECORDED
+  return run?.availability.kind === 'start-not-recorded'
+    ? startNotRecordedText(run.availability.reason)
+    : AGENT_CHANGES_START_NOT_RECORDED
+}
+
 /** 打ち切った残りの件数 */
 export function formatAgentChangesMore(hiddenCount: number): string {
   return `ほか ${hiddenCount} 件`
@@ -81,6 +154,15 @@ export const AGENT_CHANGES_TRUNCATED_REASON =
   '変更が多すぎるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください'
 export const AGENT_CHANGES_NOT_RECORDED_REASON =
   '記録していないファイルがあるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください'
+
+/** 実行の範囲(読み取り専用)では戻すボタンを押せない理由 */
+export const AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE =
+  '実行ごとの表示では戻せません。「すべて（累積）」を選ぶと戻せます'
+
+/** 選んでいた実行が消えた(保持の上限〈AGENT_CHANGES_MAX_RUNS〉を超えて捨てた・記録を捨てた)ときの読み上げ */
+export function formatAgentChangesRunMissingNotice(runNumber: number): string {
+  return `実行 ${runNumber} の記録は古くなったため消えました。すべて（累積）を表示します`
+}
 
 interface RevertAppendix {
   /** 記録を始めた後にアプリで保存したファイルか(すべて戻すでは、そのようなファイルを含むか) */

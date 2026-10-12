@@ -1,9 +1,13 @@
-import type { AgentRevertAllEntry } from '@shared/types'
+import type {
+  AgentChangesBeginTrigger,
+  AgentChangesScope,
+  AgentRevertAllEntry
+} from '@shared/types'
 import { AGENT_CHANGES_LIST_LIMIT, isAgentChangeStatus } from '@shared/types'
 import { IPC_PATH_MAX_LENGTH } from './payloadValidators'
 
 // agentChanges:* の入力の型の検証(設計書「セキュリティ」)。値の中身(許可のフォルダの中か・いまの一覧に含まれるか・パッチの
-// 対象)は受け口(resolveAndAssertStatusRelativePath)と agentChangesRevert が確かめる。ここは型と粗い上限だけ
+// 対象)は受け口(resolveAndAssertStatusRelativePath)と agentChangesRevert が確かめる。ここは範囲・trigger の列挙の検証、型と粗い上限だけ
 
 /** パッチの長さの上限(UTF-16 の単位)。git apply に巨大な入力を渡さないための粗い上限(差異 2) */
 export const AGENT_CHANGES_PATCH_MAX_LENGTH = 10_000_000
@@ -43,4 +47,54 @@ export function parseAgentRevertAllEntries(value: unknown): AgentRevertAllEntry[
     if (!isAgentChangeStatus(status)) throw new Error('確認の一覧が不正です')
     return { path, status }
   })
+}
+
+/** 戻す系の IPC に実行の範囲が来たとき(実行ごとの表示は見るだけ。ボタンを押せなくするだけでなく main でも拒む。L-058) */
+export const AGENT_CHANGES_REVERT_SCOPE_MESSAGE =
+  '実行ごとの表示では戻せません。「すべて（累積）」を選んでから戻してください'
+
+const SCOPE_INVALID_MESSAGE = '範囲(scope)が不正です'
+
+/** 記録の開始の依頼の種類。省略・未知の値を既定に流さず例外にする(L-044) */
+export function parseAgentChangesBeginTrigger(value: unknown): AgentChangesBeginTrigger {
+  if (value !== 'send' && value !== 'manual') {
+    throw new Error('trigger は send か manual である必要があります')
+  }
+  return value
+}
+
+/**
+ * 一覧・diff の範囲。プレーンなオブジェクトで、キーは all なら kind だけ、run なら kind・runId だけ。runId は 1 以上の安全な整数。
+ * どれかが外れたら例外(省略を all に流さない。L-044)。値は詰め直して返す
+ */
+export function parseAgentChangesScope(value: unknown): AgentChangesScope {
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw new Error(SCOPE_INVALID_MESSAGE)
+  }
+  const record = value as Record<string, unknown>
+  const keys = Object.keys(record)
+  if (record.kind === 'all' && keys.length === 1) return { kind: 'all' }
+  if (
+    record.kind === 'run' &&
+    keys.length === 2 &&
+    keys.includes('runId') &&
+    typeof record.runId === 'number' &&
+    Number.isSafeInteger(record.runId) &&
+    record.runId >= 1
+  ) {
+    return { kind: 'run', runId: record.runId }
+  }
+  throw new Error(SCOPE_INVALID_MESSAGE)
+}
+
+/** 戻す系の範囲。累積だけを受け付ける */
+export function parseRevertScope(value: unknown): { kind: 'all' } {
+  const scope = parseAgentChangesScope(value)
+  if (scope.kind !== 'all') throw new Error(AGENT_CHANGES_REVERT_SCOPE_MESSAGE)
+  return scope
 }

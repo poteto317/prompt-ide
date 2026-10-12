@@ -1,4 +1,9 @@
 import type {
+  AgentChangesList,
+  AgentChangesRun,
+  AgentChangesScope,
+  AgentChangesScopeUnavailableReason,
+  AgentChangesState,
   CreateTagRequest,
   FileTreeNode,
   GitStashEntry,
@@ -155,10 +160,33 @@ export interface RemoteSetupPanelState {
 // AI の出力のエディタへの反映(useApplyOutputToEditor)。挿入はカーソルの位置へ、置換は選択範囲を置き換える
 export type ApplyMode = 'insert' | 'replace'
 
+// エージェントの変更の記録の写し(useAgentChanges が持ち、lib の純粋な関数が読む)
+/** 写しの一覧。listed: 範囲の一覧(scope はそれを取った範囲)、scope-unavailable: 範囲の一覧を出せない(写しが古い)理由 */
+export type AgentChangesViewList =
+  | ({ kind: 'listed'; scope: AgentChangesScope } & AgentChangesList)
+  | {
+      kind: 'scope-unavailable'
+      scope: AgentChangesScope
+      reason: AgentChangesScopeUnavailableReason
+    }
+
+export type AgentChangesView =
+  | { kind: 'none' }
+  | { kind: 'unavailable'; state: Extract<AgentChangesState, { kind: 'unavailable' }> }
+  /** runs は main の実行の一覧(古い順)。list は取り直す前・範囲を変えた直後は null */
+  | {
+      kind: 'recording'
+      startedAt: number
+      runs: AgentChangesRun[]
+      list: AgentChangesViewList | null
+    }
+
 // エージェントの変更の diff タブ(DiffView の agentActions)。ハンクを実行前に戻す操作と、押せない理由
 export interface AgentDiffActions {
   /** 開いている diff のハンクを戻せるか(変更〈M〉で、記録したファイル。追加・削除・種類の変更はファイル単位で戻す) */
   canRevertHunk: boolean
+  /** 表示中の diff の内容を取った範囲の実行の番号(タブのラベルの「実行 N」。累積・内容が無い間は null) */
+  contentRunNumber: number | null
   /** 押せない理由(押せるなら null。パターン 126) */
   disabledReason: string | null
   /** このタブのパスについての直前の戻す操作の失敗(無ければ null)。読み上げは、ハンクの失敗は notice(diff 側)だけ、ファイルの失敗はセクションの alert が行うため、ここは見た目だけに出す */

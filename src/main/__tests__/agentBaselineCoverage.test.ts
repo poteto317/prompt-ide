@@ -146,6 +146,13 @@ describe('toBaselineQueryError', () => {
     expect((converted as Error).cause).toBe(original)
   })
 
+  it('bad object <sha>(tree が gc で消えた。diff-tree・tree どうしの diff)も blob 欠落の文言に置き換える', () => {
+    const original = new Error('fatal: bad object 08585692ce06452da6f82ae66b90d98b55536fca')
+    const converted = toBaselineQueryError(original)
+    expect((converted as Error).message).toBe(AGENT_BASELINE_BLOB_MISSING_MESSAGE)
+    expect((converted as Error).cause).toBe(original)
+  })
+
   it('sha が短すぎる(7 桁未満)ものは置き換えない', () => {
     const original = new Error('fatal: unable to read abc12')
     expect(toBaselineQueryError(original)).toBe(original)

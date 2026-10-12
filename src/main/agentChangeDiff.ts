@@ -68,3 +68,36 @@ export async function getAgentChangeDiff(
   }
   return getDiff(folderPath, filePath, false, true)
 }
+
+/**
+ * 途中の実行の 1 ファイルの diff(開始の区切り start の tree → 次の区切り end の tree)。getDiff と同じ引数(-U3)。
+ * 追加・削除のファイルも git の出力のまま。どちらかの端で記録しなかったパスは、記録していない旨の 1 行。
+ * tree どうしの比較で、利用者の index と作業ツリーを読まない
+ */
+export async function getAgentChangeDiffBetween(
+  start: BaselineSnapshot,
+  end: BaselineSnapshot,
+  filePath: string,
+  options: BaselineGitOptions = {}
+): Promise<string> {
+  if (isNotRecordedPath(start, filePath) || isNotRecordedPath(end, filePath)) {
+    return NOT_RECORDED_DIFF_MESSAGE
+  }
+  const git = createBaselineGit(start.folderPath, start.indexPath, {
+    ...options,
+    config: ['core.quotePath=false']
+  })
+  return git
+    .raw([
+      'diff',
+      ...PATCH_FORMAT_ARGS,
+      '-U3',
+      start.tree,
+      end.tree,
+      '--',
+      toLiteralPathspec(filePath)
+    ])
+    .catch((error: unknown) => {
+      throw toBaselineQueryError(error)
+    })
+}

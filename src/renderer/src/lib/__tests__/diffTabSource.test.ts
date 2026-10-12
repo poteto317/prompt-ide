@@ -16,17 +16,20 @@ describe('fetchDiffForTab', () => {
   it('agent は記録との比較を取得し、git の diff も git status の情報も使わない', async () => {
     const result = await fetchDiffForTab(
       { path: 'a.ts', kind: 'agent' },
-      { isUntracked: true, renamedFrom: 'old.ts' }
+      { isUntracked: true, renamedFrom: 'old.ts', agentScope: { kind: 'run', runId: 2 } }
     )
     expect(result).toBe('agent-diff')
-    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('a.ts')
+    expect(agentChangesApi.getAgentChangeDiff).toHaveBeenCalledWith('a.ts', {
+      kind: 'run',
+      runId: 2
+    })
     expect(gitApi.getDiff).not.toHaveBeenCalled()
   })
 
   it('staged は staged=true で getDiff を呼び、リネーム元を渡す', async () => {
     const result = await fetchDiffForTab(
       { path: 'new.ts', kind: 'staged' },
-      { isUntracked: false, renamedFrom: 'old.ts' }
+      { isUntracked: false, renamedFrom: 'old.ts', agentScope: { kind: 'all' } }
     )
     expect(result).toBe('git-diff')
     expect(gitApi.getDiff).toHaveBeenCalledWith('new.ts', true, false, 'old.ts')
@@ -36,7 +39,7 @@ describe('fetchDiffForTab', () => {
   it('unstaged は staged=false で未追跡の判定を渡す', async () => {
     await fetchDiffForTab(
       { path: 'u.ts', kind: 'unstaged' },
-      { isUntracked: true, renamedFrom: undefined }
+      { isUntracked: true, renamedFrom: undefined, agentScope: { kind: 'all' } }
     )
     expect(gitApi.getDiff).toHaveBeenCalledWith('u.ts', false, true, undefined)
   })

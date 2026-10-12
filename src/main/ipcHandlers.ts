@@ -116,7 +116,8 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   const agentBaselineRegistry = new AgentBaselineRegistry({
     takeSnapshot: (folderPath, options) => takeBaselineSnapshot(folderPath, options),
     removeDir: removeBaselineDir,
-    removeDirSync: removeBaselineDirSync
+    removeDirSync: removeBaselineDirSync,
+    now: Date.now
   })
   setupAgentBaselineLifecycle(app, agentBaselineRegistry, folderAccess)
   registerAgentChangesHandlers(ipcMain, {

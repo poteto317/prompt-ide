@@ -10,9 +10,10 @@ import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
 export const AGENT_BASELINE_BLOB_MISSING_MESSAGE =
   '実行前の内容が見つかりません（git gc などで消えた可能性があります）'
 
-// 記録のインデックスが指す blob が無いと、diff は `fatal: unable to read <sha>` で失敗する。分かる文言に置き換える
+// 記録のインデックスが指す blob が無いと、diff は `fatal: unable to read <sha>` で失敗する。途中の実行の tree が無いと、
+// diff-tree・tree どうしの diff は `fatal: bad object <sha>` で失敗する(計画の時点に git 2.50.1 で実測)。分かる文言に置き換える
 export function toBaselineQueryError(error: unknown): unknown {
-  return error instanceof Error && /unable to read [0-9a-f]{7,}/.test(error.message)
+  return error instanceof Error && /(?:unable to read|bad object) [0-9a-f]{7,}/.test(error.message)
     ? new Error(AGENT_BASELINE_BLOB_MISSING_MESSAGE, { cause: error })
     : error
 }

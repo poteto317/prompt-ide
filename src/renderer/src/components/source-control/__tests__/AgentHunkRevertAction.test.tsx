@@ -5,22 +5,11 @@ import AgentHunkRevertAction, {
   AgentDiffAnnouncer,
   AgentDiffNotices
 } from '../AgentHunkRevertAction'
-import type { AgentDiffActions } from '../../../types'
-
-function makeActions(overrides: Partial<AgentDiffActions> = {}): AgentDiffActions {
-  return {
-    canRevertHunk: true,
-    disabledReason: null,
-    error: null,
-    notice: null,
-    onRevertHunk: vi.fn(),
-    ...overrides
-  }
-}
+import { makeAgentDiffActions } from '../../../__tests__/makeAgentChangesState'
 
 describe('AgentHunkRevertAction', () => {
   it('押すと patch と hunkHeader を onRevertHunk へ渡す', async () => {
-    const actions = makeActions()
+    const actions = makeAgentDiffActions()
     const getPatch = vi.fn(() => 'PATCH')
     render(
       <AgentHunkRevertAction
@@ -39,7 +28,7 @@ describe('AgentHunkRevertAction', () => {
   it('canRevertHunk が false なら何も出さない', () => {
     const { container } = render(
       <AgentHunkRevertAction
-        agentActions={makeActions({ canRevertHunk: false })}
+        agentActions={makeAgentDiffActions({ canRevertHunk: false })}
         reasonId="r1"
         disabled={false}
         hunkHeader="h"
@@ -52,7 +41,7 @@ describe('AgentHunkRevertAction', () => {
   it('disabledReason があると無効になり、aria-describedby が理由の id を指す', () => {
     render(
       <AgentHunkRevertAction
-        agentActions={makeActions({ disabledReason: '理由です' })}
+        agentActions={makeAgentDiffActions({ disabledReason: '理由です' })}
         reasonId="reason-1"
         disabled={false}
         hunkHeader="h"
@@ -67,7 +56,7 @@ describe('AgentHunkRevertAction', () => {
   it('理由が無ければ aria-describedby を付けず、disabled prop で無効になる', () => {
     const { rerender } = render(
       <AgentHunkRevertAction
-        agentActions={makeActions()}
+        agentActions={makeAgentDiffActions()}
         reasonId="reason-1"
         disabled={false}
         hunkHeader="h"
@@ -79,7 +68,7 @@ describe('AgentHunkRevertAction', () => {
     expect(button).not.toHaveAttribute('aria-describedby')
     rerender(
       <AgentHunkRevertAction
-        agentActions={makeActions()}
+        agentActions={makeAgentDiffActions()}
         reasonId="reason-1"
         disabled
         hunkHeader="h"
@@ -93,13 +82,17 @@ describe('AgentHunkRevertAction', () => {
 describe('AgentDiffNotices', () => {
   // 読み上げは AgentDiffAnnouncer(ハンク)とセクションの alert(ファイル)が行う。diff の作り直しで消える要素に alert を置かない
   it('error を見た目だけに出す(role="alert" にしない)', () => {
-    render(<AgentDiffNotices agentActions={makeActions({ error: '失敗した' })} reasonId="r" />)
+    render(
+      <AgentDiffNotices agentActions={makeAgentDiffActions({ error: '失敗した' })} reasonId="r" />
+    )
     expect(screen.getByText('失敗した')).toHaveClass('diff-view__error')
     expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('error が null なら何も出さない', () => {
-    const { container } = render(<AgentDiffNotices agentActions={makeActions()} reasonId="r" />)
+    const { container } = render(
+      <AgentDiffNotices agentActions={makeAgentDiffActions()} reasonId="r" />
+    )
     expect(container).toBeEmptyDOMElement()
   })
 
@@ -107,11 +100,11 @@ describe('AgentDiffNotices', () => {
     render(
       <>
         <AgentDiffNotices
-          agentActions={makeActions({ disabledReason: '理由です' })}
+          agentActions={makeAgentDiffActions({ disabledReason: '理由です' })}
           reasonId="rid"
         />
         <AgentHunkRevertAction
-          agentActions={makeActions({ disabledReason: '理由です' })}
+          agentActions={makeAgentDiffActions({ disabledReason: '理由です' })}
           reasonId="rid"
           disabled={false}
           hunkHeader="h"
@@ -127,7 +120,7 @@ describe('AgentDiffNotices', () => {
   it('canRevertHunk が false のときは理由を出さない', () => {
     render(
       <AgentDiffNotices
-        agentActions={makeActions({ canRevertHunk: false, disabledReason: '理由です' })}
+        agentActions={makeAgentDiffActions({ canRevertHunk: false, disabledReason: '理由です' })}
         reasonId="rid"
       />
     )

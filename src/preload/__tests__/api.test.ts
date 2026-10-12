@@ -309,9 +309,9 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
 describe('エージェントの変更の API', () => {
   it.each<[string, () => unknown, unknown[]]>([
     [
-      'beginAgentChanges は agentChanges:begin を呼ぶ',
-      () => api.beginAgentChanges(),
-      ['agentChanges:begin']
+      'beginAgentChanges は agentChanges:begin に trigger を渡す',
+      () => api.beginAgentChanges('send'),
+      ['agentChanges:begin', 'send']
     ],
     [
       'getAgentChangesState は agentChanges:getState を呼ぶ',
@@ -319,29 +319,29 @@ describe('エージェントの変更の API', () => {
       ['agentChanges:getState']
     ],
     [
-      'listAgentChanges は agentChanges:list を呼ぶ',
-      () => api.listAgentChanges(),
-      ['agentChanges:list']
+      'listAgentChanges は agentChanges:list に範囲を渡す',
+      () => api.listAgentChanges({ kind: 'run', runId: 2 }),
+      ['agentChanges:list', { kind: 'run', runId: 2 }]
     ],
     [
-      'getAgentChangeDiff は agentChanges:getDiff にパスを渡す',
-      () => api.getAgentChangeDiff('a.txt'),
-      ['agentChanges:getDiff', 'a.txt']
+      'getAgentChangeDiff は agentChanges:getDiff にパスと範囲を渡す',
+      () => api.getAgentChangeDiff('a.txt', { kind: 'all' }),
+      ['agentChanges:getDiff', 'a.txt', { kind: 'all' }]
     ],
     [
-      'revertAgentChange は agentChanges:revertFile にパスを渡す',
-      () => api.revertAgentChange('a.txt'),
-      ['agentChanges:revertFile', 'a.txt']
+      'revertAgentChange は agentChanges:revertFile にパスと範囲を渡す',
+      () => api.revertAgentChange('a.txt', { kind: 'all' }),
+      ['agentChanges:revertFile', 'a.txt', { kind: 'all' }]
     ],
     [
-      'revertAgentChangeHunk は agentChanges:revertHunk にパスとパッチを渡す',
-      () => api.revertAgentChangeHunk('a.txt', 'patch'),
-      ['agentChanges:revertHunk', 'a.txt', 'patch']
+      'revertAgentChangeHunk は agentChanges:revertHunk にパス・パッチ・範囲を渡す',
+      () => api.revertAgentChangeHunk('a.txt', 'patch', { kind: 'all' }),
+      ['agentChanges:revertHunk', 'a.txt', 'patch', { kind: 'all' }]
     ],
     [
-      'revertAllAgentChanges は agentChanges:revertAll に確認の一覧を渡す',
-      () => api.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }]),
-      ['agentChanges:revertAll', [{ path: 'a.txt', status: 'M' }]]
+      'revertAllAgentChanges は agentChanges:revertAll に確認の一覧と範囲を渡す',
+      () => api.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }], { kind: 'all' }),
+      ['agentChanges:revertAll', [{ path: 'a.txt', status: 'M' }], { kind: 'all' }]
     ],
     [
       'clearAgentChanges は agentChanges:clear を呼ぶ',

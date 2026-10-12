@@ -1,5 +1,6 @@
 import * as gitApi from './gitApi'
 import * as agentChangesApi from './agentChangesApi'
+import type { AgentChangesScope } from '@shared/types'
 import type { DiffTabKey } from '../hooks/useDiffTabs'
 
 export interface DiffTabFetchContext {
@@ -10,6 +11,8 @@ export interface DiffTabFetchContext {
    *  「新規ファイル + 全行追加」の diff になり、それをアンステージすると
    *  旧パスの削除だけがステージに残ってファイルが消えてしまう */
   renamedFrom: string | undefined
+  /** エージェントの変更の diff の範囲(agent のタブだけが使う。どの記録と比べるかは main が決める) */
+  agentScope: AgentChangesScope
 }
 
 /**
@@ -18,6 +21,6 @@ export interface DiffTabFetchContext {
  * (main が記録のインデックスで判定する)。それ以外は git の index・HEAD との比較。
  */
 export function fetchDiffForTab(tab: DiffTabKey, context: DiffTabFetchContext): Promise<string> {
-  if (tab.kind === 'agent') return agentChangesApi.getAgentChangeDiff(tab.path)
+  if (tab.kind === 'agent') return agentChangesApi.getAgentChangeDiff(tab.path, context.agentScope)
   return gitApi.getDiff(tab.path, tab.kind === 'staged', context.isUntracked, context.renamedFrom)
 }

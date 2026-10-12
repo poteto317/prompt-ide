@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import type { OpenFile } from '../types'
 import type { DiffTabKey } from './useDiffTabs'
+import { isSameKey } from './useDiffTabs'
 import { encodeDiffTabPath, isDiffTabPath, decodeDiffTabPath } from './diffTabPath'
 
 // EditorTabs.tsx(唯一の消費者)の Tab 型と構造が同一だったため、二重定義を避けて
@@ -23,6 +24,8 @@ interface Params {
   isDirty: boolean
   diffTabs: DiffTabKey[]
   activeDiffTab: DiffTabKey | null
+  /** アクティブな agent の diff タブの内容を取った範囲の実行の番号(累積・内容が無い間は null) */
+  agentDiffRunNumber: number | null
   /** 実ファイルタブへ切り替える。戻り値は実際に切り替わったか
    *  (開いていないパスなら false)。diff タブの非アクティブ化を
    *  「切り替えが成立したときだけ」に限るために見る */
@@ -41,9 +44,13 @@ interface CombinedEditorTabs {
   handleCloseTab: (path: string) => void
 }
 
-// diff タブのラベル。フルパス + 種類で一意にする(下の combinedTabs の説明)
-export function diffTabLabel(tab: DiffTabKey): string {
-  if (tab.kind === 'agent') return `${tab.path} (エージェントの変更)`
+// diff タブのラベル。フルパス + 種類で一意にする(下の combinedTabs の説明)。エージェントの変更は、内容を取った範囲が実行なら番号を添える
+export function diffTabLabel(tab: DiffTabKey, runNumber: number | null): string {
+  if (tab.kind === 'agent') {
+    return runNumber === null
+      ? `${tab.path} (エージェントの変更)`
+      : `${tab.path} (エージェントの変更・実行 ${runNumber})`
+  }
   return `${tab.path} (${tab.kind === 'staged' ? 'ステージ済み' : '未ステージ'}差分)`
 }
 
@@ -56,6 +63,7 @@ export function useCombinedEditorTabs({
   isDirty,
   diffTabs,
   activeDiffTab,
+  agentDiffRunNumber,
   onActivateTab,
   onCloseTab,
   onActivateDiffTab,
@@ -73,7 +81,11 @@ export function useCombinedEditorTabs({
     // フルパス + ステージ状態でラベルの一意性を保つ
     const diffTabItems = diffTabs.map((tab) => ({
       path: encodeDiffTabPath(tab),
-      name: diffTabLabel(tab),
+      // 実行の番号は内容を持つアクティブなタブにだけ付ける(ほかの agent のタブは内容を取っていない)
+      name: diffTabLabel(
+        tab,
+        activeDiffTab !== null && isSameKey(tab, activeDiffTab) ? agentDiffRunNumber : null
+      ),
       isDirty: false,
       isReorderable: false
     }))
@@ -88,7 +100,7 @@ export function useCombinedEditorTabs({
       })),
       ...diffTabItems
     ]
-  }, [openFiles, activeFilePath, isDirty, diffTabs])
+  }, [openFiles, activeFilePath, isDirty, diffTabs, activeDiffTab, agentDiffRunNumber])
   const activeTabPath = activeDiffTab !== null ? encodeDiffTabPath(activeDiffTab) : activeFilePath
 
   const handleActivateTab = (path: string): void => {

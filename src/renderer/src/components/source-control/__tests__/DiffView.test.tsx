@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import DiffView from '../DiffView'
 import { parseDiff, buildHunkPatch } from '../../../lib/diffParser'
-import type { AgentDiffActions } from '../../../types'
+import { makeAgentDiffActions } from '../../../__tests__/makeAgentChangesState'
 
 const SAMPLE_DIFF = [
   'diff --git a/src/index.ts b/src/index.ts',
@@ -573,17 +573,8 @@ describe('DiffView — ハンクの取り消し', () => {
 })
 
 describe('DiffView — エージェントの変更', () => {
-  const actions = (overrides: Partial<AgentDiffActions> = {}): AgentDiffActions => ({
-    canRevertHunk: true,
-    disabledReason: null,
-    error: null,
-    notice: null,
-    onRevertHunk: vi.fn(),
-    ...overrides
-  })
-
   it('ステージ・アンステージ・取り消しを出さず、「このハンクを実行前に戻す」だけを出す', async () => {
-    const agentActions = actions()
+    const agentActions = makeAgentDiffActions()
     render(
       <DiffView
         diffText={SAMPLE_DIFF}
@@ -620,7 +611,7 @@ describe('DiffView — エージェントの変更', () => {
         staged={false}
         onStageHunk={vi.fn()}
         onUnstageHunk={vi.fn()}
-        agentActions={actions()}
+        agentActions={makeAgentDiffActions()}
       />
     )
     expect(screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(1)
@@ -633,7 +624,7 @@ describe('DiffView — エージェントの変更', () => {
         staged={false}
         onStageHunk={vi.fn()}
         onUnstageHunk={vi.fn()}
-        agentActions={actions({ canRevertHunk: false })}
+        agentActions={makeAgentDiffActions({ canRevertHunk: false })}
       />
     )
     expect(screen.queryAllByRole('button')).toEqual([])
@@ -646,7 +637,7 @@ describe('DiffView — エージェントの変更', () => {
         staged={false}
         onStageHunk={vi.fn()}
         onUnstageHunk={vi.fn()}
-        agentActions={actions({ error: 'ハンクを戻せませんでした' })}
+        agentActions={makeAgentDiffActions({ error: 'ハンクを戻せませんでした' })}
       />
     )
     expect(screen.getByText('ハンクを戻せませんでした')).toHaveClass('diff-view__error')
@@ -660,7 +651,7 @@ describe('DiffView — エージェントの変更', () => {
         staged={false}
         onStageHunk={vi.fn()}
         onUnstageHunk={vi.fn()}
-        agentActions={actions({ disabledReason: '他の Git 操作の実行中です' })}
+        agentActions={makeAgentDiffActions({ disabledReason: '他の Git 操作の実行中です' })}
       />
     )
     for (const button of screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })) {

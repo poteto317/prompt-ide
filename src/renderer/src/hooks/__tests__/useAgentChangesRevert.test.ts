@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import type { AgentChangeEntry } from '@shared/types'
+import type { AgentChangeEntry, AgentChangesScope } from '@shared/types'
 
 vi.mock('../../lib/agentChangesApi')
 
@@ -16,13 +16,17 @@ import {
   AGENT_CHANGES_HUNK_REVERTED_NOTICE,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON
 } from '../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
   makeAgentChangesController,
-  makeAgentChangesList
+  makeAgentChangesList,
+  makeAgentChangesRecordingView
 } from '../../__tests__/makeAgentChangesState'
+
+const ALL_SCOPE: AgentChangesScope = { kind: 'all' }
 
 const makeLock = (): FileOperationLock => ({
   isLocked: vi.fn(() => false),
@@ -39,7 +43,17 @@ function makeOptions(
 ): AgentChangesRevertOptions {
   return {
     folderPath: '/repo',
-    changes: makeAgentChangesController({ view: { kind: 'recording', startedAt: 1, list } }),
+    changes: makeAgentChangesController({
+      view:
+        list === null
+          ? makeAgentChangesRecordingView(null, { startedAt: 1 })
+          : makeAgentChangesRecordingView(list.entries, {
+              startedAt: 1,
+              totalCount: list.totalCount,
+              truncated: list.truncated,
+              headChanged: list.headChanged
+            })
+    }),
     fileLock: makeLock(),
     agentRunning: false,
     hasDirtyTabAtOrInside: vi.fn(() => false),
@@ -80,7 +94,7 @@ describe('useAgentChangesRevert — ファイル単位', () => {
     await act(async () => {
       await result.current.revertFile(makeAgentChangeEntry('src/a.txt'))
     })
-    expect(agentChangesApi.revertAgentChange).toHaveBeenCalledWith('src/a.txt')
+    expect(agentChangesApi.revertAgentChange).toHaveBeenCalledWith('src/a.txt', ALL_SCOPE)
     expect(options.fileLock.lockGlobal).toHaveBeenCalledOnce()
     expect(options.fileLock.unlockGlobal).toHaveBeenCalledOnce()
     expect(options.reloadOpenFile).toHaveBeenCalledWith('/repo/src/a.txt')
@@ -185,12 +199,12 @@ describe('useAgentChangesRevert — ハンク', () => {
     const options = makeOptions()
     const { result } = renderHook(() => useAgentChangesRevert(options))
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(options.onConfirm).toHaveBeenCalledWith(
       'a.txt の次のハンクを実行前の状態に戻しますか？この操作は元に戻せません。\n\n@@ -1 +1 @@'
     )
-    expect(agentChangesApi.revertAgentChangeHunk).toHaveBeenCalledWith('a.txt', 'patch')
+    expect(agentChangesApi.revertAgentChangeHunk).toHaveBeenCalledWith('a.txt', 'patch', ALL_SCOPE)
     expect(options.reloadOpenFile).toHaveBeenCalledWith('/repo/a.txt')
     expect(options.refreshDiff).toHaveBeenCalledOnce()
   })
@@ -200,7 +214,7 @@ describe('useAgentChangesRevert — ハンク', () => {
     const options = makeOptions()
     const { result } = renderHook(() => useAgentChangesRevert(options))
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(options.reloadOpenFile).not.toHaveBeenCalled()
     expect(result.current.error).toBe('合いません')
@@ -248,11 +262,14 @@ describe('useAgentChangesRevert — すべて', () => {
       'うち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。'
     )
     expect(options.confirmDiscardAnyDirty).toHaveBeenCalledOnce()
-    expect(agentChangesApi.revertAllAgentChanges).toHaveBeenCalledWith([
-      { path: 'a.txt', status: 'M' },
-      { path: 'new.txt', status: 'A' },
-      { path: 'gone.txt', status: 'D' }
-    ])
+    expect(agentChangesApi.revertAllAgentChanges).toHaveBeenCalledWith(
+      [
+        { path: 'a.txt', status: 'M' },
+        { path: 'new.txt', status: 'A' },
+        { path: 'gone.txt', status: 'D' }
+      ],
+      ALL_SCOPE
+    )
     expect(options.reloadOpenFiles).toHaveBeenCalledOnce()
     expect(options.changes.announce).toHaveBeenCalledWith('3 件を実行前の状態に戻しました')
   })
@@ -380,7 +397,8 @@ describe('useAgentChangesRevert — 押せない間(パターン 111)', () => {
     operation: Operation
   ): Promise<void> => {
     if (operation === 'ファイル') await state.revertFile(makeAgentChangeEntry('a.txt'))
-    else if (operation === 'ハンク') await state.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+    else if (operation === 'ハンク')
+      await state.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     else await state.revertAll()
   }
   const busyCases: [string, (options: AgentChangesRevertOptions) => void, string][] = [
@@ -424,11 +442,8 @@ describe('useAgentChangesRevert — 押せない間(パターン 111)', () => {
 
 // 失敗の文言は、その記録・そのフォルダについてのもの(PR #47 B-1)
 describe('useAgentChangesRevert — 失敗の文言を消す契機', () => {
-  const recordingAt = (startedAt: number): AgentChangesRevertOptions['changes']['view'] => ({
-    kind: 'recording',
-    startedAt,
-    list: makeAgentChangesList([makeAgentChangeEntry('a.txt')])
-  })
+  const recordingAt = (startedAt: number): AgentChangesRevertOptions['changes']['view'] =>
+    makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], { startedAt })
 
   async function failOnce(options: AgentChangesRevertOptions): Promise<{
     result: { current: ReturnType<typeof useAgentChangesRevert> }
@@ -508,7 +523,7 @@ describe('useAgentChangesRevert — 失敗の文言を消す契機', () => {
 
     vi.mocked(agentChangesApi.revertAgentChangeHunk).mockRejectedValue(new Error('合いません'))
     await act(async () => {
-      await result.current.revertHunk('b.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('b.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.errorPath).toBe('b.txt')
 
@@ -529,7 +544,7 @@ describe('useAgentChangesRevert — 失敗をどこで読み上げるか', () =>
     const { result } = renderHook(() => useAgentChangesRevert(makeOptions()))
     expect(result.current.isErrorAnnouncedInDiff).toBe(false)
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.error).toBe('合いません')
     expect(result.current.isErrorAnnouncedInDiff).toBe(true)
@@ -540,7 +555,7 @@ describe('useAgentChangesRevert — 失敗をどこで読み上げるか', () =>
     vi.mocked(agentChangesApi.revertAgentChange).mockRejectedValue(new Error('戻せません'))
     const { result } = renderHook(() => useAgentChangesRevert(makeOptions()))
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     await act(async () => {
       await result.current.revertFile(makeAgentChangeEntry('a.txt'))
@@ -580,7 +595,7 @@ describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
     const { result } = renderHook(() => useAgentChangesRevert(options))
     expect(result.current.hunkNotice).toBeNull()
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.hunkNotice?.text).toBe(AGENT_CHANGES_HUNK_REVERTED_NOTICE)
     expect(options.changes.announce).not.toHaveBeenCalled()
@@ -590,11 +605,11 @@ describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
     const options = makeOptions()
     const { result } = renderHook(() => useAgentChangesRevert(options))
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     const firstId = result.current.hunkNotice?.id
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.hunkNotice?.id).not.toBe(firstId)
   })
@@ -604,7 +619,7 @@ describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
     const options = makeOptions()
     const { result } = renderHook(() => useAgentChangesRevert(options))
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.hunkNotice?.text).toBe('合いません')
   })
@@ -629,10 +644,58 @@ describe('useAgentChangesRevert — ハンクの結果の読み上げ', () => {
       { initialProps: options }
     )
     await act(async () => {
-      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@')
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', ALL_SCOPE)
     })
     expect(result.current.hunkNotice).not.toBeNull()
     rerender({ ...options, folderPath: '/other' })
     expect(result.current.hunkNotice).toBeNull()
+  })
+})
+
+describe('実行の範囲では戻さない(L-058・L-061)', () => {
+  const RUN: AgentChangesScope = { kind: 'run', runId: 2 }
+  const runView = (scope: AgentChangesScope): AgentChangesRevertOptions['changes'] =>
+    makeAgentChangesController({
+      scope,
+      view: makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], { startedAt: 1, scope })
+    })
+
+  it('選んでいる範囲が実行なら、戻すボタンの理由に実行の範囲の文言を出す', () => {
+    const { result } = renderHook(() =>
+      useAgentChangesRevert(makeOptions({ changes: runView(RUN) }))
+    )
+    expect(result.current.revertDisabledReason).toBe(AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE)
+    expect(result.current.revertAllDisabledReason).toBe(AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE)
+  })
+
+  it('表示中の一覧の範囲が実行なら、選んでいる範囲が累積でも押せない(切り替えの直後)', () => {
+    const changes = { ...runView(RUN), scope: ALL_SCOPE }
+    const { result } = renderHook(() => useAgentChangesRevert(makeOptions({ changes })))
+    expect(result.current.revertDisabledReason).toBe(AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE)
+  })
+
+  it.each(['ファイル', 'すべて'] as const)(
+    '表示中の一覧の範囲が実行なら、%s を戻す操作は確認も IPC も呼ばない',
+    async (operation) => {
+      const options = makeOptions({ changes: runView(RUN) })
+      const { result } = renderHook(() => useAgentChangesRevert(options))
+      await act(async () => {
+        if (operation === 'ファイル') await result.current.revertFile(makeAgentChangeEntry('a.txt'))
+        else await result.current.revertAll()
+      })
+      expect(options.onConfirm).not.toHaveBeenCalled()
+      expect(agentChangesApi.revertAgentChange).not.toHaveBeenCalled()
+      expect(agentChangesApi.revertAllAgentChanges).not.toHaveBeenCalled()
+    }
+  )
+
+  it('ハンクの内容の範囲が実行なら、確認も IPC も呼ばない', async () => {
+    const options = makeOptions()
+    const { result } = renderHook(() => useAgentChangesRevert(options))
+    await act(async () => {
+      await result.current.revertHunk('a.txt', 'patch', '@@ -1 +1 @@', RUN)
+    })
+    expect(options.onConfirm).not.toHaveBeenCalled()
+    expect(agentChangesApi.revertAgentChangeHunk).not.toHaveBeenCalled()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { copyFileSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import simpleGit from 'simple-git'
 import {
@@ -7,8 +7,10 @@ import {
   REPO_LOCATION_ENV_KEYS,
   SIMPLE_GIT_BLOCKED_ENV_KEYS,
   buildBaselineGitEnv,
-  createBaselineGit
+  createBaselineGit,
+  runBaselineGitWithInput
 } from '../agentBaselineGit'
+import { isGitTimeoutError } from '../gitStepErrors'
 import { commitAll, runGit, writeRepoFile } from './helpers/realGitRepo'
 import { createAgentBaselineRepo, disposeAgentBaselineRepo } from './helpers/agentBaselineFixtures'
 
@@ -200,6 +202,73 @@ describe('createBaselineGit(実 git)', () => {
     const git = createBaselineGit(repo, index)
     const others = await git.raw(['ls-files', '-z', '--others', '--exclude-standard'])
     expect(others.split('\0')).not.toContain('ignored-by-home.txt')
+  })
+})
+
+// 標準入力でパスを渡す git(update-index --stdin)。simple-git は標準入力を渡せないため spawn で起動する(ローカルレビュー第 2 周の指摘 1)
+describe('runBaselineGitWithInput(実 git)', () => {
+  let repo: string
+  let home: string
+  let indexDir: string
+
+  beforeEach(() => {
+    ;({ repo, home, tempRoot: indexDir } = createAgentBaselineRepo('baseline-git-input-'))
+    writeRepoFile(repo, 'a.txt', 'a\n')
+    writeRepoFile(repo, 'b*.txt', 'b\n')
+    writeRepoFile(repo, 'line\nbreak.txt', 'c\n')
+    commitAll(repo, 'init')
+  })
+
+  afterEach(() => disposeAgentBaselineRepo({ repo, home, tempRoot: indexDir }))
+
+  const listed = async (index: string): Promise<string[]> =>
+    (await createBaselineGit(repo, index).raw(['ls-files', '-z']))
+      .split('\0')
+      .filter((p) => p !== '')
+
+  it('記録のインデックスから、NUL 区切りの標準入力のパスをパスそのものとして外し、利用者の index を変えない(GIT_DIR などは渡さない)', async () => {
+    const index = join(indexDir, 'index')
+    copyFileSync(join(repo, '.git/index'), index)
+    const userIndexBefore = readFileSync(join(repo, '.git/index'))
+    await runBaselineGitWithInput(
+      repo,
+      index,
+      ['update-index', '-z', '--force-remove', '--stdin'],
+      'b*.txt\0line\nbreak.txt\0',
+      { env: { ...process.env, GIT_DIR: '/nonexistent/.git', GIT_ASKPASS: '/nonexistent' } }
+    )
+    expect(await listed(index)).toEqual(['a.txt'])
+    expect(readFileSync(join(repo, '.git/index'))).toEqual(userIndexBefore)
+  })
+
+  it('git が失敗したら stderr を添えて例外にする', async () => {
+    const index = join(indexDir, 'index')
+    copyFileSync(join(repo, '.git/index'), index)
+    await expect(
+      runBaselineGitWithInput(repo, index, ['update-index', '--no-such-option'], '')
+    ).rejects.toThrow(/no-such-option/)
+  })
+
+  it('打ち切りの時間を超えたら、simple-git の打ち切りと同じ判定(isGitTimeoutError)になる例外にする', async () => {
+    const bin = join(home, 'slow-bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec sleep 5\n', { mode: 0o755 })
+    const error = await runBaselineGitWithInput(repo, join(indexDir, 'index'), ['status'], '', {
+      timeoutMs: 100,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    }).then(
+      () => null,
+      (e: unknown) => e
+    )
+    expect(isGitTimeoutError(error)).toBe(true)
+  })
+
+  it('git を起動できなければ例外にする', async () => {
+    await expect(
+      runBaselineGitWithInput(repo, join(indexDir, 'index'), ['status'], '', {
+        env: { ...process.env, PATH: join(home, 'nonexistent-bin') }
+      })
+    ).rejects.toThrow()
   })
 })
 

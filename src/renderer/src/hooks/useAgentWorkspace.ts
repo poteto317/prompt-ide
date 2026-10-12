@@ -66,7 +66,7 @@ export interface UseAgentWorkspaceOptions {
   isExecuting: boolean
   /** 確認のダイアログ(既定は window.confirm。テストで差し替える) */
   onConfirm?: (message: string) => boolean
-  /** プロンプトをエージェントへ送る前に待つ準備(useAgentChangesRecording の beginAndRefresh。エージェントの変更の記録を始め、一覧を取り直す) */
+  /** プロンプトをエージェントへ送る前に待つ準備(useAgentChangesRecording の beginForSendAndRefresh。エージェントの変更の記録を始め(記録があれば実行の区切りを足し)、一覧を取り直す) */
   beforeAgentSend?: () => Promise<void>
 }
 

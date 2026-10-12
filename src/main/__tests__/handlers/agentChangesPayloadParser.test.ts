@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   AGENT_CHANGES_PATCH_MAX_LENGTH,
+  AGENT_CHANGES_REVERT_SCOPE_MESSAGE,
   parseAgentChangePatch,
   parseAgentChangePath,
-  parseAgentRevertAllEntries
+  parseAgentChangesBeginTrigger,
+  parseAgentChangesScope,
+  parseAgentRevertAllEntries,
+  parseRevertScope
 } from '../../handlers/agentChangesPayloadParser'
 import { IPC_PATH_MAX_LENGTH } from '../../handlers/payloadValidators'
 
@@ -72,5 +76,67 @@ describe('parseAgentRevertAllEntries', () => {
     const entries = Array.from({ length: 500 }, (_, i) => ({ path: `${i}`, status: 'A' }))
     expect(parseAgentRevertAllEntries(entries)).toHaveLength(500)
     expect(() => parseAgentRevertAllEntries([...entries, { path: 'x', status: 'A' }])).toThrow()
+  })
+})
+
+describe('parseAgentChangesBeginTrigger', () => {
+  it.each(['send', 'manual'] as const)('%s を返す', (value) => {
+    expect(parseAgentChangesBeginTrigger(value)).toBe(value)
+  })
+  it.each<[string, unknown]>([
+    ['省略(undefined)', undefined],
+    ['未知の値', 'auto'],
+    ['大文字', 'SEND'],
+    ['数', 1],
+    ['null', null]
+  ])('%s なら投げる(既定に流さない。L-044)', (_label, value) => {
+    expect(() => parseAgentChangesBeginTrigger(value)).toThrow(
+      'trigger は send か manual である必要があります'
+    )
+  })
+})
+
+describe('parseAgentChangesScope', () => {
+  it('累積と実行を返す', () => {
+    expect(parseAgentChangesScope({ kind: 'all' })).toEqual({ kind: 'all' })
+    expect(parseAgentChangesScope({ kind: 'run', runId: 3 })).toEqual({ kind: 'run', runId: 3 })
+    expect(parseAgentChangesScope({ kind: 'run', runId: Number.MAX_SAFE_INTEGER })).toEqual({
+      kind: 'run',
+      runId: Number.MAX_SAFE_INTEGER
+    })
+  })
+  it.each<[string, unknown]>([
+    ['省略(undefined)', undefined],
+    ['null', null],
+    ['文字列', 'all'],
+    ['配列', [{ kind: 'all' }]],
+    ['プロトタイプの無いオブジェクト', Object.assign(Object.create(null), { kind: 'all' })],
+    ['未知の kind', { kind: 'latest' }],
+    ['kind が無い', { runId: 1 }],
+    ['all に余分なキー', { kind: 'all', runId: 1 }],
+    ['run に余分なキー', { kind: 'run', runId: 1, path: 'x' }],
+    ['run に runId が無い', { kind: 'run' }],
+    ['runId が 0', { kind: 'run', runId: 0 }],
+    ['runId が負', { kind: 'run', runId: -1 }],
+    ['runId が小数', { kind: 'run', runId: 1.5 }],
+    ['runId が文字列', { kind: 'run', runId: '1' }],
+    ['runId が NaN', { kind: 'run', runId: Number.NaN }],
+    ['runId が安全でない整数', { kind: 'run', runId: Number.MAX_SAFE_INTEGER + 1 }]
+  ])('%s なら投げる', (_label, value) => {
+    expect(() => parseAgentChangesScope(value)).toThrow('範囲(scope)が不正です')
+  })
+})
+
+describe('parseRevertScope', () => {
+  it('累積だけを受け付ける', () => {
+    expect(parseRevertScope({ kind: 'all' })).toEqual({ kind: 'all' })
+  })
+  it('実行の範囲は戻せない旨で投げる', () => {
+    expect(() => parseRevertScope({ kind: 'run', runId: 1 })).toThrow(
+      AGENT_CHANGES_REVERT_SCOPE_MESSAGE
+    )
+  })
+  it('形が不正なら範囲の検証の文言で投げる', () => {
+    expect(() => parseRevertScope(undefined)).toThrow('範囲(scope)が不正です')
   })
 })

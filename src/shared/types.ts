@@ -38,9 +38,11 @@ export {
 } from './types/agentTerminal'
 export {
   AGENT_CHANGES_LIST_LIMIT,
+  AGENT_CHANGES_MAX_RUNS,
   AGENT_CHANGES_UNAVAILABLE_REASONS,
   AGENT_CHANGE_STATUSES,
   isAgentChangeStatus,
+  isSameAgentChangesScope,
   toAgentChangeRelativePath
 } from './types/agentChanges'
 export { CONFLICT_CHOICES, TAG_KINDS } from './types/git'

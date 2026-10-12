@@ -11,14 +11,21 @@ import {
   AGENT_CHANGES_HEAD_CHANGED,
   AGENT_CHANGES_LOADING,
   AGENT_CHANGES_NONE_HINT,
+  AGENT_CHANGES_RUN_EMPTY,
+  AGENT_CHANGES_RUN_HEAD_CHANGED,
   AGENT_CHANGES_UNAVAILABLE_MESSAGES,
-  buildAgentChangesHeading,
   describeAgentChangesUnavailable,
   formatAgentChangesMore
 } from '../../lib/agentChangesMessages'
 import { toAnnouncementText } from '../../lib/announcementText'
 import { isEntrySavedInApp } from '../../lib/agentChangesPaths'
+import { getListedAgentChanges } from '../../lib/agentChangesScope'
+import {
+  buildAgentChangesSectionHeading,
+  describeAgentChangesListUnavailable
+} from '../../lib/agentChangesSectionText'
 import AgentChangesFileItem from './AgentChangesFileItem'
+import AgentChangesScopeSelect from './AgentChangesScopeSelect'
 
 /** セクションの props。Git 管理外かは SourceControlPanel が決め、それ以外は useAgentChangesWiring が組み立てる */
 export type AgentChangesSectionProps = AgentChangesPanelState & {
@@ -66,14 +73,15 @@ export default function AgentChangesSection({
     view.kind === 'none' ||
     (view.kind === 'unavailable' && view.state.reason === 'not-repository' && !isNotRepository)
   const recording = view.kind === 'recording' ? view : null
-  const list = recording?.list ?? null
-  const heading = buildAgentChangesHeading(
-    recording === null
-      ? null
-      : { startedAt: recording.startedAt, totalCount: list?.totalCount ?? null }
-  )
+  const list = getListedAgentChanges(view)
+  // 見出しは選んでいる実行(範囲が実行で、写しの実行の一覧にあるとき)の番号と期間、または累積の始点を添える
+  const heading = buildAgentChangesSectionHeading(view, changes.scope)
+  // 表示中の一覧が実行の範囲か(空の文言・HEAD の帯・あなたの保存を含むの印を出し分ける)
+  const isRunList = list !== null && list.scope.kind === 'run'
+  // 範囲の一覧が取れない(写しが古い)理由
+  const listUnavailableText = describeAgentChangesListUnavailable(view)
   const hasEntries = list !== null && list.entries.length > 0
-  // 押せない理由は 1 か所に出す。「すべて戻す」の理由は「ファイル単位の理由」「打ち切り」「記録していないファイルを含む」
+  // 押せない理由は 1 か所に出す。「すべて戻す」の理由は「ファイル単位の理由(実行の範囲を含む)」「打ち切り」「記録していないファイルを含む」
   // (notRecorded)のいずれか。行の戻すボタンがこの要素を参照できるのは、agentRevertAllDisabledReason がファイル単位の
   // 理由を先に評価する(行が押せないときは必ず同じ文言になる)という評価の順序に依存している
   const shownReason = hasEntries ? revert.revertAllDisabledReason : null
@@ -150,6 +158,19 @@ export default function AgentChangesSection({
           )}
           {recording !== null && (
             <>
+              {recording.runs.length > 0 && (
+                <AgentChangesScopeSelect
+                  startedAt={recording.startedAt}
+                  runs={recording.runs}
+                  scope={changes.scope}
+                  disabled={revert.isReverting}
+                  disabledReasonId={shownReason !== null ? reasonId : null}
+                  onSelect={(next) => {
+                    // 戻す操作の実行中は範囲を変えない(戻した結果の同期と取り直しが混ざる。L-039・L-058)
+                    if (!revert.isReverting) changes.selectScope(next)
+                  }}
+                />
+              )}
               {changes.listError !== null && (
                 <p className="agent-changes__error" role="alert">
                   {changes.listError}
@@ -165,7 +186,12 @@ export default function AgentChangesSection({
                 </p>
               )}
               {list?.headChanged === true && (
-                <p className="agent-changes__note">{AGENT_CHANGES_HEAD_CHANGED}</p>
+                <p className="agent-changes__note">
+                  {isRunList ? AGENT_CHANGES_RUN_HEAD_CHANGED : AGENT_CHANGES_HEAD_CHANGED}
+                </p>
+              )}
+              {listUnavailableText !== null && (
+                <p className="agent-changes__note">{listUnavailableText}</p>
               )}
               {shownReason !== null && (
                 <p id={reasonId} className="agent-changes__note">
@@ -173,7 +199,9 @@ export default function AgentChangesSection({
                 </p>
               )}
               {list !== null && list.entries.length === 0 && (
-                <p className="agent-changes__note">{AGENT_CHANGES_EMPTY}</p>
+                <p className="agent-changes__note">
+                  {isRunList ? AGENT_CHANGES_RUN_EMPTY : AGENT_CHANGES_EMPTY}
+                </p>
               )}
               {hasEntries && (
                 <ul className="source-control-panel__file-list">
@@ -181,7 +209,9 @@ export default function AgentChangesSection({
                     <AgentChangesFileItem
                       key={entry.path}
                       entry={entry}
-                      savedInApp={isEntrySavedInApp(folderPath, changes.savedPaths, entry.path)}
+                      savedInApp={
+                        !isRunList && isEntrySavedInApp(folderPath, changes.savedPaths, entry.path)
+                      }
                       disabledReason={revert.revertDisabledReason}
                       disabledReasonId={reasonId}
                       onOpenDiff={onOpenDiff}

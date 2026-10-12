@@ -1,4 +1,6 @@
-import simpleGit from 'simple-git'
+import { spawn } from 'node:child_process'
+import { StringDecoder } from 'node:string_decoder'
+import simpleGit, { GitPluginError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 
 // 記録のインデックス(利用者の .git/index の写しに作業ツリーを入れたもの)で問い合わせる git を作る(設計書「確認の結果」14)。
@@ -105,4 +107,69 @@ export function createRepoGit(
   { timeoutMs = AGENT_BASELINE_GIT_TIMEOUT_MS }: Pick<BaselineGitOptions, 'timeoutMs'> = {}
 ): SimpleGit {
   return simpleGit(folderPath, { timeout: { block: timeoutMs } })
+}
+
+// 失敗の文言に添える stderr の上限(バイト)。冒頭の数行で足りる
+const MAX_INPUT_GIT_STDERR_BYTES = 64 * 1024
+
+/**
+ * 記録のインデックス indexPath で、標準入力に input を渡して git を実行する(simple-git は標準入力を渡せない)。
+ * 環境・設定は createBaselineGit と同じ(buildBaselineGitEnv・core.splitIndex=false・windowsHide)。stdout を返す。
+ * 打ち切りは timeoutMs の経過で止め、simple-git の打ち切りと同じ判定(isGitTimeoutError)になる GitPluginError にする。
+ * 使うのは出力の無い短い操作(update-index --stdin)だけのため、出力の有無に関わらず経過した時間で打ち切る
+ */
+export function runBaselineGitWithInput(
+  folderPath: string,
+  indexPath: string,
+  args: readonly string[],
+  input: string,
+  {
+    timeoutMs = AGENT_BASELINE_GIT_TIMEOUT_MS,
+    config = [],
+    env = process.env
+  }: BaselineGitOptions = {}
+): Promise<string> {
+  const configArgs = ['core.splitIndex=false', ...config].flatMap((entry) => ['-c', entry])
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const settle = (finish: () => void): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      finish()
+    }
+    const proc = spawn('git', [...configArgs, ...args], {
+      cwd: folderPath,
+      env: buildBaselineGitEnv(env, indexPath),
+      // simple-git の経路と同じ。Windows で console のウィンドウを開かない
+      windowsHide: true
+    })
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL')
+      settle(() => reject(new GitPluginError(undefined, 'timeout', 'block timeout reached')))
+    }, timeoutMs)
+    let stdout = ''
+    const stdoutDecoder = new StringDecoder('utf-8')
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdout += stdoutDecoder.write(chunk)
+    })
+    let stderr = ''
+    let stderrBytes = 0
+    const stderrDecoder = new StringDecoder('utf-8')
+    proc.stderr.on('data', (chunk: Buffer) => {
+      if (stderrBytes >= MAX_INPUT_GIT_STDERR_BYTES) return
+      stderrBytes += chunk.length
+      stderr += stderrDecoder.write(chunk)
+    })
+    proc.on('error', (error) => settle(() => reject(error)))
+    // 起動の失敗の後の書き込みは EPIPE を stdin の 'error' として出す。ハンドラが無いと main プロセスが落ちる
+    proc.stdin.on('error', (error) => settle(() => reject(error)))
+    proc.on('close', (code) => {
+      settle(() => {
+        if (code === 0) resolve(stdout + stdoutDecoder.end())
+        else reject(new Error(`git ${args[0] ?? ''} が失敗しました(${code}): ${stderr.trim()}`))
+      })
+    })
+    proc.stdin.end(input)
+  })
 }

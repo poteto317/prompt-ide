@@ -1,24 +1,29 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import type { AgentChangeEntry } from '@shared/types'
+import type { AgentChangeEntry, AgentChangesRun, AgentChangesScope } from '@shared/types'
 import AgentChangesSection from '../AgentChangesSection'
-import type { AgentChangesView } from '../../../hooks/useAgentChanges'
+import type { AgentChangesView } from '../../../types'
 import {
   AGENT_CHANGES_BUSY_GIT,
   AGENT_CHANGES_CLEARED_NOTICE,
   AGENT_CHANGES_EMPTY,
   AGENT_CHANGES_HEAD_CHANGED,
   AGENT_CHANGES_NONE_HINT,
+  AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
+  AGENT_CHANGES_RUN_EMPTY,
+  AGENT_CHANGES_RUN_HEAD_CHANGED,
   AGENT_CHANGES_TRUNCATED_REASON
 } from '../../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
-  makeAgentChangesController,
+  makeAgentChangesPanelChanges,
   makeAgentChangesPanelState,
   makeAgentChangesRecordingView,
-  makeAgentChangesRevertState
+  makeAgentChangesRevertState,
+  makeAgentChangesRun,
+  makeAgentChangesScopeUnavailableView
 } from '../../../__tests__/makeAgentChangesState'
 
 type Props = ComponentProps<typeof AgentChangesSection>
@@ -36,7 +41,7 @@ function makeProps(
   changes: Partial<Props['changes']> = {}
 ): Props {
   return {
-    ...makeAgentChangesPanelState({ changes: makeAgentChangesController({ view, ...changes }) }),
+    ...makeAgentChangesPanelState({ changes: makeAgentChangesPanelChanges({ view, ...changes }) }),
     isNotRepository: false,
     ...overrides
   }
@@ -397,5 +402,134 @@ describe('AgentChangesSection', () => {
       </>
     )
     expect(outside).toHaveFocus()
+  })
+})
+
+describe('AgentChangesSection の範囲の選択と実行の範囲の表示', () => {
+  const at = (hours: number, minutes: number): number =>
+    new Date(2026, 9, 7, hours, minutes).getTime()
+  // 実行 1(選べる途中の実行)・実行 2(終わりを記録できなかった)・実行 3(開始を記録できなかった。最後)
+  const runs: AgentChangesRun[] = [
+    makeAgentChangesRun({ runId: 1, number: 1, startedAt: startedAt, endedAt: at(10, 50) }),
+    makeAgentChangesRun({
+      runId: 2,
+      number: 2,
+      startedAt: at(10, 50),
+      endedAt: at(11, 5),
+      availability: { kind: 'end-not-recorded' }
+    }),
+    makeAgentChangesRun({
+      runId: 3,
+      number: 3,
+      startedAt: at(11, 5),
+      availability: { kind: 'start-not-recorded', reason: 'too-many-untracked' }
+    })
+  ]
+  const RUN_1: AgentChangesScope = { kind: 'run', runId: 1 }
+  const runView = (
+    entries: AgentChangeEntry[] | null,
+    extra: { headChanged?: boolean; scope?: AgentChangesScope } = {}
+  ): AgentChangesView =>
+    makeAgentChangesRecordingView(entries, { startedAt, runs, scope: RUN_1, ...extra })
+
+  it('実行が無い間は範囲の選択を出さない', () => {
+    renderSection(recordingView([makeAgentChangeEntry('a.txt')]))
+    expect(within(section()).queryByRole('combobox', { name: '表示' })).toBeNull()
+  })
+
+  // 項目の並び・選べない項目の印は AgentChangesScopeSelect.test で試す。ここは写しの実行の一覧と今の範囲を渡す配線
+  it('実行があれば、ラベル「表示」の選択を出し、写しの実行の一覧と今の範囲を渡す', () => {
+    renderSection(makeAgentChangesRecordingView([], { startedAt, runs }), {}, { scope: RUN_1 })
+    const select = within(section()).getByRole('combobox', { name: '表示' })
+    expect(within(select).getAllByRole('option')).toHaveLength(runs.length + 1)
+    expect((select as HTMLSelectElement).value).toBe('run:1')
+  })
+
+  it('項目を選ぶと selectScope にその範囲を渡す', async () => {
+    const props = renderSection(makeAgentChangesRecordingView([], { startedAt, runs }))
+    await userEvent.selectOptions(
+      within(section()).getByRole('combobox', { name: '表示' }),
+      '実行 1（10:42〜10:50）'
+    )
+    expect(props.changes.selectScope).toHaveBeenCalledExactlyOnceWith(RUN_1)
+  })
+
+  it('戻す操作の実行中は選択を押せず、理由を aria-describedby で結び、選んでも selectScope を呼ばない(L-039・L-058)', () => {
+    const props = renderSection(
+      makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], { startedAt, runs }),
+      {
+        revert: makeAgentChangesRevertState({
+          isReverting: true,
+          revertDisabledReason: '戻す操作の実行中です',
+          revertAllDisabledReason: '戻す操作の実行中です'
+        })
+      }
+    )
+    const select = within(section()).getByRole('combobox', { name: '表示' })
+    expect(select).toBeDisabled()
+    expect(select).toHaveAccessibleDescription('戻す操作の実行中です')
+    fireEvent.change(select, { target: { value: 'run:1' } })
+    expect(props.changes.selectScope).not.toHaveBeenCalled()
+  })
+
+  it('実行の範囲では、見出しに実行の番号と期間、空の文言・HEAD の帯は実行の文言', () => {
+    renderSection(runView([], { headChanged: true }), {}, { scope: RUN_1 })
+    expect(
+      within(section()).getByRole('button', { name: /実行 1・10:42〜10:50/ })
+    ).toBeInTheDocument()
+    expect(within(section()).getByText(AGENT_CHANGES_RUN_EMPTY)).toBeInTheDocument()
+    expect(within(section()).getByText(AGENT_CHANGES_RUN_HEAD_CHANGED)).toBeInTheDocument()
+    expect(within(section()).queryByText(AGENT_CHANGES_EMPTY)).toBeNull()
+    expect(within(section()).queryByText(AGENT_CHANGES_HEAD_CHANGED)).toBeNull()
+  })
+
+  it('実行の範囲では、行の ↶ とすべて戻すを押せず、理由を一覧の上に出して結ぶ。確認を終える・更新は押せる', () => {
+    renderSection(
+      runView([makeAgentChangeEntry('a.txt'), makeAgentChangeEntry('b.txt')]),
+      {
+        revert: makeAgentChangesRevertState({
+          revertDisabledReason: AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
+          revertAllDisabledReason: AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
+        })
+      },
+      { scope: RUN_1 }
+    )
+    const revert = within(section()).getByRole('button', { name: 'a.txt を実行前の状態に戻す' })
+    expect(revert).toBeDisabled()
+    expect(revert).toHaveAccessibleDescription(AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE)
+    const revertAll = within(section()).getByRole('button', { name: 'すべて戻す' })
+    expect(revertAll).toBeDisabled()
+    expect(revertAll).toHaveAccessibleDescription(AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE)
+    expect(within(section()).getByRole('button', { name: '確認を終える' })).toBeEnabled()
+    expect(within(section()).getByRole('button', { name: '更新' })).toBeEnabled()
+  })
+
+  it('「あなたの保存を含む」は累積の一覧でだけ出す(保存は記録ごとに持つため)', () => {
+    const savedPaths = new Set(['/repo/a.txt'])
+    renderSection(runView([makeAgentChangeEntry('a.txt')]), {}, { scope: RUN_1, savedPaths })
+    expect(within(section()).queryByText('あなたの保存を含む')).toBeNull()
+  })
+
+  it.each<[string, 'start-not-recorded' | 'end-not-recorded', AgentChangesScope, string]>([
+    [
+      '開始を記録できなかった',
+      'start-not-recorded',
+      { kind: 'run', runId: 3 },
+      '開始の状態を記録できませんでした: 未追跡のファイルが多すぎます'
+    ],
+    [
+      '終わりを記録できなかった',
+      'end-not-recorded',
+      { kind: 'run', runId: 2 },
+      '次の実行の開始を記録できなかったため比べられません'
+    ]
+  ])('範囲の一覧が取れない(%s)ときは、一覧の代わりに理由を出す', (_label, reason, scope, text) => {
+    renderSection(
+      makeAgentChangesScopeUnavailableView(scope, reason, { startedAt, runs }),
+      {},
+      { scope }
+    )
+    expect(within(section()).getByText(text)).toBeInTheDocument()
+    expect(within(section()).queryByRole('list')).toBeNull()
   })
 })

@@ -1,8 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { AGENT_CHANGES_UNAVAILABLE_REASONS } from '@shared/types'
+import type { AgentChangesRunAvailability } from '@shared/types'
 import {
+  AGENT_CHANGES_RUN_EMPTY,
+  AGENT_CHANGES_RUN_HEAD_CHANGED,
+  AGENT_CHANGES_RUN_UNAVAILABLE_SHORT,
+  AGENT_CHANGES_SCOPE_LABEL,
   AGENT_CHANGES_UNAVAILABLE_MESSAGES,
   buildAgentChangesHeading,
+  buildAgentChangesRunHeading,
+  describeAgentChangesScopeUnavailable,
+  formatAgentChangesAllScopeOption,
+  formatAgentChangesRunOption,
   buildAgentRevertAllConfirmMessage,
   buildAgentRevertFileConfirmMessage,
   buildAgentRevertHunkConfirmMessage,
@@ -12,6 +21,7 @@ import {
   formatAgentChangesRevertedNotice,
   formatAgentChangesStartedAt
 } from '../agentChangesMessages'
+import { makeAgentChangesRun } from '../../__tests__/makeAgentChangesState'
 
 const at = (hours: number, minutes: number): number =>
   new Date(2026, 9, 7, hours, minutes).getTime()
@@ -156,4 +166,116 @@ describe('確認の文言', () => {
       'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。この操作は元に戻せません。\nステージ（index）・コミット・ブランチは戻しません。\n\n記録を始めた後にアプリで保存したファイルを含みます。\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
     )
   })
+})
+
+describe('範囲の項目・見出し・理由の文言', () => {
+  it('累積の項目は開始の時刻を添える', () => {
+    expect(formatAgentChangesAllScopeOption(at(10, 42))).toBe('すべて（累積・10:42 から）')
+  })
+
+  it.each<[string, ReturnType<typeof makeAgentChangesRun>, string]>([
+    [
+      '選べる最後の実行',
+      makeAgentChangesRun({ number: 3, startedAt: at(11, 5) }),
+      '実行 3（11:05 から）'
+    ],
+    [
+      '選べる途中の実行',
+      makeAgentChangesRun({ number: 1, startedAt: at(10, 42), endedAt: at(10, 50) }),
+      '実行 1（10:42〜10:50）'
+    ],
+    [
+      '開始を記録できなかった実行',
+      makeAgentChangesRun({
+        number: 3,
+        startedAt: at(11, 5),
+        availability: { kind: 'start-not-recorded', reason: 'too-many-untracked' }
+      }),
+      '実行 3（11:05・開始の状態を記録できませんでした: 未追跡のファイルが多すぎます）'
+    ],
+    [
+      '終わりを記録できなかった実行',
+      makeAgentChangesRun({
+        number: 2,
+        startedAt: at(10, 50),
+        endedAt: at(11, 5),
+        availability: { kind: 'end-not-recorded' }
+      }),
+      '実行 2（10:50〜・次の実行の開始を記録できなかったため比べられません）'
+    ]
+  ])('%s の項目', (_label, run, expected) => {
+    expect(formatAgentChangesRunOption(run)).toBe(expected)
+  })
+
+  it('未知の選べるかの種類は、選べる実行の項目の文字に流さず例外にする', () => {
+    const run = makeAgentChangesRun({
+      availability: { kind: 'pending' } as unknown as AgentChangesRunAvailability
+    })
+    expect(() => formatAgentChangesRunOption(run)).toThrow('未知の実行の選べるかの種類です')
+  })
+
+  it('開始を記録できなかった理由の短い形は、記録できない理由をすべて網羅する', () => {
+    expect(AGENT_CHANGES_RUN_UNAVAILABLE_SHORT).toEqual({
+      'not-repository': 'Git 管理外のフォルダです',
+      'not-toplevel': 'リポジトリの最上位のフォルダではありません',
+      'too-many-untracked': '未追跡のファイルが多すぎます',
+      timeout: '時間がかかりすぎました',
+      'git-failed': 'git を実行できませんでした'
+    })
+  })
+
+  it('実行の範囲の見出しは、件数(1 件以上のとき)と実行の番号・期間を添える', () => {
+    expect(
+      buildAgentChangesRunHeading(makeAgentChangesRun({ number: 3, startedAt: at(11, 5) }), 2)
+    ).toBe('エージェントの変更 (2)（実行 3・11:05 から）')
+    expect(
+      buildAgentChangesRunHeading(
+        makeAgentChangesRun({ number: 1, startedAt: at(10, 42), endedAt: at(10, 50) }),
+        0
+      )
+    ).toBe('エージェントの変更（実行 1・10:42〜10:50）')
+    expect(
+      buildAgentChangesRunHeading(makeAgentChangesRun({ number: 1, startedAt: at(10, 42) }), null)
+    ).toBe('エージェントの変更（実行 1・10:42 から）')
+  })
+
+  it('実行の範囲の空の文言・HEAD の帯・選択のラベル', () => {
+    expect(AGENT_CHANGES_RUN_EMPTY).toBe('この実行では、変わったファイルはありません')
+    expect(AGENT_CHANGES_RUN_HEAD_CHANGED).toBe(
+      'この実行の間に HEAD が変わりました（コミット・ブランチの切り替えなど）'
+    )
+    expect(AGENT_CHANGES_SCOPE_LABEL).toBe('表示')
+  })
+
+  it('範囲の一覧が取れない理由は、選択の項目と同じ理由', () => {
+    const failedRun = makeAgentChangesRun({
+      availability: { kind: 'start-not-recorded', reason: 'timeout' }
+    })
+    expect(describeAgentChangesScopeUnavailable('start-not-recorded', failedRun)).toBe(
+      '開始の状態を記録できませんでした: 時間がかかりすぎました'
+    )
+    expect(describeAgentChangesScopeUnavailable('start-not-recorded', undefined)).toBe(
+      '開始の状態を記録できませんでした'
+    )
+    expect(describeAgentChangesScopeUnavailable('end-not-recorded', undefined)).toBe(
+      '次の実行の開始を記録できなかったため比べられません'
+    )
+  })
+
+  it.each(
+    Object.keys(
+      AGENT_CHANGES_RUN_UNAVAILABLE_SHORT
+    ) as (keyof typeof AGENT_CHANGES_RUN_UNAVAILABLE_SHORT)[]
+  )(
+    '開始を記録できなかった理由(%s)は、選択の項目と一覧が取れない理由で同じ文字になる',
+    (reason) => {
+      const run = makeAgentChangesRun({
+        number: 4,
+        startedAt: at(9, 0),
+        availability: { kind: 'start-not-recorded', reason }
+      })
+      const text = describeAgentChangesScopeUnavailable('start-not-recorded', run)
+      expect(formatAgentChangesRunOption(run)).toBe(`実行 4（09:00・${text}）`)
+    }
+  )
 })

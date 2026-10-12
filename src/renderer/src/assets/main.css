@@ -1677,6 +1677,39 @@ body {
   background: #454545;
 }
 
+.agent-changes__scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+}
+
+.agent-changes__scope-label {
+  flex: none;
+  color: #cccccc;
+  font-size: 12px;
+}
+
+/* 長い項目は選択の中で末尾が切れ(環境によっては省略され)、開くと全文が見える(狭いサイドバー) */
+.agent-changes__scope-select {
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 6px;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+
+.agent-changes__scope-select:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* 読み上げだけの通知(見た目には出さない) */
 .agent-changes__live {
   position: absolute;

@@ -1,9 +1,8 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import type { AgentChangesListResult, AgentChangesState, DiscardAllResult } from '@shared/types'
 import type { AgentBaselineRegistry } from '../agentBaselineRegistry'
-import type { BaselineSnapshot } from '../agentBaselineSnapshot'
-import { getAgentChangeDiff } from '../agentChangeDiff'
-import { listAgentChanges } from '../agentChangesQuery'
+import type { AgentChangesRecord } from '../agentChangesRecord'
+import { getAgentChangeDiffInScope, listAgentChangesInScope } from '../agentChangesScopedQuery'
 import {
   revertAgentChange,
   revertAgentChangeHunk,
@@ -14,15 +13,21 @@ import { isMainFrameSender } from './ipcSenderGuard'
 import {
   parseAgentChangePatch,
   parseAgentChangePath,
-  parseAgentRevertAllEntries
+  parseAgentChangesBeginTrigger,
+  parseAgentChangesScope,
+  parseAgentRevertAllEntries,
+  parseRevertScope
 } from './agentChangesPayloadParser'
 import { resolveAndAssertStatusRelativePath } from './gitPathResolver'
 
-// エージェントの変更の IPC の受け口(設計書「IPC」「セキュリティ」)。renderer から受け取るのはパス・パッチ・確認の一覧だけで、
-// 記録のインデックスの場所・フォルダ・git の引数は main が決める。記録は送信元の webContents の id で引く(所有者の分離)
+// エージェントの変更の IPC の受け口(設計書「IPC」「セキュリティ」)。renderer から受け取るのはパス・パッチ・確認の一覧・
+// 記録の開始の種類・範囲(列挙と runId)だけで、記録のインデックスの場所・tree・フォルダ・git の引数は main が決める。
+// 記録は送信元の webContents の id で引く(所有者の分離)
 
 export const AGENT_CHANGES_NOT_MAIN_FRAME = 'メインフレーム以外からの依頼は受け付けません'
 export const AGENT_CHANGES_NO_RECORD_MESSAGE = 'エージェントの変更の記録がありません'
+// 範囲ごとの一覧・diff の文言は agentChangesScopedQuery に置き、受け口の利用者のためにここからも出す
+export { AGENT_CHANGES_SCOPE_DIFF_UNAVAILABLE_MESSAGE } from '../agentChangesScopedQuery'
 
 export interface AgentChangesHandlerDeps {
   registry: Pick<AgentBaselineRegistry, 'begin' | 'getState' | 'withRecord' | 'clear'>
@@ -47,14 +52,14 @@ export function registerAgentChangesHandlers(
   const withRecordOrThrow = async <T>(
     ownerId: number,
     folder: string | null,
-    task: (snapshot: BaselineSnapshot) => Promise<T>
+    task: (record: AgentChangesRecord) => Promise<T>
   ): Promise<T> => {
     if (folder === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
     const result = await registry.withRecord(ownerId, folder, task)
     if (result === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
     return result
   }
-  // パスを受ける操作(getDiff・revertFile・revertHunk)の共通の前処理。送信元の確認 → 引数の検証(parseArgs) →
+  // パスを受ける操作(getDiff・revertFile・revertHunk)の共通の前処理。送信元の確認 → 引数の検証(parseArgs。パッチ・範囲) →
   // フォルダが無ければ例外 → パスの検証 → 記録の列、の順。検証の失敗は記録の列に入る前に拒否する。
   // parseArgs を送信元の確認の後・フォルダの確認の前に呼ぶのは、revertHunk のパッチの検証の順序を保つため
   // (メインフレーム以外からの依頼には、壊れたパッチでも常に AGENT_CHANGES_NOT_MAIN_FRAME を返す)
@@ -62,72 +67,94 @@ export function registerAgentChangesHandlers(
     event: IpcMainInvokeEvent,
     path: unknown,
     parseArgs: () => A,
-    task: (snapshot: BaselineSnapshot, relativePath: string, args: A) => Promise<T>
+    task: (record: AgentChangesRecord, relativePath: string, args: A) => Promise<T>
   ): Promise<T> => {
     const { ownerId, folder } = ownerOf(event)
     const args = parseArgs()
     if (folder === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
     const relativePath = await relativePathOf(folder, path)
-    return withRecordOrThrow(ownerId, folder, (snapshot) => task(snapshot, relativePath, args))
+    return withRecordOrThrow(ownerId, folder, (record) => task(record, relativePath, args))
   }
-  const noArgs = (): undefined => undefined
 
-  ipcMain.handle('agentChanges:begin', async (event): Promise<AgentChangesState> => {
-    const { ownerId, folder } = ownerOf(event)
-    if (folder === null) return { kind: 'none' }
-    return registry.begin(ownerId, folder)
-  })
+  ipcMain.handle(
+    'agentChanges:begin',
+    async (event, trigger: unknown): Promise<AgentChangesState> => {
+      const { ownerId, folder } = ownerOf(event)
+      const parsedTrigger = parseAgentChangesBeginTrigger(trigger)
+      if (folder === null) return { kind: 'none' }
+      return registry.begin(ownerId, folder, parsedTrigger)
+    }
+  )
 
   ipcMain.handle('agentChanges:getState', (event): AgentChangesState => {
     const { ownerId, folder } = ownerOf(event)
     return folder === null ? { kind: 'none' } : registry.getState(ownerId, folder)
   })
 
-  ipcMain.handle('agentChanges:list', async (event): Promise<AgentChangesListResult> => {
-    const { ownerId, folder } = ownerOf(event)
-    if (folder === null) return { kind: 'none' }
-    const result = await registry.withRecord(ownerId, folder, async (snapshot) => ({
-      kind: 'recording' as const,
-      startedAt: snapshot.startedAt,
-      ...(await listAgentChanges(snapshot))
-    }))
-    return result ?? { kind: 'none' }
-  })
+  ipcMain.handle(
+    'agentChanges:list',
+    async (event, scope: unknown): Promise<AgentChangesListResult> => {
+      const { ownerId, folder } = ownerOf(event)
+      const parsedScope = parseAgentChangesScope(scope)
+      if (folder === null) return { kind: 'none' }
+      const result = await registry.withRecord(ownerId, folder, (record) =>
+        listAgentChangesInScope(record, parsedScope)
+      )
+      return result ?? { kind: 'none' }
+    }
+  )
 
   ipcMain.handle(
     'agentChanges:getDiff',
-    (event, path: unknown): Promise<string> =>
-      withRecordAtPath(event, path, noArgs, (snapshot, relativePath) =>
-        getAgentChangeDiff(snapshot, relativePath)
+    (event, path: unknown, scope: unknown): Promise<string> =>
+      withRecordAtPath(
+        event,
+        path,
+        () => parseAgentChangesScope(scope),
+        (record, relativePath, parsedScope) =>
+          getAgentChangeDiffInScope(record, parsedScope, relativePath)
       )
   )
 
-  ipcMain.handle('agentChanges:revertFile', async (event, path: unknown): Promise<void> => {
-    await withRecordAtPath(event, path, noArgs, (snapshot, relativePath) =>
-      revertAgentChange({ snapshot, trash }, relativePath)
-    )
-  })
-
+  // 戻す系は累積の範囲だけを受け付け、実行の範囲は記録の列に入る前に拒む(L-058)。戻す先は累積の始点
   ipcMain.handle(
-    'agentChanges:revertHunk',
-    async (event, path: unknown, patch: unknown): Promise<void> => {
+    'agentChanges:revertFile',
+    async (event, path: unknown, scope: unknown): Promise<void> => {
       await withRecordAtPath(
         event,
         path,
-        () => parseAgentChangePatch(patch),
-        (snapshot, relativePath, parsedPatch) =>
-          revertAgentChangeHunk({ snapshot, trash }, relativePath, parsedPatch)
+        () => parseRevertScope(scope),
+        (record, relativePath) =>
+          revertAgentChange({ snapshot: record.baseline, trash }, relativePath)
+      )
+    }
+  )
+
+  ipcMain.handle(
+    'agentChanges:revertHunk',
+    async (event, path: unknown, patch: unknown, scope: unknown): Promise<void> => {
+      await withRecordAtPath(
+        event,
+        path,
+        () => {
+          const parsedPatch = parseAgentChangePatch(patch)
+          parseRevertScope(scope)
+          return parsedPatch
+        },
+        (record, relativePath, parsedPatch) =>
+          revertAgentChangeHunk({ snapshot: record.baseline, trash }, relativePath, parsedPatch)
       )
     }
   )
 
   ipcMain.handle(
     'agentChanges:revertAll',
-    async (event, expected: unknown): Promise<DiscardAllResult> => {
+    async (event, expected: unknown, scope: unknown): Promise<DiscardAllResult> => {
       const { ownerId, folder } = ownerOf(event)
       const entries = parseAgentRevertAllEntries(expected)
-      return withRecordOrThrow(ownerId, folder, (snapshot) =>
-        revertAllAgentChanges({ snapshot, trash }, entries)
+      parseRevertScope(scope)
+      return withRecordOrThrow(ownerId, folder, (record) =>
+        revertAllAgentChanges({ snapshot: record.baseline, trash }, entries)
       )
     }
   )

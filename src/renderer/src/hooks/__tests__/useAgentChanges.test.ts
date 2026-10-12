@@ -1,15 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import type { AgentChangesListResult, AgentChangesState } from '@shared/types'
+import type {
+  AgentChangesListResult,
+  AgentChangesRun,
+  AgentChangesScope,
+  AgentChangesState
+} from '@shared/types'
 import { useAgentChanges } from '../useAgentChanges'
+import type { AgentChangesController } from '../useAgentChanges'
+import { getListedAgentChanges } from '../../lib/agentChangesScope'
 import { toAnnouncementText } from '../../lib/announcementText'
 import { AGENT_CHANGES_CLEARED_NOTICE } from '../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
-  makeAgentChangesListResult
+  makeAgentChangesListResult,
+  makeAgentChangesRecordingState,
+  makeAgentChangesRun,
+  makeAgentChangesScopeUnavailableListResult
 } from '../../__tests__/makeAgentChangesState'
 
-const recordingState: AgentChangesState = { kind: 'recording', startedAt: 100 }
+const recordingState: AgentChangesState = makeAgentChangesRecordingState()
 // 一覧の件数・パスを試すことが多いため、パスだけで変更の行(status M)の一覧を作る
 const listOf = (paths: string[], startedAt = 100): AgentChangesListResult =>
   makeAgentChangesListResult(
@@ -47,16 +57,19 @@ describe('useAgentChanges', () => {
   it('begin で記録中になり、refresh で一覧を取る。announce なら件数を読み上げる', async () => {
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
-    expect(result.current.view).toEqual({ kind: 'recording', startedAt: 100, list: null })
+    expect(result.current.view).toEqual({ kind: 'recording', startedAt: 100, runs: [], list: null })
     await act(async () => {
       await result.current.refresh({ announce: true })
     })
     expect(result.current.view).toEqual({
       kind: 'recording',
       startedAt: 100,
+      runs: [],
       list: {
+        kind: 'listed',
+        scope: { kind: 'all' },
         entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
         totalCount: 1,
         truncated: false,
@@ -80,7 +93,7 @@ describe('useAgentChanges', () => {
       .mockResolvedValue({ kind: 'unavailable', reason: 'not-toplevel' })
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     expect(result.current.view).toEqual({
       kind: 'unavailable',
@@ -92,7 +105,7 @@ describe('useAgentChanges', () => {
     window.api.beginAgentChanges = vi.fn().mockRejectedValue(new Error('ipc'))
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     expect(result.current.view).toEqual({
       kind: 'unavailable',
@@ -109,7 +122,7 @@ describe('useAgentChanges', () => {
     })
     let begun: Promise<void> = Promise.resolve()
     act(() => {
-      begun = result.current.begin()
+      begun = result.current.begin('manual')
     })
     rerender({ folder: '/b' })
     await act(async () => {
@@ -124,7 +137,7 @@ describe('useAgentChanges', () => {
     const second = deferred<AgentChangesListResult>()
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     window.api.listAgentChanges = vi
       .fn()
@@ -142,7 +155,7 @@ describe('useAgentChanges', () => {
       first.resolve(listOf(['old.txt']))
       await a
     })
-    expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(2)
+    expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(2)
     expect(toAnnouncementText(result.current.notice)).toBe('エージェントの変更: 2 件')
     expect(result.current.isLoading).toBe(false)
   })
@@ -150,7 +163,7 @@ describe('useAgentChanges', () => {
   it('一覧の失敗は前回の一覧を残してエラーを出し、次の成功で消す', async () => {
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
       await result.current.refresh()
     })
     window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('git failed'))
@@ -158,7 +171,7 @@ describe('useAgentChanges', () => {
       await result.current.refresh()
     })
     expect(result.current.listError).toBe('git failed')
-    expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(1)
+    expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(1)
     window.api.listAgentChanges = vi.fn().mockResolvedValue(listOf([]))
     await act(async () => {
       await result.current.refresh()
@@ -166,10 +179,240 @@ describe('useAgentChanges', () => {
     expect(result.current.listError).toBeNull()
   })
 
+  describe('静かな取り直し(quiet。自動の取り直し)', () => {
+    async function recordingListed(): Promise<{ current: AgentChangesController }> {
+      const { result } = renderHook(() => useAgentChanges('/repo'))
+      await act(async () => {
+        await result.current.begin('manual')
+        await result.current.refresh()
+      })
+      return result
+    }
+
+    it('取り直しの間も isLoading を立てず、前の一覧を出したままにする', async () => {
+      const result = await recordingListed()
+      const before = result.current.view
+      const pending = deferred<AgentChangesListResult>()
+      window.api.listAgentChanges = vi.fn().mockReturnValueOnce(pending.promise)
+      let done: Promise<void> = Promise.resolve()
+      act(() => {
+        done = result.current.refresh({ quiet: true })
+      })
+      expect(result.current.isLoading).toBe(false)
+      expect(result.current.view).toBe(before)
+      await act(async () => {
+        pending.resolve(listOf(['a.txt']))
+        await done
+      })
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('一覧の中身が前と同じなら、写しを置き換えない(参照を保つ)', async () => {
+      const result = await recordingListed()
+      const before = result.current.view
+      window.api.listAgentChanges = vi.fn().mockResolvedValue(listOf(['a.txt']))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(window.api.listAgentChanges).toHaveBeenCalledOnce()
+      expect(result.current.view).toBe(before)
+    })
+
+    it('失敗しても listError を立てず、前の一覧を出したままにする(戻すボタンを押せなくしない)', async () => {
+      const result = await recordingListed()
+      const before = result.current.view
+      window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('git failed'))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.listError).toBeNull()
+      expect(result.current.view).toBe(before)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('手動の取り直しの失敗で出たエラーは、静かな取り直しの失敗では消さず、成功で消す', async () => {
+      const result = await recordingListed()
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('manual failed'))
+        .mockRejectedValueOnce(new Error('quiet failed'))
+        .mockResolvedValueOnce(listOf(['a.txt']))
+      await act(async () => {
+        await result.current.refresh()
+      })
+      expect(result.current.listError).toBe('manual failed')
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.listError).toBe('manual failed')
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.listError).toBeNull()
+    })
+
+    it('手動の取り直しを追い越した静かな取り直しが失敗したら、手動と同じくエラーを出す(押した更新が黙って消えない)', async () => {
+      const result = await recordingListed()
+      const manual = deferred<AgentChangesListResult>()
+      const quiet = deferred<AgentChangesListResult>()
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockReturnValueOnce(manual.promise)
+        .mockReturnValueOnce(quiet.promise)
+      let a: Promise<void> = Promise.resolve()
+      let b: Promise<void> = Promise.resolve()
+      act(() => {
+        a = result.current.refresh()
+      })
+      act(() => {
+        b = result.current.refresh({ quiet: true })
+      })
+      await act(async () => {
+        quiet.reject(new Error('git failed'))
+        await b
+        manual.resolve(listOf(['old.txt']))
+        await a
+      })
+      expect(result.current.listError).toBe('git failed')
+      expect(result.current.isLoading).toBe(false)
+      // 手動の依頼に答えた後の静かな取り直しの失敗は、今までどおりエラーを出さない
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockResolvedValueOnce(listOf(['a.txt']))
+        .mockRejectedValueOnce(new Error('quiet failed'))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.listError).toBeNull()
+    })
+
+    it('手動の取り直しの応答待ちにフォルダを切り替えた後は、静かな取り直しが失敗してもエラーを出さない', async () => {
+      const { result, rerender } = renderHook(({ folder }) => useAgentChanges(folder), {
+        initialProps: { folder: '/a' as string | null }
+      })
+      await act(async () => {
+        await result.current.begin('manual')
+      })
+      const manual = deferred<AgentChangesListResult>()
+      window.api.listAgentChanges = vi.fn().mockReturnValueOnce(manual.promise)
+      let a: Promise<void> = Promise.resolve()
+      act(() => {
+        a = result.current.refresh()
+      })
+      rerender({ folder: '/b' })
+      await act(async () => {
+        manual.resolve(listOf(['old.txt']))
+        await a
+        await result.current.begin('manual')
+      })
+      window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('quiet failed'))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.listError).toBeNull()
+    })
+
+    it('一覧が変わったら、写しを置き換える', async () => {
+      const result = await recordingListed()
+      const before = result.current.view
+      window.api.listAgentChanges = vi.fn().mockResolvedValue(listOf(['a.txt', 'b.txt']))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.view).not.toBe(before)
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(2)
+    })
+
+    it('HEAD の帯(headChanged)だけが変わっても、写しを置き換える', async () => {
+      const result = await recordingListed()
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockResolvedValue(
+          makeAgentChangesListResult([makeAgentChangeEntry('a.txt')], { headChanged: true })
+        )
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(getListedAgentChanges(result.current.view)?.headChanged).toBe(true)
+    })
+
+    it('手動の取り直しの途中に静かな取り直しが追い越しても、isLoading を下ろす', async () => {
+      const result = await recordingListed()
+      const manual = deferred<AgentChangesListResult>()
+      const quiet = deferred<AgentChangesListResult>()
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockReturnValueOnce(manual.promise)
+        .mockReturnValueOnce(quiet.promise)
+      let a: Promise<void> = Promise.resolve()
+      let b: Promise<void> = Promise.resolve()
+      act(() => {
+        a = result.current.refresh()
+      })
+      expect(result.current.isLoading).toBe(true)
+      act(() => {
+        b = result.current.refresh({ quiet: true })
+      })
+      await act(async () => {
+        quiet.resolve(listOf(['a.txt', 'b.txt']))
+        await b
+        manual.resolve(listOf(['old.txt']))
+        await a
+      })
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(2)
+      expect(result.current.isLoading).toBe(false)
+    })
+
+    it('静かな取り直しが一覧を反映するたびに、一覧が同じでも quietRefreshCount を進める(手動・失敗・捨てた結果では進めない)', async () => {
+      const result = await recordingListed()
+      expect(result.current.quietRefreshCount).toBe(0)
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.quietRefreshCount).toBe(1)
+      await act(async () => {
+        await result.current.refresh()
+      })
+      expect(result.current.quietRefreshCount).toBe(1)
+      window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('git failed'))
+      await act(async () => {
+        await result.current.refresh({ quiet: true })
+      })
+      expect(result.current.quietRefreshCount).toBe(1)
+      // 後の依頼に追い越された静かな取り直しの結果では進めない
+      const first = deferred<AgentChangesListResult>()
+      window.api.listAgentChanges = vi
+        .fn()
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce(listOf(['a.txt']))
+      let a: Promise<void> = Promise.resolve()
+      act(() => {
+        a = result.current.refresh({ quiet: true })
+      })
+      await act(async () => {
+        await result.current.refresh()
+        first.resolve(listOf(['a.txt']))
+        await a
+      })
+      expect(result.current.quietRefreshCount).toBe(1)
+    })
+
+    it('手動の取り直しは、一覧が同じでも写しを置き換える(diff タブを取り直す契機を変えない)', async () => {
+      const result = await recordingListed()
+      const before = result.current.view
+      await act(async () => {
+        await result.current.refresh()
+      })
+      expect(result.current.view).not.toBe(before)
+      expect(result.current.view).toEqual(before)
+    })
+  })
+
   it('main が記録を捨てていたら(一覧が none)記録なしにする', async () => {
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     window.api.listAgentChanges = vi.fn().mockResolvedValue({ kind: 'none' })
     await act(async () => {
@@ -183,7 +426,7 @@ describe('useAgentChanges', () => {
     act(() => result.current.markSaved('/repo/early.txt'))
     expect(result.current.savedPaths.size).toBe(0)
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     act(() => result.current.markSaved('/repo/a.txt'))
     expect([...result.current.savedPaths]).toEqual(['/repo/a.txt'])
@@ -199,9 +442,11 @@ describe('useAgentChanges', () => {
     expect(result.current.savedPaths.size).toBe(0)
     expect(toAnnouncementText(result.current.notice)).toBe(AGENT_CHANGES_CLEARED_NOTICE)
     // 新しい記録(開始の時刻が違う)では前の記録の保存を持ち越さない
-    window.api.beginAgentChanges = vi.fn().mockResolvedValue({ kind: 'recording', startedAt: 200 })
+    window.api.beginAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 200 }))
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     expect(result.current.savedPaths.size).toBe(0)
   })
@@ -211,7 +456,7 @@ describe('useAgentChanges', () => {
       initialProps: { folder: '/a' as string | null }
     })
     await act(async () => {
-      await result.current.begin()
+      await result.current.begin('manual')
     })
     act(() => result.current.markSaved('/a/x.txt'))
     rerender({ folder: '/b' })
@@ -223,7 +468,12 @@ describe('useAgentChanges', () => {
     window.api.getAgentChangesState = vi.fn().mockResolvedValue(recordingState)
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await waitFor(() =>
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 100, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 100,
+        runs: [],
+        list: null
+      })
     )
   })
 
@@ -249,10 +499,15 @@ describe('useAgentChanges', () => {
     })
     window.api.getAgentChangesState = vi
       .fn()
-      .mockResolvedValue({ kind: 'recording', startedAt: 300 })
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 300 }))
     rerender({ f: '/b' })
     await waitFor(() =>
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 300, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 300,
+        runs: [],
+        list: null
+      })
     )
   })
 
@@ -264,7 +519,7 @@ describe('useAgentChanges', () => {
         initialProps: { folder: '/a' as string | null }
       })
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.listAgentChanges = vi.fn().mockReturnValueOnce(pending.promise)
       let refreshed: Promise<void> = Promise.resolve()
@@ -280,22 +535,20 @@ describe('useAgentChanges', () => {
       expect(result.current.isLoading).toBe(false)
       window.api.beginAgentChanges = vi
         .fn()
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce(listOf(['x.txt', 'y.txt'], 200))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        2
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(2)
       expect(result.current.notice).toBeNull()
     })
 
     it('読み上げを頼んだ取り直しが失敗したら依頼を捨てる(後の無言の取り直しで読み上げない)', async () => {
       const { result } = renderHook(() => useAgentChanges('/repo'))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('git failed'))
       await act(async () => {
@@ -314,7 +567,7 @@ describe('useAgentChanges', () => {
       const pending = deferred<AgentChangesListResult>()
       const { result } = renderHook(() => useAgentChanges('/repo'))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.listAgentChanges = vi.fn().mockReturnValueOnce(pending.promise)
       let refreshed: Promise<void> = Promise.resolve()
@@ -332,15 +585,13 @@ describe('useAgentChanges', () => {
       expect(result.current.isLoading).toBe(false)
       window.api.beginAgentChanges = vi
         .fn()
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce(listOf(['x.txt', 'y.txt'], 200))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        2
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(2)
       expect(toAnnouncementText(result.current.notice)).toBe(AGENT_CHANGES_CLEARED_NOTICE)
     })
 
@@ -349,26 +600,36 @@ describe('useAgentChanges', () => {
       window.api.beginAgentChanges = vi
         .fn()
         .mockReturnValueOnce(oldBegin.promise)
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       const { result, rerender } = renderHook(({ folder }) => useAgentChanges(folder), {
         initialProps: { folder: '/a' as string | null }
       })
       let oldBegun: Promise<void> = Promise.resolve()
       act(() => {
-        oldBegun = result.current.begin()
+        oldBegun = result.current.begin('manual')
       })
       rerender({ folder: '/b' })
       rerender({ folder: '/a' })
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 200, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 200,
+        runs: [],
+        list: null
+      })
       // main ではフォルダの切り替えで古い記録が取り消され、none が返る
       await act(async () => {
         oldBegin.resolve({ kind: 'none' })
         await oldBegun
       })
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 200, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 200,
+        runs: [],
+        list: null
+      })
     })
 
     it('/a → /b → /a と戻った後に古い begin が失敗しても、新しい記録の表示を上書きしない', async () => {
@@ -376,24 +637,29 @@ describe('useAgentChanges', () => {
       window.api.beginAgentChanges = vi
         .fn()
         .mockReturnValueOnce(oldBegin.promise)
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       const { result, rerender } = renderHook(({ folder }) => useAgentChanges(folder), {
         initialProps: { folder: '/a' as string | null }
       })
       let oldBegun: Promise<void> = Promise.resolve()
       act(() => {
-        oldBegun = result.current.begin()
+        oldBegun = result.current.begin('manual')
       })
       rerender({ folder: '/b' })
       rerender({ folder: '/a' })
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       await act(async () => {
         oldBegin.reject(new Error('ipc'))
         await oldBegun
       })
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 200, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 200,
+        runs: [],
+        list: null
+      })
     })
 
     it('begin の応答待ちで確認を終えたら、begin の結果で記録中に戻さない', async () => {
@@ -402,7 +668,7 @@ describe('useAgentChanges', () => {
       const { result } = renderHook(() => useAgentChanges('/repo'))
       let begun: Promise<void> = Promise.resolve()
       act(() => {
-        begun = result.current.begin()
+        begun = result.current.begin('manual')
       })
       await act(async () => {
         await result.current.clear()
@@ -417,7 +683,7 @@ describe('useAgentChanges', () => {
     it('読み上げを頼んだ取り直しで main に記録が無かったら依頼を捨てる(次の記録の無言の取り直しで読み上げない)', async () => {
       const { result } = renderHook(() => useAgentChanges('/repo'))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce({ kind: 'none' })
       await act(async () => {
@@ -426,15 +692,13 @@ describe('useAgentChanges', () => {
       expect(result.current.view).toEqual({ kind: 'none' })
       window.api.beginAgentChanges = vi
         .fn()
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce(listOf(['x.txt'], 200))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        1
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(1)
       expect(result.current.notice).toBeNull()
     })
 
@@ -446,7 +710,7 @@ describe('useAgentChanges', () => {
         initialProps: { folder: '/a' as string | null }
       })
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.beginAgentChanges = vi.fn().mockReturnValueOnce(pendingBegin.promise)
       window.api.listAgentChanges = vi.fn().mockReturnValueOnce(pendingList.promise)
@@ -454,7 +718,7 @@ describe('useAgentChanges', () => {
       let refreshed: Promise<void> = Promise.resolve()
       act(() => {
         refreshed = result.current.refresh({ announce: true })
-        begun = result.current.begin()
+        begun = result.current.begin('manual')
       })
       expect(result.current.isLoading).toBe(true)
       expect(result.current.isBeginning).toBe(true)
@@ -476,15 +740,13 @@ describe('useAgentChanges', () => {
       // 次のフォルダの記録の無言の取り直しで、前のフォルダの読み上げの依頼を使わない
       window.api.beginAgentChanges = vi
         .fn()
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce(listOf(['x.txt'], 200))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        1
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(1)
       expect(result.current.notice).toBeNull()
     })
 
@@ -494,7 +756,7 @@ describe('useAgentChanges', () => {
       const pendingClear = deferred<void>()
       const { result } = renderHook(() => useAgentChanges('/repo'))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
       window.api.listAgentChanges = vi.fn().mockRejectedValueOnce(new Error('git failed'))
@@ -510,7 +772,7 @@ describe('useAgentChanges', () => {
       let cleared: Promise<void> = Promise.resolve()
       act(() => {
         refreshed = result.current.refresh({ announce: true })
-        begun = result.current.begin()
+        begun = result.current.begin('manual')
       })
       expect(result.current.isLoading).toBe(true)
       act(() => {
@@ -524,14 +786,12 @@ describe('useAgentChanges', () => {
       // 確認の終了の応答待ちに届いた古い一覧・begin の結果は捨てる
       await act(async () => {
         pendingList.resolve(listOf(['old.txt', 'old2.txt']))
-        pendingBegin.resolve({ kind: 'recording', startedAt: 300 })
+        pendingBegin.resolve(makeAgentChangesRecordingState({ startedAt: 300 }))
         await refreshed
         await begun
       })
       expect(result.current.view.kind === 'recording' && result.current.view.startedAt).toBe(100)
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        1
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(1)
       expect(result.current.isLoading).toBe(false)
       expect(result.current.isBeginning).toBe(false)
       expect(result.current.notice).toBeNull()
@@ -545,15 +805,13 @@ describe('useAgentChanges', () => {
       // 次の記録の無言の取り直しで、確認の終了の前の読み上げの依頼を使わない
       window.api.beginAgentChanges = vi
         .fn()
-        .mockResolvedValueOnce({ kind: 'recording', startedAt: 200 })
+        .mockResolvedValueOnce(makeAgentChangesRecordingState({ startedAt: 200 }))
       window.api.listAgentChanges = vi.fn().mockResolvedValueOnce(listOf(['x.txt'], 200))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
         await result.current.refresh()
       })
-      expect(result.current.view.kind === 'recording' && result.current.view.list?.totalCount).toBe(
-        1
-      )
+      expect(getListedAgentChanges(result.current.view)?.totalCount).toBe(1)
       expect(toAnnouncementText(result.current.notice)).toBe(AGENT_CHANGES_CLEARED_NOTICE)
     })
 
@@ -562,7 +820,7 @@ describe('useAgentChanges', () => {
       const pendingBegin = deferred<AgentChangesState>()
       const { result } = renderHook(() => useAgentChanges('/repo'))
       await act(async () => {
-        await result.current.begin()
+        await result.current.begin('manual')
       })
       window.api.clearAgentChanges = vi.fn().mockReturnValueOnce(pendingClear.promise)
       window.api.beginAgentChanges = vi.fn().mockReturnValueOnce(pendingBegin.promise)
@@ -572,7 +830,7 @@ describe('useAgentChanges', () => {
         cleared = result.current.clear()
       })
       act(() => {
-        begun = result.current.begin()
+        begun = result.current.begin('manual')
       })
       await act(async () => {
         pendingClear.resolve()
@@ -580,10 +838,15 @@ describe('useAgentChanges', () => {
       })
       expect(result.current.view).toEqual({ kind: 'none' })
       await act(async () => {
-        pendingBegin.resolve({ kind: 'recording', startedAt: 200 })
+        pendingBegin.resolve(makeAgentChangesRecordingState({ startedAt: 200 }))
         await begun
       })
-      expect(result.current.view).toEqual({ kind: 'recording', startedAt: 200, list: null })
+      expect(result.current.view).toEqual({
+        kind: 'recording',
+        startedAt: 200,
+        runs: [],
+        list: null
+      })
     })
 
     it('begin を 2 回続けても、両方が終わるまで isBeginning を下ろさない', async () => {
@@ -597,8 +860,8 @@ describe('useAgentChanges', () => {
       let a: Promise<void> = Promise.resolve()
       let b: Promise<void> = Promise.resolve()
       act(() => {
-        a = result.current.begin()
-        b = result.current.begin()
+        a = result.current.begin('manual')
+        b = result.current.begin('manual')
       })
       expect(result.current.isBeginning).toBe(true)
       await act(async () => {
@@ -612,5 +875,222 @@ describe('useAgentChanges', () => {
       })
       expect(result.current.isBeginning).toBe(false)
     })
+  })
+})
+
+describe('useAgentChanges の範囲と実行', () => {
+  const run1 = makeAgentChangesRun({ runId: 1, number: 1, startedAt: 100, endedAt: 200 })
+  const run2 = makeAgentChangesRun({ runId: 2, number: 2, startedAt: 200 })
+  const listIn = (
+    scope: AgentChangesScope,
+    paths: string[],
+    runs: AgentChangesRun[] = [run1, run2]
+  ): AgentChangesListResult =>
+    makeAgentChangesListResult(
+      paths.map((path) => makeAgentChangeEntry(path)),
+      { scope, runs }
+    )
+  const RUN_1: AgentChangesScope = { kind: 'run', runId: 1 }
+
+  // 記録中(実行 1・2)にして累積の一覧を取った状態にする
+  async function recordingTwoRuns(): Promise<{ current: AgentChangesController }> {
+    window.api.beginAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ runs: [run1, run2] }))
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(listIn({ kind: 'all' }, ['a.txt']))
+    const { result } = renderHook(() => useAgentChanges('/repo'))
+    await act(async () => {
+      await result.current.begin('send')
+      await result.current.refresh()
+    })
+    return result
+  }
+
+  // 実行 1 を選んだ記録中にする(範囲を累積に戻す契機・実行が消えたときの前提)
+  async function recordingWithRun1Selected(): Promise<{ current: AgentChangesController }> {
+    const result = await recordingTwoRuns()
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(listIn(RUN_1, ['a.txt']))
+    await act(async () => {
+      result.current.selectScope(RUN_1)
+    })
+    expect(result.current.scope).toEqual(RUN_1)
+    return result
+  }
+
+  it('begin は trigger を main へ渡し、写しに実行の一覧を持つ', async () => {
+    const result = await recordingTwoRuns()
+    expect(window.api.beginAgentChanges).toHaveBeenCalledWith('send')
+    expect(result.current.view).toMatchObject({ kind: 'recording', runs: [run1, run2] })
+    expect(result.current.scope).toEqual({ kind: 'all' })
+  })
+
+  it('範囲を選ぶと一覧を空にして、その範囲で取り直す', async () => {
+    const result = await recordingTwoRuns()
+    const pending = deferred<AgentChangesListResult>()
+    window.api.listAgentChanges = vi.fn(() => pending.promise)
+    act(() => result.current.selectScope(RUN_1))
+    expect(result.current.scope).toEqual(RUN_1)
+    expect(result.current.view).toMatchObject({ kind: 'recording', list: null })
+    expect(window.api.listAgentChanges).toHaveBeenCalledWith(RUN_1)
+    await act(async () => {
+      pending.resolve(listIn(RUN_1, ['b.txt']))
+    })
+    expect(result.current.view).toMatchObject({
+      kind: 'recording',
+      list: { kind: 'listed', scope: RUN_1, entries: [{ path: 'b.txt' }] }
+    })
+  })
+
+  it('範囲の違う古い一覧の結果を捨てる(L-040)', async () => {
+    const result = await recordingTwoRuns()
+    const old = deferred<AgentChangesListResult>()
+    const fresh = deferred<AgentChangesListResult>()
+    window.api.listAgentChanges = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(fresh.promise)
+    let refreshing: Promise<void> = Promise.resolve()
+    act(() => {
+      refreshing = result.current.refresh()
+    })
+    act(() => result.current.selectScope(RUN_1))
+    await act(async () => {
+      old.resolve(listIn({ kind: 'all' }, ['old.txt']))
+      await refreshing
+    })
+    expect(result.current.view).toMatchObject({ list: null })
+    await act(async () => {
+      fresh.resolve(listIn(RUN_1, ['b.txt']))
+    })
+    expect(result.current.view).toMatchObject({
+      list: { scope: RUN_1, entries: [{ path: 'b.txt' }] }
+    })
+  })
+
+  it('main が run-missing を返したら、範囲を累積に戻して取り直し、消える前の番号で読み上げる', async () => {
+    const result = await recordingTwoRuns()
+    window.api.listAgentChanges = vi
+      .fn()
+      .mockResolvedValueOnce(
+        makeAgentChangesScopeUnavailableListResult(RUN_1, 'run-missing', { runs: [run2] })
+      )
+      .mockResolvedValueOnce(listIn({ kind: 'all' }, ['a.txt'], [run2]))
+    await act(async () => {
+      result.current.selectScope(RUN_1)
+    })
+    await waitFor(() =>
+      expect(result.current.view).toMatchObject({
+        list: { kind: 'listed', scope: { kind: 'all' } }
+      })
+    )
+    expect(result.current.scope).toEqual({ kind: 'all' })
+    expect(window.api.listAgentChanges).toHaveBeenLastCalledWith({ kind: 'all' })
+    expect(toAnnouncementText(result.current.notice)).toBe(
+      '実行 1 の記録は古くなったため消えました。すべて（累積）を表示します'
+    )
+  })
+
+  it('begin の結果の実行の一覧に選んでいる実行が無ければ、範囲を累積に戻して取り直し、読み上げる', async () => {
+    const result = await recordingWithRun1Selected()
+    window.api.beginAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ runs: [run2] }))
+    window.api.listAgentChanges = vi
+      .fn()
+      .mockResolvedValue(listIn({ kind: 'all' }, ['a.txt'], [run2]))
+    await act(async () => {
+      await result.current.begin('send')
+    })
+    await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledWith({ kind: 'all' }))
+    expect(result.current.scope).toEqual({ kind: 'all' })
+    expect(toAnnouncementText(result.current.notice)).toBe(
+      '実行 1 の記録は古くなったため消えました。すべて（累積）を表示します'
+    )
+  })
+
+  it('範囲の一覧が取れない(start-not-recorded など)ときは、一覧の代わりに理由を持つ', async () => {
+    const result = await recordingTwoRuns()
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(
+      makeAgentChangesScopeUnavailableListResult(RUN_1, 'end-not-recorded', {
+        runs: [run1, run2]
+      })
+    )
+    await act(async () => {
+      result.current.selectScope(RUN_1)
+    })
+    await waitFor(() =>
+      expect(result.current.view).toMatchObject({
+        list: { kind: 'scope-unavailable', scope: RUN_1, reason: 'end-not-recorded' }
+      })
+    )
+    expect(result.current.scope).toEqual(RUN_1)
+  })
+
+  it('範囲の一覧が取れないまま静かな取り直しが続いても、写しの参照を保ち、quietRefreshCount を進める', async () => {
+    const result = await recordingTwoRuns()
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(
+      makeAgentChangesScopeUnavailableListResult(RUN_1, 'end-not-recorded', {
+        runs: [run1, run2]
+      })
+    )
+    await act(async () => {
+      result.current.selectScope(RUN_1)
+    })
+    await waitFor(() =>
+      expect(result.current.view).toMatchObject({ list: { kind: 'scope-unavailable' } })
+    )
+    const before = result.current.view
+    const count = result.current.quietRefreshCount
+    await act(async () => {
+      await result.current.refresh({ quiet: true })
+    })
+    expect(result.current.view).toBe(before)
+    expect(result.current.quietRefreshCount).toBe(count + 1)
+  })
+
+  it('記録がある間の send の begin が例外になっても、写しを変えない', async () => {
+    const result = await recordingTwoRuns()
+    const before = result.current.view
+    window.api.beginAgentChanges = vi.fn().mockRejectedValue(new Error('ipc'))
+    await act(async () => {
+      await result.current.begin('send')
+    })
+    expect(result.current.view).toBe(before)
+  })
+
+  it('新しい記録(startedAt が変わった)になると、範囲を累積に戻す', async () => {
+    const result = await recordingWithRun1Selected()
+    const fresh = makeAgentChangesRecordingState({ startedAt: 999, runs: [run1] })
+    window.api.getAgentChangesState = vi.fn().mockResolvedValue(fresh)
+    window.api.beginAgentChanges = vi.fn().mockResolvedValue(fresh)
+    await act(async () => {
+      await result.current.begin('manual')
+    })
+    expect(result.current.scope).toEqual({ kind: 'all' })
+  })
+
+  it('確認を終えると、範囲を累積に戻す', async () => {
+    const result = await recordingWithRun1Selected()
+    await act(async () => {
+      await result.current.clear()
+    })
+    expect(result.current.scope).toEqual({ kind: 'all' })
+  })
+
+  it('フォルダを切り替えると、範囲を累積に戻す', async () => {
+    window.api.beginAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ runs: [run1, run2] }))
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(listIn(RUN_1, ['a.txt']))
+    const { result, rerender } = renderHook(({ folder }) => useAgentChanges(folder), {
+      initialProps: { folder: '/a' as string | null }
+    })
+    await act(async () => {
+      await result.current.begin('send')
+      result.current.selectScope(RUN_1)
+    })
+    expect(result.current.scope).toEqual(RUN_1)
+    rerender({ folder: '/b' })
+    expect(result.current.scope).toEqual({ kind: 'all' })
   })
 })

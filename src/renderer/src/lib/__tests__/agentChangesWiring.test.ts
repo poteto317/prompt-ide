@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import type { AgentChangesView } from '../../hooks/useAgentChanges'
+import type { AgentChangesView } from '../../types'
 import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import {
+  agentDiffContentRunNumber,
   canRevertAgentHunk,
   findActiveAgentEntry,
-  findAgentDiffTabsToClose
+  findAgentDiffTabsToClose,
+  isAgentChangesScopeUnavailable,
+  isCumulativeAgentDiffScope
 } from '../agentChangesWiring'
 import {
   makeAgentChangeEntry,
-  makeAgentChangesRecordingView
+  makeAgentChangesRecordingView,
+  makeAgentChangesRun,
+  makeAgentChangesScopeUnavailableView
 } from '../../__tests__/makeAgentChangesState'
 
 const agentTab = (path: string): DiffTabKey => ({ path, kind: 'agent' })
@@ -38,6 +43,15 @@ describe('findAgentDiffTabsToClose', () => {
   it('記録中で一覧をまだ取っていなければ null(何もしない)', () => {
     expect(
       findAgentDiffTabsToClose([agentTab('a.txt')], makeAgentChangesRecordingView(null))
+    ).toBeNull()
+  })
+
+  it('範囲の一覧が取れない(scope-unavailable)間は、消えたかが分からないため null', () => {
+    expect(
+      findAgentDiffTabsToClose(
+        [{ path: 'a.txt', kind: 'agent' }],
+        makeAgentChangesScopeUnavailableView({ kind: 'run', runId: 1 }, 'start-not-recorded')
+      )
     ).toBeNull()
   })
 
@@ -133,5 +147,43 @@ describe('findActiveAgentEntry', () => {
       findActiveAgentEntry(makeAgentChangesRecordingView(null), agentTab('a.txt'))
     ).toBeUndefined()
     expect(findActiveAgentEntry(view, agentTab('missing.txt'))).toBeUndefined()
+  })
+})
+
+describe('isAgentChangesScopeUnavailable', () => {
+  it('記録中で範囲の一覧が取れないときだけ true', () => {
+    expect(
+      isAgentChangesScopeUnavailable(
+        makeAgentChangesScopeUnavailableView({ kind: 'run', runId: 2 }, 'end-not-recorded')
+      )
+    ).toBe(true)
+    expect(isAgentChangesScopeUnavailable(makeAgentChangesRecordingView([]))).toBe(false)
+    expect(isAgentChangesScopeUnavailable(makeAgentChangesRecordingView(null))).toBe(false)
+    expect(isAgentChangesScopeUnavailable({ kind: 'none' })).toBe(false)
+  })
+})
+
+describe('isCumulativeAgentDiffScope', () => {
+  it('内容の範囲が累積のときだけ true(実行・内容なしは false)', () => {
+    expect(isCumulativeAgentDiffScope({ kind: 'all' })).toBe(true)
+    expect(isCumulativeAgentDiffScope({ kind: 'run', runId: 1 })).toBe(false)
+    expect(isCumulativeAgentDiffScope(null)).toBe(false)
+  })
+})
+
+describe('agentDiffContentRunNumber', () => {
+  const view = makeAgentChangesRecordingView([], {
+    runs: [makeAgentChangesRun({ runId: 5, number: 2 })]
+  })
+
+  it('内容の範囲が写しにある実行なら、その実行の番号', () => {
+    expect(agentDiffContentRunNumber(view, { kind: 'run', runId: 5 })).toBe(2)
+  })
+
+  it('累積・内容なし・写しに無い実行・記録なしは null', () => {
+    expect(agentDiffContentRunNumber(view, { kind: 'all' })).toBeNull()
+    expect(agentDiffContentRunNumber(view, null)).toBeNull()
+    expect(agentDiffContentRunNumber(view, { kind: 'run', runId: 9 })).toBeNull()
+    expect(agentDiffContentRunNumber({ kind: 'none' }, { kind: 'run', runId: 5 })).toBeNull()
   })
 })

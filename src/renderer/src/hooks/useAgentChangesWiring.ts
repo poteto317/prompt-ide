@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { GitStatusResult } from '@shared/types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AgentChangesScope, GitStatusResult } from '@shared/types'
 import type { AgentChangesReviewAction, AgentDiffActions } from '../types'
+import type { AgentActivity } from '../lib/agentActivity'
+import type { AgentNotificationTab } from '../lib/agentNotificationEvents'
 import {
+  agentDiffContentRunNumber,
   canRevertAgentHunk,
   findActiveAgentEntry,
-  findAgentDiffTabsToClose
+  findAgentDiffTabsToClose,
+  isAgentChangesScopeUnavailable,
+  isCumulativeAgentDiffScope
 } from '../lib/agentChangesWiring'
 import type { AgentChangesController } from './useAgentChanges'
+import { useAgentChangesAutoRefresh } from './useAgentChangesAutoRefresh'
 import type { AgentChangesRecording } from './useAgentChangesRecording'
 import { useAgentChangesRevert } from './useAgentChangesRevert'
 import type { AgentChangesRevertOptions, AgentChangesRevertState } from './useAgentChangesRevert'
 import type { AgentLastExit } from './useAgentSessions'
+import type { DiffRefreshOptions } from './useDiffOperations'
 import type { DiffTabsState } from './useDiffTabs'
 import type { FileOperationLock } from './useFileOperationLock'
-import { useOnChange } from './useOnChange'
 
 // エージェントの変更の組み立ての後段(useAppState の中で useDiffOperations・useAgentWorkspace・useExternalFileChanges の
-// 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機、一覧から消えたパスの diff タブの
+// 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機(自動の取り直しは useAgentChangesAutoRefresh)、一覧から消えたパスの diff タブの
 // 同期、戻す操作(useAgentChangesRevert)、表示用の値(セクション・diff タブの操作・ターミナルの帯)の組み立てを持つ
 
 // 一覧のパスと diff タブのパスの照合(フォルダの行は末尾に / が付く。どちらかが null なら一致しない)
@@ -41,10 +47,14 @@ export interface AgentChangesPanelState {
     | 'listError'
     | 'notice'
     | 'savedPaths'
-    | 'begin'
     | 'refresh'
     | 'clear'
-  >
+    | 'scope'
+    | 'selectScope'
+  > & {
+    /** 「いまから記録する」「もう一度試す」。manual で記録を始めてから一覧を取る(useAgentChangesRecording.beginManuallyAndRefresh) */
+    begin: () => Promise<void>
+  }
   /** セクションの見出しへフォーカスを移す依頼(ターミナルの帯の「変更を確認」) */
   focusRequest: AgentChangesFocusRequest
   revert: AgentChangesRevertState
@@ -64,11 +74,17 @@ export interface AgentChangesWiringOptions {
   agentSessionExit: AgentLastExit | null
   /** どれかのタブのセッションが動いているか(起動中を含む。戻すの確認の文言に足す) */
   agentRunning: boolean
+  /** エージェントのタブ(useAgentSessions の tabs。自動の取り直しの活動の出来事に使う) */
+  agentTabs: readonly AgentNotificationTab[]
+  /** タブごとの活動(useAgentWorkspace の agentTerminal.activities) */
+  agentActivities: ReadonlyMap<string, AgentActivity>
   /** エージェント CLI 方式か(従来の方式ではセクションは記録がある間だけ出る) */
   isAgentMode: boolean
   diffTabs: Pick<DiffTabsState, 'diffTabs' | 'activeDiffTab' | 'openDiffTab' | 'closeDiffTab'>
-  /** 開いている diff タブを取り直す(useDiffOperations.refreshDiff) */
-  refreshDiff: () => void
+  /** 開いている diff タブを取り直す(useDiffOperations.refreshDiff。quiet なら前の内容を出したまま取り直す) */
+  refreshDiff: (options?: DiffRefreshOptions) => void
+  /** 表示中の agent の diff の内容を取った範囲(useDiffOperations.agentDiffScope)。累積のときだけハンクを戻せる */
+  agentDiffScope: AgentChangesScope | null
   fileLock: FileOperationLock
   fileSystem: Pick<
     AgentChangesRevertOptions,
@@ -99,14 +115,17 @@ export function useAgentChangesWiring({
   refreshGitStatus,
   agentSessionExit,
   agentRunning,
+  agentTabs,
+  agentActivities,
   isAgentMode,
   diffTabs,
   refreshDiff,
+  agentDiffScope,
   fileLock,
   fileSystem,
   showSourceControl
 }: AgentChangesWiringOptions): AgentChangesWiring {
-  const { changes, beginAndRefresh } = recording
+  const { changes, beginManuallyAndRefresh } = recording
   // セクションの見出しへフォーカスを移す依頼(UI の一時的な状態のため、記録の写しの useAgentChanges には持たせない)。
   // 「変更を確認」で立て、セクションが見出しへ移したら下ろす
   const [isFocusRequested, setIsFocusRequested] = useState(false)
@@ -123,13 +142,39 @@ export function useAgentChangesWiring({
   }, [agentSessionExit, refreshAgentChanges])
   // 一覧から消えたパスの diff タブを閉じる(記録が無くなったらすべて)。開いているなら取り直す
   // (git status の記号が変わらない編集・戻した後も、一覧の取り直しで diff を新しくする)。
-  // 初回のマウントは変化ではないため呼ばない(useOnChange)
+  // 初回のマウントは変化ではないため呼ばない(前の値を ref に持つ。useOnChange と同じ作り)
+  // 静かな取り直し(自動の取り直し)の完了(quietRefreshCount が進む)でも、一覧が同じ(写しの参照が同じ)まま、開いている agent の
+  // diff を静かに取り直す(行の状態が M のまま続きを書いた変更を出す。前の内容を出したまま取り、同じなら置き換えない)。
+  // 一覧の写しと完了の回数は同じ描画で変わるため、1 つの effect で見て、静かな完了を含む変化なら静かに 1 回だけ取り直す
   const view = changes.view
-  useOnChange(view, () => {
+  const quietRefreshCount = changes.quietRefreshCount
+  const previousListRef = useRef({ view, quietRefreshCount })
+  useEffect(() => {
+    const previous = previousListRef.current
+    if (previous.view === view && previous.quietRefreshCount === quietRefreshCount) return
+    previousListRef.current = { view, quietRefreshCount }
     const tabsToClose = findAgentDiffTabsToClose(diffTabs.diffTabs, view)
-    if (tabsToClose === null) return
-    for (const tab of tabsToClose) diffTabs.closeDiffTab(tab)
-    if (diffTabs.activeDiffTab?.kind === 'agent') refreshDiff()
+    // 範囲の一覧が取れない(scope-unavailable)ときは、消えたかが分からないため閉じないが、開いている diff は取り直す
+    // (前の範囲の内容を出し続けない。取り直すと diff タブにも取れない理由が出る)
+    if (tabsToClose === null && !isAgentChangesScopeUnavailable(view)) return
+    // 閉じるのは一覧が変わったときだけ(静かな完了だけなら、閉じるタブは前の変化で閉じてある)
+    if (tabsToClose !== null && previous.view !== view) {
+      for (const tab of tabsToClose) diffTabs.closeDiffTab(tab)
+    }
+    if (diffTabs.activeDiffTab?.kind !== 'agent') return
+    if (previous.quietRefreshCount !== quietRefreshCount) refreshDiff({ quiet: true })
+    else refreshDiff()
+    // diffTabs・refreshDiff は描画ごとに新しい値のことがあるため、依存に入れない(useOnChange と同じ)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, quietRefreshCount])
+  // 一覧の自動の取り直し(設計書「自動の取り直し」)。活動の出来事(通知と同じ advanceAgentNotifications の events)とフォーカスの復帰を合流して、
+  // 記録がある間だけ一覧を取り直す(読み上げない・git status は取り直さない)。上の既存の契機はこれを通さない
+  useAgentChangesAutoRefresh({
+    isRecording: view.kind === 'recording',
+    folderPath,
+    refresh: refreshAgentChanges,
+    tabs: agentTabs,
+    activities: agentActivities
   })
   const revert = useAgentChangesRevert({
     folderPath,
@@ -149,15 +194,23 @@ export function useAgentChangesWiring({
   const activeAgentPath =
     diffTabs.activeDiffTab?.kind === 'agent' ? diffTabs.activeDiffTab.path : null
   const agentDiffActions: AgentDiffActions = {
-    canRevertHunk: canRevertAgentHunk(findActiveAgentEntry(view, diffTabs.activeDiffTab)),
+    // 内容の範囲が累積のときだけ(実行の範囲の diff から作ったパッチは、逆適用すると戻す先が実行の開始の時点になる)
+    canRevertHunk:
+      isCumulativeAgentDiffScope(agentDiffScope) &&
+      canRevertAgentHunk(findActiveAgentEntry(view, diffTabs.activeDiffTab)),
+    // 内容を取った範囲が実行なら、写しの実行の番号(diff タブのラベルの「実行 N」)
+    contentRunNumber: agentDiffContentRunNumber(view, agentDiffScope),
     // 戻す操作・一覧の取得・他の Git 操作の間は押せない(理由は useAgentChangesRevert が組み立てる)
     disabledReason: revert.revertDisabledReason,
     // 失敗はそのパスの diff タブにだけ出す(b.txt の失敗を a.txt のタブに出さない。「すべて戻す」の失敗はセクションだけ)
     error: isSameAgentPath(revert.errorPath, activeAgentPath) ? revert.error : null,
     // ハンクを戻した結果の読み上げは、タブを問わず渡す(最後のハンクを戻すとタブが閉じる。EditorPanel が常設の要素に入れる)
     notice: revert.hunkNotice,
+    // canRevertHunk と同じ条件(内容の範囲が累積のときだけ)で処理の側でも止める(L-058)
     onRevertHunk: (patch, hunkHeader) => {
-      if (activeAgentPath !== null) void revert.revertHunk(activeAgentPath, patch, hunkHeader)
+      if (activeAgentPath !== null && isCumulativeAgentDiffScope(agentDiffScope)) {
+        void revert.revertHunk(activeAgentPath, patch, hunkHeader, agentDiffScope)
+      }
     }
   }
   // ターミナルの帯の「変更を確認」: ソース管理パネルを開き(閉じない)、git status と一覧を取り直し、セクションへフォーカスを移す。
@@ -174,7 +227,7 @@ export function useAgentChangesWiring({
   const agentChangesPanel: AgentChangesPanelState = {
     changes: {
       ...changes,
-      begin: beginAndRefresh,
+      begin: beginManuallyAndRefresh,
       // セクションの「更新」は、ソース管理の更新と同じく git status も取り直す(設計書「いつ完了とするか」(2))
       refresh: (options) => {
         void refreshGitStatus()

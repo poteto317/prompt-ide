@@ -157,6 +157,7 @@ export function useAppState(): AppState {
     diffTabs.activeDiffTab,
     git.refreshGitStatus,
     git.gitStatus?.files ?? [],
+    agentChangesRecording.changes.scope,
     fileOperationLock
   )
   const gitHistory = useGitHistory(fileSystem.folderPath)
@@ -203,8 +204,8 @@ export function useAppState(): AppState {
   const agentWorkspace = useAgentWorkspace({
     folderPath: fileSystem.folderPath,
     isExecuting: execution.isExecuting,
-    // プロンプトの「実行」で送る前に、エージェントの変更の記録を始める(記録があれば main は何もしない)
-    beforeAgentSend: agentChangesRecording.beginAndRefresh
+    // プロンプトの「実行」で送る前に、エージェントの変更の記録を始める(記録があれば実行の区切りを足す)
+    beforeAgentSend: agentChangesRecording.beginForSendAndRefresh
   })
   // アクティブなエディタの選択の行の範囲(エージェントへ送るプロンプトの参照の「選択範囲」)
   const editorSelection = useEditorSelectionRange()
@@ -529,9 +530,12 @@ export function useAppState(): AppState {
     refreshGitStatus: git.refreshGitStatus,
     agentSessionExit: agentWorkspace.agentTerminal.sessions.lastExit,
     agentRunning: agentWorkspace.agentTerminal.sessions.isAnyActive,
+    agentTabs: agentWorkspace.agentTerminal.sessions.tabs,
+    agentActivities: agentWorkspace.agentTerminal.activities,
     isAgentMode: agentWorkspace.executionModePanel.mode === 'agent-cli',
     diffTabs,
     refreshDiff: diffOperations.refreshDiff,
+    agentDiffScope: diffOperations.agentDiffScope,
     fileLock: fileOperationLock,
     fileSystem,
     showSourceControl: () => panel.showPanel('source-control')

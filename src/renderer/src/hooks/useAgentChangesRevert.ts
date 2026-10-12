@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { AgentChangeEntry } from '@shared/types'
+import type { AgentChangeEntry, AgentChangesScope } from '@shared/types'
 import type { Announcement } from '../types'
 import * as agentChangesApi from '../lib/agentChangesApi'
 import {
@@ -15,6 +15,7 @@ import {
 } from '../lib/agentChangesMessages'
 import { toError } from '../lib/errorUtils'
 import { agentChangeAbsolutePath, isEntrySavedInApp, isSavedInApp } from '../lib/agentChangesPaths'
+import { getListedAgentChanges } from '../lib/agentChangesScope'
 import { AGENT_CHANGES_NOTICE_DURATION_MS } from './useAgentChanges'
 import type { AgentChangesController } from './useAgentChanges'
 import type { FileOperationLock } from './useFileOperationLock'
@@ -29,7 +30,7 @@ export interface AgentChangesRevertOptions {
   folderPath: string | null
   changes: Pick<
     AgentChangesController,
-    'view' | 'isLoading' | 'listError' | 'savedPaths' | 'refresh' | 'announce'
+    'view' | 'isLoading' | 'listError' | 'savedPaths' | 'scope' | 'refresh' | 'announce'
   >
   /** 他の Git 操作と共有するロック(実行中は lockGlobal を取る。isAnyLocked なら押せない) */
   fileLock: FileOperationLock
@@ -63,7 +64,13 @@ export interface AgentChangesRevertState {
   /** 「すべて戻す」を押せない理由 */
   revertAllDisabledReason: string | null
   revertFile: (entry: AgentChangeEntry) => Promise<void>
-  revertHunk: (path: string, patch: string, hunkHeader: string) => Promise<void>
+  /** scope は diff の内容を取った範囲。累積でなければ何もしない */
+  revertHunk: (
+    path: string,
+    patch: string,
+    hunkHeader: string,
+    scope: AgentChangesScope
+  ) => Promise<void>
   revertAll: () => Promise<void>
 }
 
@@ -96,26 +103,29 @@ export function useAgentChangesRevert({
   } = useTransientNotice(AGENT_CHANGES_NOTICE_DURATION_MS)
   // 失敗の文言は、その記録・そのフォルダについてのもの。フォルダの切り替え・記録の終了(none)・新しい記録(startedAt の変化)で
   // 消す(useAgentChanges の listError と同じく、前の記録の失敗を新しい記録で role="alert" に出さない)。
-  // 実行中に変わった場合に、終わった後で古い失敗を出さないよう、範囲の番号を進めて照合する
-  const scopeRef = useRef(0)
-  const resetForScopeChange = (): void => {
-    scopeRef.current += 1
+  // 実行中に変わった場合に、終わった後で古い失敗を出さないよう、記録の世代を進めて照合する
+  // (一覧・diff の範囲〈AgentChangesScope〉とは別のもの)
+  const recordGenerationRef = useRef(0)
+  const resetForRecordChange = (): void => {
+    recordGenerationRef.current += 1
     setError(null)
     clearHunkNotice()
   }
-  useOnChange(folderPath, resetForScopeChange)
+  useOnChange(folderPath, resetForRecordChange)
   useOnChange(
     changes.view.kind === 'recording' ? changes.view.startedAt : null,
-    resetForScopeChange
+    resetForRecordChange
   )
   // 同じ描画の中の 2 回目の依頼を止める(state は次の描画まで変わらない)
   const revertingRef = useRef(false)
-  const list = changes.view.kind === 'recording' ? changes.view.list : null
+  const list = getListedAgentChanges(changes.view)
   const availability = {
     isLoading: changes.isLoading,
     isGitBusy: fileLock.isAnyLocked(),
     isReverting,
-    hasListError: changes.listError !== null
+    hasListError: changes.listError !== null,
+    // 選んでいる範囲か、表示中の一覧の範囲が実行なら戻せない(実行ごとの表示は見るだけ。L-061)
+    isRunScope: changes.scope.kind !== 'all' || (list !== null && list.scope.kind !== 'all')
   }
   const revertDisabledReason = agentRevertDisabledReason(availability)
   const revertAllDisabledReason = agentRevertAllDisabledReason({
@@ -135,7 +145,7 @@ export function useAgentChangesRevert({
     execute: () => Promise<void>,
     onFailure?: (message: string) => void
   ): Promise<boolean> => {
-    const scope = scopeRef.current
+    const generation = recordGenerationRef.current
     revertingRef.current = true
     setIsReverting(true)
     setError(null)
@@ -144,7 +154,7 @@ export function useAgentChangesRevert({
       await execute()
       return true
     } catch (err) {
-      if (scope === scopeRef.current) {
+      if (generation === recordGenerationRef.current) {
         const message = toError(err).message
         setError({ message, path, source })
         onFailure?.(message)
@@ -169,7 +179,9 @@ export function useAgentChangesRevert({
 
   const revertFile = async (entry: AgentChangeEntry): Promise<void> => {
     const absolutePath = absoluteOf(entry.path)
-    if (absolutePath === null || !canStart() || entry.notRecorded) return
+    // 処理の側の守り: 表示中の一覧が累積でなければ、確認を出さずに何もしない(L-058)
+    if (absolutePath === null || list === null || list.scope.kind !== 'all') return
+    if (!canStart() || entry.notRecorded) return
     const message = buildAgentRevertFileConfirmMessage({
       path: entry.path,
       status: entry.status,
@@ -180,7 +192,7 @@ export function useAgentChangesRevert({
     })
     if (!onConfirm(message)) return
     const succeeded = await run(entry.path, 'file', () =>
-      agentChangesApi.revertAgentChange(entry.path)
+      agentChangesApi.revertAgentChange(entry.path, list.scope)
     )
     if (succeeded) {
       // 追加はゴミ箱へ移したのでタブを閉じ、それ以外は記録の時点の内容を読み直す
@@ -191,9 +203,15 @@ export function useAgentChangesRevert({
     await refreshAfter()
   }
 
-  const revertHunk = async (path: string, patch: string, hunkHeader: string): Promise<void> => {
+  // diffScope は diff の内容を取った範囲。累積でなければ、実行の開始の時点との差分のパッチになるため戻さない(L-058)
+  const revertHunk = async (
+    path: string,
+    patch: string,
+    hunkHeader: string,
+    diffScope: AgentChangesScope
+  ): Promise<void> => {
     const absolutePath = absoluteOf(path)
-    if (absolutePath === null || !canStart()) return
+    if (absolutePath === null || diffScope.kind !== 'all' || !canStart()) return
     const message = buildAgentRevertHunkConfirmMessage({
       path,
       hunkHeader,
@@ -205,22 +223,23 @@ export function useAgentChangesRevert({
     // 結果は diff タブ側の aria-live で読み上げる(成功すると diff が作り直されて押したボタンが消え、最後のハンクならタブも
     // 閉じる。セクションの読み上げはソース管理パネルが見えていないと届かない)。失敗は error にも出すが、セクションでは
     // 見た目だけにする(isErrorAnnouncedInDiff。PR #47 の 2 回目のレビューで二重の読み上げを修正)
-    const scope = scopeRef.current
+    const generation = recordGenerationRef.current
     const succeeded = await run(
       path,
       'hunk',
-      () => agentChangesApi.revertAgentChangeHunk(path, patch),
+      () => agentChangesApi.revertAgentChangeHunk(path, patch, diffScope),
       announceHunk
     )
     if (succeeded) {
       await reloadOpenFile(absolutePath)
-      if (scope === scopeRef.current) announceHunk(AGENT_CHANGES_HUNK_REVERTED_NOTICE)
+      if (generation === recordGenerationRef.current)
+        announceHunk(AGENT_CHANGES_HUNK_REVERTED_NOTICE)
     }
     await refreshAfter()
   }
 
   const revertAll = async (): Promise<void> => {
-    if (list === null || list.entries.length === 0) return
+    if (list === null || list.scope.kind !== 'all' || list.entries.length === 0) return
     if (revertingRef.current || revertAllDisabledReason !== null) return
     const message = buildAgentRevertAllConfirmMessage({
       count: list.entries.length,
@@ -237,16 +256,17 @@ export function useAgentChangesRevert({
     // 確認で見せた一覧(パスと状態の文字)を main へ渡す。実行時の一覧と完全一致しなければ main が中止する
     const expected = list.entries.map(({ path, status }) => ({ path, status }))
     let warning: string | null = null
-    const scope = scopeRef.current
+    const generation = recordGenerationRef.current
     const succeeded = await run(null, 'all', async () => {
-      const result = await agentChangesApi.revertAllAgentChanges(expected)
+      const result = await agentChangesApi.revertAllAgentChanges(expected, list.scope)
       if (result.status === 'partial') warning = result.message
     })
     if (succeeded) {
       // partial も作業ツリーが変わっているので読み直す(パターン 52)。警告は読み直しの後に出す
       await reloadOpenFiles()
       if (warning !== null) {
-        if (scope === scopeRef.current) setError({ message: warning, path: null, source: 'all' })
+        if (generation === recordGenerationRef.current)
+          setError({ message: warning, path: null, source: 'all' })
       } else changes.announce(formatAgentChangesRevertedNotice(expected.length))
     }
     await refreshAfter()

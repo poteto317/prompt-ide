@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { takeBaselineSnapshot } from '../../agentBaselineSnapshot'
 import type { BaselineSnapshot, BaselineSnapshotResult } from '../../agentBaselineSnapshot'
+import type { AgentChangesRecord, AgentChangesRecordRun } from '../../agentChangesRecord'
 import { initRepo, runGit, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
 
 // エージェントの変更の記録(agentBaselineSnapshot)を実 git で試すテストの準備と偽物を 1 か所から作る。
@@ -53,6 +54,17 @@ export async function recordBaseline(repo: string, tempRoot: string): Promise<Ba
   return recordedSnapshot(await takeBaselineSnapshot(repo, { tempRoot }))
 }
 
+// 区切りを取る(写しの元は base の記録のインデックス)。recorded でなければ例外
+export async function recordBaselineFrom(
+  repo: string,
+  tempRoot: string,
+  base: BaselineSnapshot
+): Promise<BaselineSnapshot> {
+  return recordedSnapshot(
+    await takeBaselineSnapshot(repo, { tempRoot, baseIndexPath: base.indexPath })
+  )
+}
+
 // 利用者の状態(index の更新時刻〈ナノ秒〉と内容・stash・ref・HEAD)。記録や戻す操作の前後で比べる
 export function userRepoState(repo: string): unknown {
   return {
@@ -82,6 +94,9 @@ export function createFakeTrash(): FakeTrash {
   }
 }
 
+/** 空の tree の ID(makeBaselineSnapshot の tree の既定値) */
+export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
+
 // 既定値で埋めた BaselineSnapshot。フィールドが増えても、そのフィールドに関係のないテストの偽物を直さずに済むようにする。
 // indexPath は既定で `${tempDir}/index`(tempDir を上書きしたときも追従する)
 export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}): BaselineSnapshot {
@@ -92,9 +107,23 @@ export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}):
     indexPath: `${tempDir}/index`,
     startedAt: 0,
     head: null,
+    tree: EMPTY_TREE,
     excluded: [],
     skippedRepos: [],
     ignoredAtBaseline: [],
     ...overrides
+  }
+}
+
+// 1 所有者の記録。累積の始点の既定は makeBaselineSnapshot()、次の実行の番号の既定は実行の数 + 1。
+// 記録の形が変わっても、範囲の解決・問い合わせのテストの偽物を個別に直さずに済むようにする
+export function makeAgentChangesRecord(
+  runs: AgentChangesRecordRun[],
+  overrides: Partial<Omit<AgentChangesRecord, 'runs'>> = {}
+): AgentChangesRecord {
+  return {
+    baseline: overrides.baseline ?? makeBaselineSnapshot(),
+    runs,
+    nextNumber: overrides.nextNumber ?? runs.length + 1
   }
 }

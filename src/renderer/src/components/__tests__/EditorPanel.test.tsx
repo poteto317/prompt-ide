@@ -15,6 +15,7 @@ import type { DiffTabKey } from '../../hooks/useDiffTabs'
 import type { SelectionRangeEditor } from '../../hooks/useEditorSelectionRange'
 import EditorPanel from '../EditorPanel'
 import { makeConflictFileState } from '../../__tests__/makeConflictFileState'
+import { makeAgentDiffActions } from '../../__tests__/makeAgentChangesState'
 import { useOnChange } from '../../hooks/useOnChange'
 
 // dnd-kit の実装（PointerSensor によるポインタ検知等）は jsdom 上でクリックの伝播を阻害するため、
@@ -632,6 +633,21 @@ describe('EditorPanel — 複数タブ', () => {
 })
 
 describe('EditorPanel — diff タブ', () => {
+  it('agent の diff の内容が実行の範囲なら、アクティブな diff タブのラベルに実行の番号を付ける', () => {
+    render(
+      <EditorPanel
+        {...defaultProps}
+        diffTabs={[{ path: 'a.txt', kind: 'agent' }]}
+        activeDiffTab={{ path: 'a.txt', kind: 'agent' }}
+        diffContent={'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n'}
+        agentDiffActions={makeAgentDiffActions({ canRevertHunk: false, contentRunNumber: 2 })}
+      />
+    )
+    expect(
+      screen.getByRole('tab', { name: /a\.txt \(エージェントの変更・実行 2\)/ })
+    ).toBeInTheDocument()
+  })
+
   // agentDiffActions は省略可能な props のため、渡し忘れ・種類の取り違えを型で検知できない(パターン 155)
   it.each([
     ['agent', 1],
@@ -643,13 +659,7 @@ describe('EditorPanel — diff タブ', () => {
         diffTabs={[{ path: 'src/index.ts', kind }]}
         activeDiffTab={{ path: 'src/index.ts', kind }}
         diffContent={'diff --git a/x b/x\n@@ -1,1 +1,1 @@\n-a\n+b\n'}
-        agentDiffActions={{
-          canRevertHunk: true,
-          disabledReason: null,
-          error: null,
-          notice: null,
-          onRevertHunk: vi.fn()
-        }}
+        agentDiffActions={makeAgentDiffActions()}
       />
     )
     expect(screen.queryAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(
@@ -672,13 +682,7 @@ describe('EditorPanel — diff タブ', () => {
         diffTabs={[{ path: 'big.txt', kind: 'agent' }]}
         activeDiffTab={{ path: 'big.txt', kind: 'agent' }}
         diffContent={'diff --git a/big.txt b/big.txt\n' + hunk(1, 10) + hunk(100, 2500)}
-        agentDiffActions={{
-          canRevertHunk: true,
-          disabledReason: null,
-          error: null,
-          notice: null,
-          onRevertHunk: vi.fn()
-        }}
+        agentDiffActions={makeAgentDiffActions()}
       />
     )
     expect(screen.getAllByRole('button', { name: 'このハンクを実行前に戻す' })).toHaveLength(1)
@@ -978,18 +982,6 @@ describe('EditorPanel — ハンクの取り消しの配線', () => {
 // エージェントの変更の diff タブでハンクを戻した後の読み上げとフォーカス(PR #47 B-2。パターン 86・87・152)
 describe('EditorPanel — エージェントの変更のハンクを戻した後', () => {
   const agentDiff = 'diff --git a/a.txt b/a.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n'
-  const agentActions = (
-    overrides: Partial<
-      NonNullable<React.ComponentProps<typeof EditorPanel>['agentDiffActions']>
-    > = {}
-  ): NonNullable<React.ComponentProps<typeof EditorPanel>['agentDiffActions']> => ({
-    canRevertHunk: true,
-    disabledReason: null,
-    error: null,
-    notice: null,
-    onRevertHunk: vi.fn(),
-    ...overrides
-  })
   const agentTabProps = {
     diffTabs: [{ path: 'a.txt', kind: 'agent' }] as DiffTabKey[],
     activeDiffTab: { path: 'a.txt', kind: 'agent' } as DiffTabKey,
@@ -998,7 +990,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
 
   it('結果の読み上げの要素は、diff タブが無い間も常設し、diff の作り直し・タブを閉じても同じ要素に文言を入れる', () => {
     const { container, rerender } = render(
-      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={agentActions()} />
+      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={makeAgentDiffActions()} />
     )
     const live = container.querySelector('.agent-diff__live')
     expect(live).not.toBeNull()
@@ -1008,7 +1000,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
     rerender(
       <EditorPanel
         {...defaultProps}
-        agentDiffActions={agentActions({
+        agentDiffActions={makeAgentDiffActions({
           notice: { text: 'ハンクを実行前の状態に戻しました', id: 1 }
         })}
       />
@@ -1019,7 +1011,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
 
   it('押したボタンが diff の作り直しで消えたら、フォーカスをアクティブなタブへ戻す', async () => {
     const user = userEvent.setup()
-    const actions = agentActions()
+    const actions = makeAgentDiffActions()
     const { rerender } = render(
       <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={actions} />
     )
@@ -1041,7 +1033,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
 
   it('最後のハンクを戻してタブが閉じたら、次にアクティブになったタブへ戻す', async () => {
     const user = userEvent.setup()
-    const actions = agentActions()
+    const actions = makeAgentDiffActions()
     const { rerender } = render(
       <EditorPanel
         {...defaultProps}
@@ -1060,7 +1052,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
 
   it('利用者がエディタの外へ移したフォーカスは奪わない', async () => {
     const user = userEvent.setup()
-    const actions = agentActions()
+    const actions = makeAgentDiffActions()
     const { rerender } = render(
       <>
         <button type="button">外</button>
@@ -1085,7 +1077,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
 
   it('ハンクを戻していなければ、diff が消えてもフォーカスを動かさない', () => {
     const { rerender } = render(
-      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={agentActions()} />
+      <EditorPanel {...defaultProps} {...agentTabProps} agentDiffActions={makeAgentDiffActions()} />
     )
     screen.getByRole('button', { name: 'このハンクを実行前に戻す' }).focus()
     rerender(
@@ -1093,7 +1085,7 @@ describe('EditorPanel — エージェントの変更のハンクを戻した後
         {...defaultProps}
         {...agentTabProps}
         diffContent={null}
-        agentDiffActions={agentActions()}
+        agentDiffActions={makeAgentDiffActions()}
       />
     )
     expect(screen.getByRole('tab', { selected: true })).not.toHaveFocus()
@@ -1190,13 +1182,10 @@ describe('EditorPanel — ハンクを戻した後のフォーカス(実機と�
           diffTabs={diffTabs}
           activeDiffTab={activeDiffTab}
           diffContent={diffContent}
-          agentDiffActions={{
-            canRevertHunk: true,
+          agentDiffActions={makeAgentDiffActions({
             disabledReason: isReverting ? REVERTING : null,
-            error: null,
-            notice: null,
             onRevertHunk: () => void revertHunk()
-          }}
+          })}
         />
       </>
     )
@@ -1364,13 +1353,7 @@ describe('EditorPanel — ハンクを戻した後のフォーカス(実機と�
     try {
       const user = userEvent.setup()
       const other: DiffTabKey = { path: 'b.txt', kind: 'agent' }
-      const actions = {
-        canRevertHunk: true,
-        disabledReason: null,
-        error: null,
-        notice: null,
-        onRevertHunk: vi.fn()
-      }
+      const actions = makeAgentDiffActions()
       root.unmount()
       root = createRoot(container)
       const renderPanel = (tabs: DiffTabKey[], active: DiffTabKey | null): void =>

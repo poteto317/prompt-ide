@@ -1,6 +1,8 @@
 import { ipcRenderer } from 'electron'
 import type {
+  AgentChangesBeginTrigger,
   AgentChangesListResult,
+  AgentChangesScope,
   AgentNotificationActivated,
   AgentNotificationBadgeRequest,
   AgentNotificationDismissRequest,
@@ -272,17 +274,21 @@ export const api = {
   openExternalLink: (url: string): Promise<boolean> =>
     ipcRenderer.invoke('shell:openExternalLink', url),
   // エージェントの変更(記録・一覧・diff・戻す)。記録の場所・フォルダ・git の引数は main が決める
-  beginAgentChanges: (): Promise<AgentChangesState> => ipcRenderer.invoke('agentChanges:begin'),
+  beginAgentChanges: (trigger: AgentChangesBeginTrigger): Promise<AgentChangesState> =>
+    ipcRenderer.invoke('agentChanges:begin', trigger),
   getAgentChangesState: (): Promise<AgentChangesState> =>
     ipcRenderer.invoke('agentChanges:getState'),
-  listAgentChanges: (): Promise<AgentChangesListResult> => ipcRenderer.invoke('agentChanges:list'),
-  getAgentChangeDiff: (path: string): Promise<string> =>
-    ipcRenderer.invoke('agentChanges:getDiff', path),
-  revertAgentChange: (path: string): Promise<void> =>
-    ipcRenderer.invoke('agentChanges:revertFile', path),
-  revertAgentChangeHunk: (path: string, patch: string): Promise<void> =>
-    ipcRenderer.invoke('agentChanges:revertHunk', path, patch),
-  revertAllAgentChanges: (expected: AgentRevertAllEntry[]): Promise<DiscardAllResult> =>
-    ipcRenderer.invoke('agentChanges:revertAll', expected),
+  listAgentChanges: (scope: AgentChangesScope): Promise<AgentChangesListResult> =>
+    ipcRenderer.invoke('agentChanges:list', scope),
+  getAgentChangeDiff: (path: string, scope: AgentChangesScope): Promise<string> =>
+    ipcRenderer.invoke('agentChanges:getDiff', path, scope),
+  revertAgentChange: (path: string, scope: AgentChangesScope): Promise<void> =>
+    ipcRenderer.invoke('agentChanges:revertFile', path, scope),
+  revertAgentChangeHunk: (path: string, patch: string, scope: AgentChangesScope): Promise<void> =>
+    ipcRenderer.invoke('agentChanges:revertHunk', path, patch, scope),
+  revertAllAgentChanges: (
+    expected: AgentRevertAllEntry[],
+    scope: AgentChangesScope
+  ): Promise<DiscardAllResult> => ipcRenderer.invoke('agentChanges:revertAll', expected, scope),
   clearAgentChanges: (): Promise<void> => ipcRenderer.invoke('agentChanges:clear')
 }

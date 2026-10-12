@@ -2,10 +2,10 @@ import { render, screen, act } from '@testing-library/react'
 import { describe, it, expect, vi } from 'vitest'
 import { useEffect, useRef } from 'react'
 import type { AgentChangesPanelState } from '../useAgentChangesWiring'
-import type { AgentChangesView } from '../useAgentChanges'
+import type { AgentChangesView } from '../../types'
 import { useAgentChangesClearFocus } from '../useAgentChangesClearFocus'
 import {
-  makeAgentChangesController,
+  makeAgentChangesPanelChanges,
   makeAgentChangesPanelState,
   makeAgentChangesRecordingView
 } from '../../__tests__/makeAgentChangesState'
@@ -19,7 +19,7 @@ function makeState(
   clear: () => Promise<void> = vi.fn(async () => undefined)
 ): AgentChangesPanelState {
   return makeAgentChangesPanelState({
-    changes: makeAgentChangesController({ view, clear }),
+    changes: makeAgentChangesPanelChanges({ view, clear }),
     isAgentMode
   })
 }

@@ -7,6 +7,8 @@ import {
   createAgentBaselineRepo,
   createFakeTrash,
   disposeAgentBaselineRepo,
+  EMPTY_TREE,
+  makeAgentChangesRecord,
   makeBaselineSnapshot,
   recordBaseline,
   recordedSnapshot,
@@ -14,6 +16,26 @@ import {
 } from './agentBaselineFixtures'
 import type { AgentBaselineRepo } from './agentBaselineFixtures'
 import { commitAll, runGit, writeRepoFile } from './realGitRepo'
+
+describe('makeAgentChangesRecord', () => {
+  it('既定は makeBaselineSnapshot() の始点で、次の番号は実行の数 + 1', () => {
+    const runs = [{ runId: 1, number: 1, start: { kind: 'baseline' as const } }]
+    expect(makeAgentChangesRecord(runs)).toEqual({
+      baseline: makeBaselineSnapshot(),
+      runs,
+      nextNumber: 2
+    })
+  })
+
+  it('始点と次の番号を上書きする', () => {
+    const baseline = makeBaselineSnapshot({ tempDir: '/tmp/base' })
+    expect(makeAgentChangesRecord([], { baseline, nextNumber: 9 })).toEqual({
+      baseline,
+      runs: [],
+      nextNumber: 9
+    })
+  })
+})
 
 describe('makeBaselineSnapshot', () => {
   it('既定値で埋める', () => {
@@ -23,6 +45,7 @@ describe('makeBaselineSnapshot', () => {
       indexPath: '/tmp/baseline/index',
       startedAt: 0,
       head: null,
+      tree: EMPTY_TREE,
       excluded: [],
       skippedRepos: [],
       ignoredAtBaseline: []
@@ -39,6 +62,7 @@ describe('makeBaselineSnapshot', () => {
       indexPath: '/tmp/baseline/index',
       startedAt: 42,
       head: 'abc',
+      tree: EMPTY_TREE,
       excluded,
       skippedRepos: [],
       ignoredAtBaseline: []

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as agentChangesApi from '../agentChangesApi'
+import { makeAgentChangesRecordingState } from '../../__tests__/makeAgentChangesState'
 
 const mockApi = {
   beginAgentChanges: vi.fn(),
@@ -19,27 +20,31 @@ beforeEach(() => {
 
 describe('agentChangesApi', () => {
   it('各関数は window.api の同名の関数へ引数をそのまま渡し、結果を返す', async () => {
-    mockApi.beginAgentChanges.mockResolvedValue({ kind: 'recording', startedAt: 1 })
+    mockApi.beginAgentChanges.mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 1 }))
     mockApi.revertAllAgentChanges.mockResolvedValue({ status: 'done' })
-    await expect(agentChangesApi.beginAgentChanges()).resolves.toEqual({
+    await expect(agentChangesApi.beginAgentChanges('send')).resolves.toEqual({
       kind: 'recording',
-      startedAt: 1
+      startedAt: 1,
+      runs: []
     })
     await agentChangesApi.getAgentChangesState()
-    await agentChangesApi.listAgentChanges()
-    await agentChangesApi.getAgentChangeDiff('a.txt')
-    await agentChangesApi.revertAgentChange('a.txt')
-    await agentChangesApi.revertAgentChangeHunk('a.txt', 'patch')
+    await agentChangesApi.listAgentChanges({ kind: 'all' })
+    await agentChangesApi.getAgentChangeDiff('a.txt', { kind: 'all' })
+    await agentChangesApi.revertAgentChange('a.txt', { kind: 'all' })
+    await agentChangesApi.revertAgentChangeHunk('a.txt', 'patch', { kind: 'all' })
     await expect(
-      agentChangesApi.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }])
+      agentChangesApi.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }], { kind: 'all' })
     ).resolves.toEqual({ status: 'done' })
     await agentChangesApi.clearAgentChanges()
+    expect(mockApi.beginAgentChanges).toHaveBeenCalledWith('send')
     expect(mockApi.getAgentChangesState).toHaveBeenCalledOnce()
-    expect(mockApi.listAgentChanges).toHaveBeenCalledOnce()
-    expect(mockApi.getAgentChangeDiff).toHaveBeenCalledWith('a.txt')
-    expect(mockApi.revertAgentChange).toHaveBeenCalledWith('a.txt')
-    expect(mockApi.revertAgentChangeHunk).toHaveBeenCalledWith('a.txt', 'patch')
-    expect(mockApi.revertAllAgentChanges).toHaveBeenCalledWith([{ path: 'a.txt', status: 'M' }])
+    expect(mockApi.listAgentChanges).toHaveBeenCalledWith({ kind: 'all' })
+    expect(mockApi.getAgentChangeDiff).toHaveBeenCalledWith('a.txt', { kind: 'all' })
+    expect(mockApi.revertAgentChange).toHaveBeenCalledWith('a.txt', { kind: 'all' })
+    expect(mockApi.revertAgentChangeHunk).toHaveBeenCalledWith('a.txt', 'patch', { kind: 'all' })
+    expect(mockApi.revertAllAgentChanges).toHaveBeenCalledWith([{ path: 'a.txt', status: 'M' }], {
+      kind: 'all'
+    })
     expect(mockApi.clearAgentChanges).toHaveBeenCalledOnce()
   })
 })

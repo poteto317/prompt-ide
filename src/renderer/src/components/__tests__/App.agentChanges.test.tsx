@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { AgentChangesListResult, GitStatusResult } from '@shared/types'
@@ -15,7 +15,8 @@ import App from '../../App'
 import { activityBarPanels } from '../../config/activityBarPanels'
 import {
   makeAgentChangeEntry,
-  makeAgentChangesListResult
+  makeAgentChangesListResult,
+  makeAgentChangesRecordingState
 } from '../../__tests__/makeAgentChangesState'
 
 // App → Sidebar → SourceControlPanel → GitRepoView → AgentChangesSection と、App → EditorPanel → DiffView・AgentTerminalPanel の
@@ -71,7 +72,7 @@ describe('App: エージェントの変更の配線', () => {
     window.api.getAgentChangesState = vi.fn().mockResolvedValue({ kind: 'none' })
     window.api.beginAgentChanges = vi
       .fn()
-      .mockResolvedValue({ kind: 'recording', startedAt: listedStartedAt })
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: listedStartedAt }))
     window.api.listAgentChanges = vi.fn().mockResolvedValue(listed)
     window.api.clearAgentChanges = vi.fn().mockResolvedValue(undefined)
     window.api.getAgentChangeDiff = vi
@@ -90,7 +91,7 @@ describe('App: エージェントの変更の配線', () => {
     await userEvent.click(
       await within(section()).findByRole('button', { name: 'いまから記録する' })
     )
-    expect(window.api.beginAgentChanges).toHaveBeenCalledOnce()
+    expect(window.api.beginAgentChanges).toHaveBeenCalledExactlyOnceWith('manual')
     expect(
       await within(section()).findByRole('button', { name: 'a.txt のエージェントの変更を表示' })
     ).toBeInTheDocument()
@@ -99,26 +100,146 @@ describe('App: エージェントの変更の配線', () => {
     expect(
       await screen.findByRole('tab', { name: /a\.txt \(エージェントの変更\)/ })
     ).toBeInTheDocument()
-    expect(window.api.getAgentChangeDiff).toHaveBeenCalledWith('a.txt')
+    expect(window.api.getAgentChangeDiff).toHaveBeenCalledWith('a.txt', { kind: 'all' })
     // agentDiffActions が渡らないと、既存の「このハンクをステージ」が出る(Task 14 の申し送り)
     expect(screen.queryByRole('button', { name: /このハンクをステージ/ })).toBeNull()
     await userEvent.click(await screen.findByRole('button', { name: 'このハンクを実行前に戻す' }))
     expect(window.api.revertAgentChangeHunk).toHaveBeenCalledWith(
       'a.txt',
-      expect.stringContaining('@@ -1 +1 @@')
+      expect.stringContaining('@@ -1 +1 @@'),
+      { kind: 'all' }
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'new.txt をゴミ箱へ移動' }))
     expect(window.confirm).toHaveBeenLastCalledWith(
       'new.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）'
     )
-    expect(window.api.revertAgentChange).toHaveBeenCalledWith('new.txt')
+    expect(window.api.revertAgentChange).toHaveBeenCalledWith('new.txt', { kind: 'all' })
+  })
+
+  // 自動の取り直し(ウィンドウの focus)は静かに取る(review 第 4 周の 1・2)。一覧が同じなら diff を作り直さず、スクロールとフォーカスを保つ。
+  // 取り直しの間も戻すボタンを押せなくしない(押せなくなるとフォーカスが body に落ちる)
+  describe('一覧の自動の取り直し(アプリへ戻ったとき)', () => {
+    // 記録を始め、a.txt の diff タブを開いて、ハンクの「戻す」にフォーカスを置く
+    async function openAgentDiffAndFocusHunk(): Promise<HTMLElement> {
+      await openRepository()
+      await userEvent.click(panelButton('source-control'))
+      await userEvent.click(
+        await within(section()).findByRole('button', { name: 'いまから記録する' })
+      )
+      await userEvent.click(
+        await within(section()).findByRole('button', { name: 'a.txt のエージェントの変更を表示' })
+      )
+      const hunk = await screen.findByRole('button', { name: 'このハンクを実行前に戻す' })
+      await waitFor(() => expect(hunk).toBeEnabled())
+      hunk.focus()
+      return hunk
+    }
+
+    function deferredList(): {
+      promise: Promise<AgentChangesListResult>
+      resolve: (value: AgentChangesListResult) => void
+    } {
+      let resolve: (value: AgentChangesListResult) => void = () => undefined
+      const promise = new Promise<AgentChangesListResult>((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    function deferredDiff(): { promise: Promise<string>; resolve: (value: string) => void } {
+      let resolve: (value: string) => void = () => undefined
+      const promise = new Promise<string>((res) => {
+        resolve = res
+      })
+      return { promise, resolve }
+    }
+
+    it('一覧が同じなら、取り直しの間も戻すボタンを押せるままにし、diff は静かに取り直して(内容が同じなら作り直さず)ハンクのフォーカスを保つ', async () => {
+      const hunk = await openAgentDiffAndFocusHunk()
+      const diffCalls = vi.mocked(window.api.getAgentChangeDiff).mock.calls.length
+      const listCalls = vi.mocked(window.api.listAgentChanges).mock.calls.length
+      const pending = deferredList()
+      vi.mocked(window.api.listAgentChanges).mockReturnValueOnce(pending.promise)
+      const pendingDiff = deferredDiff()
+      vi.mocked(window.api.getAgentChangeDiff).mockReturnValueOnce(pendingDiff.promise)
+
+      window.dispatchEvent(new Event('focus'))
+      await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(listCalls + 1))
+      // 取り直しの間: セクションの ↶・すべて戻す・ハンクの戻すは押せるまま、フォーカスはハンクのまま
+      expect(
+        within(section()).getByRole('button', { name: 'a.txt を実行前の状態に戻す' })
+      ).toBeEnabled()
+      expect(within(section()).getByRole('button', { name: 'すべて戻す' })).toBeEnabled()
+      expect(hunk).toBeEnabled()
+      expect(hunk).toHaveFocus()
+
+      // 一覧が届くと diff を静かに取り直す。取り直しの間も読み込み中に差し替えない
+      await act(async () => {
+        pending.resolve(listed)
+      })
+      await waitFor(() =>
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      )
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+      expect(hunk).toBeInTheDocument()
+      expect(hunk).toHaveFocus()
+      // 内容が同じなら作り直さない(同じ要素のままフォーカスを保つ)
+      await act(async () => {
+        pendingDiff.resolve(
+          'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n'
+        )
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      })
+      expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+      expect(hunk).toBeInTheDocument()
+      expect(hunk).toHaveFocus()
+    })
+
+    it('一覧が同じでも、同じファイルの続きの変更は、読み込み中を挟まずに開いている diff へ反映する', async () => {
+      await openAgentDiffAndFocusHunk()
+      const pendingDiff = deferredDiff()
+      vi.mocked(window.api.getAgentChangeDiff).mockReturnValueOnce(pendingDiff.promise)
+
+      window.dispatchEvent(new Event('focus'))
+      await waitFor(() => expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(2))
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+      await act(async () => {
+        pendingDiff.resolve(
+          'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1,2 @@\n-a\n+b\n+CONTINUED_CHANGE\n'
+        )
+      })
+      expect(await screen.findByText(/CONTINUED_CHANGE/)).toBeInTheDocument()
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+    })
+
+    it('一覧が変わったら、開いている agent の diff タブを取り直す', async () => {
+      await openAgentDiffAndFocusHunk()
+      const diffCalls = vi.mocked(window.api.getAgentChangeDiff).mock.calls.length
+      vi.mocked(window.api.listAgentChanges).mockResolvedValue(
+        makeAgentChangesListResult(
+          [
+            makeAgentChangeEntry('a.txt'),
+            makeAgentChangeEntry('new.txt', { status: 'A' }),
+            makeAgentChangeEntry('b.txt')
+          ],
+          { startedAt: listedStartedAt }
+        )
+      )
+
+      window.dispatchEvent(new Event('focus'))
+      await waitFor(() =>
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      )
+      expect(window.api.getAgentChangeDiff).toHaveBeenLastCalledWith('a.txt', { kind: 'all' })
+    })
   })
 
   it('ターミナルの帯の「変更を確認」で、ソース管理パネルへ切り替えて一覧を取り直し、セクションの見出しへフォーカスを移す', async () => {
     window.api.getAgentChangesState = vi
       .fn()
-      .mockResolvedValue({ kind: 'recording', startedAt: listedStartedAt })
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: listedStartedAt }))
     await openRepository()
     const review = await screen.findByRole('button', {
       name: 'エージェントの変更を確認（ソース管理を開く）'
@@ -148,7 +269,7 @@ describe('App: エージェントの変更の配線', () => {
     window.api.getPromptExecutionMode = vi.fn().mockResolvedValue('legacy')
     window.api.getAgentChangesState = vi
       .fn()
-      .mockResolvedValue({ kind: 'recording', startedAt: listedStartedAt })
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: listedStartedAt }))
     await openRepository()
     await userEvent.click(panelButton('source-control'))
     await userEvent.click(await within(section()).findByRole('button', { name: '確認を終える' }))

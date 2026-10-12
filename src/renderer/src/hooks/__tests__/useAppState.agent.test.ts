@@ -4,17 +4,30 @@
 // promptRunState.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import type { AgentChangeEntry, GitStatusResult } from '@shared/types'
+import type {
+  AgentChangeEntry,
+  AgentChangesScope,
+  AgentChangesState,
+  GitStatusResult
+} from '@shared/types'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
-import { makeAgentSessionsState } from '../../__tests__/makeAgentSessionsState'
+import {
+  makeAgentSessionTabView,
+  makeAgentSessionsState
+} from '../../__tests__/makeAgentSessionsState'
+import type { AgentActivity } from '../../lib/agentActivity'
 import {
   makeAgentReferencesPanelState,
   makeAgentReferencesState
 } from '../../__tests__/makeAgentReferencesState'
 import {
   makeAgentChangeEntry,
-  makeAgentChangesListResult
+  makeAgentChangesListResult,
+  makeAgentChangesRecordingState,
+  makeAgentChangesRun
 } from '../../__tests__/makeAgentChangesState'
+import { AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE } from '../../lib/agentChangesMessages'
+import { AUTO_REFRESH_MAX_WAIT_MS } from '../useAgentChangesAutoRefresh'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { ApplyOpenedFolderOptions } from '../useFileSystem'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
@@ -356,9 +369,7 @@ describe('useAppState', () => {
     describe('エージェントの変更の配線', () => {
       beforeEach(() => {
         window.api.getAgentChangesState = vi.fn().mockResolvedValue({ kind: 'none' })
-        window.api.beginAgentChanges = vi
-          .fn()
-          .mockResolvedValue({ kind: 'recording', startedAt: 100 })
+        window.api.beginAgentChanges = vi.fn().mockResolvedValue(makeAgentChangesRecordingState())
         window.api.listAgentChanges = vi
           .fn()
           .mockResolvedValue(makeAgentChangesListResult([makeAgentChangeEntry('a.txt')]))
@@ -379,6 +390,52 @@ describe('useAppState', () => {
         })
       })
 
+      // 設計書「テスト方針」の配線の結合テスト(本物の useAgentChanges・useAgentChangesRecording・useAgentChangesWiring・useAgentChangesRevert)
+      it('実行を 2 回送ると実行 1・2 が並び、実行 1 を選ぶとその範囲で一覧を取り、戻すボタンを押せない', async () => {
+        const run1 = makeAgentChangesRun({ runId: 1, number: 1, startedAt: 100, endedAt: 200 })
+        const run2 = makeAgentChangesRun({ runId: 2, number: 2, startedAt: 200 })
+        window.api.beginAgentChanges = vi
+          .fn()
+          .mockResolvedValueOnce(
+            makeAgentChangesRecordingState({ runs: [{ ...run1, endedAt: null }] })
+          )
+          .mockResolvedValueOnce(makeAgentChangesRecordingState({ runs: [run1, run2] }))
+        window.api.listAgentChanges = vi.fn((scope: AgentChangesScope) =>
+          Promise.resolve(
+            makeAgentChangesListResult([makeAgentChangeEntry('a.txt')], {
+              scope,
+              runs: [run1, run2]
+            })
+          )
+        )
+        const { result } = renderHook(() => useAppState())
+        const beforeAgentSend = mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend!
+        await act(async () => {
+          await beforeAgentSend()
+        })
+        await act(async () => {
+          await beforeAgentSend()
+        })
+        await waitFor(() =>
+          expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+            kind: 'recording',
+            runs: [{ runId: 1 }, { runId: 2 }]
+          })
+        )
+        expect(window.api.beginAgentChanges).toHaveBeenNthCalledWith(1, 'send')
+        expect(window.api.beginAgentChanges).toHaveBeenNthCalledWith(2, 'send')
+        act(() => result.current.agentChangesPanel.changes.selectScope({ kind: 'run', runId: 1 }))
+        await waitFor(() =>
+          expect(result.current.agentChangesPanel.revert.revertDisabledReason).toBe(
+            AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
+          )
+        )
+        expect(window.api.listAgentChanges).toHaveBeenLastCalledWith({ kind: 'run', runId: 1 })
+        expect(result.current.agentChangesPanel.revert.revertAllDisabledReason).toBe(
+          AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
+        )
+      })
+
       it('送信の前の準備(beforeAgentSend)は記録を始めてから一覧を取る', async () => {
         renderHook(() => useAppState())
         const { beforeAgentSend } = mockUseAgentWorkspace.mock.lastCall![0] as {
@@ -387,8 +444,16 @@ describe('useAppState', () => {
         await act(async () => {
           await beforeAgentSend()
         })
-        expect(window.api.beginAgentChanges).toHaveBeenCalledOnce()
+        expect(window.api.beginAgentChanges).toHaveBeenCalledExactlyOnceWith('send')
         await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalled())
+      })
+
+      it('セクションの「いまから記録する」は manual で記録を始める(実行に数えない)', async () => {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        expect(window.api.beginAgentChanges).toHaveBeenCalledExactlyOnceWith('manual')
       })
 
       // 送信の関数(useAgentPromptSender.send)の依存になるため、描画のたびに作り直さない(Task 13 の申し送り)
@@ -407,8 +472,7 @@ describe('useAppState', () => {
 
       // 送信は 10 秒で待つのを打ち切る(useAgentPromptSender)。打ち切った後に記録が終わっても、記録として扱い一覧を取る
       it('送信の前の準備の記録が遅れて終わっても、記録中になり一覧を取る', async () => {
-        let resolveBegin: (state: { kind: 'recording'; startedAt: number }) => void = () =>
-          undefined
+        let resolveBegin: (state: AgentChangesState) => void = () => undefined
         window.api.beginAgentChanges = vi.fn().mockReturnValueOnce(
           new Promise((resolve) => {
             resolveBegin = resolve
@@ -428,7 +492,7 @@ describe('useAppState', () => {
         expect(settled).toBe(false)
         expect(window.api.listAgentChanges).not.toHaveBeenCalled()
         await act(async () => {
-          resolveBegin({ kind: 'recording', startedAt: 100 })
+          resolveBegin(makeAgentChangesRecordingState())
         })
         await waitFor(() =>
           expect(result.current.agentChangesPanel.changes.view).toMatchObject({
@@ -496,6 +560,52 @@ describe('useAppState', () => {
         mockUseGitStatus.mockReturnValue({ ...mockUseGitStatus(), gitStatus: status('main') })
         rerender()
         await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2))
+      })
+
+      // 設計書「テスト方針」の配線の結合テスト。agentTabs・agentActivities の渡し忘れ・取り違えで落ちる(L-060)
+      it('いずれかのタブの活動が working → idle になると、記録の一覧を自動で取り直す(本物の hook どうし)', async () => {
+        const tab = makeAgentSessionTabView({ slotId: 's1', status: 'running' })
+        const workspaceWith = (
+          activity: AgentActivity
+        ): ReturnType<typeof makeAgentWorkspaceState> => {
+          const workspace = makeAgentWorkspaceState()
+          return {
+            ...workspace,
+            agentTerminal: {
+              ...workspace.agentTerminal,
+              sessions: makeAgentSessionsState({ tabs: [tab] }),
+              activities: new Map([['s1', activity]])
+            }
+          }
+        }
+        mockUseAgentWorkspace.mockReturnValue(workspaceWith('working'))
+        const { result, rerender } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledOnce())
+        mockUseAgentWorkspace.mockReturnValue(workspaceWith('idle'))
+        rerender()
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2), {
+          timeout: AUTO_REFRESH_MAX_WAIT_MS + 1_000
+        })
+        expect(window.api.listAgentChanges).toHaveBeenLastCalledWith({ kind: 'all' })
+      })
+
+      // 同じく配線の結合テスト。自動の取り直しの hook を wiring から呼び忘れる・記録中の判定を取り違えると落ちる(L-060)
+      it('記録中にウィンドウへフォーカスが戻ると、記録の一覧を自動で取り直す(本物の hook どうし)', async () => {
+        const { result } = renderHook(() => useAppState())
+        await act(async () => {
+          await result.current.agentChangesPanel.changes.begin()
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledOnce())
+        act(() => {
+          window.dispatchEvent(new Event('focus'))
+        })
+        await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(2), {
+          timeout: AUTO_REFRESH_MAX_WAIT_MS + 1_000
+        })
+        expect(window.api.listAgentChanges).toHaveBeenLastCalledWith({ kind: 'all' })
       })
 
       it('いずれかのタブ(タブ 2)のセッションが終わったら、記録の一覧を取り直す', async () => {

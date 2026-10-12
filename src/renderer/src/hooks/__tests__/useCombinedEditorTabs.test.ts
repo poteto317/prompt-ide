@@ -30,6 +30,7 @@ function makeParams(
     isDirty: false,
     diffTabs: [],
     activeDiffTab: null,
+    agentDiffRunNumber: null,
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
     onActivateDiffTab: vi.fn(),
@@ -213,6 +214,34 @@ describe('diffTabLabel', () => {
     [{ path: 'src/a.ts', kind: 'staged' }, 'src/a.ts (ステージ済み差分)'],
     [{ path: 'src/a.ts', kind: 'agent' }, 'src/a.ts (エージェントの変更)']
   ])('%o → %s', (tab, label) => {
-    expect(diffTabLabel(tab)).toBe(label)
+    expect(diffTabLabel(tab, null)).toBe(label)
+  })
+})
+
+describe('エージェントの変更の diff タブのラベルの実行の番号', () => {
+  it('実行の番号はアクティブな agent の diff タブにだけ付け、ほかの agent のタブは累積と同じラベル', () => {
+    const active = { path: 'a.txt', kind: 'agent' } as const
+    const other = { path: 'b.txt', kind: 'agent' } as const
+    const { result } = renderHook(() =>
+      useCombinedEditorTabs(
+        makeParams({
+          openFiles: [],
+          diffTabs: [active, other],
+          activeDiffTab: active,
+          agentDiffRunNumber: 2
+        })
+      )
+    )
+    expect(result.current.combinedTabs.map((tab) => tab.name)).toEqual([
+      'a.txt (エージェントの変更・実行 2)',
+      'b.txt (エージェントの変更)'
+    ])
+  })
+
+  it('diffTabLabel は実行の番号が null なら累積のラベル', () => {
+    expect(diffTabLabel({ path: 'a.txt', kind: 'agent' }, null)).toBe('a.txt (エージェントの変更)')
+    expect(diffTabLabel({ path: 'a.txt', kind: 'agent' }, 3)).toBe(
+      'a.txt (エージェントの変更・実行 3)'
+    )
   })
 })
