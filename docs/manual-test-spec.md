@@ -1050,6 +1050,12 @@
 - [ ] **AGC-085** `いまから記録する` を押して記録を始めてから、端末で `git for-each-ref --format='delete %(refname)' refs/prompt-ide/ | git update-ref --stdin` を実行してから `実行` を 1 回送る → ref は作り直されない（`git for-each-ref refs/prompt-ide/` が何も出さない）
 - [ ] **AGC-086** `確認を終える` を押してから `いまから記録する` を押し、`git for-each-ref refs/prompt-ide/` で ref が 1 つ出ることを確かめてから、端末で `R2=$(git for-each-ref --format='%(refname)' refs/prompt-ide/) && git update-ref "$R2" HEAD` を実行してから `実行` を 1 回送り、`確認を終える` を押す。アプリを終了して起動し直し、同じリポジトリで `いまから記録する` を押す → `$R2` はどの時点でも消えず、HEAD のコミットを指したまま残る（利用者が書き換えた ref は消さない）。確かめたら端末で `git update-ref -d "$R2"` を実行する
 
+### 取り消しの一時的な失敗
+
+> 前提: 「戻した操作の取り消し」の節と同じ（テスト用のリポジトリを作り直し、AGC-001 の状態から始める）。
+
+- [ ] **AGC-087** 端末で `mkdir -p ww && echo m > ww/m.txt && git add ww && git commit -qm ww` を実行してから `いまから記録する` を押す。`echo agent >> a.txt && echo agent >> ww/m.txt` を実行して `更新` を押し、`a.txt` の `↶` で OK する。端末で `chmod 000 a.txt` を実行してから `戻した操作を取り消す` を押して OK し、続けて `chmod 644 a.txt` を実行してもう一度 `戻した操作を取り消す` を押して OK する。次に `ww/m.txt` の `↶` で OK し、`chmod 555 ww` を実行してから `戻した操作を取り消す` を押して OK し、続けて `chmod 755 ww` を実行してもう一度押して OK する → 1 回目（読み込めない）は `取り消しの対象を読み込めませんでした（a.txt）: …` のエラーが出て、`a.txt` は変わらず、一覧の取り直しの後も帯（`直前に戻した操作: a.txt`）が残る。権限を戻した後の 2 回目で `戻した操作を取り消しました（1 件）` と読み上げられ、`a.txt` の末尾に `agent` が戻る。`ww/m.txt` でも同じく、1 回目（書き換えの失敗）は `取り消しに失敗しました:` で始まるエラーが出て `ww/m.txt` は変わらず帯が残り、権限を戻した後の 2 回目で取り消せる。確かめたら `確認を終える` を押す
+
 ## ソース管理（基本）
 
 > 前提: 以降の GIT 項目はすべて「ソース管理」パネル（アクティビティバーの `ソース管理` アイコン）で確認する。テスト用リポジトリはターミナルで次のように作り、アプリの「フォルダを開く」で開く。`export R=$(mktemp -d); cd "$R" && git init -b main && git config user.name tester && git config user.email tester@example.com && printf 'one\ntwo\nthree\n' > a.txt && printf 'hello\n' > b.txt && mkdir src && printf 'x\n' > src/c.ts && git add . && git commit -m "init" && printf 'second\n' >> b.txt && git commit -am "second commit"`。リモートが要る項目用に `export BARE=$(mktemp -d); git init --bare "$BARE"; cd "$R" && git remote add origin "$BARE" && git push -u origin main` を実行しておく。外部での変更はターミナルで行い、パネルの `更新` ボタンで反映する。
