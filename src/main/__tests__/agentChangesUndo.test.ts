@@ -593,7 +593,7 @@ describe('executeAgentChangesUndo(取り消し)', () => {
         }
       }
     })
-    expect(result.kind).toBe('failed')
+    expect(result).toMatchObject({ kind: 'failed', keepUndo: true })
     if (result.kind !== 'failed') return
     expect(result.message.startsWith('取り消しに失敗しました: z.txt: ')).toBe(true)
     expect(result.message).toContain('EEXIST')
@@ -601,16 +601,26 @@ describe('executeAgentChangesUndo(取り消し)', () => {
     expect(leftoverTemps()).toEqual([])
   })
 
-  it.skipIf(isRoot)('書き換えに失敗した: 0 件なら failed', async () => {
-    const undo = await captureRewrite('sub/a.txt')
-    chmodSync(join(folder, 'sub'), 0o555)
-    const { trash } = createFakeTrash()
-    const result = await executeAgentChangesUndo({ folderPath: folder, undo, trash })
-    expect(result.kind).toBe('failed')
-    if (result.kind !== 'failed') return
-    expect(result.message.startsWith('取り消しに失敗しました: sub/a.txt: ')).toBe(true)
-    expect(readFileSync(abs('sub/a.txt'), 'utf8')).toBe('base')
-  })
+  it.skipIf(isRoot)(
+    '書き換えに失敗した: 0 件なら控えを残す failed で、直ればもう一度取り消せる',
+    async () => {
+      const undo = await captureRewrite('sub/a.txt')
+      chmodSync(join(folder, 'sub'), 0o555)
+      const { trash } = createFakeTrash()
+      const result = await executeAgentChangesUndo({ folderPath: folder, undo, trash })
+      expect(result).toMatchObject({ kind: 'failed', keepUndo: true })
+      if (result.kind !== 'failed') return
+      expect(result.message.startsWith('取り消しに失敗しました: sub/a.txt: ')).toBe(true)
+      expect(readFileSync(abs('sub/a.txt'), 'utf8')).toBe('base')
+      chmodSync(join(folder, 'sub'), 0o755)
+      expect(await executeAgentChangesUndo({ folderPath: folder, undo, trash })).toEqual({
+        kind: 'done',
+        restoredPaths: ['sub/a.txt'],
+        trashedPaths: []
+      })
+      expect(readFileSync(abs('sub/a.txt'), 'utf8')).toBe('agent')
+    }
+  )
 
   it.skipIf(isRoot)('書き換えに失敗した: 1 件済みなら partial', async () => {
     write('a.txt', 'agent')
@@ -657,15 +667,25 @@ describe('executeAgentChangesUndo(取り消し)', () => {
     expect(readFileSync(abs('b.txt'), 'utf8')).toBe('CHANGED')
   })
 
-  it('ゴミ箱へ移せなければ、0 件なら failed', async () => {
+  it('ゴミ箱へ移せなければ、0 件なら控えを残す failed で、移せるようになればもう一度取り消せる', async () => {
     const undo = await captureTrash('d.txt')
-    const trash = async (): Promise<void> => {
+    const failingTrash = async (): Promise<void> => {
       throw new Error('trash failed')
     }
-    expect(await executeAgentChangesUndo({ folderPath: folder, undo, trash })).toEqual({
+    expect(
+      await executeAgentChangesUndo({ folderPath: folder, undo, trash: failingTrash })
+    ).toEqual({
       kind: 'failed',
-      message: '取り消しに失敗しました: d.txt: ゴミ箱へ移動できませんでした'
+      message: '取り消しに失敗しました: d.txt: ゴミ箱へ移動できませんでした',
+      keepUndo: true
     })
     expect(existsSync(abs('d.txt'))).toBe(true)
+    const { trash } = createFakeTrash()
+    expect(await executeAgentChangesUndo({ folderPath: folder, undo, trash })).toEqual({
+      kind: 'done',
+      restoredPaths: [],
+      trashedPaths: ['d.txt']
+    })
+    expect(existsSync(abs('d.txt'))).toBe(false)
   })
 })

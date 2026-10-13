@@ -260,8 +260,9 @@ export class AgentBaselineRegistry {
 
   /**
    * 直前の戻す操作を取り消す(設計書「取り消しの流れ」)。記録の列の中で、今の控えの undoId と照合する(違えば何も変えずに例外。
-   * L-035)。何も書き換えずに読み込みの失敗だけで拒否したら控えを残し、それ以外(照合の不一致・控えのファイルが無い・書き換えを始めた)は
-   * 控えを捨てる。記録が無ければ null
+   * L-035)。作業ツリーを変えずに止まり、結果が控えを残すとした(全件の照合で読み込みの失敗だけ・書き換えを始めて 0 件のまま
+   * 書く直前に読み込めない・書き換えに失敗した)なら控えを残し、それ以外(照合の不一致・控えのファイルが無い・書く直前の照合が
+   * 合わない・1 件以上書き換えた)は控えを捨てる。記録が無ければ null
    */
   undoLastRevert(
     ownerId: number,
@@ -272,7 +273,10 @@ export class AgentBaselineRegistry {
       const undo = record.undo
       if (undo === null || undo.undoId !== undoId) throw new Error(AGENT_UNDO_STALE_MESSAGE)
       const execution = await this.deps.executeUndo(record.baseline.folderPath, undo)
-      if (execution.kind === 'rejected' && execution.keepUndo) throw new Error(execution.message)
+      // 作業ツリーを変えずに止まり、結果が控えを残すとしたなら、もう一度取り消せるよう控えを残す
+      if ((execution.kind === 'rejected' || execution.kind === 'failed') && execution.keepUndo) {
+        throw new Error(execution.message)
+      }
       if (record.undo === undo) record.undo = null
       await this.removeUndoDir(undo.dir)
       if (execution.kind === 'rejected' || execution.kind === 'failed') {

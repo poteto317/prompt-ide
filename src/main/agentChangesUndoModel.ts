@@ -59,8 +59,11 @@ export type AgentChangesUndoCapture =
 export type AgentChangesUndoExecution =
   /** 何も書き換えずに拒否した。keepUndo は控えを残すか(読み込みの失敗だけ) */
   | { kind: 'rejected'; message: string; keepUndo: boolean }
-  /** 書き換えを始めた後、1 件も済まずに止まった */
-  | { kind: 'failed'; message: string }
+  /**
+   * 書き換えを始めた後、1 件も済まずに止まった(作業ツリーは変わっていない)。keepUndo は控えを残すか(書く直前に読み込めない・
+   * 書き換えの失敗なら残す。書く直前の照合が合わない(戻した後に変わった)なら捨てる)
+   */
+  | { kind: 'failed'; message: string; keepUndo: boolean }
   | { kind: 'done'; restoredPaths: string[]; trashedPaths: string[] }
   | { kind: 'partial'; message: string; restoredPaths: string[]; trashedPaths: string[] }
 
@@ -144,13 +147,14 @@ export interface AgentChangesUndoProgress {
 }
 
 /**
- * 書き換えの途中で止まったときの結果。1 件以上済んでいれば partial(detail を添える)、0 件なら failed(zeroMessage)。
- * restoredPaths・trashedPaths はそのまま結果に入れる
+ * 書き換えの途中で止まったときの結果。1 件以上済んでいれば partial(detail を添える)、0 件なら failed(zeroMessage と
+ * keepUndo)。restoredPaths・trashedPaths はそのまま結果に入れる
  */
 export function undoStoppedExecution(
   progress: AgentChangesUndoProgress,
   detail: string,
-  zeroMessage: string
+  zeroMessage: string,
+  keepUndo: boolean
 ): Extract<AgentChangesUndoExecution, { kind: 'partial' | 'failed' }> {
   const { restoredPaths, trashedPaths, total } = progress
   const done = restoredPaths.length + trashedPaths.length
@@ -161,7 +165,7 @@ export function undoStoppedExecution(
         restoredPaths,
         trashedPaths
       }
-    : { kind: 'failed', message: zeroMessage }
+    : { kind: 'failed', message: zeroMessage, keepUndo }
 }
 
 /** 書き換えを途中で止めた理由(書く直前の照合が合わない・書く直前に読み込めない・書き換えの失敗) */
@@ -171,8 +175,9 @@ export type AgentChangesUndoStop =
   | { kind: 'write-failed'; path: string; reason: string }
 
 /**
- * 止めた理由から止まったときの結果を作る(設計書の 4 の表)。合わない → 0 件なら「戻した後に変わった」の拒否と同じ文言、
- * 読み込めない・書き換えの失敗 → 0 件なら「取り消しに失敗しました: <詳細>」。1 件以上済んでいれば partial に詳細を添える
+ * 止めた理由から止まったときの結果を作る(設計書の 4 の表)。合わない → 0 件なら「戻した後に変わった」の拒否と同じ文言で
+ * 控えを捨てる(もう一度押しても戻らない)、読み込めない・書き換えの失敗 → 0 件なら「取り消しに失敗しました: <詳細>」で
+ * 控えを残す(作業ツリーは変わっておらず、一時的な失敗なら直してもう一度取り消せる)。1 件以上済んでいれば partial に詳細を添える
  */
 export function undoStopExecution(
   progress: AgentChangesUndoProgress,
@@ -182,14 +187,15 @@ export function undoStopExecution(
     return undoStoppedExecution(
       progress,
       `${stop.path} が戻した後に変わりました`,
-      `${AGENT_UNDO_CHANGED_MESSAGE}（${stop.path}）`
+      `${AGENT_UNDO_CHANGED_MESSAGE}（${stop.path}）`,
+      false
     )
   }
   const detail =
     stop.kind === 'unreadable'
       ? `${stop.path} を読み込めませんでした: ${stop.reason}`
       : `${stop.path}: ${stop.reason}`
-  return undoStoppedExecution(progress, detail, `取り消しに失敗しました: ${detail}`)
+  return undoStoppedExecution(progress, detail, `取り消しに失敗しました: ${detail}`, true)
 }
 
 /** 取り消しの実行の結果を renderer に返す結果にする(rejected・failed は呼び出し側が投げる) */

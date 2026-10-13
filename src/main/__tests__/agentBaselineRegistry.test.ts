@@ -1220,16 +1220,34 @@ describe('AgentBaselineRegistry の取り消しの控え', () => {
       )
     })
 
-    it('何も書き換えずに控えを残す拒否なら、文言で失敗し、控えと一時ディレクトリを残す', async () => {
-      const { s, dir } = await undoWith({ kind: 'rejected', message: 'keep', keepUndo: true })
-      await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow('keep')
-      await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1 })
-      expect(s.removeDir).not.toHaveBeenCalledWith(dir)
-    })
+    // 0 件の failed は作業ツリーを変えていない。読み込めない・書き換えの失敗(keepUndo: true)なら控えを残し、もう一度取り消せる
+    it.each<AgentChangesUndoExecution>([
+      { kind: 'rejected', message: 'keep', keepUndo: true },
+      { kind: 'failed', message: 'keep', keepUndo: true }
+    ])(
+      '$kind で控えを残すなら、文言で失敗し、控えと一時ディレクトリを残してもう一度取り消せる',
+      async (execution) => {
+        const { s, dir } = await undoWith(execution)
+        await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow('keep')
+        await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1 })
+        expect(s.removeDir).not.toHaveBeenCalledWith(dir)
+        s.executeUndo.mockResolvedValueOnce({
+          kind: 'done',
+          restoredPaths: ['a.txt'],
+          trashedPaths: []
+        })
+        await expect(s.registry.undoLastRevert(1, folder, 1)).resolves.toMatchObject({
+          status: 'done'
+        })
+        expect(s.executeUndo).toHaveBeenCalledTimes(2)
+        await expect(undoOfRecord(s)).resolves.toBeNull()
+        expect(s.removeDir).toHaveBeenCalledWith(dir)
+      }
+    )
 
     it.each<AgentChangesUndoExecution>([
       { kind: 'rejected', message: 'drop', keepUndo: false },
-      { kind: 'failed', message: 'drop' }
+      { kind: 'failed', message: 'drop', keepUndo: false }
     ])('$kind なら文言で失敗し、控えを捨てて一時ディレクトリを消す', async (execution) => {
       const { s, dir } = await undoWith(execution)
       await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow('drop')

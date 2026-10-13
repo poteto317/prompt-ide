@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { createReadStream } from 'node:fs'
+import { constants as fsConstants, createReadStream } from 'node:fs'
 import {
+  chmod,
+  copyFile,
   link as fsLink,
   lstat,
   mkdtemp,
-  open,
-  readFile,
   readlink,
   rename,
   rm,
@@ -87,21 +87,14 @@ function hashFileSha256(absolutePath: string): Promise<string> {
 }
 
 /**
- * 無いことを確かめて作り(wx。既にあれば EEXIST で作らない)、data を書いて権限を mode にする。書き込みの途中で失敗したら、
- * 自分が作ったそのファイルを消す(自分が作れなかったものは消さない。L-004)。作る間の権限は 0600
+ * source を、無いことを確かめて path に写し(COPYFILE_EXCL。既にあれば EEXIST で写さない)、権限を mode にする。中身を main の
+ * メモリに読まない(上限は合計 100MB)。写しの途中の失敗では、写しを作った側(libuv)が自分の作った写しを消す。権限を変えられ
+ * なければ、自分が作ったその写しを消す(自分が作れなかったものは消さない。L-004)
  */
-export async function writeFileExclusive(path: string, data: Buffer, mode: number): Promise<void> {
-  const handle = await open(path, 'wx', 0o600)
+export async function copyFileExclusive(source: string, path: string, mode: number): Promise<void> {
+  await copyFile(source, path, fsConstants.COPYFILE_EXCL)
   try {
-    await handle.writeFile(data)
-    await handle.chmod(mode)
-  } catch (error) {
-    await handle.close().catch(() => undefined)
-    await unlink(path).catch(() => undefined)
-    throw error
-  }
-  try {
-    await handle.close()
+    await chmod(path, mode)
   } catch (error) {
     await unlink(path).catch(() => undefined)
     throw error
@@ -144,7 +137,7 @@ async function saveBefore(
       return { kind: 'symlink', target: await readlink(absolutePath) }
     case 'file': {
       const savedName = String(index)
-      await writeFileExclusive(join(dir, savedName), await readFile(absolutePath), 0o600)
+      await copyFileExclusive(absolutePath, join(dir, savedName), 0o600)
       return { kind: 'file', savedName, mode: plan.mode }
     }
   }
@@ -326,7 +319,7 @@ async function checkItem(folderPath: string, item: AgentChangesUndoItem): Promis
 const writeTempName = (absolutePath: string): string =>
   join(dirname(absolutePath), `${AGENT_UNDO_WRITE_TEMP_PREFIX}${randomBytes(8).toString('hex')}`)
 
-// 書き戻す: 同じフォルダの一時の名前に、ファイルなら書いて権限を before.mode にし、リンクなら指す先のリンクを作ってから、
+// 書き戻す: 同じフォルダの一時の名前に、ファイルなら控えを写して権限を before.mode にし、リンクなら指す先のリンクを作ってから、
 // rename で置き換える(L-014)
 async function rewrite(
   absolutePath: string,
@@ -335,7 +328,7 @@ async function rewrite(
 ): Promise<void> {
   const temp = writeTempName(absolutePath)
   if (before.kind === 'file') {
-    await writeFileExclusive(temp, await readFile(join(undoDir, before.savedName)), before.mode)
+    await copyFileExclusive(join(undoDir, before.savedName), temp, before.mode)
   } else {
     await symlink(before.target, temp)
   }
@@ -350,9 +343,9 @@ async function rewrite(
 // ハードリンクを作れないファイルシステムの link の失敗
 const LINK_UNSUPPORTED_CODES = new Set(['EPERM', 'ENOTSUP', 'EXDEV'])
 
-// 作り直す: リンクは目的の名前に直接作る(既にあれば EEXIST)。ファイルは一時の名前に書いて権限を before.mode にしてから
-// link で目的の名前を作る(既にあれば EEXIST で止まる。L-011)。link を作れないファイルシステムでは、目的の名前に wx で直接書く
-// (既にあれば EEXIST)
+// 作り直す: リンクは目的の名前に直接作る(既にあれば EEXIST)。ファイルは一時の名前に控えを写して権限を before.mode にしてから
+// link で目的の名前を作る(既にあれば EEXIST で止まる。L-011)。link を作れないファイルシステムでは、目的の名前に COPYFILE_EXCL で
+// 直接写す(既にあれば EEXIST)
 async function recreate(
   absolutePath: string,
   before: Exclude<AgentChangesUndoBefore, { kind: 'absent' }>,
@@ -363,15 +356,15 @@ async function recreate(
     await symlink(before.target, absolutePath)
     return
   }
-  const data = await readFile(join(undoDir, before.savedName))
+  const saved = join(undoDir, before.savedName)
   const temp = writeTempName(absolutePath)
-  await writeFileExclusive(temp, data, before.mode)
+  await copyFileExclusive(saved, temp, before.mode)
   try {
     await linkFile(temp, absolutePath)
   } catch (error) {
     await unlink(temp).catch(() => undefined)
     if (!LINK_UNSUPPORTED_CODES.has(errorCode(error) ?? '')) throw error
-    await writeFileExclusive(absolutePath, data, before.mode)
+    await copyFileExclusive(saved, absolutePath, before.mode)
     return
   }
   await unlink(temp).catch(() => undefined)

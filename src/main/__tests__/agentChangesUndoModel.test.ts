@@ -148,18 +148,27 @@ describe('undoPrecheckRejection(全件の照合の結果の判定)', () => {
 })
 
 describe('undoStoppedExecution(書き換えの途中で止まったときの結果)', () => {
-  it('1 件も済んでいなければ failed で、0 件のときの文言', () => {
-    expect(
-      undoStoppedExecution({ restoredPaths: [], trashedPaths: [], total: 2 }, '詳細', '0 件の文言')
-    ).toEqual({ kind: 'failed', message: '0 件の文言' })
-  })
+  it.each([true, false])(
+    '1 件も済んでいなければ failed で、0 件のときの文言と控えを残すか(keepUndo: %s)',
+    (keepUndo) => {
+      expect(
+        undoStoppedExecution(
+          { restoredPaths: [], trashedPaths: [], total: 2 },
+          '詳細',
+          '0 件の文言',
+          keepUndo
+        )
+      ).toEqual({ kind: 'failed', message: '0 件の文言', keepUndo })
+    }
+  )
 
   it('1 件以上済んでいれば partial で、済んだ件数と詳細', () => {
     expect(
       undoStoppedExecution(
         { restoredPaths: ['a.txt'], trashedPaths: ['b.txt'], total: 3 },
         'c.txt: EIO',
-        '0 件の文言'
+        '0 件の文言',
+        true
       )
     ).toEqual({
       kind: 'partial',
@@ -178,34 +187,46 @@ describe('undoStopExecution(止めた理由から止まったときの結果)', 
     total: 2
   }
 
-  it.each<[string, AgentChangesUndoStop, string, string]>([
+  // 0 件で止まったとき、作業ツリーは変わっていない。合わない(戻した後に変わった)ならもう一度押しても戻らないため控えを捨て、
+  // 読み込めない・書き換えの失敗(一時的な失敗)なら控えを残す(全件の照合の「読み込めないだけなら控えを残す」と揃える)
+  it.each<[string, AgentChangesUndoStop, string, string, boolean]>([
     [
       '書く直前の照合が合わない',
       { kind: 'changed', path: 'b.txt' },
       `${AGENT_UNDO_CHANGED_MESSAGE}（b.txt）`,
-      'b.txt が戻した後に変わりました'
+      'b.txt が戻した後に変わりました',
+      false
     ],
     [
       '書く直前に読み込めない',
       { kind: 'unreadable', path: 'b.txt', reason: 'EACCES' },
       '取り消しに失敗しました: b.txt を読み込めませんでした: EACCES',
-      'b.txt を読み込めませんでした: EACCES'
+      'b.txt を読み込めませんでした: EACCES',
+      true
     ],
     [
       '書き換えの失敗',
       { kind: 'write-failed', path: 'b.txt', reason: 'EIO' },
       '取り消しに失敗しました: b.txt: EIO',
-      'b.txt: EIO'
+      'b.txt: EIO',
+      true
     ]
-  ])('%s: 0 件なら failed の文言、1 件以上なら partial に詳細を添える', (_, stop, zero, detail) => {
-    expect(undoStopExecution(NONE_DONE, stop)).toEqual({ kind: 'failed', message: zero })
-    expect(undoStopExecution(ONE_DONE, stop)).toEqual({
-      kind: 'partial',
-      message: `取り消しが途中で失敗しました（1 / 2 件を取り消し済み）: ${detail}`,
-      restoredPaths: ['a.txt'],
-      trashedPaths: []
-    })
-  })
+  ])(
+    '%s: 0 件なら failed の文言と控えの扱い、1 件以上なら partial に詳細を添える',
+    (_, stop, zero, detail, keepUndo) => {
+      expect(undoStopExecution(NONE_DONE, stop)).toEqual({
+        kind: 'failed',
+        message: zero,
+        keepUndo
+      })
+      expect(undoStopExecution(ONE_DONE, stop)).toEqual({
+        kind: 'partial',
+        message: `取り消しが途中で失敗しました（1 / 2 件を取り消し済み）: ${detail}`,
+        restoredPaths: ['a.txt'],
+        trashedPaths: []
+      })
+    }
+  )
 })
 
 describe('undoPrepareFailedMessage(控えの準備に失敗したときの文言)', () => {
