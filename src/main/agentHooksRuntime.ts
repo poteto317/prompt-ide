@@ -24,9 +24,12 @@ import type { AgentHooksLifecycleParts } from './agentHooksLifecycle'
 export const nodeExecFile: ExecFileLike = (file, args, options, callback) =>
   execFile(file, [...args], { ...options, encoding: 'utf8' }, callback)
 
-/** Windows の cmd.exe の絶対パス(Node の shell: true と同じ ComSpec。無ければ SystemRoot の System32。Windows 以外では使われない) */
+/**
+ * Windows の cmd.exe の絶対パス(Node の shell: true と同じ ComSpec。無いか空なら SystemRoot の System32。Windows 以外では使われない)。
+ * 空の値は使わない(Node と同じく || で選ぶ。空の file は execFile が ERR_INVALID_ARG_VALUE で拒む)
+ */
 const windowsComspec = (): string =>
-  process.env.ComSpec ?? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
+  process.env.ComSpec || join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe')
 
 export interface AgentHooksRuntimeOptions {
   /** 追跡の合図が変わったとき(段階 A は何もしない。段階 B で記録の registry の syncAttribution につなぐ) */

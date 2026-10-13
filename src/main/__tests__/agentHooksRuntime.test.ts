@@ -116,6 +116,14 @@ describe('createAgentHooksRuntime', () => {
       expect(firstArg(mockCreateClaudeVersionReader).comspec).toBe(
         join('E:\\WinRoot', 'System32', 'cmd.exe')
       )
+      // 空の ComSpec・SystemRoot は使わない(Node の shell: true と同じく || で選ぶ。空の file は execFile が拒む)
+      mockCreateClaudeVersionReader.mockClear()
+      process.env.ComSpec = ''
+      process.env.SystemRoot = ''
+      createAgentHooksRuntime(createOptions())
+      expect(firstArg(mockCreateClaudeVersionReader).comspec).toBe(
+        join('C:\\Windows', 'System32', 'cmd.exe')
+      )
     } finally {
       for (const [name, value] of Object.entries(saved)) {
         if (value === undefined) delete process.env[name]
