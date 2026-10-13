@@ -15,7 +15,7 @@ import { appendSearchPaths, getCliSearchPaths } from './cliSearchPaths'
 
 // エージェントの起動のコマンドと環境変数を main で決める(設計書「セキュリティ」「PATH の継承」)。renderer からは受け取らない
 
-/** 起動するコマンドの名前。引数は main が決めたセッションの指定(--session-id / --resume と UUID)だけ。--dangerously-skip-permissions などは付けない */
+/** 起動するコマンドの名前。引数は main が決めたセッションの指定(--session-id / --resume と UUID)と、hooks の設定のファイル(--settings と main が作った絶対パス)だけ。--dangerously-skip-permissions などは付けない */
 export const AGENT_COMMAND_NAME = 'claude'
 
 /** 取り除く環境変数(完全一致)。親の Claude Code のセッションの通信先と token、VS Code の端末から引き継ぐもの(確認の結果 12) */
@@ -85,7 +85,40 @@ export async function findExecutableInPath(
   return null
 }
 
-/** pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数を除き、PATH・TERM・COLORTERM・LANG を設定する */
+/** hooks の受け口(127.0.0.1)への要求をプロキシへ送らないための除外(トークンをプロキシへ渡さない) */
+export const AGENT_NO_PROXY_HOSTS: readonly string[] = ['127.0.0.1', 'localhost']
+
+/**
+ * NO_PROXY・no_proxy の既存の値(カンマ区切り)の和集合に 127.0.0.1・localhost を足す。macOS・Linux は同じ値を両方に設定する
+ * (片方だけのツールでも既存の除外が効くように)。Windows は名前の大文字小文字を区別しないため NO_PROXY 1 つにまとめる
+ */
+function addLoopbackNoProxy(env: Record<string, string>, platform: NodeJS.Platform): void {
+  const isWindows = platform === 'win32'
+  const keys = isWindows
+    ? Object.keys(env).filter((key) => key.toUpperCase() === 'NO_PROXY')
+    : ['NO_PROXY', 'no_proxy'].filter((key) => key in env)
+  const hosts: string[] = []
+  for (const key of keys) {
+    for (const item of env[key].split(',')) {
+      const host = item.trim()
+      if (host !== '' && !hosts.includes(host)) hosts.push(host)
+    }
+  }
+  for (const host of AGENT_NO_PROXY_HOSTS) if (!hosts.includes(host)) hosts.push(host)
+  const value = hosts.join(',')
+  if (isWindows) {
+    for (const key of keys) delete env[key]
+    env.NO_PROXY = value
+    return
+  }
+  env.NO_PROXY = value
+  env.no_proxy = value
+}
+
+/**
+ * pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数を除き、PATH・TERM・COLORTERM・LANG を設定し、
+ * NO_PROXY・no_proxy にループバックを足す
+ */
 export function buildAgentEnv(
   base: NodeJS.ProcessEnv,
   pathValue: string,
@@ -109,6 +142,7 @@ export function buildAgentEnv(
   if (env.LANG === undefined && env.LC_ALL === undefined && env.LC_CTYPE === undefined) {
     env.LANG = 'en_US.UTF-8'
   }
+  addLoopbackNoProxy(env, platform)
   return env
 }
 
@@ -120,7 +154,7 @@ function getEnvIgnoreCase(env: NodeJS.ProcessEnv, name: string): string | undefi
 export interface AgentLaunchPlan {
   /** 起動する claude の絶対パス */
   file: string
-  /** 引数(空。セッションの指定は starter が buildAgentLaunchArgs で後ろに足す) */
+  /** 引数(空。セッションの指定と --settings は starter が buildAgentLaunchArgs で後ろに足す) */
   args: string[]
   env: Record<string, string>
 }
@@ -137,19 +171,23 @@ export interface ResolveAgentLaunchDeps {
 }
 
 /**
- * claude のセッションの指定の引数(設計書「起動の流れ」3)。新しく起動するときは main が振った ID を --session-id で、
- * 再開は記録と照合した ID を --resume で渡す。claudeSessionId は検証を通った値をそのまま使い、別の場所で読み直さない(L-018)。
- * 起動の種類を足したときに既定の --session-id へ流さないよう、kind ごとに分けて未知の kind は投げる(L-044)
+ * claude の起動の引数(設計書「起動の流れ」3、hooks の設計書「起動の引数」)。新しく起動するときは main が振った ID を --session-id で、
+ * 再開は記録と照合した ID を --resume で渡す。hookSettingsPath(main が作った設定のファイルの絶対パス。L-034)があれば後ろに
+ * --settings を足す。null(受け口を用意できない・claude の版が対応していると分からない)なら 2 つだけ。省略できる引数にしない(L-060)。
+ * claudeSessionId は検証を通った値をそのまま使い、別の場所で読み直さない(L-018)。起動の種類を足したときに既定の --session-id へ
+ * 流さないよう、kind ごとに分けて未知の kind は投げる(L-044)
  */
 export function buildAgentLaunchArgs(
   launch: AgentLaunchRequest,
-  claudeSessionId: string
+  claudeSessionId: string,
+  hookSettingsPath: string | null
 ): string[] {
+  const settings = hookSettingsPath === null ? [] : ['--settings', hookSettingsPath]
   switch (launch.kind) {
     case 'new':
-      return ['--session-id', claudeSessionId]
+      return ['--session-id', claudeSessionId, ...settings]
     case 'resume':
-      return ['--resume', claudeSessionId]
+      return ['--resume', claudeSessionId, ...settings]
     default: {
       const unknownLaunch: never = launch
       throw new Error(`未知の起動の指定です: ${JSON.stringify(unknownLaunch)}`)

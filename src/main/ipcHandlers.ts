@@ -24,6 +24,8 @@ import { createAgentSessionStarter } from './agentSessionStarter'
 import { createAgentSessionRecordStore } from './agentSessionRecordStore'
 import { createAgentSessionRecordFileIo } from './agentSessionRecordFileIo'
 import { createClaudeSessionReservations } from './claudeSessionReservations'
+import { createAgentHooksRuntime } from './agentHooksRuntime'
+import { setupAgentHooksLifecycle } from './agentHooksLifecycle'
 import { resolveAgentLaunchFromSystem, spawnAgentPty, stopAgentPtyTree } from './agentRuntime'
 import { OpenFileWatcher } from './openFileWatcher'
 import { setupOpenFileWatcherLifecycle } from './openFileWatcherLifecycle'
@@ -78,9 +80,20 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   const agentSessionRecords = createAgentSessionRecordStore(
     createAgentSessionRecordFileIo(app.getPath('userData'))
   )
+  // claude の hooks(ツールの区間の追跡・127.0.0.1 の受け口・起動ごとの準備)。実物の依存の組み立ては agentHooksRuntime.ts。
+  // 段階 A の追跡の段階は内部で持ち、開発版のログに出すだけ。onToolStart はすぐ解決し、onToolStartTimedOut は何もしない
+  // (段階 B で記録の registry の syncAttribution・waitForAgentPhase・markPeriodUnassignable につなぐ)
+  const agentHooks = createAgentHooksRuntime({
+    onPhaseChange: () => undefined,
+    onToolStart: async () => undefined,
+    onToolStartTimedOut: () => undefined,
+    devLog: app.isPackaged ? null : (line) => console.log(line)
+  })
+  // 受け口・設定のディレクトリ・追跡のタイマーは will-quit で片付ける(before-quit の停止の待ちの間も知らせを受ける)
+  setupAgentHooksLifecycle(app, agentHooks.lifecycleParts)
   // 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線は
   // agentSessionStarter.ts。IPC の受け口は registry(書き込み・リサイズ・停止・状態の取得)と、組み立てた starter の起動・ID の
-  // 引き当て・「前回」の取得だけを受け取る
+  // 引き当て・「前回」の取得と、区間の追跡の作業中の知らせだけを受け取る
   const agentStarter = createAgentSessionStarter({
     folderAccess,
     registry: agentRegistry,
@@ -91,13 +104,15 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     records: agentSessionRecords,
     // 全ウィンドウで共有する(別のウィンドウで同じ会話を同時に開かせない)
     reservations: createClaudeSessionReservations(),
-    createClaudeSessionId: randomUUID
+    createClaudeSessionId: randomUUID,
+    hooks: agentHooks.sessions
   })
   registerAgentTerminalHandlers(ipcMain, {
     registry: agentRegistry,
     startSession: agentStarter.start,
     claudeSessionIdOf: agentStarter.claudeSessionIdOf,
-    getLastSession: agentStarter.lastSessionOf
+    getLastSession: agentStarter.lastSessionOf,
+    reportWorking: agentHooks.tracker.reportWorking
   })
   // エージェントの完了・許可待ちの通知。Electron の Notification・Dock・BrowserWindow をここで注入する
   const agentNotificationCenter = createAgentNotificationCenter({

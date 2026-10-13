@@ -25,6 +25,7 @@ import type { FakePty } from '../helpers/fakePty'
 import { createAgentSessionRecordStore } from '../../agentSessionRecordStore'
 import type { AgentSessionRecordStore } from '../../agentSessionRecordStore'
 import { makeFakeRecordIo } from '../helpers/fakeAgentSessionRecordIo'
+import { makeFakeAgentHookSessions } from '../helpers/fakeAgentHookSessions'
 import { createClaudeSessionReservations } from '../../claudeSessionReservations'
 
 const NEW = { kind: 'new' } as const
@@ -76,7 +77,8 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
     records,
     reservations: createClaudeSessionReservations(),
     createClaudeSessionId: () => CLAUDE_ID,
-    platform: 'linux'
+    platform: 'linux',
+    hooks: makeFakeAgentHookSessions()
   })
   registerAgentTerminalHandlers(ipcMain as never, {
     registry,
@@ -84,6 +86,7 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
     claudeSessionIdOf: starter.claudeSessionIdOf,
     getLastSession: starter.lastSessionOf,
     platform: 'linux',
+    reportWorking: vi.fn(),
     ...overrides
   })
 }
@@ -722,5 +725,43 @@ describe('agentTerminal:getState(claude のセッション ID)', () => {
       '[agentTerminal:getState] claude のセッション ID が見つからないセッションを一覧から外します:',
       'sid-1'
     )
+  })
+})
+
+describe('agentTerminal:reportWorking', () => {
+  let warnSpy: MockInstance<typeof console.warn>
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it('メインフレームからの sessionId を、送信元のウィンドウの id と一緒に追跡へ渡す', () => {
+    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
+    register({ reportWorking })
+    listeners.get('agentTerminal:reportWorking')?.(makeEvent(3), 'sid-9')
+    expect(reportWorking).toHaveBeenCalledExactlyOnceWith(3, 'sid-9')
+  })
+
+  it.each<[string, unknown]>([
+    ['空文字', ''],
+    ['数値', 123],
+    ['null', null]
+  ])('不正な sessionId(%s)は追跡を呼ばず、例外を投げずにログに出す', (_label, sessionId) => {
+    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
+    register({ reportWorking })
+    expect(() =>
+      listeners.get('agentTerminal:reportWorking')?.(makeEvent(3), sessionId)
+    ).not.toThrow()
+    expect(reportWorking).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith('[agent-hooks] 作業中の知らせの sessionId が不正です')
+  })
+
+  it('サブフレームからの送信は捨てる(L-019)', () => {
+    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
+    register({ reportWorking })
+    listeners.get('agentTerminal:reportWorking')?.(makeEvent(3, false), 'sid-9')
+    expect(reportWorking).not.toHaveBeenCalled()
   })
 })

@@ -1,0 +1,424 @@
+import { request } from 'node:http'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  AGENT_HOOK_HEADERS_TIMEOUT_MS,
+  AGENT_HOOK_REQUEST_TIMEOUT_MS,
+  AGENT_PRE_TOOL_USE_WAIT_MS,
+  createAgentHookReceiver
+} from '../agentHookReceiver'
+import type { AgentHookReceiver, AgentHookReceiverDeps } from '../agentHookReceiver'
+import { AGENT_HOOK_MAX_BODY_BYTES } from '../agentHookReceiverRequest'
+import type { AgentHookEvent } from '../agentHookEvents'
+import { sendHookRequest } from './helpers/agentHookHttp'
+import type { HookResponse } from './helpers/agentHookHttp'
+
+const TOKEN = 'ab'.repeat(32)
+const OTHER_TOKEN = 'cd'.repeat(32)
+
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+let receiver: AgentHookReceiver | null = null
+let port = 0
+let calls: string[] = []
+let delivered: Array<[number, string, AgentHookEvent]> = []
+let deps: {
+  deliver: ReturnType<typeof vi.fn<AgentHookReceiverDeps['deliver']>>
+  onToolStart: ReturnType<typeof vi.fn<AgentHookReceiverDeps['onToolStart']>>
+  onToolStartTimedOut: ReturnType<typeof vi.fn<AgentHookReceiverDeps['onToolStartTimedOut']>>
+  log: ReturnType<typeof vi.fn<AgentHookReceiverDeps['log']>>
+}
+
+afterEach(() => {
+  receiver?.close()
+  receiver = null
+})
+
+async function start(overrides: Partial<AgentHookReceiverDeps> = {}): Promise<void> {
+  calls = []
+  delivered = []
+  deps = {
+    deliver: vi.fn<AgentHookReceiverDeps['deliver']>((ownerId, sessionId, event) => {
+      calls.push(`deliver:${event.kind}`)
+      delivered.push([ownerId, sessionId, event])
+    }),
+    onToolStart: vi.fn<AgentHookReceiverDeps['onToolStart']>(async () => {
+      calls.push('onToolStart')
+    }),
+    onToolStartTimedOut: vi.fn<AgentHookReceiverDeps['onToolStartTimedOut']>(() => {
+      calls.push('timedOut')
+    }),
+    log: vi.fn<AgentHookReceiverDeps['log']>()
+  }
+  receiver = createAgentHookReceiver({ ...deps, preToolUseWaitMs: 200, ...overrides })
+  const { baseUrl } = await receiver.ensureListening()
+  expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+  port = Number(new URL(baseUrl).port)
+  receiver.addToken(TOKEN, { ownerId: 7, sessionId: 'sid-1' })
+}
+
+const HEADERS = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
+const post = (
+  segment: string,
+  body: unknown,
+  headers: Record<string, string> = HEADERS
+): Promise<HookResponse> =>
+  sendHookRequest(port, {
+    path: `/prompt-ide/agent-hooks/v1/${segment}`,
+    headers,
+    body: typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)
+  })
+
+describe('createAgentHookReceiver(定数と待ち受け)', () => {
+  it('上限の定数は設計書の値', () => {
+    expect(AGENT_PRE_TOOL_USE_WAIT_MS).toBe(5_000)
+    expect(AGENT_HOOK_HEADERS_TIMEOUT_MS).toBe(5_000)
+    expect(AGENT_HOOK_REQUEST_TIMEOUT_MS).toBe(15_000)
+  })
+
+  it('127.0.0.1 のランダムなポートで待ち受け、2 回目の ensureListening は同じ URL を返す', async () => {
+    await start()
+    expect(port).toBeGreaterThan(0)
+    await expect(receiver?.ensureListening()).resolves.toEqual({
+      baseUrl: `http://127.0.0.1:${port}`
+    })
+  })
+})
+
+describe('createAgentHookReceiver(受け付ける要求)', () => {
+  it('正しい要求に本文の無い 200 を返し、deliver を 1 回だけ呼ぶ', async () => {
+    await start()
+    const response = await post('user-prompt-submit', {
+      hook_event_name: 'UserPromptSubmit',
+      prompt: 'hi'
+    })
+    expect(response.status).toBe(200)
+    expect(response.body).toBe('')
+    expect(response.headers['content-length']).toBe('0')
+    expect(deps.deliver).toHaveBeenCalledOnce()
+    expect(delivered).toEqual([
+      [
+        7,
+        'sid-1',
+        {
+          kind: 'confirm-only',
+          reason: 'prompt-submit',
+          hookEventName: 'UserPromptSubmit',
+          toolName: null
+        }
+      ]
+    ])
+    expect(deps.onToolStart).not.toHaveBeenCalled()
+  })
+
+  it('Content-Type は大文字小文字を区別せず、charset が付いても受け付ける', async () => {
+    await start()
+    const response = await post(
+      'stop',
+      { hook_event_name: 'Stop' },
+      {
+        Authorization: `Bearer ${TOKEN}`,
+        'Content-Type': 'Application/JSON; charset=utf-8'
+      }
+    )
+    expect(response.status).toBe(200)
+    expect(deps.deliver).toHaveBeenCalledOnce()
+  })
+})
+
+describe('createAgentHookReceiver(拒む要求)', () => {
+  const body = JSON.stringify({ hook_event_name: 'Stop' })
+  it.each<[string, () => Promise<HookResponse>, number, string]>([
+    [
+      'GET',
+      () =>
+        sendHookRequest(port, {
+          method: 'GET',
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: HEADERS
+        }),
+      405,
+      'method'
+    ],
+    [
+      '知らないパス',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/session-start',
+          headers: HEADERS,
+          body
+        }),
+      404,
+      'path'
+    ],
+    [
+      'Host が localhost',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { ...HEADERS, Host: `localhost:${port}` },
+          body
+        }),
+      403,
+      'host'
+    ],
+    [
+      'Origin がある',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { ...HEADERS, Origin: 'http://evil.example' },
+          body
+        }),
+      403,
+      'origin'
+    ],
+    [
+      'Authorization が無い',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { 'Content-Type': 'application/json' },
+          body
+        }),
+      401,
+      'token'
+    ],
+    [
+      'Bearer の形が違う',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { ...HEADERS, Authorization: `Bearer ${TOKEN.toUpperCase()}` },
+          body
+        }),
+      401,
+      'token'
+    ],
+    [
+      '表に無いトークン',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { ...HEADERS, Authorization: `Bearer ${OTHER_TOKEN}` },
+          body
+        }),
+      401,
+      'token'
+    ],
+    [
+      'Content-Type が text/plain',
+      () =>
+        sendHookRequest(port, {
+          path: '/prompt-ide/agent-hooks/v1/stop',
+          headers: { ...HEADERS, 'Content-Type': 'text/plain' },
+          body
+        }),
+      415,
+      'content-type'
+    ]
+  ])(
+    '%s は状態を変えずに 4xx(本文なし)を返し、理由の件数をログに出す',
+    async (_label, send, status, reason) => {
+      await start()
+      const response = await send()
+      expect(response.status).toBe(status)
+      expect(response.body).toBe('')
+      expect(deps.deliver).not.toHaveBeenCalled()
+      expect(deps.log).toHaveBeenCalledWith(`[agent-hooks] 拒んだ要求: ${reason} 1 件`)
+      for (const [message] of deps.log.mock.calls) {
+        expect(message).not.toContain(TOKEN)
+        expect(message).not.toContain('Stop')
+      }
+    }
+  )
+
+  it('activate の前(addToken の前)と release の後(removeToken の後)のトークンは 401', async () => {
+    await start()
+    receiver?.addToken(OTHER_TOKEN, { ownerId: 8, sessionId: 'sid-2' })
+    receiver?.removeToken(OTHER_TOKEN)
+    const other = { Authorization: `Bearer ${OTHER_TOKEN}`, 'Content-Type': 'application/json' }
+    expect((await post('stop', { hook_event_name: 'Stop' }, other)).status).toBe(401)
+    expect(deps.deliver).not.toHaveBeenCalled()
+  })
+
+  it('拒んだ件数は最初の 1 件と 100 件ごとにだけログに出す', async () => {
+    await start()
+    for (let i = 0; i < 100; i++) {
+      await sendHookRequest(port, {
+        method: 'GET',
+        path: '/prompt-ide/agent-hooks/v1/stop',
+        headers: HEADERS
+      })
+    }
+    expect(deps.log.mock.calls.map(([message]) => message)).toEqual([
+      '[agent-hooks] 拒んだ要求: method 1 件',
+      '[agent-hooks] 拒んだ要求: method 100 件'
+    ])
+  })
+})
+
+describe('createAgentHookReceiver(本文)', () => {
+  it('16 MiB を超える本文は先を持たずに読み捨て、ID なしの知らせとして deliver して 200 を返す(too-large を数える)', async () => {
+    await start()
+    const huge = Buffer.alloc(AGENT_HOOK_MAX_BODY_BYTES + 1, 0x20)
+    const response = await post('pre-tool-use', huge)
+    expect(response.status).toBe(200)
+    expect(delivered).toEqual([
+      [
+        7,
+        'sid-1',
+        {
+          kind: 'tool-start',
+          hookEventName: 'PreToolUse',
+          toolName: null,
+          toolId: { kind: 'unreadable' },
+          agentId: null
+        }
+      ]
+    ])
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 拒んだ要求: too-large 1 件')
+  })
+
+  const UNREADABLE_TOOL_END: AgentHookEvent = {
+    kind: 'tool-end',
+    hookEventName: 'PostToolUse',
+    toolName: null,
+    toolId: { kind: 'unreadable' },
+    agentId: null
+  }
+
+  it('JSON でない本文は、パスのイベントだけで扱い、unreadable-body をログに出す', async () => {
+    await start()
+    await post('post-tool-use', '{')
+    expect(delivered.map(([, , event]) => event)).toEqual([UNREADABLE_TOOL_END])
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 読めない知らせ: unreadable-body 1 件')
+  })
+
+  it('イベント名がパスと違う本文は、パスのイベントだけで扱い、event-name-mismatch をログに出す', async () => {
+    await start()
+    await post('post-tool-use', {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Edit',
+      tool_use_id: 'toolu_1'
+    })
+    expect(delivered.map(([, , event]) => event)).toEqual([UNREADABLE_TOOL_END])
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 読めない知らせ: event-name-mismatch 1 件')
+  })
+
+  it('本文の途中で接続が切れた PreToolUse も、ID なしの知らせとして deliver する(L-002)', async () => {
+    await start()
+    const req = request({
+      host: '127.0.0.1',
+      port,
+      method: 'POST',
+      path: '/prompt-ide/agent-hooks/v1/pre-tool-use',
+      headers: { ...HEADERS, 'Content-Length': '100' }
+    })
+    req.on('error', () => undefined)
+    req.write('{"hook_event_name":')
+    await vi.waitFor(() => expect(req.socket).toBeTruthy())
+    // 本文を送り切る前に切る
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    req.destroy()
+    await vi.waitFor(() =>
+      expect(delivered).toEqual([
+        [
+          7,
+          'sid-1',
+          {
+            kind: 'tool-start',
+            hookEventName: 'PreToolUse',
+            toolName: null,
+            toolId: { kind: 'unreadable' },
+            agentId: null
+          }
+        ]
+      ])
+    )
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 読めない知らせ: unreadable-body 1 件')
+  })
+})
+
+describe('createAgentHookReceiver(PreToolUse の順序と上限)', () => {
+  const PRE = { hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_use_id: 'toolu_1' }
+
+  it('deliver(tool-start)を呼び終えてから onToolStart を呼び、その解決まで応答しない', async () => {
+    const gate = deferred<void>()
+    await start({
+      onToolStart: vi.fn(async () => {
+        calls.push('onToolStart')
+        await gate.promise
+      })
+    })
+    let answered = false
+    const response = post('pre-tool-use', PRE).then((r) => {
+      answered = true
+      return r
+    })
+    await vi.waitFor(() => expect(calls).toEqual(['deliver:tool-start', 'onToolStart']))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(answered).toBe(false)
+    gate.resolve()
+    expect((await response).status).toBe(200)
+    expect(calls).toEqual(['deliver:tool-start', 'onToolStart'])
+  })
+
+  it('onToolStart が解決しなければ上限で 200 を返し、signal を中止して onToolStartTimedOut を 1 回呼ぶ', async () => {
+    // コールバックの中の代入は絞り込みに反映されないため、as で型を広げて宣言する
+    let captured = null as AbortSignal | null
+    await start({
+      onToolStart: vi.fn((_ownerId: number, signal: AbortSignal) => {
+        calls.push('onToolStart')
+        captured = signal
+        return new Promise<void>(() => undefined)
+      })
+    })
+    const response = await post('pre-tool-use', PRE)
+    expect(response.status).toBe(200)
+    expect(captured?.aborted).toBe(true)
+    expect(deps.onToolStartTimedOut).toHaveBeenCalledExactlyOnceWith(7)
+    expect(calls).toEqual(['deliver:tool-start', 'onToolStart', 'timedOut'])
+  })
+
+  it('onToolStart が reject したらログを出して応答し、onToolStartTimedOut は呼ばない', async () => {
+    await start({ onToolStart: vi.fn(async () => Promise.reject(new Error('boom'))) })
+    expect((await post('pre-tool-use', PRE)).status).toBe(200)
+    expect(deps.onToolStartTimedOut).not.toHaveBeenCalled()
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] ツールの開始の待ちに失敗しました: boom')
+  })
+
+  it('PreToolUse 以外は onToolStart を待たない', async () => {
+    await start()
+    await post('post-tool-use', {
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Edit',
+      tool_use_id: 'toolu_1'
+    })
+    expect(deps.onToolStart).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAgentHookReceiver(close)', () => {
+  it('close で待っている接続も切り、その後の要求は接続できない', async () => {
+    await start({
+      onToolStart: vi.fn(() => new Promise<void>(() => undefined)),
+      preToolUseWaitMs: 10_000
+    })
+    const pending = post('pre-tool-use', {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Edit',
+      tool_use_id: 't'
+    })
+    await vi.waitFor(() => expect(deps.deliver).toHaveBeenCalledOnce())
+    receiver?.close()
+    await expect(pending).rejects.toThrow()
+    await expect(post('stop', { hook_event_name: 'Stop' })).rejects.toThrow()
+    await expect(receiver?.ensureListening()).rejects.toThrow('受け口は閉じています')
+  })
+})

@@ -44,3 +44,8 @@ export function onAgentExit(listener: (payload: AgentSessionExit) => void): () =
 export function setAgentTerminalFocused(focused: boolean): void {
   window.api.setAgentTerminalFocused(focused)
 }
+
+/** 作業中の知らせ(タブの活動が working に変わったとき)。main は hooks が効いているかの確かめに使う */
+export function reportAgentSessionWorking(sessionId: string): void {
+  window.api.reportAgentSessionWorking(sessionId)
+}

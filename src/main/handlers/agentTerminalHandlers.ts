@@ -14,7 +14,7 @@ import {
 } from './agentTerminalPayloadParser'
 
 // エージェントのセッションの IPC の受け口(設計書「IPC」)。起動のコマンド・作業ディレクトリ・環境変数は main で決め、
-// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId だけを受け取る
+// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId(作業中の知らせを含む)だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
   /** 書き込み・リサイズ・停止・状態の取得の相手(所有者・枠ごとのセッション) */
@@ -26,6 +26,9 @@ export interface AgentTerminalHandlerDeps {
   claudeSessionIdOf: AgentSessionStarterService['claudeSessionIdOf']
   /** 「前回」の取得(starter の lastSessionOf。許可のフォルダとの照合は starter が行う) */
   getLastSession: AgentSessionStarterService['lastSessionOf']
+  /** 作業中の知らせ(送信元のウィンドウの id と pty の sessionId)。組み立ては agentHooksRuntime.ts(区間の追跡の reportWorking)で、ipcHandlers.ts が渡す。
+   *  そのウィンドウに無いセッションは追跡が捨てる */
+  reportWorking: (ownerId: number, sessionId: string) => void
   platform?: NodeJS.Platform
 }
 
@@ -38,6 +41,7 @@ export function registerAgentTerminalHandlers(
     startSession,
     claudeSessionIdOf,
     getLastSession,
+    reportWorking,
     platform = process.platform
   }: AgentTerminalHandlerDeps
 ): void {
@@ -96,6 +100,20 @@ export function registerAgentTerminalHandlers(
       return getLastSession(event.sender.id, parseAgentFolderPath(folderPath))
     }
   )
+
+  // 作業中の知らせ(設計書「作業中の知らせ」)。効果は「知らせの届かないセッションを unconfirmed にする(印を増やさない側)」だけで、
+  // renderer の値は送信元のウィンドウのセッションを指すだけ(L-019)。send なので失敗を renderer に返さない
+  ipcMain.on('agentTerminal:reportWorking', (event: IpcMainEvent, sessionId: unknown) => {
+    if (!isMainFrameSender(event)) return
+    let parsed: string
+    try {
+      parsed = parseAgentSessionId(sessionId)
+    } catch {
+      console.warn('[agent-hooks] 作業中の知らせの sessionId が不正です')
+      return
+    }
+    reportWorking(event.sender.id, parsed)
+  })
 
   // Windows・Linux の既定のメニューのショートカット(Ctrl+W など)がターミナルの入力を奪わないよう、ターミナルにフォーカスが
   // ある間はメニューのショートカットを止める。macOS は Cmd の組み合わせで重ならず、Edit メニューのコピー・貼り付けを生かす

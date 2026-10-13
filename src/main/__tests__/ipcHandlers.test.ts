@@ -23,6 +23,21 @@ const mockCreateAgentSessionStarter = vi.hoisted(() =>
     lastSessionOf: mockLastSessionOf
   }))
 )
+const mockToolActivity = vi.hoisted(() => ({ reportWorking: vi.fn() }))
+const mockHookSessions = vi.hoisted(() => ({ marker: 'hook-sessions' }))
+const mockHooksLifecycleParts = vi.hoisted(() => ({ marker: 'hooks-lifecycle-parts' }))
+const mockCreateAgentHooksRuntime = vi.hoisted(() =>
+  vi.fn(() => ({
+    tracker: mockToolActivity,
+    sessions: mockHookSessions,
+    lifecycleParts: mockHooksLifecycleParts
+  }))
+)
+vi.mock('../agentHooksRuntime', () => ({ createAgentHooksRuntime: mockCreateAgentHooksRuntime }))
+const mockSetupAgentHooksLifecycle = vi.hoisted(() => vi.fn())
+vi.mock('../agentHooksLifecycle', () => ({
+  setupAgentHooksLifecycle: mockSetupAgentHooksLifecycle
+}))
 const mockAgentSessionRecords = vi.hoisted(() => ({ marker: 'records' }))
 const mockAgentSessionRecordIo = vi.hoisted(() => ({ marker: 'record-io' }))
 const mockCreateAgentSessionRecordStore = vi.hoisted(() => vi.fn(() => mockAgentSessionRecords))
@@ -234,12 +249,42 @@ describe('registerIpcHandlers', () => {
       registry,
       startSession: mockStartAgentSession,
       claudeSessionIdOf: mockClaudeSessionIdOf,
-      getLastSession: mockLastSessionOf
+      getLastSession: mockLastSessionOf,
+      reportWorking: mockToolActivity.reportWorking
     })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
     expect(deps.claudeSessionIdOf).toBe(mockClaudeSessionIdOf)
     expect(deps.getLastSession).toBe(mockLastSessionOf)
+    expect(deps.reportWorking).toBe(mockToolActivity.reportWorking)
+  })
+
+  it('claude の hooks の実物を 1 つ組み立て、段階 A のつなぎ先(何もしない・すぐ解決する)と開発版のログ(app.isPackaged でないとき)を渡す', async () => {
+    registerIpcHandlers(mockIpcMain)
+    expect(mockCreateAgentHooksRuntime).toHaveBeenCalledOnce()
+    const options = (mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0] as {
+      onPhaseChange: (ownerId: number) => void
+      onToolStart: (ownerId: number, signal: AbortSignal) => Promise<void>
+      onToolStartTimedOut: (ownerId: number) => void
+      devLog: ((line: string) => void) | null
+    }
+    expect(() => options.onPhaseChange(1)).not.toThrow()
+    await expect(options.onToolStart(3, new AbortController().signal)).resolves.toBeUndefined()
+    expect(() => options.onToolStartTimedOut(3)).not.toThrow()
+    expect(typeof options.devLog).toBe('function')
+  })
+
+  it('組み立てた hooks の準備を starter に、片付けるものを will-quit の後始末に渡す', () => {
+    registerIpcHandlers(mockIpcMain)
+    const starterDeps = (mockCreateAgentSessionStarter.mock.calls[0] as unknown[])[0] as Record<
+      string,
+      unknown
+    >
+    expect(starterDeps.hooks).toBe(mockHookSessions)
+    expect(mockSetupAgentHooksLifecycle).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Object),
+      mockHooksLifecycleParts
+    )
   })
 
   it('通知の center を寿命の後始末と IPC の受け口に渡し、送信元のウィンドウは BrowserWindow.fromWebContents で引く', () => {

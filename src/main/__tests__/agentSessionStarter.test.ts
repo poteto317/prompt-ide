@@ -21,6 +21,9 @@ import type { AgentLaunchResolution } from '../agentCommand'
 import { makeFakePty } from './helpers/fakePty'
 import type { FakePty } from './helpers/fakePty'
 import { makeFakeRecordIo, recordFileOf } from './helpers/fakeAgentSessionRecordIo'
+import { makeFakeAgentHookSessions } from './helpers/fakeAgentHookSessions'
+import type { FakeAgentHookSessions } from './helpers/fakeAgentHookSessions'
+import type { PreparedAgentHooks } from '../agentHookSessions'
 
 const CANCELED = { kind: 'error', error: 'spawn-failed', detail: AGENT_START_CANCELED_DETAIL }
 const OK_LAUNCH: AgentLaunchResolution = {
@@ -78,6 +81,7 @@ let canonicalize: ReturnType<typeof vi.fn<(path: string) => Promise<string>>>
 let isDirectory: ReturnType<typeof vi.fn<(path: string) => Promise<boolean>>>
 let records: AgentSessionRecordStore
 let reservations: ClaudeSessionReservations
+let hooks: FakeAgentHookSessions
 let claudeIdCount: number
 let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 const stopTree = vi.fn<StopTree>(async (target, exited) => {
@@ -101,6 +105,7 @@ function makeStarterService(
     platform: 'linux',
     canonicalize,
     isDirectory,
+    hooks,
     ...overrides
   })
 }
@@ -121,6 +126,7 @@ beforeEach(() => {
   isDirectory = vi.fn(async () => true)
   records = createAgentSessionRecordStore(makeFakeRecordIo())
   reservations = createClaudeSessionReservations()
+  hooks = makeFakeAgentHookSessions()
   claudeIdCount = 0
   consoleErrorSpy = null
 })
@@ -723,5 +729,182 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     folderAccess.set(1, '/other')
     pending.resolve('/work')
     await expect(result).resolves.toBeNull()
+  })
+})
+
+describe('createAgentSessionStarter(hooks)', () => {
+  /** whenLoaded だけを差し替えた記録(ほかは本物の records に任せる) */
+  const recordsWithWhenLoaded = (
+    whenLoaded: () => Promise<void>
+  ): AgentSessionStarterDeps['records'] => ({
+    whenLoaded,
+    has: (key, id) => records.has(key, id),
+    last: (key) => records.last(key),
+    record: (key, id) => records.record(key, id)
+  })
+
+  const PREPARED: PreparedAgentHooks = {
+    ownerId: 1,
+    hooks: { settingsPath: '/tmp/prompt-ide-agent-hooks-x/abc.json', token: 'ab'.repeat(32) },
+    unavailableReason: null
+  }
+
+  it('prepare は resolveLaunch の後・records.whenLoaded の前に、所有者と起動の計画で呼ぶ', async () => {
+    const order: string[] = []
+    resolveLaunch.mockImplementation(async () => {
+      order.push('resolveLaunch')
+      return OK_LAUNCH
+    })
+    hooks.prepare.mockImplementation(async (ownerId) => {
+      order.push('prepare')
+      return { ownerId, hooks: null, unavailableReason: 'claude-version-unsupported' }
+    })
+    const start = makeStarter({
+      records: recordsWithWhenLoaded(async () => {
+        order.push('whenLoaded')
+        await records.whenLoaded()
+      })
+    })
+    await start(1, REQUEST, makeSink())
+    expect(order).toEqual(['resolveLaunch', 'prepare', 'whenLoaded'])
+    expect(hooks.prepare).toHaveBeenCalledExactlyOnceWith(1, OK_LAUNCH.plan)
+  })
+
+  it('hooks があれば --settings <パス> を付けて起動し、spawn の成功の後に activate、終了で release(prepared, sessionId)', async () => {
+    hooks = makeFakeAgentHookSessions(() => PREPARED)
+    const start = makeStarter({ hooks })
+    await expect(start(1, REQUEST, makeSink())).resolves.toMatchObject({ kind: 'started' })
+    expect(spawnPty).toHaveBeenCalledWith(
+      '/bin/claude',
+      ['--x', '--session-id', NEW_IDS[0], '--settings', '/tmp/prompt-ide-agent-hooks-x/abc.json'],
+      expect.any(Object)
+    )
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(PREPARED, 'sid-1')
+    expect(hooks.release).not.toHaveBeenCalled()
+    pty.emitExit(0, 0)
+    await vi.waitFor(() => expect(hooks.release).toHaveBeenCalledExactlyOnceWith(PREPARED, 'sid-1'))
+    expect(hooks.calls).toEqual(['prepare', 'activate:sid-1', 'release:sid-1'])
+  })
+
+  it('hooks: null なら今までどおり 2 つの引数で起動し、activate に prepared を渡す', async () => {
+    const start = makeStarter()
+    await start(1, REQUEST, makeSink())
+    expect(spawnPty).toHaveBeenCalledWith(
+      '/bin/claude',
+      ['--x', '--session-id', NEW_IDS[0]],
+      expect.any(Object)
+    )
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(
+      { ownerId: 1, hooks: null, unavailableReason: 'claude-version-unsupported' },
+      'sid-1'
+    )
+  })
+
+  it('起動の直前の確かめで取り消したら release(prepared, null) を 1 回呼び、activate しない', async () => {
+    const loaded = deferred<void>()
+    const start = makeStarter({ records: recordsWithWhenLoaded(() => loaded.promise) })
+    const sink = makeSink()
+    const pending = start(1, REQUEST, sink)
+    await vi.waitFor(() => expect(hooks.prepare).toHaveBeenCalledOnce())
+    sink.gone = true
+    loaded.resolve()
+    await expect(pending).resolves.toEqual(CANCELED)
+    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(
+      { ownerId: 1, hooks: null, unavailableReason: 'claude-version-unsupported' },
+      null
+    )
+    expect(hooks.activate).not.toHaveBeenCalled()
+  })
+
+  it('ID の選択の拒否(記録に無い ID の再開)で release(prepared, null) を 1 回呼ぶ', async () => {
+    const start = makeStarter()
+    await start(
+      1,
+      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: NEW_IDS[4] } },
+      makeSink()
+    )
+    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+    expect(spawnPty).not.toHaveBeenCalled()
+  })
+
+  it('予約の失敗(同じ会話の二重の起動)で release(prepared, null) を 1 回呼ぶ', async () => {
+    const start = makeStarter({ reservations: { tryReserve: () => null } })
+    await expect(start(1, REQUEST, makeSink())).resolves.toEqual({
+      kind: 'error',
+      error: 'session-in-use'
+    })
+    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+  })
+
+  it('spawn の失敗で release(prepared, null) を 1 回呼ぶ', async () => {
+    spawnPty.mockImplementation(() => {
+      throw new Error('spawn boom')
+    })
+    const start = makeStarter()
+    await expect(start(1, REQUEST, makeSink())).resolves.toMatchObject({
+      kind: 'error',
+      error: 'spawn-failed'
+    })
+    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+    expect(hooks.activate).not.toHaveBeenCalled()
+  })
+
+  it('activate が例外を投げたら release(prepared, null) を 1 回呼び、起動は例外で終わる', async () => {
+    hooks.activate.mockImplementationOnce(() => {
+      throw new Error('activate boom')
+    })
+    const start = makeStarter()
+    await expect(start(1, REQUEST, makeSink())).rejects.toThrow('activate boom')
+    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+  })
+
+  it.each<[string, Partial<AgentSessionStarterDeps>]>([
+    [
+      'records.whenLoaded() の reject',
+      {
+        records: {
+          whenLoaded: async () => Promise.reject(new Error('load failed')),
+          has: () => false,
+          last: () => null,
+          record: () => undefined
+        }
+      }
+    ],
+    [
+      'createSessionId の例外',
+      {
+        createSessionId: () => {
+          throw new Error('id failed')
+        }
+      }
+    ],
+    [
+      'selectClaudeSessionId の例外(新しい ID の採番の失敗)',
+      {
+        createClaudeSessionId: () => {
+          throw new Error('uuid failed')
+        }
+      }
+    ]
+  ])(
+    '%s で起動が例外で終わったら release(prepared, null) を 1 回呼ぶ',
+    async (_label, overrides) => {
+      const start = makeStarter(overrides)
+      await expect(start(1, REQUEST, makeSink())).rejects.toThrow()
+      expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+      expect(hooks.activate).not.toHaveBeenCalled()
+    }
+  )
+
+  it('claude が見つからなければ prepare しない', async () => {
+    resolveLaunch.mockResolvedValueOnce({ kind: 'not-found', shellPathUnavailable: false })
+    await makeStarter()(1, REQUEST, makeSink())
+    expect(hooks.prepare).not.toHaveBeenCalled()
+  })
+
+  it('作業ディレクトリが無ければ prepare しない', async () => {
+    isDirectory.mockResolvedValueOnce(false)
+    await makeStarter()(1, REQUEST, makeSink())
+    expect(hooks.prepare).not.toHaveBeenCalled()
   })
 })

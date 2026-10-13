@@ -551,6 +551,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       'setAgentTerminalFocused は send で送る',
       () => api.setAgentTerminalFocused(true),
       ['agentTerminal:focus', true]
+    ],
+    [
+      'reportAgentSessionWorking は send で sessionId だけを送る',
+      () => api.reportAgentSessionWorking('s'),
+      ['agentTerminal:reportWorking', 's']
     ]
   ])('%s', (_name, call, expectedArgs) => {
     call()

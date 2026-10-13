@@ -18,6 +18,10 @@ const mockUseExecutionMode = vi.hoisted(() =>
 const mockUseAgentSessions = vi.hoisted(() => vi.fn())
 const mockUseAgentPromptSender = vi.hoisted(() => vi.fn())
 const mockUseAgentActivity = vi.hoisted(() => vi.fn())
+const mockUseAgentHooksWorkingReport = vi.hoisted(() => vi.fn())
+vi.mock('../useAgentHooksWorkingReport', () => ({
+  useAgentHooksWorkingReport: mockUseAgentHooksWorkingReport
+}))
 const mockUseAgentNotificationSetting = vi.hoisted(() => vi.fn())
 vi.mock('../useAgentNotificationSetting', () => ({
   useAgentNotificationSetting: mockUseAgentNotificationSetting
@@ -247,6 +251,17 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentTerminal.activities).toBe(activities)
       // タブの一覧(useAgentSessions が状態の変わったときだけ作り直す)を写し直さずにそのまま渡す
       expect(mockUseAgentActivity.mock.lastCall?.[0].tabs).toBe(sessions.tabs)
+    })
+
+    it('作業中の知らせの hook に、タブの一覧と useAgentActivity の結果をそのまま渡す', () => {
+      const tab1 = makeAgentSessionTabView({ status: 'running' })
+      const sessions = makeAgentSessionsState({ tabs: [tab1], selected: tab1 })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const activities = new Map([['slot-1', 'working' as const]])
+      mockUseAgentActivity.mockReturnValue(activities)
+      renderHook(() => useAgentWorkspace({ folderPath: null, isExecuting: false }))
+      expect(mockUseAgentHooksWorkingReport.mock.lastCall?.[0].tabs).toBe(sessions.tabs)
+      expect(mockUseAgentHooksWorkingReport.mock.lastCall?.[0].activities).toBe(activities)
     })
 
     it('実行ボタンの状態は選択中のタブで決まる(タブ 1 が running でも、選択中のタブ 2 が未起動なら押せない)', () => {

@@ -202,6 +202,50 @@ describe('buildAgentEnv', () => {
   })
 })
 
+describe('buildAgentEnv(NO_PROXY)', () => {
+  it('どちらも無ければ、NO_PROXY・no_proxy の両方に 127.0.0.1,localhost を入れる', () => {
+    const env = buildAgentEnv({}, '/p', 'darwin')
+    expect(env.NO_PROXY).toBe('127.0.0.1,localhost')
+    expect(env.no_proxy).toBe('127.0.0.1,localhost')
+  })
+
+  it('NO_PROXY だけがあれば、既存の値を残して両方に同じ値を入れる', () => {
+    const env = buildAgentEnv({ NO_PROXY: 'corp.example, .internal' }, '/p', 'linux')
+    expect(env.NO_PROXY).toBe('corp.example,.internal,127.0.0.1,localhost')
+    expect(env.no_proxy).toBe('corp.example,.internal,127.0.0.1,localhost')
+  })
+
+  it('no_proxy だけがあれば、NO_PROXY にも同じ値を入れる', () => {
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, '/p', 'darwin')
+    expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
+    expect(env.no_proxy).toBe('corp.example,127.0.0.1,localhost')
+  })
+
+  it('両方が違う値なら、和集合(NO_PROXY の順 → no_proxy の順)を両方に入れ、重複を足さない', () => {
+    const env = buildAgentEnv({ NO_PROXY: 'a,localhost', no_proxy: 'b,a' }, '/p', 'darwin')
+    expect(env.NO_PROXY).toBe('a,localhost,b,127.0.0.1')
+    expect(env.no_proxy).toBe('a,localhost,b,127.0.0.1')
+  })
+
+  it('既にあれば足さない', () => {
+    expect(buildAgentEnv({ NO_PROXY: '127.0.0.1,localhost' }, '/p', 'linux').NO_PROXY).toBe(
+      '127.0.0.1,localhost'
+    )
+  })
+
+  it('Windows は名前の大文字小文字を区別しないため、NO_PROXY 1 つにまとめる', () => {
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, 'C:\\p', 'win32')
+    expect(Object.keys(env).filter((key) => key.toUpperCase() === 'NO_PROXY')).toEqual(['NO_PROXY'])
+    expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
+  })
+
+  it('元の env を変えない', () => {
+    const given = { NO_PROXY: 'a' }
+    buildAgentEnv(given, '/p', 'darwin')
+    expect(given).toEqual({ NO_PROXY: 'a' })
+  })
+})
+
 describe('resolveAgentLaunch', () => {
   it('ログインシェルの PATH の後ろに既定の探索先を足して探し、引数は空で返す(セッションの指定は starter が足す)', async () => {
     const isExecutable = probeOf(['/home/u/.local/bin/claude'])
@@ -311,16 +355,29 @@ describe.skipIf(process.platform === 'win32')('isExecutableRegularFile(実 fs)',
 
 describe('buildAgentLaunchArgs', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
-  it('new は --session-id、resume は --resume に、渡した ID をそのまま続ける', () => {
-    expect(buildAgentLaunchArgs({ kind: 'new' }, ID)).toEqual(['--session-id', ID])
-    expect(buildAgentLaunchArgs({ kind: 'resume', claudeSessionId: ID }, ID)).toEqual([
+  it('new は --session-id、resume は --resume に、渡した ID をそのまま続ける(hooks なしは 2 つだけ)', () => {
+    expect(buildAgentLaunchArgs({ kind: 'new' }, ID, null)).toEqual(['--session-id', ID])
+    expect(buildAgentLaunchArgs({ kind: 'resume', claudeSessionId: ID }, ID, null)).toEqual([
       '--resume',
       ID
     ])
   })
 
+  it('設定のファイルのパスがあれば、後ろに --settings <パス> を足す(ほかの引数は足さない)', () => {
+    expect(
+      buildAgentLaunchArgs({ kind: 'new' }, ID, '/tmp/prompt-ide-agent-hooks-x/a.json')
+    ).toEqual(['--session-id', ID, '--settings', '/tmp/prompt-ide-agent-hooks-x/a.json'])
+    expect(
+      buildAgentLaunchArgs(
+        { kind: 'resume', claudeSessionId: ID },
+        ID,
+        '/tmp/prompt-ide-agent-hooks-x/a.json'
+      )
+    ).toEqual(['--resume', ID, '--settings', '/tmp/prompt-ide-agent-hooks-x/a.json'])
+  })
+
   it('未知の kind は既定の --session-id へ流さず投げる', () => {
     const unknownLaunch = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
-    expect(() => buildAgentLaunchArgs(unknownLaunch, ID)).toThrow('未知の起動の指定です')
+    expect(() => buildAgentLaunchArgs(unknownLaunch, ID, null)).toThrow('未知の起動の指定です')
   })
 })

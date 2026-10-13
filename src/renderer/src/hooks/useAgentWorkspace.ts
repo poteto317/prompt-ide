@@ -20,6 +20,7 @@ import { useExecutionMode } from './useExecutionMode'
 import { useAgentSessions } from './useAgentSessions'
 import type { AgentSessionsState } from './useAgentSessions'
 import { useAgentActivity } from './useAgentActivity'
+import { useAgentHooksWorkingReport } from './useAgentHooksWorkingReport'
 import { useAgentStatusBar } from './useAgentStatusBar'
 import { useAgentTabActivation } from './useAgentTabActivation'
 import { useAgentNotifications } from './useAgentNotifications'
@@ -134,6 +135,8 @@ export function useAgentWorkspace({
   // タブの一覧は useAgentSessions がタブの状態の変わったときだけ作り直すため、そのまま渡す
   // (useAgentActivity はタブの配列が変わったときだけ区切りを見直す)
   const activities = useAgentActivity({ tabs: agentSessions.tabs })
+  // タブの活動が作業中に変わったら、main へ知らせる(hooks が効いているかの確かめ。画面・一覧は変えない)
+  useAgentHooksWorkingReport({ tabs: agentSessions.tabs, activities })
   const agentSender = useAgentPromptSender({
     onSettled: agentLayout.open,
     beforeSend: beforeAgentSend

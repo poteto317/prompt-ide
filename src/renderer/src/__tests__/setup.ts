@@ -60,6 +60,7 @@ Object.defineProperty(window, 'api', {
     onAgentData: () => () => {},
     onAgentExit: () => () => {},
     setAgentTerminalFocused: () => {},
+    reportAgentSessionWorking: () => {},
     // エージェントの通知。既定は何もしない(個別のテストで差し替える)
     showAgentNotification: () => Promise.resolve(),
     setAgentNotificationBadge: () => Promise.resolve(),
