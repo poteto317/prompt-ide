@@ -110,6 +110,8 @@ export class AgentBaselineRegistry {
   private nextRecordSerial = 1
   // ref を作れた記録(今の記録と、捨てて削除を待っている記録)。close と掃除はこの集合だけを見る
   private readonly protectedRecords = new Set<AgentChangesRecord>()
+  // 記録の所有者(捨てた記録の削除を、その所有者の列の同期で試し直すため)
+  private readonly recordOwners = new WeakMap<AgentChangesRecord, number>()
   // 保護をやめた記録の番号(利用者が消した・書き換えた ref を掃除で消さない)。保護をやめたかの唯一の持ち主で、記録の側には
   // 持たない(記録を捨てた後も掃除で残すため、番号で持つ)
   private readonly abandonedSerials = new Set<number>()
@@ -173,6 +175,7 @@ export class AgentBaselineRegistry {
       )
       if (trigger === 'send') this.appendRun(ownerId, record, { kind: 'baseline' })
       this.records.set(ownerId, record)
+      this.recordOwners.set(record, ownerId)
       // 保護の同期(待たない)。前の記録の削除を、新しい記録の作成より先に並べる
       if (previous !== undefined) this.enqueueProtectionSync(ownerId, previous)
       this.enqueueProtectionSync(ownerId, record)
@@ -359,11 +362,34 @@ export class AgentBaselineRegistry {
   }
 
   /**
-   * 保護の同期(設計書「同期」)。列の番が来た時点の記録から ref のあるべき値を求め、前に書けた値(record.protection.value)と
+   * 保護の同期(設計書「同期」)。先に、同じ所有者の捨てた記録で ref の削除が残っているもの(一時的な失敗で消せなかった)の削除を
+   * 試し直し、その後に record を同期する。試すのは捨てた記録の数だけで、失敗は握る(読み直しの分類は通常の同期と同じ)
+   */
+  private async syncProtection(ownerId: number, record: AgentChangesRecord): Promise<void> {
+    for (const discarded of this.discardedProtectedRecords(ownerId, record)) {
+      await this.syncProtectionValue(ownerId, discarded).catch(() => undefined)
+    }
+    await this.syncProtectionValue(ownerId, record)
+  }
+
+  // ref を作れたまま捨てた所有者の記録(今の記録でも、これから同期する記録でもないもの)。一覧は呼んだ時点で作る
+  private discardedProtectedRecords(
+    ownerId: number,
+    except: AgentChangesRecord
+  ): AgentChangesRecord[] {
+    const current = this.records.get(ownerId)
+    return [...this.protectedRecords].filter(
+      (record) =>
+        record !== except && record !== current && this.recordOwners.get(record) === ownerId
+    )
+  }
+
+  /**
+   * 1 つの記録の保護の同期。列の番が来た時点の記録から ref のあるべき値を求め、前に書けた値(record.protection.value)と
    * 違えば作る・更新する・消す。終了中・保護をやめた記録・あるべき値を作れない(項目の tree が 1 つも無い)なら何もしない。
    * cat-file・mktree の失敗は投げる(呼び出し側が握り、次の同期で試し直す)。ref の書き込みの失敗は読み直しで分類する
    */
-  private async syncProtection(ownerId: number, record: AgentChangesRecord): Promise<void> {
+  private async syncProtectionValue(ownerId: number, record: AgentChangesRecord): Promise<void> {
     const state = record.protection
     if (this.closed || this.isProtectionAbandoned(record)) return
     const ctx = this.protectionContextOf(record)

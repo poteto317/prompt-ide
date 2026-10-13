@@ -835,6 +835,53 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     )
   })
 
+  it('捨てた記録の削除が一時的に失敗したら、同じ所有者の次の同期で(新しい記録の作成より先に)試し直す', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    // 確認を終えたときの削除が一時的に失敗する(読み直しは前の値のまま)
+    s.protection.failNext.add('remove')
+    await s.registry.clear(1)
+    expect(s.protection.refs.has(REF1)).toBe(true)
+    s.protection.calls.length = 0
+    // 同じ所有者で次の記録を取ると、その同期の中で前の記録の ref を消してから新しい記録の ref を作る
+    await sendFor(s, 1, TR, '/tmp/b')
+    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/2`
+    await vi.waitFor(() => expect(s.protection.refs.has(ref2)).toBe(true))
+    expect(s.protection.refs.has(REF1)).toBe(false)
+    expect(s.protection.calls.indexOf(`remove ${REF1}`)).toBeLessThan(
+      s.protection.calls.indexOf(`create ${ref2}`)
+    )
+    // protectedRecords から外れた(close で消そうとしない)
+    s.registry.close()
+    expect(s.protection.calls).not.toContain(`removeSync ${REF1}`)
+  })
+
+  it('捨てた記録の削除の試し直しがまた失敗したら、その次の同期で試し直す(他の所有者の同期では試さない)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.failNext.add('remove')
+    await s.registry.clear(1)
+    // 他の所有者の同期では試さない(所有者 1 の列の外で所有者 1 の記録を書き換えない)
+    s.protection.calls.length = 0
+    await sendFor(s, 2, TR, '/tmp/b')
+    await vi.waitFor(() => expect(s.protection.refs.size).toBe(2))
+    expect(s.protection.calls).not.toContain(`remove ${REF1}`)
+    // 所有者 1 の次の記録の同期での試し直しも失敗する(読み直しの失敗: 何も変えない)
+    s.protection.failNext.add('remove')
+    s.protection.failNext.add('read')
+    s.protection.calls.length = 0
+    await sendFor(s, 1, 'e'.repeat(40), '/tmp/c')
+    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/3`
+    await vi.waitFor(() => expect(s.protection.refs.has(ref3)).toBe(true))
+    expect(s.protection.calls.filter((call) => call === `remove ${REF1}`)).toHaveLength(1)
+    expect(s.protection.refs.has(REF1)).toBe(true)
+    // 実行を足したときの同期で試し直して消える
+    await sendFor(s, 1, 'f'.repeat(40), '/tmp/c2')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(false))
+  })
+
   it('読み直しが前の値でもあるべき値でもない(利用者が消した・書き換えた)なら保護をやめ、以後は作り直さず消さない', async () => {
     const s = setup()
     await sendFor(s, 1, TB, '/tmp/a')
