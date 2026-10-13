@@ -882,6 +882,23 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(false))
   })
 
+  it('clear の削除が一時的に失敗し、その所有者がもう同期しないなら、他の所有者の同期では消えず close で消える', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.failNext.add('remove')
+    await s.registry.clear(1)
+    expect(s.protection.refs.has(REF1)).toBe(true)
+    // 所有者 1 は次の記録を取らない。他の所有者の同期では消えない
+    await sendFor(s, 2, TR, '/tmp/b')
+    await vi.waitFor(() => expect(s.protection.refs.size).toBe(2))
+    expect(s.protection.refs.has(REF1)).toBe(true)
+    s.protection.calls.length = 0
+    s.registry.close()
+    expect(s.protection.calls).toContain(`removeSync ${REF1}`)
+    expect(s.protection.refs.size).toBe(0)
+  })
+
   it('読み直しが前の値でもあるべき値でもない(利用者が消した・書き換えた)なら保護をやめ、以後は作り直さず消さない', async () => {
     const s = setup()
     await sendFor(s, 1, TB, '/tmp/a')
