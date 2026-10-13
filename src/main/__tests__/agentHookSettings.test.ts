@@ -6,6 +6,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -191,6 +192,28 @@ describe('createAgentHookSettingsDir(実 fs)', () => {
     }
   )
 
+  const leftovers = (dir: string): string[] =>
+    readdirSync(dir).filter((name) => name.startsWith(AGENT_HOOK_SETTINGS_DIR_PREFIX))
+
+  it('removeSync の後の ensure は reject し、ディレクトリを作らない(will-quit の後に残さない)', async () => {
+    const settingsDir = createAgentHookSettingsDir({ tmpdir: tempDir })
+    const created = await settingsDir.ensure()
+    settingsDir.removeSync()
+    expect(existsSync(created)).toBe(false)
+    await expect(settingsDir.ensure()).rejects.toThrow()
+    expect(leftovers(tempDir())).toEqual([])
+  })
+
+  it('ensure の mkdtemp の最中に removeSync が来ても、その ensure は reject し、できたディレクトリは消える', async () => {
+    const settingsDir = createAgentHookSettingsDir({ tmpdir: tempDir })
+    const pending = settingsDir.ensure()
+    settingsDir.removeSync()
+    await expect(pending).rejects.toThrow()
+    expect(leftovers(tempDir())).toEqual([])
+    await expect(settingsDir.ensure()).rejects.toThrow()
+    expect(leftovers(tempDir())).toEqual([])
+  })
+
   it('removeSync は中のファイルごとディレクトリを消す', async () => {
     const settingsDir = createAgentHookSettingsDir({ tmpdir: tempDir })
     const created = await settingsDir.ensure()
@@ -233,6 +256,51 @@ describe('createAgentHookSettingsDir', () => {
     })
     return { settingsDir, rmSyncFake }
   }
+
+  it('mkdtemp の完了前に removeSync が来たら、できたディレクトリを rmSync で消して reject する(失敗はパスをログ)', async () => {
+    let finish: (dir: string) => void = () => undefined
+    const rmSyncFake = vi.fn(() => {
+      throw new Error('EBUSY')
+    })
+    const settingsDir = createAgentHookSettingsDir({
+      mkdtemp: () => new Promise<string>((resolve) => (finish = resolve)),
+      isPrivateDir: async () => true,
+      rmSync: rmSyncFake,
+      tmpdir: () => '/tmp'
+    })
+    const pending = settingsDir.ensure()
+    settingsDir.removeSync()
+    expect(rmSyncFake).not.toHaveBeenCalled()
+    finish('/tmp/prompt-ide-agent-hooks-late')
+    await expect(pending).rejects.toThrow()
+    expect(rmSyncFake).toHaveBeenCalledExactlyOnceWith('/tmp/prompt-ide-agent-hooks-late', {
+      recursive: true,
+      force: true
+    })
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[agent-hooks] 設定のディレクトリを消せませんでした:',
+      '/tmp/prompt-ide-agent-hooks-late'
+    )
+  })
+
+  it('isPrivateDir の待ちの間に removeSync が来たら、作り直さず reject する', async () => {
+    let release: (value: boolean) => void = () => undefined
+    const mkdtemp = vi.fn(async () => '/tmp/prompt-ide-agent-hooks-a')
+    const settingsDir = createAgentHookSettingsDir({
+      mkdtemp,
+      isPrivateDir: () => new Promise<boolean>((resolve) => (release = resolve)),
+      rmSync: vi.fn(),
+      tmpdir: () => '/tmp'
+    })
+    await settingsDir.ensure().catch(() => undefined)
+    const second = settingsDir.ensure()
+    await Promise.resolve()
+    await Promise.resolve()
+    settingsDir.removeSync()
+    release(false)
+    await expect(second).rejects.toThrow()
+    expect(mkdtemp).toHaveBeenCalledTimes(1)
+  })
 
   it('作れていなければ removeSync は何もしない', () => {
     const { settingsDir, rmSyncFake } = dirWithFailingRmSync()

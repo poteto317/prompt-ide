@@ -102,10 +102,15 @@ export interface AgentHookSettingsDir {
    * 最初の呼び出しで mkdtemp(0700)し、その Promise を共有する。失敗したら捨てて、次の呼び出しで作り直す。
    * 作ったディレクトリが外から消されていたら(OS の一時ディレクトリの掃除など)、作り直して新しいパスを返す。
    * 同じパスに他人の持ち物・グループや他人も書けるディレクトリ・シンボリックリンクがあっても、そこは使わずに作り直す
-   * (共有の /tmp で、消えた後に同じ名前を作られると、設定のファイルを差し替えられる)
+   * (共有の /tmp で、消えた後に同じ名前を作られると、設定のファイルを差し替えられる)。
+   * removeSync の後は作らず reject する(will-quit の後に作り直したディレクトリが残らない)。mkdtemp の最中に removeSync が
+   * 来たときも、できたディレクトリをその場で消して reject する
    */
   ensure(): Promise<string>
-  /** 作れていればディレクトリごと同期で消す(失敗は握ってパスだけをログ)。作れていなければ何もしない */
+  /**
+   * 以後の ensure を reject にし、作れていればディレクトリごと同期で消す(失敗は握ってパスだけをログ)。
+   * 作れていなければ何も消さない(作成中のものは、できた時点で ensure が消す)
+   */
   removeSync(): void
 }
 
@@ -159,8 +164,22 @@ export function createAgentHookSettingsDir({
 }: Partial<AgentHookSettingsDirDeps> = {}): AgentHookSettingsDir {
   let pending: Promise<string> | null = null
   let created: string | null = null
+  let closed = false
+  const tryRemove = (path: string): void => {
+    try {
+      rmSync(path, { recursive: true, force: true })
+    } catch {
+      console.warn('[agent-hooks] 設定のディレクトリを消せませんでした:', path)
+    }
+  }
+  const closedError = (): Error => new Error('設定のディレクトリは終了処理で閉じられています')
   const create = (): Promise<string> => {
     const attempt = mkdtemp(join(tmpdir(), AGENT_HOOK_SETTINGS_DIR_PREFIX)).then((dir) => {
+      if (closed) {
+        // 作っている最中に removeSync が来た。誰にも使われないので、できたディレクトリをここで消す
+        tryRemove(dir)
+        throw closedError()
+      }
       created = dir
       return dir
     })
@@ -172,22 +191,22 @@ export function createAgentHookSettingsDir({
   }
   return {
     ensure() {
+      if (closed) return Promise.reject(closedError())
       if (pending === null) return create()
       const current = pending
       return current.then(async (dir) => {
-        if (await isPrivateDir(dir)) return dir
+        const usable = await isPrivateDir(dir)
+        if (closed) throw closedError()
+        if (usable) return dir
         // 同時の呼び出しで作り直しは 1 回だけ。先に気づいた呼び出しが pending を差し替える
         if (pending === current) return create()
         return pending ?? create()
       })
     },
     removeSync() {
+      closed = true
       if (created === null) return
-      try {
-        rmSync(created, { recursive: true, force: true })
-      } catch {
-        console.warn('[agent-hooks] 設定のディレクトリを消せませんでした:', created)
-      }
+      tryRemove(created)
     }
   }
 }

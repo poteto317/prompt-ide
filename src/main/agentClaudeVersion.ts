@@ -59,6 +59,8 @@ export interface ClaudeVersionReaderDeps {
   execFile: ExecFileLike
   stat: (path: string) => Promise<{ mtimeMs: number; size: number }>
   platform: NodeJS.Platform
+  /** Windows の cmd.exe の絶対パス(.cmd・.bat の実行に使う。win32 以外では使わない) */
+  comspec: string
   log: (message: string) => void
 }
 
@@ -114,16 +116,18 @@ export interface ClaudeVersionCommand {
 }
 
 /**
- * claude --version の実行の形(シェルを通さない)。Windows の .cmd・.bat は Node の shell: true と同じ cmd.exe の形に固定する
- * (/s は最初と最後の " だけを外すため、パスの引用が残る)
+ * claude --version の実行の形(シェルを通さない)。Windows の .cmd・.bat は Node の shell: true と同じ形の引数(/d /s /c)で、
+ * 実行するのは注入された cmd.exe の絶対パス(Node の shell: true と同じく ComSpec。名前だけだと libuv が PATH より先に
+ * 作業ディレクトリから探し、そこの cmd.exe を実行しうる)。/s は最初と最後の " だけを外すため、パスの引用が残る
  */
 export function claudeVersionCommand(
   file: string,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  comspec: string
 ): ClaudeVersionCommand {
   if (platform === 'win32' && /\.(cmd|bat)$/i.test(file)) {
     return {
-      file: 'cmd.exe',
+      file: comspec,
       args: ['/d', '/s', '/c', `""${file}" --version"`],
       options: { windowsVerbatimArguments: true, windowsHide: true }
     }
@@ -135,9 +139,12 @@ export function createClaudeVersionReader({
   execFile: run,
   stat,
   platform,
+  comspec,
   log
 }: ClaudeVersionReaderDeps): ClaudeVersionReader {
   const cache = new Map<string, ClaudeVersionCheck>()
+  // 同じ鍵の実行中の確認(同時の起動で claude --version を起動の数だけ走らせない)
+  const inflight = new Map<string, Promise<ClaudeVersionCheck>>()
 
   const keyOf = async (file: string): Promise<string | null> => {
     try {
@@ -156,7 +163,7 @@ export function createClaudeVersionReader({
         killSignal: 'SIGTERM' as const,
         maxBuffer: CLAUDE_VERSION_MAX_OUTPUT_BYTES
       }
-      const command = claudeVersionCommand(file, platform)
+      const command = claudeVersionCommand(file, platform, comspec)
       // 打ち切り(SIGTERM)の 1 秒後にまだ終わっていなければ SIGKILL を送る(L-052)
       let child: ExecFileChild | null = null
       const killTimer = setTimeout(() => {
@@ -178,15 +185,30 @@ export function createClaudeVersionReader({
       }
     })
 
+  const executeAndRecord = async (
+    key: string | null,
+    file: string,
+    env: Record<string, string>
+  ): Promise<ClaudeVersionCheck> => {
+    const check = await execute(file, env)
+    log(describeClaudeVersionCheck(check))
+    if (key !== null && isCacheable(check)) cache.set(key, check)
+    return check
+  }
+
   return {
     async readClaudeVersion({ file, env }) {
       const key = await keyOf(file)
-      const cached = key === null ? undefined : cache.get(key)
+      if (key === null) return executeAndRecord(key, file, env)
+      const cached = cache.get(key)
       if (cached !== undefined) return cached
-      const check = await execute(file, env)
-      log(describeClaudeVersionCheck(check))
-      if (key !== null && isCacheable(check)) cache.set(key, check)
-      return check
+      const running = inflight.get(key)
+      if (running !== undefined) return running
+      const promise = executeAndRecord(key, file, env).finally(() => {
+        inflight.delete(key)
+      })
+      inflight.set(key, promise)
+      return promise
     }
   }
 }

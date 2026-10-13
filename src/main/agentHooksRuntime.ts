@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createAgentToolActivity } from './agentToolActivity'
 import type { AgentToolActivity, AgentToolActivityDeps } from './agentToolActivity'
 import { createAgentHookReceiver } from './agentHookReceiver'
@@ -22,6 +23,10 @@ import type { AgentHooksLifecycleParts } from './agentHooksLifecycle'
 /** 実物の execFile(出力は utf8 の文字列) */
 export const nodeExecFile: ExecFileLike = (file, args, options, callback) =>
   execFile(file, [...args], { ...options, encoding: 'utf8' }, callback)
+
+/** Windows の cmd.exe の絶対パス(Node の shell: true と同じ ComSpec。無ければ SystemRoot の System32。Windows 以外では使われない) */
+const windowsComspec = (): string =>
+  process.env.ComSpec ?? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'cmd.exe')
 
 export interface AgentHooksRuntimeOptions {
   /** 追跡の合図が変わったとき(段階 A は何もしない。段階 B で記録の registry の syncAttribution につなぐ) */
@@ -68,6 +73,7 @@ export function createAgentHooksRuntime({
       execFile: nodeExecFile,
       stat: (path) => stat(path),
       platform: process.platform,
+      comspec: windowsComspec(),
       log: warn
     }),
     writeSettingsFile: writeAgentHookSettingsFile,

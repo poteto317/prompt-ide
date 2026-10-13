@@ -27,6 +27,7 @@ interface FakeRun {
 }
 
 const ENV = { PATH: '/p' }
+const COMSPEC = 'C:\\Windows\\System32\\cmd.exe'
 
 let runs: FakeRun[]
 let execFile: ExecFileLike
@@ -66,9 +67,10 @@ afterEach(() => {
 })
 
 const reader = (
-  platform: NodeJS.Platform = 'darwin'
+  platform: NodeJS.Platform = 'darwin',
+  comspec: string = COMSPEC
 ): ReturnType<typeof createClaudeVersionReader> =>
-  createClaudeVersionReader({ execFile, stat, platform, log })
+  createClaudeVersionReader({ execFile, stat, platform, comspec, log })
 
 /** 1 回読む。実行が呼ばれたら error・stdout で終える */
 async function readOnce(
@@ -164,7 +166,7 @@ describe('createClaudeVersionReader(実行のしかた)', () => {
     async (name) => {
       const file = `C:\\Program Files\\nodejs\\${name}`
       await readOnce(reader('win32'), null, '2.1.291', file)
-      expect(runs[0].file).toBe('cmd.exe')
+      expect(runs[0].file).toBe(COMSPEC)
       expect(runs[0].args).toEqual(['/d', '/s', '/c', `""${file}" --version"`])
       expect(runs[0].options).toStrictEqual({
         windowsVerbatimArguments: true,
@@ -176,6 +178,12 @@ describe('createClaudeVersionReader(実行のしかた)', () => {
       })
     }
   )
+
+  it('cmd.exe は名前だけでなく、注入された絶対パスで実行する(作業ディレクトリの cmd.exe を実行しない)', async () => {
+    const custom = 'D:\\Win\\System32\\cmd.exe'
+    await readOnce(reader('win32', custom), null, '2.1.291', 'C:\\tools\\claude.cmd')
+    expect(runs[0].file).toBe(custom)
+  })
 
   it('空白を含むパスの例: 4 つ目の引数は ""C:\\Program Files\\nodejs\\claude.cmd" --version"', async () => {
     await readOnce(reader('win32'), null, '2.1.291', 'C:\\Program Files\\nodejs\\claude.cmd')
@@ -259,9 +267,62 @@ describe('createClaudeVersionReader(控え)', () => {
   })
 })
 
+describe('createClaudeVersionReader(同時の呼び出し)', () => {
+  it('同じ鍵の同時の呼び出しは実行中の Promise を共有し、実行は 1 回・ログも 1 行で、同じ結果を返す', async () => {
+    const versionReader = reader()
+    const both = Promise.all([
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV }),
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV })
+    ])
+    await vi.waitFor(() => expect(runs.length).toBeGreaterThan(0))
+    runs[0].finish(null, '2.1.291')
+    const [first, second] = await both
+    expect(runs).toHaveLength(1)
+    expect(second).toBe(first)
+    expect(first).toMatchObject({ kind: 'supported' })
+    expect(log).toHaveBeenCalledOnce()
+  })
+
+  it('一時的な失敗を共有した後は実行中の印を外し、次の呼び出しで実行し直す', async () => {
+    const versionReader = reader()
+    const both = Promise.all([
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV }),
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV })
+    ])
+    await vi.waitFor(() => expect(runs.length).toBeGreaterThan(0))
+    runs[0].finish({ killed: true, signal: 'SIGTERM', code: null })
+    const results = await both
+    expect(results.map((r) => r.kind)).toEqual(['unknown', 'unknown'])
+    expect(runs).toHaveLength(1)
+    await expect(readOnce(versionReader, null, '2.1.291')).resolves.toMatchObject({
+      kind: 'supported'
+    })
+    expect(runs).toHaveLength(2)
+  })
+
+  it('鍵が違えば(別のパス)共有せず、stat に失敗して鍵が無ければ共有しない', async () => {
+    const versionReader = reader()
+    const other = Promise.all([
+      versionReader.readClaudeVersion({ file: '/bin/a', env: ENV }),
+      versionReader.readClaudeVersion({ file: '/bin/b', env: ENV })
+    ])
+    await vi.waitFor(() => expect(runs.length).toBe(2))
+    runs.forEach((run) => run.finish(null, '2.1.291'))
+    await other
+    stat.mockRejectedValue(new Error('ENOENT'))
+    const noKey = Promise.all([
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV }),
+      versionReader.readClaudeVersion({ file: '/bin/claude', env: ENV })
+    ])
+    await vi.waitFor(() => expect(runs.length).toBe(4))
+    runs.slice(2).forEach((run) => run.finish(null, '2.1.291'))
+    await noKey
+  })
+})
+
 describe('claudeVersionCommand(実行の形)', () => {
   it('Windows 以外は .cmd でもそのまま --version で実行する', () => {
-    expect(claudeVersionCommand('/opt/claude.cmd', 'linux')).toEqual({
+    expect(claudeVersionCommand('/opt/claude.cmd', 'linux', COMSPEC)).toEqual({
       file: '/opt/claude.cmd',
       args: ['--version'],
       options: { windowsHide: true }
@@ -269,7 +330,7 @@ describe('claudeVersionCommand(実行の形)', () => {
   })
 
   it('Windows の .exe はシェルを通さない', () => {
-    expect(claudeVersionCommand('C:\\bin\\claude.exe', 'win32')).toEqual({
+    expect(claudeVersionCommand('C:\\bin\\claude.exe', 'win32', COMSPEC)).toEqual({
       file: 'C:\\bin\\claude.exe',
       args: ['--version'],
       options: { windowsHide: true }
@@ -277,8 +338,8 @@ describe('claudeVersionCommand(実行の形)', () => {
   })
 
   it('Windows の .bat は cmd.exe の形に固定する', () => {
-    expect(claudeVersionCommand('C:\\a b\\claude.bat', 'win32')).toEqual({
-      file: 'cmd.exe',
+    expect(claudeVersionCommand('C:\\a b\\claude.bat', 'win32', COMSPEC)).toEqual({
+      file: COMSPEC,
       args: ['/d', '/s', '/c', '""C:\\a b\\claude.bat" --version"'],
       options: { windowsVerbatimArguments: true, windowsHide: true }
     })

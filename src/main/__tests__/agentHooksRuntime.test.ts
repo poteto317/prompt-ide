@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MockInstance } from 'vitest'
+import { join } from 'node:path'
 
 const mockToolActivity = vi.hoisted(() => ({
   addSession: vi.fn(),
@@ -100,6 +101,27 @@ describe('createAgentHooksRuntime', () => {
     expect(deps.execFile).toBe(nodeExecFile)
     expect(typeof deps.stat).toBe('function')
     expect(deps.platform).toBe(process.platform)
+  })
+
+  it('版の確認の cmd.exe は ComSpec の絶対パス(無ければ SystemRoot の System32)を渡す', () => {
+    const saved = { ComSpec: process.env.ComSpec, SystemRoot: process.env.SystemRoot }
+    try {
+      process.env.ComSpec = 'D:\\custom\\cmd.exe'
+      createAgentHooksRuntime(createOptions())
+      expect(firstArg(mockCreateClaudeVersionReader).comspec).toBe('D:\\custom\\cmd.exe')
+      mockCreateClaudeVersionReader.mockClear()
+      delete process.env.ComSpec
+      process.env.SystemRoot = 'E:\\WinRoot'
+      createAgentHooksRuntime(createOptions())
+      expect(firstArg(mockCreateClaudeVersionReader).comspec).toBe(
+        join('E:\\WinRoot', 'System32', 'cmd.exe')
+      )
+    } finally {
+      for (const [name, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[name]
+        else process.env[name] = value
+      }
+    }
   })
 
   it('hooks の準備は同じ受け口・設定のディレクトリ・追跡・版の確認と、実物のファイルの書き込み・削除を使う', () => {
