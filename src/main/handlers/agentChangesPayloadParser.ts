@@ -98,3 +98,13 @@ export function parseRevertScope(value: unknown): { kind: 'all' } {
   if (scope.kind !== 'all') throw new Error(AGENT_CHANGES_REVERT_SCOPE_MESSAGE)
   return scope
 }
+
+export const AGENT_CHANGES_UNDO_ID_INVALID_MESSAGE = 'undoId は 1 以上の整数である必要があります'
+
+/** 取り消しの ID(renderer から受け取るのはこれだけ。取り消すパス・控えは main が決める。L-019)。省略・未知の形は例外 */
+export function parseAgentChangesUndoId(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error(AGENT_CHANGES_UNDO_ID_INVALID_MESSAGE)
+  }
+  return value
+}

@@ -7,8 +7,8 @@ import {
 } from './agentChangesMessages'
 import { findAgentChangesRun, getListedAgentChanges } from './agentChangesScope'
 
-// セクション「エージェントの変更」の、写しと選んでいる範囲から決まる文字(見出し・範囲の一覧が取れない理由)。
-// AgentChangesSection から外して、描画なしで検査できるようにする
+// セクション「エージェントの変更」の、写しと選んでいる範囲から決まる文字(見出し・範囲の一覧が取れない理由)と、
+// 押せないボタンが結ぶ理由の要素の導出(agentChangesReasonTargets)。AgentChangesSection から外して、描画なしで検査できるようにする
 
 /**
  * 見出し。範囲が実行で、写しの実行の一覧にあれば実行の番号と期間を、それ以外は累積の始点を添える。
@@ -38,4 +38,34 @@ export function describeAgentChangesListUnavailable(view: AgentChangesView): str
     reason,
     scope.kind === 'run' ? findAgentChangesRun(view.runs, scope.runId) : undefined
   )
+}
+
+/** 押せないボタンが結ぶ理由の要素: 一覧の上の理由(list)・取り消しの帯の理由(undo)・結ばない(null) */
+export type AgentChangesReasonTarget = 'list' | 'undo' | null
+
+/**
+ * 範囲の選択・確認を終えるが結ぶ理由の要素と、セクションに取り消しの理由を出すか(押せないボタンには必ず理由を結ぶ。パターン 126)。
+ * 戻す操作・取り消しの実行中(isWriting)は、一覧の上の理由があればそれ、無ければ帯の理由を結ぶ。帯が先に消えたとき
+ * (取り消しの結果で写しの undo が null になった)は、セクションに同じ id の理由を出す。
+ * 実行中でなければ、範囲の選択は一覧の上の理由があればそれを結び、確認を終えるは押せるので結ばない
+ */
+export function agentChangesReasonTargets({
+  isWriting,
+  hasListReason,
+  hasUndoBand
+}: {
+  isWriting: boolean
+  hasListReason: boolean
+  hasUndoBand: boolean
+}): {
+  scopeSelect: AgentChangesReasonTarget
+  clear: AgentChangesReasonTarget
+  showSectionUndoReason: boolean
+} {
+  const writing: AgentChangesReasonTarget = hasListReason ? 'list' : 'undo'
+  return {
+    scopeSelect: isWriting ? writing : hasListReason ? 'list' : null,
+    clear: isWriting ? writing : null,
+    showSectionUndoReason: isWriting && !hasListReason && !hasUndoBand
+  }
 }

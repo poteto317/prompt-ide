@@ -1710,6 +1710,36 @@ body {
   cursor: default;
 }
 
+/* 帯「直前に戻した操作」。狭い幅では理由が次の行へ折り返し、長い対象は末尾を省略する。ボタンは折り返さずに押せる */
+.agent-changes__undo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+}
+
+.agent-changes__undo-text {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cccccc;
+  font-size: 12px;
+}
+
+.agent-changes__undo-button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.agent-changes__undo-reason {
+  flex-basis: 100%;
+  padding: 0;
+}
+
 /* 読み上げだけの通知(見た目には出さない) */
 .agent-changes__live {
   position: absolute;

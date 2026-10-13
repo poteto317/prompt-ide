@@ -48,6 +48,14 @@ describe('OpenFileWatcher(実物の fs.watch)', () => {
         renameSync(`${file}.tmp`, file)
       }
     ],
+    [
+      '取り消しの書き戻し(同じフォルダの一時の名前 + rename)',
+      (file: string) => {
+        const temp = join(dir, '.prompt-ide-undo-0123456789abcdef')
+        writeFileSync(temp, 'four')
+        renameSync(temp, file)
+      }
+    ],
     ['削除', (file: string) => unlinkSync(file)]
   ])('%s を通知する', async (_label, change) => {
     const file = join(dir, 'a.txt')

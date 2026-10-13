@@ -6,6 +6,7 @@ import {
   describeAgentChangesScopeUnavailable
 } from '../agentChangesMessages'
 import {
+  agentChangesReasonTargets,
   buildAgentChangesSectionHeading,
   describeAgentChangesListUnavailable
 } from '../agentChangesSectionText'
@@ -81,5 +82,46 @@ describe('describeAgentChangesListUnavailable', () => {
     expect(describeAgentChangesListUnavailable(unavailableView('end-not-recorded', 1))).toBe(
       describeAgentChangesScopeUnavailable('end-not-recorded', run1)
     )
+  })
+})
+
+describe('agentChangesReasonTargets', () => {
+  const flags = [false, true]
+  const combinations = flags.flatMap((isWriting) =>
+    flags.flatMap((hasListReason) =>
+      flags.map((hasUndoBand) => ({ isWriting, hasListReason, hasUndoBand }))
+    )
+  )
+
+  it.each(combinations)(
+    '実行中は範囲の選択・確認を終えるが必ず理由を結び、その要素が出ている: %o',
+    (input) => {
+      const targets = agentChangesReasonTargets(input)
+      if (!input.isWriting) {
+        expect(targets.clear).toBeNull()
+        expect(targets.showSectionUndoReason).toBe(false)
+        expect(targets.scopeSelect).toBe(input.hasListReason ? 'list' : null)
+        return
+      }
+      expect(targets.scopeSelect).toBe(targets.clear)
+      // 結ぶ要素が画面にある: 一覧の上の理由、帯の理由、またはセクションに出す取り消しの理由
+      if (targets.clear === 'list') expect(input.hasListReason).toBe(true)
+      else {
+        expect(targets.clear).toBe('undo')
+        expect(input.hasUndoBand || targets.showSectionUndoReason).toBe(true)
+      }
+    }
+  )
+
+  it('一覧の上の理由があればそれを優先し、帯が消えて一覧の理由も無いときだけセクションに理由を出す', () => {
+    expect(
+      agentChangesReasonTargets({ isWriting: true, hasListReason: true, hasUndoBand: true })
+    ).toEqual({ scopeSelect: 'list', clear: 'list', showSectionUndoReason: false })
+    expect(
+      agentChangesReasonTargets({ isWriting: true, hasListReason: false, hasUndoBand: true })
+    ).toEqual({ scopeSelect: 'undo', clear: 'undo', showSectionUndoReason: false })
+    expect(
+      agentChangesReasonTargets({ isWriting: true, hasListReason: false, hasUndoBand: false })
+    ).toEqual({ scopeSelect: 'undo', clear: 'undo', showSectionUndoReason: true })
   })
 })

@@ -11,11 +11,17 @@ import {
   isAgentChangesScopeUnavailable,
   isCumulativeAgentDiffScope
 } from '../lib/agentChangesWiring'
+import { recordingStartedAtOf } from '../lib/agentChangesView'
 import type { AgentChangesController } from './useAgentChanges'
 import { useAgentChangesAutoRefresh } from './useAgentChangesAutoRefresh'
 import type { AgentChangesRecording } from './useAgentChangesRecording'
 import { useAgentChangesRevert } from './useAgentChangesRevert'
 import type { AgentChangesRevertOptions, AgentChangesRevertState } from './useAgentChangesRevert'
+import { useAgentChangesUndo } from './useAgentChangesUndo'
+import type { AgentChangesUndoState } from './useAgentChangesUndo'
+import { useAgentChangesWriteRunner } from './useAgentChangesWriteRunner'
+import { refreshAfterAgentChangesWrite } from './agentChangesWriteSync'
+import type { AgentChangesWriteRefreshers } from './agentChangesWriteSync'
 import type { AgentLastExit } from './useAgentSessions'
 import type { DiffRefreshOptions } from './useDiffOperations'
 import type { DiffTabsState } from './useDiffTabs'
@@ -23,7 +29,7 @@ import type { FileOperationLock } from './useFileOperationLock'
 
 // エージェントの変更の組み立ての後段(useAppState の中で useDiffOperations・useAgentWorkspace・useExternalFileChanges の
 // 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機(自動の取り直しは useAgentChangesAutoRefresh)、一覧から消えたパスの diff タブの
-// 同期、戻す操作(useAgentChangesRevert)、表示用の値(セクション・diff タブの操作・ターミナルの帯)の組み立てを持つ
+// 同期、戻す操作(useAgentChangesRevert)と取り消し(useAgentChangesUndo。実行の共有 useAgentChangesWriteRunner を共有する)、表示用の値(セクション・diff タブの操作・ターミナルの帯)の組み立てを持つ
 
 // 一覧のパスと diff タブのパスの照合(フォルダの行は末尾に / が付く。どちらかが null なら一致しない)
 function isSameAgentPath(a: string | null, b: string | null): boolean {
@@ -58,6 +64,8 @@ export interface AgentChangesPanelState {
   /** セクションの見出しへフォーカスを移す依頼(ターミナルの帯の「変更を確認」) */
   focusRequest: AgentChangesFocusRequest
   revert: AgentChangesRevertState
+  /** 直前の戻す操作の取り消し(セクションの帯) */
+  undo: AgentChangesUndoState
   /** 開いているフォルダ(保存したパスとの突き合わせに使う) */
   folderPath: string | null
   /** エージェント CLI 方式か。従来の方式では記録がある間だけ出す */
@@ -93,8 +101,8 @@ export interface AgentChangesWiringOptions {
     | 'closeTabsAtOrInside'
     | 'confirmDiscardAnyDirty'
     | 'reloadOpenFiles'
-    | 'refreshTree'
-  >
+  > &
+    Pick<AgentChangesWriteRefreshers, 'refreshTree'>
   /** ソース管理パネルを開く(閉じない) */
   showSourceControl: () => void
 }
@@ -176,6 +184,21 @@ export function useAgentChangesWiring({
     tabs: agentTabs,
     activities: agentActivities
   })
+  // 戻す操作と取り消しで共有する実行(同じ実行中の印・失敗の表示・全体ロック)
+  const runner = useAgentChangesWriteRunner({
+    folderPath,
+    recordStartedAt: recordingStartedAtOf(view),
+    fileLock
+  })
+  // 書き換える操作(戻す・取り消し)の後の取り直し。順序は refreshAfterAgentChangesWrite が持ち、取り直す対象はここで 1 回だけ決めて
+  // 両方の hook に同じものを渡す
+  const refreshAfterWrite = (): Promise<void> =>
+    refreshAfterAgentChangesWrite({
+      refreshTree: fileSystem.refreshTree,
+      refreshGitStatus,
+      refreshChanges: refreshAgentChanges,
+      refreshDiff
+    })
   const revert = useAgentChangesRevert({
     folderPath,
     changes,
@@ -187,9 +210,20 @@ export function useAgentChangesWiring({
     closeTabsAtOrInside: fileSystem.closeTabsAtOrInside,
     confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
     reloadOpenFiles: fileSystem.reloadOpenFiles,
-    refreshTree: fileSystem.refreshTree,
-    refreshGitStatus,
-    refreshDiff
+    refreshAfterWrite,
+    runner
+  })
+  // 直前の戻す操作の取り消し(戻す操作と同じ runner で、同じ実行中の印・失敗の表示・全体ロックを共有する)
+  const undo = useAgentChangesUndo({
+    folderPath,
+    changes,
+    runner,
+    fileLock,
+    agentRunning,
+    hasDirtyTabAtOrInside: fileSystem.hasDirtyTabAtOrInside,
+    reloadOpenFile: fileSystem.reloadOpenFile,
+    closeTabsAtOrInside: fileSystem.closeTabsAtOrInside,
+    refreshAfterWrite
   })
   const activeAgentPath =
     diffTabs.activeDiffTab?.kind === 'agent' ? diffTabs.activeDiffTab.path : null
@@ -236,6 +270,7 @@ export function useAgentChangesWiring({
     },
     focusRequest: { isRequested: isFocusRequested, consume: consumeFocusRequest },
     revert,
+    undo,
     folderPath,
     isAgentMode,
     onOpenDiff: (path) => diffTabs.openDiffTab({ path, kind: 'agent' })

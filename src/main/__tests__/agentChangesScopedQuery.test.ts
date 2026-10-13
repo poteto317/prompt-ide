@@ -56,6 +56,7 @@ describe('listAgentChangesInScope', () => {
       kind: 'recording',
       startedAt: 100,
       scope: { kind: 'all' },
+      undo: null,
       totalCount: 1
     })
     expect(result.kind === 'recording' && result.runs.map((run) => run.runId)).toEqual([1, 2, 3])
@@ -78,10 +79,24 @@ describe('listAgentChangesInScope', () => {
       kind: 'scope-unavailable',
       reason: 'run-missing',
       scope: { kind: 'run', runId: 99 },
-      startedAt: 100
+      startedAt: 100,
+      undo: null
     })
     expect(listAgentChanges).not.toHaveBeenCalled()
     expect(listAgentChangesBetween).not.toHaveBeenCalled()
+  })
+
+  it('控えのある記録は recording・scope-unavailable の結果に要約を入れる(控えの dir は入れない)', async () => {
+    const withUndo = makeAgentChangesRecord([...record.runs], {
+      baseline,
+      undo: { undoId: 3, operation: 'all', dir: '/tmp/u', items: [] }
+    })
+    const summary = { undoId: 3, operation: 'all', entries: [] }
+    const recording = await listAgentChangesInScope(withUndo, { kind: 'all' })
+    expect(recording).toMatchObject({ kind: 'recording', undo: summary })
+    const unavailable = await listAgentChangesInScope(withUndo, { kind: 'run', runId: 99 })
+    expect(unavailable).toMatchObject({ kind: 'scope-unavailable', undo: summary })
+    expect(JSON.stringify([recording, unavailable])).not.toContain('/tmp/u')
   })
 })
 

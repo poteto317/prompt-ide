@@ -1,5 +1,6 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { watch } from 'node:fs'
+import { tmpdir } from 'node:os'
 import type { IpcMain } from 'electron'
 import { app, shell, BrowserWindow, Notification } from 'electron'
 import { FolderAccessManager } from './folderAccessManager'
@@ -39,7 +40,14 @@ import {
   takeBaselineSnapshot
 } from './agentBaselineSnapshot'
 import { registerAgentChangesHandlers } from './handlers/agentChangesHandlers'
+import {
+  isProcessAliveOnThisMachine,
+  prepareAgentChangesNoHooksDir,
+  protectionRefGit
+} from './agentChangesProtectionRef'
+import { createProtectionInstanceId } from './agentChangesProtectionRules'
 import { moveToTrash } from './trash'
+import { AGENT_CHANGES_UNDO_MAX_BYTES, executeAgentChangesUndo } from './agentChangesUndo'
 import { createAgentNotificationCenter } from './agentNotifications'
 import { createElectronAgentNotification } from './agentNotificationRuntime'
 import { setupAgentNotificationLifecycle } from './agentNotificationLifecycle'
@@ -112,17 +120,27 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   setupOpenFileWatcherLifecycle(app, openFileWatcher, folderAccess)
   registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher)
   registerShellHandlers(ipcMain, (url) => shell.openExternal(url))
-  // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる
+  // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる。
+  // 記録中は記録の tree を専用の ref から守る(instanceId は起動ごとに 1 回だけ作る。hook の無いディレクトリは userData の下)
   const agentBaselineRegistry = new AgentBaselineRegistry({
     takeSnapshot: (folderPath, options) => takeBaselineSnapshot(folderPath, options),
     removeDir: removeBaselineDir,
     removeDirSync: removeBaselineDirSync,
-    now: Date.now
+    now: Date.now,
+    protection: {
+      instanceId: createProtectionInstanceId(process.pid, randomBytes(4).toString('hex')),
+      noHooksDir: prepareAgentChangesNoHooksDir(app.getPath('userData')),
+      git: protectionRefGit,
+      isProcessAlive: isProcessAliveOnThisMachine
+    },
+    executeUndo: (folderPath, undo) =>
+      executeAgentChangesUndo({ folderPath, undo, trash: moveToTrash })
   })
   setupAgentBaselineLifecycle(app, agentBaselineRegistry, folderAccess)
   registerAgentChangesHandlers(ipcMain, {
     registry: agentBaselineRegistry,
     folderAccess,
-    trash: moveToTrash
+    trash: moveToTrash,
+    undoCapture: { tempRoot: tmpdir(), maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
   })
 }

@@ -23,8 +23,21 @@ describe('makeAgentChangesRecord', () => {
     expect(makeAgentChangesRecord(runs)).toEqual({
       baseline: makeBaselineSnapshot(),
       runs,
-      nextNumber: 2
+      nextNumber: 2,
+      recordSerial: 1,
+      protection: {
+        refName: 'refs/prompt-ide/agent-changes/1-00000000/1',
+        value: null,
+        swept: false
+      },
+      undo: null
     })
+  })
+
+  it('保護の ref の名前の既定は、上書きした記録の番号に追従する', () => {
+    expect(makeAgentChangesRecord([], { recordSerial: 3 }).protection.refName).toBe(
+      'refs/prompt-ide/agent-changes/1-00000000/3'
+    )
   })
 
   it('始点と次の番号を上書きする', () => {
@@ -32,7 +45,14 @@ describe('makeAgentChangesRecord', () => {
     expect(makeAgentChangesRecord([], { baseline, nextNumber: 9 })).toEqual({
       baseline,
       runs: [],
-      nextNumber: 9
+      nextNumber: 9,
+      recordSerial: 1,
+      protection: {
+        refName: 'refs/prompt-ide/agent-changes/1-00000000/1',
+        value: null,
+        swept: false
+      },
+      undo: null
     })
   })
 })

@@ -16,7 +16,8 @@ import { activityBarPanels } from '../../config/activityBarPanels'
 import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
-  makeAgentChangesRecordingState
+  makeAgentChangesRecordingState,
+  makeAgentRevertResult
 } from '../../__tests__/makeAgentChangesState'
 
 // App → Sidebar → SourceControlPanel → GitRepoView → AgentChangesSection と、App → EditorPanel → DiffView・AgentTerminalPanel の
@@ -80,8 +81,8 @@ describe('App: エージェントの変更の配線', () => {
       .mockResolvedValue(
         'diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n'
       )
-    window.api.revertAgentChange = vi.fn().mockResolvedValue(undefined)
-    window.api.revertAgentChangeHunk = vi.fn().mockResolvedValue(undefined)
+    window.api.revertAgentChange = vi.fn().mockResolvedValue(makeAgentRevertResult())
+    window.api.revertAgentChangeHunk = vi.fn().mockResolvedValue(makeAgentRevertResult())
     window.confirm = vi.fn().mockReturnValue(true)
   })
 
@@ -112,7 +113,7 @@ describe('App: エージェントの変更の配線', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'new.txt をゴミ箱へ移動' }))
     expect(window.confirm).toHaveBeenLastCalledWith(
-      'new.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）'
+      'new.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     )
     expect(window.api.revertAgentChange).toHaveBeenCalledWith('new.txt', { kind: 'all' })
   })

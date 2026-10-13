@@ -4,8 +4,11 @@ import type {
   AgentChangesUnavailableReason
 } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
+import type { ProtectionTreeEntry } from './agentChangesProtectionRules'
+import type { AgentChangesUndo } from './agentChangesUndoModel'
 
-// 1 所有者の記録(設計書「記録の持ち方」)。累積の始点と、プロンプトを送るたびに足す実行の一覧(古い順)。
+// 1 所有者の記録(設計書「記録の持ち方」)。累積の始点と、プロンプトを送るたびに足す実行の一覧(古い順)に加えて、
+// 記録の tree を守る保護の ref の状態と、直前の戻す操作の取り消しの控え(0 か 1 つ)を持つ。
 // 実行 N の範囲は「実行 N の開始の区切り → 実行 N+1 の開始の区切り(最後の実行は作業ツリー)」で、終わりの記録は別に持たない
 // (隣り合う実行が同じ記録を共有する)。registry が作って書き換え、範囲の解決と handler が読む。renderer には渡さない
 
@@ -23,6 +26,17 @@ export interface AgentChangesRecordRun {
   start: AgentChangesRunStart
 }
 
+/**
+ * 保護の ref の状態(設計書「ref の名前と指す先」)。value は最後に書けた ref の値(無ければ null)、swept は残った ref の掃除を
+ * 済ませた印。保護をやめたか(利用者が ref を消した・書き換えた)は、記録が消えた後も掃除で残すために registry が番号で持つ
+ * (AgentBaselineRegistry の abandonedSerials。記録の側に同じ印を持たない)
+ */
+export interface AgentChangesProtectionState {
+  refName: string
+  value: string | null
+  swept: boolean
+}
+
 export interface AgentChangesRecord {
   /** 累積の始点。一覧・diff・戻すの累積の範囲はこれを使う(古い実行を捨てても変わらない) */
   baseline: BaselineSnapshot
@@ -30,6 +44,12 @@ export interface AgentChangesRecord {
   runs: AgentChangesRecordRun[]
   /** 次の実行の番号 */
   nextNumber: number
+  /** インスタンスの中で記録を取るたびに 1 から増える番号(保護の ref の名前に使う) */
+  recordSerial: number
+  /** 保護の ref の状態(registry の保護の同期だけが書き換える) */
+  protection: AgentChangesProtectionState
+  /** 直前の戻す操作の取り消しの控え(0 か 1 つ。registry の commitRevertUndo・undoLastRevert だけが書き換える) */
+  undo: AgentChangesUndo | null
 }
 
 // 未知の開始の種類を、取れた・選べる側へ黙って流さない(型を足したら下の switch がすべて型検査で落ちる)
@@ -138,14 +158,15 @@ function runOwnedTempDir(run: AgentChangesRecordRun): string | null {
   }
 }
 
-/** 記録を捨てるときに消す一時ディレクトリ(累積の始点と、実行が持つもの) */
+/** 記録を捨てるときに消す一時ディレクトリ(累積の始点・実行が持つもの・取り消しの控え) */
 export function agentChangesRecordTempDirs(record: AgentChangesRecord): string[] {
   return [
     record.baseline.tempDir,
     ...record.runs.flatMap((run) => {
       const dir = runOwnedTempDir(run)
       return dir === null ? [] : [dir]
-    })
+    }),
+    ...(record.undo === null ? [] : [record.undo.dir])
   ]
 }
 
@@ -174,4 +195,35 @@ export function dropRunsOverLimit(record: AgentChangesRecord, limit: number): st
     if (dir !== null) dirs.push(dir)
   }
   return dirs
+}
+
+/** 累積の始点を取ったときの記録(実行なし・保護はまだ作っていない) */
+export function createAgentChangesRecord(
+  baseline: BaselineSnapshot,
+  recordSerial: number,
+  refName: string
+): AgentChangesRecord {
+  return {
+    baseline,
+    runs: [],
+    nextNumber: 1,
+    recordSerial,
+    protection: { refName, value: null, swept: false },
+    undo: null
+  }
+}
+
+/**
+ * 保護の tree の項目: 累積の始点(baseline)と、開始が区切りの実行(run-<runId>)。開始が累積の始点の実行(baseline)は始点と同じ
+ * tree のため、取れなかった実行(failed)は tree が無いため項目を作らない
+ */
+export function protectionTreeEntries(record: AgentChangesRecord): ProtectionTreeEntry[] {
+  return [
+    { name: 'baseline', tree: record.baseline.tree },
+    ...record.runs.flatMap((run) =>
+      run.start.kind === 'snapshot'
+        ? [{ name: `run-${run.runId}`, tree: run.start.snapshot.tree }]
+        : []
+    )
+  ]
 }

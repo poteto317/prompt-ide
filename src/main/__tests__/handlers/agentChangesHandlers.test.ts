@@ -33,9 +33,14 @@ import {
   AGENT_CHANGES_SCOPE_DIFF_UNAVAILABLE_MESSAGE,
   registerAgentChangesHandlers
 } from '../../handlers/agentChangesHandlers'
-import { AGENT_CHANGES_REVERT_SCOPE_MESSAGE } from '../../handlers/agentChangesPayloadParser'
+import {
+  AGENT_CHANGES_REVERT_SCOPE_MESSAGE,
+  AGENT_CHANGES_UNDO_ID_INVALID_MESSAGE
+} from '../../handlers/agentChangesPayloadParser'
 import type { AgentChangesScope } from '@shared/types'
-import { makeBaselineSnapshot } from '../helpers/agentBaselineFixtures'
+import { makeBaselineSnapshot, makeFakeProtectionDeps } from '../helpers/agentBaselineFixtures'
+import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
+import { AGENT_UNDO_STALE_MESSAGE } from '../../agentChangesUndoModel'
 
 const ALL = { kind: 'all' } as const
 
@@ -60,6 +65,11 @@ let snapshotResults: BaselineSnapshotResult[] = []
 let folderAccess: FolderAccessManager
 let registry: AgentBaselineRegistry
 const trash = vi.fn(async () => undefined)
+// 取り消しの控えの置き場所と上限(戻す関数の偽物は控えを取らないため、置き場所は使われない)
+const UNDO_CAPTURE = {
+  tempRoot: join(tmpdir(), 'agent-changes-handlers-undo'),
+  maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES
+}
 const removeDir = vi.fn<(tempDir: string) => Promise<void>>(async () => undefined)
 const snapshotFor = (folderPath: string): BaselineSnapshot =>
   makeBaselineSnapshot({ folderPath, startedAt: 42 })
@@ -70,6 +80,19 @@ const recordedResult = (snapshot: BaselineSnapshot): BaselineSnapshotResult => (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(revertAgentChange).mockResolvedValue({
+    applied: 1,
+    capture: { kind: 'unavailable', reason: 'too-large' }
+  })
+  vi.mocked(revertAgentChangeHunk).mockResolvedValue({
+    applied: 1,
+    capture: { kind: 'unavailable', reason: 'too-large' }
+  })
+  vi.mocked(revertAllAgentChanges).mockResolvedValue({
+    status: 'done',
+    applied: 2,
+    capture: { kind: 'unavailable', reason: 'directory' }
+  })
   handles.clear()
   snapshotResults = []
   folder = realpathSync(mkdtempSync(join(tmpdir(), 'agent-changes-handlers-')))
@@ -81,9 +104,20 @@ beforeEach(() => {
       snapshotResults.shift() ?? recordedResult(snapshotFor(folderPath)),
     removeDir,
     removeDirSync: vi.fn(),
-    now: () => 0
+    now: () => 0,
+    protection: makeFakeProtectionDeps(),
+    // このファイルの取り消しのテストは、受け口の検証と registry の undoId の照合で止まり、書き戻しまで進まない。
+    // 書き戻しの結合は handlers.integration、書き戻しのファイルの扱いは agentChangesUndo のテストで見る
+    executeUndo: async () => {
+      throw new Error('書き戻しまで進まない前提のテストで executeUndo が呼ばれた')
+    }
   })
-  registerAgentChangesHandlers(ipcMain as never, { registry, folderAccess, trash })
+  registerAgentChangesHandlers(ipcMain as never, {
+    registry,
+    folderAccess,
+    trash,
+    undoCapture: UNDO_CAPTURE
+  })
 })
 
 afterEach(() => {
@@ -91,7 +125,7 @@ afterEach(() => {
 })
 
 describe('registerAgentChangesHandlers', () => {
-  it('8 つのチャンネルを invoke で登録する', () => {
+  it('9 つのチャンネルを invoke で登録する', () => {
     expect([...handles.keys()].sort()).toEqual(
       [
         'agentChanges:begin',
@@ -101,7 +135,8 @@ describe('registerAgentChangesHandlers', () => {
         'agentChanges:list',
         'agentChanges:revertAll',
         'agentChanges:revertFile',
-        'agentChanges:revertHunk'
+        'agentChanges:revertHunk',
+        'agentChanges:undoRevert'
       ].sort()
     )
   })
@@ -114,6 +149,7 @@ describe('registerAgentChangesHandlers', () => {
     ['agentChanges:revertFile', ['a.txt', ALL]],
     ['agentChanges:revertHunk', ['a.txt', 'patch', ALL]],
     ['agentChanges:revertAll', [[], ALL]],
+    ['agentChanges:undoRevert', [1]],
     ['agentChanges:clear', []]
   ])('%s はメインフレーム以外からの依頼を拒否する', async (channel, args) => {
     await expect(invoke(channel, makeEvent(1, false), ...args)).rejects.toThrow(
@@ -131,17 +167,20 @@ describe('registerAgentChangesHandlers', () => {
     await expect(invoke('agentChanges:begin', makeEvent(), 'manual')).resolves.toEqual({
       kind: 'recording',
       startedAt: 42,
-      runs: []
+      runs: [],
+      undo: null
     })
     await expect(invoke('agentChanges:getState', makeEvent())).resolves.toEqual({
       kind: 'recording',
       startedAt: 42,
-      runs: []
+      runs: [],
+      undo: null
     })
     await expect(invoke('agentChanges:list', makeEvent(), ALL)).resolves.toEqual({
       kind: 'recording',
       startedAt: 42,
       runs: [],
+      undo: null,
       scope: { kind: 'all' },
       entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
       totalCount: 1,
@@ -178,11 +217,11 @@ describe('registerAgentChangesHandlers', () => {
     await invoke('agentChanges:revertHunk', makeEvent(), 'a.txt', 'patch', ALL)
     expect(getAgentChangeDiff).toHaveBeenCalledWith(snapshotFor(folder), 'a.txt')
     expect(revertAgentChange).toHaveBeenCalledWith(
-      { snapshot: snapshotFor(folder), trash },
+      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
       'gone/b.txt'
     )
     expect(revertAgentChangeHunk).toHaveBeenCalledWith(
-      { snapshot: snapshotFor(folder), trash },
+      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
       'a.txt',
       'patch'
     )
@@ -207,13 +246,23 @@ describe('registerAgentChangesHandlers', () => {
 
   it('revertAll は確認の一覧を検証して詰め直したものを渡し、結果を返す', async () => {
     await invoke('agentChanges:begin', makeEvent(), 'manual')
-    vi.mocked(revertAllAgentChanges).mockResolvedValue({ status: 'done' })
+    vi.mocked(revertAllAgentChanges).mockResolvedValue({
+      status: 'done',
+      applied: 1,
+      capture: { kind: 'unavailable', reason: 'too-large' }
+    })
     await expect(
       invoke('agentChanges:revertAll', makeEvent(), [{ path: 'a.txt', status: 'M', x: 1 }], ALL)
-    ).resolves.toEqual({ status: 'done' })
-    expect(revertAllAgentChanges).toHaveBeenCalledWith({ snapshot: snapshotFor(folder), trash }, [
-      { path: 'a.txt', status: 'M' }
-    ])
+    ).resolves.toEqual({
+      status: 'done',
+      revertedCount: 1,
+      undo: { kind: 'unavailable', reason: 'too-large' },
+      undoSummary: null
+    })
+    expect(revertAllAgentChanges).toHaveBeenCalledWith(
+      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
+      [{ path: 'a.txt', status: 'M' }]
+    )
     await expect(invoke('agentChanges:revertAll', makeEvent(), 'all', ALL)).rejects.toThrow(
       '確認の一覧が不正です'
     )
@@ -350,7 +399,8 @@ describe('範囲と実行', () => {
       runs: [
         { runId: 1, number: 1, startedAt: 42, endedAt: 44, availability: { kind: 'available' } },
         { runId: 2, number: 2, startedAt: 44, endedAt: null, availability: { kind: 'available' } }
-      ]
+      ],
+      undo: null
     })
     expect(begin).toHaveBeenLastCalledWith(1, folder, 'send')
   })
@@ -408,6 +458,7 @@ describe('範囲と実行', () => {
         kind: 'scope-unavailable',
         startedAt: 42,
         runs: expect.any(Array),
+        undo: null,
         scope: runScope(runId),
         reason
       })
@@ -537,5 +588,213 @@ describe('範囲と実行', () => {
     await expect(
       invoke('agentChanges:getDiff', makeEvent(), '../outside.txt', { kind: 'nope' })
     ).rejects.toThrow('範囲(scope)が不正です')
+  })
+})
+
+// 戻す系の戻り値(控えの成否と要約)と取り消し(設計書「IPC」)。registry.commitRevertUndo は本物(記録に控えを持つ)。
+// 控えの dir は実在しないパスで、後の clear の removeDir は偽物
+describe('戻す系の結果と取り消し', () => {
+  const savedOutcome = {
+    applied: 1,
+    capture: {
+      kind: 'saved' as const,
+      dir: '/tmp/undo-1',
+      items: [
+        {
+          path: 'a.txt',
+          before: { kind: 'file' as const, savedName: '0', mode: 0o644 },
+          after: { kind: 'file' as const, size: 1, sha256: 'x', mode: 0o644 }
+        }
+      ]
+    }
+  }
+  const fileSummary = {
+    undoId: 1,
+    operation: 'file',
+    entries: [{ path: 'a.txt', action: 'rewrite' }]
+  }
+
+  beforeEach(async () => {
+    await invoke('agentChanges:begin', makeEvent(), 'manual')
+  })
+
+  it('revertFile は控えが取れなかった結果と null の要約を返す', async () => {
+    await expect(invoke('agentChanges:revertFile', makeEvent(), 'a.txt', ALL)).resolves.toEqual({
+      undo: { kind: 'unavailable', reason: 'too-large' },
+      undoSummary: null
+    })
+  })
+
+  it('控えが取れたら要約を返し、getState にも同じ要約が入る(控えの dir は renderer に返さない。L-019)', async () => {
+    vi.mocked(revertAgentChange).mockResolvedValueOnce(savedOutcome)
+    const result = await invoke('agentChanges:revertFile', makeEvent(), 'a.txt', ALL)
+    expect(result).toEqual({ undo: { kind: 'saved' }, undoSummary: fileSummary })
+    expect(JSON.stringify(result)).not.toContain('/tmp/undo-1')
+    const state = await invoke('agentChanges:getState', makeEvent())
+    expect(state).toMatchObject({ kind: 'recording', undo: fileSummary })
+    expect(JSON.stringify(state)).not.toContain('/tmp/undo-1')
+  })
+
+  // registry が控えを付けずに消したとき、取り消せると伝えない(undo を saved にしない。undoSummary の null と食い違わない)
+  it.each<[string, () => Promise<unknown>]>([
+    [
+      '記録が置き換わった後',
+      async () => {
+        void registry.clear(1)
+        await registry.begin(1, folder, 'manual')
+      }
+    ],
+    [
+      'アプリの終了中',
+      async () => {
+        registry.close()
+      }
+    ]
+  ])(
+    '%s に戻す操作が終わったら、控えを付けずに消して undo を discarded にする',
+    async (_label, interrupt) => {
+      vi.mocked(revertAgentChange).mockImplementationOnce(async () => {
+        await interrupt()
+        return savedOutcome
+      })
+      await expect(invoke('agentChanges:revertFile', makeEvent(), 'a.txt', ALL)).resolves.toEqual({
+        undo: { kind: 'discarded' },
+        undoSummary: null
+      })
+    }
+  )
+
+  it('revertAll の途中で記録が置き換わったら、undo を discarded にする', async () => {
+    vi.mocked(revertAllAgentChanges).mockImplementationOnce(async () => {
+      void registry.clear(1)
+      await registry.begin(1, folder, 'manual')
+      return { status: 'done', applied: 1, capture: savedOutcome.capture }
+    })
+    await expect(invoke('agentChanges:revertAll', makeEvent(), [], ALL)).resolves.toEqual({
+      status: 'done',
+      revertedCount: 1,
+      undo: { kind: 'discarded' },
+      undoSummary: null
+    })
+  })
+
+  it('revertHunk は hunk の要約を返す', async () => {
+    vi.mocked(revertAgentChangeHunk).mockResolvedValueOnce(savedOutcome)
+    await expect(
+      invoke('agentChanges:revertHunk', makeEvent(), 'a.txt', 'patch', ALL)
+    ).resolves.toEqual({
+      undo: { kind: 'saved' },
+      undoSummary: { ...fileSummary, operation: 'hunk' }
+    })
+  })
+
+  it('revertAll は戻せた件数と控えの結果を返す', async () => {
+    await expect(invoke('agentChanges:revertAll', makeEvent(), [], ALL)).resolves.toEqual({
+      status: 'done',
+      revertedCount: 2,
+      undo: { kind: 'unavailable', reason: 'directory' },
+      undoSummary: null
+    })
+  })
+
+  it('revertAll の partial は文言と戻せた件数を返す', async () => {
+    vi.mocked(revertAllAgentChanges).mockResolvedValueOnce({
+      status: 'partial',
+      message: 'm',
+      applied: 1,
+      capture: { kind: 'unavailable', reason: 'directory' }
+    })
+    await expect(invoke('agentChanges:revertAll', makeEvent(), [], ALL)).resolves.toEqual({
+      status: 'partial',
+      message: 'm',
+      revertedCount: 1,
+      undo: { kind: 'unavailable', reason: 'directory' },
+      undoSummary: null
+    })
+  })
+
+  it.each<[string, () => void, () => Promise<unknown>]>([
+    [
+      'revertFile',
+      () => vi.mocked(revertAgentChange).mockRejectedValueOnce(new Error('boom')),
+      () => invoke('agentChanges:revertFile', makeEvent(), 'a.txt', ALL)
+    ],
+    [
+      'revertHunk',
+      () => vi.mocked(revertAgentChangeHunk).mockRejectedValueOnce(new Error('boom')),
+      () => invoke('agentChanges:revertHunk', makeEvent(), 'a.txt', 'patch', ALL)
+    ],
+    [
+      'revertAll',
+      () => vi.mocked(revertAllAgentChanges).mockRejectedValueOnce(new Error('boom')),
+      () => invoke('agentChanges:revertAll', makeEvent(), [], ALL)
+    ]
+  ])('%s の戻す関数が reject したら commitRevertUndo を呼ばない', async (_label, reject, run) => {
+    const commit = vi.spyOn(registry, 'commitRevertUndo')
+    reject()
+    await expect(run()).rejects.toThrow('boom')
+    expect(commit).not.toHaveBeenCalled()
+  })
+
+  it('適用が 0 件の revertAll は、適用の件数を commitRevertUndo に渡して前の控えを残す', async () => {
+    const commit = vi.spyOn(registry, 'commitRevertUndo')
+    vi.mocked(revertAgentChange).mockResolvedValueOnce(savedOutcome)
+    await invoke('agentChanges:revertFile', makeEvent(), 'a.txt', ALL)
+    vi.mocked(revertAllAgentChanges).mockResolvedValueOnce({
+      status: 'done',
+      applied: 0,
+      capture: { kind: 'unavailable', reason: 'capture-failed' }
+    })
+    await expect(invoke('agentChanges:revertAll', makeEvent(), [], ALL)).resolves.toEqual({
+      status: 'done',
+      revertedCount: 0,
+      undo: { kind: 'unavailable', reason: 'capture-failed' },
+      undoSummary: fileSummary
+    })
+    expect(commit).toHaveBeenLastCalledWith(1, expect.anything(), {
+      operation: 'all',
+      capture: { kind: 'unavailable', reason: 'capture-failed' },
+      applied: 0
+    })
+    await expect(invoke('agentChanges:getState', makeEvent())).resolves.toMatchObject({
+      undo: fileSummary
+    })
+  })
+
+  describe('undoRevert', () => {
+    it.each([1, undefined, 0, '1'])(
+      'メインフレーム以外からの依頼は undoId %j でも送信元の拒否を返す',
+      async (undoId) => {
+        const undo = vi.spyOn(registry, 'undoLastRevert')
+        await expect(
+          invoke('agentChanges:undoRevert', makeEvent(1, false), undoId)
+        ).rejects.toThrow(AGENT_CHANGES_NOT_MAIN_FRAME)
+        expect(undo).not.toHaveBeenCalled()
+      }
+    )
+
+    it.each([undefined, 0, '1'])('undoId %j は検証で拒否し、取り消しを呼ばない', async (undoId) => {
+      const undo = vi.spyOn(registry, 'undoLastRevert')
+      await expect(invoke('agentChanges:undoRevert', makeEvent(), undoId)).rejects.toThrow(
+        AGENT_CHANGES_UNDO_ID_INVALID_MESSAGE
+      )
+      expect(undo).not.toHaveBeenCalled()
+    })
+
+    it('フォルダが無い・記録が無いなら「記録がありません」', async () => {
+      await expect(invoke('agentChanges:undoRevert', makeEvent(3), 1)).rejects.toThrow(
+        AGENT_CHANGES_NO_RECORD_MESSAGE
+      )
+      await invoke('agentChanges:clear', makeEvent())
+      await expect(invoke('agentChanges:undoRevert', makeEvent(), 1)).rejects.toThrow(
+        AGENT_CHANGES_NO_RECORD_MESSAGE
+      )
+    })
+
+    it('控えが無い記録への取り消しは「取り消せる操作が変わりました」', async () => {
+      await expect(invoke('agentChanges:undoRevert', makeEvent(), 1)).rejects.toThrow(
+        AGENT_UNDO_STALE_MESSAGE
+      )
+    })
   })
 })

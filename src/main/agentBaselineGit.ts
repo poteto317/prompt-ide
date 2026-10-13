@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 import simpleGit, { GitPluginError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
@@ -116,7 +116,9 @@ const MAX_INPUT_GIT_STDERR_BYTES = 64 * 1024
  * 記録のインデックス indexPath で、標準入力に input を渡して git を実行する(simple-git は標準入力を渡せない)。
  * 環境・設定は createBaselineGit と同じ(buildBaselineGitEnv・core.splitIndex=false・windowsHide)。stdout を返す。
  * 打ち切りは timeoutMs の経過で止め、simple-git の打ち切りと同じ判定(isGitTimeoutError)になる GitPluginError にする。
- * 使うのは出力の無い短い操作(update-index --stdin)だけのため、出力の有無に関わらず経過した時間で打ち切る
+ * 出力の小さい短い操作(update-index --stdin・mktree・cat-file --batch-check・for-each-ref・ls-tree・update-ref --stdin。
+ * for-each-ref・ls-tree は入力を空にし、終了コード 0 以外で reject する経路として使う)に使う。
+ * 出力は小さいため、出力の有無に関わらず経過した時間で打ち切る
  */
 export function runBaselineGitWithInput(
   folderPath: string,
@@ -172,4 +174,35 @@ export function runBaselineGitWithInput(
     })
     proc.stdin.end(input)
   })
+}
+
+/**
+ * runBaselineGitWithInput の同期の版(アプリの終了〈before-quit〉の保護の ref の削除。待たずに終わる処理にする。L-010)。
+ * 終了コード 0 なら true。打ち切り(timeoutMs)・起動の失敗・0 以外の終了・spawnSync の例外は false(後始末を止めない)
+ */
+export function runBaselineGitWithInputSync(
+  folderPath: string,
+  indexPath: string,
+  args: readonly string[],
+  input: string,
+  {
+    timeoutMs = AGENT_BASELINE_GIT_TIMEOUT_MS,
+    config = [],
+    env = process.env
+  }: BaselineGitOptions = {}
+): boolean {
+  const configArgs = ['core.splitIndex=false', ...config].flatMap((entry) => ['-c', entry])
+  try {
+    const result = spawnSync('git', [...configArgs, ...args], {
+      cwd: folderPath,
+      env: buildBaselineGitEnv(env, indexPath),
+      input,
+      timeout: timeoutMs,
+      windowsHide: true,
+      stdio: ['pipe', 'ignore', 'ignore']
+    })
+    return result.error === undefined && result.status === 0
+  } catch {
+    return false
+  }
 }

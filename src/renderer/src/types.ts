@@ -4,6 +4,7 @@ import type {
   AgentChangesScope,
   AgentChangesScopeUnavailableReason,
   AgentChangesState,
+  AgentChangesUndoSummary,
   CreateTagRequest,
   FileTreeNode,
   GitStashEntry,
@@ -170,15 +171,19 @@ export type AgentChangesViewList =
       reason: AgentChangesScopeUnavailableReason
     }
 
+/** エージェントの変更の書き換えの実行中の印(戻す操作・取り消し。実行の共有〈useAgentChangesWriteRunner〉が持つ) */
+export type AgentChangesRunningOperation = 'revert' | 'undo'
+
 export type AgentChangesView =
   | { kind: 'none' }
   | { kind: 'unavailable'; state: Extract<AgentChangesState, { kind: 'unavailable' }> }
-  /** runs は main の実行の一覧(古い順)。list は取り直す前・範囲を変えた直後は null */
+  /** runs は main の実行の一覧(古い順)。list は取り直す前・範囲を変えた直後は null。undo は main の取り消しの控えの要約(無ければ null) */
   | {
       kind: 'recording'
       startedAt: number
       runs: AgentChangesRun[]
       list: AgentChangesViewList | null
+      undo: AgentChangesUndoSummary | null
     }
 
 // エージェントの変更の diff タブ(DiffView の agentActions)。ハンクを実行前に戻す操作と、押せない理由

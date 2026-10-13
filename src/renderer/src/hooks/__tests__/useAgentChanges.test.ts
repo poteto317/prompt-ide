@@ -16,7 +16,8 @@ import {
   makeAgentChangesListResult,
   makeAgentChangesRecordingState,
   makeAgentChangesRun,
-  makeAgentChangesScopeUnavailableListResult
+  makeAgentChangesScopeUnavailableListResult,
+  makeAgentChangesUndoSummary
 } from '../../__tests__/makeAgentChangesState'
 
 const recordingState: AgentChangesState = makeAgentChangesRecordingState()
@@ -59,7 +60,13 @@ describe('useAgentChanges', () => {
     await act(async () => {
       await result.current.begin('manual')
     })
-    expect(result.current.view).toEqual({ kind: 'recording', startedAt: 100, runs: [], list: null })
+    expect(result.current.view).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      list: null,
+      undo: null
+    })
     await act(async () => {
       await result.current.refresh({ announce: true })
     })
@@ -74,7 +81,8 @@ describe('useAgentChanges', () => {
         totalCount: 1,
         truncated: false,
         headChanged: false
-      }
+      },
+      undo: null
     })
     expect(toAnnouncementText(result.current.notice)).toBe('エージェントの変更: 1 件')
   })
@@ -472,7 +480,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 100,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
     )
   })
@@ -506,7 +515,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 300,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
     )
   })
@@ -617,7 +627,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 200,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
       // main ではフォルダの切り替えで古い記録が取り消され、none が返る
       await act(async () => {
@@ -628,7 +639,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 200,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
     })
 
@@ -658,7 +670,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 200,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
     })
 
@@ -845,7 +858,8 @@ describe('useAgentChanges', () => {
         kind: 'recording',
         startedAt: 200,
         runs: [],
-        list: null
+        list: null,
+        undo: null
       })
     })
 
@@ -1092,5 +1106,110 @@ describe('useAgentChanges の範囲と実行', () => {
     expect(result.current.scope).toEqual(RUN_1)
     rerender({ folder: '/b' })
     expect(result.current.scope).toEqual({ kind: 'all' })
+  })
+})
+
+describe('取り消しの控えの写し', () => {
+  const summary = makeAgentChangesUndoSummary()
+
+  async function recording(): Promise<{ current: AgentChangesController }> {
+    const { result } = renderHook(() => useAgentChanges('/repo'))
+    await act(async () => {
+      await result.current.begin('manual')
+    })
+    return result
+  }
+
+  const undoOf = (view: AgentChangesController['view']): unknown =>
+    view.kind === 'recording' ? view.undo : undefined
+
+  it('getAgentChangesState の undo を写す', async () => {
+    window.api.getAgentChangesState = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ undo: summary }))
+    const { result } = renderHook(() => useAgentChanges('/repo'))
+    await waitFor(() => expect(undoOf(result.current.view)).toEqual(summary))
+  })
+
+  it('一覧の取り直しの結果の undo を写す', async () => {
+    const result = await recording()
+    window.api.listAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesListResult([], { undo: summary }))
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(undoOf(result.current.view)).toEqual(summary)
+  })
+
+  it('applyUndoSummary は同じ記録(startedAt)の写しの undo を置き換える', async () => {
+    const result = await recording()
+    act(() => {
+      result.current.applyUndoSummary(summary, 100)
+    })
+    expect(undoOf(result.current.view)).toBe(summary)
+    act(() => {
+      result.current.applyUndoSummary(null, 100)
+    })
+    expect(undoOf(result.current.view)).toBeNull()
+  })
+
+  it('startedAt が違う・記録中でないなら捨てる(写しは変わらない)', async () => {
+    const result = await recording()
+    const before = result.current.view
+    act(() => {
+      result.current.applyUndoSummary(summary, 999)
+    })
+    expect(result.current.view).toBe(before)
+    await act(async () => {
+      await result.current.clear()
+    })
+    act(() => {
+      result.current.applyUndoSummary(summary, 100)
+    })
+    expect(result.current.view).toEqual({ kind: 'none' })
+  })
+
+  it('戻す操作の結果の到着の前に新しい記録を始めたら、前の記録の startedAt での反映は捨て、新しい記録に帯を出さない', async () => {
+    const result = await recording()
+    // 依頼の時点の写しの startedAt を控えておき、結果の到着の前に確認を終えて新しい記録を始める
+    const requestedAt = result.current.view.kind === 'recording' ? result.current.view.startedAt : 0
+    window.api.beginAgentChanges = vi
+      .fn()
+      .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 200 }))
+    await act(async () => {
+      await result.current.clear()
+      await result.current.begin('manual')
+    })
+    act(() => {
+      result.current.applyUndoSummary(summary, requestedAt)
+    })
+    expect(result.current.view).toMatchObject({ kind: 'recording', startedAt: 200, undo: null })
+  })
+
+  it('静かな取り直しは undo だけが変わったときも写しを置き換え、undo も同じなら置き換えない(L-423)', async () => {
+    const result = await recording()
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(listOf(['a.txt']))
+    await act(async () => {
+      await result.current.refresh()
+    })
+    const before = result.current.view
+    const withUndo = makeAgentChangesListResult([makeAgentChangeEntry('a.txt')], { undo: summary })
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(withUndo)
+    await act(async () => {
+      await result.current.refresh({ quiet: true })
+    })
+    expect(result.current.view).not.toBe(before)
+    expect(undoOf(result.current.view)).toEqual(summary)
+    const replaced = result.current.view
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(
+      makeAgentChangesListResult([makeAgentChangeEntry('a.txt')], {
+        undo: makeAgentChangesUndoSummary()
+      })
+    )
+    await act(async () => {
+      await result.current.refresh({ quiet: true })
+    })
+    expect(result.current.view).toBe(replaced)
   })
 })

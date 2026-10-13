@@ -344,6 +344,11 @@ describe('エージェントの変更の API', () => {
       ['agentChanges:revertAll', [{ path: 'a.txt', status: 'M' }], { kind: 'all' }]
     ],
     [
+      'undoAgentChangesRevert は agentChanges:undoRevert に undoId を渡す',
+      () => api.undoAgentChangesRevert(3),
+      ['agentChanges:undoRevert', 3]
+    ],
+    [
       'clearAgentChanges は agentChanges:clear を呼ぶ',
       () => api.clearAgentChanges(),
       ['agentChanges:clear']

@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as agentChangesApi from '../agentChangesApi'
-import { makeAgentChangesRecordingState } from '../../__tests__/makeAgentChangesState'
+import {
+  makeAgentChangesRecordingState,
+  makeAgentRevertAllResult
+} from '../../__tests__/makeAgentChangesState'
 
 const mockApi = {
   beginAgentChanges: vi.fn(),
@@ -10,6 +13,7 @@ const mockApi = {
   revertAgentChange: vi.fn(),
   revertAgentChangeHunk: vi.fn(),
   revertAllAgentChanges: vi.fn(),
+  undoAgentChangesRevert: vi.fn(),
   clearAgentChanges: vi.fn()
 }
 
@@ -21,11 +25,12 @@ beforeEach(() => {
 describe('agentChangesApi', () => {
   it('各関数は window.api の同名の関数へ引数をそのまま渡し、結果を返す', async () => {
     mockApi.beginAgentChanges.mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 1 }))
-    mockApi.revertAllAgentChanges.mockResolvedValue({ status: 'done' })
+    mockApi.revertAllAgentChanges.mockResolvedValue(makeAgentRevertAllResult())
     await expect(agentChangesApi.beginAgentChanges('send')).resolves.toEqual({
       kind: 'recording',
       startedAt: 1,
-      runs: []
+      runs: [],
+      undo: null
     })
     await agentChangesApi.getAgentChangesState()
     await agentChangesApi.listAgentChanges({ kind: 'all' })
@@ -34,7 +39,8 @@ describe('agentChangesApi', () => {
     await agentChangesApi.revertAgentChangeHunk('a.txt', 'patch', { kind: 'all' })
     await expect(
       agentChangesApi.revertAllAgentChanges([{ path: 'a.txt', status: 'M' }], { kind: 'all' })
-    ).resolves.toEqual({ status: 'done' })
+    ).resolves.toEqual(makeAgentRevertAllResult())
+    await agentChangesApi.undoAgentChangesRevert(4)
     await agentChangesApi.clearAgentChanges()
     expect(mockApi.beginAgentChanges).toHaveBeenCalledWith('send')
     expect(mockApi.getAgentChangesState).toHaveBeenCalledOnce()
@@ -45,6 +51,7 @@ describe('agentChangesApi', () => {
     expect(mockApi.revertAllAgentChanges).toHaveBeenCalledWith([{ path: 'a.txt', status: 'M' }], {
       kind: 'all'
     })
+    expect(mockApi.undoAgentChangesRevert).toHaveBeenCalledWith(4)
     expect(mockApi.clearAgentChanges).toHaveBeenCalledOnce()
   })
 })

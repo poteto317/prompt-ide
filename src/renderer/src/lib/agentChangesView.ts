@@ -7,8 +7,9 @@ import type {
 import type { AgentChangesView } from '../types'
 import { findAgentChangesRun } from './agentChangesScope'
 
-// main の応答(状態・一覧)を記録の写し(AgentChangesView)へどう反映するかの規則(設計書「記録の写しと範囲」)。
-// useAgentChanges から外して、描画なしで検査できるようにする。古い結果の破棄・読み上げ・取り直しの実行は hook が行う
+// main の応答(状態・一覧)を記録の写し(AgentChangesView)へどう反映するかの規則と、写しの記録の見分け方(同じ記録か・
+// 始点の時刻)(設計書「記録の写しと範囲」)。useAgentChanges から外して、描画なしで検査できるようにする。
+// 古い結果の破棄・読み上げ・取り直しの実行は hook が行う
 
 type RecordingView = Extract<AgentChangesView, { kind: 'recording' }>
 
@@ -21,6 +22,14 @@ export function isSameAgentChangesRecording(
   startedAt: number
 ): view is RecordingView {
   return view.kind === 'recording' && view.startedAt === startedAt
+}
+
+/**
+ * 写しの記録の始点の時刻(記録中でなければ null)。記録を見分ける値で、実行の共有の世代・ハンクの読み上げを消す契機と、
+ * 戻す操作の依頼の時点の記録の控えが同じ値を読む
+ */
+export function recordingStartedAtOf(view: AgentChangesView): number | null {
+  return view.kind === 'recording' ? view.startedAt : null
 }
 
 // 写しは IPC で届いた素のデータ(オブジェクト・配列・数・文字列・真偽・null)だけでできているため、構造で比べる
@@ -83,7 +92,8 @@ export function planRecordingState(
       kind: 'recording',
       startedAt: state.startedAt,
       runs: state.runs,
-      list: sameRecording !== null && missingRun === null ? sameRecording.list : null
+      list: sameRecording !== null && missingRun === null ? sameRecording.list : null,
+      undo: state.undo
     },
     resetScope: sameRecording === null && selected.kind !== 'all',
     missingRun
@@ -111,7 +121,12 @@ export function planListResult(
 ): ListResultPlan {
   if (result.kind === 'none') return { kind: 'none' }
   if (result.kind === 'scope-unavailable') {
-    const base = { kind: 'recording' as const, startedAt: result.startedAt, runs: result.runs }
+    const base = {
+      kind: 'recording' as const,
+      startedAt: result.startedAt,
+      runs: result.runs,
+      undo: result.undo
+    }
     if (result.reason === 'run-missing' && result.scope.kind === 'run') {
       return {
         kind: 'run-missing',
@@ -130,14 +145,15 @@ export function planListResult(
       }
     }
   }
-  const { startedAt, runs, scope, entries, totalCount, truncated, headChanged } = result
+  const { startedAt, runs, undo, scope, entries, totalCount, truncated, headChanged } = result
   return {
     kind: 'listed',
     view: {
       kind: 'recording',
       startedAt,
       runs,
-      list: { kind: 'listed', scope, entries, totalCount, truncated, headChanged }
+      list: { kind: 'listed', scope, entries, totalCount, truncated, headChanged },
+      undo
     },
     totalCount
   }

@@ -6,6 +6,13 @@ import { createBaselineGit, createRepoGit } from './agentBaselineGit'
 import type { BaselineGitOptions } from './agentBaselineGit'
 import type { BaselineSnapshot } from './agentBaselineSnapshot'
 import { collectAgentChangeEntries } from './agentChangesQuery'
+import type {
+  AgentChangesUndoCaptureOptions,
+  AgentChangesUndoRecorder,
+  AgentChangesUndoTarget
+} from './agentChangesUndo'
+import type { AgentChangesUndoCapture } from './agentChangesUndoModel'
+import { startAgentChangesUndoRecorder } from './agentChangesUndo'
 import { hasFilterAttribute } from './agentFilterAttribute'
 import { applyInOrder, assertSameEntries, listPathsForMessage } from './discardBatch'
 import { discardHunkPatch } from './gitApply'
@@ -18,6 +25,8 @@ import { toLiteralPathspec } from './gitPathParsing'
 // エージェントの変更を、記録の時点(実行の前)の内容へ戻す(設計書「変更を戻す」)。既存の取り消しの部品(分類・重なりの検査・
 // applyDiscard・パッチの検査)を、記録のインデックスで問い合わせる git で呼ぶ(確認の結果 7・8・10)。戻すのは作業ツリーだけで、
 // 利用者の index・stash・HEAD は変えない。コンフリクトの判定だけは利用者の index で行う
+// 戻す 3 関数は、検査の後・作業ツリーを変える前に取り消しの控えを取り(控えの準備に失敗したら中止。L-003。フォルダ・ファイルとリンク以外・
+// 上限を超える内容は控えずに戻す)、1 件を適用するたびに戻した後の指紋を控える(agentChangesUndo.ts)
 
 export const AGENT_CHANGES_STALE_MESSAGE = '変更の状態が変わりました。一覧を更新してください'
 export const AGENT_REVERT_HUNK_FAILED_MESSAGE =
@@ -34,9 +43,19 @@ export interface AgentRevertContext {
   /** OS のゴミ箱へ移す(trash.ts の moveToTrash)。テストで偽物を注入する */
   trash: (absolutePath: string) => Promise<void>
   gitOptions?: BaselineGitOptions
+  /** 取り消しの控えの置き場所と上限(控えは毎回取る) */
+  undoCapture: AgentChangesUndoCaptureOptions
+}
+
+/** 戻す操作の結果。applied は作業ツリーに適用した件数、capture は取り消しの控え(取れなかったら理由) */
+export interface AgentRevertOutcome {
+  applied: number
+  capture: AgentChangesUndoCapture
 }
 
 type RevertKind = 'tracked' | 'untracked'
+/** すべて戻すの 1 件(戻し方と、控えでフォルダを見分けるための isDirectory) */
+type RevertAllTarget = { path: string; kind: RevertKind; isDirectory: boolean }
 type Assessment = { ok: true; path: string; kind: RevertKind } | { ok: false; reason: string }
 
 // 記録のインデックスのエントリ(モードと blob)。パスと完全一致するものだけ
@@ -132,26 +151,87 @@ async function findCurrentEntry(
   return entry
 }
 
+/**
+ * 作業ツリーを変える前に取り消しの控えを始め(控えの準備に失敗したら例外で中止。L-003。フォルダ・ファイルとリンク以外・上限を
+ * 超える内容は控えずに apply を行い、控えの結果を unavailable にする)、apply を行う。apply が投げたら作った控えを捨てて
+ * 投げ直し、解決したら apply の結果と控えの結果を返す(控えの一時ディレクトリの持ち主は呼び出し側に移る)
+ */
+async function withUndoRecorder<T>(
+  context: AgentRevertContext,
+  targets: readonly AgentChangesUndoTarget[],
+  apply: (recorder: AgentChangesUndoRecorder) => Promise<T>
+): Promise<{ result: T; capture: AgentChangesUndoCapture }> {
+  const recorder = await startAgentChangesUndoRecorder(
+    context.snapshot.folderPath,
+    targets,
+    context.undoCapture
+  )
+  let result: T
+  try {
+    result = await apply(recorder)
+  } catch (error) {
+    await recorder.discard()
+    throw error
+  }
+  return { result, capture: await recorder.finish() }
+}
+
+/**
+ * すべて戻すの対象を全件調べる。1 件でも戻せなければ何も戻さずに例外。同じパスの行は 1 度だけ戻す(一覧は git の出力から
+ * パスごとに 1 行で作るため通常は起きないが、2 度控えると控えの合計を 2 度数え、同じパスの項目が 2 つになって取り消しが partial になる)
+ */
+async function assessRevertAllTargets(
+  gits: { baseline: SimpleGit; repo: SimpleGit },
+  entries: readonly AgentChangeEntry[]
+): Promise<RevertAllTarget[]> {
+  const targets: RevertAllTarget[] = []
+  const blocked: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    const path = toAgentChangeRelativePath(entry.path)
+    if (seen.has(path)) continue
+    seen.add(path)
+    const assessment = await assess(gits, entry)
+    if (assessment.ok) {
+      targets.push({ path: assessment.path, kind: assessment.kind, isDirectory: entry.isDirectory })
+    } else blocked.push(path)
+  }
+  if (blocked.length > 0) {
+    throw new Error(
+      `戻せないファイルがあるため、何も戻しませんでした（${listPathsForMessage(blocked)}）`
+    )
+  }
+  return targets
+}
+
 /** ファイル単位で戻す。変更・削除・種類の変更は記録の時点の内容へ、追加(ファイル・フォルダ)はゴミ箱へ */
 export async function revertAgentChange(
   context: AgentRevertContext,
   filePath: string
-): Promise<void> {
+): Promise<AgentRevertOutcome> {
   const entry = await findCurrentEntry(context, filePath)
   const gits = gitsFor(context)
   const assessment = await assess(gits, entry)
   if (!assessment.ok) throw new Error(assessment.reason)
   const { folderPath } = context.snapshot
-  await applyDiscard(gits.baseline, folderPath, assessment.kind, assessment.path, context.trash)
+  const { capture } = await withUndoRecorder(
+    context,
+    [{ path: assessment.path, isDirectory: entry.isDirectory }],
+    async (recorder) => {
+      await applyDiscard(gits.baseline, folderPath, assessment.kind, assessment.path, context.trash)
+      await recorder.recordAfter(assessment.path)
+    }
+  )
+  return { applied: 1, capture }
 }
 
-/** ハンク単位で戻す(作業ツリーへの逆適用。index は使わない)。追加・削除されたファイルはファイル単位で戻す */
-export async function revertAgentChangeHunk(
-  context: AgentRevertContext,
-  filePath: string,
-  patch: string
-): Promise<void> {
-  const entry = await findCurrentEntry(context, filePath)
+/**
+ * 一覧の行の状態だけで、ハンクで戻せない行を拒否する(git を呼ばない)。追加・削除・フォルダ・種類の変更はファイルごとに戻す
+ */
+export function assertHunkRevertableEntry(
+  entry: Pick<AgentChangeEntry, 'status' | 'isDirectory'>,
+  filePath: string
+): void {
   // 新規ファイルのパッチの逆適用はファイルを(ゴミ箱を経由せずに)消す(確認の結果 8)
   if (entry.status === 'A' || entry.status === 'D' || entry.isDirectory) {
     throw new Error(
@@ -165,6 +245,19 @@ export async function revertAgentChangeHunk(
       `種類が変わったファイルはハンクでは戻せません。ファイルごと戻してください: ${filePath}`
     )
   }
+}
+
+/**
+ * ハンク単位で戻す(作業ツリーへの逆適用。index は使わない)。追加・削除・フォルダ・種類の変更の行と、ゴミ箱へ移す対象の行は
+ * 拒否する(ファイル単位で戻す)
+ */
+export async function revertAgentChangeHunk(
+  context: AgentRevertContext,
+  filePath: string,
+  patch: string
+): Promise<AgentRevertOutcome> {
+  const entry = await findCurrentEntry(context, filePath)
+  assertHunkRevertableEntry(entry, filePath)
   const gits = gitsFor(context)
   const assessment = await assess(gits, entry)
   if (!assessment.ok) throw new Error(assessment.reason)
@@ -173,11 +266,20 @@ export async function revertAgentChangeHunk(
   }
   const { folderPath } = context.snapshot
   const contentPatch = await verifyHunkPatch(folderPath, filePath, patch)
-  try {
-    await discardHunkPatch(folderPath, filePath, contentPatch)
-  } catch (error) {
-    throw new Error(AGENT_REVERT_HUNK_FAILED_MESSAGE, { cause: error })
-  }
+  // パッチの検査を通った後に控えを取る(検査で拒否したら控えを作らない)
+  const { capture } = await withUndoRecorder(
+    context,
+    [{ path: filePath, isDirectory: false }],
+    async (recorder) => {
+      try {
+        await discardHunkPatch(folderPath, filePath, contentPatch)
+      } catch (error) {
+        throw new Error(AGENT_REVERT_HUNK_FAILED_MESSAGE, { cause: error })
+      }
+      await recorder.recordAfter(filePath)
+    }
+  )
+  return { applied: 1, capture }
 }
 
 /**
@@ -187,28 +289,29 @@ export async function revertAgentChangeHunk(
 export async function revertAllAgentChanges(
   context: AgentRevertContext,
   expected: AgentRevertAllEntry[]
-): Promise<DiscardAllResult> {
+): Promise<DiscardAllResult & AgentRevertOutcome> {
   const entries = await collectAgentChangeEntries(context.snapshot, context.gitOptions)
   if (entries.length > AGENT_CHANGES_LIST_LIMIT) throw new Error(AGENT_REVERT_ALL_TOO_MANY_MESSAGE)
   assertSameEntries(entries, expected, AGENT_REVERT_ALL_MISMATCH_MESSAGE)
   const gits = gitsFor(context)
-  const targets: { path: string; kind: RevertKind }[] = []
-  const blocked: string[] = []
-  for (const entry of entries) {
-    const assessment = await assess(gits, entry)
-    if (assessment.ok) targets.push(assessment)
-    else blocked.push(toAgentChangeRelativePath(entry.path))
-  }
-  if (blocked.length > 0) {
-    throw new Error(
-      `戻せないファイルがあるため、何も戻しませんでした（${listPathsForMessage(blocked)}）`
-    )
-  }
-  return applyInOrder(
-    targets,
-    ({ path, kind }) =>
-      applyDiscard(gits.baseline, context.snapshot.folderPath, kind, path, context.trash),
-    (done, total, reason) =>
-      `すべて戻すが途中で失敗しました（${done} / ${total} 件を戻し済み）: ${reason}`
+  const targets = await assessRevertAllTargets(gits, entries)
+  const { folderPath } = context.snapshot
+  let applied = 0
+  const { result, capture } = await withUndoRecorder(
+    context,
+    targets.map(({ path, isDirectory }) => ({ path, isDirectory })),
+    (recorder) =>
+      applyInOrder(
+        targets,
+        async ({ path, kind }) => {
+          await applyDiscard(gits.baseline, folderPath, kind, path, context.trash)
+          applied += 1
+          // partial では適用した項目だけを控える(recordAfter は投げない)
+          await recorder.recordAfter(path)
+        },
+        (done, total, reason) =>
+          `すべて戻すが途中で失敗しました（${done} / ${total} 件を戻し済み）: ${reason}`
+      )
   )
+  return { ...result, applied, capture }
 }

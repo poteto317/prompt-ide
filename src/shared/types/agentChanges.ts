@@ -1,4 +1,5 @@
-// エージェントの変更の確認(記録・一覧・diff・戻す)の IPC の型と、一覧の行数の上限。main・preload・renderer が共有する
+// エージェントの変更の確認(記録・一覧・diff・戻す・戻した操作の取り消し)の IPC の型と、一覧の行数の上限。main・preload・renderer が共有する
+import type { DiscardAllResult } from './git'
 
 /** 一覧の行数の上限。超えた分は打ち切り、「すべて戻す」を使えなくする */
 export const AGENT_CHANGES_LIST_LIMIT = 500
@@ -54,8 +55,13 @@ export type AgentChangesState =
       untrackedCount?: number
       untrackedBytes?: number
     }
-  /** runs は実行の一覧(古い順。最大 AGENT_CHANGES_MAX_RUNS 件) */
-  | { kind: 'recording'; startedAt: number; runs: AgentChangesRun[] }
+  /** runs は実行の一覧(古い順。最大 AGENT_CHANGES_MAX_RUNS 件)。undo は直前の戻す操作の取り消しの控えの要約(無ければ null) */
+  | {
+      kind: 'recording'
+      startedAt: number
+      runs: AgentChangesRun[]
+      undo: AgentChangesUndoSummary | null
+    }
 
 /** A: 追加、M: 変更、D: 削除、T: 種類の変更(ファイル ↔ リンク・サブモジュール) */
 export const AGENT_CHANGE_STATUSES = ['A', 'M', 'D', 'T'] as const
@@ -108,19 +114,21 @@ export function isSameAgentChangesScope(a: AgentChangesScope, b: AgentChangesSco
   return a.kind === 'all' ? b.kind === 'all' : b.kind === 'run' && a.runId === b.runId
 }
 
-/** 一覧の結果。recording・scope-unavailable は、実行の一覧と、一覧を取った範囲を添える */
+/** 一覧の結果。recording・scope-unavailable は、実行の一覧・取り消しの控えの要約(無ければ null)と、一覧を取った範囲を添える */
 export type AgentChangesListResult =
   | { kind: 'none' }
   | ({
       kind: 'recording'
       startedAt: number
       runs: AgentChangesRun[]
+      undo: AgentChangesUndoSummary | null
       scope: AgentChangesScope
     } & AgentChangesList)
   | {
       kind: 'scope-unavailable'
       startedAt: number
       runs: AgentChangesRun[]
+      undo: AgentChangesUndoSummary | null
       scope: AgentChangesScope
       reason: AgentChangesScopeUnavailableReason
     }
@@ -130,3 +138,63 @@ export interface AgentRevertAllEntry {
   path: string
   status: AgentChangeStatus
 }
+
+/** 取り消しの動作。rewrite: 戻す前の内容へ書き戻す、recreate: ゴミ箱へ移したファイルを作り直す、trash: 戻すときに作り直したファイルをゴミ箱へ移す */
+export type AgentChangesUndoAction = 'rewrite' | 'recreate' | 'trash'
+
+/** 戻した操作の種類(帯の文言に使う) */
+export type AgentChangesUndoOperation = 'file' | 'hunk' | 'all'
+
+/** 取り消しの控えの要約(パスの昇順。renderer は帯・確認に使う。控えの一時ディレクトリは渡さない) */
+export interface AgentChangesUndoSummary {
+  undoId: number
+  operation: AgentChangesUndoOperation
+  entries: { path: string; action: AgentChangesUndoAction }[]
+}
+
+/**
+ * 取り消しの控えを取れなかった理由。directory: 追加されたフォルダを含む、unsupported-type: ファイル・リンク以外のものを含む、
+ * too-large: 内容が大きすぎる、capture-failed: 戻した後の状態を控えられなかった
+ */
+export type AgentRevertUndoUnavailableReason =
+  | 'directory'
+  | 'unsupported-type'
+  | 'too-large'
+  | 'capture-failed'
+
+/**
+ * 戻す操作の結果に入れる控えの成否。discarded: 控えの成否によらず、戻す操作の途中で記録が捨てられた・置き換わった、または
+ * アプリが終了中のため、控えを記録に付けずに消した(取り消せるとも、取り消せない理由も伝えない)
+ */
+export type AgentRevertUndoOutcome =
+  | { kind: 'saved' }
+  | { kind: 'unavailable'; reason: AgentRevertUndoUnavailableReason }
+  | { kind: 'discarded' }
+
+/** 1 ファイル・ハンクを戻した結果。undoSummary は戻した後の記録の控えの要約(無ければ null) */
+export interface AgentRevertResult {
+  undo: AgentRevertUndoOutcome
+  undoSummary: AgentChangesUndoSummary | null
+}
+
+/** 「すべて戻す」の結果。revertedCount は戻せた件数(partial でも控えの有無によらず数える) */
+export type AgentRevertAllResult = DiscardAllResult & AgentRevertResult & { revertedCount: number }
+
+/**
+ * 戻した操作の取り消しの結果。restoredPaths: 書き戻した・作り直したパス、trashedPaths: ゴミ箱へ移したパス(どちらもリポジトリ相対。
+ * 末尾の / なし)。undoSummary は取り消しの後の記録の控えの要約
+ */
+export type AgentChangesUndoResult =
+  | {
+      status: 'done'
+      restoredPaths: string[]
+      trashedPaths: string[]
+      undoSummary: AgentChangesUndoSummary | null
+    }
+  | {
+      status: 'partial'
+      message: string
+      restoredPaths: string[]
+      trashedPaths: string[]
+      undoSummary: AgentChangesUndoSummary | null
+    }

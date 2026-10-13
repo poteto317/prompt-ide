@@ -26,6 +26,7 @@ import {
   revertAllAgentChanges
 } from '../agentChangesRevert'
 import type { AgentRevertContext } from '../agentChangesRevert'
+import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { commitAll, initRepo, readRepoFile, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
@@ -54,7 +55,8 @@ afterEach(() => disposeAgentBaselineRepo({ repo, home, tempRoot }))
 
 const record = async (): Promise<AgentRevertContext> => ({
   snapshot: await recordBaseline(repo, tempRoot),
-  trash
+  trash,
+  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
 })
 
 // 利用者の状態(index の更新時刻〈ナノ秒〉と内容・stash・ref・HEAD)。戻す操作の前後で変わらないこと(完了条件 4)
@@ -386,8 +388,10 @@ describe('revertAllAgentChanges(実 git)', () => {
   it('確認のときの一覧と一致すれば、すべて実行の前の状態へ戻す。利用者の index などは変えない', async () => {
     const context = await setup()
     const before = userState()
-    await expect(revertAllAgentChanges(context, [...shown].reverse())).resolves.toEqual({
-      status: 'done'
+    await expect(revertAllAgentChanges(context, [...shown].reverse())).resolves.toMatchObject({
+      status: 'done',
+      applied: 3,
+      capture: expect.objectContaining({ kind: 'saved' })
     })
     expect(read('a.txt')).toBe('a\nuser\n')
     expect(read('c.txt')).toBe('c\n')
@@ -425,10 +429,12 @@ describe('revertAllAgentChanges(実 git)', () => {
     context.trash = async () => {
       throw new Error('trash failed')
     }
-    await expect(revertAllAgentChanges(context, shown)).resolves.toEqual({
+    await expect(revertAllAgentChanges(context, shown)).resolves.toMatchObject({
       status: 'partial',
       message:
-        'すべて戻すが途中で失敗しました（2 / 3 件を戻し済み）: ゴミ箱へ移動できませんでした: new.txt'
+        'すべて戻すが途中で失敗しました（2 / 3 件を戻し済み）: ゴミ箱へ移動できませんでした: new.txt',
+      applied: 2,
+      capture: expect.objectContaining({ kind: 'saved' })
     })
     expect(read('a.txt')).toBe('a\nuser\n')
   })
@@ -457,7 +463,10 @@ describe('revertAllAgentChanges(実 git)', () => {
     write('a.txt', 'agent\n')
     const entries = (await listAgentChanges(context.snapshot)).entries
     expect(entries.map((e) => e.path)).toEqual(['a.txt', 'config/app.json'])
-    await expect(revertAllAgentChanges(context, entries)).resolves.toEqual({ status: 'done' })
+    await expect(revertAllAgentChanges(context, entries)).resolves.toMatchObject({
+      status: 'done',
+      applied: entries.length
+    })
     expect(trashed).toEqual([join(repo, 'config/app.json')])
     expect(read('config/.env')).toBe('SECRET=1\n')
     expect(read('a.txt')).toBe('a\n')
@@ -753,7 +762,10 @@ describe('記録の時点に ignore されていたファイル・記録から�
     expect(entries).toEqual([
       { path: 'new.txt', status: 'A', isDirectory: false, notRecorded: false }
     ])
-    await expect(revertAllAgentChanges(context, entries)).resolves.toEqual({ status: 'done' })
+    await expect(revertAllAgentChanges(context, entries)).resolves.toMatchObject({
+      status: 'done',
+      applied: entries.length
+    })
     expect(trashed).toEqual([join(repo, 'new.txt')])
     expect(read('.env')).toBe('SECRET=1\n')
   })

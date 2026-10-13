@@ -12,7 +12,12 @@ import {
   makeAgentChangesRecordingState,
   makeAgentChangesScopeUnavailableView,
   makeAgentChangesScopeUnavailableListResult,
-  makeAgentDiffActions
+  makeAgentChangesUndoResult,
+  makeAgentChangesUndoState,
+  makeAgentChangesUndoSummary,
+  makeAgentDiffActions,
+  makeAgentRevertAllResult,
+  makeAgentRevertResult
 } from '../makeAgentChangesState'
 
 describe('makeAgentChangeEntry', () => {
@@ -70,7 +75,8 @@ describe('makeAgentChangesRecordingView', () => {
         totalCount: 1,
         truncated: false,
         headChanged: false
-      }
+      },
+      undo: null
     })
   })
 
@@ -79,7 +85,8 @@ describe('makeAgentChangesRecordingView', () => {
       kind: 'recording',
       startedAt: 1,
       runs: [],
-      list: null
+      list: null,
+      undo: null
     })
   })
 
@@ -97,8 +104,14 @@ describe('makeAgentChangesRecordingView', () => {
         totalCount: 9,
         truncated: false,
         headChanged: true
-      }
+      },
+      undo: null
     })
+  })
+
+  it('取り消しの控えの要約を上書きする', () => {
+    const undo = makeAgentChangesUndoSummary()
+    expect(makeAgentChangesRecordingView([], { undo })).toMatchObject({ undo })
   })
 })
 
@@ -107,7 +120,8 @@ describe('makeAgentChangesRecordingState', () => {
     expect(makeAgentChangesRecordingState()).toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: []
+      runs: [],
+      undo: null
     })
   })
 
@@ -116,8 +130,14 @@ describe('makeAgentChangesRecordingState', () => {
     expect(makeAgentChangesRecordingState({ startedAt: 5, runs: [run] })).toEqual({
       kind: 'recording',
       startedAt: 5,
-      runs: [run]
+      runs: [run],
+      undo: null
     })
+  })
+
+  it('取り消しの控えの要約を上書きする', () => {
+    const undo = makeAgentChangesUndoSummary()
+    expect(makeAgentChangesRecordingState({ undo })).toMatchObject({ undo })
   })
 })
 
@@ -133,8 +153,16 @@ describe('makeAgentChangesScopeUnavailableView', () => {
         kind: 'scope-unavailable',
         scope: { kind: 'run', runId: 2 },
         reason: 'end-not-recorded'
-      }
+      },
+      undo: null
     })
+  })
+
+  it('取り消しの控えの要約を上書きする', () => {
+    const undo = makeAgentChangesUndoSummary()
+    expect(
+      makeAgentChangesScopeUnavailableView({ kind: 'run', runId: 1 }, 'end-not-recorded', { undo })
+    ).toMatchObject({ undo })
   })
 
   it('startedAt と実行の一覧を上書きする', () => {
@@ -155,6 +183,7 @@ describe('makeAgentChangesListResult', () => {
       kind: 'recording',
       startedAt: 100,
       runs: [],
+      undo: null,
       scope: { kind: 'all' },
       entries,
       totalCount: 1,
@@ -168,6 +197,7 @@ describe('makeAgentChangesListResult', () => {
       kind: 'recording',
       startedAt: 7,
       runs: [],
+      undo: null,
       scope: { kind: 'all' },
       entries: [],
       totalCount: 0,
@@ -198,6 +228,7 @@ describe('makeAgentChangesController', () => {
     expect(vi.isMockFunction(controller.selectScope)).toBe(true)
     expect(vi.isMockFunction(controller.markSaved)).toBe(true)
     expect(vi.isMockFunction(controller.announce)).toBe(true)
+    expect(vi.isMockFunction(controller.applyUndoSummary)).toBe(true)
   })
 
   it('呼ぶたびに別のモックを作る(テスト間で呼び出しの記録を共有しない)', () => {
@@ -213,11 +244,27 @@ describe('makeAgentChangesController', () => {
   })
 })
 
+describe('makeAgentChangesUndoState', () => {
+  it('既定は押せるで、取り消しは resolve するモック', async () => {
+    const state = makeAgentChangesUndoState()
+    expect(state).toEqual({ undoDisabledReason: null, undoLastRevert: state.undoLastRevert })
+    expect(vi.isMockFunction(state.undoLastRevert)).toBe(true)
+    await expect(state.undoLastRevert()).resolves.toBeUndefined()
+  })
+
+  it('指定した項目だけを上書きする', () => {
+    const undoLastRevert = vi.fn(async () => undefined)
+    const state = makeAgentChangesUndoState({ undoLastRevert })
+    expect(state.undoLastRevert).toBe(undoLastRevert)
+    expect(state.undoDisabledReason).toBeNull()
+  })
+})
+
 describe('makeAgentChangesRevertState', () => {
   it('既定は押せる・実行していない・失敗なしで、操作は resolve するモック', async () => {
     const state = makeAgentChangesRevertState()
     expect(state).toMatchObject({
-      isReverting: false,
+      runningOperation: null,
       error: null,
       revertDisabledReason: null,
       revertAllDisabledReason: null
@@ -239,7 +286,7 @@ describe('makeAgentChangesRevertState', () => {
 })
 
 describe('makeAgentChangesPanelState', () => {
-  it('既定はエージェント CLI 方式・フォルダ /repo・フォーカスの依頼なしで、changes・revert は各ファクトリの既定', () => {
+  it('既定はエージェント CLI 方式・フォルダ /repo・フォーカスの依頼なしで、changes・revert・undo は各ファクトリの既定', () => {
     const state = makeAgentChangesPanelState()
     expect(state.isAgentMode).toBe(true)
     expect(state.folderPath).toBe('/repo')
@@ -248,6 +295,8 @@ describe('makeAgentChangesPanelState', () => {
     expect(vi.isMockFunction(state.onOpenDiff)).toBe(true)
     expect(state.changes.view).toEqual({ kind: 'none' })
     expect(state.revert.revertDisabledReason).toBeNull()
+    expect(state.undo.undoDisabledReason).toBeNull()
+    expect(vi.isMockFunction(state.undo.undoLastRevert)).toBe(true)
   })
 
   it('指定した項目だけを上書きする', () => {
@@ -294,9 +343,19 @@ describe('makeAgentChangesScopeUnavailableListResult', () => {
       kind: 'scope-unavailable',
       startedAt: 100,
       runs: [],
+      undo: null,
       scope: { kind: 'run', runId: 2 },
       reason: 'run-missing'
     })
+  })
+
+  it('取り消しの控えの要約を上書きする', () => {
+    const undo = makeAgentChangesUndoSummary()
+    expect(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'run-missing', {
+        undo
+      })
+    ).toMatchObject({ undo })
   })
 
   it('startedAt と実行の一覧を上書きする', () => {
@@ -307,6 +366,84 @@ describe('makeAgentChangesScopeUnavailableListResult', () => {
         runs: [run]
       })
     ).toMatchObject({ startedAt: 5, runs: [run] })
+  })
+})
+
+describe('makeAgentChangesUndoSummary', () => {
+  it('既定は undoId 1・ファイル・a.txt の書き戻しで、指定した項目だけを上書きする', () => {
+    expect(makeAgentChangesUndoSummary()).toEqual({
+      undoId: 1,
+      operation: 'file',
+      entries: [{ path: 'a.txt', action: 'rewrite' }]
+    })
+    expect(makeAgentChangesUndoSummary({ undoId: 2, operation: 'all' })).toEqual({
+      undoId: 2,
+      operation: 'all',
+      entries: [{ path: 'a.txt', action: 'rewrite' }]
+    })
+  })
+})
+
+describe('makeAgentRevertResult', () => {
+  it('既定は控えが取れた結果と makeAgentChangesUndoSummary の既定の要約', () => {
+    expect(makeAgentRevertResult()).toEqual({
+      undo: { kind: 'saved' },
+      undoSummary: makeAgentChangesUndoSummary()
+    })
+    expect(makeAgentRevertResult({ undoSummary: null })).toEqual({
+      undo: { kind: 'saved' },
+      undoSummary: null
+    })
+  })
+})
+
+describe('makeAgentRevertAllResult', () => {
+  it('既定は done・1 件・控えが取れた・all の要約', () => {
+    expect(makeAgentRevertAllResult()).toEqual({
+      status: 'done',
+      revertedCount: 1,
+      undo: { kind: 'saved' },
+      undoSummary: makeAgentChangesUndoSummary({ operation: 'all' })
+    })
+  })
+
+  it('partial は message(既定 partial)を付け、undoSummary の null を既定で置き換えない', () => {
+    expect(makeAgentRevertAllResult({ status: 'partial', undoSummary: null })).toEqual({
+      status: 'partial',
+      message: 'partial',
+      revertedCount: 1,
+      undo: { kind: 'saved' },
+      undoSummary: null
+    })
+    expect(
+      makeAgentRevertAllResult({
+        status: 'partial',
+        message: 'm',
+        revertedCount: 3,
+        undo: { kind: 'unavailable', reason: 'directory' }
+      })
+    ).toMatchObject({
+      message: 'm',
+      revertedCount: 3,
+      undo: { kind: 'unavailable', reason: 'directory' }
+    })
+  })
+})
+
+describe('makeAgentChangesUndoResult', () => {
+  it('既定は done・a.txt を書き戻した結果で、指定した項目だけを上書きする', () => {
+    expect(makeAgentChangesUndoResult()).toEqual({
+      status: 'done',
+      restoredPaths: ['a.txt'],
+      trashedPaths: [],
+      undoSummary: null
+    })
+    expect(makeAgentChangesUndoResult({ trashedPaths: ['b.txt'] })).toEqual({
+      status: 'done',
+      restoredPaths: ['a.txt'],
+      trashedPaths: ['b.txt'],
+      undoSummary: null
+    })
   })
 })
 

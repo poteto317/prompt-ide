@@ -5,6 +5,7 @@ import type { AgentActivity } from '../../lib/agentActivity'
 import type { AgentNotificationTab } from '../../lib/agentNotificationEvents'
 import type { AgentChangesView } from '../../types'
 import type { AgentChangesRevertOptions, AgentChangesRevertState } from '../useAgentChangesRevert'
+import type { AgentChangesUndoOptions, AgentChangesUndoState } from '../useAgentChangesUndo'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { FileOperationLock } from '../useFileOperationLock'
 
@@ -13,6 +14,11 @@ const mockUseAgentChangesRevert = vi.hoisted(() =>
   vi.fn<(options: AgentChangesRevertOptions) => AgentChangesRevertState>()
 )
 vi.mock('../useAgentChangesRevert', () => ({ useAgentChangesRevert: mockUseAgentChangesRevert }))
+// 取り消しの中身は useAgentChangesUndo.test.ts で確かめる。ここでは渡す値と、パネルへの受け渡しだけを見る
+const mockUseAgentChangesUndo = vi.hoisted(() =>
+  vi.fn<(options: AgentChangesUndoOptions) => AgentChangesUndoState>()
+)
+vi.mock('../useAgentChangesUndo', () => ({ useAgentChangesUndo: mockUseAgentChangesUndo }))
 
 import { useAgentChangesWiring } from '../useAgentChangesWiring'
 import type { AgentChangesWiringOptions } from '../useAgentChangesWiring'
@@ -23,7 +29,8 @@ import {
   makeAgentChangesRecordingView,
   makeAgentChangesRevertState,
   makeAgentChangesRun,
-  makeAgentChangesScopeUnavailableView
+  makeAgentChangesScopeUnavailableView,
+  makeAgentChangesUndoState
 } from '../../__tests__/makeAgentChangesState'
 
 const gitStatusOf = (branch: string): GitStatusResult => ({
@@ -46,6 +53,9 @@ const revertState = makeAgentChangesRevertState({
   hunkNotice: { text: 'ハンクを実行前の状態に戻しました', id: 3 },
   revertDisabledReason: 'busy'
 })
+
+// 既定と違う値(押せない)で、パネルへそのまま渡ることを確かめる
+const undoState = makeAgentChangesUndoState({ undoDisabledReason: 'busy' })
 
 const lock = {} as FileOperationLock
 
@@ -128,6 +138,7 @@ const withView = (
 beforeEach(() => {
   vi.clearAllMocks()
   mockUseAgentChangesRevert.mockReturnValue(revertState)
+  mockUseAgentChangesUndo.mockReturnValue(undoState)
 })
 
 describe('useAgentChangesWiring', () => {
@@ -366,10 +377,60 @@ describe('useAgentChangesWiring', () => {
       changes: o.recording.changes,
       fileLock: lock,
       agentRunning: true,
-      ...o.fileSystem,
-      refreshGitStatus: o.refreshGitStatus,
-      refreshDiff: o.refreshDiff
+      hasDirtyTabAtOrInside: o.fileSystem.hasDirtyTabAtOrInside,
+      reloadOpenFile: o.fileSystem.reloadOpenFile,
+      closeTabsAtOrInside: o.fileSystem.closeTabsAtOrInside,
+      confirmDiscardAnyDirty: o.fileSystem.confirmDiscardAnyDirty,
+      reloadOpenFiles: o.fileSystem.reloadOpenFiles,
+      refreshAfterWrite: expect.any(Function),
+      runner: expect.objectContaining({ run: expect.any(Function), runningOperation: null })
     })
+  })
+
+  it('書き換えの後の取り直し(refreshAfterWrite)は、ツリー → git status → 一覧 → diff タブの順に取り直し、戻す操作と取り消しに同じものを渡す', async () => {
+    const { options } = setup(makeOptions())
+    const o = options()
+    const refreshAfterWrite = mockUseAgentChangesRevert.mock.lastCall![0].refreshAfterWrite
+    expect(mockUseAgentChangesUndo.mock.lastCall![0].refreshAfterWrite).toBe(refreshAfterWrite)
+    vi.mocked(o.refreshGitStatus).mockClear()
+    vi.mocked(o.recording.changes.refresh).mockClear()
+    vi.mocked(o.refreshDiff).mockClear()
+    await act(async () => {
+      await refreshAfterWrite()
+    })
+    const order = [
+      o.fileSystem.refreshTree,
+      o.refreshGitStatus,
+      o.recording.changes.refresh,
+      o.refreshDiff
+    ].map((fn) => {
+      expect(fn).toHaveBeenCalledOnce()
+      return vi.mocked(fn).mock.invocationCallOrder[0]
+    })
+    expect(order).toEqual([...order].sort((a, b) => a - b))
+    // 一覧の取り直しは読み上げない・diff タブは静かな取り直しにしない(戻す操作の hook が持っていたときと同じ引数)
+    expect(o.recording.changes.refresh).toHaveBeenCalledWith()
+    expect(o.refreshDiff).toHaveBeenCalledWith()
+  })
+
+  it('取り消しの hook に、戻す操作と同じ runner・ロック・写しとタブの操作を渡し、パネルへ戻り値をそのまま渡す', () => {
+    const { result, options } = setup(makeOptions({ agentRunning: true }))
+    const o = options()
+    const undoOptions = mockUseAgentChangesUndo.mock.lastCall![0]
+    expect(undoOptions).toEqual({
+      folderPath: '/repo',
+      changes: o.recording.changes,
+      runner: mockUseAgentChangesRevert.mock.lastCall![0].runner,
+      fileLock: lock,
+      agentRunning: true,
+      hasDirtyTabAtOrInside: o.fileSystem.hasDirtyTabAtOrInside,
+      reloadOpenFile: o.fileSystem.reloadOpenFile,
+      closeTabsAtOrInside: o.fileSystem.closeTabsAtOrInside,
+      refreshAfterWrite: mockUseAgentChangesRevert.mock.lastCall![0].refreshAfterWrite
+    })
+    // 同じ runner(実行中の印・失敗の表示・全体ロックを共有する)を参照で渡す
+    expect(undoOptions.runner).toBe(mockUseAgentChangesRevert.mock.lastCall![0].runner)
+    expect(result.current.agentChangesPanel.undo).toBe(undoState)
   })
 
   describe('diff タブのハンクの操作(agentDiffActions)', () => {

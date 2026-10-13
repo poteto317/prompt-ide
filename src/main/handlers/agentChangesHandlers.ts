@@ -1,7 +1,16 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import type { AgentChangesListResult, AgentChangesState, DiscardAllResult } from '@shared/types'
+import type {
+  AgentChangesListResult,
+  AgentChangesState,
+  AgentChangesUndoOperation,
+  AgentChangesUndoResult,
+  AgentRevertAllResult,
+  AgentRevertResult
+} from '@shared/types'
 import type { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentChangesRecord } from '../agentChangesRecord'
+import type { AgentRevertContext, AgentRevertOutcome } from '../agentChangesRevert'
+import type { AgentChangesUndoCaptureOptions } from '../agentChangesUndo'
 import { getAgentChangeDiffInScope, listAgentChangesInScope } from '../agentChangesScopedQuery'
 import {
   revertAgentChange,
@@ -15,6 +24,7 @@ import {
   parseAgentChangePath,
   parseAgentChangesBeginTrigger,
   parseAgentChangesScope,
+  parseAgentChangesUndoId,
   parseAgentRevertAllEntries,
   parseRevertScope
 } from './agentChangesPayloadParser'
@@ -22,6 +32,7 @@ import { resolveAndAssertStatusRelativePath } from './gitPathResolver'
 
 // エージェントの変更の IPC の受け口(設計書「IPC」「セキュリティ」)。renderer から受け取るのはパス・パッチ・確認の一覧・
 // 記録の開始の種類・範囲(列挙と runId)だけで、記録のインデックスの場所・tree・フォルダ・git の引数は main が決める。
+// 取り消しで受け取るのは undoId だけで、取り消すパス・控えの置き場所は main の記録が決める(renderer には控えの要約だけを返す)。
 // 記録は送信元の webContents の id で引く(所有者の分離)
 
 export const AGENT_CHANGES_NOT_MAIN_FRAME = 'メインフレーム以外からの依頼は受け付けません'
@@ -30,15 +41,20 @@ export const AGENT_CHANGES_NO_RECORD_MESSAGE = 'エージェントの変更の�
 export { AGENT_CHANGES_SCOPE_DIFF_UNAVAILABLE_MESSAGE } from '../agentChangesScopedQuery'
 
 export interface AgentChangesHandlerDeps {
-  registry: Pick<AgentBaselineRegistry, 'begin' | 'getState' | 'withRecord' | 'clear'>
+  registry: Pick<
+    AgentBaselineRegistry,
+    'begin' | 'getState' | 'withRecord' | 'clear' | 'commitRevertUndo' | 'undoLastRevert'
+  >
   folderAccess: FolderAccessManager
   /** OS のゴミ箱へ移す(trash.ts の moveToTrash) */
   trash: (absolutePath: string) => Promise<void>
+  /** 戻す操作の取り消しの控えの置き場所と上限(本番は os.tmpdir() と AGENT_CHANGES_UNDO_MAX_BYTES) */
+  undoCapture: AgentChangesUndoCaptureOptions
 }
 
 export function registerAgentChangesHandlers(
   ipcMain: IpcMain,
-  { registry, folderAccess, trash }: AgentChangesHandlerDeps
+  { registry, folderAccess, trash, undoCapture }: AgentChangesHandlerDeps
 ): void {
   // 送信元の確認と、許可のフォルダ(無ければ null)
   const ownerOf = (event: IpcMainInvokeEvent): { ownerId: number; folder: string | null } => {
@@ -67,14 +83,33 @@ export function registerAgentChangesHandlers(
     event: IpcMainInvokeEvent,
     path: unknown,
     parseArgs: () => A,
-    task: (record: AgentChangesRecord, relativePath: string, args: A) => Promise<T>
+    task: (record: AgentChangesRecord, relativePath: string, args: A, ownerId: number) => Promise<T>
   ): Promise<T> => {
     const { ownerId, folder } = ownerOf(event)
     const args = parseArgs()
     if (folder === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
     const relativePath = await relativePathOf(folder, path)
-    return withRecordOrThrow(ownerId, folder, (record) => task(record, relativePath, args))
+    return withRecordOrThrow(ownerId, folder, (record) => task(record, relativePath, args, ownerId))
   }
+  const revertContextOf = (record: AgentChangesRecord): AgentRevertContext => ({
+    snapshot: record.baseline,
+    trash,
+    undoCapture
+  })
+  // 戻した結果の控えを記録へ移し、renderer に返す控えの成否と要約を registry から受け取る(記録の列の中で、戻す関数が resolve したときだけ
+  // 呼ぶ。控えの一時ディレクトリ・項目は renderer に返さない。L-019)。控えを残すか捨てるか(適用が 0 件なら前の控えを残す、記録が
+  // 置き換わったなら付けずに消して discarded にするなど)は registry が決める
+  const commitRevert = (
+    ownerId: number,
+    record: AgentChangesRecord,
+    operation: AgentChangesUndoOperation,
+    outcome: AgentRevertOutcome
+  ): Promise<AgentRevertResult> =>
+    registry.commitRevertUndo(ownerId, record, {
+      operation,
+      capture: outcome.capture,
+      applied: outcome.applied
+    })
 
   ipcMain.handle(
     'agentChanges:begin',
@@ -119,21 +154,25 @@ export function registerAgentChangesHandlers(
   // 戻す系は累積の範囲だけを受け付け、実行の範囲は記録の列に入る前に拒む(L-058)。戻す先は累積の始点
   ipcMain.handle(
     'agentChanges:revertFile',
-    async (event, path: unknown, scope: unknown): Promise<void> => {
-      await withRecordAtPath(
+    (event, path: unknown, scope: unknown): Promise<AgentRevertResult> =>
+      withRecordAtPath(
         event,
         path,
         () => parseRevertScope(scope),
-        (record, relativePath) =>
-          revertAgentChange({ snapshot: record.baseline, trash }, relativePath)
+        async (record, relativePath, _scope, ownerId) =>
+          commitRevert(
+            ownerId,
+            record,
+            'file',
+            await revertAgentChange(revertContextOf(record), relativePath)
+          )
       )
-    }
   )
 
   ipcMain.handle(
     'agentChanges:revertHunk',
-    async (event, path: unknown, patch: unknown, scope: unknown): Promise<void> => {
-      await withRecordAtPath(
+    (event, path: unknown, patch: unknown, scope: unknown): Promise<AgentRevertResult> =>
+      withRecordAtPath(
         event,
         path,
         () => {
@@ -141,21 +180,44 @@ export function registerAgentChangesHandlers(
           parseRevertScope(scope)
           return parsedPatch
         },
-        (record, relativePath, parsedPatch) =>
-          revertAgentChangeHunk({ snapshot: record.baseline, trash }, relativePath, parsedPatch)
+        async (record, relativePath, parsedPatch, ownerId) =>
+          commitRevert(
+            ownerId,
+            record,
+            'hunk',
+            await revertAgentChangeHunk(revertContextOf(record), relativePath, parsedPatch)
+          )
       )
-    }
   )
 
   ipcMain.handle(
     'agentChanges:revertAll',
-    async (event, expected: unknown, scope: unknown): Promise<DiscardAllResult> => {
+    async (event, expected: unknown, scope: unknown): Promise<AgentRevertAllResult> => {
       const { ownerId, folder } = ownerOf(event)
       const entries = parseAgentRevertAllEntries(expected)
       parseRevertScope(scope)
-      return withRecordOrThrow(ownerId, folder, (record) =>
-        revertAllAgentChanges({ snapshot: record.baseline, trash }, entries)
-      )
+      return withRecordOrThrow(ownerId, folder, async (record) => {
+        const { applied, capture, ...result } = await revertAllAgentChanges(
+          revertContextOf(record),
+          entries
+        )
+        const committed = await commitRevert(ownerId, record, 'all', { applied, capture })
+        return { ...result, revertedCount: applied, ...committed }
+      })
+    }
+  )
+
+  // 直前の戻す操作の取り消し。受け取るのは undoId だけで、取り消すパス・控えは main の記録が決める(L-019)。
+  // 検証の失敗は記録の列に入る前に拒否する
+  ipcMain.handle(
+    'agentChanges:undoRevert',
+    async (event, undoId: unknown): Promise<AgentChangesUndoResult> => {
+      const { ownerId, folder } = ownerOf(event)
+      const parsedUndoId = parseAgentChangesUndoId(undoId)
+      if (folder === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
+      const result = await registry.undoLastRevert(ownerId, folder, parsedUndoId)
+      if (result === null) throw new Error(AGENT_CHANGES_NO_RECORD_MESSAGE)
+      return result
     }
   )
 

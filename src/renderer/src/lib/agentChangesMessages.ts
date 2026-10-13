@@ -2,7 +2,10 @@ import type {
   AgentChangeStatus,
   AgentChangesRun,
   AgentChangesState,
-  AgentChangesUnavailableReason
+  AgentChangesUnavailableReason,
+  AgentChangesUndoSummary,
+  AgentRevertUndoOutcome,
+  AgentRevertUndoUnavailableReason
 } from '@shared/types'
 
 // エージェントの変更のセクション・確認のダイアログの文言(設計書「A の詳細」「確認ダイアログの文言」)。
@@ -137,17 +140,144 @@ export function formatAgentChangesListedNotice(totalCount: number): string {
   return `エージェントの変更: ${totalCount} 件`
 }
 
-/** 戻した後の読み上げ */
-export function formatAgentChangesRevertedNotice(count: number): string {
-  return `${count} 件を実行前の状態に戻しました`
+/** 戻す確認の取り消せる旨(大きさの上限は main でしか分からないため、結果で伝える) */
+const AGENT_REVERT_UNDOABLE_NOTE =
+  '戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
+/** 戻す確認の取り消せない旨(追加されたフォルダ。renderer で先に分かる) */
+const AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE =
+  'フォルダをゴミ箱へ移すため、この操作は取り消せません（OS のゴミ箱から戻せます）。'
+/** 控えが取れなかった理由(結果の読み上げ。L-057) */
+const AGENT_UNDO_UNAVAILABLE_REASON_TEXT: Record<AgentRevertUndoUnavailableReason, string> = {
+  directory: 'フォルダを含む',
+  'unsupported-type': 'ファイル以外のものを含む',
+  'too-large': '内容が大きすぎる',
+  'capture-failed': '戻した後の状態を控えられなかった'
+}
+const UNDO_HINT = '「戻した操作を取り消す」で取り消せます'
+// 控えが取れなかったときの「<理由>ため、<対象>は取り消せません」(読み上げ・partial の警告で同じ形にする)
+const notUndoable = (
+  undo: Extract<AgentRevertUndoOutcome, { kind: 'unavailable' }>,
+  subject = 'この操作'
+): string => `${AGENT_UNDO_UNAVAILABLE_REASON_TEXT[undo.reason]}ため、${subject}は取り消せません`
+
+/**
+ * 戻した結果の文言に足す、取り消せるか・取り消せない理由。discarded(記録が置き換わった・終了中で控えを付けなかった)は
+ * 帯が無いので取り消せるとは言えず、取り消せない理由を言うものでもないため、何も足さない
+ */
+const undoSuffix = (undo: AgentRevertUndoOutcome, savedText: string, subject?: string): string => {
+  switch (undo.kind) {
+    case 'saved':
+      return savedText
+    case 'unavailable':
+      return notUndoable(undo, subject)
+    case 'discarded':
+      return ''
+  }
 }
 
-/** diff タブでハンクを戻した後の読み上げ */
-export const AGENT_CHANGES_HUNK_REVERTED_NOTICE = 'ハンクを実行前の状態に戻しました'
+/** 戻した後の読み上げ(取り消せるか・取り消せない理由を添える) */
+export function formatAgentChangesRevertedNotice(
+  count: number,
+  undo: AgentRevertUndoOutcome
+): string {
+  return `${count} 件を実行前の状態に戻しました。${undoSuffix(undo, UNDO_HINT)}`
+}
+
+/** diff タブでハンクを戻した後の読み上げ(帯が見えていないときにも、どこで取り消すかを伝える) */
+export function formatAgentChangesHunkRevertedNotice(undo: AgentRevertUndoOutcome): string {
+  return `ハンクを実行前の状態に戻しました。${undoSuffix(undo, 'ソース管理の「エージェントの変更」で取り消せます')}`
+}
+
+/** すべて戻すの partial の警告(main の警告の後ろに、戻せた件数を取り消せるかを足す) */
+export function formatAgentRevertPartialWarning(
+  message: string,
+  revertedCount: number,
+  undo: AgentRevertUndoOutcome
+): string {
+  const suffix = undoSuffix(
+    undo,
+    `戻せた ${revertedCount} 件は${UNDO_HINT}`,
+    `戻せた ${revertedCount} 件`
+  )
+  return suffix === '' ? message : `${message}。${suffix}`
+}
+
+/** 帯のボタンの見える文字 */
+export const AGENT_CHANGES_UNDO_BUTTON = '戻した操作を取り消す'
+
+/** 帯の対象(戻した操作の種類で決める。all は件数に関わらず「すべて戻す」) */
+export function formatAgentChangesUndoTarget(summary: AgentChangesUndoSummary): string {
+  const first = summary.entries[0]?.path ?? ''
+  switch (summary.operation) {
+    case 'all':
+      return `${summary.entries.length} 件（すべて戻す）`
+    case 'hunk':
+      return `${first} のハンク`
+    case 'file':
+      return first
+    default: {
+      const unknownOperation: never = summary.operation
+      throw new Error(`未知の戻した操作の種類です: ${JSON.stringify(unknownOperation)}`)
+    }
+  }
+}
+
+/** 帯の見える文字 */
+export function formatAgentChangesUndoBandText(target: string): string {
+  return `直前に戻した操作: ${target}`
+}
+
+/** 帯のボタンの aria-label。見える文字を切れ目なく先頭に置き、対象を後ろに足す(WCAG 2.5.3) */
+export function formatAgentChangesUndoButtonLabel(target: string): string {
+  return `${AGENT_CHANGES_UNDO_BUTTON}（直前: ${target}）`
+}
+
+const MAX_UNDO_LISTED_PATHS = 5
+
+/** 取り消しの確認(何が戻るかを見せる。押し間違いの取り消しをさらに押し間違えない) */
+export function buildAgentUndoConfirmMessage({
+  summary,
+  hasUnsavedEdits,
+  agentRunning
+}: {
+  summary: AgentChangesUndoSummary
+  /** 書き戻す・ゴミ箱へ移すパスのタブに未保存の編集があるか */
+  hasUnsavedEdits: boolean
+  agentRunning: boolean
+}): string {
+  const paths = summary.entries.map((entry) => entry.path)
+  const rest = paths.length - MAX_UNDO_LISTED_PATHS
+  const listed = [
+    ...paths.slice(0, MAX_UNDO_LISTED_PATHS),
+    ...(rest > 0 ? [formatAgentChangesMore(rest)] : [])
+  ]
+  const trashCount = summary.entries.filter((entry) => entry.action === 'trash').length
+  const hasRecreate = summary.entries.some((entry) => entry.action === 'recreate')
+  const appendix = [
+    trashCount > 0
+      ? `うち ${trashCount} 件は、戻したときに作り直したファイルのため、ゴミ箱へ移動します。`
+      : null,
+    hasRecreate ? 'ゴミ箱へ移したファイルは、ゴミ箱に残したまま元の場所に作り直します。' : null,
+    hasUnsavedEdits ? 'エディタの未保存の編集も破棄されます。' : null,
+    agentRunning
+      ? 'エージェントが動いている間は、取り消した後に同じファイルが書き換えられることがあります。'
+      : null
+  ]
+    .filter((text): text is string => text !== null)
+    .map((text) => `\n\n${text}`)
+    .join('')
+  return `直前に戻した操作を取り消しますか？次のファイルが、戻す前の内容に戻ります。\n\n${listed.join('\n')}${appendix}`
+}
+
+/** 取り消しの結果の読み上げ */
+export function formatAgentChangesUndoneNotice(count: number): string {
+  return `戻した操作を取り消しました（${count} 件）`
+}
 
 export const AGENT_CHANGES_BUSY_LOADING = '一覧を取得しています'
 export const AGENT_CHANGES_BUSY_GIT = '他の Git 操作の実行中です'
 export const AGENT_CHANGES_BUSY_REVERTING = '戻す操作の実行中です'
+export const AGENT_CHANGES_BUSY_UNDOING = '取り消しの実行中です'
 export const AGENT_CHANGES_LIST_FAILED =
   '一覧の取得に失敗したため、戻す操作は使えません。「更新」で取り直してください'
 export const AGENT_CHANGES_TRUNCATED_REASON =
@@ -194,10 +324,10 @@ export function buildAgentRevertFileConfirmMessage({
 }: { path: string; status: AgentChangeStatus; isDirectory: boolean } & RevertAppendix): string {
   const base =
     status !== 'A'
-      ? `${path} を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。この操作は元に戻せません。`
+      ? `${path} を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。${AGENT_REVERT_UNDOABLE_NOTE}`
       : isDirectory
-        ? `${path} をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。`
-        : `${path} をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）`
+        ? `${path} をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。${AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE}`
+        : `${path} をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）${AGENT_REVERT_UNDOABLE_NOTE}`
   return base + appendices(appendix)
 }
 
@@ -208,7 +338,7 @@ export function buildAgentRevertHunkConfirmMessage({
   ...appendix
 }: { path: string; hunkHeader: string } & RevertAppendix): string {
   return (
-    `${path} の次のハンクを実行前の状態に戻しますか？この操作は元に戻せません。\n\n${hunkHeader}` +
+    `${path} の次のハンクを実行前の状態に戻しますか？${AGENT_REVERT_UNDOABLE_NOTE}\n\n${hunkHeader}` +
     appendices(appendix)
   )
 }
@@ -217,12 +347,15 @@ export function buildAgentRevertHunkConfirmMessage({
 export function buildAgentRevertAllConfirmMessage({
   count,
   trashCount,
+  hasDirectory,
   savedInApp,
   agentRunning
 }: {
   count: number
   /** そのうちゴミ箱へ移す(追加された)ファイル・フォルダの数 */
   trashCount: number
+  /** 追加されたフォルダの行を含むか(取り消せない旨を出す) */
+  hasDirectory: boolean
   savedInApp: boolean
   agentRunning: boolean
 }): string {
@@ -233,7 +366,7 @@ export function buildAgentRevertAllConfirmMessage({
     ? '\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
     : ''
   return (
-    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。この操作は元に戻せません。` +
+    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。${hasDirectory ? AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE : AGENT_REVERT_UNDOABLE_NOTE}` +
     trash +
     '\nステージ（index）・コミット・ブランチは戻しません。' +
     saved +

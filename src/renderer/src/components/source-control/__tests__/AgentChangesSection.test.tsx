@@ -23,7 +23,9 @@ import {
   makeAgentChangesRecordingView,
   makeAgentChangesRevertState,
   makeAgentChangesRun,
-  makeAgentChangesScopeUnavailableView
+  makeAgentChangesScopeUnavailableView,
+  makeAgentChangesUndoState,
+  makeAgentChangesUndoSummary
 } from '../../../__tests__/makeAgentChangesState'
 
 type Props = ComponentProps<typeof AgentChangesSection>
@@ -459,7 +461,7 @@ describe('AgentChangesSection の範囲の選択と実行の範囲の表示', ()
       makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], { startedAt, runs }),
       {
         revert: makeAgentChangesRevertState({
-          isReverting: true,
+          runningOperation: 'revert',
           revertDisabledReason: '戻す操作の実行中です',
           revertAllDisabledReason: '戻す操作の実行中です'
         })
@@ -531,5 +533,144 @@ describe('AgentChangesSection の範囲の選択と実行の範囲の表示', ()
     )
     expect(within(section()).getByText(text)).toBeInTheDocument()
     expect(within(section()).queryByRole('list')).toBeNull()
+  })
+})
+
+describe('AgentChangesSection の直前に戻した操作の帯', () => {
+  const summary = makeAgentChangesUndoSummary()
+  const BUSY = '取り消しの実行中です'
+  const undoView = (
+    entries: AgentChangeEntry[],
+    extra: { undo?: typeof summary | null; runs?: AgentChangesRun[] } = {}
+  ): AgentChangesView =>
+    makeAgentChangesRecordingView(entries, { startedAt, undo: summary, ...extra })
+  const undoProps = (view: AgentChangesView, overrides: Partial<Props> = {}): Props => ({
+    ...makeAgentChangesPanelState({
+      changes: makeAgentChangesPanelChanges({ view }),
+      undo: makeAgentChangesUndoState()
+    }),
+    isNotRepository: false,
+    ...overrides
+  })
+  const undoButton = (): HTMLElement =>
+    screen.getByRole('button', { name: '戻した操作を取り消す（直前: a.txt）' })
+  // 取り消しの実行中(戻す系・範囲の選択・確認を終えるは押せない)
+  const busyOverrides = (): Partial<Props> => ({
+    revert: makeAgentChangesRevertState({
+      runningOperation: 'undo',
+      revertAllDisabledReason: BUSY,
+      revertDisabledReason: BUSY
+    }),
+    undo: makeAgentChangesUndoState({ undoDisabledReason: BUSY })
+  })
+  const describedBy = (element: HTMLElement): HTMLElement | null => {
+    const id = element.getAttribute('aria-describedby')
+    return id === null ? null : document.getElementById(id)
+  }
+
+  it('写しの undo があれば範囲に関わらず帯を出し、範囲の選択の後・失敗の文言の前に置く', () => {
+    const props = undoProps(
+      undoView([makeAgentChangeEntry('a.txt')], { runs: [makeAgentChangesRun()] }),
+      {
+        revert: makeAgentChangesRevertState({ error: 'x' })
+      }
+    )
+    render(
+      <AgentChangesSection
+        {...props}
+        changes={{ ...props.changes, scope: { kind: 'run', runId: 1 } }}
+      />
+    )
+    const band = screen.getByText('直前に戻した操作: a.txt')
+    expect(
+      screen.getByRole('combobox', { name: '表示' }).compareDocumentPosition(band) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(
+      band.compareDocumentPosition(screen.getByText('x')) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('写しの undo が null なら帯を出さない。一覧が空でも undo があれば出す', () => {
+    const { unmount } = render(
+      <AgentChangesSection
+        {...undoProps(undoView([makeAgentChangeEntry('a.txt')], { undo: null }))}
+      />
+    )
+    expect(screen.queryByText(/^直前に戻した操作/)).toBeNull()
+    unmount()
+    render(<AgentChangesSection {...undoProps(undoView([]))} />)
+    expect(screen.getByText('直前に戻した操作: a.txt')).toBeInTheDocument()
+    expect(undoButton()).toBeEnabled()
+  })
+
+  it('押すと undoLastRevert を 1 回呼び、帯が消えるとフォーカスを見出しへ戻す(パターン 152)', async () => {
+    const props = undoProps(undoView([]))
+    const { rerender } = render(<AgentChangesSection {...props} />)
+    await userEvent.click(undoButton())
+    expect(props.undo.undoLastRevert).toHaveBeenCalledOnce()
+    rerender(
+      <AgentChangesSection
+        {...props}
+        changes={{ ...props.changes, view: undoView([], { undo: null }) }}
+      />
+    )
+    expect(screen.queryByText(/^直前に戻した操作/)).toBeNull()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^エージェントの変更/ })).toHaveFocus()
+    )
+  })
+
+  it('戻す操作の後に、フォーカスを取り消しのボタンへ移さない(L-408)', async () => {
+    const props = undoProps(undoView([makeAgentChangeEntry('a.txt')], { undo: null }))
+    const { rerender } = render(<AgentChangesSection {...props} />)
+    await userEvent.click(screen.getByRole('button', { name: 'a.txt を実行前の状態に戻す' }))
+    expect(props.revert.revertFile).toHaveBeenCalledOnce()
+    rerender(<AgentChangesSection {...props} changes={{ ...props.changes, view: undoView([]) }} />)
+    const button = undoButton()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^エージェントの変更/ })).toHaveFocus()
+    )
+    expect(document.activeElement).not.toBe(button)
+  })
+
+  it('取り消しの実行中に一覧が空なら、確認を終える・範囲の選択は帯の中の理由を指す(パターン 126)', () => {
+    render(
+      <AgentChangesSection
+        {...undoProps(undoView([], { runs: [makeAgentChangesRun()] }), busyOverrides())}
+      />
+    )
+    expect(undoButton()).toBeDisabled()
+    const reason = describedBy(undoButton())
+    expect(reason).toHaveTextContent(BUSY)
+    const finish = screen.getByRole('button', { name: '確認を終える' })
+    expect(finish).toBeDisabled()
+    expect(describedBy(finish)).toBe(reason)
+    const select = screen.getByRole('combobox', { name: '表示' })
+    expect(select).toBeDisabled()
+    expect(describedBy(select)).toBe(reason)
+  })
+
+  it('取り消しの実行中に一覧が空で帯が先に消えても、確認を終えるは同じ理由の要素を指す', () => {
+    render(<AgentChangesSection {...undoProps(undoView([], { undo: null }), busyOverrides())} />)
+    expect(screen.queryByText(/^直前に戻した操作/)).toBeNull()
+    const finish = screen.getByRole('button', { name: '確認を終える' })
+    expect(finish).toBeDisabled()
+    expect(describedBy(finish)).toHaveTextContent(BUSY)
+    expect(finish).toHaveAccessibleDescription(BUSY)
+  })
+
+  it('一覧に行があり実行中なら、確認を終えるは一覧の上の理由を指す', () => {
+    render(
+      <AgentChangesSection
+        {...undoProps(undoView([makeAgentChangeEntry('a.txt')]), busyOverrides())}
+      />
+    )
+    const finish = screen.getByRole('button', { name: '確認を終える' })
+    const reason = describedBy(finish)
+    expect(reason).toHaveTextContent(BUSY)
+    // 一覧の上の理由(行の ↶ とすべて戻すが指す要素)で、帯の中の理由ではない
+    expect(reason).toBe(describedBy(screen.getByRole('button', { name: 'すべて戻す' })))
+    expect(reason).not.toBe(describedBy(undoButton()))
   })
 })

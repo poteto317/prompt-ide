@@ -19,9 +19,19 @@ import {
   formatAgentChangesListedNotice,
   formatAgentChangesMore,
   formatAgentChangesRevertedNotice,
-  formatAgentChangesStartedAt
+  formatAgentChangesStartedAt,
+  buildAgentUndoConfirmMessage,
+  formatAgentChangesHunkRevertedNotice,
+  formatAgentChangesUndoBandText,
+  formatAgentChangesUndoButtonLabel,
+  formatAgentChangesUndoneNotice,
+  formatAgentChangesUndoTarget,
+  formatAgentRevertPartialWarning
 } from '../agentChangesMessages'
-import { makeAgentChangesRun } from '../../__tests__/makeAgentChangesState'
+import {
+  makeAgentChangesRun,
+  makeAgentChangesUndoSummary
+} from '../../__tests__/makeAgentChangesState'
 
 const at = (hours: number, minutes: number): number =>
   new Date(2026, 9, 7, hours, minutes).getTime()
@@ -75,10 +85,9 @@ describe('見出しと通知', () => {
     expect(formatAgentChangesStartedAt(at(0, 7))).toBe('00:07')
   })
 
-  it('打ち切り・取得・戻した結果の文言', () => {
+  it('打ち切り・取得の文言', () => {
     expect(formatAgentChangesMore(12)).toBe('ほか 12 件')
     expect(formatAgentChangesListedNotice(3)).toBe('エージェントの変更: 3 件')
-    expect(formatAgentChangesRevertedNotice(2)).toBe('2 件を実行前の状態に戻しました')
   })
 })
 
@@ -89,23 +98,27 @@ describe('確認の文言', () => {
     [
       'M',
       false,
-      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。この操作は元に戻せません。'
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     ],
     [
       'D',
       false,
-      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。この操作は元に戻せません。'
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     ],
     [
       'T',
       false,
-      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。この操作は元に戻せません。'
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     ],
-    ['A', false, 'a.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）'],
+    [
+      'A',
+      false,
+      'a.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
+    ],
     [
       'A',
       true,
-      'a.txt をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。'
+      'a.txt をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。フォルダをゴミ箱へ移すため、この操作は取り消せません（OS のゴミ箱から戻せます）。'
     ]
   ] as const)('ファイル単位 %s(フォルダ %s)', (status, isDirectory, expected) => {
     expect(
@@ -124,7 +137,7 @@ describe('確認の文言', () => {
         agentRunning: true
       }).split('\n\n')
     ).toEqual([
-      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。この操作は元に戻せません。',
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。',
       'このファイルは、記録を始めた後にアプリで保存されています。',
       'エディタの未保存の編集も破棄されます。',
       'エージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
@@ -140,7 +153,7 @@ describe('確認の文言', () => {
         hasUnsavedEdits: true
       })
     ).toBe(
-      'a.txt の次のハンクを実行前の状態に戻しますか？この操作は元に戻せません。\n\n@@ -1,3 +1,4 @@\n\nエディタの未保存の編集も破棄されます。'
+      'a.txt の次のハンクを実行前の状態に戻しますか？戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\n\n@@ -1,3 +1,4 @@\n\nエディタの未保存の編集も破棄されます。'
     )
   })
 
@@ -149,21 +162,23 @@ describe('確認の文言', () => {
       buildAgentRevertAllConfirmMessage({
         count: 3,
         trashCount: 1,
+        hasDirectory: false,
         savedInApp: false,
         agentRunning: false
       })
     ).toBe(
-      'エージェントの変更 3 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。この操作は元に戻せません。\nうち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。\nステージ（index）・コミット・ブランチは戻しません。'
+      'エージェントの変更 3 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nうち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。\nステージ（index）・コミット・ブランチは戻しません。'
     )
     expect(
       buildAgentRevertAllConfirmMessage({
         count: 2,
         trashCount: 0,
+        hasDirectory: false,
         savedInApp: true,
         agentRunning: true
       })
     ).toBe(
-      'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。この操作は元に戻せません。\nステージ（index）・コミット・ブランチは戻しません。\n\n記録を始めた後にアプリで保存したファイルを含みます。\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
+      'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nステージ（index）・コミット・ブランチは戻しません。\n\n記録を始めた後にアプリで保存したファイルを含みます。\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
     )
   })
 })
@@ -278,4 +293,140 @@ describe('範囲の項目・見出し・理由の文言', () => {
       expect(formatAgentChangesRunOption(run)).toBe(`実行 4（09:00・${text}）`)
     }
   )
+})
+
+describe('取り消し', () => {
+  const saved = { kind: 'saved' } as const
+  it.each([
+    [{ kind: 'unavailable', reason: 'directory' }, 'フォルダを含む'],
+    [{ kind: 'unavailable', reason: 'unsupported-type' }, 'ファイル以外のものを含む'],
+    [{ kind: 'unavailable', reason: 'too-large' }, '内容が大きすぎる'],
+    [{ kind: 'unavailable', reason: 'capture-failed' }, '戻した後の状態を控えられなかった']
+  ] as const)('戻した結果: 取れなかった理由 %j → %s', (undo, reason) => {
+    expect(formatAgentChangesRevertedNotice(2, undo)).toBe(
+      `2 件を実行前の状態に戻しました。${reason}ため、この操作は取り消せません`
+    )
+    expect(formatAgentChangesHunkRevertedNotice(undo)).toBe(
+      `ハンクを実行前の状態に戻しました。${reason}ため、この操作は取り消せません`
+    )
+    expect(formatAgentRevertPartialWarning('途中で失敗', 1, undo)).toBe(
+      `途中で失敗。${reason}ため、戻せた 1 件は取り消せません`
+    )
+  })
+  it('戻した結果: 取れた', () => {
+    expect(formatAgentChangesRevertedNotice(1, saved)).toBe(
+      '1 件を実行前の状態に戻しました。「戻した操作を取り消す」で取り消せます'
+    )
+    expect(formatAgentChangesHunkRevertedNotice(saved)).toBe(
+      'ハンクを実行前の状態に戻しました。ソース管理の「エージェントの変更」で取り消せます'
+    )
+    expect(formatAgentRevertPartialWarning('途中で失敗', 1, saved)).toBe(
+      '途中で失敗。戻せた 1 件は「戻した操作を取り消す」で取り消せます'
+    )
+  })
+  it('戻した結果: 控えを付けずに消した(discarded)なら、戻した旨だけを伝え、取り消せるかは言わない', () => {
+    const discarded = { kind: 'discarded' } as const
+    expect(formatAgentChangesRevertedNotice(2, discarded)).toBe('2 件を実行前の状態に戻しました。')
+    expect(formatAgentChangesHunkRevertedNotice(discarded)).toBe(
+      'ハンクを実行前の状態に戻しました。'
+    )
+    expect(formatAgentRevertPartialWarning('途中で失敗', 1, discarded)).toBe('途中で失敗')
+  })
+  it('対象の文言は operation で決まる(all は 1 件でも「すべて戻す」)', () => {
+    expect(formatAgentChangesUndoTarget(makeAgentChangesUndoSummary({ operation: 'file' }))).toBe(
+      'a.txt'
+    )
+    expect(formatAgentChangesUndoTarget(makeAgentChangesUndoSummary({ operation: 'hunk' }))).toBe(
+      'a.txt のハンク'
+    )
+    expect(formatAgentChangesUndoTarget(makeAgentChangesUndoSummary({ operation: 'all' }))).toBe(
+      '1 件（すべて戻す）'
+    )
+    expect(
+      formatAgentChangesUndoTarget(
+        makeAgentChangesUndoSummary({
+          operation: 'all',
+          entries: [
+            { path: 'a.txt', action: 'rewrite' },
+            { path: 'b.txt', action: 'trash' },
+            { path: 'c.txt', action: 'recreate' }
+          ]
+        })
+      )
+    ).toBe('3 件（すべて戻す）')
+    expect(formatAgentChangesUndoBandText('a.txt')).toBe('直前に戻した操作: a.txt')
+    expect(formatAgentChangesUndoButtonLabel('a.txt')).toBe('戻した操作を取り消す（直前: a.txt）')
+    expect(formatAgentChangesUndoneNotice(3)).toBe('戻した操作を取り消しました（3 件）')
+  })
+  it('取り消しの確認: パスの一覧と、該当するときだけの追記', () => {
+    expect(
+      buildAgentUndoConfirmMessage({
+        summary: makeAgentChangesUndoSummary(),
+        hasUnsavedEdits: false,
+        agentRunning: false
+      })
+    ).toBe('直前に戻した操作を取り消しますか？次のファイルが、戻す前の内容に戻ります。\n\na.txt')
+    const entries = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((name, index) => ({
+      path: `${name}.txt`,
+      action:
+        index === 0
+          ? ('trash' as const)
+          : index === 1
+            ? ('recreate' as const)
+            : ('rewrite' as const)
+    }))
+    expect(
+      buildAgentUndoConfirmMessage({
+        summary: makeAgentChangesUndoSummary({ operation: 'all', entries }),
+        hasUnsavedEdits: true,
+        agentRunning: true
+      })
+    ).toBe(
+      '直前に戻した操作を取り消しますか？次のファイルが、戻す前の内容に戻ります。\n\na.txt\nb.txt\nc.txt\nd.txt\ne.txt\nほか 2 件' +
+        '\n\nうち 1 件は、戻したときに作り直したファイルのため、ゴミ箱へ移動します。' +
+        '\n\nゴミ箱へ移したファイルは、ゴミ箱に残したまま元の場所に作り直します。' +
+        '\n\nエディタの未保存の編集も破棄されます。' +
+        '\n\nエージェントが動いている間は、取り消した後に同じファイルが書き換えられることがあります。'
+    )
+  })
+  it('戻す確認の文言は取り消せる旨を出し、フォルダは取り消せない旨を出す', () => {
+    const none = { savedInApp: false, hasUnsavedEdits: false, agentRunning: false }
+    expect(
+      buildAgentRevertFileConfirmMessage({
+        path: 'a.txt',
+        status: 'M',
+        isDirectory: false,
+        ...none
+      })
+    ).toBe(
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
+    )
+    expect(
+      buildAgentRevertFileConfirmMessage({
+        path: 'z.txt',
+        status: 'A',
+        isDirectory: false,
+        ...none
+      })
+    ).toBe(
+      'z.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
+    )
+    expect(
+      buildAgentRevertFileConfirmMessage({ path: 'nd/', status: 'A', isDirectory: true, ...none })
+    ).toBe(
+      'nd/ をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。フォルダをゴミ箱へ移すため、この操作は取り消せません（OS のゴミ箱から戻せます）。'
+    )
+    expect(
+      buildAgentRevertHunkConfirmMessage({ path: 'a.txt', hunkHeader: '@@ -1 +1 @@', ...none })
+    ).toBe(
+      'a.txt の次のハンクを実行前の状態に戻しますか？戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\n\n@@ -1 +1 @@'
+    )
+    const all = { count: 2, trashCount: 1, savedInApp: false, agentRunning: false }
+    expect(buildAgentRevertAllConfirmMessage({ ...all, hasDirectory: false })).toBe(
+      'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nうち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。\nステージ（index）・コミット・ブランチは戻しません。'
+    )
+    expect(buildAgentRevertAllConfirmMessage({ ...all, hasDirectory: true })).toContain(
+      '戻ります。フォルダをゴミ箱へ移すため、この操作は取り消せません（OS のゴミ箱から戻せます）。\nうち 1 件'
+    )
+  })
 })

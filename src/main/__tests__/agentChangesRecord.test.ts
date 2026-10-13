@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import type { AgentChangesRecord, AgentChangesRecordRun } from '../agentChangesRecord'
 import {
   agentChangesRecordTempDirs,
+  createAgentChangesRecord,
   dropRunsOverLimit,
   latestRecordedIndexPath,
+  protectionTreeEntries,
   runAvailability,
   runStartFromSnapshotResult,
   runStartSnapshot,
@@ -159,6 +161,14 @@ describe('agentChangesRecordTempDirs', () => {
       '未知の実行の開始です'
     )
   })
+
+  it('取り消しの控えの一時ディレクトリも返す(記録を捨てるときに消す)', () => {
+    const record = makeAgentChangesRecord([], {
+      baseline,
+      undo: { undoId: 1, operation: 'file', dir: '/tmp/undo', items: [] }
+    })
+    expect(agentChangesRecordTempDirs(record)).toEqual([baseline.tempDir, '/tmp/undo'])
+  })
 })
 
 describe('runStartSnapshot', () => {
@@ -223,5 +233,47 @@ describe('dropRunsOverLimit', () => {
   it('外す実行の開始の種類が未知なら、消すかを決めずに例外にする(記録を捨てるときと同じ規則)', () => {
     const record = recordOf([unknownRun(1), snapshotRun(2)])
     expect(() => dropRunsOverLimit(record, 1)).toThrow('未知の実行の開始です')
+  })
+})
+
+describe('createAgentChangesRecord', () => {
+  it('実行なし・番号 1・保護はまだ作っていない状態で作る', () => {
+    expect(
+      createAgentChangesRecord(baseline, 3, 'refs/prompt-ide/agent-changes/1-00000000/3')
+    ).toEqual({
+      baseline,
+      runs: [],
+      nextNumber: 1,
+      recordSerial: 3,
+      protection: {
+        refName: 'refs/prompt-ide/agent-changes/1-00000000/3',
+        value: null,
+        swept: false
+      },
+      undo: null
+    })
+  })
+})
+
+describe('protectionTreeEntries', () => {
+  it('累積の始点(baseline)と、開始が区切りの実行(run-<runId>)だけを項目にする(baseline・failed の実行は作らない)', () => {
+    const tree = 'c'.repeat(40)
+    const record = makeAgentChangesRecord(
+      [
+        baselineRun(1),
+        {
+          // 名前に使うのが number ではなく runId であることを区別するため、値を変える
+          runId: 5,
+          number: 2,
+          start: { kind: 'snapshot', snapshot: makeBaselineSnapshot({ tempDir: '/tmp/r2', tree }) }
+        },
+        failedRun(3)
+      ],
+      { baseline: makeBaselineSnapshot({ tree: 'd'.repeat(40) }) }
+    )
+    expect(protectionTreeEntries(record)).toEqual([
+      { name: 'baseline', tree: 'd'.repeat(40) },
+      { name: 'run-5', tree }
+    ])
   })
 })

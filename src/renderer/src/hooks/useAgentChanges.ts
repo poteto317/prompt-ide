@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { AgentChangesBeginTrigger, AgentChangesScope, AgentChangesState } from '@shared/types'
+import type {
+  AgentChangesBeginTrigger,
+  AgentChangesScope,
+  AgentChangesState,
+  AgentChangesUndoSummary
+} from '@shared/types'
 import { isSameAgentChangesScope } from '@shared/types'
 import type { AgentChangesView, Announcement } from '../types'
 import * as agentChangesApi from '../lib/agentChangesApi'
@@ -70,6 +75,8 @@ export interface AgentChangesController {
   markSaved: (absolutePath: string) => void
   /** 戻す操作の結果などをセクションの通知に出す */
   announce: (text: string) => void
+  /** 戻す・取り消しの結果の控えの要約を写しへ反映する。startedAt は依頼の時点の写しの記録の開始の時刻(違えば捨てる) */
+  applyUndoSummary: (summary: AgentChangesUndoSummary | null, startedAt: number) => void
 }
 
 export function useAgentChanges(folderPath: string | null): AgentChangesController {
@@ -309,6 +316,18 @@ export function useAgentChanges(folderPath: string | null): AgentChangesControll
     )
   }, [])
 
+  // 戻す・取り消しの結果の控えの要約を写しへ反映する(一覧の取り直しを待たずに、main に無い undoId の帯を押せなくする。L-039)。
+  // 依頼の時点の記録(startedAt)と今の写しが違えば捨てる(前の記録の帯を新しい記録に出さない)
+  const applyUndoSummary = useCallback(
+    (summary: AgentChangesUndoSummary | null, startedAt: number): void => {
+      const current = viewRef.current
+      if (!isSameAgentChangesRecording(current, startedAt)) return
+      const next = { ...current, undo: summary }
+      if (!isSameAgentChangesView(current, next)) applyView(next)
+    },
+    [applyView]
+  )
+
   return {
     view,
     isLoading,
@@ -323,6 +342,7 @@ export function useAgentChanges(folderPath: string | null): AgentChangesControll
     refresh,
     clear,
     markSaved,
-    announce
+    announce,
+    applyUndoSummary
   }
 }

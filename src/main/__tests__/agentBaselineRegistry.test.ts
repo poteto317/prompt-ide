@@ -2,19 +2,33 @@ import { describe, it, expect, vi } from 'vitest'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
 import type { BaselineSnapshot, BaselineSnapshotResult } from '../agentBaselineSnapshot'
-import { makeBaselineSnapshot } from './helpers/agentBaselineFixtures'
+import type { AgentChangesUndoCapture, AgentChangesUndoExecution } from '../agentChangesUndoModel'
+import {
+  createFakeProtectionGit,
+  FAKE_PROTECTION_INSTANCE_ID,
+  makeBaselineSnapshot,
+  makeFakeProtectionDeps
+} from './helpers/agentBaselineFixtures'
+import type { FakeProtectionGit } from './helpers/agentBaselineFixtures'
 import type {
   AgentChangesRun,
   AgentChangesState,
-  AgentChangesUnavailableReason
+  AgentChangesUnavailableReason,
+  AgentChangesUndoOperation,
+  AgentChangesUndoSummary
 } from '@shared/types'
 
 // startedAt の既定値 100 は、このファイルの期待値が前提にしている
 const snapshotOf = (folderPath: string, tempDir: string, startedAt = 100): BaselineSnapshot =>
   makeBaselineSnapshot({ folderPath, tempDir, startedAt })
 
-// 記録を取る偽物。release で結果を返し、isCanceled・写しの元を控える。now は 500 を返す
-function setup(): {
+// 記録を取る偽物。release で結果を返し、isCanceled・写しの元を控える。now は 500 を返す。保護の git は偽物
+function setup(
+  options: {
+    isProcessAlive?: (pid: number) => boolean
+    executeUndo?: AgentBaselineRegistryDeps['executeUndo']
+  } = {}
+): {
   registry: AgentBaselineRegistry
   takeSnapshot: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['takeSnapshot']>>
   removeDir: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['removeDir']>>
@@ -24,6 +38,10 @@ function setup(): {
   canceled: () => boolean
   /** 記録の依頼ごとの写しの元(累積の始点は undefined) */
   baseIndexPaths: () => (string | undefined)[]
+  /** 保護の git の偽物 */
+  protection: FakeProtectionGit
+  /** 書き戻しの偽物(既定は控えの全項目を書き戻した done) */
+  executeUndo: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['executeUndo']>>
 } {
   const resolvers: ((result: BaselineSnapshotResult) => void)[] = []
   const baseIndexPaths: (string | undefined)[] = []
@@ -38,11 +56,26 @@ function setup(): {
   )
   const removeDir = vi.fn<AgentBaselineRegistryDeps['removeDir']>(async () => undefined)
   const removeDirSync = vi.fn<AgentBaselineRegistryDeps['removeDirSync']>()
+  const protection = createFakeProtectionGit()
+  // ファイルの書き戻しは executeAgentChangesUndo のテストで見るため、registry のテストでは結果だけを返す偽物にする
+  const executeUndo = vi.fn<AgentBaselineRegistryDeps['executeUndo']>(
+    options.executeUndo ??
+      (async (_folderPath, undo) => ({
+        kind: 'done',
+        restoredPaths: undo.items.map((item) => item.path),
+        trashedPaths: []
+      }))
+  )
   const registry = new AgentBaselineRegistry({
     takeSnapshot,
     removeDir,
     removeDirSync,
-    now: () => 500
+    now: () => 500,
+    executeUndo,
+    protection: {
+      ...makeFakeProtectionDeps(protection),
+      ...(options.isProcessAlive ? { isProcessAlive: options.isProcessAlive } : {})
+    }
   })
   return {
     registry,
@@ -51,7 +84,9 @@ function setup(): {
     removeDirSync,
     release: (result, index = resolvers.length - 1) => resolvers[index](result),
     canceled: () => isCanceled(),
-    baseIndexPaths: () => [...baseIndexPaths]
+    baseIndexPaths: () => [...baseIndexPaths],
+    protection,
+    executeUndo
   }
 }
 
@@ -83,8 +118,13 @@ describe('AgentBaselineRegistry', () => {
     const s = setup()
     const begun = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/a', 42))
-    await expect(begun).resolves.toEqual({ kind: 'recording', startedAt: 42, runs: [] })
-    expect(s.registry.getState(1, '/repo')).toEqual({ kind: 'recording', startedAt: 42, runs: [] })
+    await expect(begun).resolves.toEqual({ kind: 'recording', startedAt: 42, runs: [], undo: null })
+    expect(s.registry.getState(1, '/repo')).toEqual({
+      kind: 'recording',
+      startedAt: 42,
+      runs: [],
+      undo: null
+    })
     expect(s.registry.getState(2, '/repo')).toEqual({ kind: 'none' })
     await expect(s.registry.withRecord(2, '/repo', async () => 'used')).resolves.toBeNull()
   })
@@ -95,7 +135,8 @@ describe('AgentBaselineRegistry', () => {
     await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: []
+      runs: [],
+      undo: null
     })
     expect(s.takeSnapshot).not.toHaveBeenCalled()
   })
@@ -106,8 +147,8 @@ describe('AgentBaselineRegistry', () => {
     const second = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/a'))
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { kind: 'recording', startedAt: 100, runs: [] },
-      { kind: 'recording', startedAt: 100, runs: [] }
+      { kind: 'recording', startedAt: 100, runs: [], undo: null },
+      { kind: 'recording', startedAt: 100, runs: [], undo: null }
     ])
     expect(s.takeSnapshot).toHaveBeenCalledOnce()
   })
@@ -140,7 +181,12 @@ describe('AgentBaselineRegistry', () => {
     s.release({ kind: 'canceled' }, 0)
     s.release(recorded('/repo', '/tmp/b'), 1)
     await expect(old).resolves.toEqual({ kind: 'none' })
-    await expect(fresh).resolves.toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    await expect(fresh).resolves.toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
   })
 
   it('別のフォルダの記録の途中の依頼にはまとめない', async () => {
@@ -216,13 +262,23 @@ describe('AgentBaselineRegistry', () => {
     await vi.waitFor(() => expect(started).toBe(true))
     const cleared = s.registry.clear(1)
     await recordFor(s, 1, '/b', '/tmp/B')
-    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    expect(s.registry.getState(1, '/b')).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
     releaseSlow()
     await expect(slow).resolves.toBe('slow')
     await expect(queuedOld).resolves.toBeNull()
     await cleared
     expect(oldTask).not.toHaveBeenCalled()
-    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    expect(s.registry.getState(1, '/b')).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
     expect(s.removeDir.mock.calls).toEqual([['/tmp/A']])
     await expect(
       s.registry.withRecord(1, '/b', async (record) => record.baseline.tempDir)
@@ -236,7 +292,12 @@ describe('AgentBaselineRegistry', () => {
     await expect(s.registry.withRecord(1, '/a', task)).resolves.toBeNull()
     expect(task).not.toHaveBeenCalled()
     expect(s.removeDir).not.toHaveBeenCalled()
-    expect(s.registry.getState(1, '/b')).toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    expect(s.registry.getState(1, '/b')).toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
   })
 
   it('失敗した操作の後も列は進む', async () => {
@@ -305,13 +366,19 @@ describe('AgentBaselineRegistry', () => {
       await Promise.resolve()
     }
     await expect(old).resolves.toEqual({ kind: 'none' })
-    await expect(fresh).resolves.toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    await expect(fresh).resolves.toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
     expect(s.removeDir).toHaveBeenCalledWith('/tmp/a')
     expect(s.removeDir).not.toHaveBeenCalledWith('/tmp/b')
     expect(s.registry.getState(1, '/other')).toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: []
+      runs: [],
+      undo: null
     })
     expect(s.registry.getState(1, '/repo')).toEqual({ kind: 'none' })
   })
@@ -348,7 +415,12 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
 
   it('記録が無い send は累積の始点を取り、それを開始とする実行 1 を足す', async () => {
     const s = setup()
-    const expected = { kind: 'recording', startedAt: 100, runs: [runOf(1, 1, 100, null)] }
+    const expected = {
+      kind: 'recording',
+      startedAt: 100,
+      runs: [runOf(1, 1, 100, null)],
+      undo: null
+    }
     await expect(send(s, recorded('/repo', '/tmp/base', 100))).resolves.toEqual(expected)
     expect(s.baseIndexPaths()).toEqual([undefined])
     expect(s.registry.getState(1, '/repo')).toEqual(expected)
@@ -360,7 +432,8 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: []
+      runs: [],
+      undo: null
     })
     expect(s.takeSnapshot).not.toHaveBeenCalled()
   })
@@ -371,7 +444,8 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await expect(send(s, recorded('/repo', '/tmp/r2', 200))).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)]
+      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)],
+      undo: null
     })
     await send(s, recorded('/repo', '/tmp/r3', 300))
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index', '/tmp/r2/index'])
@@ -391,7 +465,8 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await expect(send(s, recorded('/repo', '/tmp/r1', 200))).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: [runOf(1, 1, 200, null)]
+      runs: [runOf(1, 1, 200, null)],
+      undo: null
     })
   })
 
@@ -404,7 +479,8 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
       runs: [
         runOf(1, 1, 100, 500, { kind: 'end-not-recorded' }),
         runOf(2, 2, 500, null, { kind: 'start-not-recorded', reason: 'too-many-untracked' })
-      ]
+      ],
+      undo: null
     })
     await send(s, recorded('/repo', '/tmp/r3', 600))
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index', '/tmp/base/index'])
@@ -428,12 +504,14 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await expect(first).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: [runOf(1, 1, 100, null)]
+      runs: [runOf(1, 1, 100, null)],
+      undo: null
     })
     await expect(second).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)]
+      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)],
+      undo: null
     })
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index'])
   })
@@ -445,11 +523,17 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     s.release(recorded('/repo', '/tmp/base', 100), 0)
     await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalledTimes(2))
     s.release(recorded('/repo', '/tmp/r1', 200), 1)
-    await expect(first).resolves.toEqual({ kind: 'recording', startedAt: 100, runs: [] })
+    await expect(first).resolves.toEqual({
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: null
+    })
     await expect(second).resolves.toEqual({
       kind: 'recording',
       startedAt: 100,
-      runs: [runOf(1, 1, 200, null)]
+      runs: [runOf(1, 1, 200, null)],
+      undo: null
     })
   })
 
@@ -468,7 +552,12 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     const first = s.registry.begin(1, '/repo', 'send')
     const second = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/base', 100), 0)
-    const expected = { kind: 'recording', startedAt: 100, runs: [runOf(1, 1, 100, null)] }
+    const expected = {
+      kind: 'recording',
+      startedAt: 100,
+      runs: [runOf(1, 1, 100, null)],
+      undo: null
+    }
     await expect(first).resolves.toEqual(expected)
     await expect(second).resolves.toEqual(expected)
     expect(s.takeSnapshot).toHaveBeenCalledOnce()
@@ -573,7 +662,8 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await expect(send(s, recorded('/repo', '/tmp/base2', 300))).resolves.toEqual({
       kind: 'recording',
       startedAt: 300,
-      runs: [runOf(3, 1, 300, null)]
+      runs: [runOf(3, 1, 300, null)],
+      undo: null
     })
   })
 
@@ -587,5 +677,582 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
         starts: record.runs.map((run) => run.start.kind)
       }))
     ).resolves.toEqual({ base: '/tmp/base', starts: ['baseline', 'snapshot'] })
+  })
+})
+
+const TB = 'b'.repeat(40)
+const TR = 'c'.repeat(40)
+const REF1 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/1`
+const recordedTree = (
+  folderPath: string,
+  tempDir: string,
+  tree: string
+): BaselineSnapshotResult => ({
+  kind: 'recorded',
+  snapshot: makeBaselineSnapshot({ folderPath, tempDir, startedAt: 100, tree })
+})
+
+// begin(send) を記録まで進め、保護の同期が終わるのを待つ
+async function sendFor(
+  s: ReturnType<typeof setup>,
+  ownerId: number,
+  tree: string,
+  tempDir: string
+): Promise<void> {
+  const begun = s.registry.begin(ownerId, '/repo', 'send')
+  await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalled())
+  s.release(recordedTree('/repo', tempDir, tree))
+  await begun
+  s.takeSnapshot.mockClear()
+}
+
+describe('AgentBaselineRegistry の保護の ref', () => {
+  it('累積の始点を取ると ref を作る。begin は作成を待たない', async () => {
+    const s = setup()
+    const release = s.protection.holdNext('create')
+    await sendFor(s, 1, TB, '/tmp/a')
+    expect(s.protection.refs.size).toBe(0)
+    release()
+    await vi.waitFor(() => expect(s.protection.refs.get(REF1)).toBe(`tree(baseline=${TB})`))
+    expect(s.protection.calls).toEqual(['filter', 'mktree', 'sweep', `create ${REF1}`])
+  })
+
+  it('実行を足すと区切りの tree を足した値に更新し、10 件を超えて外した実行の項目を除く', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    const added = s.registry.begin(1, '/repo', 'send')
+    await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalled())
+    s.release(recordedTree('/repo', '/tmp/r2', TR))
+    await added
+    await vi.waitFor(() =>
+      expect(s.protection.refs.get(REF1)).toBe(`tree(baseline=${TB},run-2=${TR})`)
+    )
+    // 実行 3〜11 を足すと実行 1・2 が外れる(区切りの tree は一意に)
+    for (let n = 3; n <= 12; n++) {
+      s.takeSnapshot.mockClear()
+      const next = s.registry.begin(1, '/repo', 'send')
+      await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalled())
+      s.release(recordedTree('/repo', `/tmp/r${n}`, n.toString(16).padStart(40, '0')))
+      await next
+    }
+    await vi.waitFor(() => expect(s.protection.refs.get(REF1)).not.toContain(`run-2=`))
+    expect(s.protection.refs.get(REF1)).toContain(`baseline=${TB}`)
+    expect(s.protection.refs.get(REF1)).toContain('run-12=')
+  })
+
+  it('あるべき値が前に書けた値と同じなら update-ref を呼ばない(区切りを取れなかった実行)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.calls.length = 0
+    const added = s.registry.begin(1, '/repo', 'send')
+    await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalled())
+    s.release({ kind: 'unavailable', state: { kind: 'unavailable', reason: 'timeout' } })
+    await added
+    await vi.waitFor(() => expect(s.protection.calls).toEqual(['filter', 'mktree']))
+  })
+
+  it('clear で ref を消してから一時ディレクトリを消す', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    // 一時ディレクトリを消す時点で ref が残っているかを控える(順序の検査)
+    const refsAtRemoveDir: number[] = []
+    s.removeDir.mockImplementation(async () => {
+      refsAtRemoveDir.push(s.protection.refs.size)
+    })
+    await s.registry.clear(1)
+    expect(s.protection.refs.size).toBe(0)
+    expect(s.protection.calls.at(-1)).toBe(`remove ${REF1}`)
+    expect(s.removeDir).toHaveBeenCalledWith('/tmp/a')
+    expect(refsAtRemoveDir).toEqual([0])
+  })
+
+  it('掃除は作る前の 1 回だけで、更新・削除では掃除しない。捨てた記録の削除は tree を作らない', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.calls.length = 0
+    const added = s.registry.begin(1, '/repo', 'send')
+    await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalled())
+    s.release(recordedTree('/repo', '/tmp/r2', TR))
+    await added
+    await vi.waitFor(() =>
+      expect(s.protection.calls).toEqual(['filter', 'mktree', `update ${REF1}`])
+    )
+    s.protection.calls.length = 0
+    await s.registry.clear(1)
+    expect(s.protection.calls).toEqual([`remove ${REF1}`])
+  })
+
+  it('作成の実行中に clear しても、作成の成功の後に後ろの同期で消える', async () => {
+    const s = setup()
+    const release = s.protection.holdNext('create')
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`create ${REF1}`))
+    const cleared = s.registry.clear(1)
+    release()
+    await cleared
+    expect(s.protection.refs.size).toBe(0)
+  })
+
+  it('失敗の後の読み直しがあるべき値なら成功として扱う', async () => {
+    const s = setup()
+    s.protection.failNext.add('create')
+    s.protection.refs.set(REF1, `tree(baseline=${TB})`)
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`read ${REF1}`))
+    // 成功として扱ったので、clear で消す(protectedRecords に入っている)
+    await s.registry.clear(1)
+    expect(s.protection.refs.size).toBe(0)
+  })
+
+  it('削除の失敗の後の読み直しで ref が無ければ成功として扱い、protectedRecords から外す(close で消そうとしない)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    // 別の経路で先に消えていた(削除の compare-and-swap は失敗する)
+    s.protection.refs.delete(REF1)
+    await s.registry.clear(1)
+    expect(s.protection.calls).toContain(`read ${REF1}`)
+    // 成功として扱った(保護をやめた扱いではない)ので、後の掃除の残す番号に 1 は入らない
+    await sendFor(s, 2, TR, '/tmp/b')
+    await vi.waitFor(() => expect(s.protection.sweptKeeps).toHaveLength(2))
+    expect(s.protection.sweptKeeps[1]).toEqual([2])
+    s.registry.close()
+    expect(s.protection.calls).not.toContain(`removeSync ${REF1}`)
+  })
+
+  it('失敗の後の読み直しが前の値なら次の同期で試し直す', async () => {
+    const s = setup()
+    s.protection.failNext.add('create')
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`read ${REF1}`))
+    expect(s.protection.refs.size).toBe(0)
+    await sendFor(s, 1, TR, '/tmp/r2')
+    await vi.waitFor(() =>
+      expect(s.protection.refs.get(REF1)).toBe(`tree(baseline=${TB},run-2=${TR})`)
+    )
+  })
+
+  it('読み直しが前の値でもあるべき値でもない(利用者が消した・書き換えた)なら保護をやめ、以後は作り直さず消さない', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.refs.set(REF1, 'user-value')
+    await sendFor(s, 1, TR, '/tmp/r2')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`read ${REF1}`))
+    s.protection.calls.length = 0
+    await sendFor(s, 1, 'e'.repeat(40), '/tmp/r3')
+    await s.registry.clear(1)
+    s.registry.close()
+    expect(s.protection.refs.get(REF1)).toBe('user-value')
+    expect(s.protection.calls).toEqual([])
+  })
+
+  it('読み直し自体が失敗したら何も変えずに次で試し直す(保護をやめない・空を「無い」と読まない)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.failNext.add('update')
+    s.protection.failNext.add('read')
+    await sendFor(s, 1, TR, '/tmp/r2')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`read ${REF1}`))
+    expect(s.protection.refs.get(REF1)).toBe(`tree(baseline=${TB})`)
+    await sendFor(s, 1, 'e'.repeat(40), '/tmp/r3')
+    await vi.waitFor(() => expect(s.protection.refs.get(REF1)).toContain('run-3='))
+  })
+
+  it('無い項目を除いて作り、1 つも無ければ作らない(保護はやめない。後の clear で前の ref を消す)', async () => {
+    const s = setup()
+    s.protection.missingTrees.add(TB)
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.calls).toEqual(['filter']))
+    expect(s.protection.refs.size).toBe(0)
+    await sendFor(s, 1, TR, '/tmp/r2')
+    await vi.waitFor(() => expect(s.protection.refs.get(REF1)).toBe(`tree(run-2=${TR})`))
+    s.protection.missingTrees.add(TR)
+    await sendFor(s, 1, TB, '/tmp/r3')
+    // 項目が 1 つも無い同期は ref を変えない(同期が filter で止まるのを待ってから見る)
+    await vi.waitFor(() => expect(s.protection.calls.at(-1)).toBe('filter'))
+    expect(s.protection.refs.get(REF1)).toBe(`tree(run-2=${TR})`)
+    await s.registry.clear(1)
+    expect(s.protection.refs.size).toBe(0)
+  })
+
+  it.each(['filter', 'mktree'] as const)(
+    '%s の失敗では何も変えずに次の同期で試し直す',
+    async (op) => {
+      const s = setup()
+      s.protection.failNext.add(op)
+      await sendFor(s, 1, TB, '/tmp/a')
+      await vi.waitFor(() => expect(s.protection.calls).toContain(op))
+      expect(s.protection.refs.size).toBe(0)
+      await sendFor(s, 1, TR, '/tmp/r2')
+      await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    }
+  )
+
+  it('close は ref を同期で消し、1 つが失敗しても残りを試す', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await sendFor(s, 2, TR, '/tmp/b')
+    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/2`
+    await vi.waitFor(() => expect(s.protection.refs.size).toBe(2))
+    s.protection.failNext.add('removeSync')
+    s.registry.close()
+    expect(s.protection.calls.filter((call) => call.startsWith('removeSync'))).toEqual([
+      `removeSync ${REF1}`,
+      `removeSync ${ref2}`
+    ])
+    expect([...s.protection.refs.keys()]).toEqual([REF1])
+    expect(s.removeDirSync).toHaveBeenCalledWith('/tmp/a')
+  })
+
+  it('作成が close の後に成功したら、その場で新しい値の ref を同期で消す', async () => {
+    const s = setup()
+    const release = s.protection.holdNext('create')
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`create ${REF1}`))
+    s.registry.close()
+    release()
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`removeSync ${REF1}`))
+    expect(s.protection.refs.size).toBe(0)
+  })
+
+  it('終了中に走っていた同期は ref を作らない(終了の後に書き込みへ進まない)', async () => {
+    const s = setup()
+    const release = s.protection.holdNext('filter')
+    await sendFor(s, 1, TB, '/tmp/a')
+    s.registry.close()
+    release()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(s.protection.calls).toEqual(['filter', 'mktree'])
+    expect(s.protection.refs.size).toBe(0)
+  })
+
+  it('掃除の残す番号は、すべての所有者の今の記録・削除を待つ記録の番号(一覧の後に作る)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    // 所有者 1 の記録の削除を待たせる(削除待ち)
+    const releaseRemove = s.protection.holdNext('remove')
+    const cleared = s.registry.clear(1)
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`remove ${REF1}`))
+    // 所有者 2 の掃除の一覧の取得を待たせ、その間に所有者 3 の記録の作成を終わらせる
+    const releaseSweep = s.protection.holdNext('sweep')
+    await sendFor(s, 2, TR, '/tmp/b')
+    await vi.waitFor(() => expect(s.protection.calls.filter((c) => c === 'sweep')).toHaveLength(2))
+    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/3`
+    await sendFor(s, 3, 'e'.repeat(40), '/tmp/c')
+    await vi.waitFor(() => expect(s.protection.refs.has(ref3)).toBe(true))
+    // 所有者 1 の最初の掃除と、待たずに終わった所有者 3 の掃除
+    expect(s.protection.sweptKeeps).toEqual([[1], [1, 2, 3]])
+    releaseSweep()
+    await vi.waitFor(() => expect(s.protection.sweptKeeps).toHaveLength(3))
+    // 所有者 2 の掃除の残す番号: 削除待ちの 1・自分の 2・一覧の取得中に作られた 3
+    expect(s.protection.sweptKeeps[2]).toEqual([1, 2, 3])
+    releaseRemove()
+    await cleared
+  })
+
+  it('保護をやめた記録の番号は、掃除の残す番号に入る(利用者が書き換えた ref を消さない)', async () => {
+    const s = setup()
+    await sendFor(s, 1, TB, '/tmp/a')
+    await vi.waitFor(() => expect(s.protection.refs.has(REF1)).toBe(true))
+    s.protection.refs.set(REF1, 'user-value')
+    await sendFor(s, 1, TR, '/tmp/r2')
+    await vi.waitFor(() => expect(s.protection.calls).toContain(`read ${REF1}`))
+    await s.registry.clear(1)
+    await sendFor(s, 2, TB, '/tmp/b')
+    await vi.waitFor(() => expect(s.protection.sweptKeeps).toHaveLength(2))
+    expect(s.protection.sweptKeeps[1]).toEqual([1, 2])
+  })
+})
+
+describe('AgentBaselineRegistry の取り消しの控え', () => {
+  // registry は控えのファイルを読み書きしない(一時ディレクトリの削除は偽物の removeDir)ため、フォルダは実在しなくてよい
+  const folder = '/repo'
+  let nextUndoDir = 0
+
+  // 戻す操作で取れた控え(path を書き戻す 1 項目)。控えを取るファイルの扱いは agentChangesUndo のテストで見るため、
+  // registry のテストでは控えの値だけを作る。一時ディレクトリは呼ぶごとに別のパスにする
+  const savedCaptureOf = (path: string): Extract<AgentChangesUndoCapture, { kind: 'saved' }> => ({
+    kind: 'saved',
+    dir: `/tmp/agent-registry-undo-${++nextUndoDir}`,
+    items: [
+      {
+        path,
+        before: { kind: 'file', savedName: '0', mode: 0o644 },
+        after: { kind: 'file', size: 4, sha256: 'a'.repeat(64), mode: 0o644 }
+      }
+    ]
+  })
+  // 列の中で commitRevertUndo を呼ぶ(handler と同じ)。記録が無くて呼べなかったら例外(commitRevertUndo の null と区別する)
+  async function commit(
+    s: ReturnType<typeof setup>,
+    capture: AgentChangesUndoCapture,
+    operation: AgentChangesUndoOperation = 'file'
+  ): Promise<AgentChangesUndoSummary | null> {
+    let called = false
+    const result = await s.registry.withRecord(1, folder, (record) => {
+      called = true
+      return s.registry.commitRevertUndo(1, record, { operation, capture, applied: 1 })
+    })
+    if (!called || result === null) throw new Error('記録が無い')
+    return result.undoSummary
+  }
+  const undoOfRecord = (s: ReturnType<typeof setup>): Promise<unknown> =>
+    s.registry.withRecord(1, folder, async (record) => record.undo)
+
+  it('取れた控えは undoId 1 の要約を返し、記録に持つ', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const capture = savedCaptureOf('a.txt')
+    await expect(commit(s, capture)).resolves.toEqual({
+      undoId: 1,
+      operation: 'file',
+      entries: [{ path: 'a.txt', action: 'rewrite' }]
+    })
+    await expect(undoOfRecord(s)).resolves.toMatchObject({
+      undoId: 1,
+      operation: 'file',
+      dir: capture.dir
+    })
+  })
+
+  it('控えがあれば getState・begin(manual) の recording に要約を入れる', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    await commit(s, savedCaptureOf('a.txt'))
+    const expected = {
+      kind: 'recording',
+      startedAt: 100,
+      runs: [],
+      undo: { undoId: 1, operation: 'file', entries: [{ path: 'a.txt', action: 'rewrite' }] }
+    }
+    expect(s.registry.getState(1, folder)).toEqual(expected)
+    await expect(s.registry.begin(1, folder, 'manual')).resolves.toEqual(expected)
+  })
+
+  it('次の取れた控えは undoId 2 になり、前の控えの一時ディレクトリを消す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const first = savedCaptureOf('a.txt')
+    await commit(s, first)
+    expect(s.removeDir).not.toHaveBeenCalledWith(first.dir)
+    const second = savedCaptureOf('b.txt')
+    await expect(commit(s, second, 'hunk')).resolves.toMatchObject({
+      undoId: 2,
+      operation: 'hunk'
+    })
+    expect(s.removeDir).toHaveBeenCalledWith(first.dir)
+    expect(s.removeDir).not.toHaveBeenCalledWith(second.dir)
+  })
+
+  it('取れなかった控えは null を返し、記録の控えを null にして前の一時ディレクトリを消す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const first = savedCaptureOf('a.txt')
+    await commit(s, first)
+    await expect(commit(s, { kind: 'unavailable', reason: 'too-large' })).resolves.toBeNull()
+    await expect(undoOfRecord(s)).resolves.toBeNull()
+    expect(s.removeDir).toHaveBeenCalledWith(first.dir)
+  })
+
+  it('undoId は clear の後の新しい記録でも重ならない(L-037)', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    await expect(commit(s, savedCaptureOf('a.txt'))).resolves.toMatchObject({
+      undoId: 1
+    })
+    await s.registry.clear(1)
+    await recordFor(s, 1, folder, '/tmp/b')
+    await expect(commit(s, savedCaptureOf('a.txt'))).resolves.toMatchObject({
+      undoId: 2
+    })
+  })
+
+  it('戻す操作の途中に clear されたら、新しい控えを記録に付けずに消して discarded・null の要約を返す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const capture = savedCaptureOf('a.txt')
+    let cleared: Promise<void> = Promise.resolve()
+    const result = await s.registry.withRecord(1, folder, (record) => {
+      cleared = s.registry.clear(1)
+      return s.registry.commitRevertUndo(1, record, { operation: 'file', capture, applied: 1 })
+    })
+    expect(result).toEqual({ undo: { kind: 'discarded' }, undoSummary: null })
+    expect(s.removeDir).toHaveBeenCalledWith(capture.dir)
+    await cleared
+    // 捨てた記録の一時ディレクトリの削除にも控えは入らない(付けていない)
+    expect(s.removeDir.mock.calls.filter(([dir]) => dir === capture.dir)).toHaveLength(1)
+  })
+
+  it('close の後の commitRevertUndo は、新しい控えを同期で消して discarded・null の要約を返す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const capture = savedCaptureOf('a.txt')
+    const result = await s.registry.withRecord(1, folder, (record) => {
+      s.registry.close()
+      return s.registry.commitRevertUndo(1, record, { operation: 'file', capture, applied: 1 })
+    })
+    expect(result).toEqual({ undo: { kind: 'discarded' }, undoSummary: null })
+    expect(s.removeDirSync).toHaveBeenCalledWith(capture.dir)
+    expect(s.removeDir).not.toHaveBeenCalledWith(capture.dir)
+  })
+
+  it('clear は控えの一時ディレクトリも消し、close は同期で消す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const first = savedCaptureOf('a.txt')
+    await commit(s, first)
+    await s.registry.clear(1)
+    expect(s.removeDir).toHaveBeenCalledWith(first.dir)
+    await recordFor(s, 1, folder, '/tmp/b')
+    const second = savedCaptureOf('a.txt')
+    await commit(s, second)
+    s.registry.close()
+    expect(s.removeDirSync).toHaveBeenCalledWith(second.dir)
+  })
+
+  it('undoLastRevert は書き戻しの done を結果にし、控えを捨てて一時ディレクトリを消す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const capture = savedCaptureOf('a.txt')
+    await commit(s, capture)
+    await expect(s.registry.undoLastRevert(1, folder, 1)).resolves.toEqual({
+      status: 'done',
+      restoredPaths: ['a.txt'],
+      trashedPaths: [],
+      undoSummary: null
+    })
+    await expect(undoOfRecord(s)).resolves.toBeNull()
+    expect(s.removeDir).toHaveBeenCalledWith(capture.dir)
+  })
+
+  it('同じ undoId の 2 回目は失敗する(L-101)', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    await commit(s, savedCaptureOf('a.txt'))
+    await s.registry.undoLastRevert(1, folder, 1)
+    await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow(
+      '取り消せる操作が変わりました。一覧を更新してください'
+    )
+  })
+
+  it('undoId が違えば何も変えずに失敗し、控えは残る(L-035)', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const capture = savedCaptureOf('a.txt')
+    await commit(s, capture)
+    await expect(s.registry.undoLastRevert(1, folder, 2)).rejects.toThrow(
+      '取り消せる操作が変わりました。一覧を更新してください'
+    )
+    expect(s.executeUndo).not.toHaveBeenCalled()
+    await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1 })
+    expect(s.removeDir).not.toHaveBeenCalledWith(capture.dir)
+  })
+
+  it('記録が無ければ(別のフォルダ) null', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    await commit(s, savedCaptureOf('a.txt'))
+    await expect(s.registry.undoLastRevert(1, '/other', 1)).resolves.toBeNull()
+  })
+
+  it('適用が 0 件なら前の控えを残してその要約を返し、新しい控えの一時ディレクトリは消す', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    const first = savedCaptureOf('a.txt')
+    await commit(s, first)
+    const unused = savedCaptureOf('b.txt')
+    const result = await s.registry.withRecord(1, folder, (record) =>
+      s.registry.commitRevertUndo(1, record, { operation: 'all', capture: unused, applied: 0 })
+    )
+    expect(result?.undoSummary).toEqual({
+      undoId: 1,
+      operation: 'file',
+      entries: [{ path: 'a.txt', action: 'rewrite' }]
+    })
+    await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1, dir: first.dir })
+    expect(s.removeDir).not.toHaveBeenCalledWith(first.dir)
+    expect(s.removeDir).toHaveBeenCalledWith(unused.dir)
+  })
+
+  it('適用が 0 件で控えが取れていなければ、前の控えを残す(capture-failed で前の控えを捨てない)', async () => {
+    const s = setup()
+    await recordFor(s, 1, folder, '/tmp/a')
+    await commit(s, savedCaptureOf('a.txt'))
+    const result = await s.registry.withRecord(1, folder, (record) =>
+      s.registry.commitRevertUndo(1, record, {
+        operation: 'all',
+        capture: { kind: 'unavailable', reason: 'capture-failed' },
+        applied: 0
+      })
+    )
+    expect(result?.undoSummary).toMatchObject({ undoId: 1 })
+    await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1 })
+  })
+
+  // 書き戻しを差し替えて、結果ごとの控えの扱い(registry の規則)だけを見る
+  describe('書き戻しの結果ごとの控えの扱い', () => {
+    const undoWith = async (
+      execution: AgentChangesUndoExecution
+    ): Promise<{ s: ReturnType<typeof setup>; dir: string }> => {
+      const s = setup({ executeUndo: async () => execution })
+      await recordFor(s, 1, folder, '/tmp/a')
+      const capture = savedCaptureOf('a.txt')
+      await commit(s, capture)
+      return { s, dir: capture.dir }
+    }
+
+    it('記録のフォルダと今の控えを渡す', async () => {
+      const { s, dir } = await undoWith({
+        kind: 'done',
+        restoredPaths: ['a.txt'],
+        trashedPaths: []
+      })
+      await s.registry.undoLastRevert(1, folder, 1)
+      expect(s.executeUndo).toHaveBeenCalledWith(
+        folder,
+        expect.objectContaining({ undoId: 1, operation: 'file', dir })
+      )
+    })
+
+    it('何も書き換えずに控えを残す拒否なら、文言で失敗し、控えと一時ディレクトリを残す', async () => {
+      const { s, dir } = await undoWith({ kind: 'rejected', message: 'keep', keepUndo: true })
+      await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow('keep')
+      await expect(undoOfRecord(s)).resolves.toMatchObject({ undoId: 1 })
+      expect(s.removeDir).not.toHaveBeenCalledWith(dir)
+    })
+
+    it.each<AgentChangesUndoExecution>([
+      { kind: 'rejected', message: 'drop', keepUndo: false },
+      { kind: 'failed', message: 'drop' }
+    ])('$kind なら文言で失敗し、控えを捨てて一時ディレクトリを消す', async (execution) => {
+      const { s, dir } = await undoWith(execution)
+      await expect(s.registry.undoLastRevert(1, folder, 1)).rejects.toThrow('drop')
+      await expect(undoOfRecord(s)).resolves.toBeNull()
+      expect(s.removeDir).toHaveBeenCalledWith(dir)
+    })
+
+    it('partial なら結果を返し、控えを捨てて一時ディレクトリを消す', async () => {
+      const { s, dir } = await undoWith({
+        kind: 'partial',
+        message: 'p',
+        restoredPaths: ['a.txt'],
+        trashedPaths: []
+      })
+      await expect(s.registry.undoLastRevert(1, folder, 1)).resolves.toEqual({
+        status: 'partial',
+        message: 'p',
+        restoredPaths: ['a.txt'],
+        trashedPaths: [],
+        undoSummary: null
+      })
+      await expect(undoOfRecord(s)).resolves.toBeNull()
+      expect(s.removeDir).toHaveBeenCalledWith(dir)
+    })
   })
 })

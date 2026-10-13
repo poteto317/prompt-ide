@@ -21,11 +21,14 @@ import { toAnnouncementText } from '../../lib/announcementText'
 import { isEntrySavedInApp } from '../../lib/agentChangesPaths'
 import { getListedAgentChanges } from '../../lib/agentChangesScope'
 import {
+  agentChangesReasonTargets,
   buildAgentChangesSectionHeading,
   describeAgentChangesListUnavailable
 } from '../../lib/agentChangesSectionText'
+import type { AgentChangesReasonTarget } from '../../lib/agentChangesSectionText'
 import AgentChangesFileItem from './AgentChangesFileItem'
 import AgentChangesScopeSelect from './AgentChangesScopeSelect'
+import AgentChangesUndoBand from './AgentChangesUndoBand'
 
 /** セクションの props。Git 管理外かは SourceControlPanel が決め、それ以外は useAgentChangesWiring が組み立てる */
 export type AgentChangesSectionProps = AgentChangesPanelState & {
@@ -39,6 +42,7 @@ export default function AgentChangesSection({
   changes,
   focusRequest,
   revert,
+  undo,
   folderPath,
   isNotRepository,
   isAgentMode,
@@ -47,6 +51,7 @@ export default function AgentChangesSection({
   const headingId = useId()
   const bodyId = useId()
   const reasonId = useId()
+  const undoReasonId = useId()
   const [isOpen, setIsOpen] = useState(true)
   const openSection = useCallback((): void => setIsOpen(true), [])
   const { view } = changes
@@ -85,6 +90,16 @@ export default function AgentChangesSection({
   // (notRecorded)のいずれか。行の戻すボタンがこの要素を参照できるのは、agentRevertAllDisabledReason がファイル単位の
   // 理由を先に評価する(行が押せないときは必ず同じ文言になる)という評価の順序に依存している
   const shownReason = hasEntries ? revert.revertAllDisabledReason : null
+  // 戻す操作・取り消しの実行中(範囲の選択・確認を終えるを押せなくする)
+  const isWriting = revert.runningOperation !== null
+  // 範囲の選択・確認を終えるが結ぶ理由の要素と、帯が先に消えたときにセクションに取り消しの理由を出すか
+  const reasonTargets = agentChangesReasonTargets({
+    isWriting,
+    hasListReason: shownReason !== null,
+    hasUndoBand: recording !== null && recording.undo !== null
+  })
+  const reasonIdOf = (target: AgentChangesReasonTarget): string | null =>
+    target === 'list' ? reasonId : target === 'undo' ? undoReasonId : null
 
   return (
     <>
@@ -163,13 +178,30 @@ export default function AgentChangesSection({
                   startedAt={recording.startedAt}
                   runs={recording.runs}
                   scope={changes.scope}
-                  disabled={revert.isReverting}
-                  disabledReasonId={shownReason !== null ? reasonId : null}
+                  disabled={isWriting}
+                  disabledReasonId={reasonIdOf(reasonTargets.scopeSelect)}
                   onSelect={(next) => {
                     // 戻す操作の実行中は範囲を変えない(戻した結果の同期と取り直しが混ざる。L-039・L-058)
-                    if (!revert.isReverting) changes.selectScope(next)
+                    if (!isWriting) changes.selectScope(next)
                   }}
                 />
+              )}
+              {recording.undo !== null && (
+                <AgentChangesUndoBand
+                  summary={recording.undo}
+                  disabledReason={undo.undoDisabledReason}
+                  reasonId={undoReasonId}
+                  onUndo={() => {
+                    // 押すと帯が消える(取り消しの結果で写しの undo が null になる)。見出しへ戻す予約をする
+                    reserveFocusRestore()
+                    void undo.undoLastRevert()
+                  }}
+                />
+              )}
+              {reasonTargets.showSectionUndoReason && (
+                <p id={undoReasonId} className="agent-changes__note">
+                  {undo.undoDisabledReason}
+                </p>
               )}
               {changes.listError !== null && (
                 <p className="agent-changes__error" role="alert">
@@ -255,10 +287,8 @@ export default function AgentChangesSection({
                 <button
                   type="button"
                   className="agent-changes__button"
-                  disabled={revert.isReverting}
-                  aria-describedby={
-                    revert.isReverting && shownReason !== null ? reasonId : undefined
-                  }
+                  disabled={isWriting}
+                  aria-describedby={reasonIdOf(reasonTargets.clear) ?? undefined}
                   onClick={() => {
                     reserveFocusRestore()
                     void changes.clear()

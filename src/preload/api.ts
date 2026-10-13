@@ -8,7 +8,10 @@ import type {
   AgentNotificationDismissRequest,
   AgentNotificationShowRequest,
   AgentChangesState,
+  AgentChangesUndoResult,
   AgentRevertAllEntry,
+  AgentRevertAllResult,
+  AgentRevertResult,
   AgentLastSession,
   AgentSessionData,
   AgentSessionExit,
@@ -282,13 +285,19 @@ export const api = {
     ipcRenderer.invoke('agentChanges:list', scope),
   getAgentChangeDiff: (path: string, scope: AgentChangesScope): Promise<string> =>
     ipcRenderer.invoke('agentChanges:getDiff', path, scope),
-  revertAgentChange: (path: string, scope: AgentChangesScope): Promise<void> =>
+  revertAgentChange: (path: string, scope: AgentChangesScope): Promise<AgentRevertResult> =>
     ipcRenderer.invoke('agentChanges:revertFile', path, scope),
-  revertAgentChangeHunk: (path: string, patch: string, scope: AgentChangesScope): Promise<void> =>
+  revertAgentChangeHunk: (
+    path: string,
+    patch: string,
+    scope: AgentChangesScope
+  ): Promise<AgentRevertResult> =>
     ipcRenderer.invoke('agentChanges:revertHunk', path, patch, scope),
   revertAllAgentChanges: (
     expected: AgentRevertAllEntry[],
     scope: AgentChangesScope
-  ): Promise<DiscardAllResult> => ipcRenderer.invoke('agentChanges:revertAll', expected, scope),
+  ): Promise<AgentRevertAllResult> => ipcRenderer.invoke('agentChanges:revertAll', expected, scope),
+  undoAgentChangesRevert: (undoId: number): Promise<AgentChangesUndoResult> =>
+    ipcRenderer.invoke('agentChanges:undoRevert', undoId),
   clearAgentChanges: (): Promise<void> => ipcRenderer.invoke('agentChanges:clear')
 }

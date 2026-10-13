@@ -24,9 +24,15 @@ import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
   makeAgentChangesRecordingState,
-  makeAgentChangesRun
+  makeAgentChangesRun,
+  makeAgentChangesUndoResult,
+  makeAgentChangesUndoSummary,
+  makeAgentRevertResult
 } from '../../__tests__/makeAgentChangesState'
-import { AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE } from '../../lib/agentChangesMessages'
+import {
+  AGENT_CHANGES_BUSY_UNDOING,
+  AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
+} from '../../lib/agentChangesMessages'
 import { AUTO_REFRESH_MAX_WAIT_MS } from '../useAgentChangesAutoRefresh'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { ApplyOpenedFolderOptions } from '../useFileSystem'
@@ -434,6 +440,89 @@ describe('useAppState', () => {
         expect(result.current.agentChangesPanel.revert.revertAllDisabledReason).toBe(
           AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE
         )
+      })
+
+      // 本物の useAgentChanges・useAgentChangesWiring・useAgentChangesRevert・useAgentChangesUndo・useAgentChangesWriteRunner(L-060)
+      it('↶ で戻すと帯の控えが出て、取り消すと帯が消えて一覧に戻る。取り消しの実行中は戻す系が押せない(本物の hook どうし)', async () => {
+        // 既定の useFileSystem の偽物にはタブの操作が無いため、戻す・取り消しが使う操作を足す
+        mockUseFileSystem.mockReturnValue({
+          ...defaultUseFileSystem(),
+          folderPath: '/repo',
+          reloadOpenFile: vi.fn(async () => undefined),
+          closeTabsAtOrInside: vi.fn(),
+          hasDirtyTabAtOrInside: vi.fn(() => false),
+          refreshTree: vi.fn(async () => true),
+          reloadOpenFiles: vi.fn(async () => undefined),
+          confirmDiscardAnyDirty: vi.fn(() => true)
+        })
+        const entry = makeAgentChangeEntry('a.txt')
+        const summary = makeAgentChangesUndoSummary()
+        let listed = makeAgentChangesListResult([entry])
+        window.api.listAgentChanges = vi.fn(() => Promise.resolve(listed))
+        window.api.revertAgentChange = vi.fn(async () => {
+          listed = makeAgentChangesListResult([], { undo: summary })
+          return makeAgentRevertResult({ undoSummary: summary })
+        })
+        let finishUndo: () => void = () => undefined
+        window.api.undoAgentChangesRevert = vi.fn(
+          () =>
+            new Promise<ReturnType<typeof makeAgentChangesUndoResult>>((resolve) => {
+              finishUndo = () => {
+                listed = makeAgentChangesListResult([entry])
+                resolve(makeAgentChangesUndoResult())
+              }
+            })
+        )
+        const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+        try {
+          const { result } = renderHook(() => useAppState())
+          const beforeAgentSend = mockUseAgentWorkspace.mock.lastCall![0].beforeAgentSend!
+          await act(async () => {
+            await beforeAgentSend()
+          })
+          await waitFor(() =>
+            expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+              kind: 'recording',
+              list: { entries: [entry] }
+            })
+          )
+          await act(async () => {
+            await result.current.agentChangesPanel.revert.revertFile(entry)
+          })
+          // 戻した結果の控えが写しに入り、パネルの取り消しに渡る(undo の渡し忘れで落ちる)
+          await waitFor(() =>
+            expect(result.current.agentChangesPanel.changes.view).toMatchObject({ undo: summary })
+          )
+          let undoing: Promise<void> = Promise.resolve()
+          act(() => {
+            undoing = result.current.agentChangesPanel.undo.undoLastRevert()
+          })
+          await waitFor(() =>
+            expect(result.current.agentChangesPanel.revert.runningOperation).toBe('undo')
+          )
+          expect(window.api.undoAgentChangesRevert).toHaveBeenCalledWith(1)
+          expect(result.current.agentChangesPanel.revert.revertDisabledReason).toBe(
+            AGENT_CHANGES_BUSY_UNDOING
+          )
+          expect(result.current.agentChangesPanel.revert.revertAllDisabledReason).toBe(
+            AGENT_CHANGES_BUSY_UNDOING
+          )
+          expect(result.current.agentChangesPanel.undo.undoDisabledReason).toBe(
+            AGENT_CHANGES_BUSY_UNDOING
+          )
+          await act(async () => {
+            finishUndo()
+            await undoing
+          })
+          await waitFor(() =>
+            expect(result.current.agentChangesPanel.changes.view).toMatchObject({ undo: null })
+          )
+          expect(result.current.agentChangesPanel.changes.view).toMatchObject({
+            list: { entries: [entry] }
+          })
+        } finally {
+          confirmSpy.mockRestore()
+        }
       })
 
       it('送信の前の準備(beforeAgentSend)は記録を始めてから一覧を取る', async () => {

@@ -74,9 +74,17 @@ Object.defineProperty(window, 'api', {
     getAgentChangesState: () => Promise.resolve({ kind: 'none' }),
     listAgentChanges: () => Promise.resolve({ kind: 'none' }),
     getAgentChangeDiff: () => Promise.resolve(''),
-    revertAgentChange: () => Promise.resolve(),
-    revertAgentChangeHunk: () => Promise.resolve(),
-    revertAllAgentChanges: () => Promise.resolve({ status: 'done' }),
+    revertAgentChange: () => Promise.resolve({ undo: { kind: 'saved' }, undoSummary: null }),
+    revertAgentChangeHunk: () => Promise.resolve({ undo: { kind: 'saved' }, undoSummary: null }),
+    revertAllAgentChanges: () =>
+      Promise.resolve({
+        status: 'done',
+        revertedCount: 0,
+        undo: { kind: 'saved' },
+        undoSummary: null
+      }),
+    undoAgentChangesRevert: () =>
+      Promise.resolve({ status: 'done', restoredPaths: [], trashedPaths: [], undoSummary: null }),
     clearAgentChanges: () => Promise.resolve()
   }
 })

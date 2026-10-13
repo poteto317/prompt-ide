@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { tmpdir } from 'node:os'
 
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockSetupFolderAccessLifecycle = vi.hoisted(() => vi.fn())
@@ -43,6 +44,7 @@ const mockRegisterShellHandlers = vi.hoisted(() => vi.fn())
 const mockSendExternalChange = vi.hoisted(() => vi.fn())
 // 親ディレクトリの監視(fs.watch)。実物のディレクトリを監視しない
 const mockWatch = vi.hoisted(() => vi.fn(() => ({ close: vi.fn(), on: vi.fn() })))
+const mockMkdirSync = vi.hoisted(() => vi.fn())
 
 const mockSetupAgentBaselineLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterAgentChangesHandlers = vi.hoisted(() => vi.fn())
@@ -100,7 +102,12 @@ vi.mock('../handlers/externalChangeHandlers', () => ({
 // ipcHandlers は名前付きの import(watch)だが、組み込みのモジュールは default 経由で解決されるため両方を差し替える
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
-  return { ...actual, default: { ...actual, watch: mockWatch }, watch: mockWatch }
+  return {
+    ...actual,
+    default: { ...actual, watch: mockWatch, mkdirSync: mockMkdirSync },
+    watch: mockWatch,
+    mkdirSync: mockMkdirSync
+  }
 })
 vi.mock('../handlers/shellHandlers', () => ({
   registerShellHandlers: mockRegisterShellHandlers
@@ -141,6 +148,7 @@ import { isClaudeSessionId } from '@shared/types'
 import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
+import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
 
 const mockIpcMain = { handle: mockHandle } as never
@@ -252,7 +260,7 @@ describe('registerIpcHandlers', () => {
     })
   })
 
-  it('エージェントの変更の記録の寿命と IPC に、ファイル操作と同じ FolderAccessManager・同じ記録の registry・ゴミ箱を渡す', () => {
+  it('エージェントの変更の記録の寿命と IPC に、ファイル操作と同じ FolderAccessManager・同じ記録の registry・ゴミ箱・取り消しの控えの置き場所と上限を渡し、userData の下に hook の無いディレクトリを用意する', () => {
     registerIpcHandlers(mockIpcMain)
     const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1]
     const [, registry, lifecycleFolderAccess] = mockSetupAgentBaselineLifecycle.mock.calls[0]
@@ -263,6 +271,13 @@ describe('registerIpcHandlers', () => {
     expect(deps.registry).toBe(registry)
     expect(deps.folderAccess).toBe(folderAccess)
     expect(deps.trash).toBe(mockMoveToTrash)
+    // 戻す操作の取り消しの控えは OS の一時ディレクトリに、上限は記録の未追跡のファイルの合計の上限と同じ値で取る
+    expect(deps.undoCapture).toEqual({ tempRoot: tmpdir(), maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES })
+    // 記録の tree を守る ref の hook の無いディレクトリを userData の下に 0700 で用意する
+    expect(mockMkdirSync).toHaveBeenCalledWith('/mock/userData/agent-changes-no-hooks', {
+      recursive: true,
+      mode: 0o700
+    })
   })
 
   it('エージェントの起動の規則(starter)を、同じ FolderAccessManager・同じ registry・実物の起動の部品で組み立てる', () => {

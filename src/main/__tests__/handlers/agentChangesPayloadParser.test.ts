@@ -6,6 +6,7 @@ import {
   parseAgentChangePath,
   parseAgentChangesBeginTrigger,
   parseAgentChangesScope,
+  parseAgentChangesUndoId,
   parseAgentRevertAllEntries,
   parseRevertScope
 } from '../../handlers/agentChangesPayloadParser'
@@ -139,4 +140,19 @@ describe('parseRevertScope', () => {
   it('形が不正なら範囲の検証の文言で投げる', () => {
     expect(() => parseRevertScope(undefined)).toThrow('範囲(scope)が不正です')
   })
+})
+
+describe('parseAgentChangesUndoId', () => {
+  it('1 以上の安全な整数をそのまま返す', () => {
+    expect(parseAgentChangesUndoId(1)).toBe(1)
+    expect(parseAgentChangesUndoId(Number.MAX_SAFE_INTEGER)).toBe(Number.MAX_SAFE_INTEGER)
+  })
+  it.each([undefined, null, 0, -1, 1.5, '1', Number.NaN, 2 ** 53, Infinity])(
+    '%s は例外(省略を既定に流さない。L-044)',
+    (value) => {
+      expect(() => parseAgentChangesUndoId(value)).toThrow(
+        'undoId は 1 以上の整数である必要があります'
+      )
+    }
+  )
 })

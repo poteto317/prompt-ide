@@ -6,7 +6,10 @@ import type {
   AgentChangesListResult,
   AgentChangesScope,
   AgentChangesState,
+  AgentChangesUndoResult,
   AgentRevertAllEntry,
+  AgentRevertAllResult,
+  AgentRevertResult,
   AgentLastSession,
   AgentSessionData,
   AgentSessionExit,
@@ -155,12 +158,17 @@ declare global {
       getAgentChangesState(): Promise<AgentChangesState>
       listAgentChanges(scope: AgentChangesScope): Promise<AgentChangesListResult>
       getAgentChangeDiff(path: string, scope: AgentChangesScope): Promise<string>
-      revertAgentChange(path: string, scope: AgentChangesScope): Promise<void>
-      revertAgentChangeHunk(path: string, patch: string, scope: AgentChangesScope): Promise<void>
+      revertAgentChange(path: string, scope: AgentChangesScope): Promise<AgentRevertResult>
+      revertAgentChangeHunk(
+        path: string,
+        patch: string,
+        scope: AgentChangesScope
+      ): Promise<AgentRevertResult>
       revertAllAgentChanges(
         expected: AgentRevertAllEntry[],
         scope: AgentChangesScope
-      ): Promise<DiscardAllResult>
+      ): Promise<AgentRevertAllResult>
+      undoAgentChangesRevert(undoId: number): Promise<AgentChangesUndoResult>
       clearAgentChanges(): Promise<void>
     }
   }

@@ -4,7 +4,8 @@ import {
   isSameAgentChangesRecording,
   isSameAgentChangesView,
   planListResult,
-  planRecordingState
+  planRecordingState,
+  recordingStartedAtOf
 } from '../agentChangesView'
 import {
   makeAgentChangeEntry,
@@ -12,7 +13,8 @@ import {
   makeAgentChangesRecordingState,
   makeAgentChangesRecordingView,
   makeAgentChangesRun,
-  makeAgentChangesScopeUnavailableListResult
+  makeAgentChangesScopeUnavailableListResult,
+  makeAgentChangesUndoSummary
 } from '../../__tests__/makeAgentChangesState'
 
 const run1 = makeAgentChangesRun({ runId: 1, number: 1 })
@@ -22,6 +24,22 @@ const recordingState = (
   runs = [run1, run2]
 ): Extract<AgentChangesState, { kind: 'recording' }> =>
   makeAgentChangesRecordingState({ startedAt, runs })
+
+describe('recordingStartedAtOf', () => {
+  it('記録中なら記録の始点の時刻を返す', () => {
+    expect(recordingStartedAtOf(makeAgentChangesRecordingView(null, { startedAt: 100 }))).toBe(100)
+  })
+
+  it('記録中でなければ null を返す', () => {
+    expect(recordingStartedAtOf({ kind: 'none' })).toBeNull()
+    expect(
+      recordingStartedAtOf({
+        kind: 'unavailable',
+        state: { kind: 'unavailable', reason: 'git-failed' }
+      })
+    ).toBeNull()
+  })
+})
 
 describe('isSameAgentChangesRecording', () => {
   it('記録中で始点の時刻が同じなら同じ記録', () => {
@@ -78,7 +96,13 @@ describe('planRecordingState', () => {
   it('別の記録になったら、一覧を空にし、実行を選んでいれば範囲を累積に戻す(消えた読み上げはしない)', () => {
     const previous = makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')])
     const plan = planRecordingState(previous, recordingState(999), { kind: 'run', runId: 1 })
-    expect(plan.view).toEqual({ kind: 'recording', startedAt: 999, runs: [run1, run2], list: null })
+    expect(plan.view).toEqual({
+      kind: 'recording',
+      startedAt: 999,
+      runs: [run1, run2],
+      list: null,
+      undo: null
+    })
     expect(plan.resetScope).toBe(true)
     expect(plan.missingRun).toBeNull()
   })
@@ -129,7 +153,8 @@ describe('planListResult', () => {
           totalCount: 7,
           truncated: true,
           headChanged: true
-        }
+        },
+        undo: null
       }
     })
   })
@@ -142,7 +167,7 @@ describe('planListResult', () => {
     expect(planListResult(run1MissingResult, previous)).toEqual({
       kind: 'run-missing',
       missingRun: { runId: 1, previousRuns: [run1, run2] },
-      view: { kind: 'recording', startedAt: 5, runs: [run2], list: null }
+      view: { kind: 'recording', startedAt: 5, runs: [run2], list: null, undo: null }
     })
   })
 
@@ -185,7 +210,8 @@ describe('planListResult', () => {
           kind: 'scope-unavailable',
           scope: { kind: 'run', runId: 1 },
           reason: 'end-not-recorded'
-        }
+        },
+        undo: null
       }
     })
   })
@@ -218,5 +244,61 @@ describe('isSameAgentChangesView', () => {
     expect(isSameAgentChangesView(view(), view(undefined, { startedAt: 200 }))).toBe(false)
     expect(isSameAgentChangesView(view(), makeAgentChangesRecordingView(null))).toBe(false)
     expect(isSameAgentChangesView(view(), { kind: 'none' })).toBe(false)
+  })
+})
+
+describe('取り消しの控えの写し', () => {
+  const summary = makeAgentChangesUndoSummary()
+
+  it('記録中の状態の undo を写しへ写す', () => {
+    const previous = makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')])
+    const plan = planRecordingState(previous, makeAgentChangesRecordingState({ undo: summary }), {
+      kind: 'all'
+    })
+    expect(plan.view.undo).toBe(summary)
+  })
+
+  it('一覧の結果(取れた一覧・範囲の一覧を出せない)の undo を写しへ写す', () => {
+    const listed = planListResult(makeAgentChangesListResult([], { undo: summary }), {
+      kind: 'none'
+    })
+    expect(listed.kind === 'listed' ? listed.view.undo : undefined).toBe(summary)
+    const unavailable = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'end-not-recorded', {
+        undo: summary
+      }),
+      { kind: 'none' }
+    )
+    expect(unavailable.kind === 'scope-unavailable' ? unavailable.view.undo : undefined).toBe(
+      summary
+    )
+    const missing = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'run-missing', {
+        undo: summary
+      }),
+      { kind: 'none' }
+    )
+    expect(missing.kind === 'run-missing' ? missing.view.undo : undefined).toBe(summary)
+  })
+
+  it('写しの比較は undo を含める(L-423)', () => {
+    expect(
+      isSameAgentChangesView(
+        makeAgentChangesRecordingView([]),
+        makeAgentChangesRecordingView([], { undo: summary })
+      )
+    ).toBe(false)
+    expect(
+      isSameAgentChangesView(
+        makeAgentChangesRecordingView([], { undo: makeAgentChangesUndoSummary() }),
+        makeAgentChangesRecordingView([], { undo: makeAgentChangesUndoSummary() })
+      )
+    ).toBe(true)
+    expect(
+      isSameAgentChangesView(
+        makeAgentChangesRecordingView([], { undo: makeAgentChangesUndoSummary({ undoId: 1 }) }),
+        makeAgentChangesRecordingView([], { undo: makeAgentChangesUndoSummary({ undoId: 2 }) })
+      )
+    ).toBe(false)
   })
 })

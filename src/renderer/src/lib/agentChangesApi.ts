@@ -3,8 +3,10 @@ import type {
   AgentChangesListResult,
   AgentChangesScope,
   AgentChangesState,
+  AgentChangesUndoResult,
   AgentRevertAllEntry,
-  DiscardAllResult
+  AgentRevertAllResult,
+  AgentRevertResult
 } from '@shared/types'
 
 // エージェントの変更の IPC の窓口(window.api)。renderer の部品は window.api を直接触らずここを使う。
@@ -26,7 +28,10 @@ export function getAgentChangeDiff(path: string, scope: AgentChangesScope): Prom
   return window.api.getAgentChangeDiff(path, scope)
 }
 
-export function revertAgentChange(path: string, scope: AgentChangesScope): Promise<void> {
+export function revertAgentChange(
+  path: string,
+  scope: AgentChangesScope
+): Promise<AgentRevertResult> {
   return window.api.revertAgentChange(path, scope)
 }
 
@@ -34,15 +39,20 @@ export function revertAgentChangeHunk(
   path: string,
   patch: string,
   scope: AgentChangesScope
-): Promise<void> {
+): Promise<AgentRevertResult> {
   return window.api.revertAgentChangeHunk(path, patch, scope)
 }
 
 export function revertAllAgentChanges(
   expected: AgentRevertAllEntry[],
   scope: AgentChangesScope
-): Promise<DiscardAllResult> {
+): Promise<AgentRevertAllResult> {
   return window.api.revertAllAgentChanges(expected, scope)
+}
+
+/** 直前の戻す操作を取り消す。undoId は帯に出した写しの控えの ID(main が今の控えと照合する) */
+export function undoAgentChangesRevert(undoId: number): Promise<AgentChangesUndoResult> {
+  return window.api.undoAgentChangesRevert(undoId)
 }
 
 export function clearAgentChanges(): Promise<void> {

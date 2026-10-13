@@ -4,6 +4,7 @@ import { listAgentChanges, listAgentChangesBetween } from './agentChangesQuery'
 import type { AgentChangesRecord } from './agentChangesRecord'
 import { summarizeAgentChangesRuns } from './agentChangesRecord'
 import { resolveAgentChangesScope } from './agentChangesScope'
+import { summarizeAgentChangesUndo } from './agentChangesUndoModel'
 
 // 範囲ごとの一覧と diff(設計書「範囲ごとの一覧と diff」)。範囲を記録のどの記録で比べるかに解決し(agentChangesScope)、
 // 累積・最後の実行は作業ツリーとの比較、途中の実行は tree どうしの比較へ振り分ける。IPC の受け口(agentChangesHandlers)から、
@@ -20,6 +21,7 @@ export async function listAgentChangesInScope(
   const common = {
     startedAt: record.baseline.startedAt,
     runs: summarizeAgentChangesRuns(record),
+    undo: summarizeAgentChangesUndo(record.undo),
     scope
   }
   const resolved = resolveAgentChangesScope(record, scope)
