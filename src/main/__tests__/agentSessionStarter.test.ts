@@ -898,6 +898,36 @@ describe('createAgentSessionStarter(hooks)', () => {
     }
   })
 
+  it('終了の予約を外す段が投げても、後ろの hooks.release は呼ばれ、unhandled rejection にならずにログに出す', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      const service = makeStarterService({
+        reservations: {
+          tryReserve: () => () => {
+            throw new Error('reservation boom')
+          }
+        }
+      })
+      await service.start(1, REQUEST, makeSink())
+      pty.emitExit(0, 0)
+      await vi.waitFor(() =>
+        expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 'sid-1')
+      )
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[agentSessionStarter] 終了の後始末(予約)に失敗しました:',
+        expect.any(Error)
+      )
+      // 前の段(Map)は先に外れている
+      expect(service.claudeSessionIdOf('sid-1')).toBeUndefined()
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
+  })
+
   it.each<[string, Partial<AgentSessionStarterDeps>]>([
     [
       'records.whenLoaded() の reject',

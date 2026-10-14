@@ -542,4 +542,26 @@ describe('createAgentHookReceiver(待ち受けの後の error。頑健性の 1)'
     port = Number(new URL(baseUrl).port)
     expect((await post('stop', { hook_event_name: 'Stop' })).status).toBe(200)
   })
+
+  it('listen が失敗したら ensureListening は reject し、止まったログは出さず、次の ensureListening は新しい server で待ち受ける', async () => {
+    createdServers.length = 0
+    const log = vi.fn<AgentHookReceiverDeps['log']>()
+    receiver = createAgentHookReceiver({
+      deliver: vi.fn(),
+      onToolStart: vi.fn(async () => undefined),
+      onToolStartTimedOut: vi.fn(),
+      log,
+      preToolUseWaitMs: 200
+    })
+    const failed = receiver.ensureListening()
+    // listen の完了より前(同期のうち)に error を起こして、listen の失敗として扱わせる
+    createdServers[0].emit('error', new Error('EADDRINUSE'))
+    await expect(failed).rejects.toThrow('EADDRINUSE')
+    expect(log).not.toHaveBeenCalled()
+    const { baseUrl } = await receiver.ensureListening()
+    expect(createdServers).toHaveLength(2)
+    expect(createdServers[1].listening).toBe(true)
+    expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+    expect(log).not.toHaveBeenCalled()
+  })
 })
