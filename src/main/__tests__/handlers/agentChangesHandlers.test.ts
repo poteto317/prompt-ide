@@ -815,10 +815,21 @@ describe('戻す操作の吸収(withAttributionAbsorbed)', () => {
       await invoke('agentChanges:begin', makeEvent(), 'manual')
       // 吸収が終わった後に控えを記録するか(題の「控えの記録は吸収の外」)を、呼ばれた順で確かめる
       const order: string[] = []
+      // 戻す関数が吸収の task の中(始まりと終わりの間)で呼ばれることも、同じ順で確かめる
+      for (const revert of [revertAgentChange, revertAgentChangeHunk, revertAllAgentChanges]) {
+        const original = vi.mocked(revert).getMockImplementation() as (
+          ...revertArgs: unknown[]
+        ) => Promise<unknown>
+        vi.mocked(revert).mockImplementation((async (...revertArgs: unknown[]) => {
+          order.push('戻す')
+          return original(...revertArgs)
+        }) as never)
+      }
       const absorb = registry.withAttributionAbsorbed.bind(registry)
       const absorbed = vi
         .spyOn(registry, 'withAttributionAbsorbed')
         .mockImplementation(async (...absorbArgs: Parameters<typeof absorb>) => {
+          order.push('吸収の始まり')
           const result = await absorb(...absorbArgs)
           order.push('吸収の終わり')
           return result
@@ -829,7 +840,7 @@ describe('戻す操作の吸収(withAttributionAbsorbed)', () => {
         return commitUndo(...commitArgs)
       })
       await invoke(channel, makeEvent(), ...args)
-      expect(order).toEqual(['吸収の終わり', '控えの記録'])
+      expect(order).toEqual(['吸収の始まり', '戻す', '吸収の終わり', '控えの記録'])
       expect(absorbed).toHaveBeenCalledOnce()
       const [ownerId, record, task, changed] = absorbed.mock.calls[0]
       expect(ownerId).toBe(1)
