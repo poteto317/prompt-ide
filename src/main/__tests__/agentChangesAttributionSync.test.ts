@@ -373,7 +373,7 @@ describe('absorbBeforeTask の区間の規則', () => {
     })
   })
 
-  it('合図の unassignable は差分の後に今の区間の印として足す(閉じた区間の割り当ては差分の前の印で決める)', async () => {
+  it('合図の unassignable は差分の後に今の区間の印として足す(閉じた区間の割り当ては差分の後の印で決め、差分の最中に立った印でも割り当てない)', async () => {
     const record = recordWithCheckpoint()
     const ctx = contextOf(record, { signal: signalOf('agent', { unassignable: true }) })
     await absorbBeforeTask(ctx)
