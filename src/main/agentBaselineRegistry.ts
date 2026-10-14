@@ -323,6 +323,8 @@ export class AgentBaselineRegistry {
    * 回し続けて main のイベントループを止めない。L-052)。signal の中止で解決する(reject しない。5 秒の上限は受け口が数える)
    */
   async waitForAgentPhase(ownerId: number, signal: AbortSignal): Promise<void> {
+    // 中止の待ちはループの前で 1 回だけ作って使い回す(周ごとに作ると、target が先に決着しても abort の listener が signal に溜まる)
+    const aborted = whenAborted(signal)
     while (!signal.aborted) {
       const record = this.trackingRecord(ownerId)
       // 1. 記録が無い・区別していない・終了中
@@ -342,7 +344,7 @@ export class AgentBaselineRegistry {
         waiting !== undefined && waiting.record === record
           ? waiting.promise
           : this.syncAttribution(ownerId)
-      const result = await Promise.race([target, whenAborted(signal)])
+      const result = await Promise.race([target, aborted])
       if (result !== 'synced') return
     }
   }

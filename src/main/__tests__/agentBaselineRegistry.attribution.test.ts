@@ -691,6 +691,26 @@ describe('ツールの開始の待ち(waitForAgentPhase)', () => {
     expect(record.attribution).toMatchObject({ phase: 'idle' })
   })
 
+  it('待ちのループが何周しても、signal の abort の listener は 1 つだけ登録する(周ごとに溜めない)', async () => {
+    const h = setup()
+    await startRecord(h)
+    const controller = new AbortController()
+    const addListener = vi.spyOn(controller.signal, 'addEventListener')
+    // 1 つ目の待ち: 区切り 1 を待つ(1 周目)
+    const first = toolStarts(h, controller)
+    const call1 = await snapshotCall(h, 1)
+    // 2 つ目の待ち: 走っている区切り 1 の後ろに区切り 2 を並べる
+    h.source.seq += 1
+    const second = h.registry.waitForAgentPhase(1, new AbortController().signal)
+    call1.resolve(checkpointResult(1))
+    // 1 つ目の待ちは区切り 1 が synced で戻った後、2 周目で並んでいる同期 2(段階が同じなので何もしない)を待つ
+    await first
+    await second
+    expect(h.calls).toHaveLength(2)
+    const aborts = addListener.mock.calls.filter(([type]) => type === 'abort')
+    expect(aborts).toHaveLength(1)
+  })
+
   it('signal の中止で待ちをやめて解決する(reject しない)', async () => {
     const h = setup()
     await startRecord(h)
