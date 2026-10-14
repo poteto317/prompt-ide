@@ -50,6 +50,7 @@ import {
 import { createProtectionInstanceId } from './agentChangesProtectionRules'
 import { moveToTrash } from './trash'
 import { AGENT_CHANGES_UNDO_MAX_BYTES, executeAgentChangesUndo } from './agentChangesUndo'
+import { collectAgentChangeEntriesBetween } from './agentChangesQuery'
 import { createAgentNotificationCenter } from './agentNotifications'
 import { createElectronAgentNotification } from './agentNotificationRuntime'
 import { setupAgentNotificationLifecycle } from './agentNotificationLifecycle'
@@ -81,12 +82,12 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     createAgentSessionRecordFileIo(app.getPath('userData'))
   )
   // claude の hooks(ツールの区間の追跡・127.0.0.1 の受け口・起動ごとの準備)。実物の依存の組み立ては agentHooksRuntime.ts。
-  // 段階 A の追跡の段階は内部で持ち、開発版のログに出すだけ。onToolStart はすぐ解決し、onToolStartTimedOut は何もしない
-  // (段階 B で記録の registry の syncAttribution・waitForAgentPhase・markPeriodUnassignable につなぐ)
+  // 追跡の合図の変化・PreToolUse の待ち・待ちの打ち切りを記録の registry につなぐ(設計書「registry へのつなぎ方」)。runtime は生成の中で
+  // これらを呼ばず、最初に呼ぶのは組み立てが終わった後の IPC(起動の activate・hooks の知らせ)なので、後で作る registry を参照してよい
   const agentHooks = createAgentHooksRuntime({
-    onPhaseChange: () => undefined,
-    onToolStart: async () => undefined,
-    onToolStartTimedOut: () => undefined,
+    onPhaseChange: (ownerId) => agentBaselineRegistry.notifyAttributionSignal(ownerId),
+    onToolStart: (ownerId, signal) => agentBaselineRegistry.waitForAgentPhase(ownerId, signal),
+    onToolStartTimedOut: (ownerId) => agentBaselineRegistry.markToolStartTimedOut(ownerId),
     devLog: app.isPackaged ? null : (line) => console.log(line)
   })
   // 受け口・設定のディレクトリ・追跡のタイマーは will-quit で片付ける(before-quit の停止の待ちの間も知らせを受ける)
@@ -112,7 +113,8 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     startSession: agentStarter.start,
     claudeSessionIdOf: agentStarter.claudeSessionIdOf,
     getLastSession: agentStarter.lastSessionOf,
-    reportWorking: agentHooks.tracker.reportWorking
+    reportWorking: agentHooks.tracker.reportWorking,
+    reportWorkingEnded: agentHooks.tracker.reportWorkingEnded
   })
   // エージェントの完了・許可待ちの通知。Electron の Notification・Dock・BrowserWindow をここで注入する
   const agentNotificationCenter = createAgentNotificationCenter({
@@ -149,7 +151,12 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
       isProcessAlive: isProcessAliveOnThisMachine
     },
     executeUndo: (folderPath, undo) =>
-      executeAgentChangesUndo({ folderPath, undo, trash: moveToTrash })
+      executeAgentChangesUndo({ folderPath, undo, trash: moveToTrash }),
+    collectBetween: collectAgentChangeEntriesBetween,
+    // 区別の合図と通し番号は hooks の追跡から読む(生成の順は hooks の runtime → registry のまま)
+    attributionSource: agentHooks.tracker,
+    attributionDevLog: app.isPackaged ? null : (line) => console.log(line),
+    attributionWarn: (message, err) => console.warn(message, err)
   })
   setupAgentBaselineLifecycle(app, agentBaselineRegistry, folderAccess)
   registerAgentChangesHandlers(ipcMain, {

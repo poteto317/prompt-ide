@@ -6,7 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentActivity } from '../../lib/agentActivity'
 
 const mockReport = vi.hoisted(() => vi.fn<(sessionId: string) => void>())
-vi.mock('../../lib/agentTerminalApi', () => ({ reportAgentSessionWorking: mockReport }))
+const mockReportEnded = vi.hoisted(() => vi.fn<(sessionId: string) => void>())
+vi.mock('../../lib/agentTerminalApi', () => ({
+  reportAgentSessionWorking: mockReport,
+  reportAgentSessionWorkingEnded: mockReportEnded
+}))
 
 import { useAgentHooksWorkingReport } from '../useAgentHooksWorkingReport'
 import type {
@@ -36,6 +40,7 @@ const render = (
 
 beforeEach(() => {
   mockReport.mockClear()
+  mockReportEnded.mockClear()
 })
 
 describe('useAgentHooksWorkingReport', () => {
@@ -103,5 +108,66 @@ describe('useAgentHooksWorkingReport', () => {
     rerender({ tabs: [], activities: activitiesOf([]) })
     rerender({ tabs: [tab('a', 'sid-a2')], activities: activitiesOf([['a', 'working']]) })
     expect(mockReport.mock.calls).toEqual([['sid-a'], ['sid-a2']])
+  })
+})
+
+describe('useAgentHooksWorkingReport(作業の終わり)', () => {
+  it('working → idle で reportAgentSessionWorkingEnded を 1 回送る', () => {
+    const tabs = [tab('a', 'sid-a')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReportEnded).toHaveBeenCalledExactlyOnceWith('sid-a')
+  })
+
+  it('working → permission・confirm・unknown では送らず、続く idle で送る(利用者の操作待ち・判定できない画面はターンの終わりではない)', () => {
+    const tabs = [tab('a', 'sid-a')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'permission']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'confirm']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'unknown']]) })
+    expect(mockReportEnded).not.toHaveBeenCalled()
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReportEnded).toHaveBeenCalledExactlyOnceWith('sid-a')
+  })
+
+  it('working を見ていない idle(起動の直後)では送らない', () => {
+    const tabs = [tab('a', 'sid-a')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'unknown']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReportEnded).not.toHaveBeenCalled()
+  })
+
+  it('idle が続いても 2 回送らない(Map が作り直されても)', () => {
+    const tabs = [tab('a', 'sid-a')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReportEnded).toHaveBeenCalledOnce()
+  })
+
+  it('controller.getSessionId() が null のタブは送らない', () => {
+    const tabs = [tab('a', null)]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReportEnded).not.toHaveBeenCalled()
+  })
+
+  it('タブごとに独立して見る', () => {
+    const tabs = [tab('a', 'sid-a'), tab('b', 'sid-b')]
+    const { rerender } = render({
+      tabs,
+      activities: activitiesOf([
+        ['a', 'working'],
+        ['b', 'idle']
+      ])
+    })
+    rerender({
+      tabs,
+      activities: activitiesOf([
+        ['a', 'idle'],
+        ['b', 'idle']
+      ])
+    })
+    expect(mockReportEnded).toHaveBeenCalledExactlyOnceWith('sid-a')
   })
 })

@@ -11,7 +11,8 @@ const mockApi = {
   onAgentData: vi.fn(),
   onAgentExit: vi.fn(),
   setAgentTerminalFocused: vi.fn(),
-  reportAgentSessionWorking: vi.fn()
+  reportAgentSessionWorking: vi.fn(),
+  reportAgentSessionWorkingEnded: vi.fn()
 }
 
 beforeEach(() => {
@@ -35,6 +36,7 @@ describe('agentTerminalApi', () => {
     agentTerminalApi.getLastAgentSession('/p')
     agentTerminalApi.setAgentTerminalFocused(true)
     agentTerminalApi.reportAgentSessionWorking('s')
+    agentTerminalApi.reportAgentSessionWorkingEnded('s')
     expect(mockApi.startAgentSession).toHaveBeenCalledWith({
       slotId: 'slot-1',
       folderPath: '/p',
@@ -49,6 +51,7 @@ describe('agentTerminalApi', () => {
     expect(mockApi.getLastAgentSession).toHaveBeenCalledWith('/p')
     expect(mockApi.setAgentTerminalFocused).toHaveBeenCalledWith(true)
     expect(mockApi.reportAgentSessionWorking).toHaveBeenCalledWith('s')
+    expect(mockApi.reportAgentSessionWorkingEnded).toHaveBeenCalledWith('s')
   })
 
   it('購読は解除関数を返す', () => {

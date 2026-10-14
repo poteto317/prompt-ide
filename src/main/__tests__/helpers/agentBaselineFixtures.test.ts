@@ -9,7 +9,9 @@ import {
   disposeAgentBaselineRepo,
   EMPTY_TREE,
   makeAgentChangesRecord,
+  makeAttributionOffDeps,
   makeBaselineSnapshot,
+  makeTrackingAttribution,
   recordBaseline,
   recordedSnapshot,
   userRepoState
@@ -30,7 +32,8 @@ describe('makeAgentChangesRecord', () => {
         value: null,
         swept: false
       },
-      undo: null
+      undo: null,
+      attribution: makeTrackingAttribution(makeBaselineSnapshot())
     })
   })
 
@@ -52,7 +55,8 @@ describe('makeAgentChangesRecord', () => {
         value: null,
         swept: false
       },
-      undo: null
+      undo: null,
+      attribution: makeTrackingAttribution(baseline)
     })
   })
 })
@@ -109,6 +113,23 @@ describe('makeBaselineSnapshot', () => {
     expect(a.excluded).not.toBe(b.excluded)
     expect(a.skippedRepos).not.toBe(b.skippedRepos)
     expect(a.ignoredAtBaseline).not.toBe(b.ignoredAtBaseline)
+  })
+})
+
+describe('makeAttributionOffDeps', () => {
+  it('区別をやめる合図(receiver-unavailable)の追跡・空の差分・ログなしの依存を、呼ぶたびに新しく作る', async () => {
+    const deps = makeAttributionOffDeps()
+    expect(deps.attributionSource.activityOf(1)).toEqual({
+      phase: 'paused',
+      lost: 'receiver-unavailable',
+      unassignable: false
+    })
+    expect(deps.attributionSource.toolStartSeqOf(1)).toBe(0)
+    const snapshot = makeBaselineSnapshot()
+    await expect(deps.collectBetween(snapshot, snapshot)).resolves.toEqual([])
+    expect(deps.attributionDevLog).toBeNull()
+    expect(() => deps.attributionWarn('失敗', new Error('boom'))).not.toThrow()
+    expect(makeAttributionOffDeps().attributionSource).not.toBe(deps.attributionSource)
   })
 })
 

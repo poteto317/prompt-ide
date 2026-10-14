@@ -18,9 +18,9 @@ export const AGENT_HOOK_REQUEST_TIMEOUT_MS = 15_000
 export interface AgentHookReceiverDeps {
   /** 照合の通った知らせ 1 件につき 1 回だけ呼ぶ(同期。追跡の deliver をそのまま渡す) */
   deliver(ownerId: number, sessionId: string, event: AgentHookEvent): void
-  /** PreToolUse で deliver の後に呼んで待つ(段階 A はすぐ解決する。段階 B で waitForAgentPhase につなぐ) */
+  /** PreToolUse で deliver の後に呼んで待つ(記録の registry の waitForAgentPhase につなぐ。同期の throw・reject は待ちの失敗として打ち切りと同じに扱う) */
   onToolStart(ownerId: number, signal: AbortSignal): Promise<void>
-  /** onToolStart の待ちを上限で打ち切ったときに 1 回呼ぶ(段階 A は何もしない。段階 B で markPeriodUnassignable につなぐ) */
+  /** onToolStart の待ちを上限で打ち切ったときに 1 回呼ぶ(記録の registry の markToolStartTimedOut につなぐ。待ちの失敗でも呼ぶ。close の後は呼ばない) */
   onToolStartTimedOut(ownerId: number): void
   /** 常に出すログ(拒んだ要求の件数など。トークン・本文は渡さない) */
   log(message: string): void
@@ -35,6 +35,14 @@ export interface AgentHookReceiver {
   removeToken(token: string): void
   /** 待ち受けをやめ、つながっている接続も切る(will-quit) */
   close(): void
+}
+
+/** 待っている PreToolUse 1 件(close でタイマーを外し、signal を中止して待ちを終わらせる) */
+interface ToolStartWait {
+  controller: AbortController
+  timer: ReturnType<typeof setTimeout>
+  /** close で待ちを終わらせる(onToolStartTimedOut を呼ばない) */
+  close: () => void
 }
 
 const BEARER_PATTERN = /^Bearer ([0-9a-f]{64})$/
@@ -54,6 +62,7 @@ export function createAgentHookReceiver({
   let listening: Promise<{ baseUrl: string }> | null = null
   let port = 0
   let closed = false
+  const waits = new Set<ToolStartWait>()
 
   /** 最初の 1 件と 100 件ごとにだけログに出す */
   const count = (
@@ -80,26 +89,43 @@ export function createAgentHookReceiver({
 
   const waitForToolStart = async (ownerId: number): Promise<void> => {
     const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timedOut = new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), preToolUseWaitMs)
+    let settle: (result: 'timeout' | 'closed') => void = () => undefined
+    const stopped = new Promise<'timeout' | 'closed'>((resolve) => {
+      settle = resolve
     })
-    const started = onToolStart(ownerId, controller.signal).then(
-      () => 'started' as const,
-      (err: unknown) => {
-        log(`[agent-hooks] ツールの開始の待ちに失敗しました: ${messageOf(err)}`)
-        return 'failed' as const
-      }
-    )
-    const result = await Promise.race([started, timedOut])
-    clearTimeout(timer)
-    if (result === 'timeout') {
-      controller.abort()
-      onToolStartTimedOut(ownerId)
+    const wait: ToolStartWait = {
+      controller,
+      timer: setTimeout(() => settle('timeout'), preToolUseWaitMs),
+      close: () => settle('closed')
     }
+    waits.add(wait)
+    // 同期の throw も reject と同じ「待ちの失敗」にする(L-055)
+    const started = Promise.resolve()
+      .then(() => onToolStart(ownerId, controller.signal))
+      .then(
+        () => 'started' as const,
+        (err: unknown) => {
+          log(`[agent-hooks] ツールの開始の待ちに失敗しました: ${messageOf(err)}`)
+          return 'failed' as const
+        }
+      )
+    const result = await Promise.race([started, stopped])
+    clearTimeout(wait.timer)
+    waits.delete(wait)
+    // close の後は、記録の側も閉じているため打ち切りを知らせない(L-435)
+    if (closed || result === 'closed' || result === 'started') return
+    // 打ち切り・待ちの失敗は、覆えたか分からない区間として知らせる(L-002)
+    controller.abort()
+    onToolStartTimedOut(ownerId)
   }
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    // close の後に残った接続から届いた要求は、追跡に渡さない(L-435)
+    if (closed) {
+      req.resume()
+      respond(res, 503)
+      return
+    }
     const check = checkAgentHookRequest(req, port, ownerOf)
     if (check.kind === 'rejected') {
       count('拒んだ要求', check.reason)
@@ -109,6 +135,11 @@ export function createAgentHookReceiver({
     }
     const { event, owner } = check
     const body = await readAgentHookBody(req)
+    // 本文を読んでいる間に close した(接続が切れて unreadable になった)要求も渡さない
+    if (closed) {
+      respond(res, 503)
+      return
+    }
     if (body.kind === 'too-large') count('拒んだ要求', 'too-large')
     const { event: parsed, notes } = parseAgentHookRequest(event, body)
     for (const note of notes) count('読めない知らせ', note)
@@ -131,11 +162,24 @@ export function createAgentHookReceiver({
           })
           created.headersTimeout = AGENT_HOOK_HEADERS_TIMEOUT_MS
           created.requestTimeout = AGENT_HOOK_REQUEST_TIMEOUT_MS
-          created.once('error', (err) => {
+          let listened = false
+          // listen の失敗と、待ち受けの後の error(EMFILE など)の両方を 1 つの常駐のハンドラで受ける(頑健性の 1)。
+          // 待ち受けの後に止まったら、控えた listening・server を捨てて次の ensureListening で始め直す(L-436)
+          created.on('error', (err) => {
             created.close()
-            rejectListen(err)
+            if (!listened) {
+              rejectListen(err)
+              return
+            }
+            log(`[agent-hooks] 受け口が止まりました: ${messageOf(err)}`)
+            if (server === created) {
+              server = null
+              listening = null
+              port = 0
+            }
           })
           created.listen({ host: '127.0.0.1', port: 0 }, () => {
+            listened = true
             const address = created.address()
             if (closed || address === null || typeof address === 'string') {
               created.close()
@@ -163,6 +207,13 @@ export function createAgentHookReceiver({
     close() {
       closed = true
       owners.clear()
+      // 待っている PreToolUse の上限のタイマーを外し、記録の側の待ちも止める(L-435)
+      for (const wait of waits) {
+        clearTimeout(wait.timer)
+        wait.controller.abort()
+        wait.close()
+      }
+      waits.clear()
       if (server !== null) {
         server.close()
         server.closeAllConnections()

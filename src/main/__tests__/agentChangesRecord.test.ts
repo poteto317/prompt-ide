@@ -13,7 +13,11 @@ import {
 } from '../agentChangesRecord'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
 import { resolveAgentChangesScope } from '../agentChangesScope'
-import { makeAgentChangesRecord, makeBaselineSnapshot } from './helpers/agentBaselineFixtures'
+import {
+  makeAgentChangesRecord,
+  makeBaselineSnapshot,
+  makeTrackingAttribution
+} from './helpers/agentBaselineFixtures'
 
 const baseline = makeBaselineSnapshot({ tempDir: '/tmp/base', startedAt: 100 })
 const snap = (n: number): BaselineSnapshot =>
@@ -169,6 +173,20 @@ describe('agentChangesRecordTempDirs', () => {
     })
     expect(agentChangesRecordTempDirs(record)).toEqual([baseline.tempDir, '/tmp/undo'])
   })
+
+  it('判定の区切り(始点と共有でないもの)と、消せなかった前の判定の区切り(削除待ち)も返す', () => {
+    const record = makeAgentChangesRecord([], {
+      baseline,
+      attribution: makeTrackingAttribution(baseline, {
+        checkpoint: {
+          snapshot: makeBaselineSnapshot({ tempDir: '/tmp/cp' }),
+          sharedWithBaseline: false
+        },
+        staleCheckpointDirs: ['/tmp/stale']
+      })
+    })
+    expect(agentChangesRecordTempDirs(record)).toEqual([baseline.tempDir, '/tmp/cp', '/tmp/stale'])
+  })
 })
 
 describe('runStartSnapshot', () => {
@@ -237,9 +255,15 @@ describe('dropRunsOverLimit', () => {
 })
 
 describe('createAgentChangesRecord', () => {
-  it('実行なし・番号 1・保護はまだ作っていない状態で作る', () => {
+  it('実行なし・番号 1・保護はまだ作っていない状態で、渡された区別の初期値を持って作る', () => {
+    const attribution = makeTrackingAttribution(baseline)
     expect(
-      createAgentChangesRecord(baseline, 3, 'refs/prompt-ide/agent-changes/1-00000000/3')
+      createAgentChangesRecord(
+        baseline,
+        3,
+        'refs/prompt-ide/agent-changes/1-00000000/3',
+        attribution
+      )
     ).toEqual({
       baseline,
       runs: [],
@@ -250,7 +274,8 @@ describe('createAgentChangesRecord', () => {
         value: null,
         swept: false
       },
-      undo: null
+      undo: null,
+      attribution
     })
   })
 })

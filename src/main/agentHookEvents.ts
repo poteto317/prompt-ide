@@ -14,12 +14,17 @@ export type AgentHookConfirmOnlyReason =
   | 'unknown-tool-end'
   | 'bad-agent-id'
   | 'subagent-stop-without-agent'
+  /** PostToolBatch の本文を読めない(大きすぎる・JSON でない・イベント名がパスと違う) */
+  | 'batch-end-unreadable'
+  /** agent_id のある PostToolBatch(サブエージェントのバッチの終わりでメインの区間を閉じない) */
+  | 'subagent-batch-end'
 
 /** hookEventName はパスから決めたイベント名。toolName は検証済みの名前(ツール以外のイベントは null。ログにだけ使う) */
 export type AgentHookEvent = { hookEventName: AgentHookEventName; toolName: string | null } & (
   | { kind: 'confirm-only'; reason: AgentHookConfirmOnlyReason }
   | { kind: 'tool-start'; toolId: ToolIdRead; agentId: string | null }
   | { kind: 'tool-end'; toolId: ToolIdRead; agentId: string | null }
+  | { kind: 'batch-end' }
   | { kind: 'subagent-stop'; agentId: string }
   | { kind: 'turn-end' }
   | { kind: 'session-end' }
@@ -87,6 +92,9 @@ function eventWithoutBody(pathEvent: AgentHookEventName): AgentHookEvent {
     case 'PostToolUse':
     case 'PostToolUseFailure':
       return { ...base, kind: 'tool-end', toolId: { kind: 'unreadable' }, agentId: null }
+    case 'PostToolBatch':
+      // 読めない PostToolBatch で区間を閉じない(L-002・L-044)
+      return { ...base, kind: 'confirm-only', reason: 'batch-end-unreadable' }
     case 'SubagentStop':
       return { ...base, kind: 'confirm-only', reason: 'subagent-stop-without-agent' }
     case 'Stop':
@@ -125,6 +133,23 @@ export function parseAgentHookRequest(
         }
       }
       return { event: { ...base, kind: 'subagent-stop', agentId: agent.id }, notes: [] }
+    }
+    case 'PostToolBatch': {
+      // 本文を読めて agent_id が無いときだけ、メインのエージェントのバッチの終わり(区間を閉じる)にする
+      const agent = readAgentId(value)
+      if (agent.kind === 'absent') {
+        return { event: { ...base, kind: 'batch-end' }, notes: [] }
+      }
+      if (agent.kind === 'bad') {
+        return {
+          event: { ...base, kind: 'confirm-only', reason: 'bad-agent-id' },
+          notes: ['bad-agent-id']
+        }
+      }
+      return {
+        event: { ...base, kind: 'confirm-only', reason: 'subagent-batch-end' },
+        notes: []
+      }
     }
     case 'PreToolUse':
     case 'PostToolUse':

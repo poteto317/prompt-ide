@@ -556,6 +556,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       'reportAgentSessionWorking は send で sessionId だけを送る',
       () => api.reportAgentSessionWorking('s'),
       ['agentTerminal:reportWorking', 's']
+    ],
+    [
+      'reportAgentSessionWorkingEnded は send で sessionId だけを送る',
+      () => api.reportAgentSessionWorkingEnded('s'),
+      ['agentTerminal:reportWorkingEnded', 's']
     ]
   ])('%s', (_name, call, expectedArgs) => {
     call()

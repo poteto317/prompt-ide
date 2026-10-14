@@ -1,4 +1,5 @@
 import { request } from 'node:http'
+import type { IncomingMessage, Server } from 'node:http'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   AGENT_HOOK_HEADERS_TIMEOUT_MS,
@@ -11,6 +12,18 @@ import { AGENT_HOOK_MAX_BODY_BYTES } from '../agentHookReceiverRequest'
 import type { AgentHookEvent } from '../agentHookEvents'
 import { sendHookRequest } from './helpers/agentHookHttp'
 import type { HookResponse } from './helpers/agentHookHttp'
+
+// 受け口が作った server(待ち受けの後の error を起こすため)。実物の createServer に渡して作る
+const createdServers = vi.hoisted((): Server[] => [])
+vi.mock('node:http', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:http')>()
+  const createServer = (...args: unknown[]): Server => {
+    const server = (actual.createServer as (...rest: unknown[]) => Server)(...args)
+    createdServers.push(server)
+    return server
+  }
+  return { ...actual, default: { ...actual, createServer }, createServer }
+})
 
 const TOKEN = 'ab'.repeat(32)
 const OTHER_TOKEN = 'cd'.repeat(32)
@@ -37,9 +50,11 @@ let deps: {
 afterEach(() => {
   receiver?.close()
   receiver = null
+  vi.useRealTimers()
 })
 
 async function start(overrides: Partial<AgentHookReceiverDeps> = {}): Promise<void> {
+  createdServers.length = 0
   calls = []
   delivered = []
   deps = {
@@ -114,6 +129,18 @@ describe('createAgentHookReceiver(受け付ける要求)', () => {
       ]
     ])
     expect(deps.onToolStart).not.toHaveBeenCalled()
+  })
+
+  it('PostToolBatch のパス(post-tool-batch)も受け付け、batch-end を deliver する', async () => {
+    await start()
+    const response = await post('post-tool-batch', {
+      hook_event_name: 'PostToolBatch',
+      session_id: 'c1'
+    })
+    expect(response.status).toBe(200)
+    expect(delivered).toEqual([
+      [7, 'sid-1', { kind: 'batch-end', hookEventName: 'PostToolBatch', toolName: null }]
+    ])
   })
 
   it('Content-Type は大文字小文字を区別せず、charset が付いても受け付ける', async () => {
@@ -386,11 +413,40 @@ describe('createAgentHookReceiver(PreToolUse の順序と上限)', () => {
     expect(calls).toEqual(['deliver:tool-start', 'onToolStart', 'timedOut'])
   })
 
-  it('onToolStart が reject したらログを出して応答し、onToolStartTimedOut は呼ばない', async () => {
-    await start({ onToolStart: vi.fn(async () => Promise.reject(new Error('boom'))) })
+  it('onToolStart が reject したらログを出し、打ち切りと同じく signal を中止して onToolStartTimedOut を 1 回呼んで 200 を返す(L-002)', async () => {
+    let captured = null as AbortSignal | null
+    await start({
+      onToolStart: vi.fn(async (_ownerId: number, signal: AbortSignal) => {
+        captured = signal
+        throw new Error('boom')
+      })
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     expect((await post('pre-tool-use', PRE)).status).toBe(200)
-    expect(deps.onToolStartTimedOut).not.toHaveBeenCalled()
+    expect(captured?.aborted).toBe(true)
+    expect(deps.onToolStartTimedOut).toHaveBeenCalledExactlyOnceWith(7)
     expect(deps.log).toHaveBeenCalledWith('[agent-hooks] ツールの開始の待ちに失敗しました: boom')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('onToolStart が同期で投げても 200 を返し、onToolStartTimedOut を 1 回呼び、上限のタイマーを残さない(L-055)', async () => {
+    let captured = null as AbortSignal | null
+    await start({
+      onToolStart: vi.fn((_ownerId: number, signal: AbortSignal): Promise<void> => {
+        captured = signal
+        throw new Error('sync boom')
+      })
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    expect((await post('pre-tool-use', PRE)).status).toBe(200)
+    expect(captured?.aborted).toBe(true)
+    expect(deps.onToolStartTimedOut).toHaveBeenCalledExactlyOnceWith(7)
+    expect(deps.log).toHaveBeenCalledWith(
+      '[agent-hooks] ツールの開始の待ちに失敗しました: sync boom'
+    )
+    expect(vi.getTimerCount()).toBe(0)
+    vi.advanceTimersByTime(AGENT_PRE_TOOL_USE_WAIT_MS)
+    expect(deps.onToolStartTimedOut).toHaveBeenCalledOnce()
   })
 
   it('PreToolUse 以外は onToolStart を待たない', async () => {
@@ -420,5 +476,70 @@ describe('createAgentHookReceiver(close)', () => {
     await expect(pending).rejects.toThrow()
     await expect(post('stop', { hook_event_name: 'Stop' })).rejects.toThrow()
     await expect(receiver?.ensureListening()).rejects.toThrow('受け口は閉じています')
+  })
+
+  it('close で待っている PreToolUse の上限のタイマーを外して signal を中止し、上限が過ぎても onToolStartTimedOut を呼ばない(L-435)', async () => {
+    let captured = null as AbortSignal | null
+    await start({
+      onToolStart: vi.fn((_ownerId: number, signal: AbortSignal) => {
+        captured = signal
+        return new Promise<void>(() => undefined)
+      }),
+      // vi.waitFor は偽のタイマーを interval ずつ進めるため、上限に届かない長さにする
+      preToolUseWaitMs: 60_000
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const pending = post('pre-tool-use', {
+      hook_event_name: 'PreToolUse',
+      tool_name: 'Edit',
+      tool_use_id: 't'
+    })
+    await vi.waitFor(() => expect(captured).not.toBeNull())
+    receiver?.close()
+    expect(captured?.aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+    vi.advanceTimersByTime(120_000)
+    await expect(pending).rejects.toThrow()
+    expect(deps.onToolStartTimedOut).not.toHaveBeenCalled()
+  })
+
+  it('本文を読んでいる間に close したら、その要求を deliver しない(L-435)', async () => {
+    await start()
+    const server = createdServers[0]
+    const arrived = new Promise<IncomingMessage>((resolve) => {
+      server.once('request', (req: IncomingMessage) => resolve(req))
+    })
+    const req = request({
+      host: '127.0.0.1',
+      port,
+      method: 'POST',
+      path: '/prompt-ide/agent-hooks/v1/pre-tool-use',
+      headers: { ...HEADERS, 'Content-Length': '100' }
+    })
+    req.on('error', () => undefined)
+    req.write('{"hook_event_name":')
+    // 受け口の request のハンドラは先に登録されているため、この時点で本文の読み込みを待っている
+    const serverReq = await arrived
+    const closedReq = new Promise((resolve) => serverReq.once('close', resolve))
+    receiver?.close()
+    await closedReq
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(deps.deliver).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAgentHookReceiver(待ち受けの後の error。頑健性の 1)', () => {
+  it('待ち受けの後の server の error でログを出して閉じ、次の ensureListening は新しい server で始め直す(L-436)', async () => {
+    await start()
+    const first = createdServers[0]
+    first.emit('error', new Error('EMFILE'))
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 受け口が止まりました: EMFILE')
+    await vi.waitFor(() => expect(first.listening).toBe(false))
+    const { baseUrl } = (await receiver?.ensureListening()) ?? { baseUrl: '' }
+    expect(createdServers).toHaveLength(2)
+    expect(createdServers[1].listening).toBe(true)
+    // トークンの表は残るため、新しい受け口でそのまま受け付ける
+    port = Number(new URL(baseUrl).port)
+    expect((await post('stop', { hook_event_name: 'Stop' })).status).toBe(200)
   })
 })

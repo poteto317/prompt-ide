@@ -33,7 +33,9 @@ import { resolveAndAssertStatusRelativePath } from './gitPathResolver'
 // エージェントの変更の IPC の受け口(設計書「IPC」「セキュリティ」)。renderer から受け取るのはパス・パッチ・確認の一覧・
 // 記録の開始の種類・範囲(列挙と runId)だけで、記録のインデックスの場所・tree・フォルダ・git の引数は main が決める。
 // 取り消しで受け取るのは undoId だけで、取り消すパス・控えの置き場所は main の記録が決める(renderer には控えの要約だけを返す)。
-// 記録は送信元の webContents の id で引く(所有者の分離)
+// 記録は送信元の webContents の id で引く(所有者の分離)。
+// 戻す 3 つは registry の withAttributionAbsorbed で包み、アプリの操作を利用者の変更に数えない(設計書「アプリの戻す操作・取り消しの吸収」)。
+// 控えの記録(commitRevert)は吸収の外
 
 export const AGENT_CHANGES_NOT_MAIN_FRAME = 'メインフレーム以外からの依頼は受け付けません'
 export const AGENT_CHANGES_NO_RECORD_MESSAGE = 'エージェントの変更の記録がありません'
@@ -43,7 +45,13 @@ export { AGENT_CHANGES_SCOPE_DIFF_UNAVAILABLE_MESSAGE } from '../agentChangesSco
 export interface AgentChangesHandlerDeps {
   registry: Pick<
     AgentBaselineRegistry,
-    'begin' | 'getState' | 'withRecord' | 'clear' | 'commitRevertUndo' | 'undoLastRevert'
+    | 'begin'
+    | 'getState'
+    | 'withRecord'
+    | 'clear'
+    | 'commitRevertUndo'
+    | 'undoLastRevert'
+    | 'withAttributionAbsorbed'
   >
   folderAccess: FolderAccessManager
   /** OS のゴミ箱へ移す(trash.ts の moveToTrash) */
@@ -164,7 +172,12 @@ export function registerAgentChangesHandlers(
             ownerId,
             record,
             'file',
-            await revertAgentChange(revertContextOf(record), relativePath)
+            await registry.withAttributionAbsorbed(
+              ownerId,
+              record,
+              () => revertAgentChange(revertContextOf(record), relativePath),
+              (outcome) => outcome.applied > 0
+            )
           )
       )
   )
@@ -185,7 +198,12 @@ export function registerAgentChangesHandlers(
             ownerId,
             record,
             'hunk',
-            await revertAgentChangeHunk(revertContextOf(record), relativePath, parsedPatch)
+            await registry.withAttributionAbsorbed(
+              ownerId,
+              record,
+              () => revertAgentChangeHunk(revertContextOf(record), relativePath, parsedPatch),
+              (outcome) => outcome.applied > 0
+            )
           )
       )
   )
@@ -197,9 +215,11 @@ export function registerAgentChangesHandlers(
       const entries = parseAgentRevertAllEntries(expected)
       parseRevertScope(scope)
       return withRecordOrThrow(ownerId, folder, async (record) => {
-        const { applied, capture, ...result } = await revertAllAgentChanges(
-          revertContextOf(record),
-          entries
+        const { applied, capture, ...result } = await registry.withAttributionAbsorbed(
+          ownerId,
+          record,
+          () => revertAllAgentChanges(revertContextOf(record), entries),
+          (outcome) => outcome.applied > 0
         )
         const committed = await commitRevert(ownerId, record, 'all', { applied, capture })
         return { ...result, revertedCount: applied, ...committed }

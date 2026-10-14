@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import type { MockInstance } from 'vitest'
+import type { Mock, MockInstance } from 'vitest'
 import { resolve as resolvePath } from 'node:path'
 
 const mockRealpath = vi.hoisted(() => vi.fn())
@@ -87,6 +87,7 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
     getLastSession: starter.lastSessionOf,
     platform: 'linux',
     reportWorking: vi.fn(),
+    reportWorkingEnded: vi.fn(),
     ...overrides
   })
 }
@@ -728,7 +729,11 @@ describe('agentTerminal:getState(claude のセッション ID)', () => {
   })
 })
 
-describe('agentTerminal:reportWorking', () => {
+// 作業中・作業の終わりの知らせは、同じ検査(送信元・sessionId)を通って追跡の別の関数へ渡る
+describe.each<[string, 'reportWorking' | 'reportWorkingEnded', string]>([
+  ['agentTerminal:reportWorking', 'reportWorking', '作業中の知らせ'],
+  ['agentTerminal:reportWorkingEnded', 'reportWorkingEnded', '作業の終わりの知らせ']
+])('%s', (channel, depName, label) => {
   let warnSpy: MockInstance<typeof console.warn>
   beforeEach(() => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -737,11 +742,17 @@ describe('agentTerminal:reportWorking', () => {
     warnSpy.mockRestore()
   })
 
+  /** 追跡の関数の偽物を depName に渡して handler を登録する */
+  const registerReport = (): Mock<(ownerId: number, sessionId: string) => void> => {
+    const report = vi.fn<(ownerId: number, sessionId: string) => void>()
+    register({ [depName]: report })
+    return report
+  }
+
   it('メインフレームからの sessionId を、送信元のウィンドウの id と一緒に追跡へ渡す', () => {
-    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
-    register({ reportWorking })
-    listeners.get('agentTerminal:reportWorking')?.(makeEvent(3), 'sid-9')
-    expect(reportWorking).toHaveBeenCalledExactlyOnceWith(3, 'sid-9')
+    const report = registerReport()
+    listeners.get(channel)?.(makeEvent(3), 'sid-9')
+    expect(report).toHaveBeenCalledExactlyOnceWith(3, 'sid-9')
   })
 
   it.each<[string, unknown]>([
@@ -749,19 +760,15 @@ describe('agentTerminal:reportWorking', () => {
     ['数値', 123],
     ['null', null]
   ])('不正な sessionId(%s)は追跡を呼ばず、例外を投げずにログに出す', (_label, sessionId) => {
-    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
-    register({ reportWorking })
-    expect(() =>
-      listeners.get('agentTerminal:reportWorking')?.(makeEvent(3), sessionId)
-    ).not.toThrow()
-    expect(reportWorking).not.toHaveBeenCalled()
-    expect(warnSpy).toHaveBeenCalledWith('[agent-hooks] 作業中の知らせの sessionId が不正です')
+    const report = registerReport()
+    expect(() => listeners.get(channel)?.(makeEvent(3), sessionId)).not.toThrow()
+    expect(report).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(`[agent-hooks] ${label}の sessionId が不正です`)
   })
 
   it('サブフレームからの送信は捨てる(L-019)', () => {
-    const reportWorking = vi.fn<(ownerId: number, sessionId: string) => void>()
-    register({ reportWorking })
-    listeners.get('agentTerminal:reportWorking')?.(makeEvent(3, false), 'sid-9')
-    expect(reportWorking).not.toHaveBeenCalled()
+    const report = registerReport()
+    listeners.get(channel)?.(makeEvent(3, false), 'sid-9')
+    expect(report).not.toHaveBeenCalled()
   })
 })

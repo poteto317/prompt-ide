@@ -85,8 +85,9 @@ export function createAgentHookSessions({
         })
         return
       }
-      receiver.addToken(prepared.hooks.token, { ownerId: prepared.ownerId, sessionId })
+      // 追跡に先に足す(addToken で投げても、追跡は pending〈段階は agent〉で残る。安全側。頑健性の 5)
       tracker.addSession(prepared.ownerId, sessionId, { kind: 'pending' })
+      receiver.addToken(prepared.hooks.token, { ownerId: prepared.ownerId, sessionId })
     },
     release(prepared, sessionId) {
       if (prepared.hooks !== null) {

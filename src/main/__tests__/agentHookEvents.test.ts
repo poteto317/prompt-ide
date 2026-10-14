@@ -208,6 +208,10 @@ describe('parseAgentHookRequest(読めない本文)', () => {
     })
     expect(parseAgentHookRequest('Stop', body).event.kind).toBe('turn-end')
     expect(parseAgentHookRequest('SessionEnd', body).event.kind).toBe('session-end')
+    expect(parseAgentHookRequest('PostToolBatch', body).event).toMatchObject({
+      kind: 'confirm-only',
+      reason: 'batch-end-unreadable'
+    })
   })
 
   it('PostToolUse の本文を読めなければ、ID なしの tool-end(何も閉じない側)にする', () => {
@@ -243,4 +247,57 @@ describe('parseAgentHookRequest(読めない本文)', () => {
       agentId: null
     })
   })
+})
+
+describe('parseAgentHookRequest(PostToolBatch)', () => {
+  it('agent_id が無ければ batch-end', () => {
+    expect(parse('PostToolBatch', { hook_event_name: 'PostToolBatch', session_id: 's' })).toEqual({
+      event: { kind: 'batch-end', hookEventName: 'PostToolBatch', toolName: null },
+      notes: []
+    })
+  })
+
+  it('agent_id があれば confirm-only(subagent-batch-end。サブエージェントのバッチの終わりでメインの区間を閉じない)', () => {
+    expect(parse('PostToolBatch', { hook_event_name: 'PostToolBatch', agent_id: 'ag-1' })).toEqual({
+      event: {
+        kind: 'confirm-only',
+        reason: 'subagent-batch-end',
+        hookEventName: 'PostToolBatch',
+        toolName: null
+      },
+      notes: []
+    })
+  })
+
+  it('agent_id の形が違えば confirm-only(bad-agent-id。notes に bad-agent-id)', () => {
+    expect(parse('PostToolBatch', { hook_event_name: 'PostToolBatch', agent_id: 7 })).toEqual({
+      event: {
+        kind: 'confirm-only',
+        reason: 'bad-agent-id',
+        hookEventName: 'PostToolBatch',
+        toolName: null
+      },
+      notes: ['bad-agent-id']
+    })
+  })
+
+  it.each<[string, AgentHookBody, string[]]>([
+    ['16 MiB を超えた', { kind: 'too-large' }, []],
+    ['読み込みの失敗', { kind: 'unreadable' }, ['unreadable-body']],
+    ['JSON でない', { kind: 'text', text: '{' }, ['unreadable-body']],
+    ['イベント名がパスと違う', json({ hook_event_name: 'Stop' }), ['event-name-mismatch']]
+  ])(
+    '%s ときは confirm-only(batch-end-unreadable。区間を閉じる根拠にしない)',
+    (_label, body, notes) => {
+      expect(parseAgentHookRequest('PostToolBatch', body)).toEqual({
+        event: {
+          kind: 'confirm-only',
+          reason: 'batch-end-unreadable',
+          hookEventName: 'PostToolBatch',
+          toolName: null
+        },
+        notes
+      })
+    }
+  )
 })

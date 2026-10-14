@@ -10,12 +10,13 @@ import {
 import { AGENT_PRE_TOOL_USE_WAIT_MS } from '../agentHookReceiver'
 
 describe('agentHookProtocol(イベントとパス)', () => {
-  it('渡すイベントは 8 つで、設定の JSON に書く順に並ぶ', () => {
+  it('渡すイベントは 9 つで、設定の JSON に書く順に並ぶ(PostToolBatch は PostToolUseFailure の後)', () => {
     expect(AGENT_HOOK_EVENT_NAMES).toEqual([
       'UserPromptSubmit',
       'PreToolUse',
       'PostToolUse',
       'PostToolUseFailure',
+      'PostToolBatch',
       'SubagentStop',
       'Stop',
       'StopFailure',
@@ -23,10 +24,15 @@ describe('agentHookProtocol(イベントとパス)', () => {
     ])
   })
 
-  it('8 つのイベントとパスを相互に引ける', () => {
+  it('9 つのイベントとパスを相互に引ける', () => {
     for (const event of AGENT_HOOK_EVENT_NAMES) {
       expect(agentHookEventOfPath(agentHookPathOf(event))).toBe(event)
     }
+  })
+
+  it('PostToolBatch のパスは /prompt-ide/agent-hooks/v1/post-tool-batch', () => {
+    expect(agentHookPathOf('PostToolBatch')).toBe('/prompt-ide/agent-hooks/v1/post-tool-batch')
+    expect(agentHookEventOfPath('/prompt-ide/agent-hooks/v1/post-tool-batch')).toBe('PostToolBatch')
   })
 
   it('パスは /prompt-ide/agent-hooks/v1/ にイベントのケバブケースを続ける', () => {
@@ -39,7 +45,6 @@ describe('agentHookProtocol(イベントとパス)', () => {
     '/prompt-ide/agent-hooks/v1/stop?x=1',
     '/prompt-ide/agent-hooks/v1/stop/',
     '/prompt-ide/agent-hooks/v1/session-start',
-    '/prompt-ide/agent-hooks/v1/post-tool-batch',
     '/prompt-ide/agent-hooks/v2/stop',
     '/PROMPT-IDE/agent-hooks/v1/stop',
     '/'

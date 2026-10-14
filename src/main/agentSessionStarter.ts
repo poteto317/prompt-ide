@@ -244,15 +244,24 @@ export function createAgentSessionStarter({
       creation = spawnSession(context, launch.plan, prepared, createdClaudeSession)
       return creation
     } finally {
-      // 取り消し・ID の選択の拒否・予約の失敗・spawn の失敗・例外(records.whenLoaded の reject・activate の例外など)で
+      // 取り消し・ID の選択の拒否・予約の失敗・spawn の失敗・例外(records.whenLoaded の reject など)で
       // 起動しなかったら(kind: 'created' を返さなかったら)、自分が書いた設定のファイルだけを消す(トークンはまだ表に無い。L-004・L-428)
       if (creation?.kind !== 'created') hooks.release(prepared, null)
     }
   }
 
+  /** 終了の後始末を 1 つずつ行う(1 つが投げても残りを行う。L-010) */
+  function cleanUpQuietly(label: string, cleanup: () => void): void {
+    try {
+      cleanup()
+    } catch (err) {
+      console.error(`[agentSessionStarter] 終了の後始末(${label})に失敗しました:`, err)
+    }
+  }
+
   /**
    * ID の選択・予約・spawn・hooks の結び付けを行う。同期の関数にして、ここから spawn までに await を挟めないようにする
-   * (記録の照合・予約の判定と予約の間に、別の起動が割り込まないように)。kind: 'created' を返したときだけ activate 済み
+   * (記録の照合・予約の判定と予約の間に、別の起動が割り込まないように)。kind: 'created' を返したら activate を試みた(失敗はログに出して続ける)
    */
   function spawnSession(
     { request, sink, allowedFolder, folderKey }: StartContext,
@@ -305,17 +314,23 @@ export function createAgentSessionStarter({
       const detail = err instanceof Error ? err.message : String(err)
       return { kind: 'failed', result: { kind: 'error', error: 'spawn-failed', detail } }
     }
-    // spawn の直後(await を挟まず)にトークンを表へ足し、追跡にセッションを足す。claude の最初の知らせより先に済む
-    hooks.activate(prepared, sessionId)
     // 予約・Map・hooks は exited の解決で外す。registry が取り消した起動の停止の完了・終了・止める操作の完了は、どれも exited の
     // 解決になる(AgentSession.stop は止まりきると exited を解決する)。止める操作の間(stoppingSessions)は予約が残る。
-    // registry へ返す前に購読するので、registry が枠からセッションを外すより先に Map から消える
+    // registry へ返す前に購読するので、registry が枠からセッションを外すより先に Map から消える。activate より前に購読し、
+    // activate が投げても後始末が漏れない(頑健性の 5)
     claudeSessionIdBySessionId.set(sessionId, claudeSessionId)
     void session.exited.then(() => {
-      claudeSessionIdBySessionId.delete(sessionId)
-      releaseReservation()
-      hooks.release(prepared, sessionId)
+      cleanUpQuietly('Map', () => claudeSessionIdBySessionId.delete(sessionId))
+      cleanUpQuietly('予約', releaseReservation)
+      cleanUpQuietly('hooks', () => hooks.release(prepared, sessionId))
     })
+    // spawn の直後(await を挟まず)にトークンを表へ足し、追跡にセッションを足す。claude の最初の知らせより先に済む。
+    // 失敗しても起動は続ける(hooks の知らせが届かないだけで、追跡は pending か無いまま。終了で release が呼ばれる)
+    try {
+      hooks.activate(prepared, sessionId)
+    } catch (err) {
+      console.error('[agentSessionStarter] hooks の結び付けに失敗しました:', err)
+    }
     createdClaudeSession.claudeSessionId = claudeSessionId
     return { kind: 'created', session }
   }

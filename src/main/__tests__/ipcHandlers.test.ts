@@ -23,7 +23,12 @@ const mockCreateAgentSessionStarter = vi.hoisted(() =>
     lastSessionOf: mockLastSessionOf
   }))
 )
-const mockToolActivity = vi.hoisted(() => ({ reportWorking: vi.fn() }))
+const mockToolActivity = vi.hoisted(() => ({
+  reportWorking: vi.fn(),
+  reportWorkingEnded: vi.fn(),
+  activityOf: vi.fn(() => ({ phase: 'paused', lost: null, unassignable: false })),
+  toolStartSeqOf: vi.fn(() => 0)
+}))
 const mockHookSessions = vi.hoisted(() => ({ marker: 'hook-sessions' }))
 const mockHooksLifecycleParts = vi.hoisted(() => ({ marker: 'hooks-lifecycle-parts' }))
 const mockCreateAgentHooksRuntime = vi.hoisted(() =>
@@ -163,6 +168,8 @@ import { isClaudeSessionId } from '@shared/types'
 import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
+import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
+import { collectAgentChangeEntriesBetween } from '../agentChangesQuery'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
 
@@ -250,28 +257,61 @@ describe('registerIpcHandlers', () => {
       startSession: mockStartAgentSession,
       claudeSessionIdOf: mockClaudeSessionIdOf,
       getLastSession: mockLastSessionOf,
-      reportWorking: mockToolActivity.reportWorking
+      reportWorking: mockToolActivity.reportWorking,
+      reportWorkingEnded: mockToolActivity.reportWorkingEnded
     })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
     expect(deps.claudeSessionIdOf).toBe(mockClaudeSessionIdOf)
     expect(deps.getLastSession).toBe(mockLastSessionOf)
     expect(deps.reportWorking).toBe(mockToolActivity.reportWorking)
+    expect(deps.reportWorkingEnded).toBe(mockToolActivity.reportWorkingEnded)
   })
 
-  it('claude の hooks の実物を 1 つ組み立て、段階 A のつなぎ先(何もしない・すぐ解決する)と開発版のログ(app.isPackaged でないとき)を渡す', async () => {
+  it('claude の hooks のつなぎ先を、記録の registry の notifyAttributionSignal・waitForAgentPhase・markToolStartTimedOut にする(生成の順は hooks の runtime → registry のまま)', async () => {
+    const notify = vi.spyOn(AgentBaselineRegistry.prototype, 'notifyAttributionSignal')
+    const wait = vi.spyOn(AgentBaselineRegistry.prototype, 'waitForAgentPhase')
+    const mark = vi.spyOn(AgentBaselineRegistry.prototype, 'markToolStartTimedOut')
+    try {
+      registerIpcHandlers(mockIpcMain)
+      expect(mockCreateAgentHooksRuntime).toHaveBeenCalledOnce()
+      const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1]
+      const options = (mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0] as {
+        onPhaseChange: (ownerId: number) => void
+        onToolStart: (ownerId: number, signal: AbortSignal) => Promise<void>
+        onToolStartTimedOut: (ownerId: number) => void
+        devLog: ((line: string) => void) | null
+      }
+      options.onPhaseChange(3)
+      expect(notify).toHaveBeenCalledExactlyOnceWith(3)
+      expect(notify.mock.contexts[0]).toBe(registry)
+      const controller = new AbortController()
+      await expect(options.onToolStart(3, controller.signal)).resolves.toBeUndefined()
+      expect(wait).toHaveBeenCalledExactlyOnceWith(3, controller.signal)
+      expect(wait.mock.contexts[0]).toBe(registry)
+      options.onToolStartTimedOut(3)
+      expect(mark).toHaveBeenCalledExactlyOnceWith(3)
+      expect(mark.mock.contexts[0]).toBe(registry)
+      expect(typeof options.devLog).toBe('function')
+    } finally {
+      notify.mockRestore()
+      wait.mockRestore()
+      mark.mockRestore()
+    }
+  })
+
+  it('段階の通知・打ち切りのつなぎ先は、記録が無いときも registry の close の後も投げない', () => {
     registerIpcHandlers(mockIpcMain)
-    expect(mockCreateAgentHooksRuntime).toHaveBeenCalledOnce()
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
     const options = (mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0] as {
       onPhaseChange: (ownerId: number) => void
-      onToolStart: (ownerId: number, signal: AbortSignal) => Promise<void>
       onToolStartTimedOut: (ownerId: number) => void
-      devLog: ((line: string) => void) | null
     }
     expect(() => options.onPhaseChange(1)).not.toThrow()
-    await expect(options.onToolStart(3, new AbortController().signal)).resolves.toBeUndefined()
-    expect(() => options.onToolStartTimedOut(3)).not.toThrow()
-    expect(typeof options.devLog).toBe('function')
+    expect(() => options.onToolStartTimedOut(1)).not.toThrow()
+    registry.close()
+    expect(() => options.onPhaseChange(1)).not.toThrow()
+    expect(() => options.onToolStartTimedOut(1)).not.toThrow()
   })
 
   it('組み立てた hooks の準備を starter に、片付けるものを will-quit の後始末に渡す', () => {
@@ -323,6 +363,27 @@ describe('registerIpcHandlers', () => {
       recursive: true,
       mode: 0o700
     })
+  })
+
+  it('記録の registry に、追跡(区別の合図と通し番号)・区切りの差分・開発版の区別のログ(app.isPackaged でないとき)・失敗のログ(console.warn)を渡す', () => {
+    registerIpcHandlers(mockIpcMain)
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
+    // 依存は private のため、組み立ての確認に限って型を外して読む
+    const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
+    expect(deps.attributionSource).toBe(mockToolActivity)
+    expect(deps.collectBetween).toBe(collectAgentChangeEntriesBetween)
+    expect(typeof deps.attributionDevLog).toBe('function')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      const err = new Error('boom')
+      deps.attributionWarn('[agent-attribution] 同期に失敗しました:', err)
+      expect(warnSpy).toHaveBeenCalledExactlyOnceWith(
+        '[agent-attribution] 同期に失敗しました:',
+        err
+      )
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it('エージェントの起動の規則(starter)を、同じ FolderAccessManager・同じ registry・実物の起動の部品で組み立てる', () => {

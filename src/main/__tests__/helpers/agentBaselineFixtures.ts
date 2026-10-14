@@ -7,13 +7,18 @@ import type { BaselineSnapshot, BaselineSnapshotResult } from '../../agentBaseli
 import type { AgentChangesRecord, AgentChangesRecordRun } from '../../agentChangesRecord'
 import type { AgentChangesProtectionGit } from '../../agentChangesProtectionRef'
 import { protectionRefName } from '../../agentChangesProtectionRules'
-import type { AgentBaselineProtectionDeps } from '../../agentBaselineRegistry'
+import type {
+  AgentBaselineProtectionDeps,
+  AgentBaselineRegistryDeps
+} from '../../agentBaselineRegistry'
+import type { TrackingAttribution } from '../../agentChangesAttribution'
+import type { AgentToolActivity, AgentToolActivitySignal } from '../../agentToolActivity'
 import { initRepo, runGit, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
 
 // エージェントの変更の記録(agentBaselineSnapshot)を実 git で試すテストの準備と偽物を 1 か所から作る。
 // 「記録のインデックスの git を開発者の設定から切り離す方法」や「記録を取る関数の呼び方」が変わったときに、
 // 各テストのファイルを同じように直さずに済むようにする(SRP L3-01・L3-02)。
-// あわせて、registry を git なしで試すテストの偽物(記録の形・保護の ref の git と依存)もここから作る。
+// あわせて、registry を git なしで試すテストの偽物(記録の形・保護の ref の git と依存・区別の形と依存〈追跡の偽物を含む〉)もここから作る。
 // realGitRepo.ts は記録に依存しない汎用の道具なので、記録に関わるものはこちらに置く
 
 export interface AgentBaselineRepo {
@@ -122,6 +127,26 @@ export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}):
 /** 偽物の保護の instanceId(<pid>-<16 進 8 桁> の形) */
 export const FAKE_PROTECTION_INSTANCE_ID = '1-00000000'
 
+// 区別を始めたばかりの記録の区別(idle・印なし・始点を区切りにする・区別は始点の時刻から)。記録の形のテストの既定値に使う
+export function makeTrackingAttribution(
+  baseline: BaselineSnapshot,
+  overrides: Partial<TrackingAttribution> = {}
+): TrackingAttribution {
+  return {
+    kind: 'tracking',
+    phase: 'idle',
+    periodUnassignable: false,
+    timedOutPending: false,
+    checkpoint: { snapshot: baseline, sharedWithBaseline: true },
+    userPaths: new Set(),
+    agentPaths: new Set(),
+    trackingSince: baseline.startedAt,
+    hadUnassignedSince: false,
+    staleCheckpointDirs: [],
+    ...overrides
+  }
+}
+
 // 1 所有者の記録。累積の始点の既定は makeBaselineSnapshot()、次の実行の番号の既定は実行の数 + 1。
 // 保護の ref の名前の既定は偽物の instanceId と記録の番号から作る(recordSerial を上書きしたときも追従する)。
 // 記録の形が変わっても、範囲の解決・問い合わせのテストの偽物を個別に直さずに済むようにする
@@ -130,8 +155,9 @@ export function makeAgentChangesRecord(
   overrides: Partial<Omit<AgentChangesRecord, 'runs'>> = {}
 ): AgentChangesRecord {
   const recordSerial = overrides.recordSerial ?? 1
+  const baseline = overrides.baseline ?? makeBaselineSnapshot()
   return {
-    baseline: overrides.baseline ?? makeBaselineSnapshot(),
+    baseline,
     runs,
     nextNumber: overrides.nextNumber ?? runs.length + 1,
     recordSerial,
@@ -140,7 +166,8 @@ export function makeAgentChangesRecord(
       value: null,
       swept: false
     },
-    undo: overrides.undo ?? null
+    undo: overrides.undo ?? null,
+    attribution: overrides.attribution ?? makeTrackingAttribution(baseline)
   }
 }
 
@@ -251,5 +278,48 @@ export function makeFakeProtectionDeps(
     noHooksDir: '/nohooks',
     git,
     isProcessAlive: () => true
+  }
+}
+
+/** registry の依存 attributionSource の偽物(追跡の合図と通し番号)。値を書き換えても registry には知らせない(知らせるのはテスト) */
+export interface FakeAttributionSource extends Pick<
+  AgentToolActivity,
+  'activityOf' | 'toolStartSeqOf'
+> {
+  signal: AgentToolActivitySignal
+  seq: number
+  set(next: Partial<AgentToolActivitySignal>): void
+}
+
+// 既定は paused・合図なし・通し番号 0
+export function createFakeAttributionSource(
+  initial: Partial<AgentToolActivitySignal> = {}
+): FakeAttributionSource {
+  const source: FakeAttributionSource = {
+    signal: { phase: 'paused', lost: null, unassignable: false, ...initial },
+    seq: 0,
+    set: (next) => {
+      source.signal = { ...source.signal, ...next }
+    },
+    activityOf: () => source.signal,
+    toolStartSeqOf: () => source.seq
+  }
+  return source
+}
+
+/** registry の区別の依存(区切りの差分・追跡・開発版のログ・失敗のログ) */
+export type AttributionRegistryDeps = Pick<
+  AgentBaselineRegistryDeps,
+  'collectBetween' | 'attributionSource' | 'attributionDevLog' | 'attributionWarn'
+>
+
+// 区別を試さないテストの registry の区別の依存。区別をやめた記録(lost)で始め、同期・吸収の区切りを取らない
+// (区別は agentBaselineRegistry.attribution.test.ts で見る)。区別の依存が増えても、区別を試さない各テストを直さずに済むようにする
+export function makeAttributionOffDeps(): AttributionRegistryDeps {
+  return {
+    collectBetween: vi.fn<AgentBaselineRegistryDeps['collectBetween']>(async () => []),
+    attributionSource: createFakeAttributionSource({ lost: 'receiver-unavailable' }),
+    attributionDevLog: null,
+    attributionWarn: () => undefined
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  AgentChangeEntry,
   AgentChangesBeginTrigger,
   AgentChangesState,
   AgentChangesUndoOperation,
@@ -7,6 +8,19 @@ import type {
 } from '@shared/types'
 import { AGENT_CHANGES_MAX_RUNS } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
+import { attributionLogLine, initialAttribution } from './agentChangesAttribution'
+import type { AttributionLogEvent, TrackingAttribution } from './agentChangesAttribution'
+import {
+  absorbAfterTask,
+  absorbBeforeTask,
+  loseAfterUnexpectedError,
+  syncAttributionStep
+} from './agentChangesAttributionSync'
+import type {
+  AttributionStepOutcome,
+  AttributionSyncContext,
+  AttributionSyncResult
+} from './agentChangesAttributionSync'
 import type { AgentChangesRecord, AgentChangesRunStart } from './agentChangesRecord'
 import type { AgentChangesProtectionGit, ProtectionGitContext } from './agentChangesProtectionRef'
 import type { ProtectionRefWrite } from './agentChangesProtectionRules'
@@ -36,6 +50,7 @@ import {
   toAgentRevertUndoOutcome
 } from './agentChangesUndoModel'
 import { KeyedSerialQueue } from './keyedSerialQueue'
+import type { AgentToolActivity, AgentToolPhase } from './agentToolActivity'
 
 // 所有者(webContents の id)→ 記録(0 か 1 つ。累積の始点・実行の一覧・保護の ref の状態・取り消しの控え)。Electron に依存しない
 // (設計書「状態の持ち主」「記録の持ち方」)。
@@ -46,6 +61,9 @@ import { KeyedSerialQueue } from './keyedSerialQueue'
 // - 保護: 記録の形が変わるたびに、所有者の列の後ろに「保護の同期」を並べる(設計書「記録の blob を gc から守る」)。begin・addRun は同期を待たない
 // - 取り消しの控え: 戻す操作の結果で控えを残すか捨てるかを決め、undoId を振る(commitRevertUndo)。取り消しは控えの書き戻しを
 //   注入された executeUndo に任せ、結果で控えを捨てるかだけを決める(undoLastRevert。ファイルの読み書きを持たない)
+// - 区別: 記録ごとに利用者の変更とエージェントの変更を区別する(設計書「利用者の変更の判定」)。begin で始め、追跡の合図の変化で
+//   列に同期を並べ、判定の区切りの差分を段階に割り当てる。戻す操作・取り消しは同じ列の中で吸収し(withAttributionAbsorbed)、
+//   PreToolUse は記録の段階が agent になるまで待たせる(waitForAgentPhase。打ち切りは markToolStartTimedOut)。手順は agentChangesAttributionSync.ts
 
 /** 記録の tree を gc から守る ref の依存(設計書「保護の ref の名前」「残った ref の掃除」) */
 export interface AgentBaselineProtectionDeps {
@@ -83,6 +101,14 @@ export interface AgentBaselineRegistryDeps {
    * ファイルの読み書きを持たず、結果で控えを残すか捨てるかだけを決める
    */
   executeUndo: (folderPath: string, undo: AgentChangesUndo) => Promise<AgentChangesUndoExecution>
+  /** 2 つの区切りの間の変更(agentChangesQuery の collectAgentChangeEntriesBetween)。判定の区切りの差分に使う */
+  collectBetween: (start: BaselineSnapshot, end: BaselineSnapshot) => Promise<AgentChangeEntry[]>
+  /** ウィンドウの段階の合図とツールの開始の通し番号(agentToolActivity の追跡。必須。L-060) */
+  attributionSource: Pick<AgentToolActivity, 'activityOf' | 'toolStartSeqOf'>
+  /** 開発版の区別のログ(1 行ずつ)。null なら出さない(ipcHandlers.ts が !app.isPackaged のときだけ console.log を渡す) */
+  attributionDevLog: ((line: string) => void) | null
+  /** 区別の通知・同期・吸収の予期しない失敗のログ(ipcHandlers.ts が console.warn を渡す。失敗は lost にして投げない) */
+  attributionWarn: (message: string, err: unknown) => void
 }
 
 /** 戻す操作の結果の控え(handler が commitRevertUndo に渡す) */
@@ -91,6 +117,25 @@ export interface AgentRevertUndoCommit {
   capture: AgentChangesUndoCapture
   /** 作業ツリーに適用した件数 */
   applied: number
+}
+
+/** 同期・吸収の手順の 1 回(agentChangesAttributionSync の syncAttributionStep・absorbBeforeTask・absorbAfterTask) */
+type AttributionStep = (ctx: AttributionSyncContext) => Promise<AttributionStepOutcome>
+
+/** 区別している記録(区別が tracking) */
+type TrackingRecord = AgentChangesRecord & { attribution: TrackingAttribution }
+
+const isTracking = (record: AgentChangesRecord): record is TrackingRecord =>
+  record.attribution.kind === 'tracking'
+
+function whenAborted(signal: AbortSignal): Promise<'aborted'> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve('aborted')
+      return
+    }
+    signal.addEventListener('abort', () => resolve('aborted'), { once: true })
+  })
 }
 
 export class AgentBaselineRegistry {
@@ -115,6 +160,13 @@ export class AgentBaselineRegistry {
   // 保護をやめた記録の番号(利用者が消した・書き換えた ref を掃除で消さない)。保護をやめたかの唯一の持ち主で、記録の側には
   // 持たない(記録を捨てた後も掃除で残すため、番号で持つ)
   private readonly abandonedSerials = new Set<number>()
+  // 区別の同期(設計書「同期」)。待っている(まだ走り始めていない)同期と、並べた時点の記録(L-101・L-434)
+  private readonly waitingSyncs = new Map<
+    number,
+    { record: AgentChangesRecord; promise: Promise<AttributionSyncResult> }
+  >()
+  // 走っている同期(waitForAgentPhase の「並んでいる・走っている同期が無い」の判定に使う)
+  private readonly runningSyncs = new Map<number, Promise<AttributionSyncResult>>()
   private closed = false
 
   constructor(private readonly deps: AgentBaselineRegistryDeps) {}
@@ -157,6 +209,9 @@ export class AgentBaselineRegistry {
     const isCanceled = (): boolean => this.closed || this.generationOf(ownerId) !== generation
     // 始点の取得の依頼(実行〈AgentChangesRecordRun〉とは別のもの)
     const request = (async (): Promise<AgentChangesState> => {
+      // 始点を取り始める直前の通し番号と合図(設計書「記録に持つもの」。始点を取っている間のツールの開始・往復を拾う。L-103)
+      const seqBefore = this.deps.attributionSource.toolStartSeqOf(ownerId)
+      const signalBefore = this.deps.attributionSource.activityOf(ownerId)
       const result = await this.deps.takeSnapshot(folderPath, { isCanceled, now: this.deps.now })
       if (result.kind === 'canceled') return { kind: 'none' }
       if (result.kind === 'unavailable') return result.state
@@ -166,16 +221,28 @@ export class AgentBaselineRegistry {
       }
       const previous = this.records.get(ownerId)
       if (previous !== undefined) await this.removeDirs(agentChangesRecordTempDirs(previous))
+      // 記録を作る時点の合図で区別の初期値を決める(ここから records に置くまで await を挟まない)
+      const { attribution, syncNow } = initialAttribution({
+        baseline: result.snapshot,
+        seqBefore,
+        seqAfter: this.deps.attributionSource.toolStartSeqOf(ownerId),
+        signalBefore,
+        signalAfter: this.deps.attributionSource.activityOf(ownerId)
+      })
       // 始点を取り終えたときに実行 1 を足すかは、始点の取得を始めた依頼の trigger で決める(pending には持たせない)
       const recordSerial = this.nextRecordSerial++
       const record = createAgentChangesRecord(
         result.snapshot,
         recordSerial,
-        protectionRefName(this.deps.protection.instanceId, recordSerial)
+        protectionRefName(this.deps.protection.instanceId, recordSerial),
+        attribution
       )
       if (trigger === 'send') this.appendRun(ownerId, record, { kind: 'baseline' })
       this.records.set(ownerId, record)
       this.recordOwners.set(record, ownerId)
+      this.logAttribution(ownerId, '開始', null, record)
+      // 始点を取っている間にツールが動いた・合図が下りたなら、最初の区間を片付ける同期を 1 回並べる
+      if (syncNow) this.enqueueAttributionSync(ownerId)
       // 保護の同期(待たない)。前の記録の削除を、新しい記録の作成より先に並べる
       if (previous !== undefined) this.enqueueProtectionSync(ownerId, previous)
       this.enqueueProtectionSync(ownerId, record)
@@ -194,6 +261,118 @@ export class AgentBaselineRegistry {
   getState(ownerId: number, folderPath: string): AgentChangesState {
     const record = this.currentRecord(ownerId, folderPath)
     return record === null ? { kind: 'none' } : this.recordingState(record)
+  }
+
+  /**
+   * 追跡の合図が変わったとき(設計書「registry へのつなぎ方」)。追跡の publish の中から同期的に呼ばれるため投げない(L-053)。
+   * 記録が無い・区別していない・終了中なら何もしない。合図の unassignable が立っていれば列の外で同期的に今の区間に印を立て、
+   * 同期を 1 回並べる(段階は同期の番が来た時点の追跡の値で読む。L-040)
+   */
+  notifyAttributionSignal(ownerId: number): void {
+    try {
+      const record = this.trackingRecord(ownerId)
+      if (record === null) return
+      if (this.deps.attributionSource.activityOf(ownerId).unassignable) {
+        record.attribution.periodUnassignable = true
+      }
+      this.enqueueAttributionSync(ownerId)
+    } catch (err) {
+      this.deps.attributionWarn('[agent-attribution] 段階の通知の受け取りに失敗しました:', err)
+    }
+  }
+
+  /**
+   * PreToolUse の待ちの打ち切り(失敗を含む。設計書「PreToolUse の待ち」。受け口の onToolStartTimedOut につなぐ)。今の区間に
+   * 「割り当てられない」の印と、同期の手順 9 で並べ直すかを決める打ち切りの印(timedOutPending)を立てる(列の外で同期的に)。
+   * 記録が無い・区別していない・終了中なら何もしない
+   */
+  markToolStartTimedOut(ownerId: number): void {
+    const record = this.trackingRecord(ownerId)
+    if (record === null) return
+    record.attribution.periodUnassignable = true
+    record.attribution.timedOutPending = true
+  }
+
+  /**
+   * 区別の同期を所有者の列に並べる(設計書「同期」)。同じ所有者の列で待っている(まだ走り始めていない)同期があり、それを並べた時点の
+   * 記録が今の記録と同じなら、その Promise を返す(L-101・L-434)。比べる世代と記録はタスクが走り始めた時点で読む。reject しない
+   */
+  syncAttribution(ownerId: number): Promise<AttributionSyncResult> {
+    const record = this.trackingRecord(ownerId)
+    if (record === null) return Promise.resolve('skipped')
+    const waiting = this.waitingSyncs.get(ownerId)
+    // 記録の照合は守りの重ね: 同期は走り始めた時点で記録を読むため、照合を外しても今の振る舞いに差は出ない(落ちるテストも無い)。
+    // 走り始める前に記録が置き換わった依頼を、新しい記録の依頼として数えないために残す
+    if (waiting !== undefined && waiting.record === record) return waiting.promise
+    const promise: Promise<AttributionSyncResult> = this.queue.enqueue(ownerId, async () => {
+      if (this.waitingSyncs.get(ownerId)?.promise === promise) this.waitingSyncs.delete(ownerId)
+      this.runningSyncs.set(ownerId, promise)
+      try {
+        return await this.runAttributionSync(ownerId)
+      } finally {
+        if (this.runningSyncs.get(ownerId) === promise) this.runningSyncs.delete(ownerId)
+      }
+    })
+    this.waitingSyncs.set(ownerId, { record, promise })
+    return promise
+  }
+
+  /**
+   * PreToolUse の待ち(設計書「PreToolUse の待ち」。受け口の onToolStart につなぐ)。記録の段階が agent で、並んでいる・走っている同期が
+   * 無くなるまで、そのとき並んでいる最新の同期を待つ。待った同期が区切りを取らずに終わった(skipped)ら、それ以上待たない(何もしない同期を
+   * 回し続けて main のイベントループを止めない。L-052)。signal の中止で解決する(reject しない。5 秒の上限は受け口が数える)
+   */
+  async waitForAgentPhase(ownerId: number, signal: AbortSignal): Promise<void> {
+    while (!signal.aborted) {
+      const record = this.trackingRecord(ownerId)
+      // 1. 記録が無い・区別していない・終了中
+      if (record === null) return
+      // 2. あるべき段階が agent でない(待ちの最中にタブを閉じたなど、覆うべきツールが無くなった)
+      if (this.deps.attributionSource.activityOf(ownerId).phase !== 'agent') return
+      const waiting = this.waitingSyncs.get(ownerId)
+      // 3. 記録の段階が agent で、並んでいる・走っている同期が無い
+      if (
+        record.attribution.phase === 'agent' &&
+        waiting === undefined &&
+        !this.runningSyncs.has(ownerId)
+      )
+        return
+      // 4. 走っている同期より後に並んだもの(この記録の待っている同期)があればそれ、無ければ新しく並べる
+      const target =
+        waiting !== undefined && waiting.record === record
+          ? waiting.promise
+          : this.syncAttribution(ownerId)
+      const result = await Promise.race([target, whenAborted(signal)])
+      if (result !== 'synced') return
+    }
+  }
+
+  /**
+   * 戻す操作・取り消しの吸収(設計書「アプリの戻す操作・取り消しの吸収」)。列の中で呼ぶ(自分では列に並ばない。同期と同じ列の中で直列になる)。
+   * 区別している記録なら、(1) 区切り S1 を取って前の区間を割り当て、(2) task を行い、(3) 作業ツリーを変えた(changed)か task が投げたら
+   * 区切り S2 を取り直して、アプリの操作の差分をどちらの集合にも入れない。区切りの失敗は lost にして task を止めない(区別はおまけ)
+   */
+  async withAttributionAbsorbed<T>(
+    ownerId: number,
+    record: AgentChangesRecord,
+    task: () => Promise<T>,
+    changed: (result: T) => boolean
+  ): Promise<T> {
+    const ctx = this.attributionContextOf(ownerId, record)
+    const absorb = async (step: AttributionStep): Promise<void> => {
+      await this.runAttributionStep(ownerId, ctx, '吸収', step)
+    }
+    await absorb(absorbBeforeTask)
+    let result: T
+    try {
+      result = await task()
+    } catch (err) {
+      // 変えたかが分からない(途中まで書き換えて投げうる)ため、必ず S2 を取ってから投げ直す
+      await absorb(absorbAfterTask)
+      throw err
+    }
+    if (changed(result)) await absorb(absorbAfterTask)
+    return result
   }
 
   /**
@@ -275,17 +454,27 @@ export class AgentBaselineRegistry {
     return this.withRecord(ownerId, folderPath, async (record) => {
       const undo = record.undo
       if (undo === null || undo.undoId !== undoId) throw new Error(AGENT_UNDO_STALE_MESSAGE)
-      const execution = await this.deps.executeUndo(record.baseline.folderPath, undo)
-      // 作業ツリーを変えずに止まり、結果が控えを残すとしたなら、もう一度取り消せるよう控えを残す
-      if ((execution.kind === 'rejected' || execution.kind === 'failed') && execution.keepUndo) {
-        throw new Error(execution.message)
-      }
-      if (record.undo === undo) record.undo = null
-      await this.removeUndoDir(undo.dir)
-      if (execution.kind === 'rejected' || execution.kind === 'failed') {
-        throw new Error(execution.message)
-      }
-      return toAgentChangesUndoResult(execution)
+      return this.withAttributionAbsorbed(
+        ownerId,
+        record,
+        async () => {
+          const execution = await this.deps.executeUndo(record.baseline.folderPath, undo)
+          // 作業ツリーを変えずに止まり、結果が控えを残すとしたなら、もう一度取り消せるよう控えを残す
+          if (
+            (execution.kind === 'rejected' || execution.kind === 'failed') &&
+            execution.keepUndo
+          ) {
+            throw new Error(execution.message)
+          }
+          if (record.undo === undo) record.undo = null
+          await this.removeUndoDir(undo.dir)
+          if (execution.kind === 'rejected' || execution.kind === 'failed') {
+            throw new Error(execution.message)
+          }
+          return toAgentChangesUndoResult(execution)
+        },
+        (result) => result.restoredPaths.length > 0 || result.trashedPaths.length > 0
+      )
     })
   }
 
@@ -523,6 +712,112 @@ export class AgentBaselineRegistry {
     ])
   }
 
+  // 同期の 1 回(列の中)。記録・世代はこの時点で読む(並べた時点ではない。L-040)。失敗は lost にして reject しない
+  private async runAttributionSync(ownerId: number): Promise<AttributionSyncResult> {
+    const record = this.trackingRecord(ownerId)
+    if (record === null) return 'skipped'
+    const outcome = await this.runAttributionStep(
+      ownerId,
+      this.attributionContextOf(ownerId, record),
+      '同期',
+      syncAttributionStep
+    )
+    // 打ち切られたツールが区切りの後も書いた可能性がある(打ち切り 1 回につき高々 1 回。設計書「同期」9)
+    if (outcome.kind === 'synced' && outcome.requeue) this.enqueueAttributionSync(ownerId)
+    return outcome.kind === 'synced' ? 'synced' : 'skipped'
+  }
+
+  // 区別の同期を列に並べて待たない(合図の通知・始点の後・打ち切りの後の並べ直し)。syncAttribution は reject しないが、守りとしてログに出す
+  private enqueueAttributionSync(ownerId: number): void {
+    void this.syncAttribution(ownerId).catch((err: unknown) =>
+      this.deps.attributionWarn('[agent-attribution] 同期に失敗しました:', err)
+    )
+  }
+
+  // 同期・吸収の手順の 1 回を走らせ、結果をログに出す。予期しない例外はログに出して lost にし、投げない
+  // (失敗を「変化なし」にしない・戻す操作と取り消しを止めない。L-002)
+  private async runAttributionStep(
+    ownerId: number,
+    ctx: AttributionSyncContext,
+    event: '同期' | '吸収',
+    step: AttributionStep
+  ): Promise<AttributionStepOutcome> {
+    let outcome: AttributionStepOutcome
+    try {
+      outcome = await step(ctx)
+    } catch (err) {
+      this.deps.attributionWarn(`[agent-attribution] ${event}に失敗しました:`, err)
+      outcome = await loseAfterUnexpectedError(ctx)
+    }
+    this.logOutcome(ownerId, event, outcome, ctx.record)
+    return outcome
+  }
+
+  // 同期・吸収の依存。stale は registry の close・世代の変化・記録の置き換え(close は世代を進めないため記録も見る。設計書「同期」11)
+  private attributionContextOf(
+    ownerId: number,
+    record: AgentChangesRecord
+  ): AttributionSyncContext {
+    const generation = this.generationOf(ownerId)
+    const isStale = (): boolean =>
+      this.closed ||
+      this.generationOf(ownerId) !== generation ||
+      this.records.get(ownerId) !== record
+    return {
+      record,
+      signal: () => this.deps.attributionSource.activityOf(ownerId),
+      takeSnapshot: (baseIndexPath) =>
+        this.deps.takeSnapshot(record.baseline.folderPath, {
+          isCanceled: isStale,
+          now: this.deps.now,
+          baseIndexPath
+        }),
+      collectBetween: this.deps.collectBetween,
+      isStale,
+      discardSnapshot: (snapshot) => this.discardSnapshot(snapshot),
+      removeDir: (dir) => this.removeAttributionDir(dir),
+      now: this.deps.now
+    }
+  }
+
+  // 同期・吸収の結果のログ(何もしなかったときは出さない)
+  private logOutcome(
+    ownerId: number,
+    event: '同期' | '吸収',
+    outcome: AttributionStepOutcome,
+    record: AgentChangesRecord
+  ): void {
+    if (outcome.kind === 'skipped') return
+    this.logAttribution(
+      ownerId,
+      outcome.kind === 'lost' ? 'lost' : event,
+      outcome.phaseBefore,
+      record
+    )
+  }
+
+  // 前の判定の区切りを消す(終了中は待てないので同期で消す)。失敗は投げる(削除待ちに入れるのは agentChangesAttributionSync の
+  // removeCheckpointDir)
+  private async removeAttributionDir(dir: string): Promise<void> {
+    if (this.closed) {
+      this.deps.removeDirSync(dir)
+      return
+    }
+    await this.deps.removeDir(dir)
+  }
+
+  // 開発版の区別のログ(パス・内容は出さない。L-017)
+  private logAttribution(
+    ownerId: number,
+    event: AttributionLogEvent,
+    phaseBefore: AgentToolPhase | null,
+    record: AgentChangesRecord
+  ): void {
+    this.deps.attributionDevLog?.(
+      attributionLogLine(ownerId, event, phaseBefore, record.attribution)
+    )
+  }
+
   private recordingState(record: AgentChangesRecord): AgentChangesState {
     return {
       kind: 'recording',
@@ -554,6 +849,12 @@ export class AgentBaselineRegistry {
   // 1 つの削除が失敗しても残りを試す(removeBaselineDir は失敗を握るが、依存の差し替えにも備える。L-010)
   private async removeDirs(dirs: string[]): Promise<void> {
     for (const dir of dirs) await this.deps.removeDir(dir).catch(() => undefined)
+  }
+
+  // 区別している今の記録(記録が無い・区別していない・終了中なら null)
+  private trackingRecord(ownerId: number): TrackingRecord | null {
+    const record = this.records.get(ownerId)
+    return !this.closed && record !== undefined && isTracking(record) ? record : null
   }
 
   // 記録があり、そのフォルダが folderPath と同じなら返す(照合だけ。記録は捨てない)

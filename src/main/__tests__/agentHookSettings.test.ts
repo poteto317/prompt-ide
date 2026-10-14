@@ -60,13 +60,14 @@ function useTempDir(): () => string {
 }
 
 describe('buildAgentHookSettings', () => {
-  it('8 つのイベントの http の hook を完全一致の形で返す(SessionStart・PostToolBatch は渡さない)', () => {
+  it('9 つのイベントの http の hook を完全一致の形で返す(SessionStart は渡さない。PostToolBatch は matcher なし・timeout 5)', () => {
     expect(buildAgentHookSettings({ baseUrl: BASE, token: TOKEN })).toStrictEqual({
       hooks: {
         UserPromptSubmit: [{ hooks: [hook('user-prompt-submit')] }],
         PreToolUse: [{ matcher: MATCHER, hooks: [hook('pre-tool-use', 10)] }],
         PostToolUse: [{ matcher: MATCHER, hooks: [hook('post-tool-use')] }],
         PostToolUseFailure: [{ matcher: MATCHER, hooks: [hook('post-tool-use-failure')] }],
+        PostToolBatch: [{ hooks: [hook('post-tool-batch')] }],
         SubagentStop: [{ hooks: [hook('subagent-stop')] }],
         Stop: [{ hooks: [hook('stop')] }],
         StopFailure: [{ hooks: [hook('stop-failure')] }],

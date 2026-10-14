@@ -1,12 +1,13 @@
 // claude の hooks の受け取りの取り決め(設計書「受け口」「設定のファイル」「渡す hooks」)。設定・受け口・解釈が同じ定数を使う。
 // どれも main が決め、renderer からは受け取らない(L-019)
 
-/** アプリが渡す 8 つのイベント(SessionStart は http の hook を使えないため渡さない。PostToolBatch は段階 A では渡さない) */
+/** アプリが渡す 9 つのイベント(SessionStart は http の hook を使えないため渡さない。PostToolBatch は段階 B から渡す) */
 export type AgentHookEventName =
   | 'UserPromptSubmit'
   | 'PreToolUse'
   | 'PostToolUse'
   | 'PostToolUseFailure'
+  | 'PostToolBatch'
   | 'SubagentStop'
   | 'Stop'
   | 'StopFailure'
@@ -18,6 +19,7 @@ export const AGENT_HOOK_EVENT_NAMES: readonly AgentHookEventName[] = [
   'PreToolUse',
   'PostToolUse',
   'PostToolUseFailure',
+  'PostToolBatch',
   'SubagentStop',
   'Stop',
   'StopFailure',
@@ -30,6 +32,7 @@ const AGENT_HOOK_EVENT_PATH_SEGMENTS: Readonly<Record<AgentHookEventName, string
   PreToolUse: 'pre-tool-use',
   PostToolUse: 'post-tool-use',
   PostToolUseFailure: 'post-tool-use-failure',
+  PostToolBatch: 'post-tool-batch',
   SubagentStop: 'subagent-stop',
   Stop: 'stop',
   StopFailure: 'stop-failure',
@@ -42,7 +45,7 @@ export function agentHookPathOf(event: AgentHookEventName): string {
   return AGENT_HOOK_PATH_PREFIX + AGENT_HOOK_EVENT_PATH_SEGMENTS[event]
 }
 
-/** 要求のパス(クエリを含む req.url)が 8 つのどれかに完全一致すればそのイベント。違えば null */
+/** 要求のパス(クエリを含む req.url)が 9 つのどれかに完全一致すればそのイベント。違えば null */
 export function agentHookEventOfPath(path: string): AgentHookEventName | null {
   return AGENT_HOOK_EVENT_NAMES.find((event) => agentHookPathOf(event) === path) ?? null
 }

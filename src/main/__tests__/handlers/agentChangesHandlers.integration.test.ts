@@ -32,13 +32,15 @@ import {
   AGENT_CHANGES_UNDO_TEMP_PREFIX,
   executeAgentChangesUndo
 } from '../../agentChangesUndo'
+import { collectAgentChangeEntriesBetween } from '../../agentChangesQuery'
 import { commitAll, readRepoFile, runGit, writeRepoFile } from '../helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
+  createFakeAttributionSource,
   createFakeTrash,
   disposeAgentBaselineRepo
 } from '../helpers/agentBaselineFixtures'
-import type { FakeTrash } from '../helpers/agentBaselineFixtures'
+import type { FakeAttributionSource, FakeTrash } from '../helpers/agentBaselineFixtures'
 
 // 実 git で、送信ごとの区切り → 範囲ごとの一覧・diff → 戻す系の範囲の検査を handler から通す(設計書「テスト方針」の結合)
 
@@ -73,44 +75,17 @@ let folderAccess: FolderAccessManager
 let noHooksDir: string
 const write = (path: string, content: string): void => writeRepoFile(repo, path, content)
 
-beforeEach(() => {
-  ;({ repo, home, tempRoot } = createAgentBaselineRepo('agent-changes-handlers-int-'))
-  handles.clear()
-  trash = createFakeTrash()
-  folderAccess = new FolderAccessManager()
-  folderAccess.set(1, repo)
-  noHooksDir = join(tempRoot, 'no-hooks')
-  mkdirSync(noHooksDir, { mode: 0o700 })
-  registry = new AgentBaselineRegistry({
+// registry の依存。区別は既定で lost(区別の区切りを取らない)。区別を試す describe は attributionSource を渡す
+function makeRegistry(
+  protection: Partial<AgentBaselineProtectionDeps> = {},
+  attributionSource: FakeAttributionSource = createFakeAttributionSource({
+    lost: 'receiver-unavailable'
+  })
+): AgentBaselineRegistry {
+  return new AgentBaselineRegistry({
     takeSnapshot: (folderPath, options) =>
       takeBaselineSnapshot(folderPath, { ...options, tempRoot }),
-    removeDir: removeBaselineDir,
-    removeDirSync: removeBaselineDirSync,
-    now: Date.now,
-    protection: {
-      instanceId: INSTANCE_ID,
-      noHooksDir,
-      git: protectionRefGit,
-      isProcessAlive: isProcessAliveOnThisMachine
-    },
-    executeUndo: (folderPath, undo) =>
-      executeAgentChangesUndo({ folderPath, undo, trash: trash.trash })
-  })
-  registerAgentChangesHandlers(ipcMain as never, {
-    registry,
-    folderAccess,
-    trash: trash.trash,
-    undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
-  })
-})
-
-// 古い registry を閉じ、保護の依存を差し替えた新しい registry で handler を登録し直す
-function rebuildRegistry(protection: Partial<AgentBaselineProtectionDeps> = {}): void {
-  registry.close()
-  handles.clear()
-  registry = new AgentBaselineRegistry({
-    takeSnapshot: (folderPath, options) =>
-      takeBaselineSnapshot(folderPath, { ...options, tempRoot }),
+    collectBetween: (start, end) => collectAgentChangeEntriesBetween(start, end),
     removeDir: removeBaselineDir,
     removeDirSync: removeBaselineDirSync,
     now: Date.now,
@@ -122,8 +97,38 @@ function rebuildRegistry(protection: Partial<AgentBaselineProtectionDeps> = {}):
       ...protection
     },
     executeUndo: (folderPath, undo) =>
-      executeAgentChangesUndo({ folderPath, undo, trash: trash.trash })
+      executeAgentChangesUndo({ folderPath, undo, trash: trash.trash }),
+    attributionSource,
+    attributionDevLog: null,
+    attributionWarn: () => undefined
   })
+}
+
+beforeEach(() => {
+  ;({ repo, home, tempRoot } = createAgentBaselineRepo('agent-changes-handlers-int-'))
+  handles.clear()
+  trash = createFakeTrash()
+  folderAccess = new FolderAccessManager()
+  folderAccess.set(1, repo)
+  noHooksDir = join(tempRoot, 'no-hooks')
+  mkdirSync(noHooksDir, { mode: 0o700 })
+  registry = makeRegistry()
+  registerAgentChangesHandlers(ipcMain as never, {
+    registry,
+    folderAccess,
+    trash: trash.trash,
+    undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
+  })
+})
+
+// 古い registry を閉じ、依存を差し替えた新しい registry で handler を登録し直す
+function rebuildRegistry(
+  protection: Partial<AgentBaselineProtectionDeps> = {},
+  attributionSource?: FakeAttributionSource
+): void {
+  registry.close()
+  handles.clear()
+  registry = makeRegistry(protection, attributionSource)
   registerAgentChangesHandlers(ipcMain as never, {
     registry,
     folderAccess,
@@ -524,5 +529,36 @@ describe('戻す → 取り消すの往復(実 git)', () => {
     expect(undoTempDirs()).toHaveLength(1)
     await invoke('agentChanges:clear')
     expect(undoTempDirs()).toEqual([])
+  })
+})
+
+describe('戻す操作の吸収(実 git)', () => {
+  it('エージェントの変更を行の ↶ で戻した後に、エージェントが同じファイルを書き直しても、利用者の集合に入らない(吸収を外すとこのテストが落ちる)', async () => {
+    write('a.txt', 'base\n')
+    commitAll(repo, 'base')
+    const source = createFakeAttributionSource({ phase: 'idle' })
+    rebuildRegistry({}, source)
+    const change = (phase: 'idle' | 'agent'): void => {
+      source.set({ phase })
+      registry.notifyAttributionSignal(1)
+    }
+    await invoke('agentChanges:begin', 'manual')
+    change('agent')
+    await registry.waitForAgentPhase(1, new AbortController().signal)
+    write('a.txt', 'agent\n')
+    change('idle')
+    await invoke('agentChanges:list', ALL)
+    await invoke('agentChanges:revertFile', 'a.txt', ALL)
+    expect(readRepoFile(repo, 'a.txt')).toBe('base\n')
+    change('agent')
+    await registry.waitForAgentPhase(1, new AbortController().signal)
+    write('a.txt', 'agent again\n')
+    change('idle')
+    const attribution = await registry.withRecord(1, repo, async (record) => record.attribution)
+    expect(attribution).toMatchObject({
+      kind: 'tracking',
+      userPaths: new Set(),
+      agentPaths: new Set(['a.txt'])
+    })
   })
 })

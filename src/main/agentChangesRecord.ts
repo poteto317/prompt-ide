@@ -4,11 +4,13 @@ import type {
   AgentChangesUnavailableReason
 } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
+import { attributionTempDirs } from './agentChangesAttribution'
+import type { AgentChangesAttribution } from './agentChangesAttribution'
 import type { ProtectionTreeEntry } from './agentChangesProtectionRules'
 import type { AgentChangesUndo } from './agentChangesUndoModel'
 
 // 1 所有者の記録(設計書「記録の持ち方」)。累積の始点と、プロンプトを送るたびに足す実行の一覧(古い順)に加えて、
-// 記録の tree を守る保護の ref の状態と、直前の戻す操作の取り消しの控え(0 か 1 つ)を持つ。
+// 記録の tree を守る保護の ref の状態と、直前の戻す操作の取り消しの控え(0 か 1 つ)を持つ。利用者の変更との区別(attribution)も持つ。
 // 実行 N の範囲は「実行 N の開始の区切り → 実行 N+1 の開始の区切り(最後の実行は作業ツリー)」で、終わりの記録は別に持たない
 // (隣り合う実行が同じ記録を共有する)。registry が作って書き換え、範囲の解決と handler が読む。renderer には渡さない
 
@@ -50,6 +52,12 @@ export interface AgentChangesRecord {
   protection: AgentChangesProtectionState
   /** 直前の戻す操作の取り消しの控え(0 か 1 つ。registry の commitRevertUndo・undoLastRevert だけが書き換える) */
   undo: AgentChangesUndo | null
+  /**
+   * 利用者の変更との区別(registry だけが書き換える。設計書「記録に持つもの」)。begin が初期値を置き、列の外では
+   * notifyAttributionSignal・markToolStartTimedOut が印を立てるだけで、それ以外の書き換えは列の中の同期・吸収
+   * (agentChangesAttributionSync の手順)が行う
+   */
+  attribution: AgentChangesAttribution
 }
 
 // 未知の開始の種類を、取れた・選べる側へ黙って流さない(型を足したら下の switch がすべて型検査で落ちる)
@@ -158,7 +166,7 @@ function runOwnedTempDir(run: AgentChangesRecordRun): string | null {
   }
 }
 
-/** 記録を捨てるときに消す一時ディレクトリ(累積の始点・実行が持つもの・取り消しの控え) */
+/** 記録を捨てるときに消す一時ディレクトリ(累積の始点・実行が持つもの・取り消しの控え・判定の区切りと削除待ち) */
 export function agentChangesRecordTempDirs(record: AgentChangesRecord): string[] {
   return [
     record.baseline.tempDir,
@@ -166,7 +174,8 @@ export function agentChangesRecordTempDirs(record: AgentChangesRecord): string[]
       const dir = runOwnedTempDir(run)
       return dir === null ? [] : [dir]
     }),
-    ...(record.undo === null ? [] : [record.undo.dir])
+    ...(record.undo === null ? [] : [record.undo.dir]),
+    ...attributionTempDirs(record.attribution)
   ]
 }
 
@@ -197,11 +206,12 @@ export function dropRunsOverLimit(record: AgentChangesRecord, limit: number): st
   return dirs
 }
 
-/** 累積の始点を取ったときの記録(実行なし・保護はまだ作っていない) */
+/** 累積の始点を取ったときの記録(実行なし・保護はまだ作っていない)。区別の初期値は registry が始点の前後の合図で決めて渡す */
 export function createAgentChangesRecord(
   baseline: BaselineSnapshot,
   recordSerial: number,
-  refName: string
+  refName: string,
+  attribution: AgentChangesAttribution
 ): AgentChangesRecord {
   return {
     baseline,
@@ -209,7 +219,8 @@ export function createAgentChangesRecord(
     nextNumber: 1,
     recordSerial,
     protection: { refName, value: null, swept: false },
-    undo: null
+    undo: null,
+    attribution
   }
 }
 

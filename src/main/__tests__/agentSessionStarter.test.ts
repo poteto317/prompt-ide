@@ -849,13 +849,53 @@ describe('createAgentSessionStarter(hooks)', () => {
     expect(hooks.activate).not.toHaveBeenCalled()
   })
 
-  it('activate が例外を投げたら release(prepared, null) を 1 回呼び、起動は例外で終わる', async () => {
+  it('activate が例外を投げても起動は started で終わり、ログに出し、終了で release(prepared, sessionId) を 1 回呼んで予約を外す', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     hooks.activate.mockImplementationOnce(() => {
       throw new Error('activate boom')
     })
-    const start = makeStarter()
-    await expect(start(1, REQUEST, makeSink())).rejects.toThrow('activate boom')
-    expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
+    const service = makeStarterService()
+    await expect(service.start(1, REQUEST, makeSink())).resolves.toMatchObject({
+      kind: 'started',
+      sessionId: 'sid-1'
+    })
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[agentSessionStarter] hooks の結び付けに失敗しました:',
+      expect.any(Error)
+    )
+    expect(hooks.release).not.toHaveBeenCalled()
+    pty.emitExit(0, 0)
+    await vi.waitFor(() =>
+      expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 'sid-1')
+    )
+    expect(service.claudeSessionIdOf('sid-1')).toBeUndefined()
+    expect(reservations.tryReserve(NEW_IDS[0])).not.toBeNull()
+  })
+
+  it('終了の release が投げても予約と Map は外れ、unhandled rejection にならずにログに出す(L-010)', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const unhandled = vi.fn()
+    process.on('unhandledRejection', unhandled)
+    try {
+      hooks.release.mockImplementationOnce(() => {
+        throw new Error('release boom')
+      })
+      const service = makeStarterService()
+      await service.start(1, REQUEST, makeSink())
+      pty.emitExit(0, 0)
+      await vi.waitFor(() =>
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          '[agentSessionStarter] 終了の後始末(hooks)に失敗しました:',
+          expect.any(Error)
+        )
+      )
+      expect(service.claudeSessionIdOf('sid-1')).toBeUndefined()
+      expect(reservations.tryReserve(NEW_IDS[0])).not.toBeNull()
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(unhandled).not.toHaveBeenCalled()
+    } finally {
+      process.off('unhandledRejection', unhandled)
+    }
   })
 
   it.each<[string, Partial<AgentSessionStarterDeps>]>([

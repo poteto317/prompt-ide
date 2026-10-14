@@ -141,6 +141,7 @@ declare global {
       onAgentExit(listener: (payload: AgentSessionExit) => void): () => void
       setAgentTerminalFocused(focused: boolean): void
       reportAgentSessionWorking(sessionId: string): void
+      reportAgentSessionWorkingEnded(sessionId: string): void
       showAgentNotification(request: AgentNotificationShowRequest): Promise<void>
       setAgentNotificationBadge(count: number): Promise<void>
       dismissAgentNotification(request: AgentNotificationDismissRequest): Promise<void>

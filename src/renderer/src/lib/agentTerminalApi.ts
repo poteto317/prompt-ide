@@ -49,3 +49,8 @@ export function setAgentTerminalFocused(focused: boolean): void {
 export function reportAgentSessionWorking(sessionId: string): void {
   window.api.reportAgentSessionWorking(sessionId)
 }
+
+/** 作業の終わりの知らせ(タブの活動が working の後に idle になったとき)。main は hooks が届かなくなったことの検知に使う */
+export function reportAgentSessionWorkingEnded(sessionId: string): void {
+  window.api.reportAgentSessionWorkingEnded(sessionId)
+}

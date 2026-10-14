@@ -3,21 +3,23 @@ import {
   applyToolIntervalEvent,
   createToolIntervals,
   earliestUnexpiredOpenedAt,
+  hasUnassignableInterval,
   markExpiredIntervals,
-  openCountOf,
-  openIntervalsOf
+  openCountOf
 } from './agentToolIntervals'
 import type { ToolIntervals } from './agentToolIntervals'
 
 // エージェントのツールの区間の追跡(設計書「ツールの区間の追跡」)。セッションごとに hooks が効いているか(pending・confirmed・
 // unconfirmed)と開いた区間を持ち、ウィンドウ(所有者)ごとのあるべき段階(idle・agent・paused)と、区別をやめる合図(lost)・
-// 割り当てられない合図(unassignable)を求める。合図が変わったら onPhaseChange を同期的に呼ぶ(段階 A は何もしない)。
-// ここは確かめた状態・タイマー(作業中の知らせからの 15 秒・15 分の期限切れ・ツールの終わりの猶予)・段階・通し番号・開発版のログを
+// 割り当てられない合図(unassignable)を求める。合図が変わったら onPhaseChange を同期的に呼ぶ(記録の registry の notifyAttributionSignal につなぐ。例外は publish が握る)。
+// ここは確かめた状態・タイマー(作業中の知らせからの 15 秒・15 分の期限切れ・ツールの終わりの猶予・ターンの終わりの待ち(30 秒)と保留)・段階・通し番号・開発版のログを
 // 持ち、区間の開閉の規則は agentToolIntervals.ts
 
 export const AGENT_TOOL_END_GRACE_MS = 2_000
 export const AGENT_TOOL_INTERVAL_MAX_MS = 15 * 60 * 1000
 export const AGENT_HOOKS_UNCONFIRMED_AFTER_WORKING_MS = 15_000
+/** 作業の終わり(renderer の活動の working の後の idle)から Stop・StopFailure を待つ時間。過ぎたら次の知らせまで割り当てを保留する */
+export const AGENT_HOOKS_TURN_END_WAIT_MS = 30_000
 
 export type AgentHooksUnavailableReason = 'receiver-unavailable' | 'claude-version-unsupported'
 export type AgentHooksLostReason = 'hooks-not-confirmed' | AgentHooksUnavailableReason
@@ -34,7 +36,7 @@ export type AgentHookSessionInitialState =
   | { kind: 'unconfirmed'; reason: AgentHooksUnavailableReason }
 
 export interface AgentToolActivityDeps {
-  /** ウィンドウの合図(activityOf の値)が変わったときに同期的に呼ぶ(段階 A は何もしない。段階 B で syncAttribution につなぐ) */
+  /** ウィンドウの合図(activityOf の値)が変わったときに同期的に呼ぶ(記録の registry の notifyAttributionSignal につなぐ。例外は publish が握る) */
   onPhaseChange(ownerId: number): void
   /** 開発版のログ(1 行ずつ)。null なら出さない */
   devLog: ((line: string) => void) | null
@@ -47,6 +49,8 @@ export interface AgentToolActivity {
   removeSession(ownerId: number, sessionId: string): void
   deliver(ownerId: number, sessionId: string, event: AgentHookEvent): void
   reportWorking(ownerId: number, sessionId: string): void
+  /** 作業の終わりの知らせ。confirmed で、作業中の後に Stop・StopFailure を受けておらず、待ち・保留が無ければ 30 秒の待ちを張る */
+  reportWorkingEnded(ownerId: number, sessionId: string): void
   activityOf(ownerId: number): AgentToolActivitySignal
   toolStartSeqOf(ownerId: number): number
   close(): void
@@ -62,6 +66,12 @@ interface SessionState {
   hooks: HooksState
   /** pending の間に作業中の知らせを受けて張った 15 秒のタイマー */
   workingTimer: Timer | null
+  /** confirmed の間に作業の終わりの知らせを受けて張った 30 秒のタイマー */
+  turnEndTimer: Timer | null
+  /** 作業中の知らせの後に Stop・StopFailure を受けたか(初期値 true。作業中の知らせで false) */
+  turnEndedSinceWorking: boolean
+  /** ターンの終わりの知らせが届かず、次の知らせまで割り当てを保留している(合図 unassignable)。確かめた状態は confirmed のまま */
+  turnEndOverdue: boolean
   intervals: ToolIntervals
 }
 
@@ -99,9 +109,9 @@ const ownerOpenCountOf = (owner: OwnerState): number =>
 function signalOf(owner: OwnerState | undefined): AgentToolActivitySignal {
   if (owner === undefined || owner.sessions.size === 0) return PAUSED
   const sessions = [...owner.sessions.values()]
-  // 段階の分岐と別に、生きているセッションのどれかに期限切れの区間が残っているかで求める
-  const unassignable = sessions.some((s) =>
-    openIntervalsOf(s.intervals).some((interval) => interval.expired)
+  // 段階の分岐と別に、割り当てられない区間(期限切れ・あふれ)か、保留しているセッションがあるかで求める
+  const unassignable = sessions.some(
+    (s) => s.turnEndOverdue || hasUnassignableInterval(s.intervals)
   )
   for (const session of sessions) {
     if (session.hooks.kind === 'unconfirmed')
@@ -116,12 +126,36 @@ function signalOf(owner: OwnerState | undefined): AgentToolActivitySignal {
   return { phase: 'idle', lost: null, unassignable }
 }
 
+/** 作業の終わりの知らせで 30 秒の待ちを張るかの材料(セッションの状態から読む) */
+export interface TurnEndWaitInput {
+  hooks: 'pending' | 'confirmed' | 'unconfirmed'
+  turnEndedSinceWorking: boolean
+  /** 30 秒の待ちを張っている */
+  waiting: boolean
+  /** 保留している */
+  overdue: boolean
+}
+
+/**
+ * 作業の終わりの知らせで 30 秒の待ちを張るか(純粋な規則)。confirmed で、作業中の後に Stop・StopFailure を受けておらず、
+ * 待ち・保留が無いときだけ張る(pending は 15 秒の確かめ方に任せ、unconfirmed は何もしない)
+ */
+export const shouldAwaitTurnEnd = ({
+  hooks,
+  turnEndedSinceWorking,
+  waiting,
+  overdue
+}: TurnEndWaitInput): boolean =>
+  hooks === 'confirmed' && !turnEndedSinceWorking && !waiting && !overdue
+
 const hooksLabel = (session: SessionState | undefined): string => {
   if (session === undefined) return '-'
   return session.hooks.kind === 'unconfirmed'
     ? `unconfirmed(${session.hooks.reason})`
     : session.hooks.kind
 }
+
+const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 const flag = (value: boolean | undefined): string =>
   value === undefined ? '-' : value ? 'あり' : 'なし'
@@ -138,14 +172,14 @@ export function createAgentToolActivity({
     ownerId: number,
     detail: LogDetail,
     session: SessionState | undefined,
-    before: AgentToolPhase,
-    after: AgentToolPhase
+    before: AgentToolActivitySignal,
+    after: AgentToolActivitySignal
   ): void => {
     if (devLog === null) return
     const sessionLabel = detail.sessionId === null ? '-' : detail.sessionId.slice(0, 8)
     devLog(
       `[agent-hooks] owner=${ownerId} session=${sessionLabel} event=${detail.event} tool=${detail.tool ?? '-'} ` +
-        `id=${flag(detail.hasId)} agent=${flag(detail.hasAgent)} hooks=${hooksLabel(session)} phase=${before}→${after}`
+        `id=${flag(detail.hasId)} agent=${flag(detail.hasAgent)} hooks=${hooksLabel(session)} phase=${before.phase}→${after.phase} unassignable=${flag(after.unassignable)}`
     )
   }
 
@@ -154,10 +188,15 @@ export function createAgentToolActivity({
     const before = owner.lastSignal
     const after = signalOf(owner)
     const session = detail.sessionId === null ? undefined : owner.sessions.get(detail.sessionId)
-    writeLog(ownerId, detail, session, before.phase, after.phase)
+    writeLog(ownerId, detail, session, before, after)
     if (sameSignal(before, after)) return
     owner.lastSignal = after
-    onPhaseChange(ownerId)
+    // 受け手(記録の registry)の例外で、知らせの処理・起動を止めない(L-053)
+    try {
+      onPhaseChange(ownerId)
+    } catch (err) {
+      warn(`[agent-hooks] 段階の通知に失敗しました: ${messageOf(err)}`)
+    }
   }
 
   const clearGrace = (owner: OwnerState): void => {
@@ -218,14 +257,26 @@ export function createAgentToolActivity({
     session.workingTimer = null
   }
 
-  /** どの知らせでも、pending・unconfirmed(hooks-not-confirmed)なら confirmed にする */
+  /** 作業の終わりからの 30 秒のタイマーを外す */
+  const clearTurnEndTimer = (session: SessionState): void => {
+    if (session.turnEndTimer !== null) clearTimeout(session.turnEndTimer)
+    session.turnEndTimer = null
+  }
+
+  /** どの知らせでも、pending・unconfirmed(hooks-not-confirmed)なら confirmed にし、保留を解く */
   const confirm = (session: SessionState): void => {
     if (
       session.hooks.kind === 'pending' ||
       (session.hooks.kind === 'unconfirmed' && session.hooks.reason === 'hooks-not-confirmed')
     ) {
+      // pending の間に作業中の知らせを受けていた(15 秒のタイマーが残っている)なら、このターンの作業中を受けている
+      if (session.workingTimer !== null) session.turnEndedSinceWorking = false
       session.hooks = { kind: 'confirmed' }
       clearWorkingTimer(session)
+    }
+    if (session.turnEndOverdue) {
+      session.turnEndOverdue = false
+      warn('[agent-hooks] 知らせが届いたため、保留を解きます')
     }
   }
 
@@ -239,6 +290,11 @@ export function createAgentToolActivity({
     if (event.kind === 'tool-start') {
       toolStartSeq.set(ownerId, (toolStartSeq.get(ownerId) ?? 0) + 1)
       clearGrace(owner)
+    }
+    if (event.kind === 'turn-end') {
+      // Stop が画面の idle より先に届いても、後で届いた作業の終わりの知らせで待ちを張らない
+      session.turnEndedSinceWorking = true
+      clearTurnEndTimer(session)
     }
     applyToolIntervalEvent(session.intervals, event, Date.now())
   }
@@ -270,6 +326,9 @@ export function createAgentToolActivity({
             ? { kind: 'pending' }
             : { kind: 'unconfirmed', reason: state.reason },
         workingTimer: null,
+        turnEndTimer: null,
+        turnEndedSinceWorking: true,
+        turnEndOverdue: false,
         intervals: createToolIntervals()
       })
       publish(ownerId, owner, { sessionId, event: '起動' })
@@ -280,6 +339,7 @@ export function createAgentToolActivity({
       if (owner === undefined || session === undefined) return
       const openBefore = ownerOpenCountOf(owner)
       clearWorkingTimer(session)
+      clearTurnEndTimer(session)
       owner.sessions.delete(sessionId)
       if (owner.sessions.size === 0) {
         clearGrace(owner)
@@ -307,6 +367,12 @@ export function createAgentToolActivity({
         warn('[agent-hooks] 作業中の知らせのセッションが見つかりません')
         return
       }
+      if (session.hooks.kind === 'confirmed') {
+        // 作業に戻った。保留は解かない(画面の作業中は hooks が届く証拠にならない)
+        session.turnEndedSinceWorking = false
+        clearTurnEndTimer(session)
+        return
+      }
       if (session.hooks.kind !== 'pending' || session.workingTimer !== null) return
       session.workingTimer = startTimer(() => {
         session.workingTimer = null
@@ -316,6 +382,33 @@ export function createAgentToolActivity({
         publish(ownerId, owner, { sessionId, event: '確認の待ちの終わり' })
       }, AGENT_HOOKS_UNCONFIRMED_AFTER_WORKING_MS)
       publish(ownerId, owner, { sessionId, event: '作業中' })
+    },
+    reportWorkingEnded(ownerId, sessionId) {
+      const owner = owners.get(ownerId)
+      const session = owner?.sessions.get(sessionId)
+      if (owner === undefined || session === undefined) {
+        warn('[agent-hooks] 作業の終わりの知らせのセッションが見つかりません')
+        return
+      }
+      if (
+        !shouldAwaitTurnEnd({
+          hooks: session.hooks.kind,
+          turnEndedSinceWorking: session.turnEndedSinceWorking,
+          waiting: session.turnEndTimer !== null,
+          overdue: session.turnEndOverdue
+        })
+      )
+        return
+      session.turnEndTimer = startTimer(() => {
+        session.turnEndTimer = null
+        if (owner.sessions.get(sessionId) !== session || session.hooks.kind !== 'confirmed') return
+        session.turnEndOverdue = true
+        warn(
+          '[agent-hooks] ターンの終わりの知らせが届かないため、次の知らせまで割り当てを保留します'
+        )
+        publish(ownerId, owner, { sessionId, event: '終わりの待ちの終わり' })
+      }, AGENT_HOOKS_TURN_END_WAIT_MS)
+      publish(ownerId, owner, { sessionId, event: '作業の終わり' })
     },
     activityOf(ownerId) {
       return signalOf(owners.get(ownerId))
@@ -327,7 +420,10 @@ export function createAgentToolActivity({
       for (const owner of owners.values()) {
         clearGrace(owner)
         clearExpiry(owner)
-        for (const session of owner.sessions.values()) clearWorkingTimer(session)
+        for (const session of owner.sessions.values()) {
+          clearWorkingTimer(session)
+          clearTurnEndTimer(session)
+        }
       }
       owners.clear()
     }

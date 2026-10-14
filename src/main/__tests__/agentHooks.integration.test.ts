@@ -68,7 +68,7 @@ function poster(
 }
 
 describe('hooks の受け取りと区間の追跡(結合)', () => {
-  it('pending(agent) → UserPromptSubmit で idle → PreToolUse で agent → PostToolUse の 2 秒後に idle。release の後は 401', async () => {
+  it('pending(agent) → UserPromptSubmit で idle → PreToolUse で agent → PostToolUse の後も agent → PostToolBatch の 2 秒後に idle。release の後は 401', async () => {
     const prepared = await sessions.prepare(1, { file: '/bin/claude', args: [], env: {} })
     if (prepared.hooks === null) throw new Error('hooks を用意できなかった')
     const settings = JSON.parse(
@@ -104,6 +104,13 @@ describe('hooks の受け取りと区間の追跡(結合)', () => {
       tool_name: 'Edit',
       tool_use_id: 'toolu_1'
     })
+    expect(tracker.activityOf(1).phase).toBe('agent')
+    // PostToolUse では閉じない(PostToolBatch を待つ)
+    await new Promise((resolve) => setTimeout(resolve, 2_100))
+    expect(tracker.activityOf(1).phase).toBe('agent')
+    expect(
+      (await post('PostToolBatch', { hook_event_name: 'PostToolBatch', session_id: 'c1' })).status
+    ).toBe(200)
     expect(tracker.activityOf(1).phase).toBe('agent')
     await vi.waitFor(() => expect(tracker.activityOf(1).phase).toBe('idle'), {
       timeout: 4_000,

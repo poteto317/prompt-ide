@@ -17,8 +17,8 @@ import type { AgentHookSessions } from './agentHookSessions'
 import type { AgentHooksLifecycleParts } from './agentHooksLifecycle'
 
 // claude の hooks の実物の依存(子プロセス・ファイル・HTTP の受け口)の組み立て(agentRuntime.ts と同じく、ipcHandlers.ts から使い、
-// テストではこのモジュールごと差し替える)。Electron に依存しない。段階ごとのつなぎ先(段階の通知・ツールの開始の待ち)と開発版の
-// ログの有無は ipcHandlers.ts が決めて渡す
+// テストではこのモジュールごと差し替える)。Electron に依存しない。追跡・受け口のつなぎ先(合図の変化の通知・PreToolUse の待ち・
+// 待ちの打ち切り)と開発版のログの有無は ipcHandlers.ts が決めて渡す
 
 /** 実物の execFile(出力は utf8 の文字列) */
 export const nodeExecFile: ExecFileLike = (file, args, options, callback) =>
@@ -32,18 +32,18 @@ const windowsComspec = (): string =>
   process.env.ComSpec || join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'cmd.exe')
 
 export interface AgentHooksRuntimeOptions {
-  /** 追跡の合図が変わったとき(段階 A は何もしない。段階 B で記録の registry の syncAttribution につなぐ) */
+  /** 追跡の合図が変わったとき(記録の registry の notifyAttributionSignal) */
   onPhaseChange: AgentToolActivityDeps['onPhaseChange']
-  /** 受け口の PreToolUse の待ち(段階 A はすぐ解決する。段階 B で waitForAgentPhase につなぐ) */
+  /** 受け口の PreToolUse の待ち(registry の waitForAgentPhase) */
   onToolStart: AgentHookReceiverDeps['onToolStart']
-  /** 受け口の待ちの打ち切り(段階 A は何もしない。段階 B で markPeriodUnassignable につなぐ) */
+  /** 受け口の待ちの打ち切り(registry の markToolStartTimedOut) */
   onToolStartTimedOut: AgentHookReceiverDeps['onToolStartTimedOut']
   /** 開発版のログ(1 行ずつ)。null なら出さない */
   devLog: AgentToolActivityDeps['devLog']
 }
 
 export interface AgentHooksRuntime {
-  /** ツールの区間の追跡(作業中の知らせの受け口に reportWorking を渡す) */
+  /** ツールの区間の追跡(作業中・作業の終わりの知らせの受け口に reportWorking・reportWorkingEnded を渡す) */
   tracker: AgentToolActivity
   /** 起動ごとの hooks の準備・結び付け・解放(starter の hooks) */
   sessions: AgentHookSessions

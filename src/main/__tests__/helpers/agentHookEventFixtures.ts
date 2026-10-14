@@ -44,3 +44,9 @@ export const sessionEnd = (): AgentHookEvent => ({
   hookEventName: 'SessionEnd',
   toolName: null
 })
+
+export const batchEnd = (): AgentHookEvent => ({
+  kind: 'batch-end',
+  hookEventName: 'PostToolBatch',
+  toolName: null
+})

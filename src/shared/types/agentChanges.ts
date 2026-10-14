@@ -89,6 +89,31 @@ export interface AgentChangeEntry {
   notRecorded: boolean
 }
 
+/** 一覧の行の区別(B-2 で AgentChangeEntry.author に載せる。B-1 は main の記録の中だけで使う) */
+export type AgentChangeAuthor = 'agent' | 'user' | 'mixed'
+
+/**
+ * 記録の区別をやめた理由。main の追跡の理由(agentToolActivity の AgentHooksLostReason)に、判定の区切り・差分・今の区間の
+ * 比較の失敗(checkpoint-failed)を足したもの。用途ごとに型を分け、string で受けない(L-439)
+ */
+export type AgentChangesAttributionLostReason =
+  | 'hooks-not-confirmed'
+  | 'receiver-unavailable'
+  | 'claude-version-unsupported'
+  | 'checkpoint-failed'
+
+/** 記録の区別の要約(B-2 で AgentChangesState・AgentChangesListResult に載せる)。since は区別を始めた時刻、hadMarks は集合が空でないか */
+export type AgentChangesAttributionSummary =
+  | { kind: 'tracking'; since: number | null; hadUnassignedSince: boolean }
+  | {
+      kind: 'lost'
+      reason: AgentChangesAttributionLostReason
+      lostAt: number
+      hadMarks: boolean
+      since: number | null
+      hadUnassignedSince: boolean
+    }
+
 /** 記録の時点と作業ツリーを比べた一覧(main の agentChangesQuery が作り、renderer が写しに持つ) */
 export interface AgentChangesList {
   /** 先頭 AGENT_CHANGES_LIST_LIMIT 件(パスの順) */

@@ -262,10 +262,10 @@ function skippedRepoChangesBetween(
  * 途中の実行(開始の区切り start → 次の区切り end)の変更のすべて(打ち切らない)。パスの順。
  * `git diff-tree` で tree どうしを比べ、利用者の index と作業ツリーを読まない(設計書「範囲ごとの一覧と diff」)。
  * 新しいフォルダを 1 行にまとめない。どちらかの端で記録しなかったパスは、tree の差分の行から外して notRecorded の行にする。
- * ignore 済みのファイルの出現・削除は、累積の一覧と同じく出さない。使うのは listAgentChangesBetween だけ
+ * ignore 済みのファイルの出現・削除は、累積の一覧と同じく出さない。使うのは listAgentChangesBetween と、記録の区別の判定の区切りの差分(agentChangesAttributionSync。registry の依存 collectBetween として渡す)
  * (戻す操作は累積の範囲だけで、collectAgentChangeEntries と違い agentChangesRevert からは使わない)
  */
-async function collectAgentChangeEntriesBetween(
+export async function collectAgentChangeEntriesBetween(
   start: BaselineSnapshot,
   end: BaselineSnapshot,
   options: BaselineGitOptions = {}

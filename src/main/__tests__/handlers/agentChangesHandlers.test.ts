@@ -38,7 +38,11 @@ import {
   AGENT_CHANGES_UNDO_ID_INVALID_MESSAGE
 } from '../../handlers/agentChangesPayloadParser'
 import type { AgentChangesScope } from '@shared/types'
-import { makeBaselineSnapshot, makeFakeProtectionDeps } from '../helpers/agentBaselineFixtures'
+import {
+  makeAttributionOffDeps,
+  makeBaselineSnapshot,
+  makeFakeProtectionDeps
+} from '../helpers/agentBaselineFixtures'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
 import { AGENT_UNDO_STALE_MESSAGE } from '../../agentChangesUndoModel'
 
@@ -110,7 +114,8 @@ beforeEach(() => {
     // 書き戻しの結合は handlers.integration、書き戻しのファイルの扱いは agentChangesUndo のテストで見る
     executeUndo: async () => {
       throw new Error('書き戻しまで進まない前提のテストで executeUndo が呼ばれた')
-    }
+    },
+    ...makeAttributionOffDeps()
   })
   registerAgentChangesHandlers(ipcMain as never, {
     registry,
@@ -797,4 +802,45 @@ describe('戻す系の結果と取り消し', () => {
       )
     })
   })
+})
+
+describe('戻す操作の吸収(withAttributionAbsorbed)', () => {
+  it.each<[string, unknown[]]>([
+    ['agentChanges:revertFile', ['a.txt', ALL]],
+    ['agentChanges:revertHunk', ['a.txt', 'patch', ALL]],
+    ['agentChanges:revertAll', [[{ path: 'a.txt', status: 'M' }], ALL]]
+  ])(
+    '%s は戻す関数の呼び出しを吸収で包み、適用した件数で作業ツリーを変えたかを決める(控えの記録は吸収の外)',
+    async (channel, args) => {
+      await invoke('agentChanges:begin', makeEvent(), 'manual')
+      // 吸収が終わった後に控えを記録するか(題の「控えの記録は吸収の外」)を、呼ばれた順で確かめる
+      const order: string[] = []
+      const absorb = registry.withAttributionAbsorbed.bind(registry)
+      const absorbed = vi
+        .spyOn(registry, 'withAttributionAbsorbed')
+        .mockImplementation(async (...absorbArgs: Parameters<typeof absorb>) => {
+          const result = await absorb(...absorbArgs)
+          order.push('吸収の終わり')
+          return result
+        })
+      const commitUndo = registry.commitRevertUndo.bind(registry)
+      vi.spyOn(registry, 'commitRevertUndo').mockImplementation(async (...commitArgs) => {
+        order.push('控えの記録')
+        return commitUndo(...commitArgs)
+      })
+      await invoke(channel, makeEvent(), ...args)
+      expect(order).toEqual(['吸収の終わり', '控えの記録'])
+      expect(absorbed).toHaveBeenCalledOnce()
+      const [ownerId, record, task, changed] = absorbed.mock.calls[0]
+      expect(ownerId).toBe(1)
+      expect(record).toBeDefined()
+      expect(typeof task).toBe('function')
+      expect(changed({ applied: 1, capture: { kind: 'unavailable', reason: 'too-large' } })).toBe(
+        true
+      )
+      expect(changed({ applied: 0, capture: { kind: 'unavailable', reason: 'too-large' } })).toBe(
+        false
+      )
+    }
+  )
 })

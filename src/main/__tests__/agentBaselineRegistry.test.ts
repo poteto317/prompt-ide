@@ -6,6 +6,7 @@ import type { AgentChangesUndoCapture, AgentChangesUndoExecution } from '../agen
 import {
   createFakeProtectionGit,
   FAKE_PROTECTION_INSTANCE_ID,
+  makeAttributionOffDeps,
   makeBaselineSnapshot,
   makeFakeProtectionDeps
 } from './helpers/agentBaselineFixtures'
@@ -72,6 +73,7 @@ function setup(
     removeDirSync,
     now: () => 500,
     executeUndo,
+    ...makeAttributionOffDeps(),
     protection: {
       ...makeFakeProtectionDeps(protection),
       ...(options.isProcessAlive ? { isProcessAlive: options.isProcessAlive } : {})

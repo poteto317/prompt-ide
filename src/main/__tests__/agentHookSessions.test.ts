@@ -129,6 +129,11 @@ describe('createAgentHookSessions: prepare', () => {
 })
 
 describe('createAgentHookSessions: activate・release', () => {
+  it('hooks があれば、追跡に足してから(addSession)トークンを表に足す(addToken。addToken が投げても追跡は pending〈agent〉で残る)', () => {
+    sessions().activate(WITH_HOOKS, 'sid-1')
+    expect(calls.map((call) => call.split('(')[0])).toEqual(['addSession', 'addToken'])
+  })
+
   it('hooks があれば、トークンを { ownerId, sessionId } として表に足し、追跡に pending で足す', () => {
     sessions().activate(WITH_HOOKS, 'sid-1')
     expect(deps.receiver.addToken).toHaveBeenCalledExactlyOnceWith(TOKEN, {

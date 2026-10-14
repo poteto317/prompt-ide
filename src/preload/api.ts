@@ -232,6 +232,9 @@ export const api = {
   // 作業中の知らせ(一方向。引数は pty の sessionId だけ)
   reportAgentSessionWorking: (sessionId: string): void =>
     ipcRenderer.send('agentTerminal:reportWorking', sessionId),
+  // 作業の終わりの知らせ(一方向。引数は pty の sessionId だけ)
+  reportAgentSessionWorkingEnded: (sessionId: string): void =>
+    ipcRenderer.send('agentTerminal:reportWorkingEnded', sessionId),
   // エージェントの完了・許可待ちの通知。題・本文・出すかどうかは main が決める
   showAgentNotification: (request: AgentNotificationShowRequest): Promise<void> =>
     ipcRenderer.invoke('agentNotification:show', request),
