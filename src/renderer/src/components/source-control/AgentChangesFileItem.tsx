@@ -3,7 +3,8 @@ import type { AgentChangeEntry } from '@shared/types'
 import { toAgentChangeRelativePath } from '@shared/types'
 import {
   AGENT_CHANGES_NOT_RECORDED_MARK,
-  AGENT_CHANGES_SAVED_MARK
+  AGENT_CHANGES_SAVED_MARK,
+  agentChangeAuthorMark
 } from '../../lib/agentChangesMessages'
 
 interface Props {
@@ -18,7 +19,8 @@ interface Props {
   onRevert: (entry: AgentChangeEntry) => void
 }
 
-// 「エージェントの変更」の 1 行(状態の文字・diff を開くパス・印・戻すボタン)。押せる条件の判定は useAgentChangesRevert
+// 「エージェントの変更」の 1 行(状態の文字・diff を開くパス・印・戻すボタン)。押せる条件の判定は useAgentChangesRevert。
+// 利用者の変更の印は行の author から決める(agentChangeAuthorMark。実行の範囲の行は main が null にするため出ない。props を足さない。L-060)
 export default function AgentChangesFileItem({
   entry,
   savedInApp,
@@ -29,6 +31,7 @@ export default function AgentChangesFileItem({
 }: Props): React.JSX.Element {
   const revertLabel =
     entry.status === 'A' ? `${entry.path} をゴミ箱へ移動` : `${entry.path} を実行前の状態に戻す`
+  const authorMark = agentChangeAuthorMark(entry.author)
   return (
     <li className="agent-changes__item">
       <span className="source-control-panel__file-status source-control-panel__file-status--changed">
@@ -42,6 +45,7 @@ export default function AgentChangesFileItem({
       >
         {entry.path}
       </button>
+      {authorMark !== null && <span className="agent-changes__mark">{authorMark}</span>}
       {savedInApp && <span className="agent-changes__mark">{AGENT_CHANGES_SAVED_MARK}</span>}
       {entry.notRecorded ? (
         <span className="agent-changes__mark">{AGENT_CHANGES_NOT_RECORDED_MARK}</span>

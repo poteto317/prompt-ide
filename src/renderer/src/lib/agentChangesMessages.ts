@@ -1,5 +1,8 @@
 import type {
+  AgentChangeAuthor,
   AgentChangeStatus,
+  AgentChangesAttributionLostReason,
+  AgentChangesAttributionSummary,
   AgentChangesRun,
   AgentChangesState,
   AgentChangesUnavailableReason,
@@ -8,7 +11,7 @@ import type {
   AgentRevertUndoUnavailableReason
 } from '@shared/types'
 
-// エージェントの変更のセクション・確認のダイアログの文言(設計書「A の詳細」「確認ダイアログの文言」)。
+// エージェントの変更のセクション・確認のダイアログの文言(設計書「A の詳細」「確認ダイアログの文言」と、2026-10-13 の設計書の利用者の変更との区別の「確認の文言」)。
 // 純粋関数だけを置く。押せる条件(どの理由を選ぶかの優先順位)は agentChangesAvailability.ts に置く
 
 export const AGENT_CHANGES_HEADING = 'エージェントの変更'
@@ -20,6 +23,74 @@ export const AGENT_CHANGES_CLEARED_NOTICE = '記録を終えました。次の�
 export const AGENT_CHANGES_SAVED_MARK = 'あなたの保存を含む'
 export const AGENT_CHANGES_NOT_RECORDED_MARK = '記録していないため戻せません'
 export const AGENT_CHANGES_LOADING = '更新中…'
+
+/** 行の印(累積の一覧で、エージェントのツールが動いていない間に変わった行・両方が変えた行) */
+export const AGENT_CHANGES_USER_MARK = '利用者の変更'
+export const AGENT_CHANGES_MIXED_MARK = '利用者の変更を含む'
+
+/** 行の author の印(user・mixed だけ。agent・区別なし〈null〉は印を出さない) */
+export function agentChangeAuthorMark(author: AgentChangeAuthor | null): string | null {
+  if (author === 'user') return AGENT_CHANGES_USER_MARK
+  if (author === 'mixed') return AGENT_CHANGES_MIXED_MARK
+  return null
+}
+
+/** すべて戻すの上の除く旨(除く行が 1 件以上のとき) */
+export function formatAgentChangesExcludedNote(count: number): string {
+  return `すべて戻すは、利用者の変更（${count} 件）を除いて戻します`
+}
+
+/** 区別をやめた理由の文言(理由の型ごとに分ける。L-439) */
+export const AGENT_CHANGES_ATTRIBUTION_LOST_REASONS: Record<
+  AgentChangesAttributionLostReason,
+  string
+> = {
+  'hooks-not-confirmed': 'claude の hooks から知らせが届きません',
+  'receiver-unavailable': 'hooks の知らせの受け口を用意できませんでした',
+  'claude-version-unsupported': 'claude の版が古いか、版を確かめられませんでした',
+  'checkpoint-failed': '作業ツリーの記録に失敗しました'
+}
+
+/**
+ * 区別している記録か(main の authorsOf の「区別していない記録」の逆。tracking なら区別を始めた後、lost なら印が残っている)。
+ * 区別していない記録の確認の文言は今までどおり
+ */
+export function isAgentChangesAttributionDistinguishing(
+  summary: AgentChangesAttributionSummary
+): boolean {
+  return summary.kind === 'tracking' ? summary.since !== null : summary.hadMarks
+}
+
+/** 区別の状態の 1 行の、印を付けていない間があった旨(tracking・lost の hadUnassignedSince) */
+export const AGENT_CHANGES_UNASSIGNED_NOTE =
+  'アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+
+/**
+ * 累積の一覧の上の区別の状態の 1 行(出さないなら null)。区別をやめた理由、区別を始めたのが記録の開始より後であること、
+ * 印を付けていない間があったことを見える文字で伝える(L-057)
+ */
+export function describeAgentChangesAttribution(
+  attribution: AgentChangesAttributionSummary,
+  startedAt: number
+): string | null {
+  if (attribution.kind === 'lost') {
+    const reason = AGENT_CHANGES_ATTRIBUTION_LOST_REASONS[attribution.reason]
+    if (!attribution.hadMarks) {
+      return `利用者の変更を区別できません（${reason}）。すべてエージェントの変更として表示します`
+    }
+    // やめた時点で開いていた区間(最後の区切りから lostAt まで)は印が付かないため、lostAt より前にも印の無い間があることを伝える
+    const lost = `${formatAgentChangesStartedAt(attribution.lostAt)} から利用者の変更を区別できなくなりました（${reason}）。それ以降の変更には印を付けません`
+    return attribution.hadUnassignedSince ? `${lost}。${AGENT_CHANGES_UNASSIGNED_NOTE}` : lost
+  }
+  if (attribution.since === null) return null
+  const parts = [
+    attribution.since > startedAt
+      ? `利用者の変更の区別は ${formatAgentChangesStartedAt(attribution.since)} からです（それより前の変更には印を付けません）`
+      : null,
+    attribution.hadUnassignedSince ? AGENT_CHANGES_UNASSIGNED_NOTE : null
+  ].filter((text): text is string => text !== null)
+  return parts.length === 0 ? null : parts.join('。')
+}
 
 export const AGENT_CHANGES_UNAVAILABLE_MESSAGES: Record<AgentChangesUnavailableReason, string> = {
   'not-repository': 'Git 管理外のフォルダでは、エージェントの変更を記録できません',
@@ -41,7 +112,7 @@ export function describeAgentChangesUnavailable(
   return `${base}（${state.untrackedCount.toLocaleString('ja-JP')} 件${size}）`
 }
 
-/** 記録を始めた時刻(HH:MM。表示用) */
+/** 時刻(HH:MM。表示用)。記録・実行の開始と終わりのほか、区別を始めた時刻(since)・区別をやめた時刻(lostAt)にも使う */
 export function formatAgentChangesStartedAt(startedAt: number): string {
   const date = new Date(startedAt)
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
@@ -285,6 +356,10 @@ export const AGENT_CHANGES_TRUNCATED_REASON =
 export const AGENT_CHANGES_NOT_RECORDED_REASON =
   '記録していないファイルがあるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください'
 
+/** すべて戻すの対象が 0 件(行がすべて利用者の変更・利用者の変更を含む)の理由 */
+export const AGENT_CHANGES_ONLY_USER_REASON =
+  '利用者の変更だけのため、すべて戻すの対象がありません。ファイルごとに戻してください'
+
 /** 実行の範囲(読み取り専用)では戻すボタンを押せない理由 */
 export const AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE =
   '実行ごとの表示では戻せません。「すべて（累積）」を選ぶと戻せます'
@@ -315,20 +390,74 @@ const appendices = ({ savedInApp, hasUnsavedEdits, agentRunning }: RevertAppendi
     .map((text) => `\n\n${text}`)
     .join('')
 
-/** ファイル単位で戻す確認の文言 */
+/**
+ * 区別している記録のすべて戻すの確認の順 1(エージェントの変更として戻る利用者の編集〈ツールの実行中・猶予・許可の確認の待ち・
+ * claude の起動から最初のプロンプトまで・中断の後〉をすべて言う。L-152)
+ */
+export const AGENT_REVERT_ALL_DISTINGUISHING_NOTE =
+  'エージェントのツールが動いている間（終わってから 2 秒・許可の確認を待つ間を含む）と、claude を起動してから最初のプロンプトを送るまで・中断（Esc）の後にあなたが編集した内容は、エージェントの変更として戻ります。'
+
+/** 利用者の変更の行(user・mixed)を行の ↶ で戻す確認の追記(user も言い切らず mixed と同じ文。L-006) */
+const AGENT_REVERT_FILE_USER_NOTE =
+  'このファイル（フォルダ）には、エージェントのツールが動いていない間の変更（利用者の変更）が含まれます。'
+
+/** すべて戻すの確認の、記録を始めた後の利用者の編集の部分(順 1〜5。区切りの空白・改行は入れずにつなぐ) */
+function revertAllUserEditsNote(
+  attribution: AgentChangesAttributionSummary,
+  startedAt: number,
+  excludedCount: number
+): string {
+  const parts: string[] = []
+  if (!isAgentChangesAttributionDistinguishing(attribution)) {
+    parts.push('記録を始めた後にあなたが編集した内容も戻ります。')
+  } else {
+    parts.push(AGENT_REVERT_ALL_DISTINGUISHING_NOTE)
+    if (attribution.since !== null && attribution.since > startedAt) {
+      parts.push(
+        `${formatAgentChangesStartedAt(attribution.since)} より前のあなたの編集も戻ります。`
+      )
+    }
+    if (attribution.hadUnassignedSince) {
+      parts.push('アプリの中で claude が動いていなかった間などのあなたの編集も戻ります。')
+    }
+    if (attribution.kind === 'lost') {
+      parts.push(
+        `区別をやめた後（${formatAgentChangesStartedAt(attribution.lostAt)} から）のあなたの編集も戻ります。`
+      )
+    }
+  }
+  // 区別していない要約でも出す(一覧が古いまま記録だけが lost になった組み合わせで、除く行を伝えずに件数だけが減ることを防ぐ)
+  if (excludedCount > 0) {
+    parts.push(
+      `利用者の変更 ${excludedCount} 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。`
+    )
+  }
+  return parts.join('')
+}
+
+/** ファイル単位で戻す確認の文言。利用者の変更の行(user・mixed)は、今の文言の後(アプリで保存した旨などの前)にその旨を足す */
 export function buildAgentRevertFileConfirmMessage({
   path,
   status,
   isDirectory,
+  author,
   ...appendix
-}: { path: string; status: AgentChangeStatus; isDirectory: boolean } & RevertAppendix): string {
+}: {
+  path: string
+  status: AgentChangeStatus
+  isDirectory: boolean
+  /** 行の区別(写しの entry.author。必須。L-060) */
+  author: AgentChangeAuthor | null
+} & RevertAppendix): string {
   const base =
     status !== 'A'
       ? `${path} を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。${AGENT_REVERT_UNDOABLE_NOTE}`
       : isDirectory
         ? `${path} をゴミ箱へ移動しますか？フォルダとその中身（.gitignore の対象を含む）がすべて移動します。${AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE}`
         : `${path} をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）${AGENT_REVERT_UNDOABLE_NOTE}`
-  return base + appendices(appendix)
+  const userNote =
+    author === 'user' || author === 'mixed' ? `\n\n${AGENT_REVERT_FILE_USER_NOTE}` : ''
+  return base + userNote + appendices(appendix)
 }
 
 /** ハンクを戻す確認の文言 */
@@ -343,13 +472,19 @@ export function buildAgentRevertHunkConfirmMessage({
   )
 }
 
-/** すべて戻す確認の文言。未保存の編集の破棄は confirmDiscardAnyDirty が別に確かめる */
+/**
+ * すべて戻す確認の文言。count・trashCount・hasDirectory・savedInApp は対象(除く行を除いた行)で求める。記録を始めた後の利用者の編集の
+ * 部分は区別の状態で変える(順 1〜5)。未保存の編集の破棄は confirmDiscardAnyDirty が別に確かめる
+ */
 export function buildAgentRevertAllConfirmMessage({
   count,
   trashCount,
   hasDirectory,
   savedInApp,
-  agentRunning
+  agentRunning,
+  attribution,
+  startedAt,
+  excludedCount
 }: {
   count: number
   /** そのうちゴミ箱へ移す(追加された)ファイル・フォルダの数 */
@@ -358,6 +493,12 @@ export function buildAgentRevertAllConfirmMessage({
   hasDirectory: boolean
   savedInApp: boolean
   agentRunning: boolean
+  /** 写しの記録の区別の要約(必須。L-060) */
+  attribution: AgentChangesAttributionSummary
+  /** 記録を始めた時刻(区別を始めたのが後かを比べる) */
+  startedAt: number
+  /** 除く行(利用者の変更・利用者の変更を含む)の件数 */
+  excludedCount: number
 }): string {
   const trash =
     trashCount > 0 ? `\nうち ${trashCount} 件の新しいファイル・フォルダはゴミ箱へ移動します。` : ''
@@ -366,7 +507,7 @@ export function buildAgentRevertAllConfirmMessage({
     ? '\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
     : ''
   return (
-    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。${hasDirectory ? AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE : AGENT_REVERT_UNDOABLE_NOTE}` +
+    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？${revertAllUserEditsNote(attribution, startedAt, excludedCount)}${hasDirectory ? AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE : AGENT_REVERT_UNDOABLE_NOTE}` +
     trash +
     '\nステージ（index）・コミット・ブランチは戻しません。' +
     saved +

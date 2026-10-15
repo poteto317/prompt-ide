@@ -4,6 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  attributionOffRecordingState,
+  attributionOffSummary,
   createAgentBaselineRepo,
   createFakeTrash,
   disposeAgentBaselineRepo,
@@ -127,6 +129,7 @@ describe('makeAttributionOffDeps', () => {
     expect(deps.attributionSource.toolStartSeqOf(1)).toBe(0)
     const snapshot = makeBaselineSnapshot()
     await expect(deps.collectBetween(snapshot, snapshot)).resolves.toEqual([])
+    await expect(deps.collectCurrent(snapshot)).resolves.toEqual([])
     expect(deps.attributionDevLog).toBeNull()
     expect(() => deps.attributionWarn('失敗', new Error('boom'))).not.toThrow()
     expect(makeAttributionOffDeps().attributionSource).not.toBe(deps.attributionSource)
@@ -227,5 +230,44 @@ describe('recordBaseline / recordedSnapshot / userRepoState(実 git)', () => {
     writeRepoFile(dirs.repo, 'b.txt', 'b\n')
     runGit(dirs.repo, 'add', 'b.txt')
     expect(userRepoState(dirs.repo)).not.toEqual(before)
+  })
+})
+
+describe('attributionOffSummary', () => {
+  it('makeAttributionOffDeps の registry の記録の区別の要約(receiver-unavailable・lostAt は始点の時刻・集合なし)', () => {
+    expect(attributionOffSummary(42)).toEqual({
+      kind: 'lost',
+      reason: 'receiver-unavailable',
+      lostAt: 42,
+      hadMarks: false,
+      since: null,
+      hadUnassignedSince: false
+    })
+  })
+})
+
+describe('attributionOffRecordingState', () => {
+  it('既定は実行なし・取り消しの控えなしで、区別の要約は attributionOffSummary(始点の時刻)', () => {
+    expect(attributionOffRecordingState(42)).toEqual({
+      kind: 'recording',
+      startedAt: 42,
+      runs: [],
+      undo: null,
+      attribution: attributionOffSummary(42)
+    })
+  })
+
+  it('実行・取り消しの控えを上書きできる', () => {
+    const runs = [
+      {
+        runId: 1,
+        number: 1,
+        startedAt: 42,
+        endedAt: null,
+        availability: { kind: 'available' as const }
+      }
+    ]
+    const undo = { undoId: 1, operation: 'file' as const, entries: [] }
+    expect(attributionOffRecordingState(42, { runs, undo })).toMatchObject({ runs, undo })
   })
 })

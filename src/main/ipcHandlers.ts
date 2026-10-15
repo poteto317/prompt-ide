@@ -50,7 +50,7 @@ import {
 import { createProtectionInstanceId } from './agentChangesProtectionRules'
 import { moveToTrash } from './trash'
 import { AGENT_CHANGES_UNDO_MAX_BYTES, executeAgentChangesUndo } from './agentChangesUndo'
-import { collectAgentChangeEntriesBetween } from './agentChangesQuery'
+import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from './agentChangesQuery'
 import { createAgentNotificationCenter } from './agentNotifications'
 import { createElectronAgentNotification } from './agentNotificationRuntime'
 import { setupAgentNotificationLifecycle } from './agentNotificationLifecycle'
@@ -153,6 +153,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     executeUndo: (folderPath, undo) =>
       executeAgentChangesUndo({ folderPath, undo, trash: moveToTrash }),
     collectBetween: collectAgentChangeEntriesBetween,
+    collectCurrent: collectAgentChangeEntries,
     // 区別の合図と通し番号は hooks の追跡から読む(生成の順は hooks の runtime → registry のまま)
     attributionSource: agentHooks.tracker,
     attributionDevLog: app.isPackaged ? null : (line) => console.log(line),

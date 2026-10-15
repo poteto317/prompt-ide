@@ -17,6 +17,7 @@ import {
   AGENT_CHANGES_BUSY_UNDOING,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_ONLY_USER_REASON,
   AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON
 } from '../agentChangesMessages'
@@ -75,15 +76,18 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
         flags.flatMap((hasListError) =>
           flags.flatMap((truncated) =>
             flags.flatMap((hasNotRecorded) =>
-              flags.map((isRunScope) => ({
-                isLoading,
-                isGitBusy,
-                runningOperation,
-                hasListError,
-                truncated,
-                hasNotRecorded,
-                isRunScope
-              }))
+              flags.flatMap((hasOnlyUserChanges) =>
+                flags.map((isRunScope) => ({
+                  isLoading,
+                  isGitBusy,
+                  runningOperation,
+                  hasListError,
+                  truncated,
+                  hasNotRecorded,
+                  hasOnlyUserChanges,
+                  isRunScope
+                }))
+              )
             )
           )
         )
@@ -100,7 +104,10 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
       availability.isRunScope
     expect(agentRevertDisabledReason(availability) !== null).toBe(blocked)
     expect(agentRevertAllDisabledReason(availability) !== null).toBe(
-      blocked || availability.truncated || availability.hasNotRecorded
+      blocked ||
+        availability.truncated ||
+        availability.hasNotRecorded ||
+        availability.hasOnlyUserChanges
     )
   })
 
@@ -117,7 +124,8 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
     const allOrder: ReadonlyArray<readonly [boolean, string]> = [
       ...fileOrder,
       [availability.truncated, AGENT_CHANGES_TRUNCATED_REASON],
-      [availability.hasNotRecorded, AGENT_CHANGES_NOT_RECORDED_REASON]
+      [availability.hasNotRecorded, AGENT_CHANGES_NOT_RECORDED_REASON],
+      [availability.hasOnlyUserChanges, AGENT_CHANGES_ONLY_USER_REASON]
     ]
     const fileReason = fileOrder.find(([on]) => on)?.[1] ?? null
     const allReason = allOrder.find(([on]) => on)?.[1] ?? null
@@ -141,9 +149,14 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
       AGENT_CHANGES_BUSY_LOADING
     )
     expect(agentRevertDisabledReason({ ...none, isGitBusy: true })).toBe(AGENT_CHANGES_BUSY_GIT)
-    expect(agentRevertAllDisabledReason({ ...none, truncated: true, hasNotRecorded: false })).toBe(
-      AGENT_CHANGES_TRUNCATED_REASON
-    )
+    expect(
+      agentRevertAllDisabledReason({
+        ...none,
+        truncated: true,
+        hasNotRecorded: false,
+        hasOnlyUserChanges: false
+      })
+    ).toBe(AGENT_CHANGES_TRUNCATED_REASON)
   })
 
   it('一覧の失敗と取得中が同時なら、一覧の失敗を出す(取り直しの間も、古い一覧で戻さない理由を見せる)', () => {
@@ -156,15 +169,21 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
         hasListError: true,
         isLoading: true,
         truncated: false,
-        hasNotRecorded: false
+        hasNotRecorded: false,
+        hasOnlyUserChanges: false
       })
     ).toBe(AGENT_CHANGES_LIST_FAILED)
   })
 
   it('記録していない行を含む一覧では、すべて戻すを押せない(main が必ず全体を中止するため)', () => {
-    expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: true })).toBe(
-      AGENT_CHANGES_NOT_RECORDED_REASON
-    )
+    expect(
+      agentRevertAllDisabledReason({
+        ...none,
+        truncated: false,
+        hasNotRecorded: true,
+        hasOnlyUserChanges: false
+      })
+    ).toBe(AGENT_CHANGES_NOT_RECORDED_REASON)
     expect(AGENT_CHANGES_NOT_RECORDED_REASON).toBe(
       '記録していないファイルがあるため、すべて戻すは使えません。ファイルごとに戻すか、ターミナルで操作してください'
     )
@@ -185,23 +204,50 @@ describe('戻すボタンを押せる条件(押せないなら必ず理由があ
           ...none,
           ...overrides,
           truncated: false,
-          hasNotRecorded: true
+          hasNotRecorded: true,
+          hasOnlyUserChanges: false
         })
       ).toBe(expected)
     }
   )
 
   it('打ち切りと記録していない行が同時なら、打ち切りを出す', () => {
-    expect(agentRevertAllDisabledReason({ ...none, truncated: true, hasNotRecorded: true })).toBe(
-      AGENT_CHANGES_TRUNCATED_REASON
-    )
+    expect(
+      agentRevertAllDisabledReason({
+        ...none,
+        truncated: true,
+        hasNotRecorded: true,
+        hasOnlyUserChanges: false
+      })
+    ).toBe(AGENT_CHANGES_TRUNCATED_REASON)
   })
 
   it('どれも立っていなければ、どちらも押せる', () => {
     expect(agentRevertDisabledReason(none)).toBeNull()
-    expect(agentRevertAllDisabledReason({ ...none, truncated: false, hasNotRecorded: false })).toBe(
-      null
+    expect(
+      agentRevertAllDisabledReason({
+        ...none,
+        truncated: false,
+        hasNotRecorded: false,
+        hasOnlyUserChanges: false
+      })
+    ).toBe(null)
+  })
+
+  it('行がすべて利用者の変更(user・mixed)なら、すべて戻すを押せない。今の理由(ファイル単位・打ち切り・記録していない行)を先に出す', () => {
+    const allUser = { ...none, truncated: false, hasNotRecorded: false, hasOnlyUserChanges: true }
+    expect(agentRevertAllDisabledReason(allUser)).toBe(AGENT_CHANGES_ONLY_USER_REASON)
+    expect(agentRevertAllDisabledReason({ ...allUser, truncated: true })).toBe(
+      AGENT_CHANGES_TRUNCATED_REASON
     )
+    expect(agentRevertAllDisabledReason({ ...allUser, hasNotRecorded: true })).toBe(
+      AGENT_CHANGES_NOT_RECORDED_REASON
+    )
+    expect(agentRevertAllDisabledReason({ ...allUser, isGitBusy: true })).toBe(
+      AGENT_CHANGES_BUSY_GIT
+    )
+    // ファイル単位の戻す操作は押せる(利用者の変更も行の ↶ で戻せる)
+    expect(agentRevertDisabledReason(allUser)).toBeNull()
   })
 })
 

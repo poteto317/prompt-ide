@@ -35,7 +35,8 @@ import { resolveAndAssertStatusRelativePath } from './gitPathResolver'
 // 取り消しで受け取るのは undoId だけで、取り消すパス・控えの置き場所は main の記録が決める(renderer には控えの要約だけを返す)。
 // 記録は送信元の webContents の id で引く(所有者の分離)。
 // 戻す 3 つは registry の withAttributionAbsorbed で包み、アプリの操作を利用者の変更に数えない(設計書「アプリの戻す操作・取り消しの吸収」)。
-// 控えの記録(commitRevert)は吸収の外
+// 控えの記録(commitRevert)は吸収の外。
+// 累積の一覧とすべて戻すの実行時の一覧の行の author は registry の attributeEntries で付ける(すべて戻すは吸収の中で呼ぶ)
 
 export const AGENT_CHANGES_NOT_MAIN_FRAME = 'メインフレーム以外からの依頼は受け付けません'
 export const AGENT_CHANGES_NO_RECORD_MESSAGE = 'エージェントの変更の記録がありません'
@@ -52,6 +53,7 @@ export interface AgentChangesHandlerDeps {
     | 'commitRevertUndo'
     | 'undoLastRevert'
     | 'withAttributionAbsorbed'
+    | 'attributeEntries'
   >
   folderAccess: FolderAccessManager
   /** OS のゴミ箱へ移す(trash.ts の moveToTrash) */
@@ -99,10 +101,16 @@ export function registerAgentChangesHandlers(
     const relativePath = await relativePathOf(folder, path)
     return withRecordOrThrow(ownerId, folder, (record) => task(record, relativePath, args, ownerId))
   }
-  const revertContextOf = (record: AgentChangesRecord): AgentRevertContext => ({
+  // 戻す関数の文脈。attributeEntries はすべて戻すの対象の絞り込みに使う(行の ↶・ハンクは使わない)。戻す関数は吸収の task の中で
+  // 呼ぶため、author は吸収の (1) の区切り(S1)からの今の区間で付く(L-449)。そのとき限りの印(unassignedNow)は要約を返さない
+  // 戻す操作では使わない(窓の一覧の後に押しても先に並んだ同期が閉じた区間を割り当て、食い違う行は照合で中止される〈安全側〉。
+  // 吸収の (1) が段階の違いで印を立てるのは、戻す操作が列で待つ間に段階が変わったときで、今の区間は記録の印で割り当てない)
+  const revertContextOf = (ownerId: number, record: AgentChangesRecord): AgentRevertContext => ({
     snapshot: record.baseline,
     trash,
-    undoCapture
+    undoCapture,
+    attributeEntries: async (entries) =>
+      (await registry.attributeEntries(ownerId, record, entries)).entries
   })
   // 戻した結果の控えを記録へ移し、renderer に返す控えの成否と要約を registry から受け取る(記録の列の中で、戻す関数が resolve したときだけ
   // 呼ぶ。控えの一時ディレクトリ・項目は renderer に返さない。L-019)。控えを残すか捨てるか(適用が 0 件なら前の控えを残す、記録が
@@ -141,7 +149,9 @@ export function registerAgentChangesHandlers(
       const parsedScope = parseAgentChangesScope(scope)
       if (folder === null) return { kind: 'none' }
       const result = await registry.withRecord(ownerId, folder, (record) =>
-        listAgentChangesInScope(record, parsedScope)
+        listAgentChangesInScope(record, parsedScope, (entries) =>
+          registry.attributeEntries(ownerId, record, entries)
+        )
       )
       return result ?? { kind: 'none' }
     }
@@ -175,7 +185,7 @@ export function registerAgentChangesHandlers(
             await registry.withAttributionAbsorbed(
               ownerId,
               record,
-              () => revertAgentChange(revertContextOf(record), relativePath),
+              () => revertAgentChange(revertContextOf(ownerId, record), relativePath),
               (outcome) => outcome.applied > 0
             )
           )
@@ -201,7 +211,8 @@ export function registerAgentChangesHandlers(
             await registry.withAttributionAbsorbed(
               ownerId,
               record,
-              () => revertAgentChangeHunk(revertContextOf(record), relativePath, parsedPatch),
+              () =>
+                revertAgentChangeHunk(revertContextOf(ownerId, record), relativePath, parsedPatch),
               (outcome) => outcome.applied > 0
             )
           )
@@ -218,7 +229,7 @@ export function registerAgentChangesHandlers(
         const { applied, capture, ...result } = await registry.withAttributionAbsorbed(
           ownerId,
           record,
-          () => revertAllAgentChanges(revertContextOf(record), entries),
+          () => revertAllAgentChanges(revertContextOf(ownerId, record), entries),
           (outcome) => outcome.applied > 0
         )
         const committed = await commitRevert(ownerId, record, 'all', { applied, capture })

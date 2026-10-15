@@ -9,8 +9,10 @@ import {
   runAvailability,
   runStartFromSnapshotResult,
   runStartSnapshot,
+  summarizeAgentChangesRecord,
   summarizeAgentChangesRuns
 } from '../agentChangesRecord'
+import { summarizeAgentChangesUndo } from '../agentChangesUndoModel'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
 import { resolveAgentChangesScope } from '../agentChangesScope'
 import {
@@ -88,6 +90,27 @@ describe('summarizeAgentChangesRuns', () => {
     expect(() => summarizeAgentChangesRuns(recordOf([baselineRun(1), unknownRun(2)]))).toThrow(
       '未知の実行の開始です'
     )
+  })
+})
+
+describe('summarizeAgentChangesRecord', () => {
+  it('開始の時刻・実行の一覧・取り消しの控えの要約・区別の要約をまとめる', () => {
+    const record = makeAgentChangesRecord([baselineRun(1), snapshotRun(2)], {
+      baseline,
+      undo: { undoId: 3, operation: 'file', dir: '/tmp/undo', items: [] },
+      // 区別を始めた後で今の区間に印がある(要約では hadUnassignedSince が真になる。summarizeAttribution を通すことを固定する)
+      attribution: makeTrackingAttribution(baseline, { periodUnassignable: true })
+    })
+    expect(summarizeAgentChangesRecord(record)).toEqual({
+      startedAt: 100,
+      runs: summarizeAgentChangesRuns(record),
+      undo: summarizeAgentChangesUndo(record.undo),
+      attribution: { kind: 'tracking', since: 100, hadUnassignedSince: true }
+    })
+  })
+
+  it('取り消しの控えが無ければ undo は null', () => {
+    expect(summarizeAgentChangesRecord(recordOf([])).undo).toBeNull()
   })
 })
 

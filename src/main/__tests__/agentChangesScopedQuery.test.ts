@@ -9,9 +9,11 @@ vi.mock('../agentChangeDiff', () => ({
   getAgentChangeDiffBetween: vi.fn()
 }))
 
-import type { AgentChangesList } from '@shared/types'
+import type { AgentChangeEntry, AgentChangesList } from '@shared/types'
 import { getAgentChangeDiff, getAgentChangeDiffBetween } from '../agentChangeDiff'
 import { listAgentChanges, listAgentChangesBetween } from '../agentChangesQuery'
+import { summarizeAttribution } from '../agentChangesAttribution'
+import type { AttributedEntries } from '../agentChangesAttribution'
 import type { AgentChangesRecord } from '../agentChangesRecord'
 import {
   AGENT_CHANGES_SCOPE_DIFF_UNAVAILABLE_MESSAGE,
@@ -33,11 +35,15 @@ const record: AgentChangesRecord = makeAgentChangesRecord(
   { baseline }
 )
 const list: AgentChangesList = {
-  entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
+  entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false, author: null }],
   totalCount: 1,
   truncated: false,
   headChanged: false
 }
+// 行を変えずに返す attributeEntries(区別を試さないテストで使う)
+const keepEntries = vi.fn<(entries: AgentChangeEntry[]) => Promise<AttributedEntries>>(
+  async (entries) => ({ entries, unassignedNow: false })
+)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -49,7 +55,7 @@ beforeEach(() => {
 
 describe('listAgentChangesInScope', () => {
   it('累積は始点と作業ツリーを比べ、始点の時刻・実行の一覧・範囲を添える', async () => {
-    const result = await listAgentChangesInScope(record, { kind: 'all' })
+    const result = await listAgentChangesInScope(record, { kind: 'all' }, keepEntries)
     expect(listAgentChanges).toHaveBeenCalledWith(baseline)
     expect(listAgentChangesBetween).not.toHaveBeenCalled()
     expect(result).toMatchObject({
@@ -63,18 +69,18 @@ describe('listAgentChangesInScope', () => {
   })
 
   it('最後の実行は開始の区切りと作業ツリーを比べる', async () => {
-    await listAgentChangesInScope(record, { kind: 'run', runId: 3 })
+    await listAgentChangesInScope(record, { kind: 'run', runId: 3 }, keepEntries)
     expect(listAgentChanges).toHaveBeenCalledWith(r3)
   })
 
   it('途中の実行は開始と次の実行の開始の区切りどうしを比べる(開始が始点の実行は始点から)', async () => {
-    await listAgentChangesInScope(record, { kind: 'run', runId: 1 })
+    await listAgentChangesInScope(record, { kind: 'run', runId: 1 }, keepEntries)
     expect(listAgentChangesBetween).toHaveBeenCalledWith(baseline, r2)
     expect(listAgentChanges).not.toHaveBeenCalled()
   })
 
   it('選べない範囲は一覧を作らず理由を返す', async () => {
-    const result = await listAgentChangesInScope(record, { kind: 'run', runId: 99 })
+    const result = await listAgentChangesInScope(record, { kind: 'run', runId: 99 }, keepEntries)
     expect(result).toMatchObject({
       kind: 'scope-unavailable',
       reason: 'run-missing',
@@ -92,11 +98,91 @@ describe('listAgentChangesInScope', () => {
       undo: { undoId: 3, operation: 'all', dir: '/tmp/u', items: [] }
     })
     const summary = { undoId: 3, operation: 'all', entries: [] }
-    const recording = await listAgentChangesInScope(withUndo, { kind: 'all' })
+    const recording = await listAgentChangesInScope(withUndo, { kind: 'all' }, keepEntries)
     expect(recording).toMatchObject({ kind: 'recording', undo: summary })
-    const unavailable = await listAgentChangesInScope(withUndo, { kind: 'run', runId: 99 })
+    const unavailable = await listAgentChangesInScope(
+      withUndo,
+      { kind: 'run', runId: 99 },
+      keepEntries
+    )
     expect(unavailable).toMatchObject({ kind: 'scope-unavailable', undo: summary })
     expect(JSON.stringify([recording, unavailable])).not.toContain('/tmp/u')
+  })
+
+  it('recording・scope-unavailable の結果に記録の区別の要約を入れる', async () => {
+    const recording = await listAgentChangesInScope(record, { kind: 'all' }, keepEntries)
+    expect(recording).toMatchObject({ attribution: summarizeAttribution(record.attribution) })
+    const unavailable = await listAgentChangesInScope(
+      record,
+      { kind: 'run', runId: 99 },
+      keepEntries
+    )
+    expect(unavailable).toMatchObject({ attribution: summarizeAttribution(record.attribution) })
+  })
+
+  it('累積だけ一覧の行を attributeEntries に通し、その結果の行を返す(件数・打ち切り・HEAD はそのまま)', async () => {
+    const authored: AgentChangeEntry[] = [{ ...list.entries[0], author: 'user' }]
+    const attributeEntries = vi.fn(async () => ({ entries: authored, unassignedNow: false }))
+    const result = await listAgentChangesInScope(record, { kind: 'all' }, attributeEntries)
+    expect(attributeEntries).toHaveBeenCalledExactlyOnceWith(list.entries)
+    expect(result).toMatchObject({ kind: 'recording', entries: authored, totalCount: 1 })
+  })
+
+  it.each([
+    ['最後の実行', 3],
+    ['途中の実行', 1]
+  ])(
+    '実行の範囲(%s)は attributeEntries を呼ばず、行の author は null のまま',
+    async (_label, runId) => {
+      const attributeEntries = vi.fn(async (entries: AgentChangeEntry[]) => ({
+        entries,
+        unassignedNow: false
+      }))
+      const result = await listAgentChangesInScope(record, { kind: 'run', runId }, attributeEntries)
+      expect(attributeEntries).not.toHaveBeenCalled()
+      expect(result.kind === 'recording' && result.entries.map((entry) => entry.author)).toEqual([
+        null
+      ])
+    }
+  )
+
+  it('一覧が今の区間をそのときだけ割り当てなかったら(unassignedNow)、その結果の要約の hadUnassignedSince だけを真にし、記録は変えない', async () => {
+    const fresh = makeAgentChangesRecord([], { baseline })
+    const attributeEntries = vi.fn(async (entries: AgentChangeEntry[]) => ({
+      entries,
+      unassignedNow: true
+    }))
+    const result = await listAgentChangesInScope(fresh, { kind: 'all' }, attributeEntries)
+    expect(result).toMatchObject({
+      attribution: { kind: 'tracking', since: 100, hadUnassignedSince: true }
+    })
+    expect(fresh.attribution).toMatchObject({
+      periodUnassignable: false,
+      hadUnassignedSince: false
+    })
+    expect(summarizeAttribution(fresh.attribution)).toMatchObject({ hadUnassignedSince: false })
+  })
+
+  it('一覧の今の区間の比較で記録が lost になったら、同じ結果の要約も lost(要約は attributeEntries の後に求める)', async () => {
+    const fresh = makeAgentChangesRecord([], { baseline })
+    const attributeEntries = vi.fn(async (entries: AgentChangeEntry[]) => {
+      // markAttributionLost と同じ置き換え
+      fresh.attribution = {
+        kind: 'lost',
+        reason: 'checkpoint-failed',
+        lostAt: 300,
+        userPaths: new Set(),
+        agentPaths: new Set(),
+        trackingSince: 100,
+        hadUnassignedSince: false,
+        staleCheckpointDirs: []
+      }
+      return { entries, unassignedNow: false }
+    })
+    const result = await listAgentChangesInScope(fresh, { kind: 'all' }, attributeEntries)
+    expect(result).toMatchObject({
+      attribution: { kind: 'lost', reason: 'checkpoint-failed', lostAt: 300 }
+    })
   })
 })
 

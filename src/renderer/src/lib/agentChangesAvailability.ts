@@ -7,12 +7,14 @@ import {
   AGENT_CHANGES_BUSY_UNDOING,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_ONLY_USER_REASON,
   AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON
 } from './agentChangesMessages'
 
 // エージェントの変更のセクションで、ボタンを押せる条件(設計書「A の詳細」)。文言は agentChangesMessages.ts に置き、
-// ここは「押せない理由」を選ぶ優先順位の規則と、セクションを出すかの判定(isAgentChangesSectionVisible)を持つ。押せないボタンには必ず理由を返す(パターン 126)。
+// ここは「押せない理由」を選ぶ優先順位の規則と、セクションを出すかの判定(isAgentChangesSectionVisible)を持つ。すべて戻すの
+// 対象の絞り込み(agentRevertAllTargets)は agentChangesRevertTargets.ts に置く。押せないボタンには必ず理由を返す(パターン 126)。
 // セクションの表示は評価の順序に依存する(すべて戻すの理由がファイル単位の理由を先に評価するため、同じ文言になる)
 
 /** セクション「エージェントの変更」を出すか。エージェント CLI 方式では常に、従来の方式では記録がある間だけ。
@@ -64,14 +66,21 @@ export function agentRevertDisabledReason(availability: AgentRevertAvailability)
 }
 
 /** 「すべて戻す」を押せない理由。打ち切った一覧では使えない(確認で見せていない行を照合に含められない)。
- *  記録していない行(notRecorded)を含む一覧でも使えない(main が全件を先に調べ、戻せない行があれば必ず全体を中止するため) */
+ *  記録していない行(notRecorded)を含む一覧でも使えない(main が全件を先に調べ、戻せない行があれば必ず全体を中止するため)。
+ *  行がすべて利用者の変更(user・mixed)なら対象が無い(今の理由を優先する。L-057) */
 export function agentRevertAllDisabledReason(
-  availability: AgentRevertAvailability & { truncated: boolean; hasNotRecorded: boolean }
+  availability: AgentRevertAvailability & {
+    truncated: boolean
+    hasNotRecorded: boolean
+    /** 行が 1 件以上あり、すべてが利用者の変更・利用者の変更を含む(必須。L-060) */
+    hasOnlyUserChanges: boolean
+  }
 ): string | null {
   return (
     agentRevertDisabledReason(availability) ??
     (availability.truncated ? AGENT_CHANGES_TRUNCATED_REASON : null) ??
-    (availability.hasNotRecorded ? AGENT_CHANGES_NOT_RECORDED_REASON : null)
+    (availability.hasNotRecorded ? AGENT_CHANGES_NOT_RECORDED_REASON : null) ??
+    (availability.hasOnlyUserChanges ? AGENT_CHANGES_ONLY_USER_REASON : null)
   )
 }
 

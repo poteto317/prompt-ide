@@ -55,12 +55,16 @@ export type AgentChangesState =
       untrackedCount?: number
       untrackedBytes?: number
     }
-  /** runs は実行の一覧(古い順。最大 AGENT_CHANGES_MAX_RUNS 件)。undo は直前の戻す操作の取り消しの控えの要約(無ければ null) */
+  /**
+   * runs は実行の一覧(古い順。最大 AGENT_CHANGES_MAX_RUNS 件)。undo は直前の戻す操作の取り消しの控えの要約(無ければ null)。
+   * attribution は記録の区別の要約
+   */
   | {
       kind: 'recording'
       startedAt: number
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
+      attribution: AgentChangesAttributionSummary
     }
 
 /** A: 追加、M: 変更、D: 削除、T: 種類の変更(ファイル ↔ リンク・サブモジュール) */
@@ -87,10 +91,23 @@ export interface AgentChangeEntry {
   isDirectory: boolean
   /** 記録の時点に記録しなかった(大きすぎて除外した)ファイルを含む。戻せない */
   notRecorded: boolean
+  /**
+   * 行の区別(累積の一覧で main の registry が付ける。設計書「行の author」)。null は区別していない(実行の範囲の一覧・区別を始める前の記録・
+   * hooks の無い記録・notRecorded の行)。main の一覧の関数はすべての行を null で作る
+   */
+  author: AgentChangeAuthor | null
 }
 
-/** 一覧の行の区別(B-2 で AgentChangeEntry.author に載せる。B-1 は main の記録の中だけで使う) */
+/** 一覧の行の区別。user: 利用者の変更、mixed: 利用者の変更を含む(両方が変えた)、agent: エージェントの変更 */
 export type AgentChangeAuthor = 'agent' | 'user' | 'mixed'
+
+/**
+ * すべて戻すの対象か(利用者の変更・利用者の変更を含む行は戻さない)。確認の一覧(renderer の agentRevertAllTargets。
+ * useAgentChangesRevert がその結果を使う)と実行時の照合(main の revertAllAgentChanges)が同じ定義を使う(L-036)
+ */
+export function isAgentRevertAllTarget(entry: Pick<AgentChangeEntry, 'author'>): boolean {
+  return entry.author !== 'user' && entry.author !== 'mixed'
+}
 
 /**
  * 記録の区別をやめた理由。main の追跡の理由(agentToolActivity の AgentHooksLostReason)に、判定の区切り・差分・今の区間の
@@ -102,7 +119,7 @@ export type AgentChangesAttributionLostReason =
   | 'claude-version-unsupported'
   | 'checkpoint-failed'
 
-/** 記録の区別の要約(B-2 で AgentChangesState・AgentChangesListResult に載せる)。since は区別を始めた時刻、hadMarks は集合が空でないか */
+/** 記録の区別の要約(AgentChangesState・AgentChangesListResult に載せる)。since は区別を始めた時刻、hadMarks は集合が空でないか */
 export type AgentChangesAttributionSummary =
   | { kind: 'tracking'; since: number | null; hadUnassignedSince: boolean }
   | {
@@ -139,7 +156,7 @@ export function isSameAgentChangesScope(a: AgentChangesScope, b: AgentChangesSco
   return a.kind === 'all' ? b.kind === 'all' : b.kind === 'run' && a.runId === b.runId
 }
 
-/** 一覧の結果。recording・scope-unavailable は、実行の一覧・取り消しの控えの要約(無ければ null)と、一覧を取った範囲を添える */
+/** 一覧の結果。recording・scope-unavailable は、実行の一覧・取り消しの控えの要約(無ければ null)・記録の区別の要約と、一覧を取った範囲を添える */
 export type AgentChangesListResult =
   | { kind: 'none' }
   | ({
@@ -147,6 +164,7 @@ export type AgentChangesListResult =
       startedAt: number
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
+      attribution: AgentChangesAttributionSummary
       scope: AgentChangesScope
     } & AgentChangesList)
   | {
@@ -154,6 +172,7 @@ export type AgentChangesListResult =
       startedAt: number
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
+      attribution: AgentChangesAttributionSummary
       scope: AgentChangesScope
       reason: AgentChangesScopeUnavailableReason
     }

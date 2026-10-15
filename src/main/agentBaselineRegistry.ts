@@ -8,11 +8,16 @@ import type {
 } from '@shared/types'
 import { AGENT_CHANGES_MAX_RUNS } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
-import { attributionLogLine, initialAttribution } from './agentChangesAttribution'
-import type { AttributionLogEvent, TrackingAttribution } from './agentChangesAttribution'
+import { attributionLogLine, authorsOf, initialAttribution } from './agentChangesAttribution'
+import type {
+  AttributedEntries,
+  AttributionLogEvent,
+  TrackingAttribution
+} from './agentChangesAttribution'
 import {
   absorbAfterTask,
   absorbBeforeTask,
+  currentPeriodPaths,
   loseAfterUnexpectedError,
   syncAttributionStep
 } from './agentChangesAttributionSync'
@@ -36,7 +41,7 @@ import {
   latestRecordedIndexPath,
   protectionTreeEntries,
   runStartFromSnapshotResult,
-  summarizeAgentChangesRuns
+  summarizeAgentChangesRecord
 } from './agentChangesRecord'
 import type {
   AgentChangesUndo,
@@ -63,7 +68,8 @@ import type { AgentToolActivity, AgentToolPhase } from './agentToolActivity'
 //   注入された executeUndo に任せ、結果で控えを捨てるかだけを決める(undoLastRevert。ファイルの読み書きを持たない)
 // - 区別: 記録ごとに利用者の変更とエージェントの変更を区別する(設計書「利用者の変更の判定」)。begin で始め、追跡の合図の変化で
 //   列に同期を並べ、判定の区切りの差分を段階に割り当てる。戻す操作・取り消しは同じ列の中で吸収し(withAttributionAbsorbed)、
-//   PreToolUse は記録の段階が agent になるまで待たせる(waitForAgentPhase。打ち切りは markToolStartTimedOut)。手順は agentChangesAttributionSync.ts
+//   PreToolUse は記録の段階が agent になるまで待たせる(waitForAgentPhase。打ち切りは markToolStartTimedOut)。手順は agentChangesAttributionSync.ts。
+//   累積の一覧・すべて戻すの行の author は attributeEntries(列の中で呼ぶ)が今の区間を比べて付ける
 
 /** 記録の tree を gc から守る ref の依存(設計書「保護の ref の名前」「残った ref の掃除」) */
 export interface AgentBaselineProtectionDeps {
@@ -103,6 +109,8 @@ export interface AgentBaselineRegistryDeps {
   executeUndo: (folderPath: string, undo: AgentChangesUndo) => Promise<AgentChangesUndoExecution>
   /** 2 つの区切りの間の変更(agentChangesQuery の collectAgentChangeEntriesBetween)。判定の区切りの差分に使う */
   collectBetween: (start: BaselineSnapshot, end: BaselineSnapshot) => Promise<AgentChangeEntry[]>
+  /** 判定の区切り → 作業ツリーの行(agentChangesQuery の collectAgentChangeEntries。必須。L-060)。一覧の今の区間の比較に使う */
+  collectCurrent: (snapshot: BaselineSnapshot) => Promise<AgentChangeEntry[]>
   /** ウィンドウの段階の合図とツールの開始の通し番号(agentToolActivity の追跡。必須。L-060) */
   attributionSource: Pick<AgentToolActivity, 'activityOf' | 'toolStartSeqOf'>
   /** 開発版の区別のログ(1 行ずつ)。null なら出さない(ipcHandlers.ts が !app.isPackaged のときだけ console.log を渡す) */
@@ -265,7 +273,8 @@ export class AgentBaselineRegistry {
 
   /**
    * 追跡の合図が変わったとき(設計書「registry へのつなぎ方」)。追跡の publish の中から同期的に呼ばれるため投げない(L-053)。
-   * 記録が無い・区別していない・終了中なら何もしない。合図の unassignable が立っていれば列の外で同期的に今の区間に印を立て、
+   * 記録が無い・区別していない・終了中なら何もしない。合図の unassignable が立っていれば列の外で同期的に今の区間の印と、
+   * 同期の手順 9 で拾う印(signalUnassignablePending。手順 4〜9 の窓の中で立ってすぐ下りた合図を拾う)を立て、
    * 同期を 1 回並べる(段階は同期の番が来た時点の追跡の値で読む。L-040)
    */
   notifyAttributionSignal(ownerId: number): void {
@@ -274,6 +283,7 @@ export class AgentBaselineRegistry {
       if (record === null) return
       if (this.deps.attributionSource.activityOf(ownerId).unassignable) {
         record.attribution.periodUnassignable = true
+        record.attribution.signalUnassignablePending = true
       }
       this.enqueueAttributionSync(ownerId)
     } catch (err) {
@@ -375,6 +385,39 @@ export class AgentBaselineRegistry {
     }
     if (changed(result)) await absorb(absorbAfterTask)
     return result
+  }
+
+  /**
+   * 一覧の行に author を付ける(設計書「行の author」。累積の一覧と、すべて戻すの吸収の中の実行時の一覧)。列の中で呼ぶ(自分では列に
+   * 並ばない。withAttributionAbsorbed と同じ)。今の区間のパスを求め(currentPeriodPaths)、集合と合わせて authorsOf で付けた新しい配列を
+   * 返す(渡された配列・行は変えない)。合図の段階が記録の段階と違うだけで今の区間を割り当てなかったら(記録に印は立てない)、
+   * unassignedNow を真にして返す(呼び出し側がそのときの要約にだけ入れる)。比較で lost にしたら開発版のログに出す。手順の予期しない例外は注入したログに出し、lost にしてから
+   * 今の区間なしで付ける(投げない。一覧を失敗にしない。L-002・L-424・L-450)。待ち・同期の並べ直しはしない(L-446)
+   */
+  async attributeEntries(
+    ownerId: number,
+    record: AgentChangesRecord,
+    entries: AgentChangeEntry[]
+  ): Promise<AttributedEntries> {
+    const ctx = this.attributionContextOf(ownerId, record)
+    const phaseBefore = record.attribution.kind === 'tracking' ? record.attribution.phase : null
+    let currentPaths: string[] | null = null
+    let unassignedNow = false
+    try {
+      const paths = await currentPeriodPaths(ctx, entries)
+      if (paths === 'lost') this.logAttribution(ownerId, 'lost', phaseBefore, record)
+      else if (paths === 'unassigned') unassignedNow = true
+      else currentPaths = paths
+    } catch (err) {
+      this.deps.attributionWarn('[agent-attribution] 一覧の区別に失敗しました:', err)
+      const outcome = await loseAfterUnexpectedError(ctx)
+      if (outcome.kind === 'lost') this.logAttribution(ownerId, 'lost', outcome.phaseBefore, record)
+    }
+    const authors = authorsOf(entries, record.attribution, currentPaths)
+    return {
+      entries: entries.map((entry, index) => ({ ...entry, author: authors[index] ?? null })),
+      unassignedNow
+    }
   }
 
   /**
@@ -775,6 +818,7 @@ export class AgentBaselineRegistry {
           baseIndexPath
         }),
       collectBetween: this.deps.collectBetween,
+      collectCurrent: this.deps.collectCurrent,
       isStale,
       discardSnapshot: (snapshot) => this.discardSnapshot(snapshot),
       removeDir: (dir) => this.removeAttributionDir(dir),
@@ -821,12 +865,7 @@ export class AgentBaselineRegistry {
   }
 
   private recordingState(record: AgentChangesRecord): AgentChangesState {
-    return {
-      kind: 'recording',
-      startedAt: record.baseline.startedAt,
-      runs: summarizeAgentChangesRuns(record),
-      undo: summarizeAgentChangesUndo(record.undo)
-    }
+    return { kind: 'recording', ...summarizeAgentChangesRecord(record) }
   }
 
   // 取り消された記録・区切りの一時ディレクトリを消す(アプリの終了中は待てないので同期で消す)

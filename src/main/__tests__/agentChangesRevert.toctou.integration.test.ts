@@ -55,7 +55,8 @@ afterEach(() => {
 const record = async (): Promise<AgentRevertContext> => ({
   snapshot: await recordBaseline(repo, tempRoot),
   trash,
-  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
+  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES },
+  attributeEntries: async (entries) => entries
 })
 
 describe('一覧の後に ignore されたファイルが置かれたフォルダ(実 git)', () => {

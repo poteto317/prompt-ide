@@ -2,6 +2,12 @@ import { vi } from 'vitest'
 import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type {
+  AgentChangesAttributionSummary,
+  AgentChangesRun,
+  AgentChangesState,
+  AgentChangesUndoSummary
+} from '@shared/types'
 import { takeBaselineSnapshot } from '../../agentBaselineSnapshot'
 import type { BaselineSnapshot, BaselineSnapshotResult } from '../../agentBaselineSnapshot'
 import type { AgentChangesRecord, AgentChangesRecordRun } from '../../agentChangesRecord'
@@ -137,6 +143,7 @@ export function makeTrackingAttribution(
     phase: 'idle',
     periodUnassignable: false,
     timedOutPending: false,
+    signalUnassignablePending: false,
     checkpoint: { snapshot: baseline, sharedWithBaseline: true },
     userPaths: new Set(),
     agentPaths: new Set(),
@@ -307,10 +314,14 @@ export function createFakeAttributionSource(
   return source
 }
 
-/** registry の区別の依存(区切りの差分・追跡・開発版のログ・失敗のログ) */
+/** registry の区別の依存(区切りの差分・今の区間の比較・追跡・開発版のログ・失敗のログ) */
 export type AttributionRegistryDeps = Pick<
   AgentBaselineRegistryDeps,
-  'collectBetween' | 'attributionSource' | 'attributionDevLog' | 'attributionWarn'
+  | 'collectBetween'
+  | 'collectCurrent'
+  | 'attributionSource'
+  | 'attributionDevLog'
+  | 'attributionWarn'
 >
 
 // 区別を試さないテストの registry の区別の依存。区別をやめた記録(lost)で始め、同期・吸収の区切りを取らない
@@ -318,8 +329,32 @@ export type AttributionRegistryDeps = Pick<
 export function makeAttributionOffDeps(): AttributionRegistryDeps {
   return {
     collectBetween: vi.fn<AgentBaselineRegistryDeps['collectBetween']>(async () => []),
+    collectCurrent: vi.fn<AgentBaselineRegistryDeps['collectCurrent']>(async () => []),
     attributionSource: createFakeAttributionSource({ lost: 'receiver-unavailable' }),
     attributionDevLog: null,
     attributionWarn: () => undefined
   }
+}
+
+// makeAttributionOffDeps の registry が返す記録の区別の要約(区別をやめた記録〈receiver-unavailable〉。lostAt は始点の時刻、集合なし)。
+// 区別を試さないテストの recording の状態・一覧の結果の期待値に使う
+export function attributionOffSummary(startedAt: number): AgentChangesAttributionSummary {
+  return {
+    kind: 'lost',
+    reason: 'receiver-unavailable',
+    lostAt: startedAt,
+    hadMarks: false,
+    since: null,
+    hadUnassignedSince: false
+  }
+}
+
+// makeAttributionOffDeps の registry が返す記録中の状態(begin・getState の応答)。実行の既定はなし、取り消しの控えの既定はなし。
+// 区別を試さないテストが、状態の型に欄が増えるたびに期待値を直さずに済むようにする(SRP L3-03)
+export function attributionOffRecordingState(
+  startedAt: number,
+  overrides: { runs?: AgentChangesRun[]; undo?: AgentChangesUndoSummary | null } = {}
+): Extract<AgentChangesState, { kind: 'recording' }> {
+  const { runs = [], undo = null } = overrides
+  return { kind: 'recording', startedAt, runs, undo, attribution: attributionOffSummary(startedAt) }
 }

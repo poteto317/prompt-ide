@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as agentChangesApi from '../agentChangesApi'
 import {
   makeAgentChangesRecordingState,
+  makeAgentChangesTrackingSummary,
   makeAgentRevertAllResult
 } from '../../__tests__/makeAgentChangesState'
 
@@ -30,7 +31,8 @@ describe('agentChangesApi', () => {
       kind: 'recording',
       startedAt: 1,
       runs: [],
-      undo: null
+      undo: null,
+      attribution: makeAgentChangesTrackingSummary()
     })
     await agentChangesApi.getAgentChangesState()
     await agentChangesApi.listAgentChanges({ kind: 'all' })

@@ -19,6 +19,7 @@ import {
   formatAgentRevertPartialWarning
 } from '../lib/agentChangesMessages'
 import { agentChangeAbsolutePath, isEntrySavedInApp, isSavedInApp } from '../lib/agentChangesPaths'
+import { agentRevertAllTargets } from '../lib/agentChangesRevertTargets'
 import { getListedAgentChanges } from '../lib/agentChangesScope'
 import { recordingStartedAtOf } from '../lib/agentChangesView'
 import { AGENT_CHANGES_NOTICE_DURATION_MS } from './useAgentChanges'
@@ -31,7 +32,8 @@ import { undoSummaryWriteHooks } from './agentChangesWriteSync'
 
 // エージェントの変更を戻す(ファイル・ハンク・すべて)。既存の取り消し(useDiscardFileChanges・useDiscardHunk・
 // useDiscardAllChanges)と同じく「押せるか → 確認 → ロック → 実行 → 成功したときだけタブとツリーを同期」の順で行う
-// (パターン 20・52)。実行中の印・失敗の表示・全体ロック・記録の世代は、取り消しと共有する実行の共有(runner)が持つ
+// (パターン 20・52)。実行中の印・失敗の表示・全体ロック・記録の世代は、取り消しと共有する実行の共有(runner)が持つ。
+// すべて戻すの対象は、利用者の変更・利用者の変更を含む行を除いたもの(agentRevertAllTargets。main の照合と同じ定義。L-036)
 
 export interface AgentChangesRevertOptions {
   folderPath: string | null
@@ -77,6 +79,9 @@ export interface AgentChangesRevertState {
   revertDisabledReason: string | null
   /** 「すべて戻す」を押せない理由 */
   revertAllDisabledReason: string | null
+  /** すべて戻すから除く行(利用者の変更・利用者の変更を含む)の件数。累積の一覧が無い・打ち切った一覧(すべて戻すは使えず、残りの行の
+   *  author も分からない)・実行の範囲の一覧なら 0(セクションの除く旨の 1 行に使う) */
+  revertAllExcludedCount: number
   revertFile: (entry: AgentChangeEntry) => Promise<void>
   /** scope は diff の内容を取った範囲。累積でなければ何もしない */
   revertHunk: (
@@ -111,6 +116,11 @@ export function useAgentChangesRevert({
   useOnChange(folderPath, clearHunkNotice)
   useOnChange(recordingStartedAtOf(changes.view), clearHunkNotice)
   const list = getListedAgentChanges(changes.view)
+  // 写しの記録(区別の要約と開始の時刻を確認に渡す)
+  const recording = changes.view.kind === 'recording' ? changes.view : null
+  // すべて戻すの対象と除く件数(確認の一覧と main の照合が同じ定義を使う。L-036)
+  const { targets, excludedCount, shownExcludedCount, hasOnlyUserChanges } =
+    agentRevertAllTargets(list)
   const availability = {
     isLoading: changes.isLoading,
     isGitBusy: fileLock.isAnyLocked(),
@@ -124,7 +134,8 @@ export function useAgentChangesRevert({
     ...availability,
     truncated: list?.truncated ?? false,
     // main へ渡す expected からは除かない(完全一致の照合のため)。押せなくして、必ず失敗する確認を出さない
-    hasNotRecorded: list?.entries.some((entry) => entry.notRecorded) ?? false
+    hasNotRecorded: list?.entries.some((entry) => entry.notRecorded) ?? false,
+    hasOnlyUserChanges
   })
 
   const absoluteOf = (path: string): string | null => agentChangeAbsolutePath(folderPath, path)
@@ -149,6 +160,7 @@ export function useAgentChangesRevert({
       path: entry.path,
       status: entry.status,
       isDirectory: entry.isDirectory,
+      author: entry.author,
       savedInApp: isSavedInApp(changes.savedPaths, absolutePath),
       hasUnsavedEdits: hasDirtyTabAtOrInside(absolutePath),
       agentRunning
@@ -210,25 +222,29 @@ export function useAgentChangesRevert({
   }
 
   const revertAll = async (): Promise<void> => {
-    if (list === null || list.scope.kind !== 'all' || list.entries.length === 0) return
-    if (runner.isRunning() || revertAllDisabledReason !== null) return
+    if (list === null || list.scope.kind !== 'all' || targets.length === 0) return
+    if (runner.isRunning() || revertAllDisabledReason !== null || recording === null) return
     const startedAt = startedAtNow()
     if (startedAt === null) return
+    // 確認の件数・ゴミ箱の件数・フォルダの有無・保存の有無は対象だけで求める(除いた行の保存は確認で言わない)
     const message = buildAgentRevertAllConfirmMessage({
-      count: list.entries.length,
-      trashCount: list.entries.filter((entry) => entry.status === 'A').length,
-      hasDirectory: list.entries.some((entry) => entry.isDirectory),
+      count: targets.length,
+      trashCount: targets.filter((entry) => entry.status === 'A').length,
+      hasDirectory: targets.some((entry) => entry.isDirectory),
       // セクションの行の印と同じ判定(フォルダの行は配下の保存を含む)
-      savedInApp: list.entries.some((entry) =>
+      savedInApp: targets.some((entry) =>
         isEntrySavedInApp(folderPath, changes.savedPaths, entry.path)
       ),
-      agentRunning
+      agentRunning,
+      attribution: recording.attribution,
+      startedAt: recording.startedAt,
+      excludedCount
     })
     if (!onConfirm(message)) return
     // 未保存の編集の破棄は、既存の「すべて取り消す」と同じく別の確認で承諾させる
     if (!confirmDiscardAnyDirty()) return
-    // 確認で見せた一覧(パスと状態の文字)を main へ渡す。実行時の一覧と完全一致しなければ main が中止する
-    const expected = list.entries.map(({ path, status }) => ({ path, status }))
+    // 確認で見せた対象(パスと状態の文字)を main へ渡す。main は同じ定義で除いた実行時の一覧と完全一致で照合し、違えば中止する
+    const expected = targets.map(({ path, status }) => ({ path, status }))
     const generation = runner.captureGeneration()
     const outcome = await runner.run(
       'all',
@@ -264,6 +280,7 @@ export function useAgentChangesRevert({
     hunkNotice,
     revertDisabledReason,
     revertAllDisabledReason,
+    revertAllExcludedCount: shownExcludedCount,
     revertFile,
     revertHunk,
     revertAll

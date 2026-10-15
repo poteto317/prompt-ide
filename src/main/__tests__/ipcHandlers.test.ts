@@ -169,7 +169,7 @@ import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
-import { collectAgentChangeEntriesBetween } from '../agentChangesQuery'
+import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from '../agentChangesQuery'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
 
@@ -365,13 +365,14 @@ describe('registerIpcHandlers', () => {
     })
   })
 
-  it('記録の registry に、追跡(区別の合図と通し番号)・区切りの差分・開発版の区別のログ(app.isPackaged でないとき)・失敗のログ(console.warn)を渡す', () => {
+  it('記録の registry に、追跡(区別の合図と通し番号)・区切りの差分・今の区間の比較・開発版の区別のログ(app.isPackaged でないとき)・失敗のログ(console.warn)を渡す', () => {
     registerIpcHandlers(mockIpcMain)
     const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
     // 依存は private のため、組み立ての確認に限って型を外して読む
     const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
     expect(deps.attributionSource).toBe(mockToolActivity)
     expect(deps.collectBetween).toBe(collectAgentChangeEntriesBetween)
+    expect(deps.collectCurrent).toBe(collectAgentChangeEntries)
     expect(typeof deps.attributionDevLog).toBe('function')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {

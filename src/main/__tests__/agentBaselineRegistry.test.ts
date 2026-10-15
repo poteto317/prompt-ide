@@ -4,6 +4,7 @@ import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
 import type { BaselineSnapshot, BaselineSnapshotResult } from '../agentBaselineSnapshot'
 import type { AgentChangesUndoCapture, AgentChangesUndoExecution } from '../agentChangesUndoModel'
 import {
+  attributionOffRecordingState,
   createFakeProtectionGit,
   FAKE_PROTECTION_INSTANCE_ID,
   makeAttributionOffDeps,
@@ -120,13 +121,8 @@ describe('AgentBaselineRegistry', () => {
     const s = setup()
     const begun = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/a', 42))
-    await expect(begun).resolves.toEqual({ kind: 'recording', startedAt: 42, runs: [], undo: null })
-    expect(s.registry.getState(1, '/repo')).toEqual({
-      kind: 'recording',
-      startedAt: 42,
-      runs: [],
-      undo: null
-    })
+    await expect(begun).resolves.toEqual(attributionOffRecordingState(42))
+    expect(s.registry.getState(1, '/repo')).toEqual(attributionOffRecordingState(42))
     expect(s.registry.getState(2, '/repo')).toEqual({ kind: 'none' })
     await expect(s.registry.withRecord(2, '/repo', async () => 'used')).resolves.toBeNull()
   })
@@ -134,12 +130,9 @@ describe('AgentBaselineRegistry', () => {
   it('記録がある間の begin は記録を取り直さない(累積)', async () => {
     const s = setup()
     await recordFor(s, 1, '/repo', '/tmp/a')
-    await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual(
+      attributionOffRecordingState(100)
+    )
     expect(s.takeSnapshot).not.toHaveBeenCalled()
   })
 
@@ -149,8 +142,8 @@ describe('AgentBaselineRegistry', () => {
     const second = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/a'))
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { kind: 'recording', startedAt: 100, runs: [], undo: null },
-      { kind: 'recording', startedAt: 100, runs: [], undo: null }
+      attributionOffRecordingState(100),
+      attributionOffRecordingState(100)
     ])
     expect(s.takeSnapshot).toHaveBeenCalledOnce()
   })
@@ -183,12 +176,7 @@ describe('AgentBaselineRegistry', () => {
     s.release({ kind: 'canceled' }, 0)
     s.release(recorded('/repo', '/tmp/b'), 1)
     await expect(old).resolves.toEqual({ kind: 'none' })
-    await expect(fresh).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    await expect(fresh).resolves.toEqual(attributionOffRecordingState(100))
   })
 
   it('別のフォルダの記録の途中の依頼にはまとめない', async () => {
@@ -264,23 +252,13 @@ describe('AgentBaselineRegistry', () => {
     await vi.waitFor(() => expect(started).toBe(true))
     const cleared = s.registry.clear(1)
     await recordFor(s, 1, '/b', '/tmp/B')
-    expect(s.registry.getState(1, '/b')).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    expect(s.registry.getState(1, '/b')).toEqual(attributionOffRecordingState(100))
     releaseSlow()
     await expect(slow).resolves.toBe('slow')
     await expect(queuedOld).resolves.toBeNull()
     await cleared
     expect(oldTask).not.toHaveBeenCalled()
-    expect(s.registry.getState(1, '/b')).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    expect(s.registry.getState(1, '/b')).toEqual(attributionOffRecordingState(100))
     expect(s.removeDir.mock.calls).toEqual([['/tmp/A']])
     await expect(
       s.registry.withRecord(1, '/b', async (record) => record.baseline.tempDir)
@@ -294,12 +272,7 @@ describe('AgentBaselineRegistry', () => {
     await expect(s.registry.withRecord(1, '/a', task)).resolves.toBeNull()
     expect(task).not.toHaveBeenCalled()
     expect(s.removeDir).not.toHaveBeenCalled()
-    expect(s.registry.getState(1, '/b')).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    expect(s.registry.getState(1, '/b')).toEqual(attributionOffRecordingState(100))
   })
 
   it('失敗した操作の後も列は進む', async () => {
@@ -368,20 +341,10 @@ describe('AgentBaselineRegistry', () => {
       await Promise.resolve()
     }
     await expect(old).resolves.toEqual({ kind: 'none' })
-    await expect(fresh).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    await expect(fresh).resolves.toEqual(attributionOffRecordingState(100))
     expect(s.removeDir).toHaveBeenCalledWith('/tmp/a')
     expect(s.removeDir).not.toHaveBeenCalledWith('/tmp/b')
-    expect(s.registry.getState(1, '/other')).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    expect(s.registry.getState(1, '/other')).toEqual(attributionOffRecordingState(100))
     expect(s.registry.getState(1, '/repo')).toEqual({ kind: 'none' })
   })
 })
@@ -417,12 +380,7 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
 
   it('記録が無い send は累積の始点を取り、それを開始とする実行 1 を足す', async () => {
     const s = setup()
-    const expected = {
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 100, null)],
-      undo: null
-    }
+    const expected = attributionOffRecordingState(100, { runs: [runOf(1, 1, 100, null)] })
     await expect(send(s, recorded('/repo', '/tmp/base', 100))).resolves.toEqual(expected)
     expect(s.baseIndexPaths()).toEqual([undefined])
     expect(s.registry.getState(1, '/repo')).toEqual(expected)
@@ -431,24 +389,18 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
   it('manual は実行を足さず、記録がある間の manual は区切りを取らない', async () => {
     const s = setup()
     await recordFor(s, 1, '/repo', '/tmp/base')
-    await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
+    await expect(s.registry.begin(1, '/repo', 'manual')).resolves.toEqual(
+      attributionOffRecordingState(100)
+    )
     expect(s.takeSnapshot).not.toHaveBeenCalled()
   })
 
   it('記録がある send は、直前の取れた記録のインデックスを写しの元にして区切りを取り、実行を足す', async () => {
     const s = setup()
     await send(s, recorded('/repo', '/tmp/base', 100))
-    await expect(send(s, recorded('/repo', '/tmp/r2', 200))).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)],
-      undo: null
-    })
+    await expect(send(s, recorded('/repo', '/tmp/r2', 200))).resolves.toEqual(
+      attributionOffRecordingState(100, { runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)] })
+    )
     await send(s, recorded('/repo', '/tmp/r3', 300))
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index', '/tmp/r2/index'])
   })
@@ -464,26 +416,22 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
   it('manual の記録の後の最初の send が実行 1 になる(開始は区切り)', async () => {
     const s = setup()
     await recordFor(s, 1, '/repo', '/tmp/base')
-    await expect(send(s, recorded('/repo', '/tmp/r1', 200))).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 200, null)],
-      undo: null
-    })
+    await expect(send(s, recorded('/repo', '/tmp/r1', 200))).resolves.toEqual(
+      attributionOffRecordingState(100, { runs: [runOf(1, 1, 200, null)] })
+    )
   })
 
   it('区切りを取れなかったら failed の実行を足し(開始の時刻は取得を始めた時刻)、その実行と 1 つ前の実行を選べなくする。次の写しの元は取れた記録', async () => {
     const s = setup()
     await send(s, recorded('/repo', '/tmp/base', 100))
-    await expect(send(s, failed())).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [
-        runOf(1, 1, 100, 500, { kind: 'end-not-recorded' }),
-        runOf(2, 2, 500, null, { kind: 'start-not-recorded', reason: 'too-many-untracked' })
-      ],
-      undo: null
-    })
+    await expect(send(s, failed())).resolves.toEqual(
+      attributionOffRecordingState(100, {
+        runs: [
+          runOf(1, 1, 100, 500, { kind: 'end-not-recorded' }),
+          runOf(2, 2, 500, null, { kind: 'start-not-recorded', reason: 'too-many-untracked' })
+        ]
+      })
+    )
     await send(s, recorded('/repo', '/tmp/r3', 600))
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index', '/tmp/base/index'])
     expect(s.registry.getState(1, '/repo')).toMatchObject({
@@ -503,18 +451,12 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     s.release(recorded('/repo', '/tmp/base', 100), 0)
     await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalledTimes(2))
     s.release(recorded('/repo', '/tmp/r2', 200), 1)
-    await expect(first).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 100, null)],
-      undo: null
-    })
-    await expect(second).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)],
-      undo: null
-    })
+    await expect(first).resolves.toEqual(
+      attributionOffRecordingState(100, { runs: [runOf(1, 1, 100, null)] })
+    )
+    await expect(second).resolves.toEqual(
+      attributionOffRecordingState(100, { runs: [runOf(1, 1, 100, 200), runOf(2, 2, 200, null)] })
+    )
     expect(s.baseIndexPaths()).toEqual([undefined, '/tmp/base/index'])
   })
 
@@ -525,18 +467,10 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     s.release(recorded('/repo', '/tmp/base', 100), 0)
     await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalledTimes(2))
     s.release(recorded('/repo', '/tmp/r1', 200), 1)
-    await expect(first).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      undo: null
-    })
-    await expect(second).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 200, null)],
-      undo: null
-    })
+    await expect(first).resolves.toEqual(attributionOffRecordingState(100))
+    await expect(second).resolves.toEqual(
+      attributionOffRecordingState(100, { runs: [runOf(1, 1, 200, null)] })
+    )
   })
 
   it('始点が取れなければ、待っていた send は区切りを取らずにその状態を返す', async () => {
@@ -554,12 +488,7 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     const first = s.registry.begin(1, '/repo', 'send')
     const second = s.registry.begin(1, '/repo', 'manual')
     s.release(recorded('/repo', '/tmp/base', 100), 0)
-    const expected = {
-      kind: 'recording',
-      startedAt: 100,
-      runs: [runOf(1, 1, 100, null)],
-      undo: null
-    }
+    const expected = attributionOffRecordingState(100, { runs: [runOf(1, 1, 100, null)] })
     await expect(first).resolves.toEqual(expected)
     await expect(second).resolves.toEqual(expected)
     expect(s.takeSnapshot).toHaveBeenCalledOnce()
@@ -661,12 +590,9 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
     await send(s, recorded('/repo', '/tmp/base', 100))
     await send(s, recorded('/repo', '/tmp/r2', 200))
     await s.registry.clear(1)
-    await expect(send(s, recorded('/repo', '/tmp/base2', 300))).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 300,
-      runs: [runOf(3, 1, 300, null)],
-      undo: null
-    })
+    await expect(send(s, recorded('/repo', '/tmp/base2', 300))).resolves.toEqual(
+      attributionOffRecordingState(300, { runs: [runOf(3, 1, 300, null)] })
+    )
   })
 
   it('withRecord は記録全体(累積の始点と実行の一覧)を渡す', async () => {
@@ -1091,12 +1017,9 @@ describe('AgentBaselineRegistry の取り消しの控え', () => {
     const s = setup()
     await recordFor(s, 1, folder, '/tmp/a')
     await commit(s, savedCaptureOf('a.txt'))
-    const expected = {
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
+    const expected = attributionOffRecordingState(100, {
       undo: { undoId: 1, operation: 'file', entries: [{ path: 'a.txt', action: 'rewrite' }] }
-    }
+    })
     expect(s.registry.getState(1, folder)).toEqual(expected)
     await expect(s.registry.begin(1, folder, 'manual')).resolves.toEqual(expected)
   })

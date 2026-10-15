@@ -4,6 +4,7 @@ import {
   makeAgentChangesList,
   makeAgentChangesRecordingView,
   makeAgentChangesListResult,
+  makeAgentChangesLostSummary,
   makeAgentChangesController,
   makeAgentChangesRevertState,
   makeAgentChangesPanelState,
@@ -12,6 +13,7 @@ import {
   makeAgentChangesRecordingState,
   makeAgentChangesScopeUnavailableView,
   makeAgentChangesScopeUnavailableListResult,
+  makeAgentChangesTrackingSummary,
   makeAgentChangesUndoResult,
   makeAgentChangesUndoState,
   makeAgentChangesUndoSummary,
@@ -26,7 +28,8 @@ describe('makeAgentChangeEntry', () => {
       path: 'a.txt',
       status: 'M',
       isDirectory: false,
-      notRecorded: false
+      notRecorded: false,
+      author: null
     })
   })
 
@@ -35,7 +38,8 @@ describe('makeAgentChangeEntry', () => {
       path: 'dir/',
       status: 'A',
       isDirectory: true,
-      notRecorded: false
+      notRecorded: false,
+      author: null
     })
   })
 })
@@ -76,7 +80,8 @@ describe('makeAgentChangesRecordingView', () => {
         truncated: false,
         headChanged: false
       },
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -86,7 +91,8 @@ describe('makeAgentChangesRecordingView', () => {
       startedAt: 1,
       runs: [],
       list: null,
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -105,7 +111,8 @@ describe('makeAgentChangesRecordingView', () => {
         truncated: false,
         headChanged: true
       },
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -121,7 +128,8 @@ describe('makeAgentChangesRecordingState', () => {
       kind: 'recording',
       startedAt: 100,
       runs: [],
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -131,7 +139,8 @@ describe('makeAgentChangesRecordingState', () => {
       kind: 'recording',
       startedAt: 5,
       runs: [run],
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -154,7 +163,8 @@ describe('makeAgentChangesScopeUnavailableView', () => {
         scope: { kind: 'run', runId: 2 },
         reason: 'end-not-recorded'
       },
-      undo: null
+      undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
     })
   })
 
@@ -184,6 +194,7 @@ describe('makeAgentChangesListResult', () => {
       startedAt: 100,
       runs: [],
       undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
       scope: { kind: 'all' },
       entries,
       totalCount: 1,
@@ -198,6 +209,7 @@ describe('makeAgentChangesListResult', () => {
       startedAt: 7,
       runs: [],
       undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
       scope: { kind: 'all' },
       entries: [],
       totalCount: 0,
@@ -267,7 +279,8 @@ describe('makeAgentChangesRevertState', () => {
       runningOperation: null,
       error: null,
       revertDisabledReason: null,
-      revertAllDisabledReason: null
+      revertAllDisabledReason: null,
+      revertAllExcludedCount: 0
     })
     await expect(state.revertFile(makeAgentChangeEntry('a.txt'))).resolves.toBeUndefined()
     await expect(state.revertHunk('a.txt', 'patch', '@@', { kind: 'all' })).resolves.toBeUndefined()
@@ -344,6 +357,7 @@ describe('makeAgentChangesScopeUnavailableListResult', () => {
       startedAt: 100,
       runs: [],
       undo: null,
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
       scope: { kind: 'run', runId: 2 },
       reason: 'run-missing'
     })
@@ -466,5 +480,38 @@ describe('makeAgentDiffActions', () => {
       contentRunNumber: 2,
       disabledReason: null
     })
+  })
+})
+
+describe('記録の区別の要約', () => {
+  it('tracking の既定は区別をまだ始めていない。指定した項目だけを上書きする', () => {
+    expect(makeAgentChangesTrackingSummary()).toEqual({
+      kind: 'tracking',
+      since: null,
+      hadUnassignedSince: false
+    })
+    expect(makeAgentChangesTrackingSummary({ since: 5 })).toEqual({
+      kind: 'tracking',
+      since: 5,
+      hadUnassignedSince: false
+    })
+  })
+
+  it('lost の既定は checkpoint-failed・lostAt 100・集合なし', () => {
+    expect(makeAgentChangesLostSummary()).toEqual({
+      kind: 'lost',
+      reason: 'checkpoint-failed',
+      lostAt: 100,
+      hadMarks: false,
+      since: null,
+      hadUnassignedSince: false
+    })
+  })
+
+  it('写し・状態・一覧の結果の工場は区別の要約を上書きできる', () => {
+    const attribution = makeAgentChangesLostSummary({ hadMarks: true })
+    expect(makeAgentChangesRecordingView([], { attribution })).toMatchObject({ attribution })
+    expect(makeAgentChangesRecordingState({ attribution })).toMatchObject({ attribution })
+    expect(makeAgentChangesListResult([], { attribution })).toMatchObject({ attribution })
   })
 })

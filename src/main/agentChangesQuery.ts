@@ -127,7 +127,11 @@ async function markMovedExcluded(
   }
 }
 
-/** 記録の時点 → いまの作業ツリーの変更のすべて(打ち切らない)。パスの順。戻す操作の照合(agentChangesRevert)も使う */
+/**
+ * 記録の時点 → いまの作業ツリーの変更のすべて(打ち切らない)。パスの順。戻す操作の照合(agentChangesRevert)と、区別の今の区間の
+ * 比較(registry の collectCurrent。判定の区切り → 作業ツリー)も使う。行の author はすべて null(author は registry の
+ * attributeEntries が累積の一覧とすべて戻すの対象の絞り込みで付ける)
+ */
 export async function collectAgentChangeEntries(
   snapshot: BaselineSnapshot,
   options: BaselineGitOptions = {}
@@ -159,7 +163,8 @@ export async function collectAgentChangeEntries(
     path,
     status,
     isDirectory: false,
-    notRecorded: false
+    notRecorded: false,
+    author: null
   }))
   for (const path of others) {
     const isDirectory = path.endsWith('/')
@@ -167,7 +172,7 @@ export async function collectAgentChangeEntries(
       // 除外したファイルを中に含む新しいフォルダ・記録の時点に ignore されていたフォルダ(前方一致なのでフォルダ自身も当たる)は、
       // ゴミ箱へ移すと記録していない内容を失うため戻せない
       const notRecorded = containsNotRecorded(snapshot, path)
-      entries.push({ path, status: 'A', isDirectory, notRecorded })
+      entries.push({ path, status: 'A', isDirectory, notRecorded, author: null })
       continue
     }
     const excluded = excludedByPath.get(path)
@@ -177,20 +182,27 @@ export async function collectAgentChangeEntries(
         path,
         status: 'A',
         isDirectory,
-        notRecorded: isIgnoredAtBaseline(snapshot, path)
+        notRecorded: isIgnoredAtBaseline(snapshot, path),
+        author: null
       })
       continue
     }
     excludedByPath.delete(path)
     if ((await excludedChange(folderPath, excluded)) === 'modified') {
-      entries.push({ path, status: 'M', isDirectory, notRecorded: true })
+      entries.push({ path, status: 'M', isDirectory, notRecorded: true, author: null })
     }
   }
   // 一覧に現れなかった除外のファイルは、消えたものだけを出す(ignore されたもの・追跡に変わったものは出さない)
   const movedAway = new Set<string>()
   for (const excluded of excludedByPath.values()) {
     if ((await excludedChange(folderPath, excluded)) === 'deleted') {
-      entries.push({ path: excluded.path, status: 'D', isDirectory: false, notRecorded: true })
+      entries.push({
+        path: excluded.path,
+        status: 'D',
+        isDirectory: false,
+        notRecorded: true,
+        author: null
+      })
       movedAway.add(inodeKey(excluded))
     }
   }
@@ -235,7 +247,8 @@ function excludedChangesBetween(
     } else {
       status = isNotRecordedPath(end, path) ? null : 'D'
     }
-    if (status !== null) result.push({ path, status, isDirectory: false, notRecorded: true })
+    if (status !== null)
+      result.push({ path, status, isDirectory: false, notRecorded: true, author: null })
   }
   return result
 }
@@ -253,7 +266,13 @@ function skippedRepoChangesBetween(
     if (inStart === inEnd) continue
     // もう片方の端で ignore 済みなどで記録していなければ、有無が分からないため出さない
     if (isNotRecordedPath(inEnd ? start : end, toAgentChangeRelativePath(repo))) continue
-    result.push({ path: repo, status: inEnd ? 'A' : 'D', isDirectory: true, notRecorded: true })
+    result.push({
+      path: repo,
+      status: inEnd ? 'A' : 'D',
+      isDirectory: true,
+      notRecorded: true,
+      author: null
+    })
   }
   return result
 }
@@ -289,9 +308,9 @@ export async function collectAgentChangeEntriesBetween(
     // どちらかの端で記録しなかったパスは、片方は tree・もう片方は記録の外にある(両端に何かがある)。中身を比べられないため
     // M の notRecorded の 1 行にする
     if (isNotRecordedPath(start, path) || isNotRecordedPath(end, path)) {
-      add({ path, status: 'M', isDirectory: false, notRecorded: true })
+      add({ path, status: 'M', isDirectory: false, notRecorded: true, author: null })
     } else {
-      add({ path, status, isDirectory: false, notRecorded: false })
+      add({ path, status, isDirectory: false, notRecorded: false, author: null })
     }
   }
   for (const entry of [

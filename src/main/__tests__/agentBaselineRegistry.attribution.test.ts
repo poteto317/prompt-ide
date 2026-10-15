@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { AgentChangeEntry } from '@shared/types'
+import type { AgentChangeAuthor, AgentChangeEntry } from '@shared/types'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
+import { summarizeAttribution } from '../agentChangesAttribution'
 import type { BaselineSnapshotResult } from '../agentBaselineSnapshot'
 import type { AgentChangesRecord } from '../agentChangesRecord'
 import type { AgentChangesUndoCapture } from '../agentChangesUndoModel'
@@ -32,6 +33,7 @@ interface Harness {
   /** takeSnapshot の呼び出し(呼ばれた順。0 番目は累積の始点) */
   calls: SnapshotCall[]
   collectBetween: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['collectBetween']>>
+  collectCurrent: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['collectCurrent']>>
   removeDir: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['removeDir']>>
   removeDirSync: ReturnType<typeof vi.fn<AgentBaselineRegistryDeps['removeDirSync']>>
   devLog: ReturnType<typeof vi.fn<(line: string) => void>>
@@ -53,6 +55,7 @@ function setup(initial: Partial<AgentToolActivitySignal> = { phase: 'idle' }): H
       })
   )
   const collectBetween = vi.fn<AgentBaselineRegistryDeps['collectBetween']>(async () => [])
+  const collectCurrent = vi.fn<AgentBaselineRegistryDeps['collectCurrent']>(async () => [])
   const removeDir = vi.fn<AgentBaselineRegistryDeps['removeDir']>(async () => undefined)
   const removeDirSync = vi.fn<AgentBaselineRegistryDeps['removeDirSync']>()
   const devLog = vi.fn<(line: string) => void>()
@@ -64,6 +67,7 @@ function setup(initial: Partial<AgentToolActivitySignal> = { phase: 'idle' }): H
   const registry = new AgentBaselineRegistry({
     takeSnapshot,
     collectBetween,
+    collectCurrent,
     removeDir,
     removeDirSync,
     now: () => 500,
@@ -78,6 +82,7 @@ function setup(initial: Partial<AgentToolActivitySignal> = { phase: 'idle' }): H
     source,
     calls,
     collectBetween,
+    collectCurrent,
     removeDir,
     removeDirSync,
     devLog,
@@ -114,7 +119,19 @@ async function startRecord(h: Harness): Promise<AgentChangesRecord> {
 }
 
 const entriesOf = (...paths: string[]): AgentChangeEntry[] =>
-  paths.map((path) => ({ path, status: 'M', isDirectory: false, notRecorded: false }))
+  paths.map((path) => ({ path, status: 'M', isDirectory: false, notRecorded: false, author: null }))
+
+/** 列の中で一覧の行に author を付ける(handler の agentChanges:list と同じ)。行の author の並びを返す */
+async function authorsOfList(
+  h: Harness,
+  entries: AgentChangeEntry[]
+): Promise<(AgentChangeAuthor | null)[]> {
+  const result = await h.registry.withRecord(1, FOLDER, (record) =>
+    h.registry.attributeEntries(1, record, entries)
+  )
+  if (result === null) throw new Error('記録が無い')
+  return result.entries.map((entry) => entry.author)
+}
 
 /** 列の今の後ろまで進める(それまでに並んだ同期を走らせ終える) */
 async function flush(h: Harness): Promise<void> {
@@ -195,6 +212,7 @@ describe('記録の区別の始め方(begin)', () => {
       phase: 'idle',
       periodUnassignable: false,
       timedOutPending: false,
+      signalUnassignablePending: false,
       checkpoint: { snapshot: record.baseline, sharedWithBaseline: true },
       userPaths: new Set(),
       agentPaths: new Set(),
@@ -241,6 +259,22 @@ describe('記録の区別の始め方(begin)', () => {
     expect(h.devLog).toHaveBeenCalledWith(
       '[agent-attribution] owner=1 event=開始 phase=-→idle user=0 agent=0 unassignable=なし reason=-'
     )
+  })
+
+  it('begin・getState の記録中の状態に、記録の区別の要約を入れる', async () => {
+    const h = setup({ phase: 'idle' })
+    const begun = h.registry.begin(1, FOLDER, 'manual')
+    ;(await snapshotCall(h, 0)).resolve(checkpointResult(0))
+    const state = await begun
+    const record = await h.registry.withRecord(1, FOLDER, async (r) => r)
+    if (record === null) throw new Error('記録が無い')
+    expect(state).toMatchObject({
+      kind: 'recording',
+      attribution: { kind: 'tracking', since: 100, hadUnassignedSince: false }
+    })
+    expect(h.registry.getState(1, FOLDER)).toMatchObject({
+      attribution: summarizeAttribution(record.attribution)
+    })
   })
 })
 
@@ -608,6 +642,69 @@ describe('区別の同期(syncAttribution・notifyAttributionSignal)', () => {
       hadUnassignedSince: true
     })
     expect(h.calls).toHaveLength(2)
+  })
+
+  it('合図の unassignable を見た notifyAttributionSignal は、列の外で同期的に今の区間の印と signalUnassignablePending を立てる', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    change(h, { unassignable: true })
+    expect(record.attribution).toMatchObject({
+      periodUnassignable: true,
+      signalUnassignablePending: true
+    })
+  })
+
+  it('手順 5〜7 の最中に合図の unassignable が立って下りても(手順 2・8 では下りている)、手順 8 が idle なら次の区間に印が残り、その間の利用者の編集は利用者の集合に入らず、下りたときに並んだ同期で印が下りる。区切りはその 1 回の分しか増えない', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    // 窓の中の利用者の編集は、同期の区切り(cp-1)からの差分に出る
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-1' ? entriesOf('window.txt') : []
+    )
+    // 手順 2 は agent(ツールが始まった)
+    change(h, { phase: 'agent' })
+    const s1 = await snapshotCall(h, 1)
+    // 区切りを取っている最中に合図が立って下り、ツールも終わる(下りた・idle の通知の同期は、立ったときの同期に合流する)
+    change(h, { unassignable: true })
+    change(h, { unassignable: false })
+    change(h, { phase: 'idle' })
+    s1.resolve(checkpointResult(1))
+    // 立ったときに並んだ同期が、印のある区間として片付ける
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    await flush(h)
+    await flush(h)
+    await settle()
+    expect(h.calls).toHaveLength(3)
+    expect(record.attribution).toMatchObject({
+      phase: 'idle',
+      periodUnassignable: false,
+      signalUnassignablePending: false,
+      userPaths: new Set(),
+      agentPaths: new Set(),
+      hadUnassignedSince: true
+    })
+  })
+
+  it('手順 4 より前に立った合図の印は、その同期の次の区間には残さない(次の区間の利用者の編集は利用者の集合に入る)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-1' ? entriesOf('user.txt') : entriesOf('held.txt')
+    )
+    // 列で待っている同期に、下りた通知が合流する(同期が走り始める前に立って下りた)
+    change(h, { unassignable: true })
+    change(h, { unassignable: false })
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await flush(h)
+    expect(record.attribution).toMatchObject({
+      periodUnassignable: false,
+      signalUnassignablePending: false,
+      userPaths: new Set()
+    })
+    change(h, { phase: 'agent' })
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    await flush(h)
+    expect(record.attribution).toMatchObject({ phase: 'agent', userPaths: new Set(['user.txt']) })
   })
 })
 
@@ -1133,6 +1230,56 @@ describe('戻す操作・取り消しの吸収(withAttributionAbsorbed)', () => 
     await expect(absorb(h, async () => ({ applied: 1 }))).resolves.toEqual({ applied: 1 })
     expect(h.calls).toHaveLength(1)
   })
+
+  it('合図が lost の間の戻す操作は、区切りを取らずに記録を lost(合図の理由)にし、task は行う', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    // 列が戻す操作で埋まっていて、合図の変化の同期がまだ走っていない(合図だけを書き換え、通知しない)
+    h.source.set({ lost: 'hooks-not-confirmed' })
+    const task = vi.fn(async () => ({ applied: 1 }))
+    await expect(absorb(h, task)).resolves.toEqual({ applied: 1 })
+    expect(task).toHaveBeenCalledOnce()
+    expect(record.attribution).toMatchObject({ kind: 'lost', reason: 'hooks-not-confirmed' })
+    expect(h.calls).toHaveLength(1)
+    expect(h.devLog).toHaveBeenLastCalledWith(
+      '[agent-attribution] owner=1 event=lost phase=idle→- user=0 agent=0 unassignable=なし reason=hooks-not-confirmed'
+    )
+  })
+
+  it('列が戻す操作で埋まっている間に段階が idle → agent に変わると、(1) は閉じた区間を割り当てず、印が (3) の後も残り、続く同期が片付けてツールの書き込みを利用者の集合に入れない', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    const open = blockQueue(h)
+    // 前の区切り(cp-0)からの差分に、利用者の編集とツールの書き込みが混ざっている
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-0' ? entriesOf('user.txt', 'tool.txt') : []
+    )
+    const absorbed = absorb(h, async () => ({ applied: 1 }))
+    // 吸収の後ろに段階の変化の同期が並ぶ(hooks の効かない claude が書き始めた場合など)
+    change(h, { phase: 'agent' })
+    await open()
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    await expect(absorbed).resolves.toEqual({ applied: 1 })
+    // (1)・(3) の両方の吸収のログに印が残っている(続く同期は手順 4 で印を控えて下ろすため、記録の値ではなくログで見る。
+    // (1) の 1 行だけで満たす形にすると、(3) が印を下ろす退行を見落とす。L-168)
+    const absorbLines = h.devLog.mock.calls
+      .map(([line]) => line)
+      .filter((line) => line.includes('event=吸収'))
+    expect(absorbLines).toEqual([
+      '[agent-attribution] owner=1 event=吸収 phase=idle→idle user=0 agent=0 unassignable=あり reason=-',
+      '[agent-attribution] owner=1 event=吸収 phase=idle→idle user=0 agent=0 unassignable=あり reason=-'
+    ])
+    ;(await snapshotCall(h, 3)).resolve(checkpointResult(3))
+    await flush(h)
+    expect(record.attribution).toMatchObject({
+      phase: 'agent',
+      periodUnassignable: false,
+      userPaths: new Set(),
+      agentPaths: new Set(),
+      hadUnassignedSince: true
+    })
+  })
 })
 
 describe('戻した操作の取り消しの吸収(undoLastRevert)', () => {
@@ -1193,5 +1340,219 @@ describe('戻した操作の取り消しの吸収(undoLastRevert)', () => {
       '取り消せる操作が変わりました'
     )
     expect(h.calls).toHaveLength(1)
+  })
+})
+
+describe('一覧の行の author(attributeEntries)', () => {
+  it('区別をまだ始めていない記録(paused で始めた)は、すべて null', async () => {
+    const h = setup({ phase: 'paused' })
+    await startRecord(h)
+    expect(await authorsOfList(h, entriesOf('a.txt'))).toEqual([null])
+  })
+
+  it('idle の今の区間(区切りが始点と共有)の行は user。比較は渡した行で行い、collectCurrent を呼ばない', async () => {
+    const h = setup()
+    await startRecord(h)
+    expect(await authorsOfList(h, entriesOf('u.txt', 'v.txt'))).toEqual(['user', 'user'])
+    expect(h.collectCurrent).not.toHaveBeenCalled()
+  })
+
+  it('agent の今の区間の行は agent、閉じた区間で利用者の集合に入ったパスも今の区間にあれば mixed(区切りからの行は collectCurrent で求める)', async () => {
+    const h = setup()
+    await startRecord(h)
+    h.collectBetween.mockResolvedValueOnce(entriesOf('m.txt'))
+    const waited = toolStarts(h)
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await waited
+    h.collectCurrent.mockResolvedValueOnce(entriesOf('m.txt', 't.txt'))
+    expect(await authorsOfList(h, entriesOf('m.txt', 't.txt', 'x.txt'))).toEqual([
+      'mixed',
+      'agent',
+      'agent'
+    ])
+    expect(h.collectCurrent).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ tempDir: '/tmp/cp-1' })
+    )
+  })
+
+  it('今の区間の比較に失敗したら、区別をやめて(lost・checkpoint-failed)集合だけで付け、開発版のログに lost を出す(一覧は失敗にしない。L-002・L-424)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    h.collectBetween.mockResolvedValueOnce(entriesOf('m.txt'))
+    const waited = toolStarts(h)
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await waited
+    h.collectCurrent.mockRejectedValueOnce(new Error('記録が見つかりません'))
+    expect(await authorsOfList(h, entriesOf('m.txt', 't.txt'))).toEqual(['user', 'agent'])
+    expect(record.attribution).toMatchObject({ kind: 'lost', reason: 'checkpoint-failed' })
+    expect(h.devLog).toHaveBeenLastCalledWith(
+      '[agent-attribution] owner=1 event=lost phase=agent→- user=1 agent=0 unassignable=なし reason=checkpoint-failed'
+    )
+    expect(h.warn).not.toHaveBeenCalled()
+  })
+
+  it('手順の予期しない例外は、注入した失敗のログに出して区別をやめ、今の区間なしで付ける(投げない。L-450)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    const err = new Error('予期しない失敗')
+    h.source.activityOf = () => {
+      throw err
+    }
+    expect(await authorsOfList(h, entriesOf('a.txt'))).toEqual([null])
+    expect(h.warn).toHaveBeenCalledExactlyOnceWith(
+      '[agent-attribution] 一覧の区別に失敗しました:',
+      err
+    )
+    expect(record.attribution).toMatchObject({ kind: 'lost', reason: 'checkpoint-failed' })
+    expect(h.devLog).toHaveBeenLastCalledWith(
+      '[agent-attribution] owner=1 event=lost phase=idle→- user=0 agent=0 unassignable=なし reason=checkpoint-failed'
+    )
+  })
+
+  it('段階の変化の同期より先に一覧が列で走ると、記録に印を立てずに今の区間を割り当てず、そのとき限りの unassignedNow を返す(利用者の変更と誤らない。待たない)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    // 段階は agent に変わったが、通知(同期)はまだ届いていない
+    h.source.set({ phase: 'agent' })
+    const result = await h.registry.withRecord(1, FOLDER, (r) =>
+      h.registry.attributeEntries(1, r, entriesOf('u.txt'))
+    )
+    expect(result?.entries.map((entry) => entry.author)).toEqual(['agent'])
+    expect(result?.unassignedNow).toBe(true)
+    expect(record.attribution).toMatchObject({ phase: 'idle', periodUnassignable: false })
+    expect(h.calls).toHaveLength(1)
+  })
+
+  it('agent → idle の合図の変化と同期の間に一覧が走っても、続く同期がエージェントの区間を agentPaths に割り当てる(利用者の集合にもある行は mixed になる)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    // 利用者が c.txt を変え(cp-0 → cp-1)、エージェントも c.txt を編集する(cp-1 → cp-2)
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-0' || start.tempDir === '/tmp/cp-1' ? entriesOf('c.txt') : []
+    )
+    const waited = toolStarts(h)
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await waited
+    expect(record.attribution).toMatchObject({ phase: 'agent', userPaths: new Set(['c.txt']) })
+    // 自動の取り直しの一覧が列に並び、その最中に合図が idle になる(同期は一覧の後ろに並ぶ)
+    const open = blockQueue(h)
+    const listed = h.registry.withRecord(1, FOLDER, async (r) => {
+      const result = await h.registry.attributeEntries(1, r, entriesOf('c.txt'))
+      // 一覧は記録に印を立てない(続く同期が手順 4 で印を控えて下ろす前に、列の中で見る)
+      const marked = r.attribution.kind === 'tracking' && r.attribution.periodUnassignable
+      return { authors: result.entries.map((entry) => entry.author), marked, ...result }
+    })
+    change(h, { phase: 'idle' })
+    await open()
+    expect(await listed).toMatchObject({ authors: ['user'], marked: false, unassignedNow: true })
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    await flush(h)
+    expect(record.attribution).toMatchObject({
+      phase: 'idle',
+      periodUnassignable: false,
+      userPaths: new Set(['c.txt']),
+      agentPaths: new Set(['c.txt']),
+      hadUnassignedSince: false
+    })
+    expect(await authorsOfList(h, entriesOf('c.txt'))).toEqual(['mixed'])
+  })
+
+  it('すべて戻すが列で待つ間に段階が変わると、一覧(そのとき限りの印)と吸収の中の一覧(吸収の (1) の記録の印)が同じ author と要約になる', async () => {
+    // 前提: 通知のない h.source.set で段階だけを変える(同期は列に並ばない)。実際に吸収の (1) が段階の違いで印を立てるのは、
+    // すべて戻すが列で待つ間に段階が変わったときだけ。窓の一覧の後に押したすべて戻すは、先に並んだ同期が走るため下のテストの結果になる
+    const h = setup()
+    const record = await startRecord(h)
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-0' ? entriesOf('c.txt') : entriesOf('c.txt', 't.txt')
+    )
+    const waited = toolStarts(h)
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await waited
+    // 合図は idle に変わったが、同期はまだ走っていない
+    h.source.set({ phase: 'idle' })
+    const entries = entriesOf('c.txt', 't.txt')
+    const listed = await h.registry.withRecord(1, FOLDER, async (r) => {
+      const { entries: authored, unassignedNow } = await h.registry.attributeEntries(1, r, entries)
+      return {
+        authors: authored.map((entry) => entry.author),
+        summary: summarizeAttribution(r.attribution, { unassignedNow })
+      }
+    })
+    const reverted = h.registry.withRecord(1, FOLDER, (r) =>
+      h.registry.withAttributionAbsorbed(
+        1,
+        r,
+        async () => {
+          const { entries: authored } = await h.registry.attributeEntries(1, r, entries)
+          return {
+            applied: 0,
+            authors: authored.map((entry) => entry.author),
+            summary: summarizeAttribution(r.attribution)
+          }
+        },
+        (result) => result.applied > 0
+      )
+    )
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    const absorbed = await reverted
+    expect(listed).toEqual({
+      authors: ['user', 'agent'],
+      summary: { kind: 'tracking', since: 100, hadUnassignedSince: true }
+    })
+    expect(absorbed).toMatchObject({ authors: listed?.authors, summary: listed?.summary })
+    expect(record.attribution).toMatchObject({ periodUnassignable: true })
+  })
+
+  it('通知つきの合図の変化の窓の一覧の後に押したすべて戻すでは、先に走る同期が閉じた区間を割り当て、吸収の中の author は mixed になる(確認の一覧の user と食い違い、照合で中止の条件になる)', async () => {
+    const h = setup()
+    const record = await startRecord(h)
+    // 利用者が c.txt を変え(cp-0 → cp-1)、エージェントも c.txt を編集する(cp-1 → cp-2)
+    h.collectBetween.mockImplementation(async (start) =>
+      start.tempDir === '/tmp/cp-0' || start.tempDir === '/tmp/cp-1' ? entriesOf('c.txt') : []
+    )
+    const waited = toolStarts(h)
+    ;(await snapshotCall(h, 1)).resolve(checkpointResult(1))
+    await waited
+    expect(record.attribution).toMatchObject({ phase: 'agent', userPaths: new Set(['c.txt']) })
+    // 一覧が列に並び、その最中に合図が idle に変わる(通知つき。同期は一覧の後ろに並ぶ)
+    const open = blockQueue(h)
+    const listed = h.registry.withRecord(1, FOLDER, async (r) => {
+      const result = await h.registry.attributeEntries(1, r, entriesOf('c.txt'))
+      return result.entries.map((entry) => entry.author)
+    })
+    change(h, { phase: 'idle' })
+    // 窓の一覧を見てから押したすべて戻す(同期の後ろに並ぶ)
+    const reverted = h.registry.withRecord(1, FOLDER, (r) =>
+      h.registry.withAttributionAbsorbed(
+        1,
+        r,
+        async () => {
+          const result = await h.registry.attributeEntries(1, r, entriesOf('c.txt'))
+          return { applied: 0, authors: result.entries.map((entry) => entry.author) }
+        },
+        (result) => result.applied > 0
+      )
+    )
+    await open()
+    expect(await listed).toEqual(['user'])
+    ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
+    ;(await snapshotCall(h, 3)).resolve(checkpointResult(3))
+    const absorbed = await reverted
+    // 同期が閉じた区間を agentPaths に割り当てたため、吸収の (1) は印を立てず、c.txt は mixed になる
+    expect(absorbed?.authors).toEqual(['mixed'])
+    expect(record.attribution).toMatchObject({ periodUnassignable: false })
+  })
+
+  it('渡した配列と行を変えず、author を入れた新しい配列を返す', async () => {
+    const h = setup()
+    await startRecord(h)
+    const input = entriesOf('u.txt')
+    const result = await h.registry.withRecord(1, FOLDER, (record) =>
+      h.registry.attributeEntries(1, record, input)
+    )
+    expect(result?.entries).not.toBe(input)
+    expect(result?.entries[0]).toEqual({ ...input[0], author: 'user' })
+    expect(result?.unassignedNow).toBe(false)
+    expect(input[0].author).toBeNull()
   })
 })

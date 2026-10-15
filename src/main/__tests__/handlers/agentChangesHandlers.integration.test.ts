@@ -32,7 +32,11 @@ import {
   AGENT_CHANGES_UNDO_TEMP_PREFIX,
   executeAgentChangesUndo
 } from '../../agentChangesUndo'
-import { collectAgentChangeEntriesBetween } from '../../agentChangesQuery'
+import {
+  collectAgentChangeEntries,
+  collectAgentChangeEntriesBetween
+} from '../../agentChangesQuery'
+import { AGENT_REVERT_ALL_MISMATCH_MESSAGE } from '../../agentChangesRevert'
 import { commitAll, readRepoFile, runGit, writeRepoFile } from '../helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
@@ -86,6 +90,7 @@ function makeRegistry(
     takeSnapshot: (folderPath, options) =>
       takeBaselineSnapshot(folderPath, { ...options, tempRoot }),
     collectBetween: (start, end) => collectAgentChangeEntriesBetween(start, end),
+    collectCurrent: (snapshot) => collectAgentChangeEntries(snapshot),
     removeDir: removeBaselineDir,
     removeDirSync: removeBaselineDirSync,
     now: Date.now,
@@ -559,6 +564,127 @@ describe('戻す操作の吸収(実 git)', () => {
       kind: 'tracking',
       userPaths: new Set(),
       agentPaths: new Set(['a.txt'])
+    })
+  })
+})
+
+describe('記録の区別と一覧の author・すべて戻す(実 git)', () => {
+  let source: FakeAttributionSource
+  const change = (phase: 'idle' | 'agent'): void => {
+    source.set({ phase })
+    registry.notifyAttributionSignal(1)
+  }
+  // 並んでいる同期を走らせ終える(列の後ろに何もしないタスクを並べて待つ)
+  const settled = async (): Promise<void> => {
+    await registry.withRecord(1, repo, async () => undefined)
+  }
+  // 受け口と同じく、通し番号を進めて段階を agent にしてから区切りを待つ
+  const toolStarts = async (): Promise<void> => {
+    source.seq += 1
+    change('agent')
+    await registry.waitForAgentPhase(1, new AbortController().signal)
+  }
+  const authorsByPath = async (): Promise<Record<string, string | null>> => {
+    const result = (await invoke('agentChanges:list', ALL)) as {
+      entries: { path: string; author: string | null }[]
+    }
+    return Object.fromEntries(result.entries.map((entry) => [entry.path, entry.author]))
+  }
+  // idle の間に利用者が a.txt、agent の間にエージェントが b.txt・c.txt を変え、idle に戻った後(今の区間)に利用者が c.txt・d.txt を変える
+  const userAndAgentChanges = async (): Promise<void> => {
+    write('a.txt', 'user\n')
+    await toolStarts()
+    write('b.txt', 'agent\n')
+    write('c.txt', 'agent\n')
+    change('idle')
+    await settled()
+    write('c.txt', 'agent\nuser\n')
+    write('d.txt', 'user\n')
+  }
+
+  beforeEach(async () => {
+    write('a.txt', 'a\n')
+    write('b.txt', 'b\n')
+    write('c.txt', 'c\n')
+    commitAll(repo, 'init')
+    source = createFakeAttributionSource({ phase: 'idle' })
+    rebuildRegistry({}, source)
+    await invoke('agentChanges:begin', 'manual')
+  })
+
+  it('idle の間の利用者の変更は user、agent の間のエージェントの変更は agent、両方は mixed。同期の前の今の区間の利用者の編集も user', async () => {
+    await userAndAgentChanges()
+    expect(await authorsByPath()).toEqual({
+      'a.txt': 'user',
+      'b.txt': 'agent',
+      'c.txt': 'mixed',
+      'd.txt': 'user'
+    })
+  })
+
+  it('すべて戻すは user・mixed の行を戻さず agent の行だけを戻す(除く規則を外すとこのテストが落ちる)', async () => {
+    await userAndAgentChanges()
+    await expect(
+      invoke('agentChanges:revertAll', [{ path: 'b.txt', status: 'M' }], ALL)
+    ).resolves.toMatchObject({ status: 'done', revertedCount: 1 })
+    expect(readRepoFile(repo, 'a.txt')).toBe('user\n')
+    expect(readRepoFile(repo, 'b.txt')).toBe('b\n')
+    expect(readRepoFile(repo, 'c.txt')).toBe('agent\nuser\n')
+    expect(readRepoFile(repo, 'd.txt')).toBe('user\n')
+  })
+
+  it('すべて戻すの確認の一覧に user の行を含めると、中止して何も変えない', async () => {
+    await userAndAgentChanges()
+    await expect(
+      invoke(
+        'agentChanges:revertAll',
+        [
+          { path: 'a.txt', status: 'M' },
+          { path: 'b.txt', status: 'M' }
+        ],
+        ALL
+      )
+    ).rejects.toThrow(AGENT_REVERT_ALL_MISMATCH_MESSAGE)
+    expect(readRepoFile(repo, 'a.txt')).toBe('user\n')
+    expect(readRepoFile(repo, 'b.txt')).toBe('agent\n')
+    expect(readRepoFile(repo, 'c.txt')).toBe('agent\nuser\n')
+    expect(readRepoFile(repo, 'd.txt')).toBe('user\n')
+  })
+
+  it('行の ↶ で戻した後にエージェントが同じファイルを書き直しても、一覧で mixed にならない(戻す操作は利用者の変更に数えない)', async () => {
+    await toolStarts()
+    write('a.txt', 'agent\n')
+    change('idle')
+    await settled()
+    await invoke('agentChanges:revertFile', 'a.txt', ALL)
+    expect(readRepoFile(repo, 'a.txt')).toBe('a\n')
+    await toolStarts()
+    write('a.txt', 'agent again\n')
+    change('idle')
+    await settled()
+    expect(await authorsByPath()).toEqual({ 'a.txt': 'agent' })
+  })
+
+  it('判定の区切りの object が gc で消えて区別をやめた記録も、一覧は出て要約は lost(それまでの印は残る)', async () => {
+    write('a.txt', 'user\n')
+    await toolStarts()
+    write('b.txt', 'agent\n')
+    // 判定の区切りは保護の ref で守らない。次の区切り(写しの元は gc で消えた区切り)を取れずに区別をやめる
+    runGit(repo, 'gc', '-q', '--prune=now')
+    change('idle')
+    await settled()
+    const result = (await invoke('agentChanges:list', ALL)) as {
+      kind: string
+      attribution: unknown
+      entries: { path: string; author: string | null }[]
+    }
+    expect(result).toMatchObject({
+      kind: 'recording',
+      attribution: { kind: 'lost', reason: 'checkpoint-failed', hadMarks: true }
+    })
+    expect(Object.fromEntries(result.entries.map((entry) => [entry.path, entry.author]))).toEqual({
+      'a.txt': 'user',
+      'b.txt': 'agent'
     })
   })
 })

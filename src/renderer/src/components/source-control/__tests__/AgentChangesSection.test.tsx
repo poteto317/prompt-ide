@@ -2,7 +2,12 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import type { AgentChangeEntry, AgentChangesRun, AgentChangesScope } from '@shared/types'
+import type {
+  AgentChangeEntry,
+  AgentChangesAttributionSummary,
+  AgentChangesRun,
+  AgentChangesScope
+} from '@shared/types'
 import AgentChangesSection from '../AgentChangesSection'
 import type { AgentChangesView } from '../../../types'
 import {
@@ -11,19 +16,23 @@ import {
   AGENT_CHANGES_EMPTY,
   AGENT_CHANGES_HEAD_CHANGED,
   AGENT_CHANGES_NONE_HINT,
+  AGENT_CHANGES_ONLY_USER_REASON,
   AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_RUN_EMPTY,
   AGENT_CHANGES_RUN_HEAD_CHANGED,
-  AGENT_CHANGES_TRUNCATED_REASON
+  AGENT_CHANGES_TRUNCATED_REASON,
+  formatAgentChangesExcludedNote
 } from '../../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
+  makeAgentChangesLostSummary,
   makeAgentChangesPanelChanges,
   makeAgentChangesPanelState,
   makeAgentChangesRecordingView,
   makeAgentChangesRevertState,
   makeAgentChangesRun,
   makeAgentChangesScopeUnavailableView,
+  makeAgentChangesTrackingSummary,
   makeAgentChangesUndoState,
   makeAgentChangesUndoSummary
 } from '../../../__tests__/makeAgentChangesState'
@@ -34,7 +43,12 @@ const startedAt = new Date(2026, 9, 7, 10, 42).getTime()
 // 見出しの時刻(10:42)を固定するため、記録を始めた時刻だけをこのファイルで決める
 const recordingView = (
   entries: AgentChangeEntry[],
-  extra: { truncated?: boolean; totalCount?: number; headChanged?: boolean } = {}
+  extra: {
+    truncated?: boolean
+    totalCount?: number
+    headChanged?: boolean
+    attribution?: AgentChangesAttributionSummary
+  } = {}
 ): AgentChangesView => makeAgentChangesRecordingView(entries, { startedAt, ...extra })
 
 function makeProps(
@@ -672,5 +686,138 @@ describe('AgentChangesSection の直前に戻した操作の帯', () => {
     // 一覧の上の理由(行の ↶ とすべて戻すが指す要素)で、帯の中の理由ではない
     expect(reason).toBe(describedBy(screen.getByRole('button', { name: 'すべて戻す' })))
     expect(reason).not.toBe(describedBy(undoButton()))
+  })
+})
+
+describe('AgentChangesSection の利用者の変更との区別(区別の状態の 1 行・除く旨・行の印)', () => {
+  const at = (hours: number, minutes: number): number =>
+    new Date(2026, 9, 7, hours, minutes).getTime()
+  // 記録の開始(10:42)より後の 10:50 から区別し、印を付けていない間もあった
+  const lateAndUnassigned = makeAgentChangesTrackingSummary({
+    since: at(10, 50),
+    hadUnassignedSince: true
+  })
+  const lateAndUnassignedText =
+    '利用者の変更の区別は 10:50 からです（それより前の変更には印を付けません）。アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+  const excludedNote = formatAgentChangesExcludedNote(1)
+
+  it('累積の一覧の上に区別の状態の 1 行を出す(読み上げの要素にしない)', () => {
+    renderSection(
+      recordingView([makeAgentChangeEntry('a.txt')], { attribution: lateAndUnassigned })
+    )
+    const note = within(section()).getByText(lateAndUnassignedText)
+    expect(note).toHaveClass('agent-changes__note')
+    expect(note).not.toHaveAttribute('aria-live')
+  })
+
+  it('区別の状態の 1 行は、範囲の選択の直後・直前に戻した操作の帯の前に置く', () => {
+    const runs = [makeAgentChangesRun({ runId: 1, number: 1, startedAt })]
+    renderSection(
+      makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], {
+        startedAt,
+        runs,
+        undo: makeAgentChangesUndoSummary(),
+        attribution: lateAndUnassigned
+      })
+    )
+    const select = within(section()).getByRole('combobox', { name: '表示' })
+    const note = within(section()).getByText(lateAndUnassignedText)
+    const band = within(section()).getByText(/^直前に戻した操作: /)
+    expect(select.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(note.compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('区別をやめた記録は理由を 1 行で出す', () => {
+    renderSection(
+      recordingView([makeAgentChangeEntry('a.txt')], {
+        attribution: makeAgentChangesLostSummary({ reason: 'hooks-not-confirmed' })
+      })
+    )
+    expect(
+      within(section()).getByText(
+        '利用者の変更を区別できません（claude の hooks から知らせが届きません）。すべてエージェントの変更として表示します'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('区別していない記録では、区別の状態の 1 行を出さない', () => {
+    renderSection(recordingView([makeAgentChangeEntry('a.txt')]))
+    expect(within(section()).queryByText(/利用者の変更/)).toBeNull()
+  })
+
+  it('実行の範囲の一覧では、区別の状態の 1 行を出さない(印は main が null にした行のため出ない)', () => {
+    const RUN_1: AgentChangesScope = { kind: 'run', runId: 1 }
+    renderSection(
+      makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], {
+        startedAt,
+        runs: [makeAgentChangesRun({ runId: 1, number: 1, startedAt })],
+        scope: RUN_1,
+        attribution: lateAndUnassigned
+      }),
+      {},
+      { scope: RUN_1 }
+    )
+    expect(within(section()).queryByText(lateAndUnassignedText)).toBeNull()
+  })
+
+  it('除く行があれば、ほか N 件の後・ボタンの並びの前に除く旨を出し、すべて戻すの aria-describedby で結ぶ', () => {
+    renderSection(
+      recordingView([
+        makeAgentChangeEntry('a.txt', { author: 'agent' }),
+        makeAgentChangeEntry('u.txt', { author: 'user' })
+      ]),
+      { revert: makeAgentChangesRevertState({ revertAllExcludedCount: 1 }) }
+    )
+    const note = within(section()).getByText(excludedNote)
+    expect(note).toHaveClass('agent-changes__note')
+    const revertAll = within(section()).getByRole('button', { name: 'すべて戻す' })
+    expect(revertAll).toBeEnabled()
+    expect(revertAll).toHaveAccessibleDescription(excludedNote)
+    expect(note.compareDocumentPosition(revertAll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      within(section()).getByRole('list').compareDocumentPosition(note) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('押せない理由と除く旨が両方あるときは、すべて戻すの aria-describedby に 2 つの id を並べる(対象 0 件)', () => {
+    renderSection(recordingView([makeAgentChangeEntry('u.txt', { author: 'user' })]), {
+      revert: makeAgentChangesRevertState({
+        revertAllDisabledReason: AGENT_CHANGES_ONLY_USER_REASON,
+        revertAllExcludedCount: 1
+      })
+    })
+    const revertAll = within(section()).getByRole('button', { name: 'すべて戻す' })
+    expect(revertAll).toBeDisabled()
+    expect(revertAll.getAttribute('aria-describedby')?.split(' ')).toHaveLength(2)
+    expect(revertAll).toHaveAccessibleDescription(
+      `${AGENT_CHANGES_ONLY_USER_REASON} ${excludedNote}`
+    )
+    // 行の ↶ は押せる(押せない理由は すべて戻す だけのもの)
+    expect(
+      within(section()).getByRole('button', { name: 'u.txt を実行前の状態に戻す' })
+    ).toBeEnabled()
+  })
+
+  it('除く行が無く押せない理由も無ければ、すべて戻すに aria-describedby を付けない', () => {
+    renderSection(recordingView([makeAgentChangeEntry('a.txt', { author: 'agent' })]))
+    expect(within(section()).getByRole('button', { name: 'すべて戻す' })).not.toHaveAttribute(
+      'aria-describedby'
+    )
+    expect(within(section()).queryByText(/を除いて戻します$/)).toBeNull()
+  })
+
+  it('行の印は一覧の行の author から出す(累積の一覧)', () => {
+    renderSection(
+      recordingView([
+        makeAgentChangeEntry('a.txt', { author: 'agent' }),
+        makeAgentChangeEntry('m.txt', { author: 'mixed' }),
+        makeAgentChangeEntry('u.txt', { author: 'user' })
+      ])
+    )
+    const rows = screen.getAllByRole('listitem')
+    expect(within(rows[0]).queryByText(/利用者の変更/)).toBeNull()
+    expect(within(rows[1]).getByText('利用者の変更を含む')).toBeInTheDocument()
+    expect(within(rows[2]).getByText('利用者の変更')).toBeInTheDocument()
   })
 })

@@ -10,10 +10,12 @@ import {
 import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
+  makeAgentChangesLostSummary,
   makeAgentChangesRecordingState,
   makeAgentChangesRecordingView,
   makeAgentChangesRun,
   makeAgentChangesScopeUnavailableListResult,
+  makeAgentChangesTrackingSummary,
   makeAgentChangesUndoSummary
 } from '../../__tests__/makeAgentChangesState'
 
@@ -101,7 +103,8 @@ describe('planRecordingState', () => {
       startedAt: 999,
       runs: [run1, run2],
       list: null,
-      undo: null
+      undo: null,
+      attribution: makeAgentChangesTrackingSummary()
     })
     expect(plan.resetScope).toBe(true)
     expect(plan.missingRun).toBeNull()
@@ -154,7 +157,8 @@ describe('planListResult', () => {
           truncated: true,
           headChanged: true
         },
-        undo: null
+        undo: null,
+        attribution: makeAgentChangesTrackingSummary()
       }
     })
   })
@@ -167,7 +171,14 @@ describe('planListResult', () => {
     expect(planListResult(run1MissingResult, previous)).toEqual({
       kind: 'run-missing',
       missingRun: { runId: 1, previousRuns: [run1, run2] },
-      view: { kind: 'recording', startedAt: 5, runs: [run2], list: null, undo: null }
+      view: {
+        kind: 'recording',
+        startedAt: 5,
+        runs: [run2],
+        list: null,
+        undo: null,
+        attribution: makeAgentChangesTrackingSummary()
+      }
     })
   })
 
@@ -211,7 +222,8 @@ describe('planListResult', () => {
           scope: { kind: 'run', runId: 1 },
           reason: 'end-not-recorded'
         },
-        undo: null
+        undo: null,
+        attribution: makeAgentChangesTrackingSummary()
       }
     })
   })
@@ -244,6 +256,18 @@ describe('isSameAgentChangesView', () => {
     expect(isSameAgentChangesView(view(), view(undefined, { startedAt: 200 }))).toBe(false)
     expect(isSameAgentChangesView(view(), makeAgentChangesRecordingView(null))).toBe(false)
     expect(isSameAgentChangesView(view(), { kind: 'none' })).toBe(false)
+  })
+
+  it('行の author・記録の区別の要約が違えば違う(静かな取り直しで印・区別の状態の 1 行の変化を見落とさない。L-423)', () => {
+    expect(
+      isSameAgentChangesView(view(), view([makeAgentChangeEntry('a.txt', { author: 'user' })]))
+    ).toBe(false)
+    expect(
+      isSameAgentChangesView(
+        view(),
+        view(undefined, { attribution: makeAgentChangesLostSummary() })
+      )
+    ).toBe(false)
   })
 })
 
@@ -300,5 +324,41 @@ describe('取り消しの控えの写し', () => {
         makeAgentChangesRecordingView([], { undo: makeAgentChangesUndoSummary({ undoId: 2 }) })
       )
     ).toBe(false)
+  })
+})
+
+describe('記録の区別の要約の写し', () => {
+  const attribution = makeAgentChangesLostSummary({ hadMarks: true })
+
+  it('記録中の状態の attribution を写しへ写す(同じ記録で一覧を残すときも、要約は新しい状態のものにする)', () => {
+    const previous = makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')])
+    const plan = planRecordingState(previous, makeAgentChangesRecordingState({ attribution }), {
+      kind: 'all'
+    })
+    expect(plan.view.list).not.toBeNull()
+    expect(plan.view.attribution).toBe(attribution)
+  })
+
+  it('一覧の結果(取れた一覧・範囲の一覧を出せない・実行が消えていた)の attribution を写しへ写す', () => {
+    const listed = planListResult(makeAgentChangesListResult([], { attribution }), {
+      kind: 'none'
+    })
+    expect(listed.kind === 'listed' ? listed.view.attribution : undefined).toBe(attribution)
+    const unavailable = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'end-not-recorded', {
+        attribution
+      }),
+      { kind: 'none' }
+    )
+    expect(
+      unavailable.kind === 'scope-unavailable' ? unavailable.view.attribution : undefined
+    ).toBe(attribution)
+    const missing = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'run-missing', {
+        attribution
+      }),
+      { kind: 'none' }
+    )
+    expect(missing.kind === 'run-missing' ? missing.view.attribution : undefined).toBe(attribution)
   })
 })

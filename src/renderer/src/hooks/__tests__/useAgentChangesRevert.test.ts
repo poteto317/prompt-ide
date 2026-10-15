@@ -22,14 +22,17 @@ import {
   AGENT_CHANGES_BUSY_REVERTING,
   AGENT_CHANGES_LIST_FAILED,
   AGENT_CHANGES_NOT_RECORDED_REASON,
+  AGENT_CHANGES_ONLY_USER_REASON,
   AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
-  AGENT_CHANGES_TRUNCATED_REASON
+  AGENT_CHANGES_TRUNCATED_REASON,
+  AGENT_REVERT_ALL_DISTINGUISHING_NOTE
 } from '../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
   makeAgentChangesController,
   makeAgentChangesList,
   makeAgentChangesRecordingView,
+  makeAgentChangesTrackingSummary,
   makeAgentChangesUndoSummary,
   makeAgentRevertAllResult,
   makeAgentRevertResult
@@ -955,5 +958,117 @@ describe('useAgentChangesRevert — 取り消しの控えの写しへの反映',
     expect(options.changes.applyUndoSummary).toHaveBeenCalledExactlyOnceWith(previous, 1)
     expect(options.changes.announce).not.toHaveBeenCalled()
     expect(result.current.error).toBeNull()
+  })
+})
+
+describe('useAgentChangesRevert — 利用者の変更の区別(すべて戻すの対象・確認・除く件数・押せない理由)', () => {
+  // 記録の開始(1)から区別している記録
+  const distinguishing = makeAgentChangesTrackingSummary({ since: 1 })
+  // a.txt: エージェントの変更、u.txt: 利用者の変更(追加。アプリで保存)、m/: 両方(追加されたフォルダ)、n.txt: 区別していない行(追加)
+  const entries = [
+    makeAgentChangeEntry('a.txt', { author: 'agent' }),
+    makeAgentChangeEntry('m/', { status: 'A', isDirectory: true, author: 'mixed' }),
+    makeAgentChangeEntry('n.txt', { status: 'A', author: null }),
+    makeAgentChangeEntry('u.txt', { status: 'A', author: 'user' })
+  ]
+  const optionsWith = (
+    rows: AgentChangeEntry[],
+    viewOverrides: Parameters<typeof makeAgentChangesRecordingView>[1] = {}
+  ): RevertTestOptions =>
+    makeOptions({
+      changes: makeAgentChangesController({
+        view: makeAgentChangesRecordingView(rows, {
+          startedAt: 1,
+          attribution: distinguishing,
+          ...viewOverrides
+        })
+      })
+    })
+
+  it('すべて戻すは、利用者の変更・利用者の変更を含む行を除いた対象だけで、確認の件数・ゴミ箱の件数・フォルダの有無・保存の有無・expected・読み上げの件数を求める', async () => {
+    const options = optionsWith(entries)
+    options.changes.savedPaths = new Set(['/repo/u.txt'])
+    const { result } = renderHook(() => useRevertWithRunner(options))
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    const message = vi.mocked(options.onConfirm!).mock.calls[0][0]
+    expect(message).toContain('エージェントの変更 2 件を実行前の状態に戻しますか？')
+    expect(message).toContain('うち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。')
+    expect(message).not.toContain('フォルダをゴミ箱へ移すため')
+    expect(message).not.toContain('記録を始めた後にアプリで保存したファイルを含みます')
+    expect(agentChangesApi.revertAllAgentChanges).toHaveBeenCalledWith(
+      [
+        { path: 'a.txt', status: 'M' },
+        { path: 'n.txt', status: 'A' }
+      ],
+      ALL_SCOPE
+    )
+    expect(options.changes.announce).toHaveBeenCalledWith(
+      '2 件を実行前の状態に戻しました。「戻した操作を取り消す」で取り消せます'
+    )
+  })
+
+  it('すべて戻すの確認に、写しの区別の要約・記録の開始の時刻・除く件数を渡す', async () => {
+    const options = optionsWith(entries)
+    const { result } = renderHook(() => useRevertWithRunner(options))
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    const message = vi.mocked(options.onConfirm!).mock.calls[0][0]
+    expect(message).toContain(
+      `？${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}利用者の変更 2 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。戻した直後なら`
+    )
+    expect(message).not.toContain('記録を始めた後にあなたが編集した内容も戻ります。')
+  })
+
+  it('除く件数(revertAllExcludedCount)を返す。打ち切った一覧・実行の範囲の一覧では 0', () => {
+    expect(
+      renderHook(() => useRevertWithRunner(optionsWith(entries))).result.current
+        .revertAllExcludedCount
+    ).toBe(2)
+    expect(
+      renderHook(() => useRevertWithRunner(optionsWith(entries, { truncated: true }))).result
+        .current.revertAllExcludedCount
+    ).toBe(0)
+    expect(
+      renderHook(() =>
+        useRevertWithRunner(optionsWith(entries, { scope: { kind: 'run', runId: 1 } }))
+      ).result.current.revertAllExcludedCount
+    ).toBe(0)
+  })
+
+  it('行がすべて利用者の変更なら、すべて戻すは押せず(理由を返す)、確認も出さない。行の ↶ は押せる', async () => {
+    const options = optionsWith([
+      makeAgentChangeEntry('u.txt', { author: 'user' }),
+      makeAgentChangeEntry('m.txt', { author: 'mixed' })
+    ])
+    const { result } = renderHook(() => useRevertWithRunner(options))
+    expect(result.current.revertAllDisabledReason).toBe(AGENT_CHANGES_ONLY_USER_REASON)
+    expect(result.current.revertDisabledReason).toBeNull()
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    expect(options.onConfirm).not.toHaveBeenCalled()
+    expect(agentChangesApi.revertAllAgentChanges).not.toHaveBeenCalled()
+  })
+
+  it.each<[AgentChangeEntry['author'], boolean]>([
+    ['user', true],
+    ['mixed', true],
+    ['agent', false],
+    [null, false]
+  ])('行の ↶ の確認は、author が %s なら利用者の変更の旨を足すか: %s', async (author, expected) => {
+    const options = optionsWith(entries)
+    const { result } = renderHook(() => useRevertWithRunner(options))
+    await act(async () => {
+      await result.current.revertFile(makeAgentChangeEntry('a.txt', { author }))
+    })
+    const message = vi.mocked(options.onConfirm!).mock.calls[0][0]
+    expect(
+      message.includes(
+        'このファイル（フォルダ）には、エージェントのツールが動いていない間の変更（利用者の変更）が含まれます。'
+      )
+    ).toBe(expected)
   })
 })

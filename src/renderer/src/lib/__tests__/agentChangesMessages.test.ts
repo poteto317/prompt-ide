@@ -2,6 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { AGENT_CHANGES_UNAVAILABLE_REASONS } from '@shared/types'
 import type { AgentChangesRunAvailability } from '@shared/types'
 import {
+  AGENT_CHANGES_ATTRIBUTION_LOST_REASONS,
+  AGENT_CHANGES_MIXED_MARK,
+  AGENT_CHANGES_ONLY_USER_REASON,
+  AGENT_CHANGES_USER_MARK,
+  AGENT_REVERT_ALL_DISTINGUISHING_NOTE,
+  agentChangeAuthorMark,
+  describeAgentChangesAttribution,
+  formatAgentChangesExcludedNote,
+  isAgentChangesAttributionDistinguishing,
   AGENT_CHANGES_RUN_EMPTY,
   AGENT_CHANGES_RUN_HEAD_CHANGED,
   AGENT_CHANGES_RUN_UNAVAILABLE_SHORT,
@@ -29,7 +38,9 @@ import {
   formatAgentRevertPartialWarning
 } from '../agentChangesMessages'
 import {
+  makeAgentChangesLostSummary,
   makeAgentChangesRun,
+  makeAgentChangesTrackingSummary,
   makeAgentChangesUndoSummary
 } from '../../__tests__/makeAgentChangesState'
 
@@ -92,7 +103,7 @@ describe('見出しと通知', () => {
 })
 
 describe('確認の文言', () => {
-  const plain = { savedInApp: false, hasUnsavedEdits: false, agentRunning: false }
+  const plain = { author: null, savedInApp: false, hasUnsavedEdits: false, agentRunning: false }
 
   it.each([
     [
@@ -132,6 +143,7 @@ describe('確認の文言', () => {
         path: 'a.txt',
         status: 'M',
         isDirectory: false,
+        author: null,
         savedInApp: true,
         hasUnsavedEdits: true,
         agentRunning: true
@@ -164,7 +176,10 @@ describe('確認の文言', () => {
         trashCount: 1,
         hasDirectory: false,
         savedInApp: false,
-        agentRunning: false
+        agentRunning: false,
+        attribution: makeAgentChangesTrackingSummary(),
+        startedAt: at(10, 0),
+        excludedCount: 0
       })
     ).toBe(
       'エージェントの変更 3 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nうち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。\nステージ（index）・コミット・ブランチは戻しません。'
@@ -175,7 +190,10 @@ describe('確認の文言', () => {
         trashCount: 0,
         hasDirectory: false,
         savedInApp: true,
-        agentRunning: true
+        agentRunning: true,
+        attribution: makeAgentChangesTrackingSummary(),
+        startedAt: at(10, 0),
+        excludedCount: 0
       })
     ).toBe(
       'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nステージ（index）・コミット・ブランチは戻しません。\n\n記録を始めた後にアプリで保存したファイルを含みます。\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
@@ -390,7 +408,7 @@ describe('取り消し', () => {
     )
   })
   it('戻す確認の文言は取り消せる旨を出し、フォルダは取り消せない旨を出す', () => {
-    const none = { savedInApp: false, hasUnsavedEdits: false, agentRunning: false }
+    const none = { author: null, savedInApp: false, hasUnsavedEdits: false, agentRunning: false }
     expect(
       buildAgentRevertFileConfirmMessage({
         path: 'a.txt',
@@ -421,12 +439,250 @@ describe('取り消し', () => {
     ).toBe(
       'a.txt の次のハンクを実行前の状態に戻しますか？戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\n\n@@ -1 +1 @@'
     )
-    const all = { count: 2, trashCount: 1, savedInApp: false, agentRunning: false }
+    const all = {
+      count: 2,
+      trashCount: 1,
+      savedInApp: false,
+      agentRunning: false,
+      attribution: makeAgentChangesTrackingSummary(),
+      startedAt: at(10, 0),
+      excludedCount: 0
+    }
     expect(buildAgentRevertAllConfirmMessage({ ...all, hasDirectory: false })).toBe(
       'エージェントの変更 2 件を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nうち 1 件の新しいファイル・フォルダはゴミ箱へ移動します。\nステージ（index）・コミット・ブランチは戻しません。'
     )
     expect(buildAgentRevertAllConfirmMessage({ ...all, hasDirectory: true })).toContain(
       '戻ります。フォルダをゴミ箱へ移すため、この操作は取り消せません（OS のゴミ箱から戻せます）。\nうち 1 件'
+    )
+  })
+})
+
+describe('利用者の変更との区別の文言', () => {
+  const startedAt = at(10, 0)
+  // すべて戻すの確認の、順 1〜5 の部分の前後(取り消せる旨とステージの行)
+  const allConfirm = (note: string): string =>
+    `エージェントの変更 2 件を実行前の状態に戻しますか？${note}戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。\nステージ（index）・コミット・ブランチは戻しません。`
+  const buildAll = (
+    attribution: Parameters<typeof buildAgentRevertAllConfirmMessage>[0]['attribution'],
+    excludedCount = 0
+  ): string =>
+    buildAgentRevertAllConfirmMessage({
+      count: 2,
+      trashCount: 0,
+      hasDirectory: false,
+      savedInApp: false,
+      agentRunning: false,
+      attribution,
+      startedAt,
+      excludedCount
+    })
+
+  it.each([
+    ['user', '利用者の変更'],
+    ['mixed', '利用者の変更を含む'],
+    ['agent', null],
+    [null, null]
+  ] as const)('行の author が %s なら印は %s', (author, expected) => {
+    expect(agentChangeAuthorMark(author)).toBe(expected)
+  })
+
+  it('行の印の文言は、利用者の変更と利用者の変更を含むの 2 つ', () => {
+    expect(AGENT_CHANGES_USER_MARK).toBe('利用者の変更')
+    expect(AGENT_CHANGES_MIXED_MARK).toBe('利用者の変更を含む')
+  })
+
+  it('除く旨は、すべて戻すから除く件数を入れて言う', () => {
+    expect(formatAgentChangesExcludedNote(3)).toBe(
+      'すべて戻すは、利用者の変更（3 件）を除いて戻します'
+    )
+  })
+
+  it('対象 0 件の押せない理由は、ファイルごとに戻すよう促す', () => {
+    expect(AGENT_CHANGES_ONLY_USER_REASON).toBe(
+      '利用者の変更だけのため、すべて戻すの対象がありません。ファイルごとに戻してください'
+    )
+  })
+
+  it('区別をやめた理由の文言は 4 つの理由を網羅する', () => {
+    expect(AGENT_CHANGES_ATTRIBUTION_LOST_REASONS).toEqual({
+      'hooks-not-confirmed': 'claude の hooks から知らせが届きません',
+      'receiver-unavailable': 'hooks の知らせの受け口を用意できませんでした',
+      'claude-version-unsupported': 'claude の版が古いか、版を確かめられませんでした',
+      'checkpoint-failed': '作業ツリーの記録に失敗しました'
+    })
+  })
+
+  it('区別しているか: tracking は区別を始めた後、lost は印が残っているとき', () => {
+    expect(isAgentChangesAttributionDistinguishing(makeAgentChangesTrackingSummary())).toBe(false)
+    expect(
+      isAgentChangesAttributionDistinguishing(makeAgentChangesTrackingSummary({ since: startedAt }))
+    ).toBe(true)
+    expect(isAgentChangesAttributionDistinguishing(makeAgentChangesLostSummary())).toBe(false)
+    expect(
+      isAgentChangesAttributionDistinguishing(makeAgentChangesLostSummary({ hadMarks: true }))
+    ).toBe(true)
+  })
+
+  it.each<[string, Parameters<typeof describeAgentChangesAttribution>[0], string | null]>([
+    [
+      'lost・印なし',
+      makeAgentChangesLostSummary({ reason: 'hooks-not-confirmed' }),
+      '利用者の変更を区別できません（claude の hooks から知らせが届きません）。すべてエージェントの変更として表示します'
+    ],
+    [
+      'lost・印あり',
+      makeAgentChangesLostSummary({
+        reason: 'checkpoint-failed',
+        lostAt: at(11, 30),
+        hadMarks: true
+      }),
+      '11:30 から利用者の変更を区別できなくなりました（作業ツリーの記録に失敗しました）。それ以降の変更には印を付けません'
+    ],
+    [
+      'lost・印あり・やめた時点で開いていた区間など印を付けていない間があった',
+      makeAgentChangesLostSummary({
+        reason: 'hooks-not-confirmed',
+        lostAt: at(11, 30),
+        hadMarks: true,
+        since: startedAt,
+        hadUnassignedSince: true
+      }),
+      '11:30 から利用者の変更を区別できなくなりました（claude の hooks から知らせが届きません）。それ以降の変更には印を付けません。アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+    ],
+    ['tracking・区別をまだ始めていない', makeAgentChangesTrackingSummary(), null],
+    [
+      'tracking・区別を始めたのが記録の開始より後',
+      makeAgentChangesTrackingSummary({ since: at(10, 5) }),
+      '利用者の変更の区別は 10:05 からです（それより前の変更には印を付けません）'
+    ],
+    [
+      'tracking・印を付けていない間があった',
+      makeAgentChangesTrackingSummary({ since: startedAt, hadUnassignedSince: true }),
+      'アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+    ],
+    [
+      'tracking・上の 2 つが両方',
+      makeAgentChangesTrackingSummary({ since: at(10, 5), hadUnassignedSince: true }),
+      '利用者の変更の区別は 10:05 からです（それより前の変更には印を付けません）。アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+    ],
+    [
+      'tracking・記録の開始から区別していて、印を付けていない間も無い',
+      makeAgentChangesTrackingSummary({ since: startedAt }),
+      null
+    ]
+  ])('区別の状態の 1 行: %s', (_label, attribution, expected) => {
+    expect(describeAgentChangesAttribution(attribution, startedAt)).toBe(expected)
+  })
+
+  it.each<[string, Parameters<typeof buildAll>[0], number, string]>([
+    [
+      '区別していない(tracking・区別をまだ始めていない)',
+      makeAgentChangesTrackingSummary(),
+      0,
+      '記録を始めた後にあなたが編集した内容も戻ります。'
+    ],
+    [
+      '区別していない(lost・印なし)',
+      makeAgentChangesLostSummary({ lostAt: at(11, 30) }),
+      0,
+      '記録を始めた後にあなたが編集した内容も戻ります。'
+    ],
+    [
+      '区別していない要約で除く行がある(一覧が古いまま記録だけが lost になった。順 1 は今のまま、順 5 は出す)',
+      makeAgentChangesTrackingSummary(),
+      1,
+      '記録を始めた後にあなたが編集した内容も戻ります。利用者の変更 1 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。'
+    ],
+    [
+      '区別している(記録の開始から・印を付けていない間なし)',
+      makeAgentChangesTrackingSummary({ since: startedAt }),
+      0,
+      AGENT_REVERT_ALL_DISTINGUISHING_NOTE
+    ],
+    [
+      '区別している・区別を始めたのが記録の開始より後',
+      makeAgentChangesTrackingSummary({ since: at(10, 5) }),
+      0,
+      `${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}10:05 より前のあなたの編集も戻ります。`
+    ],
+    [
+      '区別している・印を付けていない間があった',
+      makeAgentChangesTrackingSummary({ since: startedAt, hadUnassignedSince: true }),
+      0,
+      `${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}アプリの中で claude が動いていなかった間などのあなたの編集も戻ります。`
+    ],
+    [
+      '区別している・lost で印がある・除く行がある',
+      makeAgentChangesLostSummary({ since: startedAt, lostAt: at(11, 30), hadMarks: true }),
+      2,
+      `${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}区別をやめた後（11:30 から）のあなたの編集も戻ります。利用者の変更 2 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。`
+    ],
+    [
+      '区別していた記録が lost(開いていた区間を割り当てない区間として hadUnassignedSince が真。順 3 と順 4 の両方が出る)',
+      makeAgentChangesLostSummary({
+        since: startedAt,
+        hadUnassignedSince: true,
+        lostAt: at(11, 30),
+        hadMarks: true
+      }),
+      0,
+      `${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}アプリの中で claude が動いていなかった間などのあなたの編集も戻ります。区別をやめた後（11:30 から）のあなたの編集も戻ります。`
+    ],
+    [
+      '順 1〜5 がすべて出る',
+      makeAgentChangesLostSummary({
+        since: at(10, 5),
+        hadUnassignedSince: true,
+        lostAt: at(11, 30),
+        hadMarks: true
+      }),
+      1,
+      `${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}10:05 より前のあなたの編集も戻ります。アプリの中で claude が動いていなかった間などのあなたの編集も戻ります。区別をやめた後（11:30 から）のあなたの編集も戻ります。利用者の変更 1 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。`
+    ]
+  ])('すべて戻すの確認: %s', (_label, attribution, excludedCount, note) => {
+    expect(buildAll(attribution, excludedCount)).toBe(allConfirm(note))
+  })
+
+  it('区別しているときの順 1 の文は、エージェントの変更になる利用者の編集をすべて言う', () => {
+    expect(AGENT_REVERT_ALL_DISTINGUISHING_NOTE).toBe(
+      'エージェントのツールが動いている間（終わってから 2 秒・許可の確認を待つ間を含む）と、claude を起動してから最初のプロンプトを送るまで・中断（Esc）の後にあなたが編集した内容は、エージェントの変更として戻ります。'
+    )
+  })
+
+  it.each(['user', 'mixed'] as const)(
+    '行の ↶ の確認は、author が %s なら今の文言の後(アプリで保存した旨などの前)に利用者の変更の旨を足す(user も言い切らず同じ文。L-006)',
+    (author) => {
+      expect(
+        buildAgentRevertFileConfirmMessage({
+          path: 'a.txt',
+          status: 'M',
+          isDirectory: false,
+          author,
+          savedInApp: true,
+          hasUnsavedEdits: false,
+          agentRunning: false
+        }).split('\n\n')
+      ).toEqual([
+        'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。',
+        'このファイル（フォルダ）には、エージェントのツールが動いていない間の変更（利用者の変更）が含まれます。',
+        'このファイルは、記録を始めた後にアプリで保存されています。'
+      ])
+    }
+  )
+
+  it.each(['agent', null] as const)('行の ↶ の確認は、author が %s なら何も足さない', (author) => {
+    expect(
+      buildAgentRevertFileConfirmMessage({
+        path: 'a.txt',
+        status: 'M',
+        isDirectory: false,
+        author,
+        savedInApp: false,
+        hasUnsavedEdits: false,
+        agentRunning: false
+      })
+    ).toBe(
+      'a.txt を実行前の状態に戻しますか？記録を始めた後にあなたが編集した内容も戻ります。実行の前からあった変更は残ります。戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     )
   })
 })

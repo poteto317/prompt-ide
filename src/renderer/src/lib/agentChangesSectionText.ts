@@ -3,12 +3,14 @@ import type { AgentChangesView } from '../types'
 import {
   buildAgentChangesHeading,
   buildAgentChangesRunHeading,
-  describeAgentChangesScopeUnavailable
+  describeAgentChangesAttribution,
+  describeAgentChangesScopeUnavailable,
+  formatAgentChangesExcludedNote
 } from './agentChangesMessages'
 import { findAgentChangesRun, getListedAgentChanges } from './agentChangesScope'
 
-// セクション「エージェントの変更」の、写しと選んでいる範囲から決まる文字(見出し・範囲の一覧が取れない理由)と、
-// 押せないボタンが結ぶ理由の要素の導出(agentChangesReasonTargets)。AgentChangesSection から外して、描画なしで検査できるようにする
+// セクション「エージェントの変更」の、写しと選んでいる範囲(除く旨は除く件数も)から決まる文字(見出し・範囲の一覧が取れない理由・
+// 区別の状態の 1 行・すべて戻すから除く旨)と、押せないボタンが結ぶ理由の要素の導出(agentChangesReasonTargets)。AgentChangesSection から外して、描画なしで検査できるようにする
 
 /**
  * 見出し。範囲が実行で、写しの実行の一覧にあれば実行の番号と期間を、それ以外は累積の始点を添える。
@@ -38,6 +40,32 @@ export function describeAgentChangesListUnavailable(view: AgentChangesView): str
     reason,
     scope.kind === 'run' ? findAgentChangesRun(view.runs, scope.runId) : undefined
   )
+}
+
+/**
+ * 区別の状態の 1 行。記録中で、選んでいる範囲が累積で、表示中の一覧が実行の範囲でないときだけ出す(出さないなら null)。
+ * 文言は describeAgentChangesAttribution が決める
+ */
+export function describeAgentChangesSectionAttribution(
+  view: AgentChangesView,
+  scope: AgentChangesScope
+): string | null {
+  if (view.kind !== 'recording' || scope.kind !== 'all') return null
+  if (getListedAgentChanges(view)?.scope.kind === 'run') return null
+  return describeAgentChangesAttribution(view.attribution, view.startedAt)
+}
+
+/**
+ * すべて戻すから除く行の旨。表示中の一覧に行があり、実行の範囲の一覧でなく、除く件数(useAgentChangesRevert の
+ * revertAllExcludedCount)が 1 以上のときだけ出す(出さないなら null)
+ */
+export function describeAgentChangesSectionExcluded(
+  view: AgentChangesView,
+  excludedCount: number
+): string | null {
+  const list = getListedAgentChanges(view)
+  if (list === null || list.entries.length === 0 || list.scope.kind === 'run') return null
+  return excludedCount > 0 ? formatAgentChangesExcludedNote(excludedCount) : null
 }
 
 /** 押せないボタンが結ぶ理由の要素: 一覧の上の理由(list)・取り消しの帯の理由(undo)・結ばない(null) */

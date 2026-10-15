@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   existsSync,
   mkdirSync,
@@ -11,6 +11,7 @@ import {
   unlinkSync
 } from 'node:fs'
 import { join } from 'node:path'
+import type { AgentChangeAuthor, AgentChangeEntry } from '@shared/types'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE } from '../agentBaselineCoverage'
 import { NOT_RECORDED_DIFF_MESSAGE, getAgentChangeDiff } from '../agentChangeDiff'
@@ -56,7 +57,8 @@ afterEach(() => disposeAgentBaselineRepo({ repo, home, tempRoot }))
 const record = async (): Promise<AgentRevertContext> => ({
   snapshot: await recordBaseline(repo, tempRoot),
   trash,
-  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES }
+  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES },
+  attributeEntries: async (entries) => entries
 })
 
 // 利用者の状態(index の更新時刻〈ナノ秒〉と内容・stash・ref・HEAD)。戻す操作の前後で変わらないこと(完了条件 4)
@@ -673,9 +675,9 @@ describe('記録の時点に ignore されていたファイル・記録から�
     write('.gitignore', '')
     const entries = (await listAgentChanges(context.snapshot)).entries
     expect(entries).toEqual([
-      { path: '.env', status: 'A', isDirectory: false, notRecorded: true },
-      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false },
-      { path: 'node_modules/', status: 'A', isDirectory: true, notRecorded: true }
+      { path: '.env', status: 'A', isDirectory: false, notRecorded: true, author: null },
+      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false, author: null },
+      { path: 'node_modules/', status: 'A', isDirectory: true, notRecorded: true, author: null }
     ])
     expect(await getAgentChangeDiff(context.snapshot, '.env')).toBe(NOT_RECORDED_DIFF_MESSAGE)
     await expectNothingReverted(context, ['.env', 'node_modules'])
@@ -692,7 +694,7 @@ describe('記録の時点に ignore されていたファイル・記録から�
     const context = await record()
     write('.git/info/exclude', '')
     expect((await listAgentChanges(context.snapshot)).entries).toEqual([
-      { path: 'local.db', status: 'A', isDirectory: false, notRecorded: true }
+      { path: 'local.db', status: 'A', isDirectory: false, notRecorded: true, author: null }
     ])
     await expectNothingReverted(context, ['local.db'])
     expect(read('local.db')).toBe('db\n')
@@ -707,8 +709,8 @@ describe('記録の時点に ignore されていたファイル・記録から�
     expect(context.snapshot.excluded.map((file) => file.path)).toEqual(['big.bin'])
     renameSync(join(repo, 'big.bin'), join(repo, 'moved.bin'))
     expect((await listAgentChanges(context.snapshot)).entries).toEqual([
-      { path: 'big.bin', status: 'D', isDirectory: false, notRecorded: true },
-      { path: 'moved.bin', status: 'A', isDirectory: false, notRecorded: true }
+      { path: 'big.bin', status: 'D', isDirectory: false, notRecorded: true, author: null },
+      { path: 'moved.bin', status: 'A', isDirectory: false, notRecorded: true, author: null }
     ])
     await expectNothingReverted(context, ['moved.bin', 'big.bin'])
     expect(statSync(join(repo, 'moved.bin')).size).toBe(6 * 1024 * 1024)
@@ -724,9 +726,9 @@ describe('記録の時点に ignore されていたファイル・記録から�
     write('build/new.txt', 'n\n')
     const entries = (await listAgentChanges(context.snapshot)).entries
     expect(entries).toEqual([
-      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false },
-      { path: 'build/cache/', status: 'A', isDirectory: true, notRecorded: true },
-      { path: 'build/new.txt', status: 'A', isDirectory: false, notRecorded: false }
+      { path: '.gitignore', status: 'M', isDirectory: false, notRecorded: false, author: null },
+      { path: 'build/cache/', status: 'A', isDirectory: true, notRecorded: true, author: null },
+      { path: 'build/new.txt', status: 'A', isDirectory: false, notRecorded: false, author: null }
     ])
     await revertAgentChange(context, 'build/new.txt')
     expect(trashed).toEqual([join(repo, 'build/new.txt')])
@@ -745,7 +747,8 @@ describe('記録の時点に ignore されていたファイル・記録から�
       path: '.env',
       status: 'A',
       isDirectory: false,
-      notRecorded: false
+      notRecorded: false,
+      author: null
     })
     await revertAgentChange(context, '.env')
     expect(trashed).toEqual([join(repo, '.env')])
@@ -760,7 +763,7 @@ describe('記録の時点に ignore されていたファイル・記録から�
     write('new.txt', 'n\n')
     const entries = (await listAgentChanges(context.snapshot)).entries
     expect(entries).toEqual([
-      { path: 'new.txt', status: 'A', isDirectory: false, notRecorded: false }
+      { path: 'new.txt', status: 'A', isDirectory: false, notRecorded: false, author: null }
     ])
     await expect(revertAllAgentChanges(context, entries)).resolves.toMatchObject({
       status: 'done',
@@ -768,5 +771,88 @@ describe('記録の時点に ignore されていたファイル・記録から�
     })
     expect(trashed).toEqual([join(repo, 'new.txt')])
     expect(read('.env')).toBe('SECRET=1\n')
+  })
+})
+
+describe('revertAllAgentChanges の利用者の変更の除外(実 git・偽の attributeEntries)', () => {
+  const authors: Record<string, AgentChangeAuthor> = {
+    'a.txt': 'user',
+    'b.txt': 'agent',
+    'c.txt': 'mixed'
+  }
+  const attributeByPath = vi.fn(async (entries: AgentChangeEntry[]) =>
+    entries.map((entry) => ({ ...entry, author: authors[entry.path] ?? null }))
+  )
+  // a.txt は利用者の変更、b.txt はエージェントの変更、c.txt は両方、new.txt は区別していない行
+  const setup = async (): Promise<AgentRevertContext> => {
+    write('a.txt', 'a\n')
+    write('b.txt', 'b\n')
+    write('c.txt', 'c\n')
+    commitAll(repo, 'init')
+    const context = { ...(await record()), attributeEntries: attributeByPath }
+    write('a.txt', 'a\nuser\n')
+    write('b.txt', 'b\nagent\n')
+    write('c.txt', 'c\nboth\n')
+    write('new.txt', 'n\n')
+    return context
+  }
+
+  // 本体を { } で包む(mockClear は mock 自身を返し、beforeEach が返した関数は後始末として引数なしで呼ばれるため)
+  beforeEach(() => {
+    attributeByPath.mockClear()
+  })
+
+  it('user・mixed の行を戻さず、agent・null の行だけを戻す(除く規則を外すとこのテストが落ちる)', async () => {
+    const context = await setup()
+    await expect(
+      revertAllAgentChanges(context, [
+        { path: 'b.txt', status: 'M' },
+        { path: 'new.txt', status: 'A' }
+      ])
+    ).resolves.toMatchObject({ status: 'done', applied: 2 })
+    expect(read('a.txt')).toBe('a\nuser\n')
+    expect(read('c.txt')).toBe('c\nboth\n')
+    expect(read('b.txt')).toBe('b\n')
+    expect(trashed).toEqual([join(repo, 'new.txt')])
+  })
+
+  it('確認の一覧に user の行を含めると、何も変えずに中止する', async () => {
+    const context = await setup()
+    await expect(
+      revertAllAgentChanges(context, [
+        { path: 'a.txt', status: 'M' },
+        { path: 'b.txt', status: 'M' },
+        { path: 'new.txt', status: 'A' }
+      ])
+    ).rejects.toThrow(AGENT_REVERT_ALL_MISMATCH_MESSAGE)
+    expect(read('b.txt')).toBe('b\nagent\n')
+    expect(trashed).toEqual([])
+  })
+
+  it('件数の上限は除く前の件数で検査し、上限を超えたら author を求めない', async () => {
+    write('many/keep.txt', 'k\n')
+    commitAll(repo, 'init')
+    const context = { ...(await record()), attributeEntries: attributeByPath }
+    for (let i = 0; i < 501; i++) write(`many/${i}.txt`, '')
+    await expect(revertAllAgentChanges(context, [])).rejects.toThrow(
+      AGENT_REVERT_ALL_TOO_MANY_MESSAGE
+    )
+    expect(attributeByPath).not.toHaveBeenCalled()
+  })
+
+  it('対象が 0 件(すべて利用者の変更)で確認の一覧も空なら、何も変えずに applied 0 で終わる(古い写しからの依頼でも変えない。L-058)', async () => {
+    write('a.txt', 'a\n')
+    commitAll(repo, 'init')
+    const context: AgentRevertContext = {
+      ...(await record()),
+      attributeEntries: async (entries) => entries.map((entry) => ({ ...entry, author: 'user' }))
+    }
+    write('a.txt', 'a\nuser\n')
+    await expect(revertAllAgentChanges(context, [])).resolves.toMatchObject({
+      status: 'done',
+      applied: 0
+    })
+    expect(read('a.txt')).toBe('a\nuser\n')
+    expect(trashed).toEqual([])
   })
 })

@@ -1,12 +1,14 @@
 import type {
   AgentChangesRun,
   AgentChangesRunAvailability,
+  AgentChangesState,
   AgentChangesUnavailableReason
 } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
-import { attributionTempDirs } from './agentChangesAttribution'
+import { attributionTempDirs, summarizeAttribution } from './agentChangesAttribution'
 import type { AgentChangesAttribution } from './agentChangesAttribution'
 import type { ProtectionTreeEntry } from './agentChangesProtectionRules'
+import { summarizeAgentChangesUndo } from './agentChangesUndoModel'
 import type { AgentChangesUndo } from './agentChangesUndoModel'
 
 // 1 所有者の記録(設計書「記録の持ち方」)。累積の始点と、プロンプトを送るたびに足す実行の一覧(古い順)に加えて、
@@ -139,6 +141,29 @@ export function summarizeAgentChangesRuns(record: AgentChangesRecord): AgentChan
       availability: runAvailability(run, next)
     }
   })
+}
+
+/** IPC に載せる記録の要約(記録中の状態と、範囲ごとの一覧の結果に共通する部分) */
+export type AgentChangesRecordSummary = Omit<
+  Extract<AgentChangesState, { kind: 'recording' }>,
+  'kind'
+>
+
+/**
+ * 記録の要約(開始の時刻・実行の一覧・取り消しの控えの要約・区別の要約)。registry の記録中の状態と、範囲ごとの一覧
+ * (agentChangesScopedQuery)が同じ組み立てを使う(要約が増えたときに片方だけ直す食い違いを防ぐ)。unassignedNow は累積の一覧の
+ * そのとき限りの印(summarizeAttribution)
+ */
+export function summarizeAgentChangesRecord(
+  record: AgentChangesRecord,
+  options: { unassignedNow?: boolean } = {}
+): AgentChangesRecordSummary {
+  return {
+    startedAt: record.baseline.startedAt,
+    runs: summarizeAgentChangesRuns(record),
+    undo: summarizeAgentChangesUndo(record.undo),
+    attribution: summarizeAttribution(record.attribution, options)
+  }
 }
 
 /** 区切りの写しの元: 実行の一覧を新しい方から見て、最初の取れた記録のインデックス(無ければ累積の始点) */

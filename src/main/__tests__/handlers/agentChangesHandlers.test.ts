@@ -39,6 +39,8 @@ import {
 } from '../../handlers/agentChangesPayloadParser'
 import type { AgentChangesScope } from '@shared/types'
 import {
+  attributionOffRecordingState,
+  attributionOffSummary,
   makeAttributionOffDeps,
   makeBaselineSnapshot,
   makeFakeProtectionDeps
@@ -164,30 +166,29 @@ describe('registerAgentChangesHandlers', () => {
 
   it('begin は送信元の許可のフォルダで記録を始め、getState・list はその記録を返す', async () => {
     vi.mocked(listAgentChanges).mockResolvedValue({
-      entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
+      entries: [
+        { path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false, author: null }
+      ],
       totalCount: 1,
       truncated: false,
       headChanged: false
     })
-    await expect(invoke('agentChanges:begin', makeEvent(), 'manual')).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 42,
-      runs: [],
-      undo: null
-    })
-    await expect(invoke('agentChanges:getState', makeEvent())).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 42,
-      runs: [],
-      undo: null
-    })
+    await expect(invoke('agentChanges:begin', makeEvent(), 'manual')).resolves.toEqual(
+      attributionOffRecordingState(42)
+    )
+    await expect(invoke('agentChanges:getState', makeEvent())).resolves.toEqual(
+      attributionOffRecordingState(42)
+    )
     await expect(invoke('agentChanges:list', makeEvent(), ALL)).resolves.toEqual({
       kind: 'recording',
       startedAt: 42,
       runs: [],
       undo: null,
+      attribution: attributionOffSummary(42),
       scope: { kind: 'all' },
-      entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
+      entries: [
+        { path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false, author: null }
+      ],
       totalCount: 1,
       truncated: false,
       headChanged: false
@@ -222,11 +223,21 @@ describe('registerAgentChangesHandlers', () => {
     await invoke('agentChanges:revertHunk', makeEvent(), 'a.txt', 'patch', ALL)
     expect(getAgentChangeDiff).toHaveBeenCalledWith(snapshotFor(folder), 'a.txt')
     expect(revertAgentChange).toHaveBeenCalledWith(
-      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
+      {
+        snapshot: snapshotFor(folder),
+        trash,
+        undoCapture: UNDO_CAPTURE,
+        attributeEntries: expect.any(Function)
+      },
       'gone/b.txt'
     )
     expect(revertAgentChangeHunk).toHaveBeenCalledWith(
-      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
+      {
+        snapshot: snapshotFor(folder),
+        trash,
+        undoCapture: UNDO_CAPTURE,
+        attributeEntries: expect.any(Function)
+      },
       'a.txt',
       'patch'
     )
@@ -265,7 +276,12 @@ describe('registerAgentChangesHandlers', () => {
       undoSummary: null
     })
     expect(revertAllAgentChanges).toHaveBeenCalledWith(
-      { snapshot: snapshotFor(folder), trash, undoCapture: UNDO_CAPTURE },
+      {
+        snapshot: snapshotFor(folder),
+        trash,
+        undoCapture: UNDO_CAPTURE,
+        attributeEntries: expect.any(Function)
+      },
       [{ path: 'a.txt', status: 'M' }]
     )
     await expect(invoke('agentChanges:revertAll', makeEvent(), 'all', ALL)).rejects.toThrow(
@@ -398,15 +414,14 @@ describe('範囲と実行', () => {
 
   it('begin は trigger を registry へ渡し、send は実行を足す', async () => {
     const begin = vi.spyOn(registry, 'begin')
-    await expect(twoRuns(recordedResult(runSnapshot(2)))).resolves.toEqual({
-      kind: 'recording',
-      startedAt: 42,
-      runs: [
-        { runId: 1, number: 1, startedAt: 42, endedAt: 44, availability: { kind: 'available' } },
-        { runId: 2, number: 2, startedAt: 44, endedAt: null, availability: { kind: 'available' } }
-      ],
-      undo: null
-    })
+    await expect(twoRuns(recordedResult(runSnapshot(2)))).resolves.toEqual(
+      attributionOffRecordingState(42, {
+        runs: [
+          { runId: 1, number: 1, startedAt: 42, endedAt: 44, availability: { kind: 'available' } },
+          { runId: 2, number: 2, startedAt: 44, endedAt: null, availability: { kind: 'available' } }
+        ]
+      })
+    )
     expect(begin).toHaveBeenLastCalledWith(1, folder, 'send')
   })
 
@@ -431,6 +446,31 @@ describe('範囲と実行', () => {
       scope: runScope(1)
     })
     expect(listAgentChangesBetween).toHaveBeenCalledWith(snapshotFor(folder), run2)
+  })
+
+  it('list は累積の範囲でだけ、同じ所有者・記録で registry の attributeEntries に一覧の行を通し、その結果の行を返す', async () => {
+    const run2 = runSnapshot(2)
+    await twoRuns(recordedResult(run2))
+    const row = {
+      path: 'a.txt',
+      status: 'M' as const,
+      isDirectory: false,
+      notRecorded: false,
+      author: null
+    }
+    vi.mocked(listAgentChanges).mockResolvedValue({ ...emptyList, entries: [row], totalCount: 1 })
+    const attribute = vi.spyOn(registry, 'attributeEntries')
+    await expect(invoke('agentChanges:list', makeEvent(), ALL)).resolves.toMatchObject({
+      entries: [row]
+    })
+    expect(attribute).toHaveBeenCalledOnce()
+    const [ownerId, record, entries] = attribute.mock.calls[0]
+    expect(ownerId).toBe(1)
+    expect(record.baseline).toEqual(snapshotFor(folder))
+    expect(entries).toEqual([row])
+    // 最後の実行(作業ツリーとの比較)では付けない
+    await invoke('agentChanges:list', makeEvent(), runScope(2))
+    expect(attribute).toHaveBeenCalledOnce()
   })
 
   it('getDiff は範囲を解決し、累積・最後の実行・途中の実行の diff の関数を呼ぶ', async () => {
@@ -464,6 +504,7 @@ describe('範囲と実行', () => {
         startedAt: 42,
         runs: expect.any(Array),
         undo: null,
+        attribution: attributionOffSummary(42),
         scope: runScope(runId),
         reason
       })
@@ -854,4 +895,31 @@ describe('戻す操作の吸収(withAttributionAbsorbed)', () => {
       )
     }
   )
+
+  it('revertAll は、registry の attributeEntries を戻す関数の中(吸収の task の中・適用の前)で呼ぶ(吸収の外で先に呼ぶ形に崩れると落ちる。L-449)', async () => {
+    await invoke('agentChanges:begin', makeEvent(), 'manual')
+    const order: string[] = []
+    const absorb = registry.withAttributionAbsorbed.bind(registry)
+    vi.spyOn(registry, 'withAttributionAbsorbed').mockImplementation(
+      async (...absorbArgs: Parameters<typeof absorb>) => {
+        order.push('吸収の始まり')
+        const result = await absorb(...absorbArgs)
+        order.push('吸収の終わり')
+        return result
+      }
+    )
+    const attribute = registry.attributeEntries.bind(registry)
+    vi.spyOn(registry, 'attributeEntries').mockImplementation(async (...attributeArgs) => {
+      order.push('author')
+      return attribute(...attributeArgs)
+    })
+    vi.mocked(revertAllAgentChanges).mockImplementationOnce(async (context) => {
+      order.push('戻す関数の始まり')
+      await context.attributeEntries([])
+      order.push('適用')
+      return { status: 'done', applied: 1, capture: { kind: 'unavailable', reason: 'too-large' } }
+    })
+    await invoke('agentChanges:revertAll', makeEvent(), [], ALL)
+    expect(order).toEqual(['吸収の始まり', '戻す関数の始まり', 'author', '適用', '吸収の終わり'])
+  })
 })

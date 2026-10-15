@@ -7,7 +7,7 @@ import {
   removeBaselineDirSync,
   takeBaselineSnapshot
 } from '../agentBaselineSnapshot'
-import { collectAgentChangeEntriesBetween } from '../agentChangesQuery'
+import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from '../agentChangesQuery'
 import type { AgentChangesRecord } from '../agentChangesRecord'
 import type { AgentToolActivitySignal } from '../agentToolActivity'
 import { commitAll, runGit } from './helpers/realGitRepo'
@@ -38,6 +38,7 @@ describe('記録の利用者の変更との区別(実 git)', () => {
       takeSnapshot: (folderPath, options) =>
         takeBaselineSnapshot(folderPath, { ...options, tempRoot: dirs.tempRoot }),
       collectBetween: (start, end) => collectAgentChangeEntriesBetween(start, end),
+      collectCurrent: (snapshot) => collectAgentChangeEntries(snapshot),
       removeDir: removeBaselineDir,
       removeDirSync: removeBaselineDirSync,
       now: Date.now,

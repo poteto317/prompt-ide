@@ -43,7 +43,14 @@ const entry = (
   path: string,
   status: 'A' | 'M' | 'D' | 'T',
   extra: { isDirectory?: boolean; notRecorded?: boolean } = {}
-): unknown => ({ path, status, isDirectory: false, notRecorded: false, ...extra })
+): unknown => ({
+  path,
+  status,
+  isDirectory: false,
+  notRecorded: false,
+  author: null,
+  ...extra
+})
 
 describe('listAgentChanges(実 git)', () => {
   it('実行の前からの利用者の変更を出さず、エージェントの変更だけを出す。利用者の index を変えない(確認の結果 3・5)', async () => {

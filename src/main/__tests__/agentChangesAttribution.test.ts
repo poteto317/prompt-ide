@@ -5,9 +5,10 @@ import {
   attributionTempDirs,
   authorsOf,
   initialAttribution,
+  currentPeriodTracking,
   matches,
-  needsCurrentPeriod,
-  summarizeAttribution
+  summarizeAttribution,
+  toLostAttribution
 } from '../agentChangesAttribution'
 import type {
   AgentChangesAttribution,
@@ -47,7 +48,8 @@ const entry = (path: string, notRecorded = false): AgentChangeEntry => ({
   path,
   status: 'M',
   isDirectory: path.endsWith('/'),
-  notRecorded
+  notRecorded,
+  author: null
 })
 
 describe('initialAttribution(記録の始め方)', () => {
@@ -113,6 +115,56 @@ describe('initialAttribution(記録の始め方)', () => {
       syncNow: false
     })
   })
+
+  it('合図の印(signalUnassignablePending)は、どの始め方でも false で始める', () => {
+    const cases = [
+      start(signal('idle'), signal('idle')),
+      start(signal('agent'), signal('agent', { unassignable: true })),
+      start(signal('idle', { unassignable: true }), signal('idle'))
+    ]
+    for (const { attribution } of cases) {
+      expect(attribution).toMatchObject({ kind: 'tracking', signalUnassignablePending: false })
+    }
+  })
+})
+
+describe('toLostAttribution(区別をやめた後の区別)', () => {
+  it('集合・区別を始めた時刻・削除待ちを同じものとして引き継ぎ、理由と時刻を持つ(区切り・段階・印は持たない)', () => {
+    const before = tracking({
+      phase: 'agent',
+      periodUnassignable: true,
+      timedOutPending: true,
+      signalUnassignablePending: true,
+      userPaths: new Set(['a.txt']),
+      agentPaths: new Set(['b.txt']),
+      staleCheckpointDirs: ['/tmp/old']
+    })
+    const after = toLostAttribution(before, 'hooks-not-confirmed', 300)
+    expect(after).toEqual(
+      lost({
+        reason: 'hooks-not-confirmed',
+        lostAt: 300,
+        userPaths: new Set(['a.txt']),
+        agentPaths: new Set(['b.txt']),
+        trackingSince: 100,
+        hadUnassignedSince: true,
+        staleCheckpointDirs: ['/tmp/old']
+      })
+    )
+    // 削除待ちは同じ配列(消せなかった区切りを markAttributionLost が置き換えの後に足す)
+    expect(after.staleCheckpointDirs).toBe(before.staleCheckpointDirs)
+    expect(after.userPaths).toBe(before.userPaths)
+  })
+
+  it('区別を始める前(trackingSince が null)なら hadUnassignedSince を立てない', () => {
+    expect(
+      toLostAttribution(tracking({ trackingSince: null }), 'checkpoint-failed', 300)
+    ).toMatchObject({ trackingSince: null, hadUnassignedSince: false })
+  })
+
+  it('区別を始めた後なら、元の hadUnassignedSince が偽でも立てる(開いていた区間を割り当てない区間として扱う。L-152)', () => {
+    expect(toLostAttribution(tracking(), 'checkpoint-failed', 300).hadUnassignedSince).toBe(true)
+  })
 })
 
 describe('matches(パスの照合)', () => {
@@ -163,7 +215,7 @@ describe('authorsOf(行の author)', () => {
 
   it('今の区間に印があれば割り当てない(呼び出し側も比べない)', () => {
     const attribution = tracking({ periodUnassignable: true })
-    expect(needsCurrentPeriod(attribution)).toBe(false)
+    expect(currentPeriodTracking(attribution)).toBeNull()
     expect(authorsOf([entry('u.txt')], attribution, ['u.txt'])).toEqual(['agent'])
   })
 
@@ -176,7 +228,7 @@ describe('authorsOf(行の author)', () => {
 
   it('lost で集合があれば、今の区間を除いて集合だけで決める', () => {
     const attribution = lost({ userPaths: new Set(['u.txt']) })
-    expect(needsCurrentPeriod(attribution)).toBe(false)
+    expect(currentPeriodTracking(attribution)).toBeNull()
     expect(authorsOf([entry('u.txt'), entry('a.txt')], attribution, ['a.txt'])).toEqual([
       'user',
       'agent'
@@ -184,8 +236,10 @@ describe('authorsOf(行の author)', () => {
   })
 
   it('今の区間を比べなかった・失敗した(null)ときは集合だけで決める', () => {
-    expect(needsCurrentPeriod(tracking())).toBe(true)
-    expect(authorsOf([entry('u.txt')], tracking(), null)).toEqual(['agent'])
+    const attribution = tracking()
+    // 印の無い tracking は、絞り込んだ区別そのものを返す(型の述語にせず、偽の側を LostAttribution に絞り込まない)
+    expect(currentPeriodTracking(attribution)).toBe(attribution)
+    expect(authorsOf([entry('u.txt')], attribution, null)).toEqual(['agent'])
   })
 })
 
@@ -209,6 +263,35 @@ describe('summarizeAttribution(要約)', () => {
     })
     expect(summarizeAttribution(lost({ agentPaths: new Set(['a.txt']) }))).toMatchObject({
       hadMarks: true
+    })
+  })
+
+  it('tracking の hadUnassignedSince は、区別を始めた後で今の区間に印があるときも真(区間を閉じる同期がまだ走っていない窓。L-152)', () => {
+    expect(summarizeAttribution(tracking({ periodUnassignable: true }))).toEqual({
+      kind: 'tracking',
+      since: 100,
+      hadUnassignedSince: true
+    })
+    // 区別を始める前(trackingSince が null)の印では立てない(区別していない記録のまま)
+    expect(
+      summarizeAttribution(tracking({ periodUnassignable: true, trackingSince: null }))
+    ).toEqual({ kind: 'tracking', since: null, hadUnassignedSince: false })
+  })
+
+  it('一覧のそのとき限りの印(unassignedNow)は、区別を始めた後の tracking の hadUnassignedSince にだけ OR し、記録を変えない', () => {
+    const attribution = tracking()
+    expect(summarizeAttribution(attribution, { unassignedNow: true })).toEqual({
+      kind: 'tracking',
+      since: 100,
+      hadUnassignedSince: true
+    })
+    expect(attribution).toMatchObject({ periodUnassignable: false, hadUnassignedSince: false })
+    expect(summarizeAttribution(attribution)).toMatchObject({ hadUnassignedSince: false })
+    expect(
+      summarizeAttribution(tracking({ trackingSince: null }), { unassignedNow: true })
+    ).toMatchObject({ hadUnassignedSince: false })
+    expect(summarizeAttribution(lost(), { unassignedNow: true })).toMatchObject({
+      hadUnassignedSince: false
     })
   })
 })

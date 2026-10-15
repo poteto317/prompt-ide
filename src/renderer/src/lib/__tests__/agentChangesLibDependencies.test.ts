@@ -14,6 +14,7 @@ describe('エージェントの変更の lib の依存の向き', () => {
     expect(agentChangesLibFiles()).toEqual(
       expect.arrayContaining([
         'agentChangesAvailability.ts',
+        'agentChangesRevertTargets.ts',
         'agentChangesScope.ts',
         'agentChangesSectionText.ts',
         'agentChangesView.ts',

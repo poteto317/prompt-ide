@@ -1,4 +1,5 @@
 import type {
+  AgentChangesAttributionSummary,
   AgentChangesList,
   AgentChangesRun,
   AgentChangesScope,
@@ -177,13 +178,17 @@ export type AgentChangesRunningOperation = 'revert' | 'undo'
 export type AgentChangesView =
   | { kind: 'none' }
   | { kind: 'unavailable'; state: Extract<AgentChangesState, { kind: 'unavailable' }> }
-  /** runs は main の実行の一覧(古い順)。list は取り直す前・範囲を変えた直後は null。undo は main の取り消しの控えの要約(無ければ null) */
+  /**
+   * runs は main の実行の一覧(古い順)。list は取り直す前・範囲を変えた直後は null。undo は main の取り消しの控えの要約(無ければ null)。
+   * attribution は main の記録の区別の要約
+   */
   | {
       kind: 'recording'
       startedAt: number
       runs: AgentChangesRun[]
       list: AgentChangesViewList | null
       undo: AgentChangesUndoSummary | null
+      attribution: AgentChangesAttributionSummary
     }
 
 // エージェントの変更の diff タブ(DiffView の agentActions)。ハンクを実行前に戻す操作と、押せない理由

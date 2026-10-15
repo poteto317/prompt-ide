@@ -15,6 +15,7 @@ import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
   makeAgentChangesRecordingState,
+  makeAgentChangesRecordingView,
   makeAgentChangesRun,
   makeAgentChangesScopeUnavailableListResult,
   makeAgentChangesUndoSummary
@@ -60,30 +61,13 @@ describe('useAgentChanges', () => {
     await act(async () => {
       await result.current.begin('manual')
     })
-    expect(result.current.view).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      list: null,
-      undo: null
-    })
+    expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 100 }))
     await act(async () => {
       await result.current.refresh({ announce: true })
     })
-    expect(result.current.view).toEqual({
-      kind: 'recording',
-      startedAt: 100,
-      runs: [],
-      list: {
-        kind: 'listed',
-        scope: { kind: 'all' },
-        entries: [{ path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false }],
-        totalCount: 1,
-        truncated: false,
-        headChanged: false
-      },
-      undo: null
-    })
+    expect(result.current.view).toEqual(
+      makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')])
+    )
     expect(toAnnouncementText(result.current.notice)).toBe('エージェントの変更: 1 件')
   })
 
@@ -476,13 +460,7 @@ describe('useAgentChanges', () => {
     window.api.getAgentChangesState = vi.fn().mockResolvedValue(recordingState)
     const { result } = renderHook(() => useAgentChanges('/repo'))
     await waitFor(() =>
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 100,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 100 }))
     )
   })
 
@@ -511,13 +489,7 @@ describe('useAgentChanges', () => {
       .mockResolvedValue(makeAgentChangesRecordingState({ startedAt: 300 }))
     rerender({ f: '/b' })
     await waitFor(() =>
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 300,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 300 }))
     )
   })
 
@@ -623,25 +595,13 @@ describe('useAgentChanges', () => {
       await act(async () => {
         await result.current.begin('manual')
       })
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 200,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 200 }))
       // main ではフォルダの切り替えで古い記録が取り消され、none が返る
       await act(async () => {
         oldBegin.resolve({ kind: 'none' })
         await oldBegun
       })
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 200,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 200 }))
     })
 
     it('/a → /b → /a と戻った後に古い begin が失敗しても、新しい記録の表示を上書きしない', async () => {
@@ -666,13 +626,7 @@ describe('useAgentChanges', () => {
         oldBegin.reject(new Error('ipc'))
         await oldBegun
       })
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 200,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 200 }))
     })
 
     it('begin の応答待ちで確認を終えたら、begin の結果で記録中に戻さない', async () => {
@@ -854,13 +808,7 @@ describe('useAgentChanges', () => {
         pendingBegin.resolve(makeAgentChangesRecordingState({ startedAt: 200 }))
         await begun
       })
-      expect(result.current.view).toEqual({
-        kind: 'recording',
-        startedAt: 200,
-        runs: [],
-        list: null,
-        undo: null
-      })
+      expect(result.current.view).toEqual(makeAgentChangesRecordingView(null, { startedAt: 200 }))
     })
 
     it('begin を 2 回続けても、両方が終わるまで isBeginning を下ろさない', async () => {

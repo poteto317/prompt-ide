@@ -8,6 +8,7 @@ import {
   AGENT_CHANGES_LIST_LIMIT,
   AGENT_CHANGES_MAX_RUNS,
   isAgentChangeStatus as fromIndex,
+  isAgentRevertAllTarget,
   isSameAgentChangesScope
 } from '../types'
 import type { AgentChangesScope } from '../types/agentChanges'
@@ -59,5 +60,16 @@ describe('isSameAgentChangesScope', () => {
     ['実行と累積', { kind: 'run', runId: 1 }, { kind: 'all' }, false]
   ])('%s: %s', (_label, a, b, expected) => {
     expect(isSameAgentChangesScope(a, b)).toBe(expected)
+  })
+})
+
+describe('isAgentRevertAllTarget(すべて戻すの対象)', () => {
+  it.each([
+    ['agent', true],
+    [null, true],
+    ['user', false],
+    ['mixed', false]
+  ] as const)('author が %s なら %s', (author, expected) => {
+    expect(isAgentRevertAllTarget({ author })).toBe(expected)
   })
 })

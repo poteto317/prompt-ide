@@ -3,15 +3,20 @@ import type { AgentChangesView } from '../../types'
 import {
   buildAgentChangesHeading,
   buildAgentChangesRunHeading,
-  describeAgentChangesScopeUnavailable
+  describeAgentChangesAttribution,
+  describeAgentChangesScopeUnavailable,
+  formatAgentChangesExcludedNote
 } from '../agentChangesMessages'
 import {
   agentChangesReasonTargets,
   buildAgentChangesSectionHeading,
-  describeAgentChangesListUnavailable
+  describeAgentChangesListUnavailable,
+  describeAgentChangesSectionAttribution,
+  describeAgentChangesSectionExcluded
 } from '../agentChangesSectionText'
 import {
   makeAgentChangeEntry,
+  makeAgentChangesLostSummary,
   makeAgentChangesRecordingView,
   makeAgentChangesRun,
   makeAgentChangesScopeUnavailableView
@@ -82,6 +87,64 @@ describe('describeAgentChangesListUnavailable', () => {
     expect(describeAgentChangesListUnavailable(unavailableView('end-not-recorded', 1))).toBe(
       describeAgentChangesScopeUnavailable('end-not-recorded', run1)
     )
+  })
+})
+
+describe('describeAgentChangesSectionAttribution(区別の状態の 1 行を出す条件)', () => {
+  // 出す文言がある区別の要約(区別を始める前の tracking は文言が無いため、出す条件の検査に使わない)
+  const attribution = makeAgentChangesLostSummary()
+  const expected = describeAgentChangesAttribution(attribution, 100)
+
+  it('累積の範囲で、累積の一覧(取り直す前を含む)なら区別の要約の文言を出す', () => {
+    const listed = makeAgentChangesRecordingView([makeAgentChangeEntry('a.txt')], { attribution })
+    const loading = makeAgentChangesRecordingView(null, { attribution })
+    expect(expected).not.toBeNull()
+    expect(describeAgentChangesSectionAttribution(listed, { kind: 'all' })).toBe(expected)
+    expect(describeAgentChangesSectionAttribution(loading, { kind: 'all' })).toBe(expected)
+  })
+
+  it('選んでいる範囲が実行なら出さない', () => {
+    const view = makeAgentChangesRecordingView(null, { attribution })
+    expect(describeAgentChangesSectionAttribution(view, { kind: 'run', runId: 1 })).toBeNull()
+  })
+
+  it('表示中の一覧が実行の範囲なら(累積を選んだ直後でも)出さない', () => {
+    const view = makeAgentChangesRecordingView([], {
+      attribution,
+      scope: { kind: 'run', runId: 1 }
+    })
+    expect(describeAgentChangesSectionAttribution(view, { kind: 'all' })).toBeNull()
+  })
+
+  it('記録中でなければ出さない', () => {
+    expect(describeAgentChangesSectionAttribution({ kind: 'none' }, { kind: 'all' })).toBeNull()
+  })
+})
+
+describe('describeAgentChangesSectionExcluded(すべて戻すから除く旨を出す条件)', () => {
+  const entries = [makeAgentChangeEntry('a.txt', { author: 'user' })]
+
+  it('累積の一覧に行があり、除く件数が 1 以上なら除く旨を出す', () => {
+    const view = makeAgentChangesRecordingView(entries)
+    expect(describeAgentChangesSectionExcluded(view, 1)).toBe(formatAgentChangesExcludedNote(1))
+  })
+
+  it('除く件数が 0 なら出さない', () => {
+    expect(
+      describeAgentChangesSectionExcluded(makeAgentChangesRecordingView(entries), 0)
+    ).toBeNull()
+  })
+
+  it.each([
+    ['一覧を取り直す前', makeAgentChangesRecordingView(null)],
+    ['行が 0 件', makeAgentChangesRecordingView([])],
+    [
+      '実行の範囲の一覧',
+      makeAgentChangesRecordingView(entries, { scope: { kind: 'run', runId: 1 } })
+    ],
+    ['記録なし', { kind: 'none' } as const]
+  ])('%s なら出さない', (_, view) => {
+    expect(describeAgentChangesSectionExcluded(view, 1)).toBeNull()
   })
 })
 

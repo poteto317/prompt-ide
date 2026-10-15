@@ -23,7 +23,9 @@ import { getListedAgentChanges } from '../../lib/agentChangesScope'
 import {
   agentChangesReasonTargets,
   buildAgentChangesSectionHeading,
-  describeAgentChangesListUnavailable
+  describeAgentChangesListUnavailable,
+  describeAgentChangesSectionAttribution,
+  describeAgentChangesSectionExcluded
 } from '../../lib/agentChangesSectionText'
 import type { AgentChangesReasonTarget } from '../../lib/agentChangesSectionText'
 import AgentChangesFileItem from './AgentChangesFileItem'
@@ -52,6 +54,7 @@ export default function AgentChangesSection({
   const bodyId = useId()
   const reasonId = useId()
   const undoReasonId = useId()
+  const excludedNoteId = useId()
   const [isOpen, setIsOpen] = useState(true)
   const openSection = useCallback((): void => setIsOpen(true), [])
   const { view } = changes
@@ -87,9 +90,21 @@ export default function AgentChangesSection({
   const listUnavailableText = describeAgentChangesListUnavailable(view)
   const hasEntries = list !== null && list.entries.length > 0
   // 押せない理由は 1 か所に出す。「すべて戻す」の理由は「ファイル単位の理由(実行の範囲を含む)」「打ち切り」「記録していないファイルを含む」
-  // (notRecorded)のいずれか。行の戻すボタンがこの要素を参照できるのは、agentRevertAllDisabledReason がファイル単位の
-  // 理由を先に評価する(行が押せないときは必ず同じ文言になる)という評価の順序に依存している
+  // (notRecorded)「利用者の変更だけで対象が無い」のいずれか。行の戻すボタンがこの要素を参照できるのは、agentRevertAllDisabledReason が
+  // ファイル単位の理由を先に評価する(行が押せないときは必ず同じ文言になる)という評価の順序に依存している
   const shownReason = hasEntries ? revert.revertAllDisabledReason : null
+  // 区別の状態の 1 行(累積の範囲で、表示中の一覧が実行の範囲でないときだけ。出さないなら null)。読み上げない(aria-live にしない)
+  const attributionNote = describeAgentChangesSectionAttribution(view, changes.scope)
+  // すべて戻すから除く行の旨(行があり、累積の一覧で、除く件数が 1 以上のとき)。すべて戻すの aria-describedby で結ぶ(L-413)
+  const excludedNote = describeAgentChangesSectionExcluded(view, revert.revertAllExcludedCount)
+  // すべて戻すが結ぶ要素(押せない理由と除く旨のうちあるもの。どちらも無ければ付けない)
+  const revertAllDescribedBy =
+    [
+      revert.revertAllDisabledReason !== null ? reasonId : null,
+      excludedNote !== null ? excludedNoteId : null
+    ]
+      .filter((id): id is string => id !== null)
+      .join(' ') || undefined
   // 戻す操作・取り消しの実行中(範囲の選択・確認を終えるを押せなくする)
   const isWriting = revert.runningOperation !== null
   // 範囲の選択・確認を終えるが結ぶ理由の要素と、帯が先に消えたときにセクションに取り消しの理由を出すか
@@ -186,6 +201,7 @@ export default function AgentChangesSection({
                   }}
                 />
               )}
+              {attributionNote !== null && <p className="agent-changes__note">{attributionNote}</p>}
               {recording.undo !== null && (
                 <AgentChangesUndoBand
                   summary={recording.undo}
@@ -260,6 +276,11 @@ export default function AgentChangesSection({
                   {formatAgentChangesMore(list.totalCount - list.entries.length)}
                 </p>
               )}
+              {excludedNote !== null && (
+                <p id={excludedNoteId} className="agent-changes__note">
+                  {excludedNote}
+                </p>
+              )}
               <div className="agent-changes__actions">
                 <button
                   type="button"
@@ -273,9 +294,7 @@ export default function AgentChangesSection({
                     type="button"
                     className="agent-changes__button agent-changes__button--danger"
                     disabled={revert.revertAllDisabledReason !== null}
-                    aria-describedby={
-                      revert.revertAllDisabledReason !== null ? reasonId : undefined
-                    }
+                    aria-describedby={revertAllDescribedBy}
                     onClick={() => {
                       reserveFocusRestore()
                       void revert.revertAll()

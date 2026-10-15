@@ -1,6 +1,10 @@
 import type { SimpleGit } from 'simple-git'
 import type { AgentChangeEntry, AgentRevertAllEntry, DiscardAllResult } from '@shared/types'
-import { AGENT_CHANGES_LIST_LIMIT, toAgentChangeRelativePath } from '@shared/types'
+import {
+  AGENT_CHANGES_LIST_LIMIT,
+  isAgentRevertAllTarget,
+  toAgentChangeRelativePath
+} from '@shared/types'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE, hasIgnoredInside } from './agentBaselineCoverage'
 import { createBaselineGit, createRepoGit } from './agentBaselineGit'
 import type { BaselineGitOptions } from './agentBaselineGit'
@@ -45,6 +49,11 @@ export interface AgentRevertContext {
   gitOptions?: BaselineGitOptions
   /** 取り消しの控えの置き場所と上限(控えは毎回取る) */
   undoCapture: AgentChangesUndoCaptureOptions
+  /**
+   * 一覧の行に author を付ける(registry の attributeEntries を handler が所有者と記録で包んだもの。必須。L-060)。すべて戻すの対象の
+   * 絞り込みにだけ使い、行の ↶・ハンクは使わない(利用者の変更も個別に戻せる)
+   */
+  attributeEntries: (entries: AgentChangeEntry[]) => Promise<AgentChangeEntry[]>
 }
 
 /** 戻す操作の結果。applied は作業ツリーに適用した件数、capture は取り消しの控え(取れなかったら理由) */
@@ -283,8 +292,10 @@ export async function revertAgentChangeHunk(
 }
 
 /**
- * すべて戻す。確認のときに見せた一覧(expected)と実行時の一覧を完全一致で照合し、違えば何も変えない(パターン 62)。
- * 全件を先に調べ、1 件でも戻せなければ何もしない。途中で失敗したら、1 件以上済んでいれば partial(パターン 52)
+ * すべて戻す(L-063 の 1 つの流れ)。実行時の一覧 → 件数の上限の検査(除く前の件数。打ち切った一覧では使えない) → author を付ける →
+ * 利用者の変更・利用者の変更を含む行を除く(isAgentRevertAllTarget。確認の一覧と同じ定義。L-036・L-058) → 確認のときに見せた一覧
+ * (expected)と完全一致で照合し、違えば何も変えない(パターン 62) → 全件を先に調べ、1 件でも戻せなければ何もしない → 控えと適用。
+ * 途中で失敗したら、1 件以上済んでいれば partial(パターン 52)。対象が 0 件で確認の一覧も空なら何も変えずに applied: 0
  */
 export async function revertAllAgentChanges(
   context: AgentRevertContext,
@@ -292,9 +303,10 @@ export async function revertAllAgentChanges(
 ): Promise<DiscardAllResult & AgentRevertOutcome> {
   const entries = await collectAgentChangeEntries(context.snapshot, context.gitOptions)
   if (entries.length > AGENT_CHANGES_LIST_LIMIT) throw new Error(AGENT_REVERT_ALL_TOO_MANY_MESSAGE)
-  assertSameEntries(entries, expected, AGENT_REVERT_ALL_MISMATCH_MESSAGE)
+  const targetEntries = (await context.attributeEntries(entries)).filter(isAgentRevertAllTarget)
+  assertSameEntries(targetEntries, expected, AGENT_REVERT_ALL_MISMATCH_MESSAGE)
   const gits = gitsFor(context)
-  const targets = await assessRevertAllTargets(gits, entries)
+  const targets = await assessRevertAllTargets(gits, targetEntries)
   const { folderPath } = context.snapshot
   let applied = 0
   const { result, capture } = await withUndoRecorder(

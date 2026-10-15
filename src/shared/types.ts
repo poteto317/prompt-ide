@@ -42,6 +42,7 @@ export {
   AGENT_CHANGES_UNAVAILABLE_REASONS,
   AGENT_CHANGE_STATUSES,
   isAgentChangeStatus,
+  isAgentRevertAllTarget,
   isSameAgentChangesScope,
   toAgentChangeRelativePath
 } from './types/agentChanges'

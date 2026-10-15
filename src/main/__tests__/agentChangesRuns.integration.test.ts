@@ -39,7 +39,14 @@ const entry = (
   path: string,
   status: 'A' | 'M' | 'D' | 'T',
   extra: { isDirectory?: boolean; notRecorded?: boolean } = {}
-): unknown => ({ path, status, isDirectory: false, notRecorded: false, ...extra })
+): unknown => ({
+  path,
+  status,
+  isDirectory: false,
+  notRecorded: false,
+  author: null,
+  ...extra
+})
 
 // diff の変更の行(+++・--- のヘッダーを除く)
 const changedLines = (diff: string): string[] =>

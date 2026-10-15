@@ -1,6 +1,7 @@
 import { vi } from 'vitest'
 import type {
   AgentChangeEntry,
+  AgentChangesAttributionSummary,
   AgentChangesList,
   AgentChangesListResult,
   AgentChangesRun,
@@ -23,12 +24,36 @@ import type { AgentChangesPanelState } from '../hooks/useAgentChangesWiring'
 // 型にフィールドが増えたときに、試す対象ではないテストまで直さずに済むようにする(SRP L3-03)。
 // 操作はそれぞれの型で vi.fn を作るため、戻り値の契約から外れた上書きは型検査で分かる
 
-/** 一覧の行。既定は status 'M'・ファイル・記録済み */
+/** 記録の区別の要約(tracking)。既定は区別をまだ始めていない(since null)・割り当てなかった間なし(区別していない記録と同じ文言になる) */
+export function makeAgentChangesTrackingSummary(
+  overrides: Partial<
+    Omit<Extract<AgentChangesAttributionSummary, { kind: 'tracking' }>, 'kind'>
+  > = {}
+): AgentChangesAttributionSummary {
+  return { kind: 'tracking', since: null, hadUnassignedSince: false, ...overrides }
+}
+
+/** 記録の区別の要約(lost)。既定は checkpoint-failed・lostAt 100・集合なし(区別していない)・since null */
+export function makeAgentChangesLostSummary(
+  overrides: Partial<Omit<Extract<AgentChangesAttributionSummary, { kind: 'lost' }>, 'kind'>> = {}
+): AgentChangesAttributionSummary {
+  return {
+    kind: 'lost',
+    reason: 'checkpoint-failed',
+    lostAt: 100,
+    hadMarks: false,
+    since: null,
+    hadUnassignedSince: false,
+    ...overrides
+  }
+}
+
+/** 一覧の行。既定は status 'M'・ファイル・記録済み・区別なし(author null) */
 export function makeAgentChangeEntry(
   path: string,
   overrides: Partial<AgentChangeEntry> = {}
 ): AgentChangeEntry {
-  return { path, status: 'M', isDirectory: false, notRecorded: false, ...overrides }
+  return { path, status: 'M', isDirectory: false, notRecorded: false, author: null, ...overrides }
 }
 
 /** 一覧(記録の時点との比較)。totalCount の既定は entries.length、打ち切りなし・HEAD は変わっていない */
@@ -56,19 +81,25 @@ export function makeAgentChangesRun(overrides: Partial<AgentChangesRun> = {}): A
   }
 }
 
-/** IPC の記録中の状態(begin・getState の応答)。startedAt の既定は 100、実行なし、取り消しの控えなし */
+/** IPC の記録中の状態(begin・getState の応答)。startedAt の既定は 100、実行なし、取り消しの控えなし、区別の要約は区別していない tracking */
 export function makeAgentChangesRecordingState(
   overrides: {
     startedAt?: number
     runs?: AgentChangesRun[]
     undo?: AgentChangesUndoSummary | null
+    attribution?: AgentChangesAttributionSummary
   } = {}
 ): Extract<AgentChangesState, { kind: 'recording' }> {
-  const { startedAt = 100, runs = [], undo = null } = overrides
-  return { kind: 'recording', startedAt, runs, undo }
+  const {
+    startedAt = 100,
+    runs = [],
+    undo = null,
+    attribution = makeAgentChangesTrackingSummary()
+  } = overrides
+  return { kind: 'recording', startedAt, runs, undo, attribution }
 }
 
-/** 記録中の view。entries が null なら一覧をまだ取っていない記録中。startedAt の既定は 100、実行なし、一覧の範囲は累積、取り消しの控えなし */
+/** 記録中の view。entries が null なら一覧をまだ取っていない記録中。startedAt の既定は 100、実行なし、一覧の範囲は累積、取り消しの控えなし、区別の要約は区別していない tracking */
 export function makeAgentChangesRecordingView(
   entries: AgentChangeEntry[] | null,
   overrides: {
@@ -79,6 +110,7 @@ export function makeAgentChangesRecordingView(
     runs?: AgentChangesRun[]
     scope?: AgentChangesScope
     undo?: AgentChangesUndoSummary | null
+    attribution?: AgentChangesAttributionSummary
   } = {}
 ): AgentChangesView {
   const {
@@ -86,6 +118,7 @@ export function makeAgentChangesRecordingView(
     runs = [],
     scope = { kind: 'all' },
     undo = null,
+    attribution = makeAgentChangesTrackingSummary(),
     ...listOverrides
   } = overrides
   return {
@@ -96,11 +129,12 @@ export function makeAgentChangesRecordingView(
       entries === null
         ? null
         : { kind: 'listed', scope, ...makeAgentChangesList(entries, listOverrides) },
-    undo
+    undo,
+    attribution
   }
 }
 
-/** 範囲の一覧を出せない(写しが古い)記録中の view。startedAt の既定は 100、実行なし、取り消しの控えなし */
+/** 範囲の一覧を出せない(写しが古い)記録中の view。startedAt の既定は 100、実行なし、取り消しの控えなし、区別の要約は区別していない tracking */
 export function makeAgentChangesScopeUnavailableView(
   scope: AgentChangesScope,
   reason: AgentChangesScopeUnavailableReason,
@@ -108,19 +142,26 @@ export function makeAgentChangesScopeUnavailableView(
     startedAt?: number
     runs?: AgentChangesRun[]
     undo?: AgentChangesUndoSummary | null
+    attribution?: AgentChangesAttributionSummary
   } = {}
 ): AgentChangesView {
-  const { startedAt = 100, runs = [], undo = null } = overrides
+  const {
+    startedAt = 100,
+    runs = [],
+    undo = null,
+    attribution = makeAgentChangesTrackingSummary()
+  } = overrides
   return {
     kind: 'recording',
     startedAt,
     runs,
     list: { kind: 'scope-unavailable', scope, reason },
-    undo
+    undo,
+    attribution
   }
 }
 
-/** IPC の list の結果(kind: 'recording')。startedAt の既定は 100、実行なし、取り消しの控えなし、範囲は累積 */
+/** IPC の list の結果(kind: 'recording')。startedAt の既定は 100、実行なし、取り消しの控えなし、区別の要約は区別していない tracking、範囲は累積 */
 export function makeAgentChangesListResult(
   entries: AgentChangeEntry[],
   overrides: Partial<
@@ -131,6 +172,7 @@ export function makeAgentChangesListResult(
     startedAt = 100,
     runs = [],
     undo = null,
+    attribution = makeAgentChangesTrackingSummary(),
     scope = { kind: 'all' },
     ...listOverrides
   } = overrides
@@ -139,12 +181,13 @@ export function makeAgentChangesListResult(
     startedAt,
     runs,
     undo,
+    attribution,
     scope,
     ...makeAgentChangesList(entries, listOverrides)
   }
 }
 
-/** IPC の list の結果(kind: 'scope-unavailable'。範囲の一覧を出せない)。startedAt の既定は 100、実行なし、取り消しの控えなし */
+/** IPC の list の結果(kind: 'scope-unavailable'。範囲の一覧を出せない)。startedAt の既定は 100、実行なし、取り消しの控えなし、区別の要約は区別していない tracking */
 export function makeAgentChangesScopeUnavailableListResult(
   scope: AgentChangesScope,
   reason: AgentChangesScopeUnavailableReason,
@@ -152,10 +195,16 @@ export function makeAgentChangesScopeUnavailableListResult(
     startedAt?: number
     runs?: AgentChangesRun[]
     undo?: AgentChangesUndoSummary | null
+    attribution?: AgentChangesAttributionSummary
   } = {}
 ): AgentChangesListResult {
-  const { startedAt = 100, runs = [], undo = null } = overrides
-  return { kind: 'scope-unavailable', startedAt, runs, undo, scope, reason }
+  const {
+    startedAt = 100,
+    runs = [],
+    undo = null,
+    attribution = makeAgentChangesTrackingSummary()
+  } = overrides
+  return { kind: 'scope-unavailable', startedAt, runs, undo, attribution, scope, reason }
 }
 
 /** 取り消しの控えの要約。既定は undoId 1・ファイル・a.txt の書き戻し */
@@ -248,7 +297,7 @@ export function makeAgentChangesPanelChanges(
   }
 }
 
-/** useAgentChangesRevert の戻り値。既定は押せる・実行していない・失敗なし。操作はすべて resolve する vi.fn */
+/** useAgentChangesRevert の戻り値。既定は押せる・実行していない・失敗なし・除く行なし。操作はすべて resolve する vi.fn */
 export function makeAgentChangesRevertState(
   overrides: Partial<AgentChangesRevertState> = {}
 ): AgentChangesRevertState {
@@ -260,6 +309,7 @@ export function makeAgentChangesRevertState(
     hunkNotice: null,
     revertDisabledReason: null,
     revertAllDisabledReason: null,
+    revertAllExcludedCount: 0,
     revertFile: vi.fn<AgentChangesRevertState['revertFile']>(async () => undefined),
     revertHunk: vi.fn<AgentChangesRevertState['revertHunk']>(async () => undefined),
     revertAll: vi.fn<AgentChangesRevertState['revertAll']>(async () => undefined),

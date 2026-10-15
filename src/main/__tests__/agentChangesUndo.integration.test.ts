@@ -67,7 +67,8 @@ afterEach(() => {
 const record = async (maxBytes = AGENT_CHANGES_UNDO_MAX_BYTES): Promise<AgentRevertContext> => ({
   snapshot: await recordBaseline(repo, tempRoot),
   trash,
-  undoCapture: { tempRoot, maxBytes }
+  undoCapture: { tempRoot, maxBytes },
+  attributeEntries: async (entries) => entries
 })
 
 // 戻した結果の控えで取り消す(registry を通さず、関数どうしをつなぐ)

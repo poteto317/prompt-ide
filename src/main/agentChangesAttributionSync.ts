@@ -1,12 +1,15 @@
 import type { AgentChangeEntry, AgentChangesAttributionLostReason } from '@shared/types'
 import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
 import type { AgentChangesCheckpoint, TrackingAttribution } from './agentChangesAttribution'
+import { currentPeriodTracking, toLostAttribution } from './agentChangesAttribution'
 import type { AgentChangesRecord } from './agentChangesRecord'
 import type { AgentToolActivitySignal, AgentToolPhase } from './agentToolActivity'
 
 // 記録の区別の同期と吸収の手順(設計書「同期」「アプリの戻す操作・取り消しの吸収」「やめる」)。registry が所有者の列の中でだけ呼ぶ
 // (列の外から呼ばない)。判定の区切り(takeBaselineSnapshot。写しの元は直前の判定の区切り)を取り、直前の区切りとの差分(tree どうし)を
-// 閉じた区間の段階に割り当て、前の区切りを結果の後に消す(L-003・L-004)。区切り・差分の失敗と、手順の予期しない例外の後は区別をやめる(lost。L-002)
+// 閉じた区間の段階に割り当て、前の区切りを結果の後に消す(L-003・L-004)。区切り・差分の失敗と、手順の予期しない例外の後は区別をやめる(lost。L-002)。
+// 一覧の行の author のための今の区間のパス(currentPeriodPaths。設計書「行の author」1)も、吸収の (1) と同じ始めの合図の規則を使ってここで求める
+// (一覧は読み取りの経路のため、段階が違うだけのときは記録に印を立てず、そのとき限りの unassigned を返す)
 
 /** registry の同期の結果。synced: 区切りを取った、skipped: それ以外(手順 1〜3 で終わった・取り消した・失敗して lost にした) */
 export type AttributionSyncResult = 'synced' | 'skipped'
@@ -25,6 +28,8 @@ export interface AttributionSyncContext {
   /** 判定の区切りを取る(写しの元は直前の判定の区切りのインデックス。isCanceled は isStale と同じ) */
   takeSnapshot: (baseIndexPath: string) => Promise<BaselineSnapshotResult>
   collectBetween: (start: BaselineSnapshot, end: BaselineSnapshot) => Promise<AgentChangeEntry[]>
+  /** 判定の区切り → 作業ツリーの行(agentChangesQuery の collectAgentChangeEntries。打ち切らない)。今の区間の比較に使う */
+  collectCurrent: (snapshot: BaselineSnapshot) => Promise<AgentChangeEntry[]>
   /** registry の close・世代の変化・記録の置き換え(手順 11。L-037) */
   isStale: () => boolean
   /** 取れたが使わない区切りを消す(close の後は同期で消す。L-435) */
@@ -37,8 +42,8 @@ export interface AttributionSyncContext {
 const SKIPPED: AttributionStepOutcome = { kind: 'skipped' }
 
 /**
- * 区別をやめる(設計書「やめる」)。集合と印は残し、判定の区切りは始点と共有でなければ消す(消せなければ削除待ち)。
- * 所有者の列の中でだけ呼ぶ。記録の区別を置き換えてから await する(途中で読まれても lost に見える)
+ * 区別をやめる(設計書「やめる」)。集合と印は残し(lost の区別の形は toLostAttribution)、判定の区切りは始点と共有でなければ消す
+ * (消せなければ削除待ち)。所有者の列の中でだけ呼ぶ。記録の区別を置き換えてから await する(途中で読まれても lost に見える)
  */
 export async function markAttributionLost(
   record: AgentChangesRecord,
@@ -47,25 +52,9 @@ export async function markAttributionLost(
 ): Promise<void> {
   const attribution = record.attribution
   if (attribution.kind !== 'tracking') return
-  const {
-    checkpoint,
-    userPaths,
-    agentPaths,
-    trackingSince,
-    hadUnassignedSince,
-    staleCheckpointDirs
-  } = attribution
-  record.attribution = {
-    kind: 'lost',
-    reason,
-    lostAt: now(),
-    userPaths,
-    agentPaths,
-    trackingSince,
-    hadUnassignedSince,
-    staleCheckpointDirs
-  }
-  await removeCheckpointDir(removeDir, checkpoint, staleCheckpointDirs)
+  // 置き換えた後の削除待ちは元と同じ配列(消せなかった区切りをここへ足す)
+  record.attribution = toLostAttribution(attribution, reason, now())
+  await removeCheckpointDir(removeDir, attribution.checkpoint, attribution.staleCheckpointDirs)
 }
 
 /**
@@ -181,21 +170,25 @@ export interface NextPeriodStart {
 
 /**
  * 手順 9 の規則。新しい区間の段階は手順 8 の合図の値。同期の開始の前・手順 8 までに打ち切りがあり(timedOut)、手順 8 の段階が
- * agent でなければ並べ直し、その区間にも印を立てる。手順 2・8 の合図の unassignable も印にする(L-103・L-434)
+ * agent でなければ並べ直し、その区間にも印を立てる。手順 2・8 の合図の unassignable と、手順 4 の後に notifyAttributionSignal が
+ * 立てた印(signalMarkedDuringSync。立ってすぐ下りた合図)も印にする。合図が理由の印では並べ直さない(L-103・L-434)
  */
 export function nextPeriodStart({
   timedOut,
   signalAtStart,
-  signalNow
+  signalNow,
+  signalMarkedDuringSync
 }: {
   timedOut: boolean
   signalAtStart: AgentToolActivitySignal
   signalNow: AgentToolActivitySignal
+  signalMarkedDuringSync: boolean
 }): NextPeriodStart {
   const requeue = timedOut && signalNow.phase !== 'agent'
   return {
     phase: signalNow.phase,
-    periodUnassignable: requeue || signalNow.unassignable || signalAtStart.unassignable,
+    periodUnassignable:
+      requeue || signalNow.unassignable || signalAtStart.unassignable || signalMarkedDuringSync,
     requeue
   }
 }
@@ -206,6 +199,47 @@ const removeCheckpoint = (
   previous: AgentChangesCheckpoint,
   attribution: TrackingAttribution
 ): Promise<void> => removeCheckpointDir(ctx.removeDir, previous, attribution.staleCheckpointDirs)
+
+/** 区間の始めの合図の確認の判定(signalBeforePeriod の結果) */
+export type SignalBeforePeriod =
+  | { kind: 'lost'; reason: AgentChangesAttributionLostReason }
+  | { kind: 'marked' }
+  | { kind: 'phase-differs' }
+  | { kind: 'clear' }
+
+/**
+ * 吸収の (1)・今の区間の比較の始めの合図の規則(純粋な関数。L-040)。合図が lost なら lost(合図の理由)、合図の unassignable が
+ * 立っていれば marked、合図の段階が記録の段階と違うだけ(列が埋まっている間に段階が変わり、その変化の同期がまだ走っていない)なら
+ * phase-differs、どれでもなければ clear
+ */
+export function signalBeforePeriod(
+  signal: AgentToolActivitySignal,
+  phase: AgentToolPhase
+): SignalBeforePeriod {
+  if (signal.lost !== null) return { kind: 'lost', reason: signal.lost }
+  if (signal.unassignable) return { kind: 'marked' }
+  if (signal.phase !== phase) return { kind: 'phase-differs' }
+  return { kind: 'clear' }
+}
+
+/**
+ * 吸収の (1)・今の区間の比較の始めの合図の確認(設計書「アプリの戻す操作・取り消しの吸収」「行の author」1。L-040)。記録の古い段階で
+ * 区間を割り当てないため、呼ばれた時点の合図を読み、判定(signalBeforePeriod)を記録に反映する。lost なら記録を lost(合図の理由)に
+ * して 'lost'、marked なら今の区間に印を立てて 'marked'(印は続く同期が手順 3 で見て片付ける。並べ直しは増えない)。phase-differs は
+ * markPhaseDiffers が真(吸収の (1)。閉じた区間を記録の古い段階で割り当てないため、区切りを取る前に印を立てる)なら印を立てて 'marked'、
+ * 偽(一覧の経路。読み取りなので記録を書き換えない)なら印を立てずに 'phase-differs'。clear なら 'clear'
+ */
+async function checkSignalBeforePeriod(
+  ctx: AttributionSyncContext,
+  attribution: TrackingAttribution,
+  { markPhaseDiffers }: { markPhaseDiffers: boolean }
+): Promise<SignalBeforePeriod['kind']> {
+  const check = signalBeforePeriod(ctx.signal(), attribution.phase)
+  if (check.kind === 'lost') await markAttributionLost(ctx.record, check.reason, ctx)
+  const marks = check.kind === 'marked' || (check.kind === 'phase-differs' && markPhaseDiffers)
+  if (marks) attribution.periodUnassignable = true
+  return marks ? 'marked' : check.kind
+}
 
 /**
  * 同期の 1 回(設計書「同期」の手順 2〜11。手順 1〈記録が無い・close〉は registry が見る)。段階は呼ばれた時点の追跡の値で読み、
@@ -227,11 +261,13 @@ export async function syncAttributionStep(
   if (signalAtStart.unassignable) attribution.periodUnassignable = true
   // 3. 段階が同じで印も無ければ何もしない(git を呼ばない)
   if (signalAtStart.phase === attribution.phase && !attribution.periodUnassignable) return SKIPPED
-  // 4. 印を控えて下ろす(この後の打ち切りは markToolStartTimedOut がまた立てる)
+  // 4. 印を控えて下ろす(この後の打ち切りは markToolStartTimedOut が、合図の印は notifyAttributionSignal がまた立てる。
+  //    手順 4 より前に立った合図の印は unassignableBefore に入る。L-448)
   const unassignableBefore = attribution.periodUnassignable
   const timeoutBefore = attribution.timedOutPending
   attribution.periodUnassignable = false
   attribution.timedOutPending = false
+  attribution.signalUnassignablePending = false
   // 5. 区切り S
   const previous = attribution.checkpoint
   const next = await takeCheckpoint(ctx, previous)
@@ -253,8 +289,10 @@ export async function syncAttributionStep(
   const { phase, periodUnassignable, requeue } = nextPeriodStart({
     timedOut,
     signalAtStart,
-    signalNow
+    signalNow,
+    signalMarkedDuringSync: attribution.signalUnassignablePending
   })
+  attribution.signalUnassignablePending = false
   attribution.phase = phase
   attribution.periodUnassignable = periodUnassignable
   openPeriod(attribution, ctx.now())
@@ -264,8 +302,9 @@ export async function syncAttributionStep(
 }
 
 /**
- * 吸収の (1)(設計書「アプリの戻す操作・取り消しの吸収」)。区切り S1 を取り、前の区切りからの差分を今の段階に割り当てる
- * (印があれば割り当てない)。印は下ろさない(吸収の前に立った打ち切りの印も、差分を求めている最中の印も残す)。
+ * 吸収の (1)(設計書「アプリの戻す操作・取り消しの吸収」)。始めから古い記録は何もせず skipped(currentPeriodPaths と揃える)。始めに合図を読み、lost なら区切りを取らずに lost にし、段階の違い・
+ * 合図の unassignable なら閉じた区間を割り当てない印を立てる(checkSignalBeforePeriod)。区切り S1 を取り、前の区切りからの差分を
+ * 今の段階に割り当てる(印があれば割り当てない)。印は下ろさない(吸収の前に立った打ち切りの印も、差分を求めている最中の印も残す)。
  * timedOutPending も下ろさない(続く同期が手順 4・9 で片付ける)。段階は変えない
  */
 export async function absorbBeforeTask(
@@ -273,8 +312,11 @@ export async function absorbBeforeTask(
 ): Promise<AttributionStepOutcome> {
   const { record } = ctx
   const attribution = record.attribution
-  if (attribution.kind !== 'tracking') return SKIPPED
+  if (attribution.kind !== 'tracking' || ctx.isStale()) return SKIPPED
   const phase = attribution.phase
+  if ((await checkSignalBeforePeriod(ctx, attribution, { markPhaseDiffers: true })) === 'lost') {
+    return { kind: 'lost', phaseBefore: phase }
+  }
   const previous = attribution.checkpoint
   const next = await takeCheckpoint(ctx, previous)
   if (next === 'canceled') return SKIPPED
@@ -309,4 +351,38 @@ export async function absorbAfterTask(
   attribution.checkpoint = { snapshot: next, sharedWithBaseline: false }
   await removeCheckpoint(ctx, previous, attribution)
   return { kind: 'synced', phaseBefore: phase, requeue: false }
+}
+
+/**
+ * 今の区間(最後の判定の区切り → 作業ツリー)のパス(設計書「行の author」1)。始めから古い記録・tracking でない記録は何もせず null(tracking なら区別を始める前(trackingSince が null)でも合図を確かめる)。
+ * 始めに合図を確かめ(吸収の (1) と同じ部品)、lost なら記録を lost(合図の理由)にして 'lost'、合図の unassignable なら今の区間に印を
+ * 立てて null(記録の古い段階で割り当てない。L-040)。合図の段階が記録の段階と違うだけなら、記録を書き換えずに(印を立てると、続く
+ * 同期が閉じた区間を割り当てなくなる)比べずに 'unassigned'(そのとき限りの印。呼び出し側がそのときの要約の hadUnassignedSince に
+ * だけ OR する)。印のある区間も null。区切りが始点と共有なら渡された累積の行
+ * (打ち切った後の行でよい。行どうしの照合では各行が自分自身に一致する)のパス、そうでなければ collectCurrent の行のパス。
+ * 比較の失敗は、記録が今の記録のままなら lost(checkpoint-failed)にして 'lost'(一覧は失敗にしない。L-002・L-424)、
+ * 古くなっていれば記録を変えずに null。待ち・同期の並べ直しはしない(L-446)
+ */
+export async function currentPeriodPaths(
+  ctx: AttributionSyncContext,
+  entries: readonly AgentChangeEntry[]
+): Promise<string[] | 'lost' | 'unassigned' | null> {
+  const attribution = ctx.record.attribution
+  if (attribution.kind !== 'tracking' || ctx.isStale()) return null
+  const check = await checkSignalBeforePeriod(ctx, attribution, { markPhaseDiffers: false })
+  if (check === 'lost') return 'lost'
+  if (check === 'phase-differs') return 'unassigned'
+  const tracking = currentPeriodTracking(attribution)
+  if (check === 'marked' || tracking === null) return null
+  const { checkpoint } = tracking
+  if (checkpoint.sharedWithBaseline) return entries.map((entry) => entry.path)
+  let current: AgentChangeEntry[]
+  try {
+    current = await ctx.collectCurrent(checkpoint.snapshot)
+  } catch {
+    if (ctx.isStale()) return null
+    await markAttributionLost(ctx.record, 'checkpoint-failed', ctx)
+    return 'lost'
+  }
+  return ctx.isStale() ? null : current.map((entry) => entry.path)
 }
