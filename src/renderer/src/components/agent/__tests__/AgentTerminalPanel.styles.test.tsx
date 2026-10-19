@@ -152,6 +152,14 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
     const indexOfRule = (selector: string): number =>
       cssRules().findIndex((rule) => rule.selectorText.split(/,\s*/).includes(selector))
 
+    it('読み上げの要素(.agent-terminal-panel__live)は視覚的に隠す(読み上げには残す)', () => {
+      renderRunning(null)
+      const live = styleOf(document.body, '.agent-terminal-panel__live')
+      expect(live.position).toBe('absolute')
+      expect(live.width).toBe('1px')
+      expect(live.overflow).toBe('hidden')
+    })
+
     it('縮まず、折り返さない(共通のボタンの規則)', () => {
       const style = getComputedStyle(renderRunning(null))
       expect(style.flexShrink).toBe('0')
