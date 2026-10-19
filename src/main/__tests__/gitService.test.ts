@@ -451,8 +451,11 @@ describe('getDiff', () => {
     // core.quotePath=false を指定しないと、ファイル名に非ASCII文字を含む場合
     // git diff の出力がダブルクォート+オクタルエスケープされ(例: "b/\346...")、
     // diffParser.ts の toSelfDiffHeaderLines が "+++ b/" の固定長プレフィックスで
-    // 新パスを切り出せなくなる(実機で再現確認済み)
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project', { config: ['core.quotePath=false'] })
+    // 新パスを切り出せなくなる(実機で再現確認済み)。diff.suppressBlankEmpty=false はパッチの形式を固定する設定
+    // (gitDiffArgs の PATCH_FORMAT_CONFIG。実 git の出力は gitService.diff.integration.test.ts で固定)
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      config: ['core.quotePath=false', 'diff.suppressBlankEmpty=false']
+    })
     expect(mockStatus).not.toHaveBeenCalled()
     expect(mockDiff).toHaveBeenCalledWith([
       '--no-ext-diff',

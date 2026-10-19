@@ -18,7 +18,7 @@ import {
   buildEmptyFileDiffMessage
 } from './gitDiffFormatter'
 import { toLiteralPathspec } from './gitPathParsing'
-import { PATCH_FORMAT_ARGS } from './gitDiffArgs'
+import { PATCH_FORMAT_ARGS, PATCH_FORMAT_CONFIG } from './gitDiffArgs'
 import { parseGitLogOutput } from './gitLogFormatter'
 import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName } from '@shared/branchName'
@@ -158,7 +158,7 @@ export async function getDiff(
   // は "+++ b/" の固定長プレフィックスで新パスを切り出すため、エスケープされた
   // 形式だとリネームを伴うファイルのハンク単位ステージ/アンステージが壊れる
   // (実機で再現確認済み)
-  const git = simpleGit(folderPath, { config: ['core.quotePath=false'] })
+  const git = simpleGit(folderPath, { config: ['core.quotePath=false', ...PATCH_FORMAT_CONFIG] })
   // 未追跡かどうかは呼び出し元(renderer)が既に持っている git status 由来の情報を
   // そのまま受け取る。ここで改めて git.status() を呼んでリポジトリ全体を再スキャン
   // すると、diff タブを開くたびに無駄な I/O が発生する

@@ -17,3 +17,10 @@ export const PATCH_FORMAT_ARGS: readonly string[] = [
   '--src-prefix=a/',
   '--dst-prefix=b/'
 ]
+
+// diff のオプションでは打ち消せない設定は、diff を作る git の -c(simple-git の config)で打ち消す。PATCH_FORMAT_ARGS と
+// 一緒に使う。実機で再現確認済み:
+// - diff.suppressBlankEmpty=true: 空の文脈行が先頭の空白なしの空行で出力され、ハンクのパッチの検査(gitHunkPatch の
+//   assertHunkPatchTargets)が食い違いとして拒否し、空行を文脈に含むハンクの破棄とエージェントの変更の ↶ が失敗する
+//   (ステージ・アンステージはこの検査を通らず、git apply も空行を空の文脈行として受け付けるため失敗しない)
+export const PATCH_FORMAT_CONFIG: readonly string[] = ['diff.suppressBlankEmpty=false']
