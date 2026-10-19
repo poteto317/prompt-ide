@@ -624,6 +624,14 @@ describe('AgentTerminalPanel: 中断', () => {
     }
   )
 
+  // キーボード(Enter・Space)と支援技術のクリックは detail が 0 で届く。ダブルクリックの判定がこれを捨てないこと
+  it('キーボードのクリック(detail: 0)では onInterrupt を呼ぶ', () => {
+    const state = runningState()
+    render(<AgentTerminalPanel state={state} />)
+    fireEvent.click(interruptButton(), { detail: 0 })
+    expect(state.interrupt.onInterrupt).toHaveBeenCalledOnce()
+  })
+
   it('ダブルクリックの 2 回目(detail: 2)では onInterrupt を呼ばない', () => {
     const state = runningState()
     render(<AgentTerminalPanel state={state} />)
