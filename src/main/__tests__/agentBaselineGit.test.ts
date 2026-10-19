@@ -8,6 +8,7 @@ import {
   SIMPLE_GIT_BLOCKED_ENV_KEYS,
   buildBaselineGitEnv,
   buildIsolatedGitEnv,
+  buildEnglishMessagesGitEnv,
   buildModeGitEnv,
   createBaselineGit,
   createModeGit,
@@ -219,6 +220,90 @@ describe('buildModeGitEnv', () => {
     expect(buildModeGitEnv({ Lc_All: 'fr_FR.UTF-8', language: 'fr', PATH: '/usr/bin' })).toEqual({
       PATH: '/usr/bin',
       LC_ALL: 'C'
+    })
+  })
+})
+
+// 記録の add -A の読めないパスの検出の git の環境(PR #59 レビュー第 1 周の指摘 1)。メッセージ(LC_MESSAGES)だけを C にし、
+// ほかのロケールのカテゴリは利用者のままにする(clean filter が見るロケールを一覧の git diff と揃える)
+describe('buildEnglishMessagesGitEnv', () => {
+  it('LC_ALL があれば外して POSIX のカテゴリ(LC_CTYPE など 5 つ)にその値を入れ、LANGUAGE を外して LC_MESSAGES=C を置く。元を書き換えない', () => {
+    const source: NodeJS.ProcessEnv = {
+      PATH: '/usr/bin',
+      LANG: 'fr_FR.UTF-8',
+      LC_ALL: 'en_US.UTF-8',
+      LC_CTYPE: 'ja_JP.UTF-8',
+      LC_MESSAGES: 'fr_FR.UTF-8',
+      LANGUAGE: 'fr',
+      GIT_DIR: '/elsewhere/.git',
+      UNDEFINED_VALUE: undefined
+    }
+    const before = { ...source }
+    expect(buildEnglishMessagesGitEnv(source)).toEqual({
+      PATH: '/usr/bin',
+      LANG: 'fr_FR.UTF-8',
+      LC_CTYPE: 'en_US.UTF-8',
+      LC_COLLATE: 'en_US.UTF-8',
+      LC_NUMERIC: 'en_US.UTF-8',
+      LC_TIME: 'en_US.UTF-8',
+      LC_MONETARY: 'en_US.UTF-8',
+      LC_MESSAGES: 'C',
+      GIT_DIR: '/elsewhere/.git'
+    })
+    expect(source).toEqual(before)
+  })
+
+  it('LC_ALL が無ければ、ほかのロケールの変数(LANG・LC_CTYPE など)は今のまま残し、LC_MESSAGES=C だけを置く', () => {
+    expect(
+      buildEnglishMessagesGitEnv({
+        PATH: '/usr/bin',
+        LANG: 'fr_FR.UTF-8',
+        LC_CTYPE: 'ja_JP.UTF-8',
+        LC_MESSAGES: 'fr_FR.UTF-8'
+      })
+    ).toEqual({
+      PATH: '/usr/bin',
+      LANG: 'fr_FR.UTF-8',
+      LC_CTYPE: 'ja_JP.UTF-8',
+      LC_MESSAGES: 'C'
+    })
+  })
+
+  it('空の LC_ALL は無いものとして外す(libc は空の LC_ALL を見ない)', () => {
+    expect(buildEnglishMessagesGitEnv({ LC_ALL: '', LANG: 'fr_FR.UTF-8' })).toEqual({
+      LANG: 'fr_FR.UTF-8',
+      LC_MESSAGES: 'C'
+    })
+  })
+
+  it('大文字小文字の違う LC_ALL・LANGUAGE・LC_MESSAGES・カテゴリ(Windows の環境変数)も外してから置く', () => {
+    expect(
+      buildEnglishMessagesGitEnv({
+        Lc_All: 'en_US.UTF-8',
+        language: 'fr',
+        lc_messages: 'fr_FR.UTF-8',
+        Lc_Ctype: 'ja_JP.UTF-8',
+        PATH: '/usr/bin'
+      })
+    ).toEqual({
+      PATH: '/usr/bin',
+      LC_CTYPE: 'en_US.UTF-8',
+      LC_COLLATE: 'en_US.UTF-8',
+      LC_NUMERIC: 'en_US.UTF-8',
+      LC_TIME: 'en_US.UTF-8',
+      LC_MONETARY: 'en_US.UTF-8',
+      LC_MESSAGES: 'C'
+    })
+  })
+
+  it('LC_ALL と大文字小文字の違う変数が両方あれば、LC_ALL の値を使う', () => {
+    expect(buildEnglishMessagesGitEnv({ lc_all: 'ja_JP.UTF-8', LC_ALL: 'en_US.UTF-8' })).toEqual({
+      LC_CTYPE: 'en_US.UTF-8',
+      LC_COLLATE: 'en_US.UTF-8',
+      LC_NUMERIC: 'en_US.UTF-8',
+      LC_TIME: 'en_US.UTF-8',
+      LC_MONETARY: 'en_US.UTF-8',
+      LC_MESSAGES: 'C'
     })
   })
 })

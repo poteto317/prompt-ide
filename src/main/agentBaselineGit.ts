@@ -176,9 +176,8 @@ export function createRepoGit(
 }
 
 /**
- * 方式の判定(agentBaselineMode の resolveBaselineMode)と、記録の add -A の読めないパスの検出(runBaselineGitDetectingUnreadablePath)
- * の git の環境: source の写しの LC_ALL を C にし、LANGUAGE を外す
- * (大文字小文字を問わない)。simple-git の checkIsRepo は「リポジトリでない」を git の英語(とドイツ語)の文言で見分け、翻訳された
+ * 方式の判定(agentBaselineMode の resolveBaselineMode)の git の環境: source の写しの LC_ALL を C にし、LANGUAGE を外す
+ * (大文字小文字を問わない)。filter を動かさない rev-parse 系の命令だけに使う(記録の add -A は buildEnglishMessagesGitEnv)。simple-git の checkIsRepo は「リポジトリでない」を git の英語(とドイツ語)の文言で見分け、翻訳された
  * git(LC_ALL=fr_FR.UTF-8 など)では Git 管理外のフォルダで reject するため、メッセージを英語にする。git の gettext は LANGUAGE を
  * LC_ALL より優先する(LC_ALL が C のときは見ない)ため両方扱う。ほかの変数(位置の変数・設定)は除かない(今の判定のまま)
  */
@@ -191,6 +190,49 @@ export function buildModeGitEnv(source: NodeJS.ProcessEnv): Record<string, strin
     env[key] = value
   }
   env.LC_ALL = 'C'
+  return env
+}
+
+// LC_ALL が上書きする POSIX のロケールのカテゴリのうち、メッセージ(LC_MESSAGES)以外。buildEnglishMessagesGitEnv が LC_ALL を
+// 外すとき、これらに LC_ALL の値を入れて、利用者のロケールのままにする
+const NON_MESSAGE_LOCALE_CATEGORIES = [
+  'LC_CTYPE',
+  'LC_COLLATE',
+  'LC_NUMERIC',
+  'LC_TIME',
+  'LC_MONETARY'
+] as const
+
+/**
+ * 記録の add -A の読めないパスの検出(runBaselineGitDetectingUnreadablePath)の git の環境: source の写しのメッセージのロケール
+ * (LC_MESSAGES)だけを C にし、git の警告と strerror の文言を英語にする。ほかのカテゴリは利用者のままにする。add -A は利用者の
+ * clean filter を動かし、一覧の git diff は利用者のロケールのまま同じ filter を動かすため、LC_ALL=C にすると、ロケールで出力が
+ * 変わる filter で記録と一覧が食い違い、変えていないファイルが「変更」で出ていた(PR #59 レビュー第 1 周の指摘 1)。
+ * LC_ALL は LC_MESSAGES を含むすべてのカテゴリを上書きするため外し、空でなければその値を LC_CTYPE など 5 つのカテゴリに入れる
+ * (filter の見るロケールを変えない。同じ名前が複数あれば LC_ALL の綴りを優先する)。gettext は LC_MESSAGES が C のとき
+ * LANGUAGE を見ないが、念のため外す。大文字小文字を問わない(Windows の環境変数。buildModeGitEnv と同じ)
+ */
+export function buildEnglishMessagesGitEnv(source: NodeJS.ProcessEnv): Record<string, string> {
+  const replaced = new Set<string>(['LC_ALL', 'LANGUAGE', 'LC_MESSAGES'])
+  const env: Record<string, string> = {}
+  let lcAll: string | undefined
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue
+    const upper = key.toUpperCase().trim()
+    if (upper === 'LC_ALL' && value !== '' && (lcAll === undefined || key === 'LC_ALL')) {
+      lcAll = value
+    }
+    if (replaced.has(upper)) continue
+    env[key] = value
+  }
+  if (lcAll !== undefined) {
+    const categories = new Set<string>(NON_MESSAGE_LOCALE_CATEGORIES)
+    for (const key of Object.keys(env)) {
+      if (categories.has(key.toUpperCase().trim())) delete env[key]
+    }
+    for (const category of NON_MESSAGE_LOCALE_CATEGORIES) env[category] = lcAll
+  }
+  env.LC_MESSAGES = 'C'
   return env
 }
 
@@ -386,8 +428,8 @@ const UNREADABLE_DIRECTORY_WARNING_PREFIX = "warning: could not open directory '
 
 // 警告の末尾の strerror の文言のうち、読めないフォルダとしないもの。記録の途中でフォルダが消えた(ENOENT)・フォルダでなく
 // なった(ENOTDIR)だけで、消えたものは記録の時点に無いため正しく記録から外れる。ほかの errno(EACCES など)は今までどおり
-// 読めないフォルダとする(安全側)。英語の文言を前提にできるのは、runBaselineGitDetectingUnreadablePath が LC_ALL=C の
-// 環境(buildModeGitEnv)で git を動かし、strerror の文言も英語に固定されるため
+// 読めないフォルダとする(安全側)。英語の文言を前提にできるのは、runBaselineGitDetectingUnreadablePath が LC_MESSAGES=C の
+// 環境(buildEnglishMessagesGitEnv)で git を動かし、strerror の文言も英語に固定されるため
 const VANISHED_DIRECTORY_ERROR_SUFFIXES: readonly string[] = [
   ': No such file or directory',
   ': Not a directory'
@@ -432,8 +474,9 @@ const isUnreadablePathLine = (line: string): boolean => {
  * 記録の場所 location で git を実行し、stdout と、stderr に読めないパスを表す行が出たかを返す。git は読めないフォルダを
  * 警告(could not open directory)だけ出して飛ばし、読める(r)が実行(x)できないフォルダの中の追跡済みのファイルを
  * 「<パス>: Permission denied」だけ出して飛ばし、どちらも exit 0 で終わる(ls-files --others・add -A)ため、終了コードでは
- * 見分けられない(ローカルレビュー第 33 周の指摘 1・第 35 周の指摘 1)。文言は翻訳されるため、環境を buildModeGitEnv で英語の
- * メッセージ(LC_ALL=C・LANGUAGE を外す)にしてから buildBaselineGitEnv で組み立てる(ほかは runBaselineGitWithInput と同じ)。
+ * 見分けられない(ローカルレビュー第 33 周の指摘 1・第 35 周の指摘 1)。文言は翻訳されるため、環境を buildEnglishMessagesGitEnv で
+ * 英語のメッセージ(LC_MESSAGES=C。ほかのカテゴリは利用者のまま)にしてから buildBaselineGitEnv で組み立てる(ほかは
+ * runBaselineGitWithInput と同じ)。
  * stderr は close までのすべてを行ごとに見る(上限で切らない。CRLF の警告などが多くても見落とさない)。末尾が ENOENT・ENOTDIR の
  * 文言の警告(途中で消えたフォルダ)は読めないパスとしない(ローカルレビュー第 34 周の指摘 1)。打ち切りは simple-git の
  * timeout.block と同じく、出力(stdout・stderr)を受け取るたびにやり直す(core.autocrlf=true では add -A が LF のファイルごとに
@@ -452,7 +495,7 @@ export async function runBaselineGitDetectingUnreadablePath(
   let partialLine = ''
   const stdout = await spawnGitWithInput(
     location.folderPath,
-    buildBaselineGitEnv(buildModeGitEnv(env), location),
+    buildBaselineGitEnv(buildEnglishMessagesGitEnv(env), location),
     args,
     '',
     timeoutMs,

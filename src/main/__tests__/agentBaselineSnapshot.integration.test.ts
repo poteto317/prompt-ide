@@ -1245,3 +1245,66 @@ describe.skipIf(cannotMakeUnreadableDirectory)('読めないフォルダがあ�
     )
   })
 })
+
+// 記録の add -A は読めないパスの警告を英語で見分けるため、メッセージのロケールを英語にして動かす。以前は LC_ALL=C にしていたため、
+// その環境が利用者の clean filter にも渡り、ロケールで出力が変わる filter では、利用者のロケールのまま同じ filter を動かす一覧の
+// git diff と食い違い、変えていないファイルが「変更」で出ていた(PR #59 レビュー第 1 周の指摘 1)。メッセージ(LC_MESSAGES)だけを
+// C にし、ほかのカテゴリは利用者のままにする。filter は文字コード(locale charmap)を内容の末尾に足す。UTF-8 のロケールが無い
+// 環境と Windows は飛ばす
+const UTF8_LOCALE = 'en_US.UTF-8'
+const utf8LocaleCharmap = ((): string => {
+  if (process.platform === 'win32') return ''
+  try {
+    return execFileSync('locale', ['charmap'], { env: { ...process.env, LC_ALL: UTF8_LOCALE } })
+      .toString()
+      .trim()
+  } catch {
+    return ''
+  }
+})()
+describe.skipIf(utf8LocaleCharmap !== 'UTF-8')(
+  'ロケールで出力が変わる clean filter があっても、変えていないファイルは一覧に出ない(実 git)',
+  () => {
+    describe.each([
+      ['リポジトリの方式', createAgentBaselineRepo],
+      ['隠れた git', createAgentNonGitFolder]
+    ] as const)('%s', (_label, createFolder) => {
+      let dirs: AgentBaselineRepo
+
+      beforeEach(() => {
+        dirs = createFolder('baseline-locale-filter-')
+        // 記録・一覧の git は隔離した HOME の .gitconfig を読む(利用者の ~/.gitconfig には書かない)
+        const filter = join(dirs.home, 'charmap-filter.sh')
+        writeFileSync(filter, '#!/bin/sh\ncat\nlocale charmap\n', { mode: 0o755 })
+        writeFileSync(join(dirs.home, '.gitconfig'), `[filter "charmap"]\n\tclean = ${filter}\n`)
+      })
+
+      afterEach(() => disposeAgentBaselineRepo(dirs))
+
+      it.each([
+        ['LC_ALL', 'LC_ALL'],
+        ['LC_CTYPE(LC_ALL は無い)', 'LC_CTYPE']
+      ] as const)(
+        '利用者のロケールが %s で UTF-8 のとき',
+        async (_kind, variable) => {
+          if (variable === 'LC_CTYPE') vi.stubEnv('LC_ALL', undefined)
+          vi.stubEnv(variable, UTF8_LOCALE)
+          writeRepoFile(dirs.repo, '.gitattributes', 'a.txt filter=charmap\n')
+          writeRepoFile(dirs.repo, 'a.txt', 'a\n')
+          const snapshot = recordedSnapshot(
+            await takeBaselineSnapshot(dirs.repo, {
+              tempRoot: dirs.tempRoot,
+              instanceId: FAKE_INSTANCE_ID
+            })
+          )
+          // 内容は変えずに更新時刻だけを進め、一覧の git diff に filter を必ず動かさせる(stat が記録と同じだと filter を動かさず、
+          // 記録と同じ秒に書いたときだけ動く)
+          const later = new Date(Date.now() + 60_000)
+          utimesSync(join(dirs.repo, 'a.txt'), later, later)
+          expect((await listAgentChanges(snapshot)).entries).toEqual([])
+        },
+        30_000
+      )
+    })
+  }
+)

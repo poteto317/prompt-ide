@@ -220,7 +220,7 @@ describe('runBaselineGitDetectingUnreadablePath', () => {
       config: ['advice.addEmbeddedRepo=false']
     })
 
-  it('英語のメッセージの環境(LC_ALL=C・LANGUAGE を外す)と記録のインデックスの環境で起動する', async () => {
+  it('英語のメッセージの環境(LC_ALL をカテゴリへ移して LC_MESSAGES=C・LANGUAGE を外す)と記録のインデックスの環境で起動する', async () => {
     stderrChunks([])
     expect(await run()).toEqual({ stdout: '', unreadablePath: false })
     const [, args, options] = spawnMock.mock.calls[0] as [string, string[], object]
@@ -234,7 +234,17 @@ describe('runBaselineGitDetectingUnreadablePath', () => {
     ])
     expect(options).toEqual({
       cwd: '/repo',
-      env: { PATH: '/bin', LANG: 'fr_FR.UTF-8', LC_ALL: 'C', GIT_INDEX_FILE: '/tmp/index' },
+      env: {
+        PATH: '/bin',
+        LANG: 'fr_FR.UTF-8',
+        LC_CTYPE: 'fr_FR.UTF-8',
+        LC_COLLATE: 'fr_FR.UTF-8',
+        LC_NUMERIC: 'fr_FR.UTF-8',
+        LC_TIME: 'fr_FR.UTF-8',
+        LC_MONETARY: 'fr_FR.UTF-8',
+        LC_MESSAGES: 'C',
+        GIT_INDEX_FILE: '/tmp/index'
+      },
       windowsHide: true
     })
   })
