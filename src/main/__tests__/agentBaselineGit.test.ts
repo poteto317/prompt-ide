@@ -227,7 +227,7 @@ describe('buildModeGitEnv', () => {
 // 記録の add -A の読めないパスの検出の git の環境(PR #59 レビュー第 1 周の指摘 1)。メッセージ(LC_MESSAGES)だけを C にし、
 // ほかのロケールのカテゴリは利用者のままにする(clean filter が見るロケールを一覧の git diff と揃える)
 describe('buildEnglishMessagesGitEnv', () => {
-  it('LC_ALL があれば外して POSIX のカテゴリ(LC_CTYPE など 5 つ)にその値を入れ、LANGUAGE を外して LC_MESSAGES=C を置く。元を書き換えない', () => {
+  it('LC_ALL があれば外して ほかのカテゴリ(POSIX の 5 つと glibc の 6 つ)にその値を入れ、LANGUAGE を外して LC_MESSAGES=C を置く。元を書き換えない', () => {
     const source: NodeJS.ProcessEnv = {
       PATH: '/usr/bin',
       LANG: 'fr_FR.UTF-8',
@@ -247,6 +247,12 @@ describe('buildEnglishMessagesGitEnv', () => {
       LC_NUMERIC: 'en_US.UTF-8',
       LC_TIME: 'en_US.UTF-8',
       LC_MONETARY: 'en_US.UTF-8',
+      LC_PAPER: 'en_US.UTF-8',
+      LC_NAME: 'en_US.UTF-8',
+      LC_ADDRESS: 'en_US.UTF-8',
+      LC_TELEPHONE: 'en_US.UTF-8',
+      LC_MEASUREMENT: 'en_US.UTF-8',
+      LC_IDENTIFICATION: 'en_US.UTF-8',
       LC_MESSAGES: 'C',
       GIT_DIR: '/elsewhere/.git'
     })
@@ -292,6 +298,12 @@ describe('buildEnglishMessagesGitEnv', () => {
       LC_NUMERIC: 'en_US.UTF-8',
       LC_TIME: 'en_US.UTF-8',
       LC_MONETARY: 'en_US.UTF-8',
+      LC_PAPER: 'en_US.UTF-8',
+      LC_NAME: 'en_US.UTF-8',
+      LC_ADDRESS: 'en_US.UTF-8',
+      LC_TELEPHONE: 'en_US.UTF-8',
+      LC_MEASUREMENT: 'en_US.UTF-8',
+      LC_IDENTIFICATION: 'en_US.UTF-8',
       LC_MESSAGES: 'C'
     })
   })
@@ -303,6 +315,12 @@ describe('buildEnglishMessagesGitEnv', () => {
       LC_NUMERIC: 'en_US.UTF-8',
       LC_TIME: 'en_US.UTF-8',
       LC_MONETARY: 'en_US.UTF-8',
+      LC_PAPER: 'en_US.UTF-8',
+      LC_NAME: 'en_US.UTF-8',
+      LC_ADDRESS: 'en_US.UTF-8',
+      LC_TELEPHONE: 'en_US.UTF-8',
+      LC_MEASUREMENT: 'en_US.UTF-8',
+      LC_IDENTIFICATION: 'en_US.UTF-8',
       LC_MESSAGES: 'C'
     })
   })

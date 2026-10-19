@@ -193,14 +193,21 @@ export function buildModeGitEnv(source: NodeJS.ProcessEnv): Record<string, strin
   return env
 }
 
-// LC_ALL が上書きする POSIX のロケールのカテゴリのうち、メッセージ(LC_MESSAGES)以外。buildEnglishMessagesGitEnv が LC_ALL を
-// 外すとき、これらに LC_ALL の値を入れて、利用者のロケールのままにする
+// LC_ALL が上書きするロケールのカテゴリのうち、メッセージ(LC_MESSAGES)以外。buildEnglishMessagesGitEnv が LC_ALL を
+// 外すとき、これらに LC_ALL の値を入れて、利用者のロケールのままにする。POSIX の 5 つに加え、glibc(Linux)だけにある 6 つも
+// 入れる(macOS では無視される。PR #59 レビュー第 2 周)
 const NON_MESSAGE_LOCALE_CATEGORIES = [
   'LC_CTYPE',
   'LC_COLLATE',
   'LC_NUMERIC',
   'LC_TIME',
-  'LC_MONETARY'
+  'LC_MONETARY',
+  'LC_PAPER',
+  'LC_NAME',
+  'LC_ADDRESS',
+  'LC_TELEPHONE',
+  'LC_MEASUREMENT',
+  'LC_IDENTIFICATION'
 ] as const
 
 /**
@@ -208,7 +215,7 @@ const NON_MESSAGE_LOCALE_CATEGORIES = [
  * (LC_MESSAGES)だけを C にし、git の警告と strerror の文言を英語にする。ほかのカテゴリは利用者のままにする。add -A は利用者の
  * clean filter を動かし、一覧の git diff は利用者のロケールのまま同じ filter を動かすため、LC_ALL=C にすると、ロケールで出力が
  * 変わる filter で記録と一覧が食い違い、変えていないファイルが「変更」で出ていた(PR #59 レビュー第 1 周の指摘 1)。
- * LC_ALL は LC_MESSAGES を含むすべてのカテゴリを上書きするため外し、空でなければその値を LC_CTYPE など 5 つのカテゴリに入れる
+ * LC_ALL は LC_MESSAGES を含むすべてのカテゴリを上書きするため外し、空でなければその値を LC_CTYPE などほかのカテゴリ(POSIX の 5 つと glibc の 6 つ)に入れる
  * (filter の見るロケールを変えない。同じ名前が複数あれば LC_ALL の綴りを優先する)。gettext は LC_MESSAGES が C のとき
  * LANGUAGE を見ないが、念のため外す。大文字小文字を問わない(Windows の環境変数。buildModeGitEnv と同じ)
  */
