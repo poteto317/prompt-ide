@@ -12,7 +12,7 @@ interface Props {
   isBlocked: boolean
   /** 成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
   requestFocus: (target: RemoteSetupFocusTarget) => void
-  /** セクション「エージェントの変更」(Git 管理外の理由を出す) */
+  /** セクション「エージェントの変更」(Git 管理外のフォルダでもアプリの一時領域に記録できる。記録の前はその旨を 1 行出す) */
   agentChanges?: AgentChangesPanelState
 }
 

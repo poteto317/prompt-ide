@@ -3,7 +3,7 @@ import type { AgentChangeAuthor, AgentChangeEntry } from '@shared/types'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
 import { summarizeAttribution } from '../agentChangesAttribution'
-import type { BaselineSnapshotResult } from '../agentBaselineSnapshot'
+import type { BaselineCheckpointBase, BaselineSnapshotResult } from '../agentBaselineSnapshot'
 import type { AgentChangesRecord } from '../agentChangesRecord'
 import type { AgentChangesUndoCapture } from '../agentChangesUndoModel'
 import type { AgentToolActivitySignal } from '../agentToolActivity'
@@ -21,6 +21,7 @@ const FOLDER = '/repo'
 
 interface SnapshotCall {
   baseIndexPath: string | undefined
+  base: BaselineCheckpointBase | undefined
   isCanceled: () => boolean
   resolve: (result: BaselineSnapshotResult) => void
   /** 予期しない例外(takeSnapshot の reject) */
@@ -47,7 +48,8 @@ function setup(initial: Partial<AgentToolActivitySignal> = { phase: 'idle' }): H
     (_folderPath, options) =>
       new Promise<BaselineSnapshotResult>((resolve, reject) => {
         calls.push({
-          baseIndexPath: options.baseIndexPath,
+          baseIndexPath: options.base?.indexPath,
+          base: options.base,
           isCanceled: options.isCanceled,
           resolve,
           reject
@@ -99,6 +101,18 @@ const checkpointResult = (n: number): BaselineSnapshotResult => ({
     tempDir: `/tmp/cp-${n}`,
     tree: `tree-${n}`,
     startedAt: 100 + n
+  })
+})
+
+/** 隠れた git の記録の区切り n(gitDir は累積の始点 cp-0 の隠れた git。ほかは checkpointResult と同じ) */
+const hiddenCheckpointResult = (n: number): BaselineSnapshotResult => ({
+  kind: 'recorded',
+  snapshot: makeBaselineSnapshot({
+    folderPath: FOLDER,
+    tempDir: `/tmp/cp-${n}`,
+    tree: `tree-${n}`,
+    startedAt: 100 + n,
+    gitDir: '/tmp/cp-0/git'
   })
 })
 
@@ -705,6 +719,17 @@ describe('区別の同期(syncAttribution・notifyAttributionSignal)', () => {
     ;(await snapshotCall(h, 2)).resolve(checkpointResult(2))
     await flush(h)
     expect(record.attribution).toMatchObject({ phase: 'agent', userPaths: new Set(['user.txt']) })
+  })
+  it('隠れた git の記録の判定の区切りは、写しの元に記録の累積の始点の隠れた git(gitDir)を渡す(L-041)', async () => {
+    const h = setup()
+    const begun = h.registry.begin(1, FOLDER, 'manual')
+    ;(await snapshotCall(h, 0)).resolve(hiddenCheckpointResult(0))
+    await begun
+    change(h, { phase: 'agent' })
+    const call = await snapshotCall(h, 1)
+    expect(call.base).toEqual({ indexPath: '/tmp/cp-0/index', gitDir: '/tmp/cp-0/git' })
+    call.resolve(hiddenCheckpointResult(1))
+    await flush(h)
   })
 })
 

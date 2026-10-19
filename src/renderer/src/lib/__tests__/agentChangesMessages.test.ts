@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { AGENT_CHANGES_UNAVAILABLE_REASONS } from '@shared/types'
 import type { AgentChangesRunAvailability } from '@shared/types'
 import {
+  AGENT_CHANGES_APP_STORAGE_HINT,
+  AGENT_CHANGES_APP_STORAGE_NOTE,
   AGENT_CHANGES_ATTRIBUTION_LOST_REASONS,
   AGENT_CHANGES_MIXED_MARK,
   AGENT_CHANGES_ONLY_USER_REASON,
@@ -74,6 +76,50 @@ describe('記録できない理由', () => {
       })
     ).toBe(
       '未追跡のファイルが多すぎるため、記録できません。.gitignore を確かめてください（21 件・105.0 MB）'
+    )
+  })
+
+  it('Git 管理外のフォルダのファイルが多すぎるときは、リポジトリの初期化と .gitignore を勧め、件数と合計を添える', () => {
+    expect(
+      describeAgentChangesUnavailable({
+        kind: 'unavailable',
+        reason: 'too-many-files',
+        untrackedCount: 5005,
+        untrackedBytes: 0
+      })
+    ).toBe(
+      'ファイルが多すぎるため、記録できません。リポジトリを初期化してコミットするか、.gitignore で記録しないファイルを指定してください（5,005 件）'
+    )
+    expect(
+      describeAgentChangesUnavailable({
+        kind: 'unavailable',
+        reason: 'too-many-files',
+        untrackedCount: 21,
+        untrackedBytes: 105 * 1024 * 1024
+      })
+    ).toBe(
+      'ファイルが多すぎるため、記録できません。リポジトリを初期化してコミットするか、.gitignore で記録しないファイルを指定してください（21 件・105.0 MB）'
+    )
+  })
+
+  it('.git の中・bare リポジトリのフォルダの理由(パスを含めない。L-017)', () => {
+    expect(describeAgentChangesUnavailable({ kind: 'unavailable', reason: 'inside-git-dir' })).toBe(
+      'Git のデータのフォルダ（.git の中・bare リポジトリ）では、エージェントの変更を記録できません'
+    )
+  })
+
+  it('起こらない状態での文言を固定する: not-repository の長い文言(区切りの not-repository は実行の availability の短い形で出るため、セクションには届かない)', () => {
+    expect(describeAgentChangesUnavailable({ kind: 'unavailable', reason: 'not-repository' })).toBe(
+      'Git 管理外のフォルダになったため、記録できません'
+    )
+  })
+
+  it('記録の置き場の注記の文言', () => {
+    expect(AGENT_CHANGES_APP_STORAGE_NOTE).toBe(
+      'Git 管理外のフォルダのため、アプリの一時領域に記録しています（node_modules などは記録しません）'
+    )
+    expect(AGENT_CHANGES_APP_STORAGE_HINT).toBe(
+      'Git 管理外のフォルダのため、記録はアプリの一時領域に置きます（node_modules などは記録しません）'
     )
   })
 })
@@ -252,6 +298,8 @@ describe('範囲の項目・見出し・理由の文言', () => {
       'not-repository': 'Git 管理外のフォルダです',
       'not-toplevel': 'リポジトリの最上位のフォルダではありません',
       'too-many-untracked': '未追跡のファイルが多すぎます',
+      'too-many-files': 'ファイルが多すぎます',
+      'inside-git-dir': 'Git のデータのフォルダです',
       timeout: '時間がかかりすぎました',
       'git-failed': 'git を実行できませんでした'
     })

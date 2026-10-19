@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  rmSync,
+  truncateSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync
+} from 'node:fs'
 import { join } from 'node:path'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE } from '../agentBaselineCoverage'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
@@ -12,6 +20,7 @@ import { listAgentChanges, listAgentChangesBetween } from '../agentChangesQuery'
 import { commitAll, initRepo, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
+  createAgentNonGitFolder,
   disposeAgentBaselineRepo,
   recordBaseline,
   recordBaselineFrom,
@@ -255,6 +264,74 @@ describe('実行ごとの一覧と diff(実 git)', () => {
     )
     await expect(getAgentChangeDiffBetween(baseline, run2, 'a.txt')).rejects.toThrow(
       AGENT_BASELINE_BLOB_MISSING_MESSAGE
+    )
+  })
+})
+
+// diff.suppressBlankEmpty=true だと空の文脈行が先頭の空白なしの空行で出て、ハンクを戻すパッチの検査に通らない。
+// 途中の実行の diff(tree どうし)でも、diff を作る git でこの設定を打ち消す
+describe('getAgentChangeDiffBetween と利用者の大域の diff.suppressBlankEmpty(実 git)', () => {
+  it('空の文脈行も先頭に空白を付けて出す', async () => {
+    writeFileSync(join(home, '.gitconfig'), '[diff]\n\tsuppressBlankEmpty = true\n')
+    write('a.txt', 'a1\n\na3\n')
+    commitAll(repo, 'init')
+    const baseline = await recordBaseline(repo, tempRoot)
+    const run2 = await startRun(baseline)
+    write('a.txt', 'a1\n\nA3\n')
+    const run3 = await startRun(run2)
+    const diff = await getAgentChangeDiffBetween(run2, run3, 'a.txt')
+    expect(diff).toContain('\n \n')
+    expect(diff.split('\n').slice(0, -1)).not.toContain('')
+  })
+})
+
+describe('Git 管理外のフォルダの実行ごとの一覧と diff(隠れた git)(実 git)', () => {
+  let folder: string
+  let folderHome: string
+  let folderTemp: string
+  const put = (p: string, content: string): void => writeRepoFile(folder, p, content)
+
+  beforeEach(() => {
+    ;({
+      repo: folder,
+      home: folderHome,
+      tempRoot: folderTemp
+    } = createAgentNonGitFolder('agent-changes-runs-plain-'))
+  })
+
+  afterEach(() =>
+    disposeAgentBaselineRepo({ repo: folder, home: folderHome, tempRoot: folderTemp })
+  )
+
+  it('隠れた git の区切りでも、途中の実行は tree どうし、最後の実行は作業ツリーと比べる', async () => {
+    put('a.txt', 'a\n')
+    put('b.txt', 'b\n')
+    const base = await recordBaseline(folder, folderTemp)
+    put('a.txt', 'a\nrun1\n')
+    const second = await recordBaselineFrom(folder, folderTemp, base)
+    // 前提: 区切りは始点の隠れた git を共有する(作らないことは agentBaselineSnapshot.integration.test.ts で試す)
+    expect(second.gitDir).toBe(base.gitDir)
+    put('b.txt', 'b\nrun2\n')
+    expect(
+      (await listAgentChangesBetween(base, second)).entries.map((e) => [e.path, e.status])
+    ).toEqual([['a.txt', 'M']])
+    expect((await listAgentChangesBetween(base, second)).headChanged).toBe(false)
+    expect((await listAgentChanges(second)).entries.map((e) => [e.path, e.status])).toEqual([
+      ['b.txt', 'M']
+    ])
+    expect(changedLines(await getAgentChangeDiffBetween(base, second, 'a.txt'))).toEqual(['+run1'])
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+  })
+
+  it('隠れた git(gitDir)を消すと、途中の実行の一覧・diff は「記録が見つかりません」で拒否する(L-002)', async () => {
+    put('a.txt', 'a\n')
+    const base = await recordBaseline(folder, folderTemp)
+    put('a.txt', 'a\nrun1\n')
+    const second = await recordBaselineFrom(folder, folderTemp, base)
+    rmSync(base.gitDir ?? '', { recursive: true, force: true })
+    await expect(listAgentChangesBetween(base, second)).rejects.toThrow('記録が見つかりません')
+    await expect(getAgentChangeDiffBetween(base, second, 'a.txt')).rejects.toThrow(
+      '記録が見つかりません'
     )
   })
 })

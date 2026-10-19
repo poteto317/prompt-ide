@@ -13,7 +13,6 @@ import {
   AGENT_CHANGES_NONE_HINT,
   AGENT_CHANGES_RUN_EMPTY,
   AGENT_CHANGES_RUN_HEAD_CHANGED,
-  AGENT_CHANGES_UNAVAILABLE_MESSAGES,
   describeAgentChangesUnavailable,
   formatAgentChangesMore
 } from '../../lib/agentChangesMessages'
@@ -25,7 +24,8 @@ import {
   buildAgentChangesSectionHeading,
   describeAgentChangesListUnavailable,
   describeAgentChangesSectionAttribution,
-  describeAgentChangesSectionExcluded
+  describeAgentChangesSectionExcluded,
+  describeAgentChangesStorage
 } from '../../lib/agentChangesSectionText'
 import type { AgentChangesReasonTarget } from '../../lib/agentChangesSectionText'
 import AgentChangesFileItem from './AgentChangesFileItem'
@@ -34,7 +34,7 @@ import AgentChangesUndoBand from './AgentChangesUndoBand'
 
 /** セクションの props。Git 管理外かは SourceControlPanel が決め、それ以外は useAgentChangesWiring が組み立てる */
 export type AgentChangesSectionProps = AgentChangesPanelState & {
-  /** Git 管理外のフォルダか(記録を始める前から理由を出す) */
+  /** Git 管理外のフォルダか(記録の前に、記録をアプリの一時領域に置く旨の 1 行を出す) */
   isNotRepository: boolean
 }
 
@@ -76,10 +76,9 @@ export default function AgentChangesSection({
   )
   if (!isVisible) return <>{live}</>
 
-  // 管理外で記録できなかった後にリポジトリを初期化したら、次の「実行」を待たずに記録なしと同じ表示に戻す
-  const isNoneShown =
-    view.kind === 'none' ||
-    (view.kind === 'unavailable' && view.state.reason === 'not-repository' && !isNotRepository)
+  const isNoneShown = view.kind === 'none'
+  // 記録の置き場の注記(本文の先頭に 1 行。記録中は記録が隠れた git のとき、記録の前は Git 管理外のフォルダのとき)。読み上げない
+  const storageNote = describeAgentChangesStorage(view, isNotRepository)
   const recording = view.kind === 'recording' ? view : null
   const list = getListedAgentChanges(view)
   // 見出しは選んでいる実行(範囲が実行で、写しの実行の一覧にあるとき)の番号と期間、または累積の始点を添える
@@ -143,30 +142,26 @@ export default function AgentChangesSection({
           )}
         </div>
         <div id={bodyId} className="agent-changes__body" hidden={!isOpen}>
-          {isNoneShown &&
-            (isNotRepository ? (
-              <p className="agent-changes__note">
-                {AGENT_CHANGES_UNAVAILABLE_MESSAGES['not-repository']}
-              </p>
-            ) : (
-              <>
-                <p className="agent-changes__note">{AGENT_CHANGES_NONE_HINT}</p>
-                <div className="agent-changes__actions">
-                  <button
-                    type="button"
-                    className="agent-changes__button"
-                    disabled={changes.isBeginning}
-                    onClick={() => {
-                      reserveFocusRestore()
-                      void changes.begin()
-                    }}
-                  >
-                    {changes.isBeginning ? '記録しています…' : 'いまから記録する'}
-                  </button>
-                </div>
-              </>
-            ))}
-          {view.kind === 'unavailable' && !isNoneShown && (
+          {storageNote !== null && <p className="agent-changes__note">{storageNote}</p>}
+          {isNoneShown && (
+            <>
+              <p className="agent-changes__note">{AGENT_CHANGES_NONE_HINT}</p>
+              <div className="agent-changes__actions">
+                <button
+                  type="button"
+                  className="agent-changes__button"
+                  disabled={changes.isBeginning}
+                  onClick={() => {
+                    reserveFocusRestore()
+                    void changes.begin()
+                  }}
+                >
+                  {changes.isBeginning ? '記録しています…' : 'いまから記録する'}
+                </button>
+              </div>
+            </>
+          )}
+          {view.kind === 'unavailable' && (
             <>
               <p className="agent-changes__note">{describeAgentChangesUnavailable(view.state)}</p>
               {canRetryAgentChanges(view.state.reason) && (

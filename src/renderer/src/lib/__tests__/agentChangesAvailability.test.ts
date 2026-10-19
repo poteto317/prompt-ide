@@ -28,7 +28,9 @@ describe('「もう一度試す」を出す理由', () => {
     ['git-failed', true],
     ['not-repository', false],
     ['not-toplevel', false],
-    ['too-many-untracked', false]
+    ['too-many-untracked', false],
+    ['too-many-files', false],
+    ['inside-git-dir', false]
   ] as const)('%s で「もう一度試す」を出すか: %s', (reason, expected) => {
     expect(canRetryAgentChanges(reason)).toBe(expected)
   })
@@ -39,7 +41,9 @@ describe('「もう一度試す」を出す理由', () => {
       'git-failed',
       'not-repository',
       'not-toplevel',
-      'too-many-untracked'
+      'too-many-untracked',
+      'too-many-files',
+      'inside-git-dir'
     ]
     expect([...AGENT_CHANGES_UNAVAILABLE_REASONS].sort()).toEqual([...covered].sort())
   })

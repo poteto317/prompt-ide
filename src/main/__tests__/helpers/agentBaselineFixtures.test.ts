@@ -2,24 +2,32 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { devNull } from 'node:os'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   attributionOffRecordingState,
   attributionOffSummary,
   createAgentBaselineRepo,
+  createAgentNonGitFolder,
   createFakeTrash,
   disposeAgentBaselineRepo,
   EMPTY_TREE,
+  firstHunkPatch,
+  folderChangesExcept,
+  folderEntries,
   makeAgentChangesRecord,
   makeAttributionOffDeps,
   makeBaselineSnapshot,
+  makeRevertContext,
   makeTrackingAttribution,
+  numberedLines,
   recordBaseline,
   recordedSnapshot,
   userRepoState
 } from './agentBaselineFixtures'
 import type { AgentBaselineRepo } from './agentBaselineFixtures'
 import { commitAll, runGit, writeRepoFile } from './realGitRepo'
+import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
+import type { AgentChangeEntry } from '@shared/types'
 
 describe('makeAgentChangesRecord', () => {
   it('既定は makeBaselineSnapshot() の始点で、次の番号は実行の数 + 1', () => {
@@ -69,6 +77,7 @@ describe('makeBaselineSnapshot', () => {
       folderPath: '/repo',
       tempDir: '/tmp/baseline',
       indexPath: '/tmp/baseline/index',
+      gitDir: null,
       startedAt: 0,
       head: null,
       tree: EMPTY_TREE,
@@ -86,6 +95,7 @@ describe('makeBaselineSnapshot', () => {
       folderPath: '/f',
       tempDir: '/tmp/baseline',
       indexPath: '/tmp/baseline/index',
+      gitDir: null,
       startedAt: 42,
       head: 'abc',
       tree: EMPTY_TREE,
@@ -218,7 +228,10 @@ describe('recordBaseline / recordedSnapshot / userRepoState(実 git)', () => {
   it('recorded でなければ例外にする', async () => {
     dirs = createAgentBaselineRepo('baseline-fixtures-')
     expect(() => recordedSnapshot({ kind: 'canceled' })).toThrow('記録できなかった')
-    await expect(recordBaseline(dirs.home, dirs.tempRoot)).rejects.toThrow('記録できなかった')
+    // .git の中は記録できない(inside-git-dir。Git 管理外のフォルダは隠れた git で記録できるため、HOME では例外にならない)
+    await expect(recordBaseline(join(dirs.repo, '.git'), dirs.tempRoot)).rejects.toThrow(
+      '記録できなかった'
+    )
   })
 
   it('利用者の index が変われば userRepoState も変わる', () => {
@@ -253,7 +266,8 @@ describe('attributionOffRecordingState', () => {
       startedAt: 42,
       runs: [],
       undo: null,
-      attribution: attributionOffSummary(42)
+      attribution: attributionOffSummary(42),
+      storage: 'repository'
     })
   })
 
@@ -269,5 +283,108 @@ describe('attributionOffRecordingState', () => {
     ]
     const undo = { undoId: 1, operation: 'file' as const, entries: [] }
     expect(attributionOffRecordingState(42, { runs, undo })).toMatchObject({ runs, undo })
+  })
+})
+
+describe('createAgentNonGitFolder / folderEntries', () => {
+  let dirs: AgentBaselineRepo | null = null
+
+  afterEach(() => {
+    if (dirs !== null) disposeAgentBaselineRepo(dirs)
+    dirs = null
+  })
+
+  it('realpath 済みの Git 管理外のフォルダ(.git が無い)を作る', () => {
+    dirs = createAgentNonGitFolder('baseline-fixtures-plain-')
+    expect(dirs.repo).toBe(realpathSync(dirs.repo))
+    expect(existsSync(join(dirs.repo, '.git'))).toBe(false)
+  })
+
+  it('上のフォルダのリポジトリを拾わないよう、GIT_CEILING_DIRECTORIES をフォルダの親にする', () => {
+    dirs = createAgentNonGitFolder('baseline-fixtures-plain-')
+    expect(process.env.GIT_CEILING_DIRECTORIES).toBe(dirname(dirs.repo))
+  })
+
+  it('disposeAgentBaselineRepo で 3 つのディレクトリを消す', () => {
+    const created = createAgentNonGitFolder('baseline-fixtures-plain-')
+    disposeAgentBaselineRepo(created)
+    expect(existsSync(created.repo)).toBe(false)
+    expect(existsSync(created.home)).toBe(false)
+    expect(existsSync(created.tempRoot)).toBe(false)
+  })
+
+  it('folderEntries はフォルダの中のパスを再帰で並べ、中身が変わると値が変わる', () => {
+    dirs = createAgentNonGitFolder('baseline-fixtures-plain-')
+    mkdirSync(join(dirs.repo, 'd'))
+    writeFileSync(join(dirs.repo, 'd', 'x.txt'), 'x')
+    writeFileSync(join(dirs.repo, 'a.txt'), 'a')
+    const before = folderEntries(dirs.repo)
+    expect(Object.keys(before).sort()).toEqual(['a.txt', 'd', 'd/x.txt'])
+    writeFileSync(join(dirs.repo, 'd', 'x.txt'), 'xx')
+    const after = folderEntries(dirs.repo)
+    expect(after['d/x.txt']).not.toBe(before['d/x.txt'])
+    expect(after['a.txt']).toBe(before['a.txt'])
+  })
+})
+
+describe('folderChangesExcept', () => {
+  const before = { a: 'file 1', d: 'dir 1', 'd/x': 'file 1', 'd/y': 'file 1', z: 'file 1' }
+
+  it('変えたパス・その中・その祖先のフォルダの違いを除く', () => {
+    const after = { a: 'file 1', d: 'dir 2', 'd/x': 'file 2', 'd/y': 'file 1', z: 'file 1' }
+    expect(folderChangesExcept(before, after, ['d/x'])).toEqual([])
+    const inside = { ...before, d: 'dir 2', 'd/x': 'file 2', 'd/y': 'file 2' }
+    expect(folderChangesExcept(before, inside, ['d'])).toEqual([])
+  })
+
+  it('それ以外の変更・追加・削除を並べて返す', () => {
+    const after = { a: 'file 2', d: 'dir 1', 'd/x': 'file 1', 'd/y': 'file 1', n: 'file 1' }
+    expect(folderChangesExcept(before, after, ['d/x'])).toEqual(['a', 'n', 'z'])
+  })
+})
+
+describe('makeRevertContext', () => {
+  const snapshot = makeBaselineSnapshot()
+  const trash = async (): Promise<void> => undefined
+
+  it('既定は本番の控えの上限で、gitOptions を置かず、attributeEntries は行をそのまま返す', async () => {
+    const context = makeRevertContext(snapshot, { trash, tempRoot: '/tmp/undo' })
+    expect(context).toEqual({
+      snapshot,
+      trash,
+      undoCapture: { tempRoot: '/tmp/undo', maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES },
+      attributeEntries: expect.any(Function)
+    })
+    expect('gitOptions' in context).toBe(false)
+    const entries: AgentChangeEntry[] = [
+      { path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false, author: null }
+    ]
+    expect(await context.attributeEntries(entries)).toBe(entries)
+  })
+
+  it('控えの上限と gitOptions を渡せば、その値にする(gitOptions の env が undefined でも欄を置く)', () => {
+    const context = makeRevertContext(snapshot, {
+      trash,
+      tempRoot: '/tmp/undo',
+      maxBytes: 10,
+      gitOptions: { env: undefined }
+    })
+    expect(context.undoCapture).toEqual({ tempRoot: '/tmp/undo', maxBytes: 10 })
+    expect(context.gitOptions).toEqual({ env: undefined })
+    expect('gitOptions' in context).toBe(true)
+  })
+})
+
+describe('numberedLines / firstHunkPatch', () => {
+  it('numberedLines は l1〜ln の行(末尾に改行)で、replace の行番号(1 始まり)だけ差し替える', () => {
+    expect(numberedLines(3)).toBe('l1\nl2\nl3\n')
+    expect(numberedLines(3, { 2: 'X' })).toBe('l1\nX\nl3\n')
+  })
+
+  it('firstHunkPatch はヘッダーと 1 つ目の @@ の節だけを返す', () => {
+    const header = 'diff --git a/d.txt b/d.txt\n--- a/d.txt\n+++ b/d.txt\n'
+    const first = '@@ -1,3 +1,3 @@\n l1\n-l2\n+A2\n'
+    const second = '@@ -17,3 +17,3 @@\n l17\n-l18\n+A18\n'
+    expect(firstHunkPatch(header + first + second)).toBe(header + first)
   })
 })

@@ -7,6 +7,12 @@ export function parseNulSeparatedPaths(output: string, withStageInfo = false): s
     .map((entry) => (withStageInfo ? entry.slice(entry.indexOf('\t') + 1) : entry))
 }
 
+// git の出力の末尾の改行だけを除く(rev-parse --show-toplevel・--git-path のパスなど)。パスの末尾・先頭の空白は意味を持つため
+// trim しない
+export function stripTrailingNewline(output: string): string {
+  return output.replace(/\r?\n$/, '')
+}
+
 // pathspec のグロブ展開を止めて、パスを文字列そのものとして扱わせる。
 // git は `--` の後ろでも [ ] * ? を pathspec magic として解釈するため
 // (`--` はオプション解析を止めるだけ)、"a[1].txt" を指定すると別ファイルの

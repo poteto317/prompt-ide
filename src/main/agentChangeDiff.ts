@@ -1,14 +1,15 @@
 import { lstat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  assertBaselineIndex,
+  assertBaselineGitDir,
+  assertBaselineRecord,
   isNotRecordedPath,
   toBaselineQueryError
 } from './agentBaselineCoverage'
-import { createBaselineGit } from './agentBaselineGit'
+import { createBaselineGit, RECORD_WORKTREE_DIFF_ARGS } from './agentBaselineGit'
 import type { BaselineGitOptions } from './agentBaselineGit'
 import type { BaselineSnapshot } from './agentBaselineSnapshot'
-import { PATCH_FORMAT_ARGS } from './gitDiffArgs'
+import { PATCH_FORMAT_ARGS, PATCH_FORMAT_CONFIG } from './gitDiffArgs'
 import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
 import { getDiff } from './gitService'
 
@@ -35,21 +36,24 @@ export async function getAgentChangeDiff(
   filePath: string,
   options: BaselineGitOptions = {}
 ): Promise<string> {
-  const { folderPath, indexPath } = snapshot
-  await assertBaselineIndex(indexPath)
+  const { folderPath } = snapshot
+  await assertBaselineRecord(snapshot)
   if (isNotRecordedPath(snapshot, filePath)) {
     return NOT_RECORDED_DIFF_MESSAGE
   }
   const literal = toLiteralPathspec(filePath)
-  const git = createBaselineGit(folderPath, indexPath, {
+  const git = createBaselineGit(snapshot, {
     ...options,
-    config: ['core.quotePath=false']
+    config: ['core.quotePath=false', ...PATCH_FORMAT_CONFIG]
   })
   const inBaseline = parseNulSeparatedPaths(await git.raw(['ls-files', '-z', '--', literal]))
   if (inBaseline.includes(filePath)) {
-    return git.raw(['diff', ...PATCH_FORMAT_ARGS, '-U3', '--', literal]).catch((error: unknown) => {
-      throw toBaselineQueryError(error)
-    })
+    // 入れ子のリポジトリの中の命令(filter など)を動かさない(RECORD_WORKTREE_DIFF_ARGS。gitlink は HEAD の違いだけを出す)
+    return git
+      .raw(['diff', ...PATCH_FORMAT_ARGS, ...RECORD_WORKTREE_DIFF_ARGS, '-U3', '--', literal])
+      .catch((error: unknown) => {
+        throw toBaselineQueryError(error)
+      })
   }
   const stat = await lstat(join(folderPath, filePath)).catch(() => null)
   if (stat === null) return ''
@@ -83,9 +87,10 @@ export async function getAgentChangeDiffBetween(
   if (isNotRecordedPath(start, filePath) || isNotRecordedPath(end, filePath)) {
     return NOT_RECORDED_DIFF_MESSAGE
   }
-  const git = createBaselineGit(start.folderPath, start.indexPath, {
+  await assertBaselineGitDir(start)
+  const git = createBaselineGit(start, {
     ...options,
-    config: ['core.quotePath=false']
+    config: ['core.quotePath=false', ...PATCH_FORMAT_CONFIG]
   })
   return git
     .raw([

@@ -5,16 +5,11 @@ import { getRemoteUrlRuleViolation, normalizeRemoteUrl } from '@shared/remoteUrl
 import { GIT_REMOTE_TIMEOUT_MS } from '@shared/remoteTimeout'
 import { assertValidNewBranchName } from './gitBranchNameGuard'
 import { getCurrentBranchRef } from './gitHeadState'
+import { isInsideGitDirectory } from './gitRepoDetection'
 import { ORIGIN_REMOTE, hasOriginRemote } from './gitRemoteNames'
 import { REMOTE_URL_RULE_MESSAGES } from './gitRemoteUrlMessages'
 import { REMOTE_OPERATION_TIMEOUT_MESSAGE, simpleGitWithRemoteTimeout } from './gitRemoteTimeout'
-import {
-  failure,
-  isGitTimeoutError,
-  redactCredentials,
-  runGitStep,
-  toStepError
-} from './gitStepErrors'
+import { failure, redactCredentials, runGitStep, toStepError } from './gitStepErrors'
 
 // リモートの管理(新規リポジトリの init・origin の追加・初回 push)。責務はこのファイルにまとめ、
 // gitService.ts には足さない(パターン 55)。どの操作も、前の検証に失敗したら後の git 呼び出しには進まない
@@ -61,22 +56,6 @@ function openGit(
   }
 }
 
-// bare リポジトリと .git ディレクトリ(とその中)では、checkIsRepo(--is-inside-work-tree)は `false` を出力して
-// 偽になるが、そこで git init すると成功して中に .git を作ってしまう(実機で確認)。rev-parse --git-dir は
-// そこで成功する(`.` や絶対パスを出力する)ため、成功なら既存のリポジトリと判定する。checkIsRepo が偽で
-// resolve した直後のため、reject はリポジトリの外(管理外・壊れた .git ファイル・HEAD の無い .git は、どれも
-// `fatal: not a git repository` で終了コード 128。実機で確認)と扱う。文言では分岐しない(パターン 18)。
-// 打ち切りだけは区別して投げ、init に進まない(打ち切りは「リポジトリの外」の根拠にならない)
-async function isInsideGitDirectory(git: SimpleGit): Promise<boolean> {
-  try {
-    await git.raw(['rev-parse', '--git-dir'])
-    return true
-  } catch (err) {
-    if (isGitTimeoutError(err)) throw err
-    return false
-  }
-}
-
 // 空のリポジトリを作る(初期コミットや .gitignore は作らない)。branch は IPC 境界から届く任意の文字列。
 // git init は、名前の検証で失敗しても HEAD の無い .git を残し、既存のリポジトリでは終了コード 0 で再初期化する
 // (--initial-branch は無視される。実機 git 2.50.1 で確認)。そのため名前の検証と「既にリポジトリか」の判定を
@@ -109,7 +88,8 @@ export async function initRepository(
   }
   // 3. 親フォルダのリポジトリも含めて判定する(gitignore されたサブフォルダでも親を拾う。実機で確認)。
   //    壊れた .git ファイル・HEAD の無い .git(失敗した init の残骸)は false になる(差分 1)。
-  //    bare リポジトリと .git ディレクトリの中も false になるため、rev-parse --git-dir でも確かめる(差分 15)
+  //    bare リポジトリと .git ディレクトリの中も false になるため、rev-parse --git-dir でも確かめる(差分 15。そこで git init
+  //    すると成功して中に .git を作ってしまう。実機で確認)
   if (
     (await runGitStep(() => git.checkIsRepo(), toInitError)) ||
     (await runGitStep(() => isInsideGitDirectory(git), toInitError))

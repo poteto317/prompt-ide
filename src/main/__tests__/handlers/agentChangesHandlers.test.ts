@@ -185,6 +185,7 @@ describe('registerAgentChangesHandlers', () => {
       runs: [],
       undo: null,
       attribution: attributionOffSummary(42),
+      storage: 'repository',
       scope: { kind: 'all' },
       entries: [
         { path: 'a.txt', status: 'M', isDirectory: false, notRecorded: false, author: null }
@@ -505,6 +506,7 @@ describe('範囲と実行', () => {
         runs: expect.any(Array),
         undo: null,
         attribution: attributionOffSummary(42),
+        storage: 'repository',
         scope: runScope(runId),
         reason
       })

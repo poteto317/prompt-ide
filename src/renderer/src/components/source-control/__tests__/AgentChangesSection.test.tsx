@@ -11,6 +11,8 @@ import type {
 import AgentChangesSection from '../AgentChangesSection'
 import type { AgentChangesView } from '../../../types'
 import {
+  AGENT_CHANGES_APP_STORAGE_HINT,
+  AGENT_CHANGES_APP_STORAGE_NOTE,
   AGENT_CHANGES_BUSY_GIT,
   AGENT_CHANGES_CLEARED_NOTICE,
   AGENT_CHANGES_EMPTY,
@@ -93,35 +95,71 @@ describe('AgentChangesSection', () => {
     expect(props.changes.begin).toHaveBeenCalledOnce()
   })
 
-  it('Git 管理外のフォルダは理由を出し、記録のボタンを出さない', () => {
-    renderSection({ kind: 'none' }, { isNotRepository: true })
-    expect(
-      screen.getByText('Git 管理外のフォルダでは、エージェントの変更を記録できません')
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'いまから記録する' })).toBeNull()
-  })
-
-  it('管理外で記録できなかった後にリポジトリを初期化したら、記録なしと同じ表示に戻す', () => {
-    renderSection(
-      { kind: 'unavailable', state: { kind: 'unavailable', reason: 'not-repository' } },
-      { isNotRepository: false }
-    )
+  it('Git 管理外のフォルダの記録の前は、リポジトリと同じ案内と「いまから記録する」に、アプリの一時領域に記録する旨(HINT)を本文の先頭に添える', async () => {
+    const props = renderSection({ kind: 'none' }, { isNotRepository: true })
+    expect(within(section()).getByText(AGENT_CHANGES_NONE_HINT)).toBeInTheDocument()
+    const body = section().querySelector('.agent-changes__body')
+    expect(body?.firstElementChild?.textContent).toBe(AGENT_CHANGES_APP_STORAGE_HINT)
     expect(
       screen.queryByText('Git 管理外のフォルダでは、エージェントの変更を記録できません')
     ).toBeNull()
-    expect(within(section()).getByText(AGENT_CHANGES_NONE_HINT)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'いまから記録する' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'いまから記録する' }))
+    expect(props.changes.begin).toHaveBeenCalledOnce()
   })
 
-  it('管理外で記録できなかった間は、管理外の理由を出したままにする', () => {
+  it('リポジトリの記録の前は HINT を出さない', () => {
+    renderSection({ kind: 'none' }, { isNotRepository: false })
+    expect(screen.queryByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeNull()
+  })
+
+  it.each([true, false])(
+    '記録中で記録が隠れた git(storage: app)なら、パネルが Git 管理外(%s)かに関わらず NOTE を本文の先頭に出す(git init の後も出し続ける)',
+    (isNotRepository) => {
+      renderSection(makeAgentChangesRecordingView([], { startedAt, storage: 'app' }), {
+        isNotRepository
+      })
+      const body = section().querySelector('.agent-changes__body')
+      expect(body?.firstElementChild?.textContent).toBe(AGENT_CHANGES_APP_STORAGE_NOTE)
+      // 注記は読み上げの要素にしない
+      expect(screen.getByText(AGENT_CHANGES_APP_STORAGE_NOTE)).not.toHaveAttribute('aria-live')
+    }
+  )
+
+  it('記録中でリポジトリの方式(storage: repository)なら NOTE を出さない', () => {
+    renderSection(recordingView([]))
+    expect(screen.queryByText(AGENT_CHANGES_APP_STORAGE_NOTE)).toBeNull()
+  })
+
+  it('起こらない状態での表示を固定する: unavailable の not-repository が届いても、理由の文を出し、「もう一度試す」も HINT も出さない(実際は始点が返さない)', () => {
     renderSection(
       { kind: 'unavailable', state: { kind: 'unavailable', reason: 'not-repository' } },
       { isNotRepository: true }
     )
-    expect(
-      screen.getAllByText('Git 管理外のフォルダでは、エージェントの変更を記録できません')
-    ).toHaveLength(1)
+    expect(screen.getByText('Git 管理外のフォルダになったため、記録できません')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'もう一度試す' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'いまから記録する' })).toBeNull()
+    expect(screen.queryByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeNull()
+  })
+
+  it('ファイルが多すぎる(too-many-files)は理由と件数を出し、「もう一度試す」を出さない', () => {
+    renderSection(
+      {
+        kind: 'unavailable',
+        state: {
+          kind: 'unavailable',
+          reason: 'too-many-files',
+          untrackedCount: 5005,
+          untrackedBytes: 0
+        }
+      },
+      { isNotRepository: true }
+    )
+    expect(
+      screen.getByText(
+        'ファイルが多すぎるため、記録できません。リポジトリを初期化してコミットするか、.gitignore で記録しないファイルを指定してください（5,005 件）'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'もう一度試す' })).toBeNull()
   })
 
   it.each([

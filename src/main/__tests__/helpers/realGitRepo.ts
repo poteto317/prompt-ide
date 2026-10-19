@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync
 } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 
 // 開発者のグローバル・システムの git 設定(commit.gpgsign、core.hooksPath 等)に左右されない
 // よう、テスト側で実行する git と、対象の関数(simple-git が子プロセスとして起動する git)の
@@ -92,6 +92,39 @@ export function stubIsolatedGitEnv(): void {
 // vi.unstubAllEnvs() で復元する
 export function stubGitCeiling(dir: string): void {
   vi.stubEnv('GIT_CEILING_DIRECTORIES', realpathSync(dir))
+}
+
+// 翻訳(フランス語)を持つ git のディレクトリを探す(無ければ null)。翻訳されたロケールで「リポジトリでない」の文言が英語でなく
+// なる git でだけ成り立つテスト(方式の判定をロケールに左右させないことの確認)が、PATH の先頭にこのディレクトリを置いて使う。
+// macOS の /usr/bin/git は翻訳を持たず、Homebrew の git は持つ。確かめる git は Git 管理外の一時ディレクトリで動かし、すぐ消す
+export const TRANSLATED_GIT_LOCALE = 'fr_FR.UTF-8'
+export function findTranslatedGitBinDir(): string | null {
+  const probe = realpathSync(mkdtempSync(join(tmpdir(), 'translated-git-probe-')))
+  try {
+    for (const binDir of ['/opt/homebrew/bin', '/usr/local/bin']) {
+      if (!existsSync(join(binDir, 'git'))) continue
+      let stderr = ''
+      try {
+        execFileSync(join(binDir, 'git'), ['rev-parse'], {
+          cwd: probe,
+          env: {
+            ...process.env,
+            ...isolatedGitEnv,
+            LC_ALL: TRANSLATED_GIT_LOCALE,
+            LANGUAGE: '',
+            GIT_CEILING_DIRECTORIES: dirname(probe)
+          },
+          stdio: ['ignore', 'ignore', 'pipe']
+        })
+      } catch (err) {
+        stderr = String((err as { stderr?: Buffer }).stderr ?? '')
+      }
+      if (stderr !== '' && !/not a git repository/i.test(stderr)) return binDir
+    }
+    return null
+  } finally {
+    rmSync(probe, { recursive: true, force: true })
+  }
 }
 
 // 記録のインデックスで問い合わせる git(agentBaselineGit.ts)は、simple-git の env() の制限のため GIT_CONFIG_GLOBAL を子へ

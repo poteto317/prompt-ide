@@ -1,13 +1,16 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, expectTypeOf, afterEach, vi } from 'vitest'
+import type { Mock } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { SimpleGit } from 'simple-git'
 import {
   AGENT_BASELINE_EXCLUDE_FILE_BYTES,
   AGENT_BASELINE_MAX_UNTRACKED_BYTES,
   AGENT_BASELINE_MAX_UNTRACKED_FILES,
   copyIndexPreservingTimes,
   forceRemoveStdinInput,
+  inspectUntracked,
   notRecordedPathsOf,
   parseWriteTreeOutput
 } from '../agentBaselineSnapshot'
@@ -123,5 +126,49 @@ describe('forceRemoveStdinInput', () => {
 
   it('空なら空文字列', () => {
     expect(forceRemoveStdinInput([])).toBe('')
+  })
+})
+
+describe('inspectUntracked(未追跡の一覧の問い合わせと解釈の 1 か所)', () => {
+  let dir: string | null = null
+  afterEach(() => {
+    if (dir !== null) rmSync(dir, { recursive: true, force: true })
+    dir = null
+  })
+
+  // 渡された git に問い合わせた引数を控え、NUL 区切りの一覧を返す偽の git
+  const fakeGit = (paths: readonly string[]): SimpleGit & { raw: Mock } => {
+    const raw = vi.fn(async () => paths.map((path) => `${path}\0`).join(''))
+    return { raw } as unknown as SimpleGit & { raw: Mock }
+  }
+
+  it('渡された git に ls-files -z --others --exclude-standard を 1 回だけ問い合わせ、数が上限を超えたら too-many(ファイルを読まない)', async () => {
+    const git = fakeGit(
+      Array.from({ length: AGENT_BASELINE_MAX_UNTRACKED_FILES + 1 }, (_, i) => `f${i}.txt`)
+    )
+    await expect(inspectUntracked('/nonexistent-folder', git, {})).resolves.toEqual({
+      kind: 'too-many',
+      count: AGENT_BASELINE_MAX_UNTRACKED_FILES + 1,
+      bytes: 0
+    })
+    expect(git.raw.mock.calls).toEqual([[['ls-files', '-z', '--others', '--exclude-standard']]])
+  })
+
+  it('一覧のファイルを数え、消えたファイルは飛ばして ok を返す', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'inspect-untracked-'))
+    writeFileSync(join(dir, 'a.txt'), 'hello')
+    const git = fakeGit(['a.txt', 'gone.txt'])
+    await expect(inspectUntracked(dir, git, {})).resolves.toEqual({
+      kind: 'ok',
+      excluded: [],
+      skippedRepos: []
+    })
+  })
+})
+
+describe('inspectUntracked の選択肢の型', () => {
+  it('打ち切りだけを受け取る(入れ子のリポジトリの HEAD は createRepoGit で問い合わせ、記録の環境変数・-c は付けない)', () => {
+    type Options = Parameters<typeof inspectUntracked>[2]
+    expectTypeOf<keyof Options>().toEqualTypeOf<'timeoutMs'>()
   })
 })

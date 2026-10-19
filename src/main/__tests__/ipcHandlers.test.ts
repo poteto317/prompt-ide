@@ -66,6 +66,21 @@ const mockSendExternalChange = vi.hoisted(() => vi.fn())
 const mockWatch = vi.hoisted(() => vi.fn(() => ({ close: vi.fn(), on: vi.fn() })))
 const mockMkdirSync = vi.hoisted(() => vi.fn())
 
+// 記録を取る関数と起動時の掃除(実物の git・一時ディレクトリを使わない。takeSnapshot の包みと掃除の引数を見る)
+const mockTakeBaselineSnapshot = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<{ kind: 'canceled' }>>(async () => ({ kind: 'canceled' }))
+)
+vi.mock('../agentBaselineSnapshot', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agentBaselineSnapshot')>()),
+  takeBaselineSnapshot: mockTakeBaselineSnapshot
+}))
+const mockSweepStaleBaselineTempDirs = vi.hoisted(() =>
+  vi.fn<(...args: unknown[]) => Promise<number>>(async () => 0)
+)
+vi.mock('../agentBaselineTempSweep', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agentBaselineTempSweep')>()),
+  sweepStaleBaselineTempDirs: mockSweepStaleBaselineTempDirs
+}))
 const mockSetupAgentBaselineLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterAgentChangesHandlers = vi.hoisted(() => vi.fn())
 const mockMoveToTrash = vi.hoisted(() => vi.fn())
@@ -170,6 +185,7 @@ import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
 import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from '../agentChangesQuery'
+import { isProcessAliveOnThisMachine } from '../agentChangesProtectionRef'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
 
@@ -385,6 +401,29 @@ describe('registerIpcHandlers', () => {
     } finally {
       warnSpy.mockRestore()
     }
+  })
+
+  it('起動ごとの ID を 1 回だけ作り、保護の ref と記録を取る関数(takeSnapshot の包み)と起動時の掃除に同じ値を渡す(L-060)。一時ディレクトリの親も同じ値を両方に渡す', async () => {
+    registerIpcHandlers(mockIpcMain)
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
+    // 依存は private のため、組み立ての確認に限って型を外して読む
+    const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
+    const { instanceId } = deps.protection
+    expect(instanceId).toMatch(new RegExp(`^${process.pid}-[0-9a-f]{8}$`))
+    const isCanceled = (): boolean => false
+    const now = (): number => 7
+    await deps.takeSnapshot('/folder', { isCanceled, now })
+    expect(mockTakeBaselineSnapshot).toHaveBeenCalledExactlyOnceWith('/folder', {
+      isCanceled,
+      now,
+      instanceId,
+      tempRoot: tmpdir()
+    })
+    expect(mockSweepStaleBaselineTempDirs).toHaveBeenCalledExactlyOnceWith({
+      tempRoot: tmpdir(),
+      instanceId,
+      isProcessAlive: isProcessAliveOnThisMachine
+    })
   })
 
   it('エージェントの起動の規則(starter)を、同じ FolderAccessManager・同じ registry・実物の起動の部品で組み立てる', () => {

@@ -1,15 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   readlinkSync,
   renameSync,
   statSync,
   symlinkSync,
   truncateSync,
-  unlinkSync
+  unlinkSync,
+  writeFileSync
 } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { AgentChangeAuthor, AgentChangeEntry } from '@shared/types'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
@@ -27,12 +31,17 @@ import {
   revertAllAgentChanges
 } from '../agentChangesRevert'
 import type { AgentRevertContext } from '../agentChangesRevert'
-import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { commitAll, initRepo, readRepoFile, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
+  createAgentNonGitFolder,
   createFakeTrash,
   disposeAgentBaselineRepo,
+  firstHunkPatch,
+  folderChangesExcept,
+  folderEntries,
+  makeRevertContext,
+  numberedLines,
   recordBaseline,
   userRepoState
 } from './helpers/agentBaselineFixtures'
@@ -54,12 +63,8 @@ beforeEach(() => {
 
 afterEach(() => disposeAgentBaselineRepo({ repo, home, tempRoot }))
 
-const record = async (): Promise<AgentRevertContext> => ({
-  snapshot: await recordBaseline(repo, tempRoot),
-  trash,
-  undoCapture: { tempRoot, maxBytes: AGENT_CHANGES_UNDO_MAX_BYTES },
-  attributeEntries: async (entries) => entries
-})
+const record = async (): Promise<AgentRevertContext> =>
+  makeRevertContext(await recordBaseline(repo, tempRoot), { trash, tempRoot })
 
 // 利用者の状態(index の更新時刻〈ナノ秒〉と内容・stash・ref・HEAD)。戻す操作の前後で変わらないこと(完了条件 4)
 const userState = (): unknown => userRepoState(repo)
@@ -246,37 +251,43 @@ describe('revertAgentChange(実 git)', () => {
 })
 
 describe('revertAgentChangeHunk(実 git)', () => {
-  const lines = (n: number, replace: Record<number, string> = {}): string =>
-    Array.from({ length: n }, (_, i) => replace[i + 1] ?? `l${i + 1}`).join('\n') + '\n'
-  // diff の 1 つ目のハンクだけのパッチ
-  const firstHunk = (diff: string): string => {
-    const parts = diff.split(/(?=^@@ )/m)
-    return parts[0] + parts[1]
-  }
-
   it('1 つのハンクだけを実行の前の内容へ戻し、他のハンクと利用者の index は変えない(確認の結果 8)', async () => {
-    write('d.txt', lines(20))
+    write('d.txt', numberedLines(20))
     commitAll(repo, 'init')
     const context = await record()
-    write('d.txt', lines(20, { 2: 'A2', 18: 'A18' }))
+    write('d.txt', numberedLines(20, { 2: 'A2', 18: 'A18' }))
     const before = userState()
     const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
-    await revertAgentChangeHunk(context, 'd.txt', firstHunk(diff))
-    expect(read('d.txt')).toBe(lines(20, { 18: 'A18' }))
+    await revertAgentChangeHunk(context, 'd.txt', firstHunkPatch(diff))
+    expect(read('d.txt')).toBe(numberedLines(20, { 18: 'A18' }))
     expect(userState()).toEqual(before)
   })
 
-  it('diff を取った後にファイルが変わって文脈が合わなければ失敗し、何も変えない', async () => {
-    write('d.txt', lines(20))
+  // diff.suppressBlankEmpty=true だと空の文脈行が先頭の空白なしの空行で出て、パッチの検査(assertHunkPatchTargets)が
+  // 食い違いとして拒否していた。diff を作る git でこの設定を打ち消す
+  it('利用者の大域の diff.suppressBlankEmpty=true でも、空行を文脈に含むハンクを戻せる', async () => {
+    writeFileSync(join(home, '.gitconfig'), '[diff]\n\tsuppressBlankEmpty = true\n')
+    write('d.txt', numberedLines(20, { 3: '', 17: '' }))
     commitAll(repo, 'init')
     const context = await record()
-    write('d.txt', lines(20, { 2: 'A2' }))
+    write('d.txt', numberedLines(20, { 2: 'A2', 3: '', 17: '', 18: 'A18' }))
     const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
-    write('d.txt', lines(20, { 2: 'A2', 3: 'later' }))
+    expect(diff.split('\n').slice(0, -1)).not.toContain('')
+    await revertAgentChangeHunk(context, 'd.txt', firstHunkPatch(diff))
+    expect(read('d.txt')).toBe(numberedLines(20, { 3: '', 17: '', 18: 'A18' }))
+  })
+
+  it('diff を取った後にファイルが変わって文脈が合わなければ失敗し、何も変えない', async () => {
+    write('d.txt', numberedLines(20))
+    commitAll(repo, 'init')
+    const context = await record()
+    write('d.txt', numberedLines(20, { 2: 'A2' }))
+    const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
+    write('d.txt', numberedLines(20, { 2: 'A2', 3: 'later' }))
     await expect(revertAgentChangeHunk(context, 'd.txt', diff)).rejects.toThrow(
       AGENT_REVERT_HUNK_FAILED_MESSAGE
     )
-    expect(read('d.txt')).toBe(lines(20, { 2: 'A2', 3: 'later' }))
+    expect(read('d.txt')).toBe(numberedLines(20, { 2: 'A2', 3: 'later' }))
   })
 
   it('追加・削除されたファイルのハンクは拒否する(新規ファイルのパッチの逆適用は削除になる)', async () => {
@@ -323,18 +334,18 @@ describe('revertAgentChangeHunk(実 git)', () => {
   })
 
   it('別のファイルを対象にしたパッチは拒否し、どちらのファイルも変えない', async () => {
-    write('a.txt', lines(5))
-    write('b.txt', lines(5))
+    write('a.txt', numberedLines(5))
+    write('b.txt', numberedLines(5))
     commitAll(repo, 'init')
     const context = await record()
-    write('a.txt', lines(5, { 2: 'A' }))
-    write('b.txt', lines(5, { 2: 'B' }))
+    write('a.txt', numberedLines(5, { 2: 'A' }))
+    write('b.txt', numberedLines(5, { 2: 'B' }))
     const bDiff = await getAgentChangeDiff(context.snapshot, 'b.txt')
     await expect(revertAgentChangeHunk(context, 'a.txt', bDiff)).rejects.toThrow(
       'パッチの対象がファイルと一致しません'
     )
-    expect(read('a.txt')).toBe(lines(5, { 2: 'A' }))
-    expect(read('b.txt')).toBe(lines(5, { 2: 'B' }))
+    expect(read('a.txt')).toBe(numberedLines(5, { 2: 'A' }))
+    expect(read('b.txt')).toBe(numberedLines(5, { 2: 'B' }))
   })
 })
 
@@ -855,4 +866,149 @@ describe('revertAllAgentChanges の利用者の変更の除外(実 git・偽の 
     expect(read('a.txt')).toBe('a\nuser\n')
     expect(trashed).toEqual([])
   })
+})
+
+// Git 管理外のフォルダ(隠れた git)。ファイルの先頭の beforeEach もリポジトリを作るが、この節では使わない
+describe('Git 管理外のフォルダの戻す操作(隠れた git)(実 git)', () => {
+  let folder: string
+  let folderHome: string
+  let folderTemp: string
+  let plainTrash: FakeTrash['trash']
+  let plainTrashed: string[]
+  const put = (p: string, content: string): void => writeRepoFile(folder, p, content)
+  const readPlain = (p: string): string => readFileSync(join(folder, p), 'utf8')
+  const recordPlain = async (): Promise<AgentRevertContext> =>
+    makeRevertContext(await recordBaseline(folder, folderTemp), {
+      trash: plainTrash,
+      tempRoot: folderTemp
+    })
+
+  beforeEach(() => {
+    ;({
+      repo: folder,
+      home: folderHome,
+      tempRoot: folderTemp
+    } = createAgentNonGitFolder('agent-changes-revert-plain-'))
+    ;({ trash: plainTrash, trashed: plainTrashed } = createFakeTrash())
+  })
+
+  afterEach(() =>
+    disposeAgentBaselineRepo({ repo: folder, home: folderHome, tempRoot: folderTemp })
+  )
+
+  it('行の ↶: 変更は記録の時点の内容へ、削除は作り直し、追加はゴミ箱へ。変えたもの以外のフォルダの中は変わらない(.git を作らない)', async () => {
+    put('a.txt', 'one\n')
+    put('b.txt', 'b\n')
+    put('keep.txt', 'k\n')
+    const context = await recordPlain()
+    put('a.txt', 'one\nagent\n')
+    unlinkSync(join(folder, 'b.txt'))
+    put('c.txt', 'c\n')
+    const before = folderEntries(folder)
+    await revertAgentChange(context, 'a.txt')
+    await revertAgentChange(context, 'b.txt')
+    await revertAgentChange(context, 'c.txt')
+    expect(readPlain('a.txt')).toBe('one\n')
+    expect(readPlain('b.txt')).toBe('b\n')
+    expect(plainTrashed).toEqual([join(folder, 'c.txt')])
+    expect(folderChangesExcept(before, folderEntries(folder), ['a.txt', 'b.txt', 'c.txt'])).toEqual(
+      []
+    )
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+    expect((await listAgentChanges(context.snapshot)).entries).toEqual([])
+  })
+
+  it('シンボリックリンクは元の指す先(フォルダの外を含む)のリンクとして作り直し、指す先を書き換えない(L-016)', async () => {
+    put('a.txt', 'a\n')
+    const outside = join(folderHome, 'outside.txt')
+    writeFileSync(outside, 'outside\n')
+    symlinkSync('a.txt', join(folder, 'link.txt'))
+    symlinkSync(outside, join(folder, 'out.txt'))
+    const context = await recordPlain()
+    unlinkSync(join(folder, 'link.txt'))
+    unlinkSync(join(folder, 'out.txt'))
+    symlinkSync('a.txt', join(folder, 'out.txt'))
+    await revertAgentChange(context, 'link.txt')
+    await revertAgentChange(context, 'out.txt')
+    expect(readlinkSync(join(folder, 'link.txt'))).toBe('a.txt')
+    expect(readlinkSync(join(folder, 'out.txt'))).toBe(outside)
+    expect(readFileSync(outside, 'utf8')).toBe('outside\n')
+  }, 30_000)
+
+  it('実行ビットの変更を戻す', async () => {
+    put('run.sh', '#!/bin/sh\necho run\n')
+    chmodSync(join(folder, 'run.sh'), 0o755)
+    const context = await recordPlain()
+    put('run.sh', '#!/bin/sh\necho changed\n')
+    chmodSync(join(folder, 'run.sh'), 0o644)
+    await revertAgentChange(context, 'run.sh')
+    expect(readPlain('run.sh')).toBe('#!/bin/sh\necho run\n')
+    expect(statSync(join(folder, 'run.sh')).mode & 0o111).not.toBe(0)
+  })
+
+  it('ハンクを戻す(パッチはフォルダからの相対で解釈する。確認の結果 10)', async () => {
+    put('d.txt', numberedLines(20))
+    const context = await recordPlain()
+    put('d.txt', numberedLines(20, { 2: 'A2', 18: 'A18' }))
+    const before = folderEntries(folder)
+    const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
+    await revertAgentChangeHunk(context, 'd.txt', firstHunkPatch(diff))
+    expect(readPlain('d.txt')).toBe(numberedLines(20, { 18: 'A18' }))
+    expect(folderChangesExcept(before, folderEntries(folder), ['d.txt'])).toEqual([])
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+  })
+
+  it('サブディレクトリ・空白・日本語を含むパスのハンクを戻し、記録のインデックスと gitDir の中は変わらない(--index を付けない)', async () => {
+    const target = 'sub dir/日本語/ファ イル.txt'
+    put(target, numberedLines(20))
+    const context = await recordPlain()
+    const { indexPath, gitDir } = context.snapshot
+    if (gitDir === null) throw new Error('隠れた git の記録のはず')
+    // ファイルの一覧と内容のハッシュ(サブディレクトリの中を含む)
+    const digestDir = (dir: string): Record<string, string> =>
+      Object.fromEntries(
+        Object.entries(folderEntries(dir)).map(([rel, meta]) => [
+          rel,
+          meta.startsWith('file')
+            ? createHash('sha256')
+                .update(readFileSync(join(dir, rel)))
+                .digest('hex')
+            : meta.split(' ')[0]
+        ])
+      )
+    const digestIndex = (): string =>
+      `${createHash('sha256').update(readFileSync(indexPath)).digest('hex')} ${statSync(indexPath).mtimeMs}`
+    put(target, numberedLines(20, { 2: 'A2', 18: 'A18' }))
+    const diff = await getAgentChangeDiff(context.snapshot, target)
+    const beforeIndex = digestIndex()
+    const beforeGitDir = digestDir(gitDir)
+    const beforeFolder = folderEntries(folder)
+    await revertAgentChangeHunk(context, target, firstHunkPatch(diff))
+    expect(readPlain(target)).toBe(numberedLines(20, { 18: 'A18' }))
+    expect(digestIndex()).toBe(beforeIndex)
+    expect(digestDir(gitDir)).toEqual(beforeGitDir)
+    expect(folderChangesExcept(beforeFolder, folderEntries(folder), [target])).toEqual([])
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+  }, 30_000)
+
+  it('すべて戻す(変更・削除・追加・新しいフォルダ)', async () => {
+    put('a.txt', 'one\n')
+    put('b.txt', 'b\n')
+    const context = await recordPlain()
+    put('a.txt', 'one\nagent\n')
+    unlinkSync(join(folder, 'b.txt'))
+    put('c.txt', 'c\n')
+    put('d/x.txt', 'x\n')
+    const result = await revertAllAgentChanges(context, [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'D' },
+      { path: 'c.txt', status: 'A' },
+      { path: 'd/', status: 'A' }
+    ])
+    expect(result).toMatchObject({ status: 'done', applied: 4 })
+    expect(readPlain('a.txt')).toBe('one\n')
+    expect(readPlain('b.txt')).toBe('b\n')
+    expect(plainTrashed.sort()).toEqual([join(folder, 'c.txt'), join(folder, 'd')])
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+  }, 30_000)
 })

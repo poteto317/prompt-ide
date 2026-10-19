@@ -184,6 +184,15 @@ describe('listAgentChangesInScope', () => {
       attribution: { kind: 'lost', reason: 'checkpoint-failed', lostAt: 300 }
     })
   })
+
+  it('結果の storage は記録の置き場(範囲の一覧を出せないときも同じ要約から入れる)', async () => {
+    const hidden = makeAgentChangesRecord([], {
+      baseline: makeBaselineSnapshot({ tempDir: '/tmp/h', gitDir: '/tmp/h/git' })
+    })
+    await expect(
+      listAgentChangesInScope(hidden, { kind: 'run', runId: 99 }, keepEntries)
+    ).resolves.toMatchObject({ kind: 'scope-unavailable', storage: 'app' })
+  })
 })
 
 describe('getAgentChangeDiffInScope', () => {

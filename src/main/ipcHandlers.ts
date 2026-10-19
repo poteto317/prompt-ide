@@ -48,6 +48,7 @@ import {
   protectionRefGit
 } from './agentChangesProtectionRef'
 import { createProtectionInstanceId } from './agentChangesProtectionRules'
+import { sweepStaleBaselineTempDirs } from './agentBaselineTempSweep'
 import { moveToTrash } from './trash'
 import { AGENT_CHANGES_UNDO_MAX_BYTES, executeAgentChangesUndo } from './agentChangesUndo'
 import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from './agentChangesQuery'
@@ -138,14 +139,19 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher)
   registerShellHandlers(ipcMain, (url) => shell.openExternal(url))
   // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる。
-  // 記録中は記録の tree を専用の ref から守る(instanceId は起動ごとに 1 回だけ作る。hook の無いディレクトリは userData の下)
+  // 記録中は記録の tree を専用の ref から守る(hook の無いディレクトリは userData の下)。main の起動ごとの ID は 1 回だけ作り、
+  // 保護の ref の名前と記録の一時ディレクトリの名前に同じ値を使う(起動時の掃除が自分の記録を消さない)
+  const instanceId = createProtectionInstanceId(process.pid, randomBytes(4).toString('hex'))
+  // 記録の一時ディレクトリの親。記録を取る関数と起動時の掃除に同じ値をここから渡す(記録の側の既定値に掃除が頼らない)
+  const baselineTempRoot = tmpdir()
   const agentBaselineRegistry = new AgentBaselineRegistry({
-    takeSnapshot: (folderPath, options) => takeBaselineSnapshot(folderPath, options),
+    takeSnapshot: (folderPath, options) =>
+      takeBaselineSnapshot(folderPath, { ...options, instanceId, tempRoot: baselineTempRoot }),
     removeDir: removeBaselineDir,
     removeDirSync: removeBaselineDirSync,
     now: Date.now,
     protection: {
-      instanceId: createProtectionInstanceId(process.pid, randomBytes(4).toString('hex')),
+      instanceId,
       noHooksDir: prepareAgentChangesNoHooksDir(app.getPath('userData')),
       git: protectionRefGit,
       isProcessAlive: isProcessAliveOnThisMachine
@@ -160,6 +166,12 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     attributionWarn: (message, err) => console.warn(message, err)
   })
   setupAgentBaselineLifecycle(app, agentBaselineRegistry, folderAccess)
+  // 前の起動の異常終了で残った記録の一時ディレクトリを消す(待たない。自分の instanceId のものは消さないため、最初の記録と並んでも消さない)
+  void sweepStaleBaselineTempDirs({
+    tempRoot: baselineTempRoot,
+    instanceId,
+    isProcessAlive: isProcessAliveOnThisMachine
+  }).catch(() => undefined)
   registerAgentChangesHandlers(ipcMain, {
     registry: agentBaselineRegistry,
     folderAccess,

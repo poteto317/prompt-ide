@@ -262,6 +262,24 @@ describe('classifyDiscardTarget', () => {
       ])
     })
 
+    // エージェントの変更を戻す(記録の git)は --ignore-submodules=dirty を渡す(入れ子のリポジトリの中の命令を動かさない。
+    // ローカルレビュー第 13 周の指摘 1)。渡さないソース管理の取り消しは上のとおり今の引数のまま
+    it('diffArgs を渡すと intent-to-add の判定の diff の先頭(diff の直後)に足す', async () => {
+      setupRaw({ tracked: 'a.ts\0' })
+      await expect(classifyDiscardTarget(git, 'a.ts', ['--ignore-submodules=dirty'])).resolves.toBe(
+        'tracked'
+      )
+      expect(mockRaw).toHaveBeenCalledWith([
+        'diff',
+        '--ignore-submodules=dirty',
+        '--name-only',
+        '-z',
+        '--diff-filter=A',
+        '--',
+        ':(literal)a.ts'
+      ])
+    })
+
     it('通常の追跡済み(diff --diff-filter=A が空)なら tracked', async () => {
       setupRaw({ tracked: 'a.ts\0', intentToAdd: '' })
       await expect(classify('a.ts')).resolves.toBe('tracked')

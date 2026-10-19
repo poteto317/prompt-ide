@@ -81,7 +81,8 @@ describe('makeAgentChangesRecordingView', () => {
         headChanged: false
       },
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -92,7 +93,8 @@ describe('makeAgentChangesRecordingView', () => {
       runs: [],
       list: null,
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -112,7 +114,8 @@ describe('makeAgentChangesRecordingView', () => {
         headChanged: true
       },
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -129,7 +132,8 @@ describe('makeAgentChangesRecordingState', () => {
       startedAt: 100,
       runs: [],
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -140,7 +144,8 @@ describe('makeAgentChangesRecordingState', () => {
       startedAt: 5,
       runs: [run],
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -164,7 +169,8 @@ describe('makeAgentChangesScopeUnavailableView', () => {
         reason: 'end-not-recorded'
       },
       undo: null,
-      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false }
+      attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository'
     })
   })
 
@@ -195,6 +201,7 @@ describe('makeAgentChangesListResult', () => {
       runs: [],
       undo: null,
       attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository',
       scope: { kind: 'all' },
       entries,
       totalCount: 1,
@@ -210,6 +217,7 @@ describe('makeAgentChangesListResult', () => {
       runs: [],
       undo: null,
       attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository',
       scope: { kind: 'all' },
       entries: [],
       totalCount: 0,
@@ -358,6 +366,7 @@ describe('makeAgentChangesScopeUnavailableListResult', () => {
       runs: [],
       undo: null,
       attribution: { kind: 'tracking', since: null, hadUnassignedSince: false },
+      storage: 'repository',
       scope: { kind: 'run', runId: 2 },
       reason: 'run-missing'
     })

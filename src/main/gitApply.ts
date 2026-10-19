@@ -23,13 +23,24 @@ const GIT_APPLY_TIMEOUT_MS = 30_000
 // cliService.ts の killWithEscalation と同じパターン(値も同じ 5 秒)
 const SIGKILL_GRACE_MS = 5_000
 
+/**
+ * git apply を cwd の継承以外の環境で動かすときの環境(エージェントの変更の隠れた git の記録。agentBaselineGit の
+ * baselineGitSpawnEnvironment が作る)。env は子プロセスの環境そのもの、config は `git -c` で args の前に付ける設定
+ */
+export interface GitApplyEnvironment {
+  env: Record<string, string>
+  config: readonly string[]
+}
+
 // git apply の実行(child_process.spawn 経由)のみを担う。simple-git 経由の高レベル
 // API 呼び出しとはプロセス起動という異なる責務のため gitService.ts から分離している。
+// environment を渡すと、その環境と -c で動かす。打ち切り(30 秒で SIGTERM、5 秒の猶予の後に SIGKILL)は渡さないときと同じ
 export function runGitApply(
   cwd: string,
   filePath: string,
   args: string[],
-  input: string
+  input: string,
+  environment?: GitApplyEnvironment
 ): Promise<string> {
   return new Promise((resolvePromise, reject) => {
     // proc/stdin の 'error' と 'close' は組み合わせによっては両方発火しうる
@@ -42,7 +53,15 @@ export function runGitApply(
       clearTimeout(timeoutId)
       reject(err)
     }
-    const proc = spawn('git', args, { cwd })
+    const proc =
+      environment === undefined
+        ? spawn('git', args, { cwd })
+        : spawn('git', [...environment.config.flatMap((entry) => ['-c', entry]), ...args], {
+            cwd,
+            env: environment.env,
+            // agentBaselineGit の記録の git と同じ。Windows で console のウィンドウを開かない
+            windowsHide: true
+          })
     // close イベントの発火有無で「実際にプロセスが終了したか」を追跡する
     // (cliService.ts の killWithEscalation と同じ理由。settled は Promise が
     // 確定したかを表すだけで、SIGKILL エスカレーションの判定には使えない)
@@ -139,13 +158,23 @@ export function unstageHunk(folderPath: string, filePath: string, patch: string)
   return runHunkApply(folderPath, filePath, patch, { reverse: true })
 }
 
-// ハンクの取り消し。作業ツリーだけへ逆適用する(--cached を付けないので index は変わらない)
+// ハンクの取り消しの git の引数(作業ツリーだけへの逆適用。--cached・--index を付けないので index は読まず、変えない)
+export const DISCARD_HUNK_APPLY_ARGS: readonly string[] = [
+  'apply',
+  '--reverse',
+  ...HUNK_APPLY_COMMON_ARGS
+]
+
+// ハンクの取り消し。作業ツリーだけへ逆適用する(--cached を付けないので index は変わらない)。
+// エージェントの変更の隠れた git の記録は、environment に隠れた git の環境を渡して同じ打ち切りで動かす
+// (agentChangesRevert の applyHunkRevert)
 export async function discardHunkPatch(
   folderPath: string,
   filePath: string,
-  patch: string
+  patch: string,
+  environment?: GitApplyEnvironment
 ): Promise<void> {
-  await runGitApply(folderPath, filePath, ['apply', '--reverse', ...HUNK_APPLY_COMMON_ARGS], patch)
+  await runGitApply(folderPath, filePath, [...DISCARD_HUNK_APPLY_ARGS], patch, environment)
 }
 
 // パッチが触るパスの一覧。--numstat -z は出力が NUL 区切りで、通常は `<追加>\t<削除>\t<パス>\0`

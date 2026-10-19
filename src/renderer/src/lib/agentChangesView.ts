@@ -7,7 +7,7 @@ import type {
 import type { AgentChangesView } from '../types'
 import { findAgentChangesRun } from './agentChangesScope'
 
-// main の応答(状態・一覧)を記録の写し(AgentChangesView)へどう反映するかの規則(記録の区別の要約 attribution も写す)と、
+// main の応答(状態・一覧)を記録の写し(AgentChangesView)へどう反映するかの規則(記録の区別の要約 attribution と記録の置き場 storage も写す)と、
 // 写しの記録の見分け方(同じ記録か・始点の時刻)(設計書「記録の写しと範囲」)。useAgentChanges から外して、描画なしで検査できるようにする。
 // 古い結果の破棄・読み上げ・取り直しの実行は hook が行う
 
@@ -94,7 +94,8 @@ export function planRecordingState(
       runs: state.runs,
       list: sameRecording !== null && missingRun === null ? sameRecording.list : null,
       undo: state.undo,
-      attribution: state.attribution
+      attribution: state.attribution,
+      storage: state.storage
     },
     resetScope: sameRecording === null && selected.kind !== 'all',
     missingRun
@@ -127,7 +128,8 @@ export function planListResult(
       startedAt: result.startedAt,
       runs: result.runs,
       undo: result.undo,
-      attribution: result.attribution
+      attribution: result.attribution,
+      storage: result.storage
     }
     if (result.reason === 'run-missing' && result.scope.kind === 'run') {
       return {
@@ -147,8 +149,18 @@ export function planListResult(
       }
     }
   }
-  const { startedAt, runs, undo, attribution, scope, entries, totalCount, truncated, headChanged } =
-    result
+  const {
+    startedAt,
+    runs,
+    undo,
+    attribution,
+    storage,
+    scope,
+    entries,
+    totalCount,
+    truncated,
+    headChanged
+  } = result
   return {
     kind: 'listed',
     view: {
@@ -157,7 +169,8 @@ export function planListResult(
       runs,
       list: { kind: 'listed', scope, entries, totalCount, truncated, headChanged },
       undo,
-      attribution
+      attribution,
+      storage
     },
     totalCount
   }

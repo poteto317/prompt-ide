@@ -6,7 +6,12 @@ import {
   toAgentChangeRelativePath
 } from '@shared/types'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE, hasIgnoredInside } from './agentBaselineCoverage'
-import { createBaselineGit, createRepoGit } from './agentBaselineGit'
+import {
+  baselineGitSpawnEnvironment,
+  createBaselineGit,
+  createRecordRepoGit,
+  RECORD_WORKTREE_DIFF_ARGS
+} from './agentBaselineGit'
 import type { BaselineGitOptions } from './agentBaselineGit'
 import type { BaselineSnapshot } from './agentBaselineSnapshot'
 import { collectAgentChangeEntries } from './agentChangesQuery'
@@ -28,7 +33,7 @@ import { toLiteralPathspec } from './gitPathParsing'
 
 // エージェントの変更を、記録の時点(実行の前)の内容へ戻す(設計書「変更を戻す」)。既存の取り消しの部品(分類・重なりの検査・
 // applyDiscard・パッチの検査)を、記録のインデックスで問い合わせる git で呼ぶ(確認の結果 7・8・10)。戻すのは作業ツリーだけで、
-// 利用者の index・stash・HEAD は変えない。コンフリクトの判定だけは利用者の index で行う
+// 利用者の index・stash・HEAD は変えない。コンフリクトの判定と blob の有無は createRecordRepoGit(リポジトリの方式は利用者の index、隠れた git は記録の git)で行う
 // 戻す 3 関数は、検査の後・作業ツリーを変える前に取り消しの控えを取り(控えの準備に失敗したら中止。L-003。フォルダ・ファイルとリンク以外・
 // 上限を超える内容は控えずに戻す)、1 件を適用するたびに戻した後の指紋を控える(agentChangesUndo.ts)
 
@@ -91,7 +96,7 @@ async function assess(
   if (entry.notRecorded) {
     return { ok: false, reason: `実行前の内容を記録していないため戻せません: ${path}` }
   }
-  // コンフリクトは利用者の index の状態(記録のインデックスには未解決のエントリが無い)
+  // コンフリクトは利用者の index の状態(記録のインデックスには未解決のエントリが無い。隠れた git の記録は常に偽になる)
   if (await isUnmergedPath(gits.repo, path)) {
     return { ok: false, reason: `コンフリクト中のファイルは戻せません: ${path}` }
   }
@@ -110,7 +115,7 @@ async function assess(
       reason: `ignore されたファイルを含むため、フォルダごとは戻せません: ${path}`
     }
   }
-  const kind = await classifyDiscardTarget(gits.baseline, path)
+  const kind = await classifyDiscardTarget(gits.baseline, path, RECORD_WORKTREE_DIFF_ARGS)
   try {
     assertDiscardable(kind, path)
     // 記録のインデックスは intent-to-add を持たない(add -A が実体を入れる)。現れたら判定を誤っているため拒否する
@@ -142,10 +147,9 @@ async function assess(
 }
 
 function gitsFor(context: AgentRevertContext): { baseline: SimpleGit; repo: SimpleGit } {
-  const { folderPath, indexPath } = context.snapshot
   return {
-    baseline: createBaselineGit(folderPath, indexPath, context.gitOptions),
-    repo: createRepoGit(folderPath, context.gitOptions)
+    baseline: createBaselineGit(context.snapshot, context.gitOptions),
+    repo: createRecordRepoGit(context.snapshot, context.gitOptions)
   }
 }
 
@@ -257,6 +261,26 @@ export function assertHunkRevertableEntry(
 }
 
 /**
+ * ハンクの逆適用(作業ツリーだけ)。リポジトリの方式は利用者のリポジトリの中で動かし、そのリポジトリの設定に従う(今の挙動のまま)。
+ * 隠れた git の記録は、フォルダが Git 管理外のため、そのまま動かすと git がリポジトリの外として利用者の大域・システムの設定だけを読み、
+ * core.autocrlf=true でファイル全体を CRLF で書き戻す(ローカルレビュー第 6 周の指摘 1)。記録の git の環境(GIT_DIR・GIT_WORK_TREE)と
+ * -c の守り(baselineGitSpawnEnvironment)で動かし、隠れた git の設定(core.autocrlf=false・core.symlinks など)を効かせる。--index を
+ * 付けないため、GIT_DIR の下でも index は読まず、作業ツリーだけに当たる。打ち切りはどちらの方式も gitApply の規則(30 秒で SIGTERM、
+ * 5 秒の猶予の後に SIGKILL)で、gitOptions の timeoutMs は使わない(すぐ SIGKILL するとファイルが無いまま残りうる。第 9 周の指摘 1)。
+ * テストのため export する
+ */
+export async function applyHunkRevert(
+  context: AgentRevertContext,
+  filePath: string,
+  contentPatch: string
+): Promise<void> {
+  const { snapshot } = context
+  const environment =
+    snapshot.gitDir === null ? undefined : baselineGitSpawnEnvironment(snapshot, context.gitOptions)
+  await discardHunkPatch(snapshot.folderPath, filePath, contentPatch, environment)
+}
+
+/**
  * ハンク単位で戻す(作業ツリーへの逆適用。index は使わない)。追加・削除・フォルダ・種類の変更の行と、ゴミ箱へ移す対象の行は
  * 拒否する(ファイル単位で戻す)
  */
@@ -281,7 +305,7 @@ export async function revertAgentChangeHunk(
     [{ path: filePath, isDirectory: false }],
     async (recorder) => {
       try {
-        await discardHunkPatch(folderPath, filePath, contentPatch)
+        await applyHunkRevert(context, filePath, contentPatch)
       } catch (error) {
         throw new Error(AGENT_REVERT_HUNK_FAILED_MESSAGE, { cause: error })
       }

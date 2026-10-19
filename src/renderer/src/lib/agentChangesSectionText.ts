@@ -1,6 +1,8 @@
 import type { AgentChangesScope } from '@shared/types'
 import type { AgentChangesView } from '../types'
 import {
+  AGENT_CHANGES_APP_STORAGE_HINT,
+  AGENT_CHANGES_APP_STORAGE_NOTE,
   buildAgentChangesHeading,
   buildAgentChangesRunHeading,
   describeAgentChangesAttribution,
@@ -10,7 +12,7 @@ import {
 import { findAgentChangesRun, getListedAgentChanges } from './agentChangesScope'
 
 // セクション「エージェントの変更」の、写しと選んでいる範囲(除く旨は除く件数も)から決まる文字(見出し・範囲の一覧が取れない理由・
-// 区別の状態の 1 行・すべて戻すから除く旨)と、押せないボタンが結ぶ理由の要素の導出(agentChangesReasonTargets)。AgentChangesSection から外して、描画なしで検査できるようにする
+// 区別の状態の 1 行・すべて戻すから除く旨・記録の置き場の注記)と、押せないボタンが結ぶ理由の要素の導出(agentChangesReasonTargets)。AgentChangesSection から外して、描画なしで検査できるようにする
 
 /**
  * 見出し。範囲が実行で、写しの実行の一覧にあれば実行の番号と期間を、それ以外は累積の始点を添える。
@@ -66,6 +68,21 @@ export function describeAgentChangesSectionExcluded(
   const list = getListedAgentChanges(view)
   if (list === null || list.entries.length === 0 || list.scope.kind === 'run') return null
   return excludedCount > 0 ? formatAgentChangesExcludedNote(excludedCount) : null
+}
+
+/**
+ * 記録の置き場の注記(出さないなら null)。記録中は記録が隠れた git(storage: 'app')のとき NOTE(記録中に git init してパネルが
+ * リポジトリの表示に変わっても、記録が隠れた git のままなら出し続ける)。記録が無い間は Git 管理外のフォルダのとき HINT。
+ * 記録できない理由が出ている間は出さない(理由の文と重ねない)
+ */
+export function describeAgentChangesStorage(
+  view: AgentChangesView,
+  isNotRepository: boolean
+): string | null {
+  if (view.kind === 'recording')
+    return view.storage === 'app' ? AGENT_CHANGES_APP_STORAGE_NOTE : null
+  if (view.kind === 'none') return isNotRepository ? AGENT_CHANGES_APP_STORAGE_HINT : null
+  return null
 }
 
 /** 押せないボタンが結ぶ理由の要素: 一覧の上の理由(list)・取り消しの帯の理由(undo)・結ばない(null) */

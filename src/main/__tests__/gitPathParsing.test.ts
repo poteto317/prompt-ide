@@ -3,9 +3,22 @@ import {
   parseNulSeparatedPaths,
   parseUnstagedStatusEntries,
   parseUnstagedStatusPaths,
+  stripTrailingNewline,
   toLiteralPathspec
 } from '../gitPathParsing'
 import { isUnstagedFile } from '../../renderer/src/lib/gitUtils'
+
+describe('stripTrailingNewline', () => {
+  it('末尾の改行(LF・CRLF)を 1 つだけ除く', () => {
+    expect(stripTrailingNewline('/repo\n')).toBe('/repo')
+    expect(stripTrailingNewline('/repo\r\n')).toBe('/repo')
+    expect(stripTrailingNewline('/repo\n\n')).toBe('/repo\n')
+  })
+
+  it('パスの先頭・末尾の空白は残す(trim しない)', () => {
+    expect(stripTrailingNewline(' /my repo \n')).toBe(' /my repo ')
+  })
+})
 
 describe('parseNulSeparatedPaths', () => {
   it('NUL 区切りのパスを配列にする', () => {

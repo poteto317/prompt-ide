@@ -1,7 +1,15 @@
 import { vi } from 'vitest'
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs'
+import {
+  lstatSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   AgentChangesAttributionSummary,
   AgentChangesRun,
@@ -9,7 +17,12 @@ import type {
   AgentChangesUndoSummary
 } from '@shared/types'
 import { takeBaselineSnapshot } from '../../agentBaselineSnapshot'
-import type { BaselineSnapshot, BaselineSnapshotResult } from '../../agentBaselineSnapshot'
+import type {
+  BaselineCheckpointBase,
+  BaselineSnapshot,
+  BaselineSnapshotResult
+} from '../../agentBaselineSnapshot'
+import type { BaselineGitLocation } from '../../agentBaselineGit'
 import type { AgentChangesRecord, AgentChangesRecordRun } from '../../agentChangesRecord'
 import type { AgentChangesProtectionGit } from '../../agentChangesProtectionRef'
 import { protectionRefName } from '../../agentChangesProtectionRules'
@@ -19,12 +32,15 @@ import type {
 } from '../../agentBaselineRegistry'
 import type { TrackingAttribution } from '../../agentChangesAttribution'
 import type { AgentToolActivity, AgentToolActivitySignal } from '../../agentToolActivity'
-import { initRepo, runGit, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
+import type { AgentRevertContext } from '../../agentChangesRevert'
+import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
+import { initRepo, runGit, stubGitCeiling, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
 
 // エージェントの変更の記録(agentBaselineSnapshot)を実 git で試すテストの準備と偽物を 1 か所から作る。
 // 「記録のインデックスの git を開発者の設定から切り離す方法」や「記録を取る関数の呼び方」が変わったときに、
 // 各テストのファイルを同じように直さずに済むようにする(SRP L3-01・L3-02)。
 // あわせて、registry を git なしで試すテストの偽物(記録の形・保護の ref の git と依存・区別の形と依存〈追跡の偽物を含む〉)もここから作る。
+// 戻す・取り消しの統合テストが共有する戻す操作の文脈(makeRevertContext)と、ハンクを戻すテストの内容とパッチ(numberedLines・firstHunkPatch)も置く。
 // realGitRepo.ts は記録に依存しない汎用の道具なので、記録に関わるものはこちらに置く
 
 export interface AgentBaselineRepo {
@@ -58,15 +74,70 @@ export function disposeAgentBaselineRepo(dirs: AgentBaselineRepo): void {
   }
 }
 
+// Git 管理外のフォルダ(realpath 済み。中身は空)と HOME・tempRoot。戻り値は AgentBaselineRepo と同じ形で、repo が Git 管理外のフォルダ
+// (disposeAgentBaselineRepo でそのまま片付ける)。stubIsolatedGitEnv・stubGitHome は createAgentBaselineRepo と同じ。上の
+// フォルダのリポジトリ(TMPDIR がリポジトリの中にある環境など)を拾わないよう、GIT_CEILING_DIRECTORIES をフォルダの親にする
+// (git は作業中のフォルダと同じパスの GIT_CEILING_DIRECTORIES を無視して上へ探すため、フォルダ自身を指定しても効かない)
+export function createAgentNonGitFolder(prefix: string): AgentBaselineRepo {
+  stubIsolatedGitEnv()
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), prefix)))
+  const home = mkdtempSync(join(tmpdir(), `${prefix}home-`))
+  const tempRoot = mkdtempSync(join(tmpdir(), `${prefix}temp-`))
+  stubGitHome(home)
+  stubGitCeiling(dirname(repo))
+  return { repo, home, tempRoot }
+}
+
+// フォルダの中のすべてのパス(相対。.git の中を含む)の種類・大きさ・更新時刻・モード。操作の前後で比べ、利用者のフォルダに
+// 書かないこと(.git などを作らないこと)を確かめる(設計書「セキュリティ」)
+export function folderEntries(folder: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(join(folder, dir))) {
+      const rel = dir === '' ? name : `${dir}/${name}`
+      const stat = lstatSync(join(folder, rel))
+      const kind = stat.isSymbolicLink() ? 'link' : stat.isDirectory() ? 'dir' : 'file'
+      result[rel] = `${kind} ${stat.size} ${stat.mtimeMs} ${(stat.mode & 0o7777).toString(8)}`
+      if (kind === 'dir') walk(rel)
+    }
+  }
+  walk('')
+  return result
+}
+
+// folderEntries の前後の違いのうち、操作が変えたパス(changed)・その中・その祖先のフォルダ(中身が変わると更新時刻が変わる)を
+// 除いたもの。空なら、操作が変えたもの以外は変わっていない
+export function folderChangesExcept(
+  before: Record<string, string>,
+  after: Record<string, string>,
+  changed: readonly string[]
+): string[] {
+  const touched = (rel: string): boolean =>
+    changed.some((c) => rel === c || rel.startsWith(`${c}/`) || c.startsWith(`${rel}/`))
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((rel) => !touched(rel) && before[rel] !== after[rel])
+    .sort()
+}
+
 // 記録の結果から snapshot を取り出す。recorded でなければ例外(準備の失敗をテストの失敗として見せる)
 export function recordedSnapshot(result: BaselineSnapshotResult): BaselineSnapshot {
   if (result.kind !== 'recorded') throw new Error(`記録できなかった: ${JSON.stringify(result)}`)
   return result.snapshot
 }
 
+/** 偽物の起動ごとの ID(保護の ref の名前と、記録の一時ディレクトリの名前に使う。<pid>-<16 進 8 桁> の形) */
+export const FAKE_INSTANCE_ID = '1-00000000'
+
 // 記録を取る。recorded でなければ例外
 export async function recordBaseline(repo: string, tempRoot: string): Promise<BaselineSnapshot> {
-  return recordedSnapshot(await takeBaselineSnapshot(repo, { tempRoot }))
+  return recordedSnapshot(
+    await takeBaselineSnapshot(repo, { tempRoot, instanceId: FAKE_INSTANCE_ID })
+  )
+}
+
+// 記録を写しの元にした区切りの base(記録のインデックスと隠れた git の場所。区切りの gitDir は累積の始点と同じ値を持つ)
+export function snapshotBase(snapshot: BaselineSnapshot): BaselineCheckpointBase {
+  return { indexPath: snapshot.indexPath, gitDir: snapshot.gitDir }
 }
 
 // 区切りを取る(写しの元は base の記録のインデックス)。recorded でなければ例外
@@ -76,7 +147,11 @@ export async function recordBaselineFrom(
   base: BaselineSnapshot
 ): Promise<BaselineSnapshot> {
   return recordedSnapshot(
-    await takeBaselineSnapshot(repo, { tempRoot, baseIndexPath: base.indexPath })
+    await takeBaselineSnapshot(repo, {
+      tempRoot,
+      instanceId: FAKE_INSTANCE_ID,
+      base: snapshotBase(base)
+    })
   )
 }
 
@@ -109,6 +184,38 @@ export function createFakeTrash(): FakeTrash {
   }
 }
 
+// 戻す操作の文脈(記録・ゴミ箱・取り消しの控えの置き場と上限。author は付けない)。戻す・取り消しの統合テストが共有する。
+// maxBytes の既定は本番の上限、gitOptions は渡したときだけ置く(AgentRevertContext の欄が増えても各テストを直さずに済むようにする)
+export function makeRevertContext(
+  snapshot: BaselineSnapshot,
+  options: {
+    trash: AgentRevertContext['trash']
+    tempRoot: string
+    maxBytes?: number
+    gitOptions?: AgentRevertContext['gitOptions']
+  }
+): AgentRevertContext {
+  const { trash, tempRoot, maxBytes = AGENT_CHANGES_UNDO_MAX_BYTES, gitOptions } = options
+  return {
+    snapshot,
+    trash,
+    undoCapture: { tempRoot, maxBytes },
+    attributeEntries: async (entries) => entries,
+    ...(gitOptions === undefined ? {} : { gitOptions })
+  }
+}
+
+// l1〜ln の n 行(末尾に改行)。replace の行番号(1 始まり)の行だけ差し替える。ハンクを戻すテストの内容に使う
+export function numberedLines(n: number, replace: Record<number, string> = {}): string {
+  return Array.from({ length: n }, (_, i) => replace[i + 1] ?? `l${i + 1}`).join('\n') + '\n'
+}
+
+// diff の 1 つ目のハンクだけのパッチ(ヘッダーと 1 つ目の @@ の節)
+export function firstHunkPatch(diff: string): string {
+  const parts = diff.split(/(?=^@@ )/m)
+  return parts[0] + parts[1]
+}
+
 /** 空の tree の ID(makeBaselineSnapshot の tree の既定値) */
 export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 
@@ -120,6 +227,7 @@ export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}):
     folderPath: '/repo',
     tempDir,
     indexPath: `${tempDir}/index`,
+    gitDir: null,
     startedAt: 0,
     head: null,
     tree: EMPTY_TREE,
@@ -130,8 +238,10 @@ export function makeBaselineSnapshot(overrides: Partial<BaselineSnapshot> = {}):
   }
 }
 
-/** 偽物の保護の instanceId(<pid>-<16 進 8 桁> の形) */
-export const FAKE_PROTECTION_INSTANCE_ID = '1-00000000'
+// リポジトリの方式の記録の git の場所(gitDir null)。記録の git を直接呼ぶテストで使う
+export function repoLocation(folderPath: string, indexPath: string): BaselineGitLocation {
+  return { folderPath, indexPath, gitDir: null }
+}
 
 // 区別を始めたばかりの記録の区別(idle・印なし・始点を区切りにする・区別は始点の時刻から)。記録の形のテストの既定値に使う
 export function makeTrackingAttribution(
@@ -169,7 +279,7 @@ export function makeAgentChangesRecord(
     nextNumber: overrides.nextNumber ?? runs.length + 1,
     recordSerial,
     protection: overrides.protection ?? {
-      refName: protectionRefName(FAKE_PROTECTION_INSTANCE_ID, recordSerial),
+      refName: protectionRefName(FAKE_INSTANCE_ID, recordSerial),
       value: null,
       swept: false
     },
@@ -281,7 +391,7 @@ export function makeFakeProtectionDeps(
   git: FakeProtectionGit = createFakeProtectionGit()
 ): AgentBaselineProtectionDeps {
   return {
-    instanceId: FAKE_PROTECTION_INSTANCE_ID,
+    instanceId: FAKE_INSTANCE_ID,
     noHooksDir: '/nohooks',
     git,
     isProcessAlive: () => true
@@ -349,12 +459,19 @@ export function attributionOffSummary(startedAt: number): AgentChangesAttributio
   }
 }
 
-// makeAttributionOffDeps の registry が返す記録中の状態(begin・getState の応答)。実行の既定はなし、取り消しの控えの既定はなし。
+// makeAttributionOffDeps の registry が返す記録中の状態(begin・getState の応答)。実行の既定はなし、取り消しの控えの既定はなし、記録の置き場はリポジトリ。
 // 区別を試さないテストが、状態の型に欄が増えるたびに期待値を直さずに済むようにする(SRP L3-03)
 export function attributionOffRecordingState(
   startedAt: number,
   overrides: { runs?: AgentChangesRun[]; undo?: AgentChangesUndoSummary | null } = {}
 ): Extract<AgentChangesState, { kind: 'recording' }> {
   const { runs = [], undo = null } = overrides
-  return { kind: 'recording', startedAt, runs, undo, attribution: attributionOffSummary(startedAt) }
+  return {
+    kind: 'recording',
+    startedAt,
+    runs,
+    undo,
+    attribution: attributionOffSummary(startedAt),
+    storage: 'repository'
+  }
 }

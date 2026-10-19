@@ -1,12 +1,16 @@
 import { describe, it, expect, vi } from 'vitest'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
-import type { BaselineSnapshot, BaselineSnapshotResult } from '../agentBaselineSnapshot'
+import type {
+  BaselineCheckpointBase,
+  BaselineSnapshot,
+  BaselineSnapshotResult
+} from '../agentBaselineSnapshot'
 import type { AgentChangesUndoCapture, AgentChangesUndoExecution } from '../agentChangesUndoModel'
 import {
   attributionOffRecordingState,
   createFakeProtectionGit,
-  FAKE_PROTECTION_INSTANCE_ID,
+  FAKE_INSTANCE_ID,
   makeAttributionOffDeps,
   makeBaselineSnapshot,
   makeFakeProtectionDeps
@@ -40,6 +44,8 @@ function setup(
   canceled: () => boolean
   /** 記録の依頼ごとの写しの元(累積の始点は undefined) */
   baseIndexPaths: () => (string | undefined)[]
+  /** 記録の依頼ごとの区切りの写しの元(累積の始点は undefined) */
+  bases: () => (BaselineCheckpointBase | undefined)[]
   /** 保護の git の偽物 */
   protection: FakeProtectionGit
   /** 書き戻しの偽物(既定は控えの全項目を書き戻した done) */
@@ -47,13 +53,15 @@ function setup(
 } {
   const resolvers: ((result: BaselineSnapshotResult) => void)[] = []
   const baseIndexPaths: (string | undefined)[] = []
+  const bases: (BaselineCheckpointBase | undefined)[] = []
   let isCanceled: () => boolean = () => false
   const takeSnapshot = vi.fn<AgentBaselineRegistryDeps['takeSnapshot']>(
     (_folder, options) =>
       new Promise<BaselineSnapshotResult>((r) => {
         resolvers.push(r)
         isCanceled = options.isCanceled
-        baseIndexPaths.push(options.baseIndexPath)
+        baseIndexPaths.push(options.base?.indexPath)
+        bases.push(options.base)
       })
   )
   const removeDir = vi.fn<AgentBaselineRegistryDeps['removeDir']>(async () => undefined)
@@ -88,6 +96,7 @@ function setup(
     release: (result, index = resolvers.length - 1) => resolvers[index](result),
     canceled: () => isCanceled(),
     baseIndexPaths: () => [...baseIndexPaths],
+    bases: () => [...bases],
     protection,
     executeUndo
   }
@@ -610,7 +619,7 @@ describe('AgentBaselineRegistry の実行の区切り', () => {
 
 const TB = 'b'.repeat(40)
 const TR = 'c'.repeat(40)
-const REF1 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/1`
+const REF1 = `refs/prompt-ide/agent-changes/${FAKE_INSTANCE_ID}/1`
 const recordedTree = (
   folderPath: string,
   tempDir: string,
@@ -774,7 +783,7 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     s.protection.calls.length = 0
     // 同じ所有者で次の記録を取ると、その同期の中で前の記録の ref を消してから新しい記録の ref を作る
     await sendFor(s, 1, TR, '/tmp/b')
-    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/2`
+    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_INSTANCE_ID}/2`
     await vi.waitFor(() => expect(s.protection.refs.has(ref2)).toBe(true))
     expect(s.protection.refs.has(REF1)).toBe(false)
     expect(s.protection.calls.indexOf(`remove ${REF1}`)).toBeLessThan(
@@ -801,7 +810,7 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     s.protection.failNext.add('read')
     s.protection.calls.length = 0
     await sendFor(s, 1, 'e'.repeat(40), '/tmp/c')
-    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/3`
+    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_INSTANCE_ID}/3`
     await vi.waitFor(() => expect(s.protection.refs.has(ref3)).toBe(true))
     expect(s.protection.calls.filter((call) => call === `remove ${REF1}`)).toHaveLength(1)
     expect(s.protection.refs.has(REF1)).toBe(true)
@@ -889,7 +898,7 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     const s = setup()
     await sendFor(s, 1, TB, '/tmp/a')
     await sendFor(s, 2, TR, '/tmp/b')
-    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/2`
+    const ref2 = `refs/prompt-ide/agent-changes/${FAKE_INSTANCE_ID}/2`
     await vi.waitFor(() => expect(s.protection.refs.size).toBe(2))
     s.protection.failNext.add('removeSync')
     s.registry.close()
@@ -935,7 +944,7 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     const releaseSweep = s.protection.holdNext('sweep')
     await sendFor(s, 2, TR, '/tmp/b')
     await vi.waitFor(() => expect(s.protection.calls.filter((c) => c === 'sweep')).toHaveLength(2))
-    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_PROTECTION_INSTANCE_ID}/3`
+    const ref3 = `refs/prompt-ide/agent-changes/${FAKE_INSTANCE_ID}/3`
     await sendFor(s, 3, 'e'.repeat(40), '/tmp/c')
     await vi.waitFor(() => expect(s.protection.refs.has(ref3)).toBe(true))
     // 所有者 1 の最初の掃除と、待たずに終わった所有者 3 の掃除
@@ -959,6 +968,63 @@ describe('AgentBaselineRegistry の保護の ref', () => {
     await sendFor(s, 2, TB, '/tmp/b')
     await vi.waitFor(() => expect(s.protection.sweptKeeps).toHaveLength(2))
     expect(s.protection.sweptKeeps[1]).toEqual([1, 2])
+  })
+})
+
+describe('AgentBaselineRegistry の隠れた git の記録', () => {
+  // 隠れた git の記録(累積の始点の一時ディレクトリの中に gitDir がある。区切りも同じ gitDir を持つ)
+  const hidden = (tempDir: string, startedAt = 100): BaselineSnapshotResult => ({
+    kind: 'recorded',
+    snapshot: makeBaselineSnapshot({
+      folderPath: '/repo',
+      tempDir,
+      startedAt,
+      gitDir: '/tmp/base/git'
+    })
+  })
+  // send で記録・区切りを取り終えるまで進める
+  async function sendHidden(
+    s: ReturnType<typeof setup>,
+    tempDir: string,
+    startedAt: number
+  ): Promise<void> {
+    const calls = s.takeSnapshot.mock.calls.length
+    const begun = s.registry.begin(1, '/repo', 'send')
+    await vi.waitFor(() => expect(s.takeSnapshot).toHaveBeenCalledTimes(calls + 1))
+    s.release(hidden(tempDir, startedAt))
+    await begun
+  }
+
+  it('実行の区切りの写しの元に、直前の取れた記録のインデックスと記録の隠れた git(gitDir)を渡す(L-041)', async () => {
+    const s = setup()
+    await sendHidden(s, '/tmp/base', 100)
+    await sendHidden(s, '/tmp/r2', 200)
+    await sendHidden(s, '/tmp/r3', 300)
+    expect(s.bases()).toEqual([
+      undefined,
+      { indexPath: '/tmp/base/index', gitDir: '/tmp/base/git' },
+      { indexPath: '/tmp/r2/index', gitDir: '/tmp/base/git' }
+    ])
+  })
+
+  it('保護の ref を作らず(保護の git を呼ばない)、実行を足しても・確認を終えても・アプリの終了でも呼ばない(L-403・L-428)', async () => {
+    const s = setup()
+    await sendHidden(s, '/tmp/base', 100)
+    await sendHidden(s, '/tmp/r2', 200)
+    // 列の後ろに並んだ保護の同期を走らせ終える
+    await s.registry.withRecord(1, '/repo', async () => undefined)
+    expect(s.protection.calls).toEqual([])
+    await s.registry.clear(1)
+    s.registry.close()
+    expect(s.protection.calls).toEqual([])
+  })
+
+  it('記録中の状態(begin・getState)の storage は app', async () => {
+    const s = setup()
+    const begun = s.registry.begin(1, '/repo', 'manual')
+    s.release(hidden('/tmp/base'))
+    await expect(begun).resolves.toMatchObject({ kind: 'recording', storage: 'app' })
+    expect(s.registry.getState(1, '/repo')).toMatchObject({ kind: 'recording', storage: 'app' })
   })
 })
 

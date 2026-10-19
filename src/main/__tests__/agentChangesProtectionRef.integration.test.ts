@@ -6,7 +6,8 @@ import { commitAll, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
   disposeAgentBaselineRepo,
-  recordBaseline
+  recordBaseline,
+  repoLocation
 } from './helpers/agentBaselineFixtures'
 import type { AgentBaselineRepo } from './helpers/agentBaselineFixtures'
 import { runBaselineGitWithInput } from '../agentBaselineGit'
@@ -303,16 +304,14 @@ describe('sweepStaleProtectionRefs', () => {
     const emptyValue = await makeProtectionTree(ctx, [])
     const otherValue = (
       await runBaselineGitWithInput(
-        dirs.repo,
-        index,
+        repoLocation(dirs.repo, index),
         ['mktree', '-z'],
         `040000 tree ${tree}\tother\0`
       )
     ).trim()
     const blobChildValue = (
       await runBaselineGitWithInput(
-        dirs.repo,
-        index,
+        repoLocation(dirs.repo, index),
         ['mktree', '-z'],
         `100644 blob ${blob}\trun-1\0`
       )

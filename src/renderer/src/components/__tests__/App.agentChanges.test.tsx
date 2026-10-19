@@ -14,6 +14,10 @@ vi.mock('../../lib/xtermFactory', async () => {
 import App from '../../App'
 import { activityBarPanels } from '../../config/activityBarPanels'
 import {
+  AGENT_CHANGES_APP_STORAGE_HINT,
+  AGENT_CHANGES_NONE_HINT
+} from '../../lib/agentChangesMessages'
+import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
   makeAgentChangesRecordingState,
@@ -253,15 +257,39 @@ describe('App: エージェントの変更の配線', () => {
     expect(window.api.listAgentChanges).toHaveBeenCalled()
   })
 
-  it('Git 管理外のフォルダでは、セクションに理由を出す', async () => {
+  it('Git 管理外のフォルダでは、セクションにアプリの一時領域に記録する旨(HINT)と「いまから記録する」を出し、古い理由の文言は出さない', async () => {
     window.api.getGitStatus = vi.fn().mockResolvedValue({ ...repoStatus, isRepo: false })
     await openRepository()
     await userEvent.click(panelButton('source-control'))
+    expect(await within(section()).findByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeInTheDocument()
+    expect(within(section()).getByRole('button', { name: 'いまから記録する' })).toBeInTheDocument()
     expect(
-      await within(section()).findByText(
-        'Git 管理外のフォルダでは、エージェントの変更を記録できません'
-      )
-    ).toBeInTheDocument()
+      within(section()).queryByText('Git 管理外のフォルダでは、エージェントの変更を記録できません')
+    ).toBeNull()
+  })
+
+  // GitRepoView が isNotRepository={false} を渡すことの固定(true を渡すとリポジトリの記録の前にも HINT が出てしまう)
+  it('リポジトリを開いたとき、記録の前のセクションに Git 管理外の注記(HINT)は出さず、NONE_HINT と「いまから記録する」を出す', async () => {
+    await openRepository()
+    await userEvent.click(panelButton('source-control'))
+    expect(await within(section()).findByText(AGENT_CHANGES_NONE_HINT)).toBeInTheDocument()
+    expect(within(section()).getByRole('button', { name: 'いまから記録する' })).toBeInTheDocument()
+    expect(within(section()).queryByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeNull()
+  })
+
+  it('Git 管理外のフォルダからリポジトリに切り替えると、Git 管理外の注記(HINT)が消える', async () => {
+    window.api.getGitStatus = vi.fn().mockResolvedValue({ ...repoStatus, isRepo: false })
+    await openRepository()
+    await userEvent.click(panelButton('source-control'))
+    expect(await within(section()).findByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeInTheDocument()
+
+    window.api.openFolder = vi.fn().mockResolvedValue('/repo')
+    window.api.getGitStatus = vi.fn().mockResolvedValue(repoStatus)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを変更' }))
+    await waitFor(() =>
+      expect(within(section()).queryByText(AGENT_CHANGES_APP_STORAGE_HINT)).toBeNull()
+    )
+    expect(within(section()).getByText(AGENT_CHANGES_NONE_HINT)).toBeInTheDocument()
   })
 
   // 従来の方式では記録がある間だけセクションを出すため、「確認を終える」でセクションごと消える。フォーカスを body に落とさず、

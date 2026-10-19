@@ -32,7 +32,8 @@ describe('agentChangesApi', () => {
       startedAt: 1,
       runs: [],
       undo: null,
-      attribution: makeAgentChangesTrackingSummary()
+      attribution: makeAgentChangesTrackingSummary(),
+      storage: 'repository'
     })
     await agentChangesApi.getAgentChangesState()
     await agentChangesApi.listAgentChanges({ kind: 'all' })

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { AgentChangesRecord, AgentChangesRecordRun } from '../agentChangesRecord'
 import {
   agentChangesRecordTempDirs,
+  checkpointBaseOf,
   createAgentChangesRecord,
   dropRunsOverLimit,
   latestRecordedIndexPath,
@@ -105,12 +106,21 @@ describe('summarizeAgentChangesRecord', () => {
       startedAt: 100,
       runs: summarizeAgentChangesRuns(record),
       undo: summarizeAgentChangesUndo(record.undo),
-      attribution: { kind: 'tracking', since: 100, hadUnassignedSince: true }
+      attribution: { kind: 'tracking', since: 100, hadUnassignedSince: true },
+      storage: 'repository'
     })
   })
 
   it('取り消しの控えが無ければ undo は null', () => {
     expect(summarizeAgentChangesRecord(recordOf([])).undo).toBeNull()
+  })
+
+  it('記録の置き場(storage)は、隠れた git の記録なら app、リポジトリの方式なら repository', () => {
+    const hiddenBaseline = makeBaselineSnapshot({ tempDir: '/tmp/base', gitDir: '/tmp/base/git' })
+    expect(
+      summarizeAgentChangesRecord(makeAgentChangesRecord([], { baseline: hiddenBaseline })).storage
+    ).toBe('app')
+    expect(summarizeAgentChangesRecord(recordOf([])).storage).toBe('repository')
   })
 })
 
@@ -171,6 +181,38 @@ describe('latestRecordedIndexPath', () => {
     ['開始が累積の始点の実行だけ', [baselineRun(1), failedRun(2)]]
   ])('%s なら累積の始点のインデックス', (_label, runs) => {
     expect(latestRecordedIndexPath(recordOf(runs))).toBe('/tmp/base/index')
+  })
+})
+
+describe('checkpointBaseOf', () => {
+  it('写しの元は直前の取れた記録のインデックス、gitDir はリポジトリの方式なら null', () => {
+    const record = recordOf([baselineRun(1), snapshotRun(2), failedRun(3)])
+    expect(checkpointBaseOf(record)).toEqual({ indexPath: '/tmp/r2/index', gitDir: null })
+  })
+
+  it('隠れた git の記録は、累積の始点の gitDir を常に渡す', () => {
+    const hiddenBaseline = makeBaselineSnapshot({
+      tempDir: '/tmp/base',
+      startedAt: 100,
+      gitDir: '/tmp/base/git'
+    })
+    expect(checkpointBaseOf(makeAgentChangesRecord([], { baseline: hiddenBaseline }))).toEqual({
+      indexPath: '/tmp/base/index',
+      gitDir: '/tmp/base/git'
+    })
+  })
+
+  it('インデックスを渡すとそれを写しの元にし、gitDir は累積の始点の値のまま(区別の判定の区切り)', () => {
+    const hiddenBaseline = makeBaselineSnapshot({
+      tempDir: '/tmp/base',
+      startedAt: 100,
+      gitDir: '/tmp/base/git'
+    })
+    const record = makeAgentChangesRecord([snapshotRun(2)], { baseline: hiddenBaseline })
+    expect(checkpointBaseOf(record, '/tmp/judge/index')).toEqual({
+      indexPath: '/tmp/judge/index',
+      gitDir: '/tmp/base/git'
+    })
   })
 })
 

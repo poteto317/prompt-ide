@@ -4,20 +4,22 @@ import type { SimpleGit } from 'simple-git'
 import type { AgentChangeEntry, AgentChangeStatus, AgentChangesList } from '@shared/types'
 import { AGENT_CHANGES_LIST_LIMIT, toAgentChangeRelativePath } from '@shared/types'
 import {
-  assertBaselineIndex,
+  assertBaselineGitDir,
+  assertBaselineRecord,
   containsNotRecorded,
   hasIgnoredInside,
   isIgnoredAtBaseline,
   isNotRecordedPath,
   toBaselineQueryError
 } from './agentBaselineCoverage'
-import { createBaselineGit, createRepoGit } from './agentBaselineGit'
+import { createBaselineGit, readRecordHead, RECORD_WORKTREE_DIFF_ARGS } from './agentBaselineGit'
 import type { BaselineGitOptions } from './agentBaselineGit'
 import type { BaselineSnapshot } from './agentBaselineSnapshot'
 import { parseNulSeparatedPaths, toLiteralPathspec } from './gitPathParsing'
 
 // エージェントの変更の一覧(設計書「確認の結果」5)。記録のインデックス(GIT_INDEX_FILE)と作業ツリーを比べる:
-// - `git diff --name-status --no-renames -z`: 記録の時点にあったファイルの変更・削除・種類の変更
+// - `git diff --name-status --no-renames -z`: 記録の時点にあったファイルの変更・削除・種類の変更。入れ子のリポジトリの中の
+//   命令(filter など)を動かさないよう RECORD_WORKTREE_DIFF_ARGS(--ignore-submodules=dirty)を付け、gitlink は HEAD の違いだけを出す
 // - `git ls-files -z --others --exclude-standard --directory --no-empty-directory`: 記録の後に現れたファイル。
 //   新しいフォルダは 1 行('<dir>/')にまとめる
 // どちらも blob を書かず、利用者の .git/index を変えない。リネームは削除 + 追加の 2 行になる
@@ -136,13 +138,15 @@ export async function collectAgentChangeEntries(
   snapshot: BaselineSnapshot,
   options: BaselineGitOptions = {}
 ): Promise<AgentChangeEntry[]> {
-  const { folderPath, indexPath } = snapshot
-  await assertBaselineIndex(indexPath)
-  const git = createBaselineGit(folderPath, indexPath, options)
+  const { folderPath } = snapshot
+  await assertBaselineRecord(snapshot)
+  const git = createBaselineGit(snapshot, options)
   const tracked = parseNameStatus(
-    await git.raw(['diff', '--name-status', '--no-renames', '-z']).catch((error: unknown) => {
-      throw toBaselineQueryError(error)
-    })
+    await git
+      .raw(['diff', ...RECORD_WORKTREE_DIFF_ARGS, '--name-status', '--no-renames', '-z'])
+      .catch((error: unknown) => {
+        throw toBaselineQueryError(error)
+      })
   )
   const others = await expandPreexistingFolders(
     git,
@@ -210,15 +214,13 @@ export async function collectAgentChangeEntries(
   return entries.sort(byPath)
 }
 
-/** 記録の時点 → いまの作業ツリーの変更の一覧。AGENT_CHANGES_LIST_LIMIT 件で打ち切り、HEAD が変わったかを添える */
+/** 記録の時点 → いまの作業ツリーの変更の一覧。AGENT_CHANGES_LIST_LIMIT 件で打ち切り、HEAD が変わったかを添える(隠れた git の記録は HEAD が null どうしで常に false) */
 export async function listAgentChanges(
   snapshot: BaselineSnapshot,
   options: BaselineGitOptions = {}
 ): Promise<AgentChangesList> {
   const entries = await collectAgentChangeEntries(snapshot, options)
-  const head = await createRepoGit(snapshot.folderPath, options)
-    .raw(['rev-parse', '--verify', '-q', 'HEAD'])
-    .then((output) => output.trim() || null)
+  const head = await readRecordHead(snapshot, options)
   return {
     entries: entries.slice(0, AGENT_CHANGES_LIST_LIMIT),
     totalCount: entries.length,
@@ -290,7 +292,10 @@ export async function collectAgentChangeEntriesBetween(
   options: BaselineGitOptions = {}
 ): Promise<AgentChangeEntry[]> {
   // 記録の git と同じ環境(利用者の別のリポジトリ・object の置き場を指す変数を除く)で問い合わせる。diff-tree は index を読まない
-  const git = createBaselineGit(start.folderPath, start.indexPath, options)
+  // 隠れた git の区切りは累積の始点の隠れた git を共有する。消えていたら git の fatal を見せずに「記録が見つかりません」にする
+  // (tree どうしの比較は記録のインデックスを読まないため、インデックスは確かめない)
+  await assertBaselineGitDir(start)
+  const git = createBaselineGit(start, options)
   const tracked = parseNameStatus(
     await git
       .raw(['diff-tree', '-r', '-z', '--name-status', '--no-renames', start.tree, end.tree])

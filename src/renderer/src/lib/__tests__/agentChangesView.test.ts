@@ -104,7 +104,8 @@ describe('planRecordingState', () => {
       runs: [run1, run2],
       list: null,
       undo: null,
-      attribution: makeAgentChangesTrackingSummary()
+      attribution: makeAgentChangesTrackingSummary(),
+      storage: 'repository'
     })
     expect(plan.resetScope).toBe(true)
     expect(plan.missingRun).toBeNull()
@@ -114,6 +115,15 @@ describe('planRecordingState', () => {
     const plan = planRecordingState({ kind: 'none' }, recordingState(100), { kind: 'all' })
     expect(plan.resetScope).toBe(false)
     expect(plan.view.list).toBeNull()
+  })
+
+  it('記録の置き場(storage)を状態から写す', () => {
+    const plan = planRecordingState(
+      makeAgentChangesRecordingView(null, { startedAt: 5 }),
+      makeAgentChangesRecordingState({ startedAt: 5, storage: 'app' }),
+      { kind: 'all' }
+    )
+    expect(plan.view.storage).toBe('app')
   })
 })
 
@@ -158,7 +168,8 @@ describe('planListResult', () => {
           headChanged: true
         },
         undo: null,
-        attribution: makeAgentChangesTrackingSummary()
+        attribution: makeAgentChangesTrackingSummary(),
+        storage: 'repository'
       }
     })
   })
@@ -177,7 +188,8 @@ describe('planListResult', () => {
         runs: [run2],
         list: null,
         undo: null,
-        attribution: makeAgentChangesTrackingSummary()
+        attribution: makeAgentChangesTrackingSummary(),
+        storage: 'repository'
       }
     })
   })
@@ -223,9 +235,30 @@ describe('planListResult', () => {
           reason: 'end-not-recorded'
         },
         undo: null,
-        attribution: makeAgentChangesTrackingSummary()
+        attribution: makeAgentChangesTrackingSummary(),
+        storage: 'repository'
       }
     })
+  })
+
+  it('一覧の結果・範囲の一覧を出せない結果・実行が消えていた結果のどれも、記録の置き場(storage)を写す', () => {
+    const previous = makeAgentChangesRecordingView(null)
+    const listed = planListResult(makeAgentChangesListResult([], { storage: 'app' }), previous)
+    const unavailable = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'end-not-recorded', {
+        storage: 'app'
+      }),
+      previous
+    )
+    const missing = planListResult(
+      makeAgentChangesScopeUnavailableListResult({ kind: 'run', runId: 1 }, 'run-missing', {
+        storage: 'app'
+      }),
+      previous
+    )
+    for (const plan of [listed, unavailable, missing]) {
+      expect(plan.kind !== 'none' && plan.view.storage).toBe('app')
+    }
   })
 })
 
@@ -266,6 +299,15 @@ describe('isSameAgentChangesView', () => {
       isSameAgentChangesView(
         view(),
         view(undefined, { attribution: makeAgentChangesLostSummary() })
+      )
+    ).toBe(false)
+  })
+
+  it('記録の置き場(storage)だけが違えば同じとしない(L-423)', () => {
+    expect(
+      isSameAgentChangesView(
+        makeAgentChangesRecordingView([], { storage: 'repository' }),
+        makeAgentChangesRecordingView([], { storage: 'app' })
       )
     ).toBe(false)
   })

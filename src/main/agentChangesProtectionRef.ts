@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { runBaselineGitWithInput, runBaselineGitWithInputSync } from './agentBaselineGit'
+import type { BaselineGitLocation } from './agentBaselineGit'
 import type { ProtectionRefListing, ProtectionTreeEntry } from './agentChangesProtectionRules'
 import {
   AGENT_CHANGES_PROTECTION_REF_PREFIX,
@@ -70,6 +71,13 @@ const configOf = (ctx: ProtectionGitContext): string[] => [
   'core.logAllRefUpdates=false'
 ]
 
+// 保護の ref は リポジトリの方式の記録だけが作る(隠れた git の記録では registry が同期しない)。場所は gitDir null
+const repositoryLocationOf = (ctx: ProtectionGitContext): BaselineGitLocation => ({
+  folderPath: ctx.folderPath,
+  indexPath: ctx.indexPath,
+  gitDir: null
+})
+
 // ref の書き込みは名前と値を標準入力で渡す(L-034)
 const UPDATE_REF_STDIN_ARGS = ['update-ref', '-z', '--stdin'] as const
 // 前に書いた値(expected)のときだけ消す update-ref -z --stdin の入力(非同期・同期の削除で共有する)
@@ -81,7 +89,7 @@ const runProtectionGit = (
   args: readonly string[],
   input = ''
 ): Promise<string> =>
-  runBaselineGitWithInput(ctx.folderPath, ctx.indexPath, args, input, { config: configOf(ctx) })
+  runBaselineGitWithInput(repositoryLocationOf(ctx), args, input, { config: configOf(ctx) })
 
 /**
  * cat-file --batch-check の出力から、tree と答えた項目だけを返す(missing・tree 以外は除く)。
@@ -205,8 +213,7 @@ export function deleteProtectionRefSync(
 ): boolean {
   if (parseProtectionRefName(refName) === null || !isObjectId(expected)) return false
   return runBaselineGitWithInputSync(
-    ctx.folderPath,
-    ctx.indexPath,
+    repositoryLocationOf(ctx),
     UPDATE_REF_STDIN_ARGS,
     deleteRefInput(refName, expected),
     { config: configOf(ctx), timeoutMs: AGENT_CHANGES_PROTECTION_SYNC_TIMEOUT_MS }

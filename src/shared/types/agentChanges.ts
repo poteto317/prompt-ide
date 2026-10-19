@@ -5,13 +5,17 @@ import type { DiscardAllResult } from './git'
 export const AGENT_CHANGES_LIST_LIMIT = 500
 
 /**
- * 記録できない理由。not-repository: Git 管理外、not-toplevel: リポジトリのサブフォルダ、
- * too-many-untracked: 未追跡のファイルが多すぎる・大きすぎる、timeout: 記録の打ち切り、git-failed: git を実行できない
+ * 記録できない理由。not-repository: リポジトリの方式の記録の途中で Git 管理外になった(区切りでだけ返る)、not-toplevel: リポジトリの
+ * サブフォルダ、too-many-untracked: 未追跡のファイルが多すぎる・大きすぎる(リポジトリ)、too-many-files: ignore されていないファイルが
+ * 多すぎる・大きすぎる(Git 管理外のフォルダ)、inside-git-dir: .git の中・bare リポジトリのフォルダ、timeout: 記録の打ち切り、
+ * git-failed: git を実行できない
  */
 export const AGENT_CHANGES_UNAVAILABLE_REASONS = [
   'not-repository',
   'not-toplevel',
   'too-many-untracked',
+  'too-many-files',
+  'inside-git-dir',
   'timeout',
   'git-failed'
 ] as const
@@ -45,19 +49,22 @@ export interface AgentChangesRun {
   availability: AgentChangesRunAvailability
 }
 
+/** 記録の置き場。repository: 利用者のリポジトリ(.git の object の DB)、app: アプリの一時領域の隠れた git(Git 管理外のフォルダ) */
+export type AgentChangesStorage = 'repository' | 'app'
+
 /** 記録の状態(main の registry が真実の源)。startedAt は記録を始めた時刻(エポックミリ秒) */
 export type AgentChangesState =
   | { kind: 'none' }
   | {
       kind: 'unavailable'
       reason: AgentChangesUnavailableReason
-      /** too-many-untracked のときの未追跡のファイルの数・合計の大きさ(バイト) */
+      /** too-many-untracked・too-many-files のときのファイルの数・合計の大きさ(バイト) */
       untrackedCount?: number
       untrackedBytes?: number
     }
   /**
    * runs は実行の一覧(古い順。最大 AGENT_CHANGES_MAX_RUNS 件)。undo は直前の戻す操作の取り消しの控えの要約(無ければ null)。
-   * attribution は記録の区別の要約
+   * attribution は記録の区別の要約、storage は記録の置き場(記録中に git init してもその記録の間は変わらない)
    */
   | {
       kind: 'recording'
@@ -65,6 +72,7 @@ export type AgentChangesState =
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
       attribution: AgentChangesAttributionSummary
+      storage: AgentChangesStorage
     }
 
 /** A: 追加、M: 変更、D: 削除、T: 種類の変更(ファイル ↔ リンク・サブモジュール) */
@@ -156,7 +164,7 @@ export function isSameAgentChangesScope(a: AgentChangesScope, b: AgentChangesSco
   return a.kind === 'all' ? b.kind === 'all' : b.kind === 'run' && a.runId === b.runId
 }
 
-/** 一覧の結果。recording・scope-unavailable は、実行の一覧・取り消しの控えの要約(無ければ null)・記録の区別の要約と、一覧を取った範囲を添える */
+/** 一覧の結果。recording・scope-unavailable は、実行の一覧・取り消しの控えの要約(無ければ null)・記録の区別の要約・記録の置き場と、一覧を取った範囲を添える */
 export type AgentChangesListResult =
   | { kind: 'none' }
   | ({
@@ -165,6 +173,7 @@ export type AgentChangesListResult =
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
       attribution: AgentChangesAttributionSummary
+      storage: AgentChangesStorage
       scope: AgentChangesScope
     } & AgentChangesList)
   | {
@@ -173,6 +182,7 @@ export type AgentChangesListResult =
       runs: AgentChangesRun[]
       undo: AgentChangesUndoSummary | null
       attribution: AgentChangesAttributionSummary
+      storage: AgentChangesStorage
       scope: AgentChangesScope
       reason: AgentChangesScopeUnavailableReason
     }

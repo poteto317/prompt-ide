@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
+  existsSync,
   mkdirSync,
   renameSync,
   rmSync,
@@ -21,7 +22,9 @@ import { listAgentChanges } from '../agentChangesQuery'
 import { commitAll, initRepo, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
+  createAgentNonGitFolder,
   disposeAgentBaselineRepo,
+  folderEntries,
   recordBaseline,
   userRepoState
 } from './helpers/agentBaselineFixtures'
@@ -362,5 +365,82 @@ describe('getAgentChangeDiff(実 git)', () => {
 describe('buildAddedFolderDiffMessage', () => {
   it('件数を入れた 1 行', () => {
     expect(buildAddedFolderDiffMessage(3)).toBe('フォルダが追加されました（3 件のファイル）\n')
+  })
+})
+
+// Git 管理外のフォルダ(隠れた git)。ファイルの先頭の beforeEach もリポジトリを作るが、この節では使わない
+describe('Git 管理外のフォルダの一覧と diff(隠れた git)(実 git)', () => {
+  let folder: string
+  let folderHome: string
+  let folderTemp: string
+  const put = (p: string, content: string): void => writeRepoFile(folder, p, content)
+
+  beforeEach(() => {
+    ;({
+      repo: folder,
+      home: folderHome,
+      tempRoot: folderTemp
+    } = createAgentNonGitFolder('agent-changes-query-plain-'))
+  })
+
+  afterEach(() =>
+    disposeAgentBaselineRepo({ repo: folder, home: folderHome, tempRoot: folderTemp })
+  )
+
+  it('一覧は M・D・A・新しいフォルダの 1 行を出し、headChanged は false。diff は各行の変更と新しいフォルダの件数を返す。一覧・diff の前後でフォルダの中は変わらない(.git を作らない)', async () => {
+    put('a.txt', 'one\n')
+    put('b.txt', 'b\n')
+    const snapshot = await recordBaseline(folder, folderTemp)
+    expect(snapshot.gitDir).not.toBeNull()
+    put('a.txt', 'one\nagent\n')
+    unlinkSync(join(folder, 'b.txt'))
+    put('c.txt', 'c\n')
+    put('d/x.txt', 'x\n')
+    const before = folderEntries(folder)
+    const list = await listAgentChanges(snapshot)
+    expect(list.entries.map((e) => [e.path, e.status, e.isDirectory])).toEqual([
+      ['a.txt', 'M', false],
+      ['b.txt', 'D', false],
+      ['c.txt', 'A', false],
+      ['d/', 'A', true]
+    ])
+    expect(list.headChanged).toBe(false)
+    expect(await getAgentChangeDiff(snapshot, 'a.txt')).toContain('+agent')
+    expect(await getAgentChangeDiff(snapshot, 'b.txt')).toContain('-b')
+    expect(await getAgentChangeDiff(snapshot, 'c.txt')).toContain('+c')
+    expect(await getAgentChangeDiff(snapshot, 'd')).toBe(
+      'フォルダが追加されました（1 件のファイル）\n'
+    )
+    expect(folderEntries(folder)).toEqual(before)
+    expect(existsSync(join(folder, '.git'))).toBe(false)
+  })
+
+  it('既定の一覧の中(node_modules/)の変更は一覧に出ない', async () => {
+    put('a.txt', 'a\n')
+    put('node_modules/m.js', 'm\n')
+    const snapshot = await recordBaseline(folder, folderTemp)
+    put('node_modules/m.js', 'changed\n')
+    put('node_modules/new.js', 'n\n')
+    expect((await listAgentChanges(snapshot)).entries).toEqual([])
+  })
+
+  it('記録中に利用者が git init してコミットしても、一覧は隠れた git で問い合わせ、.git の行も HEAD の帯も出ない', async () => {
+    put('a.txt', 'a\n')
+    const snapshot = await recordBaseline(folder, folderTemp)
+    initRepo(folder)
+    commitAll(folder, 'init')
+    put('c.txt', 'c\n')
+    const list = await listAgentChanges(snapshot)
+    expect(list.entries.map((e) => e.path)).toEqual(['c.txt'])
+    expect(list.headChanged).toBe(false)
+  })
+
+  it('隠れた git(gitDir)を消すと、一覧・diff は「記録が見つかりません」で拒否する(git の fatal をそのまま見せない。L-002)', async () => {
+    put('a.txt', 'a\n')
+    const snapshot = await recordBaseline(folder, folderTemp)
+    put('a.txt', 'a\nb\n')
+    rmSync(snapshot.gitDir ?? '', { recursive: true, force: true })
+    await expect(listAgentChanges(snapshot)).rejects.toThrow('記録が見つかりません')
+    await expect(getAgentChangeDiff(snapshot, 'a.txt')).rejects.toThrow('記録が見つかりません')
   })
 })

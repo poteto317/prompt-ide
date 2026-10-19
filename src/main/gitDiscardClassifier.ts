@@ -102,9 +102,13 @@ async function isUntracked(git: SimpleGit, filePath: string): Promise<boolean> {
 //   だけなので diff --diff-filter=A で判定する
 // - 未追跡と重なる: restore が未追跡(ignored を含む)のファイルを消してしまう配置(overlapsUntracked)
 // - それ以外は追跡済み
+// diffArgs は intent-to-add の判定の diff に足す引数。ソース管理の取り消しは渡さない(今の挙動のまま)。エージェントの変更を戻す
+// (記録の git)は RECORD_WORKTREE_DIFF_ARGS を渡し、入れ子のリポジトリの中の命令(filter など)を動かさない(ローカルレビュー
+// 第 13 周の指摘 1。pathspec はファイル 1 つで、gitlink の行は分類の手前で拒否するため今は届かないが、記録の git の diff を揃える)
 export async function classifyDiscardTarget(
   git: SimpleGit,
-  filePath: string
+  filePath: string,
+  diffArgs: readonly string[] = []
 ): Promise<DiscardTargetKind> {
   const pathspec = toLiteralPathspec(filePath)
   if (await isUnmergedPath(git, filePath)) return 'conflicted'
@@ -112,7 +116,15 @@ export async function classifyDiscardTarget(
   if (!parseNulSeparatedPaths(tracked).includes(filePath)) {
     return (await isUntracked(git, filePath)) ? 'untracked' : 'unknown'
   }
-  const added = await git.raw(['diff', '--name-only', '-z', '--diff-filter=A', '--', pathspec])
+  const added = await git.raw([
+    'diff',
+    ...diffArgs,
+    '--name-only',
+    '-z',
+    '--diff-filter=A',
+    '--',
+    pathspec
+  ])
   if (parseNulSeparatedPaths(added).includes(filePath)) return 'intent-to-add'
   if (await overlapsUntracked(git, filePath)) return 'overlaps-untracked'
   return 'tracked'

@@ -20,17 +20,17 @@ import {
   revertAllAgentChanges
 } from '../agentChangesRevert'
 import type { AgentRevertContext, AgentRevertOutcome } from '../agentChangesRevert'
-import {
-  AGENT_CHANGES_UNDO_MAX_BYTES,
-  AGENT_CHANGES_UNDO_TEMP_PREFIX,
-  executeAgentChangesUndo
-} from '../agentChangesUndo'
+import { AGENT_CHANGES_UNDO_TEMP_PREFIX, executeAgentChangesUndo } from '../agentChangesUndo'
 import type { AgentChangesUndoExecution } from '../agentChangesUndoModel'
 import { commitAll, runGit, writeRepoFile } from './helpers/realGitRepo'
 import {
   createAgentBaselineRepo,
+  createAgentNonGitFolder,
   createFakeTrash,
   disposeAgentBaselineRepo,
+  firstHunkPatch,
+  makeRevertContext,
+  numberedLines,
   recordBaseline,
   userRepoState
 } from './helpers/agentBaselineFixtures'
@@ -64,34 +64,23 @@ afterEach(() => {
   disposeAgentBaselineRepo({ repo, home, tempRoot })
 })
 
-const record = async (maxBytes = AGENT_CHANGES_UNDO_MAX_BYTES): Promise<AgentRevertContext> => ({
-  snapshot: await recordBaseline(repo, tempRoot),
-  trash,
-  undoCapture: { tempRoot, maxBytes },
-  attributeEntries: async (entries) => entries
-})
+const record = async (maxBytes?: number): Promise<AgentRevertContext> =>
+  makeRevertContext(await recordBaseline(repo, tempRoot), { trash, tempRoot, maxBytes })
 
-// 戻した結果の控えで取り消す(registry を通さず、関数どうしをつなぐ)
+// 戻した結果の控えで取り消す(registry を通さず、関数どうしをつなぐ)。既定はファイルの先頭の beforeEach のリポジトリとゴミ箱
 async function undoFrom(
   outcome: AgentRevertOutcome,
-  operation: AgentChangesUndoOperation = 'file'
+  operation: AgentChangesUndoOperation = 'file',
+  target: { folderPath: string; trash: FakeTrash['trash'] } = { folderPath: repo, trash }
 ): Promise<AgentChangesUndoExecution> {
   if (outcome.capture.kind !== 'saved') {
     throw new Error(`控えが取れなかった: ${JSON.stringify(outcome.capture)}`)
   }
   return executeAgentChangesUndo({
-    folderPath: repo,
+    folderPath: target.folderPath,
     undo: { undoId: 1, operation, dir: outcome.capture.dir, items: outcome.capture.items },
-    trash
+    trash: target.trash
   })
-}
-
-const lines = (n: number, replace: Record<number, string> = {}): string =>
-  Array.from({ length: n }, (_, i) => replace[i + 1] ?? `l${i + 1}`).join('\n') + '\n'
-// diff の 1 つ目のハンクだけのパッチ
-const firstHunk = (diff: string): string => {
-  const parts = diff.split(/(?=^@@ )/m)
-  return parts[0] + parts[1]
 }
 
 // a.txt の変更(利用者の未ステージの変更の上にエージェントの追記と権限の変更)を戻す
@@ -169,19 +158,19 @@ describe('戻す → 取り消す(実 git)', () => {
   })
 
   it('ハンク: 戻したハンクを含む戻す前の内容へ書き戻す', async () => {
-    write('d.txt', lines(20))
+    write('d.txt', numberedLines(20))
     commitAll(repo, 'init')
     const context = await record()
-    write('d.txt', lines(20, { 2: 'A2', 18: 'A18' }))
+    write('d.txt', numberedLines(20, { 2: 'A2', 18: 'A18' }))
     const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
-    const outcome = await revertAgentChangeHunk(context, 'd.txt', firstHunk(diff))
+    const outcome = await revertAgentChangeHunk(context, 'd.txt', firstHunkPatch(diff))
     expect(outcome).toMatchObject({ applied: 1, capture: { kind: 'saved' } })
-    expect(bytes('d.txt').toString()).toBe(lines(20, { 18: 'A18' }))
+    expect(bytes('d.txt').toString()).toBe(numberedLines(20, { 18: 'A18' }))
     expect(await undoFrom(outcome, 'hunk')).toMatchObject({
       kind: 'done',
       restoredPaths: ['d.txt']
     })
-    expect(bytes('d.txt').toString()).toBe(lines(20, { 2: 'A2', 18: 'A18' }))
+    expect(bytes('d.txt').toString()).toBe(numberedLines(20, { 2: 'A2', 18: 'A18' }))
   })
 
   // すべて戻す: 変更・削除・追加を同時に作る
@@ -286,9 +275,9 @@ describe('戻す → 取り消す(実 git)', () => {
   })
 
   it('戻す操作が例外で終わったら控えを残さない', async () => {
-    write('a.txt', lines(5))
-    write('b.txt', lines(5))
-    write('d.txt', lines(20))
+    write('a.txt', numberedLines(5))
+    write('b.txt', numberedLines(5))
+    write('d.txt', numberedLines(20))
     commitAll(repo, 'init')
     const context = await record()
     // 一覧に無いパス(控えを始める前に拒否する)
@@ -297,17 +286,17 @@ describe('戻す → 取り消す(実 git)', () => {
     )
     expect(undoDirs()).toEqual([])
     // パッチの検査で拒否する(控えを始める前)
-    write('a.txt', lines(5, { 2: 'A' }))
-    write('b.txt', lines(5, { 2: 'B' }))
+    write('a.txt', numberedLines(5, { 2: 'A' }))
+    write('b.txt', numberedLines(5, { 2: 'B' }))
     const bDiff = await getAgentChangeDiff(context.snapshot, 'b.txt')
     await expect(revertAgentChangeHunk(context, 'a.txt', bDiff)).rejects.toThrow(
       'パッチの対象がファイルと一致しません'
     )
     expect(undoDirs()).toEqual([])
     // パッチの適用の失敗(控えを始めた後。作った控えを消す)
-    write('d.txt', lines(20, { 2: 'A2' }))
+    write('d.txt', numberedLines(20, { 2: 'A2' }))
     const diff = await getAgentChangeDiff(context.snapshot, 'd.txt')
-    write('d.txt', lines(20, { 2: 'A2', 3: 'later' }))
+    write('d.txt', numberedLines(20, { 2: 'A2', 3: 'later' }))
     await expect(revertAgentChangeHunk(context, 'd.txt', diff)).rejects.toThrow(
       AGENT_REVERT_HUNK_FAILED_MESSAGE
     )
@@ -330,5 +319,50 @@ describe('戻す → 取り消す(実 git)', () => {
       revertAllAgentChanges(context, [{ path: 'new.txt', status: 'A' }])
     ).rejects.toThrow('すべて戻すが途中で失敗しました（0 / 1 件を戻し済み）')
     expect(undoDirs()).toEqual([])
+  })
+})
+
+describe('Git 管理外のフォルダの戻す → 取り消す(隠れた git)(実 git)', () => {
+  let folder: string
+  let folderHome: string
+  let folderTemp: string
+  let plainTrash: FakeTrash['trash']
+  const put = (p: string, content: string): void => writeRepoFile(folder, p, content)
+  const recordPlain = async (): Promise<AgentRevertContext> =>
+    makeRevertContext(await recordBaseline(folder, folderTemp), {
+      trash: plainTrash,
+      tempRoot: folderTemp
+    })
+
+  beforeEach(() => {
+    ;({
+      repo: folder,
+      home: folderHome,
+      tempRoot: folderTemp
+    } = createAgentNonGitFolder('agent-changes-undo-plain-'))
+    ;({ trash: plainTrash } = createFakeTrash())
+  })
+
+  afterEach(() =>
+    disposeAgentBaselineRepo({ repo: folder, home: folderHome, tempRoot: folderTemp })
+  )
+
+  it('戻した変更・削除を取り消すと、戻す前(エージェントの変更の後)の内容に戻る。.git を作らない', async () => {
+    put('a.txt', 'one\n')
+    put('b.txt', 'b\n')
+    const context = await recordPlain()
+    put('a.txt', 'one\nagent\n')
+    unlinkSync(join(folder, 'b.txt'))
+    const all = await revertAllAgentChanges(context, [
+      { path: 'a.txt', status: 'M' },
+      { path: 'b.txt', status: 'D' }
+    ])
+    expect(readFileSync(join(folder, 'a.txt'), 'utf8')).toBe('one\n')
+    expect(await undoFrom(all, 'all', { folderPath: folder, trash: plainTrash })).toMatchObject({
+      kind: 'done'
+    })
+    expect(readFileSync(join(folder, 'a.txt'), 'utf8')).toBe('one\nagent\n')
+    expect(existsSync(join(folder, 'b.txt'))).toBe(false)
+    expect(existsSync(join(folder, '.git'))).toBe(false)
   })
 })

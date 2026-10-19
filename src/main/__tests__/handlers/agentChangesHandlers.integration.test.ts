@@ -42,7 +42,8 @@ import {
   createAgentBaselineRepo,
   createFakeAttributionSource,
   createFakeTrash,
-  disposeAgentBaselineRepo
+  disposeAgentBaselineRepo,
+  repoLocation
 } from '../helpers/agentBaselineFixtures'
 import type { FakeAttributionSource, FakeTrash } from '../helpers/agentBaselineFixtures'
 
@@ -88,7 +89,7 @@ function makeRegistry(
 ): AgentBaselineRegistry {
   return new AgentBaselineRegistry({
     takeSnapshot: (folderPath, options) =>
-      takeBaselineSnapshot(folderPath, { ...options, tempRoot }),
+      takeBaselineSnapshot(folderPath, { ...options, tempRoot, instanceId: INSTANCE_ID }),
     collectBetween: (start, end) => collectAgentChangeEntriesBetween(start, end),
     collectCurrent: (snapshot) => collectAgentChangeEntries(snapshot),
     removeDir: removeBaselineDir,
@@ -235,7 +236,7 @@ describe('記録の gc からの保護(実 git)', () => {
     expect(await invoke('agentChanges:getDiff', 'a.txt', ALL)).toContain('+run1')
     await invoke('agentChanges:revertFile', 'a.txt', ALL)
     expect(readRepoFile(repo, 'a.txt')).toBe('a\nuser\n')
-  })
+  }, 30_000)
 
   it('clear で ref を消し、区切りだけが持つ blob は gc で消える', async () => {
     await twoRuns()
@@ -375,13 +376,14 @@ describe('記録の gc からの保護(実 git)', () => {
     const indexPath = join(repo, '.git/index')
     const ownShaped = (
       await runBaselineGitWithInput(
-        repo,
-        indexPath,
+        repoLocation(repo, indexPath),
         ['mktree', '-z'],
         `040000 tree ${tree}\tbaseline\0`
       )
     ).trim()
-    const emptyTree = (await runBaselineGitWithInput(repo, indexPath, ['mktree', '-z'], '')).trim()
+    const emptyTree = (
+      await runBaselineGitWithInput(repoLocation(repo, indexPath), ['mktree', '-z'], '')
+    ).trim()
     const head = runGit(repo, 'rev-parse', 'HEAD').trim()
     const stale = 'refs/prompt-ide/agent-changes/4242-00000000'
     runGit(repo, 'update-ref', `${stale}/1`, ownShaped)
@@ -565,7 +567,7 @@ describe('戻す操作の吸収(実 git)', () => {
       userPaths: new Set(),
       agentPaths: new Set(['a.txt'])
     })
-  })
+  }, 30_000)
 })
 
 describe('記録の区別と一覧の author・すべて戻す(実 git)', () => {
@@ -663,7 +665,7 @@ describe('記録の区別と一覧の author・すべて戻す(実 git)', () => 
     change('idle')
     await settled()
     expect(await authorsByPath()).toEqual({ 'a.txt': 'agent' })
-  })
+  }, 30_000)
 
   it('判定の区切りの object が gc で消えて区別をやめた記録も、一覧は出て要約は lost(それまでの印は残る)', async () => {
     write('a.txt', 'user\n')

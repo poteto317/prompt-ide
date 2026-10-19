@@ -4,7 +4,11 @@ import type {
   AgentChangesState,
   AgentChangesUnavailableReason
 } from '@shared/types'
-import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
+import type {
+  BaselineCheckpointBase,
+  BaselineSnapshot,
+  BaselineSnapshotResult
+} from './agentBaselineSnapshot'
 import { attributionTempDirs, summarizeAttribution } from './agentChangesAttribution'
 import type { AgentChangesAttribution } from './agentChangesAttribution'
 import type { ProtectionTreeEntry } from './agentChangesProtectionRules'
@@ -150,7 +154,7 @@ export type AgentChangesRecordSummary = Omit<
 >
 
 /**
- * 記録の要約(開始の時刻・実行の一覧・取り消しの控えの要約・区別の要約)。registry の記録中の状態と、範囲ごとの一覧
+ * 記録の要約(開始の時刻・実行の一覧・取り消しの控えの要約・区別の要約・記録の置き場)。registry の記録中の状態と、範囲ごとの一覧
  * (agentChangesScopedQuery)が同じ組み立てを使う(要約が増えたときに片方だけ直す食い違いを防ぐ)。unassignedNow は累積の一覧の
  * そのとき限りの印(summarizeAttribution)
  */
@@ -162,17 +166,31 @@ export function summarizeAgentChangesRecord(
     startedAt: record.baseline.startedAt,
     runs: summarizeAgentChangesRuns(record),
     undo: summarizeAgentChangesUndo(record.undo),
-    attribution: summarizeAttribution(record.attribution, options)
+    attribution: summarizeAttribution(record.attribution, options),
+    // 記録の置き場はこの 1 か所で決める(記録中の状態と範囲ごとの一覧の結果が共有する。パネルの isRepo では決めない)
+    storage: record.baseline.gitDir === null ? 'repository' : 'app'
   }
 }
 
-/** 区切りの写しの元: 実行の一覧を新しい方から見て、最初の取れた記録のインデックス(無ければ累積の始点) */
+/** 実行の区切りの写しの元のインデックス(checkpointBaseOf の既定): 実行の一覧を新しい方から見て、最初の取れた記録のインデックス(無ければ累積の始点) */
 export function latestRecordedIndexPath(record: AgentChangesRecord): string {
   for (let index = record.runs.length - 1; index >= 0; index--) {
     const snapshot = runStartSnapshot(record, record.runs[index])
     if (snapshot !== null) return snapshot.indexPath
   }
   return record.baseline.indexPath
+}
+
+/**
+ * 区切りの写しの元: 記録のインデックス(既定は実行の区切りが使う直前の取れた記録のインデックス。区別の判定の区切りは直前の判定の
+ * 区切りを渡す)と、記録の隠れた git の場所。gitDir は累積の始点の値を常に使う(区切りの記録は始点と同じ値を持つ)。区切りはこの
+ * gitDir で方式を決め、フォルダを調べ直さない(L-041)
+ */
+export function checkpointBaseOf(
+  record: AgentChangesRecord,
+  indexPath: string = latestRecordedIndexPath(record)
+): BaselineCheckpointBase {
+  return { indexPath, gitDir: record.baseline.gitDir }
 }
 
 /**

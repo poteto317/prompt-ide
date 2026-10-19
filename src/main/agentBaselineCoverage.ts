@@ -18,10 +18,30 @@ export function toBaselineQueryError(error: unknown): unknown {
     : error
 }
 
-/** 記録のインデックスが消えていると git は空の index として扱い、リポジトリ全体が追加に見える。先に確かめる */
-export async function assertBaselineIndex(indexPath: string): Promise<void> {
-  const stat = await lstat(indexPath).catch(() => null)
-  if (stat === null || !stat.isFile()) throw new Error('記録が見つかりません')
+/** 記録が見つからないときの文言(記録のインデックス・隠れた git が消えた。git の fatal をそのまま見せない) */
+export const AGENT_BASELINE_RECORD_MISSING_MESSAGE = '記録が見つかりません'
+
+/**
+ * 隠れた git(gitDir が文字列)が、シンボリックリンクでないディレクトリであることを確かめる(無ければ git は
+ * `fatal: not a git repository` で失敗する。差し替えられたリンクの先を使わない。L-002・L-437)。リポジトリの方式(null)は何もしない
+ */
+export async function assertBaselineGitDir(
+  snapshot: Pick<BaselineSnapshot, 'gitDir'>
+): Promise<void> {
+  if (snapshot.gitDir === null) return
+  const stat = await lstat(snapshot.gitDir).catch(() => null)
+  if (stat === null || !stat.isDirectory()) throw new Error(AGENT_BASELINE_RECORD_MISSING_MESSAGE)
+}
+
+/**
+ * 累積の一覧・diff の前提: 記録のインデックス(消えていると git は空の index として扱い、全体が追加に見える)と、隠れた git の場所
+ */
+export async function assertBaselineRecord(
+  snapshot: Pick<BaselineSnapshot, 'indexPath' | 'gitDir'>
+): Promise<void> {
+  const stat = await lstat(snapshot.indexPath).catch(() => null)
+  if (stat === null || !stat.isFile()) throw new Error(AGENT_BASELINE_RECORD_MISSING_MESSAGE)
+  await assertBaselineGitDir(snapshot)
 }
 
 // 記録の時点の ignore 済みの一覧(node_modules の中がまとまらない構成では数万行になりうる)を、一覧の行ごとに走査しないための索引。

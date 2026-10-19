@@ -23,6 +23,12 @@ export const AGENT_CHANGES_CLEARED_NOTICE = '記録を終えました。次の�
 export const AGENT_CHANGES_SAVED_MARK = 'あなたの保存を含む'
 export const AGENT_CHANGES_NOT_RECORDED_MARK = '記録していないため戻せません'
 export const AGENT_CHANGES_LOADING = '更新中…'
+/** 記録の置き場の注記(記録中で、記録がアプリの一時領域の隠れた git のとき) */
+export const AGENT_CHANGES_APP_STORAGE_NOTE =
+  'Git 管理外のフォルダのため、アプリの一時領域に記録しています（node_modules などは記録しません）'
+/** 記録の置き場の注記(記録の前で、Git 管理外のフォルダのとき) */
+export const AGENT_CHANGES_APP_STORAGE_HINT =
+  'Git 管理外のフォルダのため、記録はアプリの一時領域に置きます（node_modules などは記録しません）'
 
 /** 行の印(累積の一覧で、エージェントのツールが動いていない間に変わった行・両方が変えた行) */
 export const AGENT_CHANGES_USER_MARK = '利用者の変更'
@@ -93,20 +99,27 @@ export function describeAgentChangesAttribution(
 }
 
 export const AGENT_CHANGES_UNAVAILABLE_MESSAGES: Record<AgentChangesUnavailableReason, string> = {
-  'not-repository': 'Git 管理外のフォルダでは、エージェントの変更を記録できません',
+  // not-repository は記録の区切り(addRun の takeSnapshot)でだけ返り、実行の availability に入って範囲の選択に短い形（「実行の開始を記録していません: Git 管理外のフォルダです」）で出る。
+  // セクションの理由は累積の始点の結果からしか来ず、始点は Git 管理外のフォルダを隠れた git で記録するため not-repository を返さない。この文言は型の網羅のためで、画面には届かない
+  'not-repository': 'Git 管理外のフォルダになったため、記録できません',
   'not-toplevel': 'リポジトリの最上位のフォルダを開いたときだけ、エージェントの変更を記録できます',
   'too-many-untracked':
     '未追跡のファイルが多すぎるため、記録できません。.gitignore を確かめてください',
+  'too-many-files':
+    'ファイルが多すぎるため、記録できません。リポジトリを初期化してコミットするか、.gitignore で記録しないファイルを指定してください',
+  'inside-git-dir':
+    'Git のデータのフォルダ（.git の中・bare リポジトリ）では、エージェントの変更を記録できません',
   timeout: '記録に時間がかかりすぎたため、中止しました',
   'git-failed': 'git を実行できないため、記録できません'
 }
 
-/** 記録できない理由の文言。未追跡が多すぎるときは件数と合計を添える */
+/** 記録できない理由の文言。ファイルが多すぎるとき(too-many-untracked・too-many-files)は件数と合計を添える */
 export function describeAgentChangesUnavailable(
   state: Extract<AgentChangesState, { kind: 'unavailable' }>
 ): string {
   const base = AGENT_CHANGES_UNAVAILABLE_MESSAGES[state.reason]
-  if (state.reason !== 'too-many-untracked' || state.untrackedCount === undefined) return base
+  const isTooMany = state.reason === 'too-many-untracked' || state.reason === 'too-many-files'
+  if (!isTooMany || state.untrackedCount === undefined) return base
   const bytes = state.untrackedBytes ?? 0
   const size = bytes > 0 ? `・${(bytes / (1024 * 1024)).toFixed(1)} MB` : ''
   return `${base}（${state.untrackedCount.toLocaleString('ja-JP')} 件${size}）`
@@ -144,6 +157,8 @@ export const AGENT_CHANGES_RUN_UNAVAILABLE_SHORT: Record<AgentChangesUnavailable
   'not-repository': 'Git 管理外のフォルダです',
   'not-toplevel': 'リポジトリの最上位のフォルダではありません',
   'too-many-untracked': '未追跡のファイルが多すぎます',
+  'too-many-files': 'ファイルが多すぎます',
+  'inside-git-dir': 'Git のデータのフォルダです',
   timeout: '時間がかかりすぎました',
   'git-failed': 'git を実行できませんでした'
 }

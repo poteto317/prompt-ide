@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { AgentChangesView } from '../../types'
 import {
+  AGENT_CHANGES_APP_STORAGE_HINT,
+  AGENT_CHANGES_APP_STORAGE_NOTE,
   buildAgentChangesHeading,
   buildAgentChangesRunHeading,
   describeAgentChangesAttribution,
@@ -12,7 +14,8 @@ import {
   buildAgentChangesSectionHeading,
   describeAgentChangesListUnavailable,
   describeAgentChangesSectionAttribution,
-  describeAgentChangesSectionExcluded
+  describeAgentChangesSectionExcluded,
+  describeAgentChangesStorage
 } from '../agentChangesSectionText'
 import {
   makeAgentChangeEntry,
@@ -145,6 +148,43 @@ describe('describeAgentChangesSectionExcluded(すべて戻すから除く旨を�
     ['記録なし', { kind: 'none' } as const]
   ])('%s なら出さない', (_, view) => {
     expect(describeAgentChangesSectionExcluded(view, 1)).toBeNull()
+  })
+})
+
+describe('describeAgentChangesStorage(記録の置き場の注記)', () => {
+  it.each([true, false])(
+    '記録中で記録が隠れた git(storage: app)なら、パネルが Git 管理外(%s)かに関わらず NOTE',
+    (isNotRepository) => {
+      expect(
+        describeAgentChangesStorage(
+          makeAgentChangesRecordingView([], { storage: 'app' }),
+          isNotRepository
+        )
+      ).toBe(AGENT_CHANGES_APP_STORAGE_NOTE)
+    }
+  )
+
+  it('記録中でリポジトリの方式なら出さない', () => {
+    expect(
+      describeAgentChangesStorage(
+        makeAgentChangesRecordingView([], { storage: 'repository' }),
+        true
+      )
+    ).toBeNull()
+  })
+
+  it('記録が無く Git 管理外のフォルダなら HINT、リポジトリなら出さない', () => {
+    expect(describeAgentChangesStorage({ kind: 'none' }, true)).toBe(AGENT_CHANGES_APP_STORAGE_HINT)
+    expect(describeAgentChangesStorage({ kind: 'none' }, false)).toBeNull()
+  })
+
+  it('記録できない理由が出ている間は出さない(理由の文と重ねない)', () => {
+    expect(
+      describeAgentChangesStorage(
+        { kind: 'unavailable', state: { kind: 'unavailable', reason: 'too-many-files' } },
+        true
+      )
+    ).toBeNull()
   })
 })
 

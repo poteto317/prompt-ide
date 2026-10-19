@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SimpleGit } from 'simple-git'
 import {
   AGENT_BASELINE_BLOB_MISSING_MESSAGE,
-  assertBaselineIndex,
+  assertBaselineGitDir,
+  assertBaselineRecord,
   containsNotRecorded,
   hasIgnoredInside,
   isIgnoredAtBaseline,
@@ -170,7 +171,7 @@ describe('toBaselineQueryError', () => {
   })
 })
 
-describe('assertBaselineIndex', () => {
+describe('assertBaselineRecord・assertBaselineGitDir', () => {
   let dir: string
 
   beforeEach(() => {
@@ -181,20 +182,49 @@ describe('assertBaselineIndex', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('ファイルがあれば解決する', async () => {
+  const indexAt = (): string => {
     const indexPath = join(dir, 'index')
     writeFileSync(indexPath, '')
-    await expect(assertBaselineIndex(indexPath)).resolves.toBeUndefined()
+    return indexPath
+  }
+
+  it('リポジトリの方式(gitDir null)は記録のインデックスだけを確かめる', async () => {
+    await expect(
+      assertBaselineRecord({ indexPath: indexAt(), gitDir: null })
+    ).resolves.toBeUndefined()
+    await expect(
+      assertBaselineRecord({ indexPath: join(dir, 'missing'), gitDir: null })
+    ).rejects.toThrow('記録が見つかりません')
   })
 
-  it('無ければ「記録が見つかりません」で拒否する', async () => {
-    await expect(assertBaselineIndex(join(dir, 'missing'))).rejects.toThrow('記録が見つかりません')
-  })
-
-  it('ファイルでなければ(フォルダ)拒否する', async () => {
+  it('記録のインデックスがファイルでなければ(フォルダ)拒否する', async () => {
     const indexPath = join(dir, 'index')
     mkdirSync(indexPath)
-    await expect(assertBaselineIndex(indexPath)).rejects.toThrow('記録が見つかりません')
+    await expect(assertBaselineRecord({ indexPath, gitDir: null })).rejects.toThrow(
+      '記録が見つかりません'
+    )
+  })
+
+  it('隠れた git は gitDir がシンボリックリンクでないディレクトリであることも確かめる(L-002・L-437)', async () => {
+    const indexPath = indexAt()
+    const gitDir = join(dir, 'git')
+    mkdirSync(gitDir)
+    await expect(assertBaselineRecord({ indexPath, gitDir })).resolves.toBeUndefined()
+    await expect(assertBaselineRecord({ indexPath, gitDir: join(dir, 'missing') })).rejects.toThrow(
+      '記録が見つかりません'
+    )
+    const link = join(dir, 'link')
+    symlinkSync(gitDir, link)
+    await expect(assertBaselineRecord({ indexPath, gitDir: link })).rejects.toThrow(
+      '記録が見つかりません'
+    )
+  })
+
+  it('assertBaselineGitDir は gitDir だけを確かめ、null なら何もしない', async () => {
+    await expect(assertBaselineGitDir({ gitDir: null })).resolves.toBeUndefined()
+    const file = join(dir, 'file')
+    writeFileSync(file, '')
+    await expect(assertBaselineGitDir({ gitDir: file })).rejects.toThrow('記録が見つかりません')
   })
 })
 

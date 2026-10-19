@@ -7,7 +7,11 @@ import type {
   AgentRevertResult
 } from '@shared/types'
 import { AGENT_CHANGES_MAX_RUNS } from '@shared/types'
-import type { BaselineSnapshot, BaselineSnapshotResult } from './agentBaselineSnapshot'
+import type {
+  BaselineCheckpointBase,
+  BaselineSnapshot,
+  BaselineSnapshotResult
+} from './agentBaselineSnapshot'
 import { attributionLogLine, authorsOf, initialAttribution } from './agentChangesAttribution'
 import type {
   AttributedEntries,
@@ -38,7 +42,7 @@ import {
   agentChangesRecordTempDirs,
   createAgentChangesRecord,
   dropRunsOverLimit,
-  latestRecordedIndexPath,
+  checkpointBaseOf,
   protectionTreeEntries,
   runStartFromSnapshotResult,
   summarizeAgentChangesRecord
@@ -84,12 +88,12 @@ export interface AgentBaselineProtectionDeps {
 
 export interface AgentBaselineRegistryDeps {
   /**
-   * 記録を取る(agentBaselineSnapshot.takeBaselineSnapshot)。isCanceled は await のたびに呼ばれる。baseIndexPath は区切りの写しの元。
-   * now は記録の時刻の時計(deps.now をそのまま渡す)
+   * 記録を取る(agentBaselineSnapshot.takeBaselineSnapshot。instanceId と一時ディレクトリの親 tempRoot は ipcHandlers.ts の包みが足す)。isCanceled は await のたびに呼ばれる。
+   * base は区切りの写しの元(記録のインデックスと隠れた git の場所)。now は記録の時刻の時計(deps.now をそのまま渡す)
    */
   takeSnapshot: (
     folderPath: string,
-    options: { isCanceled: () => boolean; now: () => number; baseIndexPath?: string }
+    options: { isCanceled: () => boolean; now: () => number; base?: BaselineCheckpointBase }
   ) => Promise<BaselineSnapshotResult>
   /** 一時ディレクトリを消す(removeBaselineDir) */
   removeDir: (tempDir: string) => Promise<void>
@@ -535,7 +539,8 @@ export class AgentBaselineRegistry {
         try {
           this.deps.removeDirSync(dir)
         } catch {
-          // 消せなかったものは OS の一時ディレクトリの掃除に任せ、残りを試す
+          // 消せなかったものは残りを試す。残った記録・区切りの一時ディレクトリは次の起動の掃除(agentBaselineTempSweep)で消え、
+          // 取り消しの控え(prompt-ide-agent-undo-)は OS の一時ディレクトリの掃除に任せる(起動時の掃除の対象外)
         }
       }
     }
@@ -553,7 +558,7 @@ export class AgentBaselineRegistry {
       const result = await this.deps.takeSnapshot(folderPath, {
         isCanceled,
         now: this.deps.now,
-        baseIndexPath: latestRecordedIndexPath(record)
+        base: checkpointBaseOf(record)
       })
       if (result.kind === 'canceled') return { kind: 'none' }
       if (isCanceled()) {
@@ -621,9 +626,14 @@ export class AgentBaselineRegistry {
   /**
    * 1 つの記録の保護の同期。列の番が来た時点の記録から ref のあるべき値を求め、前に書けた値(record.protection.value)と
    * 違えば作る・更新する・消す。終了中・保護をやめた記録・あるべき値を作れない(項目の tree が 1 つも無い)なら何もしない。
-   * cat-file・mktree の失敗は投げる(呼び出し側が握り、次の同期で試し直す)。ref の書き込みの失敗は読み直しで分類する
+   * cat-file・mktree の失敗は投げる(呼び出し側が握り、次の同期で試し直す)。ref の書き込みの失敗は読み直しで分類する。
+   * 隠れた git の記録(gitDir が文字列)は ref を作らず何もしない(設計書「保護の ref」。protectedRecords に入らないため、close・
+   * 捨てた記録の削除の試し直しの対象にもならない)
    */
   private async syncProtectionValue(ownerId: number, record: AgentChangesRecord): Promise<void> {
+    // 隠れた git の記録は保護の ref を作らない(隠れた git の命令は自動の gc を起こさず、gc.auto=0 も書いてある。ref を通すと、
+    // 前の記録の一時ディレクトリを消した後に並ぶ ref の削除が消えた場所に対して失敗し続ける。L-403・L-428)
+    if (record.baseline.gitDir !== null) return
     const state = record.protection
     if (this.closed || this.isProtectionAbandoned(record)) return
     const ctx = this.protectionContextOf(record)
@@ -811,11 +821,12 @@ export class AgentBaselineRegistry {
     return {
       record,
       signal: () => this.deps.attributionSource.activityOf(ownerId),
+      // 判定の区切りの写しの元は直前の判定の区切り。隠れた git の場所は checkpointBaseOf が記録の累積の始点の値にする(L-041)
       takeSnapshot: (baseIndexPath) =>
         this.deps.takeSnapshot(record.baseline.folderPath, {
           isCanceled: isStale,
           now: this.deps.now,
-          baseIndexPath
+          base: checkpointBaseOf(record, baseIndexPath)
         }),
       collectBetween: this.deps.collectBetween,
       collectCurrent: this.deps.collectCurrent,
@@ -883,7 +894,7 @@ export class AgentBaselineRegistry {
     try {
       this.deps.removeDirSync(dir)
     } catch {
-      // 消せなかったものは OS の一時ディレクトリの掃除に任せる
+      // 消せなかったものは OS の一時ディレクトリの掃除に任せる(起動時の掃除〈agentBaselineTempSweep〉は記録の一時ディレクトリだけを見る)
     }
   }
 

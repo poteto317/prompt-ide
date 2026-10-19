@@ -15,6 +15,7 @@ import {
   createAgentBaselineRepo,
   createFakeAttributionSource,
   disposeAgentBaselineRepo,
+  FAKE_INSTANCE_ID,
   makeFakeProtectionDeps,
   userRepoState
 } from './helpers/agentBaselineFixtures'
@@ -36,7 +37,11 @@ describe('記録の利用者の変更との区別(実 git)', () => {
     source = createFakeAttributionSource({ phase: 'idle' })
     registry = new AgentBaselineRegistry({
       takeSnapshot: (folderPath, options) =>
-        takeBaselineSnapshot(folderPath, { ...options, tempRoot: dirs.tempRoot }),
+        takeBaselineSnapshot(folderPath, {
+          ...options,
+          tempRoot: dirs.tempRoot,
+          instanceId: FAKE_INSTANCE_ID
+        }),
       collectBetween: (start, end) => collectAgentChangeEntriesBetween(start, end),
       collectCurrent: (snapshot) => collectAgentChangeEntries(snapshot),
       removeDir: removeBaselineDir,
