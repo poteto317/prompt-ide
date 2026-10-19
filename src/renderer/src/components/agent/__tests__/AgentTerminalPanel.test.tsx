@@ -12,9 +12,11 @@ import {
 } from '../../../__tests__/makeAgentSessionsState'
 import type { AgentSessionTabView } from '../../../hooks/useAgentSessions'
 import {
+  makeAgentInterruptPanelState,
   makeAgentTerminalPanelLayout,
   makeAgentTerminalPanelState
 } from '../../../__tests__/makeAgentTerminalPanelState'
+import type { AgentInterruptPanelState } from '../../../hooks/useAgentInterrupt'
 
 let controller: FakeController
 
@@ -529,5 +531,164 @@ describe('AgentTerminalPanel: 起動した後のフォーカス', () => {
     const stop = screen.getByRole('button', { name: /^終了/ })
     expect(document.activeElement).not.toBe(document.body)
     expect(stop).toHaveFocus()
+  })
+})
+
+describe('AgentTerminalPanel: 中断', () => {
+  const NAME = /^中断/
+  const COOLDOWN = '中断を送りました。まだ作業中なら、少し待つと押せます'
+  const IDLE = '入力待ちのため、中断する作業がありません'
+
+  const runningState = (
+    interrupt: Partial<AgentInterruptPanelState> = {},
+    session: Partial<AgentSessionTabView> = {}
+  ): AgentTerminalPanelState =>
+    makeAgentTerminalPanelState({
+      sessions: makeSessions({ status: 'running', ...session }),
+      interrupt: makeAgentInterruptPanelState({ visible: true, ...interrupt })
+    })
+  // セッションが終わった帯(中断 は出さない)。rest で起動の理由などを渡す
+  const exitedState = (
+    session: Partial<AgentSessionTabView> = {},
+    rest: Parameters<typeof makeAgentSessionsState>[0] = {}
+  ): AgentTerminalPanelState =>
+    makeAgentTerminalPanelState({
+      sessions: makeSessions(
+        { status: 'exited', exit: { exitCode: 0, reason: 'exited' }, ...session },
+        rest
+      ),
+      interrupt: makeAgentInterruptPanelState({
+        visible: false,
+        disabledReason: 'claude が動いていないため中断できません'
+      })
+    })
+  const interruptButton = (): HTMLElement => screen.getByRole('button', { name: NAME })
+
+  it.each([
+    ['starting', true],
+    ['running', true],
+    ['none', false],
+    ['exited', false]
+  ] as const)('%s の帯に出すか: %s(出すときは 終了 の直前)', (status, visible) => {
+    render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({
+          sessions: makeSessions({ status }),
+          interrupt: makeAgentInterruptPanelState({ visible })
+        })}
+      />
+    )
+    const button = screen.queryByRole('button', { name: NAME })
+    if (!visible) {
+      expect(button).toBeNull()
+      return
+    }
+    expect(button).toHaveTextContent('中断')
+    expect(button).toHaveAccessibleName('中断（作業中の claude に Esc を送る）')
+    const buttons = screen.getAllByRole('button')
+    expect(buttons[buttons.indexOf(button as HTMLElement) + 1]).toBe(
+      screen.getByRole('button', { name: /^終了/ })
+    )
+  })
+
+  it('押せるときは aria-disabled・説明・title を付けない', () => {
+    render(<AgentTerminalPanel state={runningState()} />)
+    const button = interruptButton()
+    expect(button).not.toHaveAttribute('aria-disabled')
+    expect(button).not.toHaveAttribute('aria-describedby')
+    expect(button).not.toHaveAttribute('title')
+    expect(button).toBeEnabled()
+  })
+
+  it('押せないときは aria-disabled(disabled ではない)で、理由を説明(隠した span)と title に出し、見える文字にはしない(L-057)', () => {
+    render(<AgentTerminalPanel state={runningState({ disabledReason: IDLE })} />)
+    const button = interruptButton()
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    expect(button).not.toHaveAttribute('disabled')
+    expect(button).toHaveAccessibleDescription(IDLE)
+    expect(button).toHaveAttribute('title', IDLE)
+    const description = document.getElementById(button.getAttribute('aria-describedby') ?? '')
+    expect(description).not.toBeVisible()
+  })
+
+  it.each([
+    ['押せるとき', null],
+    ['押せないとき', IDLE]
+  ] as const)(
+    '%s の click で onInterrupt を呼ぶ(送らないことと理由の読み上げは hook の手順 2。L-058)',
+    async (_name, disabledReason) => {
+      const state = runningState({ disabledReason })
+      render(<AgentTerminalPanel state={state} />)
+      await userEvent.click(interruptButton())
+      expect(state.interrupt.onInterrupt).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('ダブルクリックの 2 回目(detail: 2)では onInterrupt を呼ばない', () => {
+    const state = runningState()
+    render(<AgentTerminalPanel state={state} />)
+    fireEvent.click(interruptButton(), { detail: 1 })
+    fireEvent.click(interruptButton(), { detail: 2 })
+    expect(state.interrupt.onInterrupt).toHaveBeenCalledOnce()
+  })
+
+  it('Enter・Space のキーリピートの keydown は既定の動作を止め、単発の Enter・Space は止めない(L-408)', () => {
+    render(<AgentTerminalPanel state={runningState()} />)
+    const button = interruptButton()
+    expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false)
+    expect(fireEvent.keyDown(button, { key: ' ', repeat: true })).toBe(false)
+    expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(true)
+    expect(fireEvent.keyDown(button, { key: ' ' })).toBe(true)
+    expect(fireEvent.keyDown(button, { key: 'a', repeat: true })).toBe(true)
+  })
+
+  it('読み上げの要素(role="status")は未起動でも常にあり、notice の文言を入れる', () => {
+    const { container, rerender } = render(
+      <AgentTerminalPanel state={makeAgentTerminalPanelState()} />
+    )
+    const live = container.querySelector('.agent-terminal-panel__live')
+    expect(live).not.toBeNull()
+    expect(live).toHaveAttribute('role', 'status')
+    expect(live).toHaveTextContent('')
+    rerender(
+      <AgentTerminalPanel
+        state={runningState({ notice: { text: 'claude 1 に中断（Esc）を送りました', id: 1 } })}
+      />
+    )
+    expect(container.querySelector('.agent-terminal-panel__live')).toBe(live)
+    expect(live).toHaveTextContent('claude 1 に中断（Esc）を送りました')
+  })
+
+  it('押せない状態に変わっても、フォーカスは 中断 に残る(aria-disabled のため body に落ちない)', () => {
+    const { rerender } = render(<AgentTerminalPanel state={runningState()} />)
+    interruptButton().focus()
+    rerender(<AgentTerminalPanel state={runningState({ disabledReason: COOLDOWN })} />)
+    expect(interruptButton()).toHaveFocus()
+    expect(interruptButton()).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  // 移すかの判定(最後にフォーカスを受けた要素・blur で控えを消さない・外のフォーカスを奪わない)は useAgentInterruptFocus の
+  // テストで確かめる。ここでは帯の配線(section の onFocus・主ボタンが 起動・押せないときの移し先が開閉のボタン)だけ
+  describe('セッションが終わって 中断 が消えたときのフォーカス(設計書「フォーカス」)', () => {
+    const start = (): HTMLElement => screen.getByRole('button', { name: /^起動/ })
+    const toggle = (): HTMLElement => screen.getByRole('button', { name: /エージェント/ })
+
+    it('中断 にフォーカスがある状態で終わると、同じ帯の 起動 へ移る', () => {
+      const { rerender } = render(<AgentTerminalPanel state={runningState()} />)
+      interruptButton().focus()
+      rerender(<AgentTerminalPanel state={exitedState()} />)
+      expect(start()).toHaveFocus()
+    })
+
+    it.each<[string, Partial<AgentSessionTabView>, Parameters<typeof makeAgentSessionsState>[0]]>([
+      ['閉じる途中', { isClosing: true }, {}],
+      ['起動できない理由がある', {}, { startDisabledReason: 'フォルダを開いてください' }]
+    ])('起動 が押せない(%s)ときは、開閉のボタン(エージェント)へ移る', (_name, session, rest) => {
+      const { rerender } = render(<AgentTerminalPanel state={runningState()} />)
+      interruptButton().focus()
+      rerender(<AgentTerminalPanel state={exitedState(session, rest)} />)
+      expect(start()).toBeDisabled()
+      expect(toggle()).toHaveFocus()
+    })
   })
 })

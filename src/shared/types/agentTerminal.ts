@@ -121,3 +121,9 @@ export interface AgentSessionSnapshotEntry {
 export interface AgentLastSession {
   claudeSessionId: string
 }
+
+/** 中断(agentTerminal:interrupt)の結果。main は固定の 1 バイトを書けたかだけを返す(作業が止まったかは claude の画面の判定で分かる) */
+export type AgentInterruptResult =
+  | { kind: 'sent' }
+  | { kind: 'no-session' }
+  | { kind: 'write-failed' }

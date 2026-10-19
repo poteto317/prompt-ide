@@ -7,7 +7,7 @@ import data from './fixtures/agentScreens.json'
 import { lineText as lineTextOf } from '../agentViewport'
 import type { ViewportLine } from '../agentViewport'
 
-// 記録済みの画面(claude 2.1.288)ごとの期待。台帳に画面が増えたら、ここに足さないと最後のテストが落ちる
+// 記録済みの画面(claude 2.1.288。中断を記録した 4 画面（streamingQueued は中断の前）は claude 2.1.291)ごとの期待。台帳に画面が増えたら、ここに足さないと最後のテストが落ちる
 const EXPECTED: Record<AgentActivity, readonly AgentScreenName[]> = {
   idle: [
     'empty',
@@ -25,7 +25,9 @@ const EXPECTED: Record<AgentActivity, readonly AgentScreenName[]> = {
     'echoLeadingNewline',
     'echoLongLine',
     'echoIndented',
-    'echoJapanese'
+    'echoJapanese',
+    'interrupted',
+    'interruptedDraft'
   ],
   working: [
     'working',
@@ -34,7 +36,10 @@ const EXPECTED: Record<AgentActivity, readonly AgentScreenName[]> = {
     'streamingDraft',
     'streamingAfterClear',
     'toolrunDraft',
-    'toolrunAfterClear'
+    'toolrunAfterClear',
+    'streamingQueued',
+    // 既知の制約: キューの指示が中断の後に送られて作業中に戻った画面
+    'interruptedQueued'
   ],
   permission: ['permission', 'permissionAfterClear'],
   confirm: ['trust', 'fullscreen'],

@@ -2,8 +2,8 @@
 
 `agentInputBox.test.ts` が、`claude` の入力欄の判定（`findInputBox`・`isInputBoxEmpty`・`isPasteEchoed`）を、`agentActivity.test.ts` が
 活動の判定（`classifyAgentScreen`）を、実物の画面で固定するための台帳。
-`claude` 2.1.288・node-pty 1.1.0・`@xterm/headless` 6.0.0 で、28 の画面（空・書きかけ・複数行・`[Pasted text #N]`・シェルのモード・`/` の候補・
-入力欄が画面を超えた・作業中・送信待ち・信頼の確認・全画面の表示の案内・許可の確認・応答の表示中・ツールの実行中など）を記録した。
+`claude` 2.1.288（中断を記録した 4 画面（streamingQueued は中断の前）〈`interrupted`・`interruptedDraft`・`streamingQueued`・`interruptedQueued`〉は `claude` 2.1.291）・node-pty 1.1.0・`@xterm/headless` 6.0.0 で、32 の画面（空・書きかけ・複数行・`[Pasted text #N]`・シェルのモード・`/` の候補・
+入力欄が画面を超えた・作業中・送信待ち・信頼の確認・全画面の表示の案内・許可の確認・応答の表示中・ツールの実行中・中断の後など）を記録した。
 
 形式: `screens.<名前>.lines` は 行番号 → `[文字列, dim の範囲, 反転の範囲]`（範囲は `[開始, 終わり)` のセルの位置）。文字列は幅 0 のセル
 （全角の文字の右半分）を除いたセルの文字を連結し、末尾の空白（dim・反転でないもの）を除いたもの。入力欄の記号の後ろの U+00A0 は
@@ -28,9 +28,9 @@ todo の項目の記号は 2.1.288 で記録した画面が無い手書きの推
 置き換えたものを置く。置き換えるのは文字列の中身だけで、行の位置・セルの位置・罫線・入力欄の記号・U+00A0・dim と反転の範囲は変えない
 （置き換えたのは ASCII のパスの部分だけなので、表示幅も変わらない）。JSON は読み直さず、ファイルの文字列のまま置き換える（整形・エスケープを保つ）。
 
-- 元の台帳: `.superpowers/agent-terminal-mvp/agent-screens.json`（リポジトリの外。SHA-256 `95518dc8e65f2deb885a50e323053a65bf5fc0d15e9436b66c897c7893af800d`。プランの差異 22 の値と一致することを、写す前に確かめた）
-- 置き換えた後（このディレクトリの `agentScreens.json`）: SHA-256 `6e9c974e411fcff545460a5b739089ca3c6ce5d309823453889556d8eda36c8d`（`agentScreensFixture.test.ts` で固定）
-- 変わった行: 30 行（ヘッダーの作業ディレクトリ 25 行・信頼の確認のパス 1 行・許可の確認の 2 画面で折り返されたパス 4 行）。ファイルの大きさは同じ
+- 元の台帳: `.superpowers/agent-terminal-mvp/agent-screens.json`（リポジトリの外。SHA-256 `fc6004d3789e2cd62e36284590604a894c687386dd5ab9cdc449ef84e3d62e43`。中断を記録した 4 画面（streamingQueued は中断の前）を足す前は `95518dc8e65f2deb885a50e323053a65bf5fc0d15e9436b66c897c7893af800d`（プランの差異 22 の値と一致することを、写す前に確かめた））
+- 置き換えた後（このディレクトリの `agentScreens.json`）: SHA-256 `115ede7dcb490819282a541cc26f01291e2e495993c6f9c4e0fac9e0511b353a`（`agentScreensFixture.test.ts` で固定）
+- 変わった行: 34 行（ヘッダーの作業ディレクトリ 25 行・信頼の確認のパス 1 行・許可の確認の 2 画面で折り返されたパス 4 行・中断を記録した 4 画面（streamingQueued は中断の前）のヘッダーの作業ディレクトリ〈`/…/<UUID>/scratchpad/fixrec/work` の UUID〉 4 行）。ファイルの大きさは同じ
 
 置換の規則（決定的。この順にかける）:
 

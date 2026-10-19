@@ -1,5 +1,5 @@
 {
- "_note": "claude 2.1.288 の画面(@xterm/headless の表示中のバッファ)。lines は 行番号 -> [文字列, dim の範囲, 反転の範囲](範囲は [開始, 終わり) のセルの位置)。文字列は幅 0 のセルを除いたセルの文字を連結し、末尾の空白(dim・反転でないもの)を除いたもの。記号の後ろの空白は U+00A0。記録の手順は .superpowers/agent-terminal-mvp/agent-screens-recorder/README.md",
+ "_note": "claude の画面(@xterm/headless の表示中のバッファ)。既存の 28 画面は claude 2.1.288、中断の後の 4 画面(interrupted・interruptedDraft・streamingQueued・interruptedQueued)は claude 2.1.291 で記録した。lines は 行番号 -> [文字列, dim の範囲, 反転の範囲](範囲は [開始, 終わり) のセルの位置)。文字列は幅 0 のセルを除いたセルの文字を連結し、末尾の空白(dim・反転でないもの)を除いたもの。記号の後ろの空白は U+00A0。記録の手順は .superpowers/agent-terminal-mvp/agent-screens-recorder/README.md",
  "screens": {
   "empty": {
    "cols": 100,
@@ -1208,6 +1208,216 @@
     ],
     "15": [
      "  ⏸ manual mode on · esc to interrupt · ← for agents                  Ctrl+Y to paste deleted text"
+    ]
+   }
+  },
+  "interrupted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "1": [
+     " ▐▛███▛█   Claude Code v2.1.291"
+    ],
+    "2": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "3": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "6": [
+     "❯ do the thing"
+    ],
+    "8": [
+     "⏺ word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "9": [
+     "  word15 word16"
+    ],
+    "10": [
+     "  ⎿ \u00a0Interrupted · What should Claude do instead?"
+    ],
+    "25": [
+     "                                                                                ◐ medium · /effort"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     "  ⏸ manual mode on · ? for shortcuts · ← for agents"
+    ]
+   }
+  },
+  "interruptedDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "1": [
+     " ▐▛███▛█   Claude Code v2.1.291"
+    ],
+    "2": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "3": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "6": [
+     "❯ do the thing"
+    ],
+    "8": [
+     "  Ran 1 shell command"
+    ],
+    "9": [
+     "  ⎿ \u00a0Interrupted · What should Claude do instead?"
+    ],
+    "25": [
+     "                                                                                ◐ medium · /effort"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "❯\u00a0draft during tool ",
+     [],
+     [
+      [
+       19,
+       20
+      ]
+     ]
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     "  ⏸ manual mode on"
+    ]
+   }
+  },
+  "streamingQueued": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "1": [
+     " ▐▛███▛█   Claude Code v2.1.291"
+    ],
+    "2": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "3": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "6": [
+     "❯ do the thing"
+    ],
+    "8": [
+     "⏺ word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "10": [
+     "❯ queued message"
+    ],
+    "11": [
+     "  ctrl+x ctrl+s to send now"
+    ],
+    "24": [
+     "· Hatching… (3s · ↓ 27 tokens)"
+    ],
+    "25": [
+     "                                                                                ◐ medium · /effort"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "❯\u00a0Press up to edit queued messages",
+     [
+      [
+       3,
+       34
+      ]
+     ],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     "  ⏸ manual mode on · esc to interrupt · ← for agents"
+    ]
+   }
+  },
+  "interruptedQueued": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "1": [
+     " ▐▛███▛█   Claude Code v2.1.291"
+    ],
+    "2": [
+     "▝▜██████▀  Opus 5.5 · API Usage Billing"
+    ],
+    "3": [
+     " ▝▝   ▝▝   /…/00000000-0000-0000-0000-000000000000/scratchpad/fixrec/work"
+    ],
+    "6": [
+     "❯ do the thing"
+    ],
+    "8": [
+     "⏺ word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "9": [
+     "  word15 word16 word17 word18 word19 word20"
+    ],
+    "10": [
+     "  ⎿ \u00a0Interrupted · What should Claude do instead?"
+    ],
+    "12": [
+     "❯ queued message"
+    ],
+    "14": [
+     "⏺"
+    ],
+    "24": [
+     "· Roosting… (1s · ↓ 15 tokens)"
+    ],
+    "25": [
+     "                                                                                ◐ medium · /effort"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "❯\u00a0 ",
+     [],
+     [
+      [
+       2,
+       3
+      ]
+     ]
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     "  ⏸ manual mode on · esc to interrupt · ← for agents"
     ]
    }
   }

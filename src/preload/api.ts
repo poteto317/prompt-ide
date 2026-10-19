@@ -9,6 +9,7 @@ import type {
   AgentNotificationShowRequest,
   AgentChangesState,
   AgentChangesUndoResult,
+  AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
   AgentRevertResult,
@@ -192,6 +193,9 @@ export const api = {
     ipcRenderer.send('agentTerminal:resize', sessionId, cols, rows),
   stopAgentSession: (sessionId: string): Promise<void> =>
     ipcRenderer.invoke('agentTerminal:stop', sessionId),
+  // 中断(claude に Esc を 1 回)。引数は sessionId だけで、書くバイト列は main が決める。書けたかを返すため invoke
+  interruptAgentSession: (sessionId: string): Promise<AgentInterruptResult> =>
+    ipcRenderer.invoke('agentTerminal:interrupt', sessionId),
   getAgentSessions: (): Promise<AgentSessionSnapshotEntry[]> =>
     ipcRenderer.invoke('agentTerminal:getState'),
   // このフォルダで最後に起動が確定した claude のセッション(前回の続きから)。照合は main が許可のフォルダで行う

@@ -53,6 +53,7 @@ export function makeAgentSessionsState(
     addDisabledReason: null,
     start: vi.fn<AgentSessionsState['start']>(async () => undefined),
     stop: vi.fn<AgentSessionsState['stop']>(async () => true),
+    interrupt: vi.fn<AgentSessionsState['interrupt']>(async () => ({ kind: 'sent' })),
     addTab: vi.fn<AgentSessionsState['addTab']>(async () => undefined),
     resumeInNewTab: vi.fn<AgentSessionsState['resumeInNewTab']>(() => null),
     closeTab: vi.fn<AgentSessionsState['closeTab']>(async () => true),

@@ -32,6 +32,8 @@ import type { AgentTerminalPanelLayout } from './useAgentTerminalPanel'
 import { useOnChange } from './useOnChange'
 import { useAgentResume } from './useAgentResume'
 import type { AgentResumeLastState } from './useAgentResume'
+import { useAgentInterrupt } from './useAgentInterrupt'
+import type { AgentInterruptPanelState } from './useAgentInterrupt'
 import { useLatestRef } from './useLatestRef'
 import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
@@ -58,6 +60,8 @@ export interface AgentTerminalPanelState {
   activities: ReadonlyMap<string, AgentActivity>
   /** 「前回の続きから」の押せない理由と操作 */
   resumeLast: AgentResumeLastState
+  /** 帯の 中断(選択中のタブの claude に Esc を 1 回)。押せない理由・読み上げ・押したとき */
+  interrupt: AgentInterruptPanelState
 }
 
 export interface UseAgentWorkspaceOptions {
@@ -202,6 +206,15 @@ export function useAgentWorkspace({
     selected: selectedTarget,
     send: agentSender.send,
     onSendSettled: handleSendSettled
+  })
+  // 帯の 中断(設計書 2026-10-19)。押せないのは送信中・送信前の確認の表示中(送信の手順〈消去・貼り付け・Enter〉と Esc を混ぜない)と、
+  // 選択中のタブが作業中でないとき。送り先は押した時点の選択中のタブ
+  const agentInterrupt = useAgentInterrupt({
+    selected: agentSessions.selected,
+    activities,
+    isSending: agentSender.isSending,
+    isSendConfirmOpen: sendConfirm.pending !== null,
+    interrupt: agentSessions.interrupt
   })
   // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
   // usePromptRunner の useCallback の依存に入るため、選択中のタブ・send・確認の要否が変わらなければ同じ参照を返す
@@ -370,7 +383,8 @@ export function useAgentWorkspace({
       layout: agentLayout,
       sendingSlotId: agentSender.sendingSlotId,
       activities,
-      resumeLast: agentResume.resumeLast
+      resumeLast: agentResume.resumeLast,
+      interrupt: agentInterrupt
     },
     statusBarAgent,
     agentAnnouncement,

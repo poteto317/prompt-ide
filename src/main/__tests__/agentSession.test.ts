@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AgentSession, startAgentSession } from '../agentSession'
+import { AGENT_INTERRUPT_SEQUENCE, AgentSession, startAgentSession } from '../agentSession'
 import type { AgentSessionCallbacks, PtySpawn, StopTree } from '../agentSession'
 import { makeFakePty } from './helpers/fakePty'
 
@@ -151,6 +151,50 @@ describe('AgentSession', () => {
     pty.emitExit(0)
     await session.stop('stopped')
     expect(stopTree).not.toHaveBeenCalled()
+  })
+})
+
+describe('AgentSession.interrupt', () => {
+  const makeSession = (
+    pty = makeFakePty(),
+    stopTree = vi.fn<StopTree>()
+  ): { session: AgentSession; pty: ReturnType<typeof makeFakePty> } => ({
+    session: new AgentSession({ id: 's1', pty, callbacks: makeCallbacks(), stopTree }),
+    pty
+  })
+
+  it('固定の 1 バイト(\\x1b)だけを pty へ書き、sent を返す(renderer の値を混ぜない)', () => {
+    const { session, pty } = makeSession()
+    expect(AGENT_INTERRUPT_SEQUENCE).toBe('\x1b')
+    expect(session.interrupt()).toBe('sent')
+    expect(pty.write.mock.calls).toEqual([['\x1b']])
+  })
+
+  it('終了の後は書かずに not-alive を返す', () => {
+    const { session, pty } = makeSession()
+    pty.emitExit(0)
+    expect(session.interrupt()).toBe('not-alive')
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('stop の後(終了の前)は書かずに not-alive を返す(止めている pty に送らない)', () => {
+    // 止まりきらない stopTree(SIGTERM の猶予を待っている間)
+    const { session, pty } = makeSession(
+      makeFakePty(),
+      vi.fn<StopTree>(() => new Promise<void>(() => undefined))
+    )
+    void session.stop('stopped')
+    expect(session.isAlive()).toBe(true)
+    expect(session.interrupt()).toBe('not-alive')
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('pty.write が投げたら write-failed を返し、例外を投げない', () => {
+    const { session, pty } = makeSession()
+    pty.write.mockImplementationOnce(() => {
+      throw new Error('EIO')
+    })
+    expect(session.interrupt()).toBe('write-failed')
   })
 })
 

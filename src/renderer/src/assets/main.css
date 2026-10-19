@@ -1979,7 +1979,8 @@ body {
 .external-change-banner__live,
 .agent-diff__live,
 .agent-announcer,
-.agent-send-feedback__live {
+.agent-send-feedback__live,
+.agent-terminal-panel__live {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2074,6 +2075,17 @@ body {
 .agent-terminal-panel__button:focus-visible {
   outline: 2px solid #007acc;
   outline-offset: -2px;
+}
+
+/* 帯の 中断 の押せない状態(aria-disabled。フォーカスを残すため disabled にしない)。:disabled と同じ見た目にし、ホバーで色を変えない */
+.agent-terminal-panel__button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.agent-terminal-panel__button[aria-disabled='true']:hover {
+  background: none;
+  color: #cccccc;
 }
 
 /* 視覚的には隠し、支援技術には読ませる(開閉のボタンの aria-describedby) */

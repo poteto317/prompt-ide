@@ -8,7 +8,10 @@ import {
   makeAgentSessionsState,
   makeAgentSessionTabView
 } from '../../../__tests__/makeAgentSessionsState'
-import { makeAgentTerminalPanelState } from '../../../__tests__/makeAgentTerminalPanelState'
+import {
+  makeAgentInterruptPanelState,
+  makeAgentTerminalPanelState
+} from '../../../__tests__/makeAgentTerminalPanelState'
 import { AGENT_START_DISABLED_NO_FOLDER } from '../../../lib/agentSessionMessages'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する(OutputPanel.styles.test.tsx と同じ流儀)。
@@ -130,6 +133,53 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       // jsdom は outline の一括指定を個別の値に展開しない
       expect(rule?.style.getPropertyValue('outline')).toContain('solid')
     }
+  })
+
+  describe('中断のボタン', () => {
+    // 実行中の帯(中断・終了・最大化)。disabledReason を渡すと押せない(aria-disabled)状態
+    function renderRunning(disabledReason: string | null): HTMLElement {
+      const state: AgentTerminalPanelState = makeAgentTerminalPanelState({
+        sessions: makeAgentSessionsState({ selected: { status: 'running' } }),
+        interrupt: makeAgentInterruptPanelState({ visible: true, disabledReason })
+      })
+      render(<AgentTerminalPanel state={state} />)
+      return screen.getByRole('button', { name: /^中断/ })
+    }
+    const cssRules = (): CSSStyleRule[] =>
+      Array.from(styleElement.sheet?.cssRules ?? []).filter(
+        (rule): rule is CSSStyleRule => rule instanceof CSSStyleRule
+      )
+    const indexOfRule = (selector: string): number =>
+      cssRules().findIndex((rule) => rule.selectorText.split(/,\s*/).includes(selector))
+
+    it('縮まず、折り返さない(共通のボタンの規則)', () => {
+      const style = getComputedStyle(renderRunning(null))
+      expect(style.flexShrink).toBe('0')
+      expect(style.whiteSpace).toBe('nowrap')
+      expect(style.minWidth).toBe('32px')
+      expect(style.minHeight).toBe('32px')
+    })
+
+    it('押せない(aria-disabled)ときは :disabled と同じ見た目(不透明度 0.5・矢印のカーソル)', () => {
+      const style = getComputedStyle(renderRunning('入力待ちのため、中断する作業がありません'))
+      expect(style.opacity).toBe('0.5')
+      expect(style.cursor).toBe('default')
+    })
+
+    it('押せるときは薄くしない', () => {
+      expect(getComputedStyle(renderRunning(null)).opacity).not.toBe('0.5')
+    })
+
+    it('押せないときのホバーは色を変えない(既存のホバーの規則より後ろに置いて打ち消す)', () => {
+      // jsdom は :hover を計算しないため、規則そのものを CSSOM から探す
+      const disabledHover = indexOfRule(".agent-terminal-panel__button[aria-disabled='true']:hover")
+      const hover = indexOfRule('.agent-terminal-panel__button:hover:not(:disabled)')
+      expect(disabledHover).toBeGreaterThan(-1)
+      expect(disabledHover).toBeGreaterThan(hover)
+      const rule = cssRules()[disabledHover]
+      expect(rule.style.cssText).toContain('background: none')
+      expect(rule.style.getPropertyValue('color')).toBe('rgb(204, 204, 204)')
+    })
   })
 
   describe('セッションのタブ列', () => {

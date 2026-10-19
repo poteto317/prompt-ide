@@ -2,6 +2,9 @@ import type { AgentExitReason } from '@shared/types'
 
 // 1 つのエージェントのセッション(pty の子の claude)。pty の生成は注入する(単体テストは偽物、結合テストは実物の node-pty)
 
+/** claude の作業の中断(ターミナルで Esc を 1 回押すのと同じ)。renderer の値を混ぜない固定の 1 バイト */
+export const AGENT_INTERRUPT_SEQUENCE = '\x1b'
+
 export interface PtyDisposable {
   dispose(): void
 }
@@ -113,6 +116,20 @@ export class AgentSession {
       this.pty.write(data)
     } catch {
       // 終了の直前の書き込みの失敗(EIO など)は、終了の通知で扱う
+    }
+  }
+
+  /**
+   * 作業の中断(Esc を 1 回)を書く。既存の write は打鍵の経路のため書き込みの例外を握って何も返さないが、中断は結果を返す
+   * (L-001)。停止の途中(stop の後、終了の前)は止めている pty に送らない。pty.write は同期で返り、claude の反応は待たない
+   */
+  interrupt(): 'sent' | 'not-alive' | 'write-failed' {
+    if (!this.alive || this.stopping !== null) return 'not-alive'
+    try {
+      this.pty.write(AGENT_INTERRUPT_SEQUENCE)
+      return 'sent'
+    } catch {
+      return 'write-failed'
     }
   }
 

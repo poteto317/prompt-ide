@@ -1,7 +1,7 @@
 import type { ViewportCell, ViewportLine } from '../../agentViewport'
 import data from './agentScreens.json'
 
-// claude 2.1.288 の画面の記録(agentScreens.json)を、行の配列にする。lines は 行番号 → [文字列, dim の範囲, 反転の範囲]
+// claude の画面の記録(agentScreens.json。既存の 28 画面は claude 2.1.288、中断を記録した 4 画面（streamingQueued は中断の前）は claude 2.1.291)を、行の配列にする。lines は 行番号 → [文字列, dim の範囲, 反転の範囲]
 // (範囲は [開始, 終わり) のセルの位置)。記録の手順・個人情報の置き換え・claude の版を上げたときの記録し直しは、
 // 同じディレクトリの README.md
 

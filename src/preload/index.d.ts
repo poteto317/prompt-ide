@@ -7,6 +7,7 @@ import type {
   AgentChangesScope,
   AgentChangesState,
   AgentChangesUndoResult,
+  AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
   AgentRevertResult,
@@ -135,6 +136,7 @@ declare global {
       writeAgentSession(sessionId: string, data: string): void
       resizeAgentSession(sessionId: string, cols: number, rows: number): void
       stopAgentSession(sessionId: string): Promise<void>
+      interruptAgentSession(sessionId: string): Promise<AgentInterruptResult>
       getAgentSessions(): Promise<AgentSessionSnapshotEntry[]>
       getLastAgentSession(folderPath: string): Promise<AgentLastSession | null>
       onAgentData(listener: (payload: AgentSessionData) => void): () => void

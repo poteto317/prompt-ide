@@ -6,8 +6,11 @@ import {
   AGENT_RESUME_LAST_LABEL,
   describeAgentStatus
 } from '../../lib/agentSessionMessages'
+import { AGENT_INTERRUPT_ARIA_LABEL, AGENT_INTERRUPT_LABEL } from '../../lib/agentInterruptMessages'
+import { toAnnouncementText } from '../../lib/announcementText'
 import { isActiveAgentSessionStatus } from '../../lib/agentSessionTabState'
 import { useAgentTabCloseFocus } from '../../hooks/useAgentTabCloseFocus'
+import { useAgentInterruptFocus } from '../../hooks/useAgentInterruptFocus'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
 import type { AgentChangesReviewAction } from '../../types'
 import AgentSessionTabList from './AgentSessionTabList'
@@ -18,11 +21,11 @@ interface Props {
   review?: AgentChangesReviewAction
 }
 
-// エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・セッションのタブ・状態・起動/終了・変更を確認・最大化)と xterm の表示の領域。
+// エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・セッションのタブ・状態・中断・起動/終了・変更を確認・最大化)と xterm の表示の領域。
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
 export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
-  const { sessions, layout, sendingSlotId, activities, resumeLast } = state
+  const { sessions, layout, sendingSlotId, activities, resumeLast, interrupt } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
   const bodyId = useId()
@@ -32,6 +35,14 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
   const toggleRef = useRef<HTMLButtonElement>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const primaryButtonRef = useRef<HTMLButtonElement>(null)
+  const interruptRef = useRef<HTMLButtonElement>(null)
+  const interruptReasonId = useId()
+  // セッションが終わって 中断 が消えたときのフォーカスの移し先(主ボタン、押せなければ開閉のボタン)
+  const handlePanelFocus = useAgentInterruptFocus(interrupt.visible, {
+    interruptRef,
+    primaryButtonRef,
+    toggleRef
+  })
 
   // 消える要素にフォーカスを残さない(パターン 86)
   const moveFocusOutOfTerminal = (): void => {
@@ -64,6 +75,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
         .filter((name) => name !== '')
         .join(' ')}
       aria-label="エージェント"
+      onFocus={handlePanelFocus}
     >
       <div className="agent-terminal-panel__header">
         <button
@@ -113,6 +125,40 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
               <span id={reasonId} hidden>
                 {visibleReason}
               </span>
+            </>
+          )}
+          {interrupt.visible && (
+            <>
+              {/* 押せない理由は見える文字にしない(title と説明だけ。狭い帯で状態の文言・タブ列を押し出さないため。既知の制約) */}
+              {interrupt.disabledReason !== null && (
+                <span id={interruptReasonId} hidden>
+                  {interrupt.disabledReason}
+                </span>
+              )}
+              {/* disabled ではなく aria-disabled: 押して作業が止まるとすぐ押せなくなるが、disabled だとフォーカスが body に落ち、
+                  キーリピートが隣の 終了 などへ届いて会話を失う。押せない状態で押したときは hook が理由を読み上げて送らない。
+                  1,000ms の待ち・同期の再入の防止(useAgentInterrupt・useAgentInterruptCooldown)と、ダブルクリック・キーリピートの無視(ここ)は組で働く(L-408) */}
+              <button
+                ref={interruptRef}
+                type="button"
+                className="agent-terminal-panel__button"
+                aria-label={AGENT_INTERRUPT_ARIA_LABEL}
+                aria-disabled={interrupt.disabledReason !== null ? true : undefined}
+                aria-describedby={interrupt.disabledReason !== null ? interruptReasonId : undefined}
+                title={interrupt.disabledReason ?? undefined}
+                onClick={(event) => {
+                  // ダブルクリックの 2 回目は捨てる(キーボードのクリックは detail が 0 で影響しない)
+                  if (event.detail > 1) return
+                  interrupt.onInterrupt()
+                }}
+                onKeyDown={(event) => {
+                  // 押し続けた Enter・Space のリピートで、1,000ms ごとに Esc を送らない(単発の打鍵は止めない)
+                  if (event.repeat && (event.key === 'Enter' || event.key === ' '))
+                    event.preventDefault()
+                }}
+              >
+                {AGENT_INTERRUPT_LABEL}
+              </button>
             </>
           )}
           {/* 起動 と 終了 は同じ位置の 1 つの button として描く(押すと同じ要素が使い回され、フォーカスが 終了 に残る) */}
@@ -213,6 +259,10 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
           onFocusOut={focusToggle}
         />
       </div>
+      {/* 中断の読み上げ(送れたとき・押せない状態で押したとき)。ライブリージョンは先に在る必要があるため常に描く(パターン 87) */}
+      <p className="agent-terminal-panel__live" role="status">
+        {toAnnouncementText(interrupt.notice)}
+      </p>
     </section>
   )
 }

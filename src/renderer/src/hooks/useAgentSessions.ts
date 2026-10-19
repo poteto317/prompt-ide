@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { AgentLaunchRequest, AgentSessionExit } from '@shared/types'
+import type { AgentInterruptResult, AgentLaunchRequest, AgentSessionExit } from '@shared/types'
 import { isAgentStartCanceled } from '@shared/types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
 import type { AgentSessionTab, AgentSessionTabs } from '../lib/agentSessionTabs'
@@ -12,6 +12,12 @@ import {
   describeAgentStartError,
   formatAgentTabLabel
 } from '../lib/agentSessionMessages'
+import {
+  AGENT_INTERRUPT_ERROR_NO_SESSION,
+  AGENT_INTERRUPT_ERROR_PREFIX,
+  AGENT_INTERRUPT_ERROR_WRITE_FAILED,
+  agentInterruptError
+} from '../lib/agentInterruptMessages'
 import { toError } from '../lib/errorUtils'
 import {
   agentAddTabDisabledReason,
@@ -48,6 +54,18 @@ export interface AgentSessionTabView {
   controller: AgentTerminalController
 }
 
+/** 中断(帯の 中断)の結果。送れたかだけを扱い、作業が止まったかは claude の画面の判定で分かる(L-001) */
+export type AgentInterruptOutcome =
+  | { kind: 'sent' }
+  /** そのタブにセッションが無い(IPC を呼ばない) */
+  | { kind: 'skipped' }
+  /** 結果が届いた時点で、そのタブの sessionId が送った値と違う(起動し直した・終了した・閉じた)。何も出さない */
+  | { kind: 'stale' }
+  | { kind: 'no-session' }
+  | { kind: 'write-failed' }
+  /** invoke の拒否・同期の例外 */
+  | { kind: 'error'; message: string }
+
 export interface AgentLastExit extends AgentSessionExitView {
   sessionId: string
 }
@@ -64,6 +82,10 @@ export interface AgentSessionsState {
   start: (slotId: string, launch: AgentLaunchRequest) => Promise<void>
   /** 確認なしで止める。止め終わってから解決し、失敗したら false(エラーはそのタブに出す) */
   stop: (slotId: string) => Promise<boolean>
+  /** そのタブの claude に中断(Esc を 1 回)を送る。そのタブにセッションが無ければ IPC を呼ばず skipped(何も出さない)。
+   *  押した時点の sessionId を控え、結果が届いた時点で同じときだけ結果を出す(違えば stale)。送れなかったらそのタブの error に出し、
+   *  送れたらそのタブの中断の失敗の文言だけを消す。拒否しない */
+  interrupt: (slotId: string) => Promise<AgentInterruptOutcome>
   /** タブを作って選択し、起動する */
   addTab: () => Promise<void>
   /** 新しいタブを足して選択し、そのタブで claudeSessionId を再開する(+ と同じ検査の後。同じ ID のタブが起動中・実行中なら
@@ -385,6 +407,53 @@ export function useAgentSessions({
     [patchTab]
   )
 
+  // 送れたときに、そのタブの error が中断の失敗の文言なら消す(終了の失敗などほかの文言は消さない)
+  const clearInterruptError = useCallback(
+    (slotId: string): void => {
+      if (!mountedRef.current) return
+      if (findTab(slotId) === undefined) return
+      setStates((prev) => {
+        const fields = agentTabSessionFieldsOf(prev, slotId)
+        if (fields.error?.startsWith(AGENT_INTERRUPT_ERROR_PREFIX) !== true) return prev
+        return new Map(prev).set(slotId, { ...fields, error: null })
+      })
+    },
+    [findTab]
+  )
+
+  const interrupt = useCallback(
+    async (slotId: string): Promise<AgentInterruptOutcome> => {
+      const id = sessionIdBySlotRef.current.get(slotId)
+      if (id === undefined) return { kind: 'skipped' }
+      // 結果が届いた時点で、そのタブのセッションが送った相手のままか(古いセッションの結果を今のタブに出さない。L-037)
+      const isCurrent = (): boolean => sessionIdBySlotRef.current.get(slotId) === id
+      let result: AgentInterruptResult
+      try {
+        // 同期の例外も拒否と同じ経路で扱う(L-055)
+        result = await Promise.resolve().then(() => agentTerminalApi.interruptAgentSession(id))
+      } catch (err) {
+        if (!isCurrent()) return { kind: 'stale' }
+        const message = toError(err).message
+        patchTab(slotId, { error: agentInterruptError(message) })
+        return { kind: 'error', message }
+      }
+      if (!isCurrent()) return { kind: 'stale' }
+      if (result.kind === 'sent') {
+        clearInterruptError(slotId)
+        return { kind: 'sent' }
+      }
+      patchTab(slotId, {
+        error:
+          result.kind === 'no-session'
+            ? AGENT_INTERRUPT_ERROR_NO_SESSION
+            : AGENT_INTERRUPT_ERROR_WRITE_FAILED
+      })
+      // ここでは no-session か write-failed(sent は上で返した)
+      return result
+    },
+    [patchTab, clearInterruptError]
+  )
+
   const closeTab = useCallback(
     async (slotId: string): Promise<boolean> => {
       const tab = findTab(slotId)
@@ -486,6 +555,7 @@ export function useAgentSessions({
     addDisabledReason,
     start,
     stop,
+    interrupt,
     addTab,
     resumeInNewTab,
     closeTab,

@@ -1,5 +1,10 @@
 import type { IpcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
-import type { AgentLastSession, AgentSessionSnapshotEntry, AgentStartResult } from '@shared/types'
+import type {
+  AgentInterruptResult,
+  AgentLastSession,
+  AgentSessionSnapshotEntry,
+  AgentStartResult
+} from '@shared/types'
 import type { AgentSessionRegistry } from '../agentSessionRegistry'
 import type { AgentSessionStarter, AgentSessionStarterService } from '../agentSessionStarter'
 import { isDestroyedSafely, sendSafely } from '../safeWebContentsSend'
@@ -14,11 +19,11 @@ import {
 } from './agentTerminalPayloadParser'
 
 // エージェントのセッションの IPC の受け口(設計書「IPC」)。起動のコマンド・作業ディレクトリ・環境変数は main で決め、
-// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId(作業中・作業の終わりの知らせを含む)だけを受け取る
+// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断を含む)だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
-  /** 書き込み・リサイズ・停止・状態の取得の相手(所有者・枠ごとのセッション) */
-  registry: Pick<AgentSessionRegistry, 'write' | 'resize' | 'stop' | 'snapshot'>
+  /** 書き込み・リサイズ・停止・中断・状態の取得の相手(所有者・枠ごとのセッション) */
+  registry: Pick<AgentSessionRegistry, 'write' | 'resize' | 'stop' | 'snapshot' | 'interrupt'>
   /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
    *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
   startSession: AgentSessionStarter
@@ -86,6 +91,16 @@ export function registerAgentTerminalHandlers(
     async (event: IpcMainInvokeEvent, sessionId: unknown): Promise<void> => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
       await registry.stop(event.sender.id, 'stopped', parseAgentSessionId(sessionId))
+    }
+  )
+
+  // 中断(claude に Esc を 1 回)。renderer からは sessionId だけを受け取り、書くバイト列は main が決める(L-019)。
+  // 書けたか・セッションが無かったかを返すため invoke にする(L-001)。照合は write と同じ(送信元のウィンドウの今のセッション)
+  ipcMain.handle(
+    'agentTerminal:interrupt',
+    (event: IpcMainInvokeEvent, sessionId: unknown): AgentInterruptResult => {
+      if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
+      return registry.interrupt(event.sender.id, parseAgentSessionId(sessionId))
     }
   )
 

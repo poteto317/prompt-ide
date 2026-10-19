@@ -457,6 +457,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['agentTerminal:stop', 's']
     ],
     [
+      'interruptAgentSession は agentTerminal:interrupt に sessionId だけを渡す',
+      () => api.interruptAgentSession('id'),
+      ['agentTerminal:interrupt', 'id']
+    ],
+    [
       'getAgentSessions は agentTerminal:getState を呼ぶ',
       () => api.getAgentSessions(),
       ['agentTerminal:getState']
@@ -631,5 +636,14 @@ describe('onAgentExit の正規化', () => {
       signal: null,
       reason: 'stopped'
     })
+  })
+})
+
+describe('interruptAgentSession の戻り値', () => {
+  // 渡す引数(チャンネルと sessionId だけ)は上の it.each で確かめる
+  it('agentTerminal:interrupt の結果をそのまま返す', async () => {
+    const result = { kind: 'no-session' }
+    mockInvoke.mockResolvedValue(result)
+    await expect(api.interruptAgentSession('id')).resolves.toBe(result)
   })
 })

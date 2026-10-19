@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 // claude の画面の台帳(fixtures/agentScreens.json)の改変と、個人情報の混入を検知する。
 // 台帳は記録した画面から個人情報を同じ長さの中立な文字列へ置き換えたもの(手順は fixtures/README.md)。
 // claude の版を上げて記録し直したら、README.md の手順で置き換えてから AGENT_SCREENS_SHA256 を更新する
-const AGENT_SCREENS_SHA256 = '6e9c974e411fcff545460a5b739089ca3c6ce5d309823453889556d8eda36c8d'
+const AGENT_SCREENS_SHA256 = '115ede7dcb490819282a541cc26f01291e2e495993c6f9c4e0fac9e0511b353a'
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000'
 
 const raw = readFileSync(resolve(__dirname, 'fixtures/agentScreens.json'))

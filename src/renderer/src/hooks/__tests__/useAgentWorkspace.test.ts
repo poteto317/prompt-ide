@@ -71,6 +71,13 @@ import {
   RUN_DISABLED_SENDING
 } from '../../lib/agentSendMessages'
 import { AGENT_START_DISABLED_SWITCHING_MODE } from '../../lib/agentSessionMessages'
+import {
+  AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
+  AGENT_INTERRUPT_DISABLED_SENDING,
+  agentInterruptSentNotice
+} from '../../lib/agentInterruptMessages'
+import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
+import { agentScreen } from '../../lib/__tests__/fixtures/agentScreens'
 
 const defaultUseExecutionMode = mockUseExecutionMode.getMockImplementation()!
 
@@ -1784,6 +1791,101 @@ describe('useAgentWorkspace', () => {
       expect(sessions.resumeInNewTab).toHaveBeenCalledExactlyOnceWith(ID)
       expect(selectTab).toHaveBeenCalledWith('slot-2')
       expect(result.current.agentTerminal.layout.isOpen).toBe(true)
+    })
+  })
+
+  describe('中断の配線(agentTerminal.interrupt。本物の useAgentSessions・useAgentInterrupt。L-060)', () => {
+    const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
+    let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
+    let interruptSpy: MockInstance<typeof window.api.interruptAgentSession> | null = null
+    let slotId: string
+    // 共有の偽のタブの画面を書き換えるので、終わったら戻す
+    let screenController: FakeController | null = null
+    let originalScreen: FakeController['screen'] | null = null
+
+    beforeEach(async () => {
+      const actual =
+        await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
+      mockUseAgentSessions.mockImplementation(actual.useAgentSessions)
+      setMode('agent-cli')
+      startSpy = vi
+        .spyOn(window.api, 'startAgentSession')
+        .mockResolvedValue({ kind: 'started', sessionId: 'sid-wire', claudeSessionId: CLAUDE_ID })
+      interruptSpy = vi
+        .spyOn(window.api, 'interruptAgentSession')
+        .mockResolvedValue({ kind: 'sent' })
+      // 文書ごとのタブの置き場(テストでは偽の controller の置き場)の選択中のタブを作業中の画面にする
+      const snapshot = getAgentSessionTabs().getSnapshot()
+      slotId = snapshot.selectedSlotId
+      const controller = snapshot.tabs.find((tab) => tab.slotId === slotId)
+        ?.controller as FakeController
+      screenController = controller
+      originalScreen = controller.screen
+      controller.screen = agentScreen('working').lines
+      mockUseAgentActivity.mockReturnValue(new Map([[slotId, 'working']]))
+    })
+
+    afterEach(() => {
+      if (screenController !== null && originalScreen !== null) {
+        screenController.screen = originalScreen
+      }
+      screenController = null
+      originalScreen = null
+      startSpy?.mockRestore()
+      interruptSpy?.mockRestore()
+    })
+
+    const renderStarted = async (): Promise<Rendered> => {
+      const rendered = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await rendered.result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      return rendered
+    }
+
+    it('作業中の選択中のタブで onInterrupt を呼ぶと、window.api.interruptAgentSession をそのタブの sessionId で呼び、読み上げる', async () => {
+      const { result } = await renderStarted()
+      expect(result.current.agentTerminal.interrupt.visible).toBe(true)
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-wire')
+      const label = result.current.agentTerminal.sessions.selected.label
+      expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+        agentInterruptSentNotice(label)
+      )
+    })
+
+    it('送信中は理由を出し、押しても呼ばない', async () => {
+      const { result, rerender } = await renderStarted()
+      mockUseAgentPromptSender.mockReturnValue(
+        makeSender({ isSending: true, sendingSlotId: slotId })
+      )
+      // 送信中の値で描き直す
+      rerender()
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        AGENT_INTERRUPT_DISABLED_SENDING
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).not.toHaveBeenCalled()
+    })
+
+    it('送信前の確認の表示中は理由を出し、押しても呼ばない', async () => {
+      const { result } = await renderStarted()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.pending).not.toBeNull()
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        AGENT_INTERRUPT_DISABLED_SEND_CONFIRM
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).not.toHaveBeenCalled()
     })
   })
 })

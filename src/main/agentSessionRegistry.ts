@@ -1,4 +1,4 @@
-import type { AgentExitReason, AgentStartResult } from '@shared/types'
+import type { AgentExitReason, AgentInterruptResult, AgentStartResult } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, agentStartCanceled } from '@shared/types'
 import type { AgentSession } from './agentSession'
 
@@ -173,6 +173,20 @@ export class AgentSessionRegistry {
   /** sessionId が所有者のいずれかの枠の現在のセッションと一致するときだけ書き込む(古い画面からの書き込みを捨てる) */
   write(ownerId: number, sessionId: string, data: string): void {
     this.findBySessionId(ownerId, sessionId)?.session?.write(data)
+  }
+
+  /**
+   * sessionId が所有者のいずれかの枠の現在のセッションと一致するときだけ中断を送る(write と同じ照合)。停止中のセッション
+   * (stoppingSessions に移ったもの)・別のウィンドウのセッション・起動し直す前の古い sessionId は一致せず no-session(L-037)。
+   * 一致しても、終了した直後(exited の解決の後に枠から外すため、その前)でセッションが not-alive を返したときは no-session に写す
+   * (停止は stopSlot が枠から外してから始めるため、停止の途中のセッションは照合で一致しない)
+   */
+  interrupt(ownerId: number, sessionId: string): AgentInterruptResult {
+    const session = this.findBySessionId(ownerId, sessionId)?.session
+    if (session === undefined) return { kind: 'no-session' }
+    const result = session.interrupt()
+    if (result === 'sent') return { kind: 'sent' }
+    return result === 'not-alive' ? { kind: 'no-session' } : { kind: 'write-failed' }
   }
 
   resize(ownerId: number, sessionId: string, cols: number, rows: number): void {

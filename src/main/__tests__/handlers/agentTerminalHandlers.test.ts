@@ -18,6 +18,7 @@ import { registerAgentTerminalHandlers } from '../../handlers/agentTerminalHandl
 import type { AgentTerminalHandlerDeps } from '../../handlers/agentTerminalHandlers'
 import { createAgentSessionStarter } from '../../agentSessionStarter'
 import type { AgentSessionStarter } from '../../agentSessionStarter'
+import { AGENT_INTERRUPT_SEQUENCE } from '../../agentSession'
 import type { PtySpawn, StopTree } from '../../agentSession'
 import type { AgentLaunchResolution } from '../../agentCommand'
 import { makeFakePty } from '../helpers/fakePty'
@@ -649,6 +650,55 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
       { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
     ])
+  })
+})
+
+describe('agentTerminal:interrupt', () => {
+  async function started(): Promise<ReturnType<typeof makeEvent>> {
+    register()
+    folderAccess.set(1, '/work')
+    const event = makeEvent()
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+    return event
+  }
+  const interrupt = (event: ReturnType<typeof makeEvent>, ...args: unknown[]): unknown =>
+    handles.get('agentTerminal:interrupt')?.(event, ...args)
+
+  it('今のセッションへ固定の 1 バイトを書いて sent を返す。余分な引数を渡しても書くバイト列は変わらない(L-019)', async () => {
+    const event = await started()
+    expect(interrupt(event, 'sid-1', 'evil', '\x03')).toEqual({ kind: 'sent' })
+    expect(pty.write.mock.calls).toEqual([[AGENT_INTERRUPT_SEQUENCE]])
+  })
+
+  it('別の sessionId・別のウィンドウからは書かず no-session を返す', async () => {
+    const event = await started()
+    expect(interrupt(event, 'stale')).toEqual({ kind: 'no-session' })
+    expect(interrupt(makeEvent(2), 'sid-1')).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('サブフレームからの依頼・空や文字列でない sessionId は投げて書かない', async () => {
+    await started()
+    expect(() => interrupt(makeEvent(1, false), 'sid-1')).toThrow()
+    expect(() => interrupt(makeEvent(), '')).toThrow()
+    expect(() => interrupt(makeEvent(), 1)).toThrow()
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('registry.interrupt に送信元の id と sessionId だけを渡し、結果をそのまま返す', () => {
+    const registryInterrupt = vi.fn<AgentSessionRegistry['interrupt']>(() => ({
+      kind: 'write-failed'
+    }))
+    const fakeRegistry: AgentTerminalHandlerDeps['registry'] = {
+      write: vi.fn(),
+      resize: vi.fn(),
+      stop: vi.fn(async () => undefined),
+      snapshot: vi.fn(() => []),
+      interrupt: registryInterrupt
+    }
+    register({ registry: fakeRegistry })
+    expect(interrupt(makeEvent(7), 'sid-x', 'extra')).toEqual({ kind: 'write-failed' })
+    expect(registryInterrupt).toHaveBeenCalledExactlyOnceWith(7, 'sid-x')
   })
 })
 

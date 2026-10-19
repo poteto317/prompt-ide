@@ -1,4 +1,5 @@
 import type {
+  AgentInterruptResult,
   AgentLastSession,
   AgentSessionData,
   AgentSessionExit,
@@ -23,6 +24,11 @@ export function resizeAgentSession(sessionId: string, cols: number, rows: number
 
 export function stopAgentSession(sessionId: string): Promise<void> {
   return window.api.stopAgentSession(sessionId)
+}
+
+/** 中断(claude の作業を止める。ターミナルで Esc を 1 回押すのと同じ)。書くバイト列は main が決める */
+export function interruptAgentSession(sessionId: string): Promise<AgentInterruptResult> {
+  return window.api.interruptAgentSession(sessionId)
 }
 
 export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {

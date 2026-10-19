@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { AgentSession } from '../agentSession'
+import { AGENT_INTERRUPT_SEQUENCE, AgentSession } from '../agentSession'
 import type { StopTree } from '../agentSession'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, AGENT_START_CANCELED_DETAIL } from '@shared/types'
@@ -33,6 +33,7 @@ const created = (session: AgentSession): (() => Promise<AgentSessionCreation>) =
 // release を呼ぶまで停止が終わらないセッション(SIGTERM の猶予を待っている間を再現する)
 function makeSlowStoppingSession(id: string): {
   session: AgentSession
+  pty: FakePty
   stopTree: ReturnType<typeof vi.fn<StopTree>>
   release: () => void
 } {
@@ -52,7 +53,7 @@ function makeSlowStoppingSession(id: string): {
     callbacks: { onData: vi.fn(), onExit: vi.fn() },
     stopTree
   })
-  return { session, stopTree, release: () => release() }
+  return { session, pty, stopTree, release: () => release() }
 }
 
 // 保留中の Promise の続きを進める
@@ -861,6 +862,70 @@ describe('空になった枠の後始末', () => {
     expect(registry.generationOf(1, 'a')).not.toBe(captured)
     release()
     expect(registry.slotCountOf(1)).toBe(0)
+  })
+})
+
+describe('AgentSessionRegistry.interrupt', () => {
+  it('所有者の枠の現在のセッションだけに固定の 1 バイトを書き、sent を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'sent' })
+    expect(pty.write.mock.calls).toEqual([[AGENT_INTERRUPT_SEQUENCE]])
+  })
+
+  it('別の所有者・知らない sessionId には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.interrupt(2, 's1')).toEqual({ kind: 'no-session' })
+    expect(registry.interrupt(1, 'other')).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('起動し直した後の古い sessionId には書かず no-session を返す(世代の確認)', async () => {
+    const registry = new AgentSessionRegistry()
+    const first = makeSession('s1')
+    await registry.start(1, 'a', created(first.session))
+    first.pty.emitExit(0)
+    await first.session.exited
+    const second = makeSession('s2')
+    await registry.start(1, 'a', created(second.session))
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'no-session' })
+    expect(first.pty.write).not.toHaveBeenCalled()
+    expect(second.pty.write).not.toHaveBeenCalled()
+  })
+
+  it('停止中のセッション(stop の後、止まりきる前)には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const slow = makeSlowStoppingSession('old')
+    await registry.start(1, 'a', created(slow.session))
+    const stopping = registry.stop(1, 'stopped', 'old')
+    expect(registry.interrupt(1, 'old')).toEqual({ kind: 'no-session' })
+    expect(slow.pty.write).not.toHaveBeenCalled()
+    slow.release()
+    await stopping
+  })
+
+  it('終了した直後(枠から外れる前)のセッションには書かず no-session を返す(セッションの not-alive を写す)', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    // 枠から外すのは exited の解決の後(マイクロタスク)なので、ここではまだ照合で一致する
+    pty.emitExit(0)
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+    await session.exited
+  })
+
+  it('pty への書き込みが投げたら write-failed を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    pty.write.mockImplementationOnce(() => {
+      throw new Error('EIO')
+    })
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'write-failed' })
   })
 })
 
