@@ -3,15 +3,12 @@ import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  AGENT_COMMAND_NAME,
   buildAgentEnv,
-  buildAgentLaunchArgs,
   findExecutableInPath,
   isExecutableRegularFile,
   resolveAgentLaunch
 } from '../agentCommand'
 import type { ExecutableProbe } from '../agentCommand'
-import type { AgentLaunchRequest } from '@shared/types'
 
 const probeOf = (executables: string[]): ExecutableProbe =>
   vi.fn<ExecutableProbe>(async (path) => executables.includes(path))
@@ -126,7 +123,7 @@ describe('buildAgentEnv', () => {
   }
 
   it('親の Claude Code・Electron・VS Code の変数を取り除く', () => {
-    const env = buildAgentEnv(base, '/p')
+    const env = buildAgentEnv(base, '/p', 'darwin', [])
     for (const key of [
       'ELECTRON_RUN_AS_NODE',
       'ELECTRON_RENDERER_URL',
@@ -149,14 +146,14 @@ describe('buildAgentEnv', () => {
   })
 
   it('利用者の設定の変数(CLAUDE_CODE_USE_BEDROCK・GIT_ASKPASS)は残す', () => {
-    const env = buildAgentEnv(base, '/p')
+    const env = buildAgentEnv(base, '/p', 'darwin', [])
     expect(env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
     expect(env.GIT_ASKPASS).toBe('/askpass')
     expect(env.HOME).toBe('/home/u')
   })
 
   it('PATH・TERM・COLORTERM を設定し、undefined の値は写さない', () => {
-    const env = buildAgentEnv(base, '/p:/q')
+    const env = buildAgentEnv(base, '/p:/q', 'darwin', [])
     expect(env.PATH).toBe('/p:/q')
     expect(env.TERM).toBe('xterm-256color')
     expect(env.COLORTERM).toBe('truecolor')
@@ -164,7 +161,7 @@ describe('buildAgentEnv', () => {
   })
 
   it('LANG・LC_ALL・LC_CTYPE がどれも無ければ LANG=en_US.UTF-8 を足す', () => {
-    expect(buildAgentEnv({}, '/p').LANG).toBe('en_US.UTF-8')
+    expect(buildAgentEnv({}, '/p', 'darwin', []).LANG).toBe('en_US.UTF-8')
   })
 
   it.each([
@@ -172,14 +169,15 @@ describe('buildAgentEnv', () => {
     ['LC_ALL', { LC_ALL: 'C' }, undefined],
     ['LC_CTYPE', { LC_CTYPE: 'UTF-8' }, undefined]
   ])('%s があれば LANG を足さない', (_label, given, expectedLang) => {
-    expect(buildAgentEnv(given, '/p').LANG).toBe(expectedLang)
+    expect(buildAgentEnv(given, '/p', 'darwin', []).LANG).toBe(expectedLang)
   })
 
   it('win32 は大文字小文字を無視して Path を PATH に置き換え、除去キーも大文字小文字を無視する', () => {
     const env = buildAgentEnv(
       { Path: 'C:\\old', claudecode: '1', Electron_Foo: 'x', SystemRoot: 'C:\\Windows' },
       'C:\\new',
-      'win32'
+      'win32',
+      []
     )
     expect(Object.keys(env).filter((key) => key.toUpperCase() === 'PATH')).toEqual(['PATH'])
     expect(env.PATH).toBe('C:\\new')
@@ -189,7 +187,7 @@ describe('buildAgentEnv', () => {
   })
 
   it('POSIX は Path と PATH を別の変数として扱う(大文字小文字を区別する)', () => {
-    const env = buildAgentEnv({ Path: 'x', claudecode: '1' }, '/p', 'linux')
+    const env = buildAgentEnv({ Path: 'x', claudecode: '1' }, '/p', 'linux', [])
     expect(env.Path).toBe('x')
     expect(env.PATH).toBe('/p')
     expect(env.claudecode).toBe('1')
@@ -197,51 +195,51 @@ describe('buildAgentEnv', () => {
 
   it('元の env を変えない', () => {
     const given = { ELECTRON_RUN_AS_NODE: '1', PATH: '/x' }
-    buildAgentEnv(given, '/p')
+    buildAgentEnv(given, '/p', 'darwin', [])
     expect(given).toEqual({ ELECTRON_RUN_AS_NODE: '1', PATH: '/x' })
   })
 })
 
 describe('buildAgentEnv(NO_PROXY)', () => {
   it('どちらも無ければ、NO_PROXY・no_proxy の両方に 127.0.0.1,localhost を入れる', () => {
-    const env = buildAgentEnv({}, '/p', 'darwin')
+    const env = buildAgentEnv({}, '/p', 'darwin', [])
     expect(env.NO_PROXY).toBe('127.0.0.1,localhost')
     expect(env.no_proxy).toBe('127.0.0.1,localhost')
   })
 
   it('NO_PROXY だけがあれば、既存の値を残して両方に同じ値を入れる', () => {
-    const env = buildAgentEnv({ NO_PROXY: 'corp.example, .internal' }, '/p', 'linux')
+    const env = buildAgentEnv({ NO_PROXY: 'corp.example, .internal' }, '/p', 'linux', [])
     expect(env.NO_PROXY).toBe('corp.example,.internal,127.0.0.1,localhost')
     expect(env.no_proxy).toBe('corp.example,.internal,127.0.0.1,localhost')
   })
 
   it('no_proxy だけがあれば、NO_PROXY にも同じ値を入れる', () => {
-    const env = buildAgentEnv({ no_proxy: 'corp.example' }, '/p', 'darwin')
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, '/p', 'darwin', [])
     expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
     expect(env.no_proxy).toBe('corp.example,127.0.0.1,localhost')
   })
 
   it('両方が違う値なら、和集合(NO_PROXY の順 → no_proxy の順)を両方に入れ、重複を足さない', () => {
-    const env = buildAgentEnv({ NO_PROXY: 'a,localhost', no_proxy: 'b,a' }, '/p', 'darwin')
+    const env = buildAgentEnv({ NO_PROXY: 'a,localhost', no_proxy: 'b,a' }, '/p', 'darwin', [])
     expect(env.NO_PROXY).toBe('a,localhost,b,127.0.0.1')
     expect(env.no_proxy).toBe('a,localhost,b,127.0.0.1')
   })
 
   it('既にあれば足さない', () => {
-    expect(buildAgentEnv({ NO_PROXY: '127.0.0.1,localhost' }, '/p', 'linux').NO_PROXY).toBe(
+    expect(buildAgentEnv({ NO_PROXY: '127.0.0.1,localhost' }, '/p', 'linux', []).NO_PROXY).toBe(
       '127.0.0.1,localhost'
     )
   })
 
   it('Windows は名前の大文字小文字を区別しないため、NO_PROXY 1 つにまとめる', () => {
-    const env = buildAgentEnv({ no_proxy: 'corp.example' }, 'C:\\p', 'win32')
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, 'C:\\p', 'win32', [])
     expect(Object.keys(env).filter((key) => key.toUpperCase() === 'NO_PROXY')).toEqual(['NO_PROXY'])
     expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
   })
 
   it('元の env を変えない', () => {
     const given = { NO_PROXY: 'a' }
-    buildAgentEnv(given, '/p', 'darwin')
+    buildAgentEnv(given, '/p', 'darwin', [])
     expect(given).toEqual({ NO_PROXY: 'a' })
   })
 })
@@ -252,12 +250,14 @@ describe('resolveAgentLaunch', () => {
     const result = await resolveAgentLaunch({
       env: { HOME: '/home/u', PATH: '/usr/bin' },
       platform: 'darwin',
+      cliKind: 'claude',
       readLoginShellPath: async () => '/nvm/bin:/usr/bin',
       isExecutable
     })
     expect(result).toEqual({
       kind: 'ok',
       plan: {
+        cliKind: 'claude',
         file: '/home/u/.local/bin/claude',
         args: [],
         env: expect.objectContaining({
@@ -265,7 +265,7 @@ describe('resolveAgentLaunch', () => {
         })
       }
     })
-    expect(isExecutable).toHaveBeenNthCalledWith(1, `/nvm/bin/${AGENT_COMMAND_NAME}`)
+    expect(isExecutable).toHaveBeenNthCalledWith(1, '/nvm/bin/claude')
   })
 
   it('ログインシェルの PATH が取れなければ main の PATH に倒し、見つからなければその旨を返す', async () => {
@@ -273,10 +273,11 @@ describe('resolveAgentLaunch', () => {
     const result = await resolveAgentLaunch({
       env: { HOME: '/home/u', PATH: '/usr/bin:/bin' },
       platform: 'darwin',
+      cliKind: 'claude',
       readLoginShellPath: async () => null,
       isExecutable
     })
-    expect(result).toEqual({ kind: 'not-found', shellPathUnavailable: true })
+    expect(result).toEqual({ kind: 'not-found', cliKind: 'claude', shellPathUnavailable: true })
     expect(isExecutable).toHaveBeenNthCalledWith(1, '/usr/bin/claude')
   })
 
@@ -284,16 +285,18 @@ describe('resolveAgentLaunch', () => {
     const result = await resolveAgentLaunch({
       env: {},
       platform: 'linux',
+      cliKind: 'claude',
       readLoginShellPath: async () => '/a',
       isExecutable: probeOf([])
     })
-    expect(result).toEqual({ kind: 'not-found', shellPathUnavailable: false })
+    expect(result).toEqual({ kind: 'not-found', cliKind: 'claude', shellPathUnavailable: false })
   })
 
   it('Windows は Path(大文字小文字違い)から探し、子の env に PATH を重複させない', async () => {
     const result = await resolveAgentLaunch({
       env: { Path: 'C:\\tools', PathExt: '.EXE' },
       platform: 'win32',
+      cliKind: 'claude',
       readLoginShellPath: async () => null,
       isExecutable: probeOf(['C:\\tools\\claude.EXE'])
     })
@@ -309,6 +312,7 @@ describe('resolveAgentLaunch', () => {
     const result = await resolveAgentLaunch({
       env: { Path: 'C:\\tools', PATHEXT: '.EXE' },
       platform: 'win32',
+      cliKind: 'claude',
       readLoginShellPath,
       isExecutable: probeOf(['C:\\tools\\claude.EXE'])
     })
@@ -353,31 +357,96 @@ describe.skipIf(process.platform === 'win32')('isExecutableRegularFile(実 fs)',
   })
 })
 
-describe('buildAgentLaunchArgs', () => {
-  const ID = '11111111-1111-4111-8111-111111111111'
-  it('new は --session-id、resume は --resume に、渡した ID をそのまま続ける(hooks なしは 2 つだけ)', () => {
-    expect(buildAgentLaunchArgs({ kind: 'new' }, ID, null)).toEqual(['--session-id', ID])
-    expect(buildAgentLaunchArgs({ kind: 'resume', claudeSessionId: ID }, ID, null)).toEqual([
-      '--resume',
-      ID
+describe('resolveAgentLaunch(CLI の種類)', () => {
+  const deps = {
+    env: { HOME: '/home/u', PATH: '/usr/bin' },
+    platform: 'darwin' as const,
+    readLoginShellPath: async (): Promise<string | null> => '/nvm/bin'
+  }
+
+  it('copilot は copilot を探し、計画に種類を載せる(引数は空)', async () => {
+    const isExecutable = probeOf(['/nvm/bin/copilot'])
+    await expect(
+      resolveAgentLaunch({ ...deps, cliKind: 'copilot', isExecutable })
+    ).resolves.toEqual({
+      kind: 'ok',
+      plan: { cliKind: 'copilot', file: '/nvm/bin/copilot', args: [], env: expect.any(Object) }
+    })
+    expect(isExecutable).toHaveBeenNthCalledWith(1, '/nvm/bin/copilot')
+  })
+
+  it('copilot だけがある PATH では、claude を選ぶと見つからない(結果に種類を載せる)', async () => {
+    const isExecutable = probeOf(['/nvm/bin/copilot'])
+    await expect(resolveAgentLaunch({ ...deps, cliKind: 'claude', isExecutable })).resolves.toEqual(
+      {
+        kind: 'not-found',
+        cliKind: 'claude',
+        shellPathUnavailable: false
+      }
+    )
+  })
+
+  it('copilot が見つからなければ、結果に copilot を載せる', async () => {
+    await expect(
+      resolveAgentLaunch({
+        ...deps,
+        cliKind: 'copilot',
+        isExecutable: probeOf(['/nvm/bin/claude'])
+      })
+    ).resolves.toEqual({ kind: 'not-found', cliKind: 'copilot', shellPathUnavailable: false })
+  })
+
+  it('copilot の計画の環境変数だけから COPILOT_ALLOW_ALL を取り除く。共通の一覧はどちらでも取り除く', async () => {
+    const env = { HOME: '/home/u', PATH: '/usr/bin', COPILOT_ALLOW_ALL: 'true', CLAUDECODE: '1' }
+    const copilot = await resolveAgentLaunch({
+      ...deps,
+      env,
+      cliKind: 'copilot',
+      isExecutable: probeOf(['/nvm/bin/copilot'])
+    })
+    const claude = await resolveAgentLaunch({
+      ...deps,
+      env,
+      cliKind: 'claude',
+      isExecutable: probeOf(['/nvm/bin/claude'])
+    })
+    if (copilot.kind !== 'ok' || claude.kind !== 'ok') throw new Error('not ok')
+    expect(copilot.plan.env).not.toHaveProperty('COPILOT_ALLOW_ALL')
+    expect(claude.plan.env.COPILOT_ALLOW_ALL).toBe('true')
+    expect(copilot.plan.env).not.toHaveProperty('CLAUDECODE')
+    expect(claude.plan.env).not.toHaveProperty('CLAUDECODE')
+  })
+})
+
+describe('buildAgentEnv(種類ごとの追加の除外)', () => {
+  it('追加の除外は完全一致で取り除き、似た名前・認証の変数は残す', () => {
+    const env = buildAgentEnv(
+      {
+        COPILOT_ALLOW_ALL: 'true',
+        COPILOT_ALLOW_ALL_TOOLS: '1',
+        COPILOT_HOME: '/h',
+        COPILOT_GITHUB_TOKEN: 'c',
+        GH_TOKEN: 'g',
+        GITHUB_TOKEN: 't'
+      },
+      '/p',
+      'darwin',
+      ['COPILOT_ALLOW_ALL']
+    )
+    expect(env).not.toHaveProperty('COPILOT_ALLOW_ALL')
+    expect(env).toMatchObject({
+      COPILOT_ALLOW_ALL_TOOLS: '1',
+      COPILOT_HOME: '/h',
+      COPILOT_GITHUB_TOKEN: 'c',
+      GH_TOKEN: 'g',
+      GITHUB_TOKEN: 't'
+    })
+  })
+
+  it('win32 は追加の除外も大文字小文字を無視する', () => {
+    const env = buildAgentEnv({ copilot_allow_all: 'true' }, 'C:\\p', 'win32', [
+      'COPILOT_ALLOW_ALL'
     ])
-  })
-
-  it('設定のファイルのパスがあれば、後ろに --settings <パス> を足す(ほかの引数は足さない)', () => {
-    expect(
-      buildAgentLaunchArgs({ kind: 'new' }, ID, '/tmp/prompt-ide-agent-hooks-x/a.json')
-    ).toEqual(['--session-id', ID, '--settings', '/tmp/prompt-ide-agent-hooks-x/a.json'])
-    expect(
-      buildAgentLaunchArgs(
-        { kind: 'resume', claudeSessionId: ID },
-        ID,
-        '/tmp/prompt-ide-agent-hooks-x/a.json'
-      )
-    ).toEqual(['--resume', ID, '--settings', '/tmp/prompt-ide-agent-hooks-x/a.json'])
-  })
-
-  it('未知の kind は既定の --session-id へ流さず投げる', () => {
-    const unknownLaunch = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
-    expect(() => buildAgentLaunchArgs(unknownLaunch, ID, null)).toThrow('未知の起動の指定です')
+    expect(env).not.toHaveProperty('copilot_allow_all')
   })
 })

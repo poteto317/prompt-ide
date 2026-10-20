@@ -1,7 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { DEFAULT_AGENT_CLI_KIND } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import { DEFAULT_AGENT_SEND_CONFIRM_ENABLED } from '@shared/types'
 import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import type {
+  AgentCliKindPanelState,
   AgentNotificationPanelState,
   AgentSendConfirmDialogState,
   AgentSendConfirmPanelState,
@@ -17,6 +20,8 @@ import { useAgentSendConfirm } from './useAgentSendConfirm'
 import type { AgentSendSettled } from './useAgentSendConfirm'
 import { usePromptRunFocus } from './usePromptRunFocus'
 import { useExecutionMode } from './useExecutionMode'
+import { useAgentCliKind } from './useAgentCliKind'
+import { useAgentWorkspaceSwitching } from './useAgentWorkspaceSwitching'
 import { useAgentSessions } from './useAgentSessions'
 import type { AgentSessionsState } from './useAgentSessions'
 import { useAgentActivity } from './useAgentActivity'
@@ -41,14 +46,21 @@ import { buildPromptRunPanelState } from '../lib/promptRunState'
 import { getHistoryRerunAvailability, getPromptRunAvailability } from '../lib/agentSendMessages'
 import { notifyAgentSent } from '../lib/agentSendCallbacks'
 import { describeAgentTabSession } from '../lib/agentTabSessionInfo'
+import { agentCapabilityCliKindOf } from '../lib/agentSessionTabState'
 import {
-  AGENT_START_DISABLED_SWITCHING_MODE,
+  AGENT_STOP_ON_CLI_KIND_CHANGE_CONFIRM,
   AGENT_STOP_ON_MODE_CHANGE_CONFIRM,
   EXECUTION_MODE_LOCKED_WHILE_EXECUTING
 } from '../lib/agentSessionMessages'
+import {
+  AGENT_CLI_KIND_LOCKED_WHILE_STARTING,
+  agentNotificationUnsupportedNote,
+  isAgentCliKindResaveAllowed
+} from '../lib/agentCliMessages'
 
 // 実行方式とエージェント(ターミナル・セッション・活動・ステータスバーのまとめ・送信前の確認・送信)の組み立て。useAppState から使う。
-// 実行方式の切り替えの手順(再入防止・確認・停止を待ってから保存)と、フォルダの切り替えの前のエージェントの停止の確認を持つ
+// 実行方式と使う CLI の切り替えの手順(確認・停止を待ってから保存)と、フォルダの切り替えの前のエージェントの停止の確認を持つ。
+// 切り替えの途中の状態と再入防止は useAgentWorkspaceSwitching
 
 // ターミナルのパネルへ渡す状態(useAgentWorkspace が組み立て、EditorPanel → AgentTerminalPanel へ渡す)
 export interface AgentTerminalPanelState {
@@ -62,6 +74,8 @@ export interface AgentTerminalPanelState {
   resumeLast: AgentResumeLastState
   /** 帯の 中断(選択中のタブの claude に Esc を 1 回)。押せない理由・読み上げ・押したとき */
   interrupt: AgentInterruptPanelState
+  /** 設定の種類(次に起動する CLI)。帯の 起動 の名前に使う(タブの名前はタブの cliKind。能力は agentCapabilityCliKindOf) */
+  appCliKind: AgentCliKind
 }
 
 export interface UseAgentWorkspaceOptions {
@@ -76,14 +90,17 @@ export interface UseAgentWorkspaceOptions {
 }
 
 export interface AgentWorkspaceState {
-  /** 設定パネルの実行方式の項目。mode は読み込み中は null。isLocked は読み込み中・エージェントの起動中・切り替えの途中・
-   *  従来の方式の実行中。lockedReason は従来の方式の実行中だけ。onSelect は従来の方式へ切り替えるとき、実行中の
-   *  エージェントがあれば確認してから止める */
+  /** 設定パネルの実行方式の項目。mode は読み込み中は null。isLocked は読み込み中・エージェントの起動中・
+   *  従来の方式の実行中(disabled)。isSwitching は実行方式か CLI の切り替えの途中(aria-disabled)。lockedReason は
+   *  従来の方式の実行中だけ。onSelect は従来の方式へ切り替えるとき、実行中のエージェントがあれば確認してから止める */
   executionModePanel: ExecutionModePanelState
   /** 設定パネルのエージェントの通知の項目 */
   agentNotificationPanel: AgentNotificationPanelState
   /** 設定パネルの送信前の確認の項目 */
   agentSendConfirmPanel: AgentSendConfirmPanelState
+  /** 設定パネルの使うエージェント CLI の項目。kind は読み込み中は null。isLocked は読み込み中・エージェントの起動中(disabled)。
+   *  isSwitching は実行方式か CLI の切り替えの途中(aria-disabled)。onSelect は動いているタブがあれば確認してから止め、保存する */
+  agentCliKindPanel: AgentCliKindPanelState
   /** フォルダの切り替えの前に、実行中(起動中を含む)のエージェントを終了してよいかを確かめる。無ければ確認せずに true */
   confirmStopAgent: (message: string) => boolean
   /** 実行ボタンの押せる条件と送信の結果(履歴の再実行の押せる条件はエントリごとに getHistoryActions) */
@@ -119,21 +136,24 @@ export function useAgentWorkspace({
   beforeAgentSend
 }: UseAgentWorkspaceOptions): AgentWorkspaceState {
   const executionMode = useExecutionMode()
+  const agentCliKind = useAgentCliKind()
+  // 起動・タブの名前・再開の入口が使う設定の種類。読み込み中は既定(claude)で出す(読み込みの前の一瞬は claude 1 と出る。既知の制約)
+  const appCliKind: AgentCliKind = agentCliKind.kind ?? DEFAULT_AGENT_CLI_KIND
   const notificationSetting = useAgentNotificationSetting()
   const sendConfirmSetting = useAgentSendConfirmSetting()
   // タブの一覧と xterm の controller を持つ、文書ごとに 1 つの置き場(StrictMode・パネルの開閉で作り直さない)
   const [agentTabs] = useState(getAgentSessionTabs)
   const agentLayout = useAgentTerminalPanel()
-  // 切り替えの途中(エージェントの停止を待つ間)は、もう一度選んでも確認・停止・保存を重ねない。ref は同じ描画の中の
-  // 2 回目の呼び出しを止め、state は選択肢と、起動・+ を押せなくする
-  const switchingModeRef = useRef(false)
-  const [isSwitchingMode, setIsSwitchingMode] = useState(false)
+  // 実行方式か使う CLI の切り替えの途中(エージェントの停止を待つ間)は、もう一度選んでも確認・停止・保存を重ねない
+  const { switching, startBlockedReason, runSwitching } = useAgentWorkspaceSwitching()
   const agentSessions = useAgentSessions({
     folderPath,
     tabs: agentTabs,
     enabled: executionMode.mode === 'agent-cli',
-    // 停止を待つ間に別のタブで起動すると、そのセッションは止める対象に入らず、従来の方式でパネルが隠れた後も動き続けるため
-    startBlockedReason: isSwitchingMode ? AGENT_START_DISABLED_SWITCHING_MODE : null,
+    appCliKind,
+    // 停止を待つ間に別のタブで起動すると、そのセッションは止める対象に入らず、従来の方式でパネルが隠れた後も動き続けるため。
+    // 使う CLI の切り替えでも、止める対象に入らないタブが残ると種類が混ざる
+    startBlockedReason,
     onConfirm
   })
   // タブの一覧は useAgentSessions がタブの状態の変わったときだけ作り直すため、そのまま渡す
@@ -156,6 +176,7 @@ export function useAgentWorkspace({
   const agentResume = useAgentResume({
     folderPath,
     mode: executionMode.mode,
+    appCliKind,
     sessions: agentSessions,
     activateTab: activateAgentTab
   })
@@ -191,16 +212,18 @@ export function useAgentWorkspace({
   const {
     slotId: selectedSlotId,
     controller: selectedController,
-    label: selectedLabel
+    label: selectedLabel,
+    cliKind: selectedCliKind
   } = agentSessions.selected
   const selectedTarget = useMemo(
     () => ({
       slotId: selectedSlotId,
       controller: selectedController,
       label: selectedLabel,
+      cliKind: selectedCliKind,
       describeSession: describeSessionOf(selectedSlotId)
     }),
-    [selectedSlotId, selectedController, selectedLabel, describeSessionOf]
+    [selectedSlotId, selectedController, selectedLabel, selectedCliKind, describeSessionOf]
   )
   const sendConfirm = useAgentSendConfirm({
     selected: selectedTarget,
@@ -234,7 +257,8 @@ export function useAgentWorkspace({
       const outcome = await sendAgentPrompt(text, {
         slotId: selectedTarget.slotId,
         controller: selectedTarget.controller,
-        describeSession: selectedTarget.describeSession
+        describeSession: selectedTarget.describeSession,
+        cliKind: selectedTarget.cliKind
       })
       // 確認を開かない分岐でも、送れたときだけ知らせる(確認から送ったときは useAgentSendConfirm が知らせる)
       notifyAgentSent(outcome, options.onSent)
@@ -258,13 +282,15 @@ export function useAgentWorkspace({
   useOnChange(isPendingTabClosed, () => {
     if (isPendingTabClosed) cancelSendConfirm()
   })
-  // 送り先のタブが今は送れない理由。控えた slotId のタブの今の状態と、全体で 1 つの送信中から、実行ボタンと同じ規則で求める
+  // 送り先のタブが今は送れない理由。控えた slotId のタブの今の状態と、全体で 1 つの送信中から、実行ボタンと同じ規則で求める。
+  // pendingSend を条件で絞り込む(pendingTab からは絞り込まれない)。送り先の種類は確認を開いた時点に控えた値
   const targetBlockedReason =
-    pendingTab === undefined
+    pendingSend === null || pendingTab === undefined
       ? null
       : getPromptRunAvailability({
           mode: executionMode.mode,
           isExecuting,
+          cliKind: pendingSend.target.cliKind,
           isSessionRunning: pendingTab.status === 'running',
           isSessionClosing: pendingTab.isClosing,
           isSending: agentSender.isSending
@@ -298,10 +324,14 @@ export function useAgentWorkspace({
   })
   const isAnyAgentSessionActive = agentSessions.isAnyActive
   const isAnyAgentStarting = agentSessions.isAnyStarting
+  // 実行ボタン・履歴の再実行の能力の判定に使う種類。動いているタブはタブの種類、未起動・終了したタブは次に起動する設定の種類
+  // (終了したタブの名前は前の起動の結果の種類のまま。agentCapabilityCliKindOf)
+  const selectedCapabilityCliKind = agentCapabilityCliKindOf(agentSessions.selected, appCliKind)
   // 実行ボタンの押せる条件は選択中のタブ(送り先)の状態で決まる
   const promptRun = buildPromptRunPanelState({
     mode: executionMode.mode,
     isExecuting,
+    cliKind: selectedCapabilityCliKind,
     sessionStatus: agentSessions.selected.status,
     isSessionClosing: agentSessions.selected.isClosing,
     isSending: agentSender.isSending,
@@ -315,6 +345,7 @@ export function useAgentWorkspace({
       folderPath,
       mode: executionMode.mode,
       isExecuting,
+      cliKind: selectedCapabilityCliKind,
       isSessionRunning: agentSessions.selected.status === 'running',
       isSessionClosing: agentSessions.selected.isClosing,
       isSending: agentSender.isSending
@@ -325,12 +356,9 @@ export function useAgentWorkspace({
   const confirmStopAgent = (message: string): boolean =>
     !isAnyAgentSessionActive || onConfirm(message)
   const selectExecutionMode = async (next: PromptExecutionMode): Promise<void> => {
-    if (switchingModeRef.current) return
     // 従来の方式の実行中に切り替えると、出力パネルが消えてキャンセルできないまま実行が続くため切り替えない
     if (next === executionMode.mode || isAnyAgentStarting || isExecuting) return
-    switchingModeRef.current = true
-    setIsSwitchingMode(true)
-    try {
+    await runSwitching('mode', async () => {
       if (next === 'legacy' && isAnyAgentSessionActive) {
         if (!onConfirm(AGENT_STOP_ON_MODE_CHANGE_CONFIRM)) return
         // stopAll は main の停止(プロセスの終了の待ちまで)が終わってから解決し、失敗しても reject しない(失敗はそのタブに
@@ -340,16 +368,33 @@ export function useAgentWorkspace({
         if (!(await agentSessions.stopAll())) return
       }
       await executionMode.changeMode(next)
-    } finally {
-      switchingModeRef.current = false
-      setIsSwitchingMode(false)
-    }
+    })
+  }
+  // 使う CLI の切り替え(設計書 2026-10-20「切り替え」)。アプリ全体で 1 つの種類という前提を保つため、動いているタブがあれば確認して
+  // すべて止めてから保存する(止めずに保存すると、動いている claude のタブと次に起動する copilot のタブが混ざる)。止められなかった
+  // タブがあれば保存しない(L-001)。従来の方式の間も選べる(動いているタブが無いので確認は出ない)。保存した値は次の起動から使われる
+  const selectAgentCliKind = async (next: AgentCliKind): Promise<void> => {
+    if (agentCliKind.kind === null || isAnyAgentStarting) return
+    // 今と同じ種類は何もしない。ただし保存されていた値が不正な間は、注記(「選び直すと保存します」)のとおり保存して不正な値を消す。
+    // 種類は変わらない(動いているタブも同じ種類)ので、確認・停止はしない
+    const isResave = next === agentCliKind.kind
+    if (isResave && !isAgentCliKindResaveAllowed(agentCliKind.fallback)) return
+    // 実行方式の切り替えと同じ途中の印を使う(どちらかの途中はもう一方も始めない)
+    await runSwitching('cli-kind', async () => {
+      if (!isResave && isAnyAgentSessionActive) {
+        if (!onConfirm(AGENT_STOP_ON_CLI_KIND_CHANGE_CONFIRM)) return
+        if (!(await agentSessions.stopAll())) return
+      }
+      await agentCliKind.changeKind(next)
+    })
   }
   return {
     executionModePanel: {
       mode: executionMode.mode,
       saveError: executionMode.saveError,
-      isLocked: executionMode.mode === null || isAnyAgentStarting || isSwitchingMode || isExecuting,
+      isLocked: executionMode.mode === null || isAnyAgentStarting || isExecuting,
+      // 押した結果として起きる状態なので isLocked と分ける(部品は disabled ではなく aria-disabled にする。L-157)
+      isSwitching: switching !== null,
       lockedReason: isExecuting ? EXECUTION_MODE_LOCKED_WHILE_EXECUTING : null,
       // 選択肢のクリックは完了を待たない。changeMode は失敗を false で返し、stopAll は reject しないので本来は
       // 投げないが、投げたら記録して握る(ロックは finally で戻している)
@@ -362,6 +407,7 @@ export function useAgentWorkspace({
     agentNotificationPanel: {
       enabled: notificationSetting.enabled,
       saveError: notificationSetting.saveError,
+      unsupportedNote: agentNotificationUnsupportedNote(appCliKind),
       // changeEnabled は失敗を false で返し、拒否しない(失敗は saveError に出る)
       onChange: (enabled) => {
         void notificationSetting.changeEnabled(enabled)
@@ -375,6 +421,22 @@ export function useAgentWorkspace({
         void sendConfirmSetting.changeEnabled(enabled)
       }
     },
+    agentCliKindPanel: {
+      kind: agentCliKind.kind,
+      fallback: agentCliKind.fallback,
+      saveError: agentCliKind.saveError,
+      isLocked: agentCliKind.kind === null || isAnyAgentStarting,
+      // 押した結果として起きる状態なので isLocked と分ける(部品は disabled ではなく aria-disabled にする。L-157)
+      isSwitching: switching !== null,
+      lockedReason: isAnyAgentStarting ? AGENT_CLI_KIND_LOCKED_WHILE_STARTING : null,
+      // 選択肢のクリックは完了を待たない。changeKind は失敗を false で返し、stopAll は reject しないので本来は投げないが、
+      // 投げたら記録して握る(ロックは finally で戻している)
+      onSelect: (kind) => {
+        selectAgentCliKind(kind).catch((err: unknown) => {
+          console.error('[useAgentWorkspace] selectAgentCliKind failed:', err)
+        })
+      }
+    },
     confirmStopAgent,
     promptRun,
     bottomPanel: executionMode.mode === null ? 'none' : isAgentMode ? 'agent-terminal' : 'output',
@@ -384,7 +446,8 @@ export function useAgentWorkspace({
       sendingSlotId: agentSender.sendingSlotId,
       activities,
       resumeLast: agentResume.resumeLast,
-      interrupt: agentInterrupt
+      interrupt: agentInterrupt,
+      appCliKind
     },
     statusBarAgent,
     agentAnnouncement,

@@ -1,0 +1,82 @@
+import { describe, it, expect } from 'vitest'
+import { AGENT_CLI_KINDS, agentCliCapabilities } from '@shared/agentCliKinds'
+import {
+  AGENT_CLI_CAPABILITY_NAMES,
+  AGENT_CLI_KIND_LOCKED_WHILE_STARTING,
+  AGENT_CLI_KIND_SAVE_ERROR_PREFIX,
+  AGENT_CLI_KIND_SECTION_NOTE,
+  AGENT_CLI_KIND_SECTION_TITLE,
+  agentCliFallbackNote,
+  agentCliKindOptionLabel,
+  agentCliUnsupportedFeaturesNote,
+  agentNotificationUnsupportedNote,
+  isAgentCliKindResaveAllowed
+} from '../agentCliMessages'
+
+describe('agentCliMessages(設定の画面)', () => {
+  it('見出し・説明・選択肢・選べない理由・保存の失敗の接頭辞', () => {
+    expect(AGENT_CLI_KIND_SECTION_TITLE).toBe('使うエージェント CLI')
+    expect(AGENT_CLI_KIND_SECTION_NOTE).toBe(
+      'エージェント CLI 方式で使います。切り替えると、次の起動から使われます'
+    )
+    expect(agentCliKindOptionLabel('claude')).toBe('Claude Code（claude）')
+    expect(agentCliKindOptionLabel('copilot')).toBe('GitHub Copilot CLI（copilot）')
+    expect(AGENT_CLI_KIND_LOCKED_WHILE_STARTING).toBe(
+      'エージェントの起動中は、使う CLI を切り替えられません'
+    )
+    expect(AGENT_CLI_KIND_SAVE_ERROR_PREFIX).toBe('使うエージェント CLI を保存できませんでした: ')
+  })
+
+  it('能力の名前の表は 5 つの能力を網羅する(並びは能力の表と同じ)', () => {
+    expect(AGENT_CLI_CAPABILITY_NAMES).toEqual({
+      promptSend: 'プロンプトの送信（実行・再実行）',
+      screenActivity: '作業中・入力待ちの表示と通知',
+      interrupt: '中断',
+      changeAttribution: '利用者の変更との区別',
+      sessionResume: '前回の続きから・このセッションで再開'
+    })
+    expect(Object.keys(AGENT_CLI_CAPABILITY_NAMES)).toEqual(
+      Object.keys(agentCliCapabilities('claude'))
+    )
+  })
+
+  it('使えない機能の注記: copilot は能力の表のすべての名前を並べ、claude は出さない', () => {
+    expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、作業中・入力待ちの表示と通知、中断、利用者の変更との区別、前回の続きから・このセッションで再開'
+    )
+    expect(agentCliUnsupportedFeaturesNote('claude')).toBeNull()
+  })
+
+  it.each(AGENT_CLI_KINDS)('%s: 使えない機能の注記は、false の能力の名前だけを含む', (kind) => {
+    const note = agentCliUnsupportedFeaturesNote(kind) ?? ''
+    const capabilities = agentCliCapabilities(kind)
+    for (const [key, name] of Object.entries(AGENT_CLI_CAPABILITY_NAMES)) {
+      expect(note.includes(name)).toBe(!capabilities[key as keyof typeof capabilities])
+    }
+  })
+
+  it('既定に戻した旨', () => {
+    expect(agentCliFallbackNote(null)).toBeNull()
+    expect(agentCliFallbackNote('invalid-value')).toBe(
+      '保存されていた値を読めなかったため claude を使っています（選び直すと保存します）'
+    )
+    expect(agentCliFallbackNote('read-failed')).toBe(
+      '設定ファイルを読めなかったため claude を使っています'
+    )
+  })
+
+  it('通知の注記: 画面の判定が無い種類だけに出す', () => {
+    expect(agentNotificationUnsupportedNote('copilot')).toBe(
+      'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
+    )
+    expect(agentNotificationUnsupportedNote('claude')).toBeNull()
+  })
+})
+
+describe('isAgentCliKindResaveAllowed', () => {
+  it('不正な値(invalid-value)の間だけ、今と同じ種類の選び直しで保存する(注記の「選び直すと保存します」のとおり)', () => {
+    expect(isAgentCliKindResaveAllowed('invalid-value')).toBe(true)
+    expect(isAgentCliKindResaveAllowed('read-failed')).toBe(false)
+    expect(isAgentCliKindResaveAllowed(null)).toBe(false)
+  })
+})

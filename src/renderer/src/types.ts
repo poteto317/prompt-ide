@@ -1,4 +1,5 @@
 import type {
+  AgentCliKindSetting,
   AgentChangesAttributionSummary,
   AgentChangesList,
   AgentChangesRun,
@@ -12,6 +13,7 @@ import type {
   GitStashEntry,
   PromptExecutionMode
 } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 
 export type {
   PromptToolId,
@@ -244,7 +246,10 @@ export interface AgentSendFeedback {
 export interface ExecutionModePanelState {
   mode: PromptExecutionMode | null
   saveError: string | null
+  /** 押す前から選べない(読み込み中・どれかのタブが起動中・従来の方式の実行中)。選択肢を disabled にする */
   isLocked: boolean
+  /** 実行方式か CLI の切り替えの途中(押した結果)。選択肢を aria-disabled にし、押しても選ばない(L-157) */
+  isSwitching: boolean
   /** 選べない理由(従来の方式の実行中)。無ければ null・省略 */
   lockedReason?: string | null
   onSelect: (mode: PromptExecutionMode) => void
@@ -259,10 +264,30 @@ export interface BooleanSettingPanelState {
 }
 
 // エージェントの通知の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
-export type AgentNotificationPanelState = BooleanSettingPanelState
+export interface AgentNotificationPanelState extends BooleanSettingPanelState {
+  /** 選んだ CLI が完了・許可待ちの通知を出せない(画面を判定しない)ときの注記。出せるなら null(省略できない。L-060) */
+  unsupportedNote: string | null
+}
 
 // エージェントへの送信前の確認の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel へ渡す)
 export type AgentSendConfirmPanelState = BooleanSettingPanelState
+
+// 使うエージェント CLI の設定(useAgentWorkspace が組み立て、Sidebar → SettingsPanel → AgentCliKindSection へ渡す)
+export interface AgentCliKindPanelState {
+  /** 読み込み中は null(選べない) */
+  kind: AgentCliKind | null
+  /** main が既定に戻した理由(注記に出す)。戻していなければ null */
+  fallback: AgentCliKindSetting['fallback']
+  saveError: string | null
+  /** 押す前から選べない(読み込み中・どれかのタブが起動中)。選択肢を disabled にする */
+  isLocked: boolean
+  /** 実行方式か CLI の切り替えの途中(押した結果)。選択肢を aria-disabled にし、押しても選ばない(L-157) */
+  isSwitching: boolean
+  /** 選べない理由(起動中だけ)。表示し、選択肢から参照する。出さないときは null */
+  lockedReason: string | null
+  /** 選ぶ(動いているタブがあれば確認してから止め、保存する) */
+  onSelect: (kind: AgentCliKind) => void
+}
 
 // 参照のチップ(開いているファイル・選択範囲)の状態と操作(useAgentReferences が組み立て、Sidebar → PromptsPanel → AgentReferenceChips へ渡す)。
 // 押せるか(disabledReason)と表示の参照(label)は必ず対で変わるため、食い違う組み合わせを型で作れないようにする

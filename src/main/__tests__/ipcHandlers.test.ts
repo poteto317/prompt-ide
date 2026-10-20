@@ -14,12 +14,12 @@ const mockSetupCloneLifecycle = vi.hoisted(() => vi.fn())
 const mockSetupAgentSessionLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterAgentTerminalHandlers = vi.hoisted(() => vi.fn())
 const mockStartAgentSession = vi.hoisted(() => vi.fn())
-const mockClaudeSessionIdOf = vi.hoisted(() => vi.fn())
+const mockSessionInfoOf = vi.hoisted(() => vi.fn())
 const mockLastSessionOf = vi.hoisted(() => vi.fn())
 const mockCreateAgentSessionStarter = vi.hoisted(() =>
   vi.fn(() => ({
     start: mockStartAgentSession,
-    claudeSessionIdOf: mockClaudeSessionIdOf,
+    sessionInfoOf: mockSessionInfoOf,
     lastSessionOf: mockLastSessionOf
   }))
 )
@@ -271,14 +271,14 @@ describe('registerIpcHandlers', () => {
     expect(deps).toEqual({
       registry,
       startSession: mockStartAgentSession,
-      claudeSessionIdOf: mockClaudeSessionIdOf,
+      sessionInfoOf: mockSessionInfoOf,
       getLastSession: mockLastSessionOf,
       reportWorking: mockToolActivity.reportWorking,
       reportWorkingEnded: mockToolActivity.reportWorkingEnded
     })
     expect(deps.registry).toBe(registry)
     expect(deps.startSession).toBe(mockStartAgentSession)
-    expect(deps.claudeSessionIdOf).toBe(mockClaudeSessionIdOf)
+    expect(deps.sessionInfoOf).toBe(mockSessionInfoOf)
     expect(deps.getLastSession).toBe(mockLastSessionOf)
     expect(deps.reportWorking).toBe(mockToolActivity.reportWorking)
     expect(deps.reportWorkingEnded).toBe(mockToolActivity.reportWorkingEnded)

@@ -6,17 +6,20 @@ import { makeFakeController } from './makeFakeAgentTerminal'
 
 // useAgentSessions の戻り値の型付きの偽物(1 か所から作る。パターン 102)
 
-/** タブ 1 つ分の表示の偽物。既定は「claude 1・未起動」 */
+/** タブ 1 つ分の表示の偽物。既定は「claude 1・未起動」。名前は上書きの number・cliKind から作る(label を渡せばそれを使う) */
 export function makeAgentSessionTabView(
   overrides: Partial<AgentSessionTabView> = {}
 ): AgentSessionTabView {
+  const number = overrides.number ?? 1
+  const cliKind = overrides.cliKind ?? 'claude'
   return {
     slotId: 'slot-1',
-    number: 1,
-    label: formatAgentTabLabel(1),
+    number,
+    label: formatAgentTabLabel(number, cliKind),
     status: 'none',
     exit: null,
     error: null,
+    cliKind,
     claudeSessionId: null,
     isClosing: false,
     controller: makeFakeController(),

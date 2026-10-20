@@ -1,10 +1,16 @@
+import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { PromptExecutionMode } from '@shared/types'
 import type { AgentSendFailure } from './agentPromptSend'
 import { isSamePath } from './pathUtils'
 
 // プロンプトの送信の文言(設計書「プロンプトの送信」「セッションが無いときのボタン」「エラー処理」)
 
-export const AGENT_SEND_FAILURE_MESSAGES: Record<AgentSendFailure, string> = {
+// CLI の名前が要る unsupported-cli は持たない(agentSendFailureMessage で引く)
+export const AGENT_SEND_FAILURE_MESSAGES: Record<
+  Exclude<AgentSendFailure, 'unsupported-cli'>,
+  string
+> = {
   empty: '送信する内容がありません',
   'too-long': 'プロンプトが長すぎます',
   'leading-bang':
@@ -16,6 +22,13 @@ export const AGENT_SEND_FAILURE_MESSAGES: Record<AgentSendFailure, string> = {
     'エージェントの入力欄を空にできませんでした。ターミナルで入力欄を確かめてから、もう一度実行してください',
   'not-echoed':
     'エージェントの入力欄に入りませんでした。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+}
+
+/** 送信の失敗の文言。unsupported-cli は実行ボタンの理由と同じ関数で、送り先の CLI の名前で作る */
+export function agentSendFailureMessage(reason: AgentSendFailure, commandName: string): string {
+  return reason === 'unsupported-cli'
+    ? agentPromptSendUnsupportedReason(commandName)
+    : AGENT_SEND_FAILURE_MESSAGES[reason]
 }
 
 /** 送信の途中で例外が起きたとき(pty への書き込みの失敗など)の文言の接頭辞。後ろに理由を付ける */
@@ -39,6 +52,10 @@ export const RUN_DISABLED_NO_SESSION =
   'エージェントが起動していません（ターミナルの「起動」を押してください）'
 export const RUN_DISABLED_SENDING = 'エージェントへ送信しています'
 export const RUN_DISABLED_CLOSING = 'このタブを閉じています（エージェントを終了しています）'
+/** 実行・履歴の再実行・送信前の確認の送れない理由と、send の unsupported-cli の文言(送り先の CLI が送信に対応していない) */
+export function agentPromptSendUnsupportedReason(commandName: string): string {
+  return `${commandName} へのプロンプトの送信には、まだ対応していません（ターミナルに直接入力してください）`
+}
 export const RERUN_DISABLED_AGENT_MODE =
   'エージェント CLI 方式では再実行できません（設定で従来の方式に切り替えると使えます）'
 /** エージェント CLI 方式で記録した履歴(agent のあるエントリ)を、従来の方式で再実行しようとしたとき */
@@ -60,16 +77,28 @@ export interface PromptRunAvailability {
 }
 
 /** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
- *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため) */
+ *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため)。
+ *  送り先の CLI が送信に対応していなければ押せない */
 export function getPromptRunAvailability(params: {
   mode: PromptExecutionMode | null
   isExecuting: boolean
+  /** 能力の判定に使う CLI の種類。実行ボタンでは agentCapabilityCliKindOf で選ぶ(動いているタブはタブの種類〈起動の結果の種類〉、
+   *  未起動・終了したタブは次に起動する設定の種類)。送信前の確認では、確認を開いた時点に控えた送り先の種類を渡す */
+  cliKind: AgentCliKind
   isSessionRunning: boolean
   isSessionClosing: boolean
   isSending: boolean
 }): PromptRunAvailability {
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   if (params.mode === 'legacy') return { disabled: params.isExecuting, reason: null }
+  // 送り先の CLI が送信に対応していない(copilot など)。実行ボタンでは未起動・終了したタブの種類は次に起動する設定の種類なので
+  // (呼び出し側が agentCapabilityCliKindOf で選ぶ)、起動しても送れない。閉じる途中・未起動より前に見る
+  if (!agentCliCapabilities(params.cliKind).promptSend) {
+    return {
+      disabled: true,
+      reason: agentPromptSendUnsupportedReason(AGENT_CLI_PROFILES[params.cliKind].commandName)
+    }
+  }
   if (params.isSessionClosing) return { disabled: true, reason: RUN_DISABLED_CLOSING }
   if (!params.isSessionRunning) return { disabled: true, reason: RUN_DISABLED_NO_SESSION }
   if (params.isSending) return { disabled: true, reason: RUN_DISABLED_SENDING }
@@ -99,6 +128,8 @@ export function getHistoryRerunAvailability(params: {
   folderPath: string | null
   mode: PromptExecutionMode | null
   isExecuting: boolean
+  /** 能力の判定に使う CLI の種類(getPromptRunAvailability と同じ。agentCapabilityCliKindOf) */
+  cliKind: AgentCliKind
   isSessionRunning: boolean
   isSessionClosing: boolean
   isSending: boolean

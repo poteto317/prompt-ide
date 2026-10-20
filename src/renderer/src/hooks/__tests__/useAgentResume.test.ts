@@ -12,7 +12,9 @@ import {
   AGENT_RESUME_LAST_NO_RECORD,
   agentResumeEntryFolderMismatch,
   agentResumeEntryInUse,
-  agentResumeLastInUse
+  agentResumeEntryUnsupportedReason,
+  agentResumeLastInUse,
+  agentResumeLastUnsupportedReason
 } from '../../lib/agentSessionMessages'
 
 const mockUseAgentLastSession = vi.hoisted(() =>
@@ -49,6 +51,7 @@ function renderResume(overrides: Partial<UseAgentResumeOptions> = {}): {
   const options: UseAgentResumeOptions = {
     folderPath: FOLDER,
     mode: 'agent-cli',
+    appCliKind: 'claude',
     sessions: makeAgentSessionsState(),
     activateTab: vi.fn(),
     ...overrides
@@ -80,6 +83,7 @@ describe('useAgentResume', () => {
       const options: UseAgentResumeOptions = {
         folderPath: FOLDER,
         mode: 'agent-cli',
+        appCliKind: 'claude',
         sessions: makeAgentSessionsState({
           tabs: [makeAgentSessionTabView({ slotId: 'a', status: 'running', claudeSessionId: ID })],
           startConfirmedCount: 1
@@ -102,6 +106,7 @@ describe('useAgentResume', () => {
       const options: UseAgentResumeOptions = {
         folderPath: FOLDER,
         mode: 'agent-cli',
+        appCliKind: 'claude',
         sessions: makeAgentSessionsState({ tabs, startConfirmedCount: 0 }),
         activateTab: vi.fn()
       }
@@ -245,6 +250,31 @@ describe('useAgentResume', () => {
       const { result } = renderResume({ activateTab })
       act(() => result.current.onResumeEntry(agentEntry()))
       expect(activateTab).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('設定の種類が再開に対応していない(copilot)', () => {
+    it('前回の続きからは理由を出し、前回が見つかっていても押しても起動しない', () => {
+      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      const sessions = makeAgentSessionsState()
+      const { result } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(result.current.resumeLast.disabledReason).toBe(
+        agentResumeLastUnsupportedReason('copilot')
+      )
+      act(() => result.current.resumeLast.onResume('slot-1'))
+      expect(sessions.start).not.toHaveBeenCalled()
+    })
+
+    it('このセッションで再開は理由を出し、押しても新しいタブを足さない', () => {
+      const sessions = makeAgentSessionsState()
+      const { result, options } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(result.current.resumeActionOf(agentEntry())).toEqual({
+        disabled: true,
+        reason: agentResumeEntryUnsupportedReason('copilot')
+      })
+      act(() => result.current.onResumeEntry(agentEntry()))
+      expect(sessions.resumeInNewTab).not.toHaveBeenCalled()
+      expect(options.activateTab).not.toHaveBeenCalled()
     })
   })
 })

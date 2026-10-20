@@ -8,7 +8,7 @@ import type {
 import type { AgentSessionRegistry } from '../agentSessionRegistry'
 import type { AgentSessionStarter, AgentSessionStarterService } from '../agentSessionStarter'
 import { isDestroyedSafely, sendSafely } from '../safeWebContentsSend'
-import { attachClaudeSessionIds } from '../agentSessionSnapshot'
+import { attachSessionInfo } from '../agentSessionSnapshot'
 import { isMainFrameSender } from './ipcSenderGuard'
 import {
   parseAgentFolderPath,
@@ -27,8 +27,8 @@ export interface AgentTerminalHandlerDeps {
   /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
    *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
   startSession: AgentSessionStarter
-  /** pty の sessionId → claude の会話の ID(starter の Map)。作り直しの後の合わせ込み(getState)で足す */
-  claudeSessionIdOf: AgentSessionStarterService['claudeSessionIdOf']
+  /** pty の sessionId → 種類と claude の会話の ID(starter の Map)。作り直しの後の合わせ込み(getState)で足す */
+  sessionInfoOf: AgentSessionStarterService['sessionInfoOf']
   /** 「前回」の取得(starter の lastSessionOf。許可のフォルダとの照合は starter が行う) */
   getLastSession: AgentSessionStarterService['lastSessionOf']
   /** 作業中の知らせ(送信元のウィンドウの id と pty の sessionId)。組み立ては agentHooksRuntime.ts(区間の追跡の reportWorking)で、ipcHandlers.ts が渡す。
@@ -47,7 +47,7 @@ export function registerAgentTerminalHandlers(
   {
     registry,
     startSession,
-    claudeSessionIdOf,
+    sessionInfoOf,
     getLastSession,
     reportWorking,
     reportWorkingEnded,
@@ -108,7 +108,7 @@ export function registerAgentTerminalHandlers(
     'agentTerminal:getState',
     (event: IpcMainInvokeEvent): AgentSessionSnapshotEntry[] => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
-      return attachClaudeSessionIds(registry.snapshot(event.sender.id), claudeSessionIdOf)
+      return attachSessionInfo(registry.snapshot(event.sender.id), sessionInfoOf)
     }
   )
 

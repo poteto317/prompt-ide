@@ -41,6 +41,7 @@ describe('agentStartCanceled / isAgentStartCanceled', () => {
       {
         kind: 'started',
         sessionId: 's',
+        cliKind: 'claude',
         claudeSessionId: '11111111-1111-4111-8111-111111111111'
       },
       false
@@ -50,6 +51,7 @@ describe('agentStartCanceled / isAgentStartCanceled', () => {
       {
         kind: 'already-running',
         sessionId: 's',
+        cliKind: 'claude',
         claudeSessionId: '11111111-1111-4111-8111-111111111111'
       },
       false

@@ -1,4 +1,6 @@
 import type {
+  AgentCliKind,
+  AgentCliKindSetting,
   AgentNotificationActivated,
   AgentNotificationDismissRequest,
   AgentNotificationShowRequest,
@@ -132,6 +134,8 @@ declare global {
       setAgentNotificationsEnabled(enabled: boolean): Promise<void>
       getAgentSendConfirmEnabled(): Promise<boolean>
       setAgentSendConfirmEnabled(enabled: boolean): Promise<void>
+      getAgentCliKind(): Promise<AgentCliKindSetting>
+      setAgentCliKind(kind: AgentCliKind): Promise<void>
       startAgentSession(request: AgentStartRequest): Promise<AgentStartResult>
       writeAgentSession(sessionId: string, data: string): void
       resizeAgentSession(sessionId: string, cols: number, rows: number): void

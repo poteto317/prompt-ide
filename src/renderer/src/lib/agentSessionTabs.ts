@@ -6,7 +6,7 @@ import type { AgentTerminalController } from './agentTerminalController'
 export interface AgentSessionTab {
   slotId: string
   /** タブの番号(1〜上限)。作るときに使われていない最小の番号を振り、ほかのタブを閉じても振り直さない(閉じた番号は次に作る
-   *  タブが使う)。文言は formatAgentTabLabel(number) */
+   *  タブが使う)。文言は formatAgentTabLabel(number, kind) */
   number: number
   controller: AgentTerminalController
 }

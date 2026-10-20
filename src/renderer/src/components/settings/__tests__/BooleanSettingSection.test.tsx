@@ -10,12 +10,15 @@ const TITLE = '節の名前'
 const OPTION = 'チェックボックスのラベル'
 const NOTE = '説明の文'
 
-function renderSection(props: Partial<BooleanSettingPanelState> = {}): void {
+function renderSection(
+  props: Partial<BooleanSettingPanelState> & { extraNote?: string | null } = {}
+): void {
   render(
     <BooleanSettingSection
       title={TITLE}
       optionLabel={OPTION}
       note={NOTE}
+      extraNote={props.extraNote}
       enabled={props.enabled === undefined ? true : props.enabled}
       saveError={props.saveError ?? null}
       onChange={props.onChange ?? vi.fn()}
@@ -30,6 +33,23 @@ describe('BooleanSettingSection', () => {
     const checkbox = within(group).getByRole('checkbox', { name: OPTION })
     expect(checkbox).toBeChecked()
     expect(checkbox).toHaveAccessibleDescription(NOTE)
+  })
+
+  it('注記があれば説明の後ろに出し、チェックボックスの説明にも含める', () => {
+    renderSection({ extraNote: '注記の文' })
+    expect(screen.getByText('注記の文')).toHaveClass('settings-panel__note')
+    expect(screen.getByRole('checkbox', { name: OPTION })).toHaveAccessibleDescription(
+      `${NOTE} 注記の文`
+    )
+  })
+
+  // 説明の文(accessible description)だけでは、出していない注記の id を並べても同じ文になり気付けないため、参照そのものを見る
+  it('注記が無ければ、説明の段落だけを参照する(出していない注記の id を並べない)', () => {
+    renderSection()
+    expect(screen.getByRole('checkbox', { name: OPTION })).toHaveAttribute(
+      'aria-describedby',
+      screen.getByText(NOTE).id
+    )
   })
 
   it('オフなら外れていて、押すと onChange(true)', async () => {

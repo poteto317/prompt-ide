@@ -86,7 +86,12 @@ describe('App: 送信前の確認の配線', () => {
     const onNotificationChange = vi.fn()
     mockUseAgentWorkspace.mockReturnValue(
       makeAgentWorkspaceState({
-        agentNotificationPanel: { enabled: true, saveError: null, onChange: onNotificationChange },
+        agentNotificationPanel: {
+          enabled: true,
+          saveError: null,
+          onChange: onNotificationChange,
+          unsupportedNote: null
+        },
         agentSendConfirmPanel: {
           enabled: false,
           saveError: '送信前の確認の設定を保存できませんでした',
@@ -119,7 +124,8 @@ describe('App: 送信前の確認の配線', () => {
         agentNotificationPanel: {
           enabled: false,
           saveError: '通知の設定を保存できませんでした',
-          onChange: onNotificationChange
+          onChange: onNotificationChange,
+          unsupportedNote: null
         },
         agentSendConfirmPanel: { enabled: true, saveError: null, onChange: onSendConfirmChange }
       })

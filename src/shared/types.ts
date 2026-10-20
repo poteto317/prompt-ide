@@ -8,6 +8,7 @@ export type * from './types/settings'
 export type * from './types/agentTerminal'
 export type * from './types/agentChanges'
 export type * from './types/agentNotification'
+export type { AgentCliKind } from './agentCliKinds'
 export { PROMPT_EXPORT_KIND } from './types/prompt'
 export { EXECUTION_TOOLS, CLI_ONLY_TOOL_IDS } from './types/cli'
 export {

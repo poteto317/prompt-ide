@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
+import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo } from '@shared/types'
 import type { Announcement } from '../types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
@@ -6,9 +8,9 @@ import { sendAgentPrompt, realClock } from '../lib/agentPromptSend'
 import type { AgentPromptSendResult, AgentSendClock } from '../lib/agentPromptSend'
 import {
   AGENT_SEND_ERROR_PREFIX,
-  AGENT_SEND_FAILURE_MESSAGES,
   AGENT_SENT_AFTER_CLEAR_NOTICE,
-  AGENT_SENT_NOTICE
+  AGENT_SENT_NOTICE,
+  agentSendFailureMessage
 } from '../lib/agentSendMessages'
 import { toError } from '../lib/errorUtils'
 import { useTransientNotice } from './useTransientNotice'
@@ -39,6 +41,8 @@ export interface AgentPromptSenderState {
 export interface AgentSendTarget {
   slotId: string
   controller: AgentTerminalController
+  /** 送り先のタブの CLI の種類(押した時点の値。送信に対応しない種類には書き込まない。実行ボタンと同じ判定。L-058) */
+  cliKind: AgentCliKind
   /**
    * 送り先のタブの今の claude の会話の ID・名前・フォルダ(履歴の HistoryEntry.agent と同じ形)。送信の手順を始める時点
    * (beginSending の直前)に呼んで控える(送信の後で読むと、その間にタブが起動し直した・閉じた・フォルダが変わったときに、
@@ -70,6 +74,16 @@ export function useAgentPromptSender({
   const send = useCallback(
     async (text: string, target: AgentSendTarget): Promise<AgentPromptSendResult | undefined> => {
       if (sendingRef.current) return undefined
+      // 送り先の CLI が送信に対応していなければ、準備(変更の記録)・送り先の控え・入力の保留・書き込みをどれもせずに断る
+      // (実行ボタンの理由と同じ判定・同じ文言。見た目だけで止めない。L-058)。ほかの失敗と同じくパネルを開く
+      if (!agentCliCapabilities(target.cliKind).promptSend) {
+        clear()
+        setError(
+          agentSendFailureMessage('unsupported-cli', AGENT_CLI_PROFILES[target.cliKind].commandName)
+        )
+        onSettled()
+        return { kind: 'failed', reason: 'unsupported-cli' }
+      }
       const { controller } = target
       sendingRef.current = true
       setSendingSlotId(target.slotId)
@@ -109,7 +123,9 @@ export function useAgentPromptSender({
         if (outcome.kind === 'sent') {
           announce(outcome.clearedDraft ? AGENT_SENT_AFTER_CLEAR_NOTICE : AGENT_SENT_NOTICE)
         } else {
-          setError(AGENT_SEND_FAILURE_MESSAGES[outcome.reason])
+          setError(
+            agentSendFailureMessage(outcome.reason, AGENT_CLI_PROFILES[target.cliKind].commandName)
+          )
         }
         onSettled()
         return outcome.kind === 'sent' ? { ...outcome, sentTo } : outcome

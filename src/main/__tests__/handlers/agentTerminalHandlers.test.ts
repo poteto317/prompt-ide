@@ -84,7 +84,7 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
   registerAgentTerminalHandlers(ipcMain as never, {
     registry,
     startSession: starter.start,
-    claudeSessionIdOf: starter.claudeSessionIdOf,
+    sessionInfoOf: starter.sessionInfoOf,
     getLastSession: starter.lastSessionOf,
     platform: 'linux',
     reportWorking: vi.fn(),
@@ -118,7 +118,7 @@ beforeEach(() => {
   spawnPty = vi.fn<PtySpawn>().mockReturnValue(pty)
   resolveLaunch = vi.fn(async () => ({
     kind: 'ok' as const,
-    plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } }
+    plan: { cliKind: 'claude', file: '/bin/claude', args: [], env: { PATH: '/p' } }
   }))
   // 記録のファイルが無い(空の記録)
   records = createAgentSessionRecordStore(makeFakeRecordIo())
@@ -140,6 +140,7 @@ describe('agentTerminal:start', () => {
     ).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1',
+      cliKind: 'claude',
       claudeSessionId: CLAUDE_ID
     })
     expect(spawnPty).toHaveBeenCalledWith('/bin/claude', ['--session-id', CLAUDE_ID], {
@@ -195,12 +196,17 @@ describe('agentTerminal:start', () => {
   it('claude が見つからなければ command-not-found(PATH の取得の失敗を添える)', async () => {
     register()
     folderAccess.set(1, '/work')
-    resolveLaunch.mockResolvedValueOnce({ kind: 'not-found', shellPathUnavailable: true })
+    resolveLaunch.mockResolvedValueOnce({
+      kind: 'not-found',
+      cliKind: 'claude',
+      shellPathUnavailable: true
+    })
     await expect(
       start(makeEvent(), { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     ).resolves.toEqual({
       kind: 'error',
       error: 'command-not-found',
+      cliKind: 'claude',
       shellPathUnavailable: true
     })
     expect(spawnPty).not.toHaveBeenCalled()
@@ -231,6 +237,7 @@ describe('agentTerminal:start', () => {
     ).resolves.toEqual({
       kind: 'already-running',
       sessionId: 'sid-1',
+      cliKind: 'claude',
       claudeSessionId: CLAUDE_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
@@ -379,7 +386,10 @@ describe('agentTerminal:start', () => {
     })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     event.sender.isDestroyed.mockReturnValue(true)
-    pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
+    pending.resolve({
+      kind: 'ok',
+      plan: { cliKind: 'claude', file: '/bin/claude', args: [], env: { PATH: '/p' } }
+    })
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
   })
@@ -399,7 +409,10 @@ describe('agentTerminal:start', () => {
     })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     folderAccess.set(1, '/other')
-    pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
+    pending.resolve({
+      kind: 'ok',
+      plan: { cliKind: 'claude', file: '/bin/claude', args: [], env: { PATH: '/p' } }
+    })
     await expect(result).resolves.toEqual(CANCELED)
     expect(spawnPty).not.toHaveBeenCalled()
   })
@@ -439,7 +452,10 @@ describe('agentTerminal:start', () => {
     })
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     const stopped = registry.stopOwner(1, 'stopped')
-    pending.resolve({ kind: 'ok', plan: { file: '/bin/claude', args: [], env: { PATH: '/p' } } })
+    pending.resolve({
+      kind: 'ok',
+      plan: { cliKind: 'claude', file: '/bin/claude', args: [], env: { PATH: '/p' } }
+    })
     await expect(result).resolves.toEqual(CANCELED)
     await stopped
     expect(spawnPty).not.toHaveBeenCalled()
@@ -454,6 +470,7 @@ describe('agentTerminal:start', () => {
     ).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1',
+      cliKind: 'claude',
       claudeSessionId: CLAUDE_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
@@ -480,6 +497,7 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
   const STARTED: AgentStartResult = {
     kind: 'started',
     sessionId: 'sid-x',
+    cliKind: 'claude',
     claudeSessionId: CLAUDE_ID
   }
   let startSession: ReturnType<typeof vi.fn<AgentSessionStarter>>
@@ -595,7 +613,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
   it('getState は枠ごとの一覧を返し、stop は止め終わってから解決して一覧から消す', async () => {
     const event = await started()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
     ])
     await handles.get('agentTerminal:stop')?.(event, 'sid-1')
     expect(stopTree).toHaveBeenCalledOnce()
@@ -619,7 +637,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(pty.resize).not.toHaveBeenCalled()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
     ])
   })
 
@@ -638,7 +656,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(() => handles.get('agentTerminal:getState')?.(sub)).toThrow()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
     ])
   })
 
@@ -648,7 +666,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     await handles.get('agentTerminal:stop')?.(event, 'stale')
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
     ])
   })
 })
@@ -757,7 +775,7 @@ describe('agentTerminal:getLastSession', () => {
   })
 })
 
-describe('agentTerminal:getState(claude のセッション ID)', () => {
+describe('agentTerminal:getState(種類と claude のセッション ID)', () => {
   let consoleWarnSpy: MockInstance<typeof console.warn> | null = null
 
   afterEach(() => {
@@ -767,15 +785,36 @@ describe('agentTerminal:getState(claude のセッション ID)', () => {
 
   it('starter の Map に無いセッションは、例外にせず一覧から外してログを残す(合わせ込みの全体を止めない)', async () => {
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    register({ claudeSessionIdOf: () => undefined })
+    register({ sessionInfoOf: () => undefined })
     folderAccess.set(1, '/work')
     const event = makeEvent()
     await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([])
     expect(consoleWarnSpy).toHaveBeenCalledWith(
-      '[agentTerminal:getState] claude のセッション ID が見つからないセッションを一覧から外します:',
+      '[agentTerminal:getState] セッションの種類と会話の ID が見つからないセッションを一覧から外します:',
       'sid-1'
     )
+  })
+
+  it('copilot のセッションは、種類と null の会話の ID を載せて返す', async () => {
+    resolveLaunch.mockResolvedValue({
+      kind: 'ok',
+      plan: { cliKind: 'copilot', file: '/bin/copilot', args: [], env: { PATH: '/p' } }
+    })
+    register()
+    folderAccess.set(1, '/work')
+    const event = makeEvent()
+    await expect(
+      start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+    ).resolves.toEqual({
+      kind: 'started',
+      sessionId: 'sid-1',
+      cliKind: 'copilot',
+      claudeSessionId: null
+    })
+    expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'copilot', claudeSessionId: null }
+    ])
   })
 })
 

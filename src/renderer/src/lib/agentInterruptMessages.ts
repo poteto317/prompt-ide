@@ -5,8 +5,10 @@ import type { AgentActivity } from './agentActivity'
 
 /** 帯の中断のボタン(選択中のタブの claude に Esc を 1 回送る。設計書 2026-10-19「画面」) */
 export const AGENT_INTERRUPT_LABEL = '中断'
-/** 可視の文言「中断」で始める(パターン 76) */
-export const AGENT_INTERRUPT_ARIA_LABEL = '中断（作業中の claude に Esc を送る）'
+/** 帯の 中断 の aria-label。可視の文言「中断」で始める(パターン 76)。commandName は選択中のタブの種類のコマンド名 */
+export function agentInterruptAriaLabel(commandName: string): string {
+  return `${AGENT_INTERRUPT_LABEL}（作業中の ${commandName} に Esc を送る）`
+}
 /** セッションが無い・終了した(帯には出さないが、押した処理の判定でも同じ純関数を使うため理由を持つ) */
 export const AGENT_INTERRUPT_NOT_RUNNING = 'claude が動いていないため中断できません'
 export const AGENT_INTERRUPT_DISABLED_STARTING = '起動中は中断できません'
@@ -16,6 +18,10 @@ export const AGENT_INTERRUPT_DISABLED_SEND_CONFIRM = '送信前の確認を開�
 /** 送っている途中・押してから 1,000ms 以内(待ちはタブごと) */
 export const AGENT_INTERRUPT_DISABLED_COOLDOWN =
   '中断を送りました。まだ作業中なら、少し待つと押せます'
+/** 選択中のタブの CLI が中断に対応していない */
+export function agentInterruptUnsupportedReason(commandName: string): string {
+  return `${commandName} では中断のボタンを使えません（ターミナルで操作してください）`
+}
 /** 活動が working でないときの理由。活動を増やしたときの決め忘れを型エラーにする */
 export const AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY: Record<
   Exclude<AgentActivity, 'working'>,

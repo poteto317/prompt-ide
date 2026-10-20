@@ -1,4 +1,6 @@
-// エージェント CLI(claude)のセッションの IPC の型と上限。main・preload・renderer が共有する
+// エージェント CLI(claude・copilot など。種類は agentCliKinds)のセッションの IPC の型と上限。main・preload・renderer が共有する
+
+import type { AgentCliKind } from '../agentCliKinds'
 
 /** 桁数・行数の範囲(main の入力検証と renderer の fit の結果の丸めで使う) */
 export const AGENT_TERMINAL_MIN_COLS = 2
@@ -42,6 +44,8 @@ export type AgentTerminalErrorKind =
   | 'unknown-session'
   /** 同じ ID の claude がほかのタブかウィンドウで起動中・実行中・止まりきる前 */
   | 'session-in-use'
+  /** 再開の依頼だが、使う CLI が再開に対応していない(main の能力の表) */
+  | 'resume-unsupported'
 
 /** 起動の指定。renderer は列挙型だけを渡し、コマンドと引数の並び(--session-id / --resume)は main が決める(L-019) */
 export type AgentLaunchRequest = { kind: 'new' } | { kind: 'resume'; claudeSessionId: string }
@@ -61,16 +65,24 @@ export type AgentStartResult =
   | {
       kind: 'started' | 'already-running'
       sessionId: string
-      /** そのセッションの claude の会話の ID。already-running は動いているセッションの ID(依頼の launch は使わない) */
-      claudeSessionId: string
+      /** main がこの起動に使った CLI の種類(already-running は動いているセッションの種類) */
+      cliKind: AgentCliKind
+      /** claude の会話の ID。sessionResume が true の種類では必ず文字列、false の種類では null。already-running は動いているセッションの ID(依頼の launch は使わない) */
+      claudeSessionId: string | null
     }
   | {
       kind: 'error'
-      error: AgentTerminalErrorKind
+      error: 'command-not-found'
+      /** 探したコマンドの CLI の種類(文言に使う) */
+      cliKind: AgentCliKind
+      /** ログインシェルから PATH を取得できず既定の場所だけを探したか */
+      shellPathUnavailable: boolean
+    }
+  | {
+      kind: 'error'
+      error: Exclude<AgentTerminalErrorKind, 'command-not-found'>
       /** folder-missing はフォルダのパス、spawn-failed は例外の文言 */
       detail?: string
-      /** command-not-found のとき、ログインシェルから PATH を取得できず既定の場所だけを探したか */
-      shellPathUnavailable?: boolean
     }
 
 /** 起動の取り消しの結果(spawn-failed + AGENT_START_CANCELED_DETAIL)。呼ぶたびに新しいオブジェクトを返す */
@@ -113,8 +125,10 @@ export interface AgentSessionExit {
 export interface AgentSessionSnapshotEntry {
   slotId: string
   sessionId: string
-  /** そのセッションの claude の会話の ID(作り直しの後の合わせ込みで、タブの claudeSessionId を合わせる) */
-  claudeSessionId: string
+  /** そのセッションの CLI の種類(作り直しの後の合わせ込みで、タブの種類を合わせる) */
+  cliKind: AgentCliKind
+  /** そのセッションの claude の会話の ID。再開に対応しない種類では null */
+  claudeSessionId: string | null
 }
 
 /** このフォルダで最後に起動が確定した claude のセッション(「前回の続きから」の再開の相手) */

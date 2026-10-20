@@ -132,6 +132,15 @@ const defaultProps = {
   modelSettingsLoaded: true,
   onSaveModelSettings: vi.fn(),
   agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() },
+  agentCliKind: {
+    kind: 'claude' as const,
+    fallback: null,
+    saveError: null,
+    isLocked: false,
+    isSwitching: false,
+    lockedReason: null,
+    onSelect: vi.fn()
+  },
   agentReferences: null as AgentReferencesPanelState | null
 }
 
@@ -370,7 +379,13 @@ describe('Sidebar: プロンプトの実行の状態の受け渡し', () => {
       <Sidebar
         {...defaultProps}
         activePanel="settings"
-        executionMode={{ mode: 'legacy', saveError: null, isLocked: false, onSelect: vi.fn() }}
+        executionMode={{
+          mode: 'legacy',
+          saveError: null,
+          isLocked: false,
+          isSwitching: false,
+          onSelect: vi.fn()
+        }}
       />
     )
     expect(screen.getByRole('radio', { name: /^従来の方式/ })).toHaveAttribute(
@@ -388,6 +403,7 @@ describe('Sidebar: プロンプトの実行の状態の受け渡し', () => {
           mode: 'legacy',
           saveError: null,
           isLocked: true,
+          isSwitching: false,
           lockedReason: '従来の方式で実行している間は、実行方式を切り替えられません',
           onSelect: vi.fn()
         }}
@@ -433,7 +449,8 @@ describe('Sidebar: 履歴のエントリごとの操作の受け渡し', () => {
         })}
       />
     )
-    await userEvent.click(screen.getByRole('radio'))
+    // 設定パネルの使うエージェント CLI の radio も DOM にあるため、履歴の項目の名前で絞る
+    await userEvent.click(screen.getByRole('radio', { name: /^要約/ }))
     expect(screen.getByText('再実行の理由')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'このセッションで再開' }))
     expect(onResumeHistoryEntry).toHaveBeenCalledExactlyOnceWith(entry)

@@ -6,7 +6,12 @@ import type { ClaudeVersionCheck } from '../agentClaudeVersion'
 import type { AgentLaunchPlan } from '../agentCommand'
 
 const TOKEN = 'ab'.repeat(32)
-const PLAN: AgentLaunchPlan = { file: '/bin/claude', args: [], env: { PATH: '/p' } }
+const PLAN: AgentLaunchPlan = {
+  cliKind: 'claude',
+  file: '/bin/claude',
+  args: [],
+  env: { PATH: '/p' }
+}
 const BASE = 'http://127.0.0.1:43210'
 
 let calls: string[]
@@ -126,6 +131,22 @@ describe('createAgentHookSessions: prepare', () => {
     })
     for (const [message] of deps.log.mock.calls as [string][]) expect(message).not.toContain(TOKEN)
   })
+
+  it('種類の能力に区別(changeAttribution)が無ければ、版の読み取りも受け口の用意もせず cli-unsupported(copilot に claude の版の確認を通さない。L-043)', async () => {
+    const COPILOT_PLAN: AgentLaunchPlan = {
+      cliKind: 'copilot',
+      file: '/bin/copilot',
+      args: [],
+      env: { PATH: '/p' }
+    }
+    await expect(sessions().prepare(7, COPILOT_PLAN)).resolves.toEqual({
+      ownerId: 7,
+      hooks: null,
+      unavailableReason: 'cli-unsupported'
+    })
+    expect(calls).toEqual([])
+    expect(deps.log).not.toHaveBeenCalled()
+  })
 })
 
 describe('createAgentHookSessions: activate・release', () => {
@@ -176,5 +197,14 @@ describe('createAgentHookSessions: activate・release', () => {
     expect(deps.receiver.removeToken).not.toHaveBeenCalled()
     expect(deps.removeSettingsFile).not.toHaveBeenCalled()
     expect(deps.tracker.removeSession).toHaveBeenCalledExactlyOnceWith(7, 'sid-1')
+  })
+
+  it('cli-unsupported の prepared を activate すると、追跡に unconfirmed(cli-unsupported)で足すだけ', () => {
+    sessions().activate({ ownerId: 7, hooks: null, unavailableReason: 'cli-unsupported' }, 'sid-1')
+    expect(deps.tracker.addSession).toHaveBeenCalledExactlyOnceWith(7, 'sid-1', {
+      kind: 'unconfirmed',
+      reason: 'cli-unsupported'
+    })
+    expect(deps.receiver.addToken).not.toHaveBeenCalled()
   })
 })

@@ -1,3 +1,4 @@
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentExitReason, AgentSessionExit } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
 import {
@@ -21,6 +22,9 @@ export interface AgentTabSessionFields {
   status: AgentSessionStatus
   exit: AgentSessionExitView | null
   error: string | null
+  /** 起動の結果(started・already-running)・状態の取得の CLI の種類。起動を始めると null に戻し、終了しても消さない(終了したタブの
+   *  名前と画面の中身が合うように)。null の間は設定の種類で名前と能力を引く(useAgentSessions の AgentSessionTabView.cliKind) */
+  cliKind: AgentCliKind | null
   /** 起動中(resume は依頼した ID、new は結果が届いてから)・実行中のセッションの claude の会話の ID。終了・起動の失敗・取り消しで
    *  null に戻す(送信の時点の送り先の控えと、同じ ID が動いているかの判定に使う。終了した後の ID はどこにも使わない) */
   claudeSessionId: string | null
@@ -30,6 +34,7 @@ export const INITIAL_AGENT_TAB_SESSION_FIELDS: AgentTabSessionFields = {
   status: 'none',
   exit: null,
   error: null,
+  cliKind: null,
   claudeSessionId: null
 }
 
@@ -42,6 +47,17 @@ export const agentTabSessionFieldsOf = (
 /** starting か running(動いている) */
 export const isActiveAgentSessionStatus = (status: AgentSessionStatus): boolean =>
   status === 'starting' || status === 'running'
+
+/**
+ * 送信(実行・履歴の再実行)の能力の判定に使う CLI の種類。動いている(starting・running)タブはタブの種類(起動の結果の種類)、
+ * それ以外(未起動・終了した)は次に起動する設定の種類。終了したタブの種類は前の起動の結果のまま残る(名前を画面に合わせる)が、
+ * そのタブで 起動 を押すと設定の種類で起動するため、押せない理由を次の起動に合わせる(設計書 2026-10-20「入口ごとの表」)。
+ * タブの名前は結果の種類のまま(AgentSessionTabView.label)
+ */
+export const agentCapabilityCliKindOf = (
+  tab: { status: AgentSessionStatus; cliKind: AgentCliKind },
+  appCliKind: AgentCliKind
+): AgentCliKind => (isActiveAgentSessionStatus(tab.status) ? tab.cliKind : appCliKind)
 
 /** starting か running のタブがある(useAgentSessions の isAnyActive。偽物も同じ判定で求める) */
 export const isAnyAgentSessionActive = (tabs: readonly { status: AgentSessionStatus }[]): boolean =>

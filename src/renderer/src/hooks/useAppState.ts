@@ -587,6 +587,7 @@ export function useAppState(): AppState {
     executionModePanel: agentWorkspace.executionModePanel,
     agentNotificationPanel: agentWorkspace.agentNotificationPanel,
     agentSendConfirmPanel: agentWorkspace.agentSendConfirmPanel,
+    agentCliKindPanel: agentWorkspace.agentCliKindPanel,
     agentSendConfirmDialog: agentWorkspace.agentSendConfirmDialog,
     promptRun: agentWorkspace.promptRun,
     bottomPanel: agentWorkspace.bottomPanel,

@@ -112,7 +112,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   registerAgentTerminalHandlers(ipcMain, {
     registry: agentRegistry,
     startSession: agentStarter.start,
-    claudeSessionIdOf: agentStarter.claudeSessionIdOf,
+    sessionInfoOf: agentStarter.sessionInfoOf,
     getLastSession: agentStarter.lastSessionOf,
     reportWorking: agentHooks.tracker.reportWorking,
     reportWorkingEnded: agentHooks.tracker.reportWorkingEnded

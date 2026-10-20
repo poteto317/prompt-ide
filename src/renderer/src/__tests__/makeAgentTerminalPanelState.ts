@@ -38,6 +38,7 @@ export function makeAgentTerminalPanelState(
     activities: new Map(),
     resumeLast: { disabledReason: null, onResume: vi.fn() },
     interrupt: makeAgentInterruptPanelState(),
+    appCliKind: 'claude',
     ...overrides
   }
 }

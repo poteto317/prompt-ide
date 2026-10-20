@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import { classifyAgentScreen } from '../lib/agentActivity'
 import type { AgentActivity } from '../lib/agentActivity'
 import type { AgentSessionStatus } from '../lib/agentSessionTabState'
@@ -6,7 +8,8 @@ import type { AgentTerminalController } from '../lib/agentTerminalController'
 import type { ViewportLine } from '../lib/agentViewport'
 
 // タブごとの claude の活動(設計書「活動の hook」「再判定のきっかけ」)。controller の書き込みの通知(onOutputWritten)を購読し、
-// 最後の通知から出力が途絶えたら(続いていても最初の未判定の通知から上限が経てば)画面の末尾を読んで判定する。セッションの起動・停止の手順(useAgentSessions)とは分ける
+// 最後の通知から出力が途絶えたら(続いていても最初の未判定の通知から上限が経てば)画面の末尾を読んで判定する。セッションの起動・停止の手順(useAgentSessions)とは分ける。
+// 画面の判定が無い種類(copilot)のタブは購読しない
 
 /** 最後の書き込みの通知から判定までの待ち。背面でも止まらないよう requestAnimationFrame ではなく setTimeout で待つ */
 export const AGENT_ACTIVITY_SETTLE_MS = 150
@@ -23,6 +26,8 @@ export interface AgentActivityTab {
   slotId: string
   status: AgentSessionStatus
   controller: AgentTerminalController
+  /** タブの CLI の種類。画面の判定(screenActivity)が無い種類は購読しない(設計書「画面の判定を止める」) */
+  cliKind: AgentCliKind
 }
 
 export interface UseAgentActivityOptions {
@@ -147,16 +152,28 @@ export function useAgentActivity({
 
     tabsRef.current = new Map(tabs.map((tab) => [tab.slotId, tab]))
     const reset: string[] = []
-
-    // 消えたタブ: 購読とタイマーを手放し、結果を捨てる
-    for (const [slotId, watch] of watches) {
-      if (tabsRef.current.has(slotId)) continue
-      releaseWatch(watch)
-      watches.delete(slotId)
+    /** 購読とタイマーを(あれば)手放し、結果を捨てる */
+    const forget = (slotId: string): void => {
+      const watch = watches.get(slotId)
+      if (watch !== undefined) {
+        releaseWatch(watch)
+        watches.delete(slotId)
+      }
       reset.push(slotId)
     }
 
+    // 消えたタブ: 購読とタイマーを手放し、結果を捨てる
+    for (const slotId of [...watches.keys()]) {
+      if (!tabsRef.current.has(slotId)) forget(slotId)
+    }
+
     for (const tab of tabs) {
+      // 画面の判定が無い種類(copilot): 購読・タイマーを持たず、記録も消す(種類が変わったタブ〈同じタブで起動し直した〉の区切り)。
+      // 常に unknown を返す判定に差し替えず、購読そのものを張らない。記録の無いタブは各機能が unknown として扱う
+      if (!agentCliCapabilities(tab.cliKind).screenActivity) {
+        forget(tab.slotId)
+        continue
+      }
       const running = tab.status === 'running'
       // 初めて見たタブは「前回 running でなかった」として扱い、running なら下で判定を予約する
       const previous = watches.get(tab.slotId)?.wasRunning
@@ -190,7 +207,9 @@ export function useAgentActivity({
 
   // タブの配列が作り直されても、内容が同じなら同じ Map を返す(使う側の描画を増やさない)
   const resolved = tabs.map((tab): [string, AgentActivity] => {
-    const activity = tab.status === 'running' ? entries.get(tab.slotId) : undefined
+    // 種類が変わった描画で、effect が記録を消す前の古い活動を返さない
+    const judged = tab.status === 'running' && agentCliCapabilities(tab.cliKind).screenActivity
+    const activity = judged ? entries.get(tab.slotId) : undefined
     return [tab.slotId, activity ?? 'unknown']
   })
   const signature = resolved

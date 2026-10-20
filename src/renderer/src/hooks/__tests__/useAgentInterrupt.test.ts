@@ -24,7 +24,8 @@ import {
   AGENT_INTERRUPT_DISABLED_SENDING,
   AGENT_INTERRUPT_DISABLED_STARTING,
   AGENT_INTERRUPT_NOT_RUNNING,
-  agentInterruptSentNotice
+  agentInterruptSentNotice,
+  agentInterruptUnsupportedReason
 } from '../../lib/agentInterruptMessages'
 
 type Props = Omit<UseAgentInterruptOptions, 'interrupt'>
@@ -113,11 +114,12 @@ describe('useAgentInterrupt', () => {
     expect(result.current.notice).toEqual({ text: agentInterruptSentNotice('claude 1'), id: 1 })
   })
 
-  it('選択中のタブは AgentInterruptTab の値(slotId・label・status・isClosing・controller の readScreen)だけで押せる', async () => {
+  it('選択中のタブは AgentInterruptTab の値(slotId・label・status・cliKind・isClosing・controller の readScreen)だけで押せる', async () => {
     const selected: AgentInterruptTab = {
       slotId: 'slot-9',
       label: 'claude 9',
       status: 'running',
+      cliKind: 'claude',
       isClosing: false,
       controller: { readScreen: () => agentScreen('working').lines }
     }
@@ -285,6 +287,15 @@ describe('useAgentInterrupt', () => {
     expect(result.current.disabledReason).toBeNull()
   })
 
+  it('選択中のタブが copilot なら押せず理由を出し、押しても interrupt を呼ばずに理由を読み上げる', async () => {
+    const { result } = render({ selected: { ...tab1, cliKind: 'copilot' } })
+    const reason = agentInterruptUnsupportedReason('copilot')
+    expect(result.current).toMatchObject({ visible: true, disabledReason: reason })
+    await press(result)
+    expect(interrupt).not.toHaveBeenCalled()
+    expect(result.current.notice?.text).toBe(reason)
+  })
+
   // タブごとの待ちのタイマーの後始末は useAgentInterruptCooldown のテストで確かめる。ここでは組み合わせた hook 全体で残らないことだけ
   it('アンマウントで、待ちのタイマーと読み上げのタイマーを残さない(L-052)', async () => {
     const { result, unmount } = render()
@@ -310,12 +321,26 @@ describe('toAgentInterruptAvailabilityInput', () => {
       )
     ).toEqual({
       status: 'running',
+      cliKind: 'claude',
       isClosing: true,
       activity: 'permission',
       isSending: true,
       isSendConfirmOpen: true,
       isInterrupting: true
     })
+  })
+
+  it('選択中のタブの種類を写す', () => {
+    const input = toAgentInterruptAvailabilityInput(
+      {
+        selected: { ...runningTab('slot-1', 1), cliKind: 'copilot' },
+        activities: workingOf('slot-1'),
+        isSending: false,
+        isSendConfirmOpen: false
+      },
+      false
+    )
+    expect(input.cliKind).toBe('copilot')
   })
 
   it('活動が未記録のタブは unknown として扱う(ほかのタブの活動は使わない)', () => {

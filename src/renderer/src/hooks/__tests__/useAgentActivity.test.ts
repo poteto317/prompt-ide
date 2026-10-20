@@ -13,12 +13,14 @@ import type { ViewportLine } from '../../lib/agentViewport'
 import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import type { AgentSessionStatus } from '../../lib/agentSessionTabState'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 
 const tabOf = (
   slotId: string,
   controller: FakeController,
-  status: AgentSessionStatus = 'running'
-): AgentActivityTab => ({ slotId, status, controller })
+  status: AgentSessionStatus = 'running',
+  cliKind: AgentCliKind = 'claude'
+): AgentActivityTab => ({ slotId, status, controller, cliKind })
 
 describe('useAgentActivity', () => {
   let activity: AgentActivity
@@ -371,5 +373,74 @@ describe('useAgentActivity', () => {
     act(() => controller.emitOutputWritten())
     act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
     expect(result.current.get('a')).toBe('unknown')
+  })
+
+  it('画面の判定が無い種類(copilot)のタブは購読せず、出力が来ても判定しない(タイマーも張らない)', () => {
+    const controller = makeFakeController()
+    const { result } = render([tabOf('a', controller, 'running', 'copilot')])
+    expect(controller.outputWrittenListeners.size).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+    act(() => controller.emitOutputWritten())
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_MAX_WAIT_MS))
+    expect(classify).not.toHaveBeenCalled()
+    expect(result.current.get('a')).toBe('unknown')
+  })
+
+  it('claude から copilot に種類が変わったタブ(同じタブで起動し直した)は、購読を外して活動の記録を消す', () => {
+    const controller = makeFakeController()
+    const { result, rerender } = render([tabOf('a', controller)])
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(result.current.get('a')).toBe('working')
+    rerender({ tabs: [tabOf('a', controller, 'running', 'copilot')], classify })
+    expect(controller.outputWrittenListeners.size).toBe(0)
+    expect(result.current.get('a')).toBe('unknown')
+    classify.mockClear()
+    act(() => controller.emitOutputWritten())
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_MAX_WAIT_MS))
+    expect(classify).not.toHaveBeenCalled()
+  })
+
+  it('claude から copilot に種類が変わった直後の最初の描画(記録を消す effect の前)でも、古い活動を返さず unknown にする', () => {
+    const controller = makeFakeController()
+    // 描画ごとの戻り値を記録する(effect が記録を消した後の再描画では、最初の描画の値が見えないため)
+    const seen: AgentActivity[] = []
+    const { rerender } = renderHook<ReadonlyMap<string, AgentActivity>, UseAgentActivityOptions>(
+      (props) => {
+        const activities = useAgentActivity(props)
+        seen.push(activities.get('a') ?? 'unknown')
+        return activities
+      },
+      { initialProps: { tabs: [tabOf('a', controller)], classify } }
+    )
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(seen.at(-1)).toBe('working')
+    const before = seen.length
+    rerender({ tabs: [tabOf('a', controller, 'running', 'copilot')], classify })
+    expect(seen.length).toBeGreaterThan(before)
+    expect(seen[before]).toBe('unknown')
+    expect(seen.slice(before)).toEqual(seen.slice(before).map(() => 'unknown'))
+  })
+
+  it('copilot から claude に戻ったタブは、購読を張り直して判定する', () => {
+    const controller = makeFakeController()
+    const { result, rerender } = render([tabOf('a', controller, 'running', 'copilot')])
+    rerender({ tabs: [tabOf('a', controller)], classify })
+    expect(controller.outputWrittenListeners.size).toBe(1)
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(result.current.get('a')).toBe('working')
+  })
+
+  it('claude → copilot → claude と戻ったタブは、戻った後の判定までは copilot の前の活動を返さず unknown にする', () => {
+    const controller = makeFakeController()
+    const { result, rerender } = render([tabOf('a', controller)])
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(result.current.get('a')).toBe('working')
+    rerender({ tabs: [tabOf('a', controller, 'running', 'copilot')], classify })
+    rerender({ tabs: [tabOf('a', controller)], classify })
+    // copilot にした effect で記録を消しているため、戻った直後(判定の待ちの間)は unknown
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS - 1))
+    expect(result.current.get('a')).toBe('unknown')
+    act(() => vi.advanceTimersByTime(1))
+    expect(result.current.get('a')).toBe('working')
   })
 })

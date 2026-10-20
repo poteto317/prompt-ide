@@ -10,6 +10,7 @@ import {
   getAgentSendConfirmEnabled,
   setAgentSendConfirmEnabled
 } from '../agentSendConfirmSettingStore'
+import { getAgentCliKindSetting, setAgentCliKind } from '../agentCliKindStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
@@ -42,6 +43,14 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'settings:setPromptExecutionMode',
     async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptExecutionMode(mode)
+  )
+
+  // 使うエージェント CLI。読み込みは種類と既定に戻した理由を返す(設定の画面が注記に使う)。検証は store が行う
+  ipcMain.handle('settings:getAgentCliKind', async () => getAgentCliKindSetting())
+
+  ipcMain.handle(
+    'settings:setAgentCliKind',
+    async (_event: IpcMainInvokeEvent, kind: unknown): Promise<void> => setAgentCliKind(kind)
   )
 
   ipcMain.handle('settings:getAgentNotificationsEnabled', async () =>

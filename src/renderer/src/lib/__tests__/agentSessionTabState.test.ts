@@ -8,6 +8,7 @@ import {
   AGENT_EXITED_SOON_MS,
   INITIAL_AGENT_TAB_SESSION_FIELDS,
   agentAddTabDisabledReason,
+  agentCapabilityCliKindOf,
   agentStartDisabledReason,
   agentTabSessionFieldsOf,
   findActiveAgentTabByClaudeSessionId,
@@ -62,7 +63,13 @@ describe('agentTabSessionFieldsOf', () => {
   })
 
   it('状態があるタブはその値を返す', () => {
-    const fields = { status: 'running' as const, exit: null, error: null, claudeSessionId: null }
+    const fields = {
+      status: 'running' as const,
+      exit: null,
+      error: null,
+      cliKind: null,
+      claudeSessionId: null
+    }
     expect(agentTabSessionFieldsOf(new Map([['a', fields]]), 'a')).toBe(fields)
   })
 })
@@ -185,5 +192,28 @@ describe('findActiveAgentTabByClaudeSessionId', () => {
         ID
       )
     ).toBeUndefined()
+  })
+})
+
+describe('agentCapabilityCliKindOf', () => {
+  it('動いている(starting・running)タブは、タブの種類(起動の結果の種類)で能力を判定する', () => {
+    expect(agentCapabilityCliKindOf({ status: 'running', cliKind: 'copilot' }, 'claude')).toBe(
+      'copilot'
+    )
+    expect(agentCapabilityCliKindOf({ status: 'starting', cliKind: 'claude' }, 'copilot')).toBe(
+      'claude'
+    )
+  })
+
+  it('動いていない(未起動・終了した)タブは、次に起動する設定の種類で能力を判定する(タブの名前は結果の種類のまま)', () => {
+    expect(agentCapabilityCliKindOf({ status: 'exited', cliKind: 'copilot' }, 'claude')).toBe(
+      'claude'
+    )
+    expect(agentCapabilityCliKindOf({ status: 'exited', cliKind: 'claude' }, 'copilot')).toBe(
+      'copilot'
+    )
+    expect(agentCapabilityCliKindOf({ status: 'none', cliKind: 'claude' }, 'copilot')).toBe(
+      'copilot'
+    )
   })
 })

@@ -1,4 +1,9 @@
-import type { ModelSettings, PromptExecutionMode } from '@shared/types'
+import type {
+  AgentCliKind,
+  AgentCliKindSetting,
+  ModelSettings,
+  PromptExecutionMode
+} from '@shared/types'
 
 export function getModelSettings(): Promise<ModelSettings> {
   return window.api.getModelSettings()
@@ -30,4 +35,12 @@ export function getAgentSendConfirmEnabled(): Promise<boolean> {
 
 export function setAgentSendConfirmEnabled(enabled: boolean): Promise<void> {
   return window.api.setAgentSendConfirmEnabled(enabled)
+}
+
+export function getAgentCliKind(): Promise<AgentCliKindSetting> {
+  return window.api.getAgentCliKind()
+}
+
+export function setAgentCliKind(kind: AgentCliKind): Promise<void> {
+  return window.api.setAgentCliKind(kind)
 }

@@ -13,7 +13,16 @@ const defaultProps = {
   modelSettings: { modelId: 'claude-haiku-4-5' as const, maxTokens: 4096 },
   modelSettingsLoaded: true,
   onSaveModelSettings: vi.fn().mockResolvedValue(undefined),
-  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() }
+  agentSendConfirm: { enabled: true, saveError: null, onChange: vi.fn() },
+  agentCliKind: {
+    kind: 'claude' as const,
+    fallback: null,
+    saveError: null,
+    isLocked: false,
+    isSwitching: false,
+    lockedReason: null,
+    onSelect: vi.fn()
+  }
 }
 
 describe('SettingsPanel', () => {
@@ -227,7 +236,13 @@ describe('SettingsPanel: 実行方式', () => {
     render(
       <SettingsPanel
         {...defaultProps}
-        executionMode={{ mode: 'agent-cli', saveError: null, isLocked: false, onSelect }}
+        executionMode={{
+          mode: 'agent-cli',
+          saveError: null,
+          isLocked: false,
+          isSwitching: false,
+          onSelect
+        }}
       />
     )
     expect(screen.getByRole('radiogroup', { name: 'プロンプトの実行方式' })).toBeInTheDocument()
@@ -243,6 +258,7 @@ describe('SettingsPanel: 実行方式', () => {
           mode: 'legacy',
           saveError: null,
           isLocked: true,
+          isSwitching: false,
           lockedReason: '従来の方式で実行している間は、実行方式を切り替えられません',
           onSelect: vi.fn()
         }}
@@ -272,7 +288,8 @@ describe('SettingsPanel: 実行方式', () => {
         agentNotification={{
           enabled: false,
           saveError: '通知の設定を保存できませんでした',
-          onChange
+          onChange,
+          unsupportedNote: null
         }}
       />
     )
@@ -288,5 +305,97 @@ describe('SettingsPanel: 実行方式', () => {
   it('agentNotification を省略すると節を出さない', () => {
     render(<SettingsPanel {...defaultProps} />)
     expect(screen.queryByText('エージェントの通知')).toBeNull()
+  })
+
+  it('プロンプトの実行方式の直後に使うエージェント CLI を出し、6 つの節が並ぶ', () => {
+    const { container } = render(
+      <SettingsPanel
+        {...defaultProps}
+        executionMode={{
+          mode: 'agent-cli',
+          saveError: null,
+          isLocked: false,
+          isSwitching: false,
+          onSelect: vi.fn()
+        }}
+        agentNotification={{
+          enabled: true,
+          saveError: null,
+          onChange: vi.fn(),
+          unsupportedNote: null
+        }}
+      />
+    )
+    expect(
+      // 節の見出しは <p>。ModelSettingsSection の max_tokens の <label> も同じクラスなので p に限る
+      Array.from(
+        container.querySelectorAll('p.settings-panel__label'),
+        (label) => label.textContent
+      )
+    ).toEqual([
+      'プロンプトの実行方式',
+      '使うエージェント CLI',
+      'エージェントの通知',
+      '送信前の確認',
+      'Anthropic API キー',
+      'モデル'
+    ])
+  })
+
+  it('使うエージェント CLI の節へ agentCliKind の値を渡し、選んだ値を onSelect へ渡す', async () => {
+    const onSelect = vi.fn()
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        agentCliKind={{ ...defaultProps.agentCliKind, kind: 'copilot', onSelect }}
+      />
+    )
+    expect(screen.getByRole('radio', { name: 'GitHub Copilot CLI（copilot）' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'Claude Code（claude）' }))
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('claude')
+  })
+
+  it('通知の項目に、選んだ CLI で通知を出せない旨の注記を出す', () => {
+    const note =
+      'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        agentNotification={{
+          enabled: true,
+          saveError: null,
+          onChange: vi.fn(),
+          unsupportedNote: note
+        }}
+      />
+    )
+    expect(screen.getByText(note)).toHaveClass('settings-panel__note')
+  })
+
+  // 同じ画面に BooleanSettingSection が 2 つ並ぶ(エージェントの通知・送信前の確認)。説明・注記の id が重なると、
+  // 片方のチェックボックスがもう片方の説明を読んでしまう
+  it('エージェントの通知と送信前の確認のチェックボックスは、それぞれ自分の節の説明・注記だけを参照する', () => {
+    const note =
+      'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        agentNotification={{
+          enabled: true,
+          saveError: null,
+          onChange: vi.fn(),
+          unsupportedNote: note
+        }}
+      />
+    )
+    expect(
+      screen.getByRole('checkbox', { name: /^ウィンドウが背面のとき/ })
+    ).toHaveAccessibleDescription(new RegExp(`${note}$`))
+    expect(
+      screen.getByRole('checkbox', { name: 'エージェントへ送る前に、送る内容を確認する' })
+    ).toHaveAccessibleDescription('変数を差し込んだ後の全文と送り先のタブを確かめてから送ります')
   })
 })

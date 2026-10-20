@@ -2,7 +2,8 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import type { RenderHookResult } from '@testing-library/react'
-import type { PromptExecutionMode } from '@shared/types'
+import type { AgentCliKindSetting, PromptExecutionMode } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import {
   makeAgentSessionsState,
   makeAgentSessionTabView
@@ -38,6 +39,8 @@ vi.mock('@shared/types', async (importOriginal) => ({
 vi.mock('../useAgentSendConfirmSetting', () => ({
   useAgentSendConfirmSetting: mockUseAgentSendConfirmSetting
 }))
+const mockUseAgentCliKind = vi.hoisted(() => vi.fn())
+vi.mock('../useAgentCliKind', () => ({ useAgentCliKind: mockUseAgentCliKind }))
 vi.mock('../useExecutionMode', () => ({ useExecutionMode: mockUseExecutionMode }))
 vi.mock('../useAgentSessions', () => ({ useAgentSessions: mockUseAgentSessions }))
 vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPromptSender }))
@@ -68,13 +71,24 @@ import {
   RERUN_DISABLED_AGENT_MODE,
   RUN_DISABLED_CLOSING,
   RUN_DISABLED_NO_SESSION,
-  RUN_DISABLED_SENDING
+  RUN_DISABLED_SENDING,
+  agentPromptSendUnsupportedReason
 } from '../../lib/agentSendMessages'
-import { AGENT_START_DISABLED_SWITCHING_MODE } from '../../lib/agentSessionMessages'
+import {
+  AGENT_START_DISABLED_SWITCHING_CLI_KIND,
+  AGENT_START_DISABLED_SWITCHING_MODE,
+  agentResumeEntryUnsupportedReason,
+  agentResumeLastUnsupportedReason
+} from '../../lib/agentSessionMessages'
+import {
+  AGENT_CLI_KIND_LOCKED_WHILE_STARTING,
+  agentNotificationUnsupportedNote
+} from '../../lib/agentCliMessages'
 import {
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
-  agentInterruptSentNotice
+  agentInterruptSentNotice,
+  agentInterruptUnsupportedReason
 } from '../../lib/agentInterruptMessages'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { agentScreen } from '../../lib/__tests__/fixtures/agentScreens'
@@ -101,6 +115,21 @@ const setSendConfirmEnabled = (
   return changeEnabled
 }
 
+// 使う CLI の設定(既定は claude を読み込み済み)
+const setCliKind = (
+  kind: AgentCliKind | null,
+  changeKind = vi.fn<(next: AgentCliKind) => Promise<boolean>>(async () => true),
+  overrides: { fallback?: AgentCliKindSetting['fallback']; saveError?: string | null } = {}
+): typeof changeKind => {
+  mockUseAgentCliKind.mockReturnValue({
+    kind,
+    fallback: overrides.fallback ?? null,
+    saveError: overrides.saveError ?? null,
+    changeKind
+  })
+  return changeKind
+}
+
 // 選択中のタブ(タブ 1)は未起動で、選択していないタブ 2 だけが status の状態
 const otherTabIs = (
   status: AgentSessionTabView['status'],
@@ -122,6 +151,7 @@ let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 beforeEach(() => {
   vi.clearAllMocks()
   mockUseExecutionMode.mockImplementation(defaultUseExecutionMode)
+  setCliKind('claude')
   mockUseAgentSessions.mockReturnValue(makeAgentSessionsState())
   mockUseAgentPromptSender.mockReturnValue(makeSender())
   mockUseAgentActivity.mockReturnValue(new Map())
@@ -200,7 +230,7 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('組み立て', () => {
-    it('useAgentSessions に開いているフォルダ・文書ごとのタブの置き場・エージェント CLI 方式か・確認を渡す', () => {
+    it('useAgentSessions に開いているフォルダ・文書ごとのタブの置き場・エージェント CLI 方式か・設定の種類・確認を渡す', () => {
       setMode('agent-cli')
       const onConfirm = vi.fn(() => true)
       renderHook(() => useAgentWorkspace({ folderPath: '/p', isExecuting: false, onConfirm }))
@@ -209,6 +239,7 @@ describe('useAgentWorkspace', () => {
         tabs: getAgentSessionTabs(),
         enabled: true,
         startBlockedReason: null,
+        appCliKind: 'claude',
         onConfirm
       })
     })
@@ -243,6 +274,7 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentTerminal.sessions).toBe(sessions)
       expect(result.current.agentTerminal.sendingSlotId).toBe('slot-1')
       expect(typeof result.current.agentTerminal.layout.open).toBe('function')
+      expect(result.current.agentTerminal.appCliKind).toBe('claude')
     })
 
     it('タブごとの活動(useAgentActivity の結果)を agentTerminal.activities に渡す', () => {
@@ -372,7 +404,8 @@ describe('useAgentWorkspace', () => {
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
         controller: tab2.controller,
-        describeSession: expect.any(Function)
+        describeSession: expect.any(Function),
+        cliKind: 'claude'
       })
     })
 
@@ -438,6 +471,147 @@ describe('useAgentWorkspace', () => {
       mockUseAgentPromptSender.mockReturnValue(makeSender({ error: 'e', notice }))
       const { result } = renderWorkspace()
       expect(result.current.promptRun.agentSend).toEqual({ error: 'e', notice })
+    })
+  })
+
+  describe('送信の入口の CLI の種類(選択中のタブの cliKind)', () => {
+    const COPILOT = agentPromptSendUnsupportedReason('copilot')
+    const copilotRunning = (): ReturnType<typeof makeAgentSessionsState> =>
+      makeAgentSessionsState({ selected: { status: 'running', cliKind: 'copilot' } })
+
+    it('選択中のタブが copilot なら実行を押せず、理由を出す', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(copilotRunning())
+      const { result } = renderWorkspace()
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: true,
+        runDisabledReason: COPILOT
+      })
+    })
+
+    it('履歴の再実行(エージェントのエントリ)も選択中のタブの種類で止める', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(copilotRunning())
+      const entry: HistoryEntry = {
+        id: 'h2',
+        promptId: 'p1',
+        promptTitle: '要約',
+        promptContent: '本文',
+        fileContent: null,
+        toolId: 'claude',
+        status: 'sent',
+        resultText: null,
+        errorMessage: null,
+        executedAt: 1000,
+        agent: {
+          claudeSessionId: '11111111-1111-4111-8111-111111111111',
+          tabLabel: 'claude 1',
+          folderPath: '/p'
+        }
+      }
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(entry).rerun).toEqual({
+        disabled: true,
+        reason: COPILOT
+      })
+    })
+
+    it('確認なしで送るとき、送り先に選択中のタブの cliKind を載せる(send の先頭の守りに届く)', async () => {
+      setMode('agent-cli')
+      setSendConfirmEnabled(false)
+      const sender = makeSender()
+      mockUseAgentPromptSender.mockReturnValue(sender)
+      mockUseAgentSessions.mockReturnValue(copilotRunning())
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith(
+        'hello',
+        expect.objectContaining({ cliKind: 'copilot' })
+      )
+    })
+
+    it('送信前の確認の送れない理由は、確認を開いた時点の送り先の種類で求める', async () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(copilotRunning())
+      const { result } = renderWorkspace()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(COPILOT)
+    })
+
+    // 終了したタブの種類は前の起動の結果のまま残る(名前を画面に合わせる)が、起動を押すと設定の種類で起動する。能力の判定は
+    // 動いているタブだけタブの種類、それ以外は次に起動する設定の種類で行う(agentCapabilityCliKindOf)
+    const agentEntry: HistoryEntry = {
+      id: 'h3',
+      promptId: 'p1',
+      promptTitle: '要約',
+      promptContent: '本文',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'sent',
+      resultText: null,
+      errorMessage: null,
+      executedAt: 1000,
+      agent: {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        tabLabel: 'claude 1',
+        folderPath: '/p'
+      }
+    }
+
+    it('(a) copilot で終了したタブで設定が claude なら、実行・再実行は copilot の理由ではなく未起動の理由を出す(名前は copilot のまま)', () => {
+      setMode('agent-cli')
+      setCliKind('claude')
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'exited', cliKind: 'copilot' } })
+      )
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: true,
+        runDisabledReason: RUN_DISABLED_NO_SESSION
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: true,
+        reason: RUN_DISABLED_NO_SESSION
+      })
+      expect(result.current.agentTerminal.sessions.selected.label).toBe('copilot 1')
+    })
+
+    it('(b) claude で終了したタブで設定が copilot なら、実行・再実行は未起動の理由ではなく copilot の理由を出す', () => {
+      setMode('agent-cli')
+      setCliKind('copilot')
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'exited', cliKind: 'claude' } })
+      )
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: true,
+        runDisabledReason: COPILOT
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: true,
+        reason: COPILOT
+      })
+    })
+
+    it('動いているタブは、設定の種類が違ってもタブの種類(起動の結果)で判定する', () => {
+      setMode('agent-cli')
+      setCliKind('copilot')
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'running', cliKind: 'claude' } })
+      )
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: false,
+        runDisabledReason: null
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: false,
+        reason: null
+      })
     })
   })
 
@@ -547,7 +721,8 @@ describe('useAgentWorkspace', () => {
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
         controller: tab2.controller,
-        describeSession: expect.any(Function)
+        describeSession: expect.any(Function),
+        cliKind: 'claude'
       })
     })
 
@@ -571,7 +746,8 @@ describe('useAgentWorkspace', () => {
       expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
         slotId: 'slot-2',
         controller: tab2.controller,
-        describeSession: expect.any(Function)
+        describeSession: expect.any(Function),
+        cliKind: 'claude'
       })
       // 送信が終わるまではターミナルへフォーカスを移さない(送信の前の準備の間のキー入力が claude へ直接届かないように)
       expect(tab2.controller.focus).not.toHaveBeenCalled()
@@ -1165,7 +1341,7 @@ describe('useAgentWorkspace', () => {
       mockUseAgentSessions.mockReturnValue(sessions)
       const { result } = renderWorkspace({ onConfirm: () => true })
       await select(result, 'legacy')
-      await waitFor(() => expect(result.current.executionModePanel.isLocked).toBe(false))
+      await waitFor(() => expect(result.current.executionModePanel.isSwitching).toBe(false))
       expect(sessions.stopAll).toHaveBeenCalledOnce()
       expect(changeMode).not.toHaveBeenCalled()
     })
@@ -1177,7 +1353,7 @@ describe('useAgentWorkspace', () => {
       const onConfirm = vi.fn(() => false)
       const { result } = renderWorkspace({ onConfirm })
       await select(result, 'legacy')
-      await waitFor(() => expect(result.current.executionModePanel.isLocked).toBe(false))
+      await waitFor(() => expect(result.current.executionModePanel.isSwitching).toBe(false))
       expect(onConfirm).toHaveBeenCalledOnce()
       expect(session.stopAll).not.toHaveBeenCalled()
       expect(changeMode).not.toHaveBeenCalled()
@@ -1284,7 +1460,9 @@ describe('useAgentWorkspace', () => {
         onSelect('legacy')
         onSelect('legacy')
       })
-      expect(result.current.executionModePanel.isLocked).toBe(true)
+      // 押した結果の切り替えの途中は isSwitching(部品は aria-disabled にしてフォーカスを保つ。L-157)で、isLocked(disabled)にはしない
+      expect(result.current.executionModePanel.isSwitching).toBe(true)
+      expect(result.current.executionModePanel.isLocked).toBe(false)
       // 次の描画の関数でもう一度選んでも重ねない
       await select(result, 'legacy')
       expect(onConfirm).toHaveBeenCalledOnce()
@@ -1293,7 +1471,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         finishStop()
       })
-      await waitFor(() => expect(result.current.executionModePanel.isLocked).toBe(false))
+      await waitFor(() => expect(result.current.executionModePanel.isSwitching).toBe(false))
       expect(changeMode).toHaveBeenCalledOnce()
     })
 
@@ -1339,10 +1517,295 @@ describe('useAgentWorkspace', () => {
       const { result } = renderWorkspace()
       await select(result, 'agent-cli')
       await waitFor(() => expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(String), boom))
-      expect(result.current.executionModePanel.isLocked).toBe(false)
+      expect(result.current.executionModePanel.isSwitching).toBe(false)
       // 再入防止の ref も戻っている(もう一度選べる)
       await select(result, 'agent-cli')
       await waitFor(() => expect(changeMode).toHaveBeenCalledTimes(2))
+    })
+  })
+
+  describe('使うエージェント CLI(agentCliKindPanel)', () => {
+    const CLI_CHANGE_CONFIRM =
+      '使う CLI を切り替えると、動いているエージェントをすべて終了します。切り替えますか？'
+    const selectCli = async (result: Rendered['result'], kind: AgentCliKind): Promise<void> => {
+      await act(async () => {
+        result.current.agentCliKindPanel.onSelect(kind)
+      })
+    }
+
+    it('設定の値・既定に戻した理由・保存の失敗を渡し、選べる', () => {
+      setCliKind('copilot', undefined, { fallback: 'invalid-value', saveError: 'x' })
+      const { result } = renderWorkspace()
+      expect(result.current.agentCliKindPanel).toMatchObject({
+        kind: 'copilot',
+        fallback: 'invalid-value',
+        saveError: 'x',
+        isLocked: false,
+        isSwitching: false,
+        lockedReason: null
+      })
+    })
+
+    it('設定の種類を useAgentSessions(appCliKind)・ターミナルのパネル・通知の注記に渡す', () => {
+      setMode('agent-cli')
+      setCliKind('copilot')
+      const { result } = renderWorkspace()
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ appCliKind: 'copilot' })
+      )
+      expect(result.current.agentTerminal.appCliKind).toBe('copilot')
+      expect(result.current.agentNotificationPanel.unsupportedNote).toBe(
+        agentNotificationUnsupportedNote('copilot')
+      )
+    })
+
+    it('読み込み中(null)は選べず、useAgentSessions には既定の claude を渡す', () => {
+      setCliKind(null)
+      const { result } = renderWorkspace()
+      expect(result.current.agentCliKindPanel.isLocked).toBe(true)
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ appCliKind: 'claude' })
+      )
+      expect(result.current.agentNotificationPanel.unsupportedNote).toBeNull()
+    })
+
+    it('起動中のタブがあれば選べず、理由を出す', () => {
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({ selected: { status: 'starting' } })
+      )
+      const { result } = renderWorkspace()
+      expect(result.current.agentCliKindPanel).toMatchObject({
+        isLocked: true,
+        isSwitching: false,
+        lockedReason: AGENT_CLI_KIND_LOCKED_WHILE_STARTING
+      })
+    })
+
+    it('動いているタブがあれば確認し、OK なら停止を待ってから保存する', async () => {
+      const order: string[] = []
+      const changeKind = setCliKind(
+        'claude',
+        vi.fn(async () => {
+          order.push('save')
+          return true
+        })
+      )
+      const sessions = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(async () => {
+          await Promise.resolve()
+          order.push('stopped')
+          return true
+        })
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(changeKind).toHaveBeenCalledWith('copilot'))
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(CLI_CHANGE_CONFIRM)
+      expect(order).toEqual(['stopped', 'save'])
+    })
+
+    it('確認でキャンセルしたら止めず、保存もしない', async () => {
+      const changeKind = setCliKind('claude')
+      const sessions = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const { result } = renderWorkspace({ onConfirm: () => false })
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(result.current.agentCliKindPanel.isSwitching).toBe(false))
+      expect(sessions.stopAll).not.toHaveBeenCalled()
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('止められなかったタブがあれば保存しない', async () => {
+      const changeKind = setCliKind('claude')
+      const sessions = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(async () => false)
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(result.current.agentCliKindPanel.isSwitching).toBe(false))
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('動いているタブが無ければ確認せずに保存する(従来の方式の間も選べる)', async () => {
+      setMode('legacy')
+      const changeKind = setCliKind('claude')
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(changeKind).toHaveBeenCalledWith('copilot'))
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    // changeKind は失敗を false で返し、stopAll は reject しないので本来は投げない。投げても選択肢を押せないまま
+    // 残さず、Promise は捨てる側(onSelect)で記録して握る
+    it('保存が投げてもロックを戻し、例外は記録して呼び出し元へ投げない', async () => {
+      const changeKind = setCliKind('claude')
+      const boom = new Error('boom')
+      changeKind.mockRejectedValueOnce(boom)
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const { result } = renderWorkspace()
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(String), boom))
+      expect(result.current.agentCliKindPanel.isSwitching).toBe(false)
+      // 再入防止の ref も戻っている(もう一度選べる)
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(changeKind).toHaveBeenCalledTimes(2))
+    })
+
+    // 押した処理の側でも止める(L-058)
+    it('今と同じ種類を選んでも何もしない', async () => {
+      const changeKind = setCliKind('claude')
+      const { result } = renderWorkspace()
+      await selectCli(result, 'claude')
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    // 注記の「選び直すと保存します」のとおりに、選ばれている claude を押しても保存して不正な値を消す。種類は変わらないので
+    // 動いているタブがあっても確認・停止はしない(動いているタブも同じ claude)
+    it('保存されていた値が不正(invalid-value)な間は、今と同じ種類を選んでも確認・停止なしで保存する', async () => {
+      const changeKind = setCliKind('claude', undefined, { fallback: 'invalid-value' })
+      const sessions = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'claude')
+      await waitFor(() => expect(changeKind).toHaveBeenCalledExactlyOnceWith('claude'))
+      expect(onConfirm).not.toHaveBeenCalled()
+      expect(sessions.stopAll).not.toHaveBeenCalled()
+    })
+
+    it('設定ファイルを読めなかった(read-failed)間は、今と同じ種類を選んでも何もしない', async () => {
+      const changeKind = setCliKind('claude', undefined, { fallback: 'read-failed' })
+      const { result } = renderWorkspace()
+      await selectCli(result, 'claude')
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('不正な値の間でも、別の種類を選ぶときは今までどおり確認して止めてから保存する', async () => {
+      const changeKind = setCliKind('claude', undefined, { fallback: 'invalid-value' })
+      const sessions = makeAgentSessionsState({ selected: { status: 'running' } })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'copilot')
+      await waitFor(() => expect(changeKind).toHaveBeenCalledExactlyOnceWith('copilot'))
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith(CLI_CHANGE_CONFIRM)
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+    })
+
+    it('読み込み中(null)に選んでも何もしない', async () => {
+      const changeKind = setCliKind(null)
+      const { result } = renderWorkspace()
+      await selectCli(result, 'copilot')
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('起動中に選んでも何もしない', async () => {
+      const changeKind = setCliKind('claude')
+      const sessions = makeAgentSessionsState({ selected: { status: 'starting' } })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      // 確認で OK を返しても止めない・保存しない(起動中の判定で止まることを確かめる)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'copilot')
+      expect(onConfirm).not.toHaveBeenCalled()
+      expect(sessions.stopAll).not.toHaveBeenCalled()
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('切り替えの途中は起動の理由を出し、実行方式も使う CLI も選べない。終わったら戻す', async () => {
+      setMode('agent-cli')
+      let finishStop: () => void = () => undefined
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          selected: { status: 'running' },
+          stopAll: vi.fn(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishStop = () => resolve(true)
+              })
+          )
+        })
+      )
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      await selectCli(result, 'copilot')
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startBlockedReason: AGENT_START_DISABLED_SWITCHING_CLI_KIND })
+      )
+      // 押した結果の切り替えの途中は isSwitching(部品は aria-disabled にしてフォーカスを保つ。L-157)で、isLocked(disabled)にはしない
+      expect(result.current.executionModePanel.isSwitching).toBe(true)
+      expect(result.current.agentCliKindPanel.isSwitching).toBe(true)
+      expect(result.current.executionModePanel.isLocked).toBe(false)
+      expect(result.current.agentCliKindPanel.isLocked).toBe(false)
+      await act(async () => {
+        finishStop()
+      })
+      await waitFor(() => expect(result.current.agentCliKindPanel.isSwitching).toBe(false))
+      expect(result.current.executionModePanel.isSwitching).toBe(false)
+      expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startBlockedReason: null })
+      )
+    })
+
+    it('実行方式の切り替えの途中は、使う CLI を選べず、選んでも何もしない(確認・停止・保存を重ねない)', async () => {
+      const changeMode = setMode('agent-cli')
+      const changeKind = setCliKind('claude')
+      const sessions = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(() => new Promise<boolean>(() => undefined))
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await select(result, 'legacy')
+      expect(result.current.agentCliKindPanel.isSwitching).toBe(true)
+      expect(result.current.agentCliKindPanel.isLocked).toBe(false)
+      await selectCli(result, 'copilot')
+      // 共有の途中の印(useAgentWorkspaceSwitching の runSwitching)で止まる。止まらなければ 2 回目の確認と停止が起きる
+      expect(onConfirm).toHaveBeenCalledOnce()
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+      expect(changeMode).not.toHaveBeenCalled()
+      expect(changeKind).not.toHaveBeenCalled()
+    })
+
+    it('使う CLI の切り替えで停止を待つ間は、もう一度 CLI を選んでも実行方式を選んでも、確認・停止・保存を重ねない', async () => {
+      const changeMode = setMode('agent-cli')
+      const changeKind = setCliKind('claude')
+      let finishStop: () => void = () => undefined
+      const sessions = makeAgentSessionsState({
+        selected: { status: 'running' },
+        stopAll: vi.fn(
+          () =>
+            new Promise<boolean>((resolve) => {
+              finishStop = () => resolve(true)
+            })
+        )
+      })
+      mockUseAgentSessions.mockReturnValue(sessions)
+      const onConfirm = vi.fn(() => true)
+      const { result } = renderWorkspace({ onConfirm })
+      await selectCli(result, 'copilot')
+      expect(onConfirm).toHaveBeenCalledOnce()
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+      // 停止を待つ間に、もう一度 CLI を選ぶ・実行方式を選ぶ(共有の途中の印(useAgentWorkspaceSwitching の runSwitching)で止まる)
+      await selectCli(result, 'copilot')
+      await select(result, 'legacy')
+      expect(onConfirm).toHaveBeenCalledOnce()
+      expect(sessions.stopAll).toHaveBeenCalledOnce()
+      expect(changeKind).not.toHaveBeenCalled()
+      expect(changeMode).not.toHaveBeenCalled()
+      await act(async () => {
+        finishStop()
+      })
+      await waitFor(() => expect(result.current.agentCliKindPanel.isSwitching).toBe(false))
+      expect(changeKind).toHaveBeenCalledExactlyOnceWith('copilot')
+      expect(changeMode).not.toHaveBeenCalled()
     })
   })
 
@@ -1808,9 +2271,12 @@ describe('useAgentWorkspace', () => {
         await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
       mockUseAgentSessions.mockImplementation(actual.useAgentSessions)
       setMode('agent-cli')
-      startSpy = vi
-        .spyOn(window.api, 'startAgentSession')
-        .mockResolvedValue({ kind: 'started', sessionId: 'sid-wire', claudeSessionId: CLAUDE_ID })
+      startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
+        kind: 'started',
+        sessionId: 'sid-wire',
+        cliKind: 'claude',
+        claudeSessionId: CLAUDE_ID
+      })
       interruptSpy = vi
         .spyOn(window.api, 'interruptAgentSession')
         .mockResolvedValue({ kind: 'sent' })
@@ -1886,6 +2352,97 @@ describe('useAgentWorkspace', () => {
         result.current.agentTerminal.interrupt.onInterrupt()
       })
       expect(interruptSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('使う CLI の配線(本物の useAgentSessions。L-060)', () => {
+    const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
+    let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
+    let slotId: string
+    const agentEntry: HistoryEntry = {
+      id: 'h-wire',
+      promptId: 'p1',
+      promptTitle: '要約',
+      promptContent: '本文',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'sent',
+      resultText: null,
+      errorMessage: null,
+      executedAt: 1000,
+      agent: { claudeSessionId: CLAUDE_ID, tabLabel: 'claude 1', folderPath: '/p' }
+    }
+
+    beforeEach(async () => {
+      const actual =
+        await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
+      mockUseAgentSessions.mockImplementation(actual.useAgentSessions)
+      setMode('agent-cli')
+      slotId = getAgentSessionTabs().getSnapshot().selectedSlotId
+    })
+
+    afterEach(() => {
+      startSpy?.mockRestore()
+      startSpy = null
+    })
+
+    const startWith = async (result: Rendered['result'], cliKind: AgentCliKind): Promise<void> => {
+      startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
+        kind: 'started',
+        sessionId: 'sid-cli',
+        cliKind,
+        claudeSessionId: cliKind === 'claude' ? CLAUDE_ID : null
+      })
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+    }
+
+    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行・中断・前回の続きから・このセッションで再開がどれも copilot の理由で押せない', async () => {
+      setCliKind('copilot')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.agentTerminal.sessions.selected.label).toBe('copilot 1')
+      await startWith(result, 'copilot')
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: true,
+        runDisabledReason: agentPromptSendUnsupportedReason('copilot')
+      })
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        agentInterruptUnsupportedReason('copilot')
+      )
+      expect(result.current.agentTerminal.resumeLast.disabledReason).toBe(
+        agentResumeLastUnsupportedReason('copilot')
+      )
+      expect(result.current.getHistoryActions(agentEntry).resume?.reason).toBe(
+        agentResumeEntryUnsupportedReason('copilot')
+      )
+    })
+
+    it('起動の結果が copilot なら、設定が claude のままでも(別のウィンドウで変えた場合)そのタブの実行は押せない', async () => {
+      setCliKind('claude')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await startWith(result, 'copilot')
+      expect(result.current.agentTerminal.sessions.selected).toMatchObject({
+        cliKind: 'copilot',
+        label: 'copilot 1'
+      })
+      expect(result.current.promptRun.runDisabledReason).toBe(
+        agentPromptSendUnsupportedReason('copilot')
+      )
+      // 再開の入口は設定の種類(claude)で決まる
+      expect(result.current.agentTerminal.resumeLast.disabledReason).not.toBe(
+        agentResumeLastUnsupportedReason('copilot')
+      )
+    })
+
+    it('設定も起動の結果も claude なら、今までどおり実行を押せる', async () => {
+      setCliKind('claude')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await startWith(result, 'claude')
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: false,
+        runDisabledReason: null
+      })
     })
   })
 })

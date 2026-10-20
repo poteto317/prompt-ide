@@ -551,12 +551,14 @@ describe('利用者の変更との区別の文言', () => {
     )
   })
 
-  it('区別をやめた理由の文言は 4 つの理由を網羅する', () => {
+  it('区別をやめた理由の文言は 5 つの理由を網羅する', () => {
     expect(AGENT_CHANGES_ATTRIBUTION_LOST_REASONS).toEqual({
       'hooks-not-confirmed': 'claude の hooks から知らせが届きません',
       'receiver-unavailable': 'hooks の知らせの受け口を用意できませんでした',
       'claude-version-unsupported': 'claude の版が古いか、版を確かめられませんでした',
-      'checkpoint-failed': '作業ツリーの記録に失敗しました'
+      'checkpoint-failed': '作業ツリーの記録に失敗しました',
+      'cli-unsupported':
+        '使っているエージェント CLI が区別に対応していません（claude だけが対応しています）'
     })
   })
 

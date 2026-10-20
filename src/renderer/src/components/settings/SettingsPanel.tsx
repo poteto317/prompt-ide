@@ -1,5 +1,6 @@
 import type { ModelSettings } from '@shared/types'
 import type {
+  AgentCliKindPanelState,
   AgentNotificationPanelState,
   AgentSendConfirmPanelState,
   ExecutionModePanelState
@@ -10,6 +11,7 @@ import { useModelSettingsForm } from '../../hooks/useModelSettingsForm'
 import ModelSettingsSection from './ModelSettingsSection'
 import ExecutionModeSection from './ExecutionModeSection'
 import AgentNotificationSection from './AgentNotificationSection'
+import AgentCliKindSection from './AgentCliKindSection'
 
 interface Props {
   hasKey: boolean
@@ -21,6 +23,8 @@ interface Props {
   onSaveModelSettings: (settings: ModelSettings) => Promise<void>
   /** プロンプトの実行方式(省略時は出さない) */
   executionMode?: ExecutionModePanelState
+  /** 使うエージェント CLI の設定(省略できない。配線の漏れを型で検出する。L-060) */
+  agentCliKind: AgentCliKindPanelState
   /** エージェントの通知の設定(省略時は出さない) */
   agentNotification?: AgentNotificationPanelState
   /** エージェントへの送信前の確認の設定(省略できない。配線の漏れを型で検出する。L-060) */
@@ -36,6 +40,7 @@ export default function SettingsPanel({
   modelSettingsLoaded,
   onSaveModelSettings,
   executionMode,
+  agentCliKind,
   agentNotification,
   agentSendConfirm
 }: Props): React.JSX.Element {
@@ -54,15 +59,18 @@ export default function SettingsPanel({
           mode={executionMode.mode}
           saveError={executionMode.saveError}
           isLocked={executionMode.isLocked}
+          isSwitching={executionMode.isSwitching}
           lockedReason={executionMode.lockedReason}
           onSelect={executionMode.onSelect}
         />
       )}
+      <AgentCliKindSection {...agentCliKind} />
       {agentNotification !== undefined && (
         <AgentNotificationSection
           enabled={agentNotification.enabled}
           saveError={agentNotification.saveError}
           onChange={agentNotification.onChange}
+          unsupportedNote={agentNotification.unsupportedNote}
         />
       )}
       <AgentSendConfirmSection

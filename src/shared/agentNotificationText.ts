@@ -35,5 +35,6 @@ export function agentNotificationText(
   kind: AgentNotificationKind,
   tabNumber: number
 ): AgentNotificationText {
-  return TEXTS[kind](formatAgentTabLabel(tabNumber))
+  // 通知は画面の判定(screenActivity)が true の種類でだけ出るため claude の名前にする(種類を通知の依頼に足すのは段階 2)
+  return TEXTS[kind](formatAgentTabLabel(tabNumber, 'claude'))
 }

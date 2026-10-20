@@ -69,8 +69,18 @@ describe('App: セッションの再開と履歴の配線', () => {
     window.api.getLastAgentSession = vi.fn().mockResolvedValue(null)
     window.api.startAgentSession = vi
       .fn()
-      .mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: ID })
-      .mockResolvedValue({ kind: 'started', sessionId: 's2', claudeSessionId: ID })
+      .mockResolvedValueOnce({
+        kind: 'started',
+        sessionId: 's1',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
+      .mockResolvedValue({
+        kind: 'started',
+        sessionId: 's2',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
     window.api.onAgentExit = vi.fn((listener: (exit: AgentSessionExit) => void) => {
       emitExit = listener
       return () => {}
@@ -235,7 +245,12 @@ describe('App: セッションの再開と履歴の配線', () => {
     // + で足すタブ(claude 2)は起動に失敗させ、起動していないタブとして 前回の続きから を出す
     window.api.startAgentSession = vi
       .fn()
-      .mockResolvedValueOnce({ kind: 'started', sessionId: 's1', claudeSessionId: ID })
+      .mockResolvedValueOnce({
+        kind: 'started',
+        sessionId: 's1',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
       .mockResolvedValue({ kind: 'error', error: 'spawn-failed' })
     render(<App />)
     await screen.findByRole('region', { name: 'エージェント' })

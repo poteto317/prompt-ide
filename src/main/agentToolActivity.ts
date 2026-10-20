@@ -21,7 +21,11 @@ export const AGENT_HOOKS_UNCONFIRMED_AFTER_WORKING_MS = 15_000
 /** 作業の終わり(renderer の活動の working の後の idle)から Stop・StopFailure を待つ時間。過ぎたら次の知らせまで割り当てを保留する */
 export const AGENT_HOOKS_TURN_END_WAIT_MS = 30_000
 
-export type AgentHooksUnavailableReason = 'receiver-unavailable' | 'claude-version-unsupported'
+/** cli-unsupported は使う CLI が hooks による区別に対応していない(agentHookSessions の prepare) */
+export type AgentHooksUnavailableReason =
+  | 'receiver-unavailable'
+  | 'claude-version-unsupported'
+  | 'cli-unsupported'
 export type AgentHooksLostReason = 'hooks-not-confirmed' | AgentHooksUnavailableReason
 export type AgentToolPhase = 'idle' | 'agent' | 'paused'
 

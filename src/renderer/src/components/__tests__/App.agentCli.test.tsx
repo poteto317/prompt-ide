@@ -36,6 +36,7 @@ describe('App: エージェント CLI 方式の配線', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.api.getPromptExecutionMode = vi.fn().mockResolvedValue('agent-cli')
+    window.api.getAgentCliKind = vi.fn().mockResolvedValue({ kind: 'claude', fallback: null })
     window.api.loadPrompts = vi.fn().mockResolvedValue([])
     window.api.openFolder = vi.fn().mockResolvedValue(null)
     window.api.readDirectory = vi.fn().mockResolvedValue([])
@@ -86,6 +87,21 @@ describe('App: エージェント CLI 方式の配線', () => {
         'aria-checked',
         'true'
       )
+    )
+  })
+
+  it('設定に使うエージェント CLI を出して保存された種類を選び、帯の 起動 の名前もその種類にする', async () => {
+    window.api.getAgentCliKind = vi.fn().mockResolvedValue({ kind: 'copilot', fallback: null })
+    render(<App />)
+    expect(
+      await screen.findByRole('button', { name: '起動（開いているフォルダで copilot を起動）' })
+    ).toBeInTheDocument()
+    await userEvent.click(panelButton('settings'))
+    const group = await screen.findByRole('radiogroup', { name: '使うエージェント CLI' })
+    await waitFor(() =>
+      expect(
+        within(group).getByRole('radio', { name: 'GitHub Copilot CLI（copilot）' })
+      ).toHaveAttribute('aria-checked', 'true')
     )
   })
 

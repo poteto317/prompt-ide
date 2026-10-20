@@ -1,5 +1,7 @@
 import { ipcRenderer } from 'electron'
 import type {
+  AgentCliKind,
+  AgentCliKindSetting,
   AgentChangesBeginTrigger,
   AgentChangesListResult,
   AgentChangesScope,
@@ -183,6 +185,10 @@ export const api = {
     ipcRenderer.invoke('settings:getAgentSendConfirmEnabled'),
   setAgentSendConfirmEnabled: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('settings:setAgentSendConfirmEnabled', enabled),
+  getAgentCliKind: (): Promise<AgentCliKindSetting> =>
+    ipcRenderer.invoke('settings:getAgentCliKind'),
+  setAgentCliKind: (kind: AgentCliKind): Promise<void> =>
+    ipcRenderer.invoke('settings:setAgentCliKind', kind),
   // エージェントのセッション。起動のコマンド・作業ディレクトリ・環境変数は main が決める
   startAgentSession: (request: AgentStartRequest): Promise<AgentStartResult> =>
     ipcRenderer.invoke('agentTerminal:start', request),

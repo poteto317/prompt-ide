@@ -13,18 +13,29 @@ export function makeAgentWorkspaceState(
       mode: 'legacy',
       saveError: null,
       isLocked: false,
+      isSwitching: false,
       lockedReason: null,
       onSelect: vi.fn<AgentWorkspaceState['executionModePanel']['onSelect']>()
     },
     agentNotificationPanel: {
       enabled: true,
       saveError: null,
-      onChange: vi.fn<AgentWorkspaceState['agentNotificationPanel']['onChange']>()
+      onChange: vi.fn<AgentWorkspaceState['agentNotificationPanel']['onChange']>(),
+      unsupportedNote: null
     },
     agentSendConfirmPanel: {
       enabled: true,
       saveError: null,
       onChange: vi.fn<AgentWorkspaceState['agentSendConfirmPanel']['onChange']>()
+    },
+    agentCliKindPanel: {
+      kind: 'claude',
+      fallback: null,
+      saveError: null,
+      isLocked: false,
+      isSwitching: false,
+      lockedReason: null,
+      onSelect: vi.fn<AgentWorkspaceState['agentCliKindPanel']['onSelect']>()
     },
     confirmStopAgent: vi.fn<AgentWorkspaceState['confirmStopAgent']>(() => true),
     promptRun: {

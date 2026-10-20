@@ -5,6 +5,7 @@ import type { PromptRunStateInput } from '../promptRunState'
 const base: PromptRunStateInput = {
   mode: 'legacy',
   isExecuting: false,
+  cliKind: 'claude',
   sessionStatus: 'none',
   isSessionClosing: false,
   isSending: false,
@@ -128,6 +129,19 @@ describe('buildPromptRunPanelState', () => {
         }
         expect(state.showToolSelector).toBe(input.mode !== 'agent-cli')
       }
+    )
+  })
+
+  it('エージェント CLI 方式で送り先が copilot なら、running でも押せず理由を出す', () => {
+    const state = buildPromptRunPanelState({
+      ...base,
+      mode: 'agent-cli',
+      cliKind: 'copilot',
+      sessionStatus: 'running'
+    })
+    expect(state.isRunDisabled).toBe(true)
+    expect(state.runDisabledReason).toBe(
+      'copilot へのプロンプトの送信には、まだ対応していません（ターミナルに直接入力してください）'
     )
   })
 })

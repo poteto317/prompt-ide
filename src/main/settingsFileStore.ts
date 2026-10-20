@@ -15,6 +15,8 @@ export interface SettingsFile {
   agentNotificationsEnabled?: boolean
   /** エージェントへの送信前の確認のオン・オフ(agentSendConfirmSettingStore が検証する) */
   agentSendConfirmEnabled?: boolean
+  /** 使うエージェント CLI(agentCliKindStore が検証する) */
+  agentCliKind?: string
 }
 
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')

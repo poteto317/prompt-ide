@@ -31,6 +31,8 @@ export type AgentSendFailure =
   | 'input-not-found'
   | 'clear-failed'
   | 'not-echoed'
+  /** 送り先の CLI が送信に対応していない(useAgentPromptSender.send の先頭の守り。sendAgentPrompt は返さない) */
+  | 'unsupported-cli'
 
 /** clearedDraft: 消去の前・途中に、入力欄が空でない(書きかけがある)と判定できたか */
 export type AgentSendOutcome =

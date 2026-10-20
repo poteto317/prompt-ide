@@ -119,13 +119,15 @@ export function isAgentRevertAllTarget(entry: Pick<AgentChangeEntry, 'author'>):
 
 /**
  * 記録の区別をやめた理由。main の追跡の理由(agentToolActivity の AgentHooksLostReason)に、判定の区切り・差分・今の区間の
- * 比較の失敗(checkpoint-failed)を足したもの。用途ごとに型を分け、string で受けない(L-439)
+ * 比較の失敗(checkpoint-failed)を足したもの。用途ごとに型を分け、string で受けない(L-439)。
+ * cli-unsupported は使う CLI が hooks による区別に対応していない(main の hooks.prepare)
  */
 export type AgentChangesAttributionLostReason =
   | 'hooks-not-confirmed'
   | 'receiver-unavailable'
   | 'claude-version-unsupported'
   | 'checkpoint-failed'
+  | 'cli-unsupported'
 
 /** 記録の区別の要約(AgentChangesState・AgentChangesListResult に載せる)。since は区別を始めた時刻、hadMarks は集合が空でないか */
 export type AgentChangesAttributionSummary =

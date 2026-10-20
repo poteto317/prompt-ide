@@ -67,12 +67,13 @@ export function useAgentSendConfirm({
   const request = useCallback(
     (text: string, options: AgentSendOptions): void => {
       if (pendingRef.current !== null) return
-      const { slotId, controller, describeSession, label } = selectedRef.current
-      // 送り先は開いた時点のタブ。送り先の控え(describeSession)も写す(写し忘れると確認を経由した送信だけ履歴の記録が抜ける)
+      const { slotId, controller, describeSession, cliKind, label } = selectedRef.current
+      // 送り先は開いた時点のタブ。送り先の控え(describeSession)と種類(cliKind)も写す(控えを写し忘れると確認を経由した送信だけ
+      // 履歴の記録が抜ける。種類は send が送信に対応しない種類を断る判定に使う。L-058)
       const next: PendingAgentSend = {
         ...options,
         text,
-        target: { slotId, controller, describeSession },
+        target: { slotId, controller, describeSession, cliKind },
         label,
         opener: document.activeElement
       }

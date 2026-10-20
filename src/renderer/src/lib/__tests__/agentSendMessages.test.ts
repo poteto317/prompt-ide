@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PromptExecutionMode } from '@shared/types'
 import {
+  AGENT_SEND_FAILURE_MESSAGES,
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
   PROMPT_RUN_ARIA_LABEL_AGENT,
@@ -11,6 +12,8 @@ import {
   RUN_DISABLED_LOADING_MODE,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING,
+  agentPromptSendUnsupportedReason,
+  agentSendFailureMessage,
   getHistoryRerunAvailability,
   getPromptRunAvailability,
   getRerunAvailability,
@@ -19,6 +22,7 @@ import {
 
 describe('getPromptRunAvailability', () => {
   const base = {
+    cliKind: 'claude' as const,
     isExecuting: false,
     isSessionRunning: false,
     isSessionClosing: false,
@@ -111,6 +115,7 @@ describe('実行ボタンの aria-label', () => {
 
 describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)', () => {
   const base = {
+    cliKind: 'claude' as const,
     isExecuting: false,
     isSessionRunning: true,
     isSessionClosing: false,
@@ -201,5 +206,77 @@ describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)'
         folderPath: null
       })
     ).toEqual({ disabled: false, reason: null })
+  })
+})
+
+describe('送信の入口の CLI の種類(送り先のタブの cliKind)', () => {
+  const COPILOT = agentPromptSendUnsupportedReason('copilot')
+  const running = {
+    mode: 'agent-cli' as const,
+    isExecuting: false,
+    cliKind: 'copilot' as const,
+    isSessionRunning: true,
+    isSessionClosing: false,
+    isSending: false
+  }
+
+  it('送り先が copilot なら押せず、理由を出す', () => {
+    expect(getPromptRunAvailability(running)).toEqual({ disabled: true, reason: COPILOT })
+  })
+
+  it('copilot の理由は、閉じる途中・未起動・送信中より先(起動しても送れないため)', () => {
+    for (const patch of [
+      { isSessionClosing: true },
+      { isSessionRunning: false },
+      { isSending: true }
+    ]) {
+      expect(getPromptRunAvailability({ ...running, ...patch })).toEqual({
+        disabled: true,
+        reason: COPILOT
+      })
+    }
+  })
+
+  it('読み込み中・従来の方式は種類を見ない(従来の方式の判定の直後に見る)', () => {
+    expect(getPromptRunAvailability({ ...running, mode: null })).toEqual({
+      disabled: true,
+      reason: RUN_DISABLED_LOADING_MODE
+    })
+    expect(getPromptRunAvailability({ ...running, mode: 'legacy' })).toEqual({
+      disabled: false,
+      reason: null
+    })
+  })
+
+  it('履歴の再実行(エージェントのエントリ)も同じ理由(getPromptRunAvailability を通る)', () => {
+    expect(
+      getHistoryRerunAvailability({ ...running, recordedFolderPath: '/repo', folderPath: '/repo' })
+    ).toEqual({ disabled: true, reason: COPILOT })
+  })
+})
+
+describe('送信に対応しない CLI の理由(agentPromptSendUnsupportedReason)', () => {
+  it('実行・再実行・送信前の確認の理由は CLI の名前で作る', () => {
+    expect(agentPromptSendUnsupportedReason('copilot')).toBe(
+      'copilot へのプロンプトの送信には、まだ対応していません（ターミナルに直接入力してください）'
+    )
+  })
+})
+
+describe('送信の失敗の文言(agentSendFailureMessage)', () => {
+  it('unsupported-cli は実行ボタンの理由と同じ関数の文言', () => {
+    expect(agentSendFailureMessage('unsupported-cli', 'copilot')).toBe(
+      agentPromptSendUnsupportedReason('copilot')
+    )
+  })
+
+  it('ほかの理由は AGENT_SEND_FAILURE_MESSAGES の文言(CLI の名前を使わない)', () => {
+    expect(agentSendFailureMessage('input-not-found', 'copilot')).toBe(
+      AGENT_SEND_FAILURE_MESSAGES['input-not-found']
+    )
+  })
+
+  it('AGENT_SEND_FAILURE_MESSAGES は unsupported-cli を持たない(CLI の名前の要る文言は関数で引く)', () => {
+    expect(Object.keys(AGENT_SEND_FAILURE_MESSAGES)).not.toContain('unsupported-cli')
   })
 })

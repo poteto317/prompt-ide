@@ -11,7 +11,14 @@ const NOTE =
 
 describe('AgentNotificationSection', () => {
   it('見出しと、見えているラベルを名前にしたチェックボックスを出し、説明を参照する', () => {
-    render(<AgentNotificationSection enabled saveError={null} onChange={vi.fn()} />)
+    render(
+      <AgentNotificationSection
+        enabled
+        saveError={null}
+        onChange={vi.fn()}
+        unsupportedNote={null}
+      />
+    )
     expect(screen.getByText('エージェントの通知')).toBeInTheDocument()
     const checkbox = screen.getByRole('checkbox', { name: OPTION })
     expect(checkbox).toBeChecked()
@@ -19,14 +26,28 @@ describe('AgentNotificationSection', () => {
   })
 
   it('節の名前をグループの名前に結び付け、チェックボックスはそのグループの中にある(Tab で移ったときに節の名前も読まれる)', () => {
-    render(<AgentNotificationSection enabled saveError={null} onChange={vi.fn()} />)
+    render(
+      <AgentNotificationSection
+        enabled
+        saveError={null}
+        onChange={vi.fn()}
+        unsupportedNote={null}
+      />
+    )
     const group = screen.getByRole('group', { name: 'エージェントの通知' })
     expect(within(group).getByRole('checkbox', { name: OPTION })).toBeInTheDocument()
   })
 
   it('オフなら外れていて、押すと onChange(true)', async () => {
     const onChange = vi.fn()
-    render(<AgentNotificationSection enabled={false} saveError={null} onChange={onChange} />)
+    render(
+      <AgentNotificationSection
+        enabled={false}
+        saveError={null}
+        onChange={onChange}
+        unsupportedNote={null}
+      />
+    )
     const checkbox = screen.getByRole('checkbox', { name: OPTION })
     expect(checkbox).not.toBeChecked()
     await userEvent.click(checkbox)
@@ -35,13 +56,27 @@ describe('AgentNotificationSection', () => {
 
   it('オンで押すと onChange(false)', async () => {
     const onChange = vi.fn()
-    render(<AgentNotificationSection enabled saveError={null} onChange={onChange} />)
+    render(
+      <AgentNotificationSection
+        enabled
+        saveError={null}
+        onChange={onChange}
+        unsupportedNote={null}
+      />
+    )
     await userEvent.click(screen.getByRole('checkbox', { name: OPTION }))
     expect(onChange).toHaveBeenCalledWith(false)
   })
 
   it('読み込み中は押せず、読み込み中と出す', () => {
-    render(<AgentNotificationSection enabled={null} saveError={null} onChange={vi.fn()} />)
+    render(
+      <AgentNotificationSection
+        enabled={null}
+        saveError={null}
+        onChange={vi.fn()}
+        unsupportedNote={null}
+      />
+    )
     expect(screen.getByRole('checkbox', { name: OPTION })).toBeDisabled()
     expect(screen.getByText('読み込み中...')).toBeInTheDocument()
   })
@@ -52,6 +87,7 @@ describe('AgentNotificationSection', () => {
         enabled
         saveError="通知の設定を保存できませんでした: x"
         onChange={vi.fn()}
+        unsupportedNote={null}
       />
     )
     expect(screen.getByRole('alert')).toHaveTextContent('通知の設定を保存できませんでした: x')
@@ -62,11 +98,45 @@ describe('AgentNotificationSection', () => {
     style.textContent = readFileSync(resolve(__dirname, '../../../assets/main.css'), 'utf-8')
     document.head.appendChild(style)
     try {
-      render(<AgentNotificationSection enabled saveError={null} onChange={vi.fn()} />)
+      render(
+        <AgentNotificationSection
+          enabled
+          saveError={null}
+          onChange={vi.fn()}
+          unsupportedNote={null}
+        />
+      )
       const label = screen.getByRole('checkbox', { name: OPTION }).closest('label')!
       expect(getComputedStyle(label).minHeight).toBe('32px')
     } finally {
       style.remove()
     }
+  })
+
+  it('注記(unsupportedNote)があれば説明の後ろに出し、無ければ出さない', () => {
+    const note =
+      'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
+    const { rerender } = render(
+      <AgentNotificationSection
+        enabled
+        saveError={null}
+        onChange={vi.fn()}
+        unsupportedNote={note}
+      />
+    )
+    expect(screen.getByText(note)).toHaveClass('settings-panel__note')
+    expect(screen.getByRole('checkbox', { name: OPTION })).toHaveAccessibleDescription(
+      `${NOTE} ${note}`
+    )
+    rerender(
+      <AgentNotificationSection
+        enabled
+        saveError={null}
+        onChange={vi.fn()}
+        unsupportedNote={null}
+      />
+    )
+    expect(screen.queryByText(note)).toBeNull()
+    expect(screen.getByRole('checkbox', { name: OPTION })).toHaveAccessibleDescription(NOTE)
   })
 })

@@ -142,6 +142,7 @@ export default function App(): React.JSX.Element {
     executionModePanel,
     agentNotificationPanel,
     agentSendConfirmPanel,
+    agentCliKindPanel,
     agentSendConfirmDialog,
     promptRun,
     bottomPanel,
@@ -342,6 +343,7 @@ export default function App(): React.JSX.Element {
               executionMode={executionModePanel}
               agentNotification={agentNotificationPanel}
               agentSendConfirm={agentSendConfirmPanel}
+              agentCliKind={agentCliKindPanel}
               agentReferences={agentReferences}
             />
           )}

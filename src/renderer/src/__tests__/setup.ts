@@ -51,6 +51,8 @@ Object.defineProperty(window, 'api', {
     setAgentNotificationsEnabled: () => Promise.resolve(),
     getAgentSendConfirmEnabled: () => Promise.resolve(true),
     setAgentSendConfirmEnabled: () => Promise.resolve(),
+    getAgentCliKind: () => Promise.resolve({ kind: 'claude', fallback: null }),
+    setAgentCliKind: () => Promise.resolve(),
     startAgentSession: () => Promise.resolve({ kind: 'error', error: 'no-folder' }),
     writeAgentSession: () => {},
     resizeAgentSession: () => {},

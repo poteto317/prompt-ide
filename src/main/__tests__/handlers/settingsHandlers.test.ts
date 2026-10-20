@@ -35,6 +35,13 @@ vi.mock('../../agentSendConfirmSettingStore', () => ({
   setAgentSendConfirmEnabled: mockSetAgentSendConfirmEnabled
 }))
 
+const mockGetAgentCliKindSetting = vi.hoisted(() => vi.fn())
+const mockSetAgentCliKind = vi.hoisted(() => vi.fn())
+vi.mock('../../agentCliKindStore', () => ({
+  getAgentCliKindSetting: mockGetAgentCliKindSetting,
+  setAgentCliKind: mockSetAgentCliKind
+}))
+
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
 
 const mockIpcMain = { handle: mockHandle } as never
@@ -182,6 +189,28 @@ describe('registerSettingsHandlers', () => {
       ).rejects.toThrow('modelId は')
       expect(mockSetModelSettings).not.toHaveBeenCalled()
     })
+  })
+
+  it('settings:getAgentCliKind は保存された設定(種類と既定に戻した理由)を返す', async () => {
+    mockGetAgentCliKindSetting.mockResolvedValueOnce({ kind: 'copilot', fallback: null })
+    await expect(getRegisteredHandler('settings:getAgentCliKind')(makeEvent(1))).resolves.toEqual({
+      kind: 'copilot',
+      fallback: null
+    })
+    expect(mockGetAgentCliKindSetting).toHaveBeenCalledOnce()
+  })
+
+  it('settings:setAgentCliKind は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetAgentCliKind.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setAgentCliKind')(makeEvent(1), 'copilot')
+    expect(mockSetAgentCliKind).toHaveBeenCalledExactlyOnceWith('copilot')
+  })
+
+  it('settings:setAgentCliKind は store の拒否をそのまま返す', async () => {
+    mockSetAgentCliKind.mockRejectedValueOnce(new Error('使うエージェント CLI が不正です'))
+    await expect(
+      getRegisteredHandler('settings:setAgentCliKind')(makeEvent(1), 'codex')
+    ).rejects.toThrow('使うエージェント CLI が不正です')
   })
 })
 

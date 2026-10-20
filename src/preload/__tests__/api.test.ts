@@ -517,6 +517,16 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['settings:setAgentSendConfirmEnabled', false]
     ],
     [
+      'getAgentCliKind は settings:getAgentCliKind を呼ぶ',
+      () => api.getAgentCliKind(),
+      ['settings:getAgentCliKind']
+    ],
+    [
+      'setAgentCliKind は settings:setAgentCliKind に種類を渡す',
+      () => api.setAgentCliKind('copilot'),
+      ['settings:setAgentCliKind', 'copilot']
+    ],
+    [
       'openExternalLink は shell:openExternalLink に URL を渡す',
       () => api.openExternalLink('https://x'),
       ['shell:openExternalLink', 'https://x']

@@ -1,3 +1,4 @@
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { PromptExecutionMode } from '@shared/types'
 import type { Announcement, PromptRunPanelState } from '../types'
 import type { AgentSessionStatus } from './agentSessionTabState'
@@ -15,6 +16,8 @@ export interface PromptRunStateInput {
   mode: PromptExecutionMode | null
   /** 従来の方式で実行しているか */
   isExecuting: boolean
+  /** 能力の判定に使う CLI の種類(agentCapabilityCliKindOf。動いているタブはタブの種類、それ以外は次に起動する設定の種類) */
+  cliKind: AgentCliKind
   sessionStatus: AgentSessionStatus
   /** 送り先のタブが閉じる途中か */
   isSessionClosing: boolean
@@ -27,6 +30,7 @@ export interface PromptRunStateInput {
 export function buildPromptRunPanelState({
   mode,
   isExecuting,
+  cliKind,
   sessionStatus,
   isSessionClosing,
   isSending,
@@ -37,6 +41,7 @@ export function buildPromptRunPanelState({
   const run = getPromptRunAvailability({
     mode,
     isExecuting,
+    cliKind,
     isSessionRunning: sessionStatus === 'running',
     isSessionClosing,
     isSending

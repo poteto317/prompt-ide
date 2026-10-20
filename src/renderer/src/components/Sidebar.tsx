@@ -28,6 +28,7 @@ import type {
   ExecutionModePanelState,
   AgentNotificationPanelState,
   AgentSendConfirmPanelState,
+  AgentCliKindPanelState,
   AgentReferencesPanelState
 } from '../types'
 import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
@@ -138,6 +139,8 @@ interface Props {
   agentNotification?: AgentNotificationPanelState
   /** エージェントへの送信前の確認の設定(省略できない。L-060) */
   agentSendConfirm: AgentSendConfirmPanelState
+  /** 使うエージェント CLI の設定(省略できない。L-060) */
+  agentCliKind: AgentCliKindPanelState
   /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
    *  フォルダを開いているときだけで、それ以外は null。省略できない(L-060) */
   agentReferences: AgentReferencesPanelState | null
@@ -239,6 +242,7 @@ export default function Sidebar({
   executionMode,
   agentNotification,
   agentSendConfirm,
+  agentCliKind,
   agentReferences
 }: Props): React.JSX.Element {
   // 送信の結果の見える文字は、見えているパネル(プロンプト・実行履歴)の 1 か所だけに出す。読み上げはパネルの外に常に置いた
@@ -376,6 +380,7 @@ export default function Sidebar({
           executionMode={executionMode}
           agentNotification={agentNotification}
           agentSendConfirm={agentSendConfirm}
+          agentCliKind={agentCliKind}
         />
       </PanelContainer>
     </div>

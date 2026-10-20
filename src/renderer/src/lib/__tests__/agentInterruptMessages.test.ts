@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { AGENT_STOP_ERROR_PREFIX, formatAgentTabLabel } from '../agentSessionMessages'
 import {
-  AGENT_INTERRUPT_ARIA_LABEL,
   AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
@@ -13,15 +12,18 @@ import {
   AGENT_INTERRUPT_ERROR_WRITE_FAILED,
   AGENT_INTERRUPT_LABEL,
   AGENT_INTERRUPT_NOT_RUNNING,
+  agentInterruptAriaLabel,
   agentInterruptError,
-  agentInterruptSentNotice
+  agentInterruptSentNotice,
+  agentInterruptUnsupportedReason
 } from '../agentInterruptMessages'
 
 describe('中断の文言(設計書 2026-10-19「画面」「エラー処理」)', () => {
   it('ボタンの見える文字と名前(見える文字で始める。パターン 76)', () => {
     expect(AGENT_INTERRUPT_LABEL).toBe('中断')
-    expect(AGENT_INTERRUPT_ARIA_LABEL).toBe('中断（作業中の claude に Esc を送る）')
-    expect(AGENT_INTERRUPT_ARIA_LABEL.startsWith(AGENT_INTERRUPT_LABEL)).toBe(true)
+    expect(agentInterruptAriaLabel('claude')).toBe('中断（作業中の claude に Esc を送る）')
+    expect(agentInterruptAriaLabel('copilot')).toBe('中断（作業中の copilot に Esc を送る）')
+    expect(agentInterruptAriaLabel('copilot').startsWith(AGENT_INTERRUPT_LABEL)).toBe(true)
   })
 
   it('押せない理由', () => {
@@ -44,7 +46,7 @@ describe('中断の文言(設計書 2026-10-19「画面」「エラー処理」)
 
   it('送れたときの読み上げは、押した時点のタブのラベルで始める', () => {
     expect(agentInterruptSentNotice('claude 1')).toBe('claude 1 に中断（Esc）を送りました')
-    expect(agentInterruptSentNotice(formatAgentTabLabel(3))).toBe(
+    expect(agentInterruptSentNotice(formatAgentTabLabel(3, 'claude'))).toBe(
       'claude 3 に中断（Esc）を送りました'
     )
   })
@@ -60,5 +62,13 @@ describe('中断の文言(設計書 2026-10-19「画面」「エラー処理」)
     expect(agentInterruptError('ipc down')).toBe('中断を送れませんでした: ipc down')
     // 終了の失敗の接頭辞とは別(中断が成功しても、終了の失敗の文言は消さない)
     expect(AGENT_STOP_ERROR_PREFIX.startsWith(AGENT_INTERRUPT_ERROR_PREFIX)).toBe(false)
+  })
+})
+
+describe('中断に対応しない CLI の理由(agentInterruptUnsupportedReason)', () => {
+  it('選択中のタブの CLI の名前で作る', () => {
+    expect(agentInterruptUnsupportedReason('copilot')).toBe(
+      'copilot では中断のボタンを使えません（ターミナルで操作してください）'
+    )
   })
 })

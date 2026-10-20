@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ModelSettings } from '@shared/types'
 import {
+  getAgentCliKind,
   getAgentNotificationsEnabled,
   getAgentSendConfirmEnabled,
   getModelSettings,
   getPromptExecutionMode,
+  setAgentCliKind,
   setAgentNotificationsEnabled,
   setAgentSendConfirmEnabled,
   setModelSettings,
@@ -77,5 +79,18 @@ describe('getAgentSendConfirmEnabled / setAgentSendConfirmEnabled', () => {
     await expect(getAgentSendConfirmEnabled()).resolves.toBe(false)
     await setAgentSendConfirmEnabled(true)
     expect(mockApi.setAgentSendConfirmEnabled).toHaveBeenCalledWith(true)
+  })
+})
+
+describe('使うエージェント CLI', () => {
+  it('getAgentCliKind・setAgentCliKind は window.api に委譲する', async () => {
+    const api = {
+      getAgentCliKind: vi.fn().mockResolvedValue({ kind: 'copilot', fallback: null }),
+      setAgentCliKind: vi.fn().mockResolvedValue(undefined)
+    }
+    vi.stubGlobal('api', api)
+    await expect(getAgentCliKind()).resolves.toEqual({ kind: 'copilot', fallback: null })
+    await setAgentCliKind('claude')
+    expect(api.setAgentCliKind).toHaveBeenCalledExactlyOnceWith('claude')
   })
 })

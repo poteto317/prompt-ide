@@ -53,6 +53,17 @@ describe('AgentTerminalPanel', () => {
     expect(screen.getByRole('button', { name: '最大化' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('起動の名前は設定の種類のコマンド名(appCliKind)', () => {
+    render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({ sessions: makeSessions(), appCliKind: 'copilot' })}
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: '起動（開いているフォルダで copilot を起動）' })
+    ).toBeEnabled()
+  })
+
   it('開閉のボタンは F6 の案内を aria-describedby で参照する', () => {
     renderPanel()
     const toggle = screen.getByRole('button', { name: /エージェント/ })
@@ -589,6 +600,19 @@ describe('AgentTerminalPanel: 中断', () => {
     expect(buttons[buttons.indexOf(button as HTMLElement) + 1]).toBe(
       screen.getByRole('button', { name: /^終了/ })
     )
+  })
+
+  it('名前は選択中のタブの種類のコマンド名(設定の種類ではない)', () => {
+    render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({
+          sessions: makeSessions({ status: 'running', cliKind: 'copilot' }),
+          interrupt: makeAgentInterruptPanelState({ visible: true }),
+          appCliKind: 'claude'
+        })}
+      />
+    )
+    expect(interruptButton()).toHaveAccessibleName('中断（作業中の copilot に Esc を送る）')
   })
 
   it('押せるときは aria-disabled・説明・title を付けない', () => {

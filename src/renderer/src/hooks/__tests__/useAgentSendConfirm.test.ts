@@ -18,12 +18,14 @@ const SENT_TO_1: AgentHistoryInfo = {
 const tab1 = {
   slotId: 'slot-1',
   label: 'claude 1',
+  cliKind: 'claude' as const,
   controller: makeFakeController(),
   describeSession: vi.fn((): AgentHistoryInfo | null => SENT_TO_1)
 }
 const tab2 = {
   slotId: 'slot-2',
   label: 'claude 2',
+  cliKind: 'claude' as const,
   controller: makeFakeController(),
   describeSession: vi.fn((): AgentHistoryInfo | null => null)
 }
@@ -70,7 +72,8 @@ describe('useAgentSendConfirm', () => {
       target: {
         slotId: 'slot-1',
         controller: tab1.controller,
-        describeSession: tab1.describeSession
+        describeSession: tab1.describeSession,
+        cliKind: 'claude'
       },
       label: 'claude 1',
       promptId: 'p1',
@@ -129,7 +132,8 @@ describe('useAgentSendConfirm', () => {
     expect(send).toHaveBeenCalledExactlyOnceWith('hello', {
       slotId: 'slot-1',
       controller: tab1.controller,
-      describeSession: tab1.describeSession
+      describeSession: tab1.describeSession,
+      cliKind: 'claude'
     })
     // 送信が終わるまではフォーカスを移さない(送信の前の準備の間のキー入力がターミナルへ届かないように)
     await act(async () => {
@@ -311,5 +315,17 @@ describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
     await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
     expect(send.mock.calls[0][1].describeSession).toBe(tab1.describeSession)
     expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1)
+  })
+
+  it('確認を開いた時点の送り先の cliKind を控え、開いた後に選択中のタブが変わっても控えた値で送る', async () => {
+    const copilotTab = { ...tab1, cliKind: 'copilot' as const }
+    const { result, rerender, send, onSendSettled } = renderConfirm({ selected: copilotTab })
+    act(() => result.current.request('hello', opts('p1')))
+    expect(result.current.pending?.target.cliKind).toBe('copilot')
+    rerender({ selected: tab2, send, onSendSettled })
+    await act(async () => {
+      result.current.confirm()
+    })
+    expect(send.mock.calls[0][1].cliKind).toBe('copilot')
   })
 })

@@ -1,3 +1,5 @@
+import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import { classifyAgentScreen } from './agentActivity'
 import type { AgentActivity } from './agentActivity'
 import { isActiveAgentSessionStatus } from './agentSessionTabState'
@@ -10,7 +12,8 @@ import {
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
   AGENT_INTERRUPT_DISABLED_STARTING,
-  AGENT_INTERRUPT_NOT_RUNNING
+  AGENT_INTERRUPT_NOT_RUNNING,
+  agentInterruptUnsupportedReason
 } from './agentInterruptMessages'
 
 // 帯の 中断 を押せるかの判定(設計書 2026-10-19「押せるかの判定」)。描画(useAgentInterrupt の disabledReason)と、押した処理の
@@ -24,6 +27,8 @@ export const AGENT_INTERRUPT_COOLDOWN_MS = 1_000
 
 export interface AgentInterruptAvailabilityInput {
   status: AgentSessionStatus
+  /** 対象のタブ(選択中のタブ)の CLI の種類。中断に対応しない種類(copilot)は押せない */
+  cliKind: AgentCliKind
   isClosing: boolean
   activity: AgentActivity
   isSending: boolean
@@ -46,9 +51,13 @@ export function describeAgentInterruptBlockedByActivity(
   return AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY[activity]
 }
 
-/** 表の順(起動中 → 閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内 → 活動)で最初に当たった理由 */
+/** 表の順(起動中 → CLI が中断に対応していない → 閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内 → 活動)で最初に当たった理由 */
 function blockedReasonOf(input: AgentInterruptAvailabilityInput): string | null {
   if (input.status === 'starting') return AGENT_INTERRUPT_DISABLED_STARTING
+  // CLI に中断の能力が無い(copilot など)。起動中の直後・閉じる途中より前(設計書「入口ごとの表」)。main では拒否しない
+  if (!agentCliCapabilities(input.cliKind).interrupt) {
+    return agentInterruptUnsupportedReason(AGENT_CLI_PROFILES[input.cliKind].commandName)
+  }
   if (input.isClosing) return AGENT_INTERRUPT_DISABLED_CLOSING
   if (input.isSending) return AGENT_INTERRUPT_DISABLED_SENDING
   if (input.isSendConfirmOpen) return AGENT_INTERRUPT_DISABLED_SEND_CONFIRM

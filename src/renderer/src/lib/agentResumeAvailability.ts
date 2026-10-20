@@ -1,3 +1,5 @@
+import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import type { AgentSessionStatus } from './agentSessionTabState'
 import { findActiveAgentTabByClaudeSessionId } from './agentSessionTabState'
@@ -9,7 +11,9 @@ import {
   AGENT_RESUME_LAST_NO_RECORD,
   agentResumeEntryFolderMismatch,
   agentResumeEntryInUse,
-  agentResumeLastInUse
+  agentResumeEntryUnsupportedReason,
+  agentResumeLastInUse,
+  agentResumeLastUnsupportedReason
 } from './agentSessionMessages'
 
 // claude のセッションの再開の入口(ターミナルのタブの「前回の続きから」・実行の履歴の「このセッションで再開」)の押せない理由
@@ -30,19 +34,26 @@ export interface AgentResumeTab {
 }
 
 /**
- * 「前回の続きから」の押せない理由。起動の理由(フォルダ無し・方式の切り替えの途中)を優先し、その後に取得中・記録なし・
+ * 「前回の続きから」の押せない理由。起動の理由(フォルダ無し・方式の切り替えの途中)を優先し、次に設定の CLI が再開に対応していないこと、その後に取得中・記録なし・
  * 同じ ID のタブが起動中か実行中。押せるなら null
  */
 export function getResumeLastDisabledReason({
   startDisabledReason,
+  appCliKind,
   lastSession,
   tabs
 }: {
   startDisabledReason: string | null
+  /** 設定の種類(次に起動する CLI) */
+  appCliKind: AgentCliKind
   lastSession: AgentLastSessionLookup
   tabs: readonly AgentResumeTab[]
 }): string | null {
   if (startDisabledReason !== null) return startDisabledReason
+  // 次に起動する CLI(設定の種類)が再開に対応していない。起動の理由の直後(設計書「入口ごとの表」)。main も resume-unsupported で断る
+  if (!agentCliCapabilities(appCliKind).sessionResume) {
+    return agentResumeLastUnsupportedReason(AGENT_CLI_PROFILES[appCliKind].commandName)
+  }
   if (lastSession.kind === 'loading') return AGENT_RESUME_LAST_LOADING
   if (lastSession.kind === 'none') return AGENT_RESUME_LAST_NO_RECORD
   const running = findActiveAgentTabByClaudeSessionId(tabs, lastSession.claudeSessionId)
@@ -50,12 +61,13 @@ export function getResumeLastDisabledReason({
 }
 
 /**
- * 「このセッションで再開」の押せない理由(上から順に、最初に当たったものを 1 つ)。実行方式の読み込み中 → エージェント CLI 方式でない →
+ * 「このセッションで再開」の押せない理由(上から順に、最初に当たったものを 1 つ)。実行方式の読み込み中 → エージェント CLI 方式でない → 設定の CLI が再開に対応していない →
  * 記録したフォルダを開いていない(isSamePath。Windows は大文字小文字を区別しない) → 起動を受け付けない間 → 同じ ID のタブが
  * 起動中・実行中 → タブが上限(+ と同じ。L-048)。押せるなら null
  */
 export function getResumeEntryDisabledReason({
   mode,
+  appCliKind,
   folderPath,
   recorded,
   startDisabledReason,
@@ -63,6 +75,8 @@ export function getResumeEntryDisabledReason({
   tabs
 }: {
   mode: PromptExecutionMode | null
+  /** 設定の種類(次に起動する CLI。タブの種類ではない) */
+  appCliKind: AgentCliKind
   folderPath: string | null
   recorded: AgentHistoryInfo
   startDisabledReason: string | null
@@ -72,6 +86,10 @@ export function getResumeEntryDisabledReason({
   if (mode === null) return RUN_DISABLED_LOADING_MODE
   // 方式を足したときにエージェント CLI 方式として押せるようにしないよう、エージェント CLI 方式でないものはすべて止める
   if (mode !== 'agent-cli') return AGENT_RESUME_ENTRY_LEGACY_MODE
+  // 設定の CLI が再開に対応していない。実行方式の判定の直後(設計書「入口ごとの表」)
+  if (!agentCliCapabilities(appCliKind).sessionResume) {
+    return agentResumeEntryUnsupportedReason(AGENT_CLI_PROFILES[appCliKind].commandName)
+  }
   if (folderPath === null || !isSamePath(folderPath, recorded.folderPath)) {
     return agentResumeEntryFolderMismatch(recorded.folderPath)
   }

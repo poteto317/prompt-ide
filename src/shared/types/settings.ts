@@ -1,3 +1,5 @@
+import type { AgentCliKind } from '../agentCliKinds'
+
 export interface ModelOption {
   id: string
   label: string
@@ -37,3 +39,10 @@ export const DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true
 
 /** エージェントへの送信前の確認(送る前に全文と送り先を確かめるダイアログ)の既定。オン */
 export const DEFAULT_AGENT_SEND_CONFIRM_ENABLED = true
+
+/** 使うエージェント CLI の設定の読み込みの結果(main の agentCliKindStore が返す)。fallback は既定に戻した理由。
+ *  値が無い(未設定)なら null、値が壊れていたら invalid-value、設定ファイルを読めなかったら read-failed */
+export type AgentCliKindSetting = {
+  kind: AgentCliKind
+  fallback: null | 'invalid-value' | 'read-failed'
+}

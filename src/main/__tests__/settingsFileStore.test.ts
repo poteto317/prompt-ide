@@ -73,6 +73,19 @@ describe('writeSettingsFile', () => {
     })
   })
 
+  it('使うエージェント CLI を書いても、API キーの暗号文・実行方式を残す', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ encryptedApiKey: 'abc', promptExecutionMode: 'agent-cli' })
+    )
+    await writeSettingsFile({ agentCliKind: 'copilot' })
+    const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+    expect(written).toEqual({
+      encryptedApiKey: 'abc',
+      promptExecutionMode: 'agent-cli',
+      agentCliKind: 'copilot'
+    })
+  })
+
   it('undefined を指定したキーは書き込み結果から削除される', async () => {
     mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'legacy', encryptedApiKey: 'enc' }))
     await writeSettingsFile({ apiKey: undefined })
@@ -90,11 +103,10 @@ describe('writeSettingsFile', () => {
   it('writeFile を mode 0o600 で呼ぶ', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await writeSettingsFile({ modelId: 'claude-opus-4-8' })
-    expect(mockWriteFile).toHaveBeenCalledWith(
-      '/mock/userData/settings.json',
-      expect.any(String),
-      { encoding: 'utf-8', mode: 0o600 }
-    )
+    expect(mockWriteFile).toHaveBeenCalledWith('/mock/userData/settings.json', expect.any(String), {
+      encoding: 'utf-8',
+      mode: 0o600
+    })
   })
 
   it('writeFile 後に chmod(0o600) を呼ぶ(既存ファイルの権限も確実に設定する)', async () => {

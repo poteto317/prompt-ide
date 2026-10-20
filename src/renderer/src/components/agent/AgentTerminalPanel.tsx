@@ -1,12 +1,14 @@
 'use client'
 import { useCallback, useId, useRef } from 'react'
+import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import { isInsideAgentTerminal } from '../../lib/agentTerminalKeys'
 import {
   AGENT_RESUME_LAST_ARIA_LABEL,
   AGENT_RESUME_LAST_LABEL,
+  agentStartAriaLabel,
   describeAgentStatus
 } from '../../lib/agentSessionMessages'
-import { AGENT_INTERRUPT_ARIA_LABEL, AGENT_INTERRUPT_LABEL } from '../../lib/agentInterruptMessages'
+import { AGENT_INTERRUPT_LABEL, agentInterruptAriaLabel } from '../../lib/agentInterruptMessages'
 import { toAnnouncementText } from '../../lib/announcementText'
 import { isActiveAgentSessionStatus } from '../../lib/agentSessionTabState'
 import { useAgentTabCloseFocus } from '../../hooks/useAgentTabCloseFocus'
@@ -25,7 +27,7 @@ interface Props {
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
 export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
-  const { sessions, layout, sendingSlotId, activities, resumeLast, interrupt } = state
+  const { sessions, layout, sendingSlotId, activities, resumeLast, interrupt, appCliKind } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
   const bodyId = useId()
@@ -142,7 +144,9 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
                 ref={interruptRef}
                 type="button"
                 className="agent-terminal-panel__button"
-                aria-label={AGENT_INTERRUPT_ARIA_LABEL}
+                aria-label={agentInterruptAriaLabel(
+                  AGENT_CLI_PROFILES[session.cliKind].commandName
+                )}
                 aria-disabled={interrupt.disabledReason !== null ? true : undefined}
                 aria-describedby={interrupt.disabledReason !== null ? interruptReasonId : undefined}
                 title={interrupt.disabledReason ?? undefined}
@@ -178,7 +182,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
               ref={primaryButtonRef}
               type="button"
               className="agent-terminal-panel__button"
-              aria-label="起動（開いているフォルダで claude を起動）"
+              aria-label={agentStartAriaLabel(AGENT_CLI_PROFILES[appCliKind].commandName)}
               disabled={startDisabled}
               aria-describedby={startDisabledReason !== null ? reasonId : undefined}
               title={startDisabledReason ?? undefined}

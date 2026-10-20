@@ -12,6 +12,10 @@ vi.mock('../../lib/agentNotificationApi')
 import * as agentNotificationApi from '../../lib/agentNotificationApi'
 import { useAgentNotifications } from '../useAgentNotifications'
 import type { AgentNotificationTab, UseAgentNotificationsOptions } from '../useAgentNotifications'
+import { AGENT_ACTIVITY_SETTLE_MS, useAgentActivity } from '../useAgentActivity'
+import type { AgentActivityTab } from '../useAgentActivity'
+import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 
 const mockShow = vi.mocked(agentNotificationApi.showAgentNotification)
 const mockSetBadge = vi.mocked(agentNotificationApi.setAgentNotificationBadge)
@@ -448,5 +452,52 @@ describe('useAgentNotifications', () => {
       expect(mockShow).toHaveBeenCalledTimes(2)
       expect(result.current).toBe(said(['permission', 1], ['permission', 2]))
     })
+  })
+})
+
+describe('useAgentNotifications と useAgentActivity の組(CLI の種類)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
+
+  /** 作業中を判定させてから、入力待ちの画面の出力を流す(claude なら作業の完了になる) */
+  const runWorkThenIdle = (cliKind: AgentCliKind): RenderHookResult<string, unknown> => {
+    const controller = makeFakeController()
+    let activity: AgentActivity = 'working'
+    const classify = (): AgentActivity => activity
+    const tabs: (AgentNotificationTab & AgentActivityTab)[] = [
+      { slotId: 'slot-1', number: 1, status: 'running', isClosing: false, controller, cliKind }
+    ]
+    const hook = renderHook(() => {
+      const activities = useAgentActivity({ tabs, classify })
+      return useAgentNotifications({
+        tabs,
+        activities,
+        enabled: true,
+        isAgentMode: true,
+        activateTab: vi.fn()
+      })
+    })
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    activity = 'idle'
+    act(() => controller.emitOutputWritten())
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    return hook
+  }
+
+  it('claude のタブは、作業中 → 入力待ちで完了を知らせる(組の対照)', () => {
+    const { result } = runWorkThenIdle('claude')
+    expect(result.current).toBe(said(['done', 1]))
+    expect(mockShow).toHaveBeenCalledOnce()
+  })
+
+  it('copilot のタブは画面を判定しないので、同じ出力でも知らせない', () => {
+    const { result } = runWorkThenIdle('copilot')
+    expect(result.current).toBe('')
+    expect(mockShow).not.toHaveBeenCalled()
   })
 })

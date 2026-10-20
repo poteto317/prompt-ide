@@ -69,7 +69,12 @@ function poster(
 
 describe('hooks の受け取りと区間の追跡(結合)', () => {
   it('pending(agent) → UserPromptSubmit で idle → PreToolUse で agent → PostToolUse の後も agent → PostToolBatch の 2 秒後に idle。release の後は 401', async () => {
-    const prepared = await sessions.prepare(1, { file: '/bin/claude', args: [], env: {} })
+    const prepared = await sessions.prepare(1, {
+      cliKind: 'claude',
+      file: '/bin/claude',
+      args: [],
+      env: {}
+    })
     if (prepared.hooks === null) throw new Error('hooks を用意できなかった')
     const settings = JSON.parse(
       readFileSync(prepared.hooks.settingsPath, 'utf8')
@@ -124,11 +129,21 @@ describe('hooks の受け取りと区間の追跡(結合)', () => {
   }, 10_000)
 
   it('設定のディレクトリが外から消されても、次の prepare は作り直して hooks ありで起動できる', async () => {
-    const first = await sessions.prepare(1, { file: '/bin/claude', args: [], env: {} })
+    const first = await sessions.prepare(1, {
+      cliKind: 'claude',
+      file: '/bin/claude',
+      args: [],
+      env: {}
+    })
     sessions.release(first, 'sid-1')
     rmSync(dirname(first.hooks?.settingsPath ?? ''), { recursive: true, force: true })
 
-    const second = await sessions.prepare(1, { file: '/bin/claude', args: [], env: {} })
+    const second = await sessions.prepare(1, {
+      cliKind: 'claude',
+      file: '/bin/claude',
+      args: [],
+      env: {}
+    })
     expect(second.hooks).not.toBeNull()
     expect(existsSync(second.hooks?.settingsPath ?? '')).toBe(true)
     expect(dirname(second.hooks?.settingsPath ?? '')).not.toBe(
@@ -138,7 +153,12 @@ describe('hooks の受け取りと区間の追跡(結合)', () => {
   })
 
   it('activate したセッションの作業中の知らせは「セッションが見つかりません」にならない(hooks なしの起動も追跡に足す)', async () => {
-    const withHooks = await sessions.prepare(1, { file: '/bin/claude', args: [], env: {} })
+    const withHooks = await sessions.prepare(1, {
+      cliKind: 'claude',
+      file: '/bin/claude',
+      args: [],
+      env: {}
+    })
     sessions.activate(withHooks, 'sid-1')
     sessions.activate(
       { ownerId: 1, hooks: null, unavailableReason: 'receiver-unavailable' },

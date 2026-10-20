@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentInterruptResult, AgentLaunchRequest, AgentSessionExit } from '@shared/types'
 import { isAgentStartCanceled } from '@shared/types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
@@ -19,6 +20,7 @@ import {
   agentInterruptError
 } from '../lib/agentInterruptMessages'
 import { toError } from '../lib/errorUtils'
+import { useLatestRef } from './useLatestRef'
 import {
   agentAddTabDisabledReason,
   agentStartDisabledReason,
@@ -41,12 +43,16 @@ export interface AgentSessionTabView {
   slotId: string
   /** タブの番号(agentSessionTabs の AgentSessionTab.number。通知の題・読み上げに使う) */
   number: number
-  /** formatAgentTabLabel(番号) */
+  /** formatAgentTabLabel(番号, cliKind) */
   label: string
   status: AgentSessionStatus
   exit: AgentSessionExitView | null
   /** 起動・停止の失敗、起動の直後の終了の文言(role="alert")。次の起動で消える */
   error: string | null
+  /** タブの CLI の種類。起動の結果の種類(AgentTabSessionFields.cliKind)、無ければ(未起動・起動中・起動の失敗)設定の種類。
+   *  名前はこの値で引く。能力は動いているタブ(中断・送信)ならこの値、未起動・終了したタブの送信の入口は次に起動する設定の種類
+   *  (agentCapabilityCliKindOf) */
+  cliKind: AgentCliKind
   /** 起動中・実行中のセッションの claude の会話の ID(AgentTabSessionFields.claudeSessionId)。それ以外は null */
   claudeSessionId: string | null
   /** 閉じる途中(確認の後、停止を待つ間)。送信・閉じる・終了・起動を押せない */
@@ -95,13 +101,13 @@ export interface AgentSessionsState {
    *  消さず false(フォーカスの移し先を呼び出し元が決めるため) */
   closeTab: (slotId: string) => Promise<boolean>
   selectTab: (slotId: string) => void
-  /** セッションを持つすべてのタブを止める(実行方式の切り替え)。起動中のタブは対象にしない(呼び出し元は起動中の間は切り替えない)。
+  /** セッションを持つすべてのタブを止める(実行方式・使う CLI の切り替え)。起動中のタブは対象にしない(呼び出し元は起動中の間は切り替えない)。
    *  すべて止まったら true。失敗したタブがあれば、最初のそのタブを選択する。止めている間に起動した(起動中を含む)タブが
    *  残っていれば false(呼び出し元は startBlockedReason で起動を止めているが、その前に押された起動の分の守り) */
   stopAll: () => Promise<boolean>
   /** starting か running のタブがある */
   isAnyActive: boolean
-  /** starting のタブがある(実行方式の切り替えを止める) */
+  /** starting のタブがある(実行方式・使う CLI の切り替えを止める) */
   isAnyStarting: boolean
   /** いずれかのタブの最後の終了(終了のたびに新しいオブジェクト。閉じたタブのセッションの終了も含む) */
   lastExit: AgentLastExit | null
@@ -115,7 +121,9 @@ export interface UseAgentSessionsOptions {
   tabs: AgentSessionTabs
   /** エージェント CLI 方式のときだけ true(従来の方式ではセッションを持たない) */
   enabled: boolean
-  /** 起動・+ を受け付けない理由(実行方式の切り替えの途中)。受け付けるなら null(既定) */
+  /** 設定の種類(次に起動する CLI。起動の結果の無いタブの名前と能力に使う)。読み込み中は既定の claude を渡す。省略できない(L-060) */
+  appCliKind: AgentCliKind
+  /** 起動・+ を受け付けない理由(実行方式・使う CLI の切り替えの途中)。受け付けるなら null(既定) */
   startBlockedReason?: string | null
   /** 動いているタブを閉じる前の確認(既定は window.confirm。テストで差し替える) */
   onConfirm?: (message: string) => boolean
@@ -126,6 +134,7 @@ export function useAgentSessions({
   folderPath,
   tabs,
   enabled,
+  appCliKind,
   startBlockedReason = null,
   onConfirm = confirm,
   now = Date.now
@@ -141,6 +150,10 @@ export function useAgentSessions({
   // 起動中・実行中のタブの claude の会話の ID(タブ → ID)。同じ ID の再開を同期で止める判定に使う(描画は states の claudeSessionId)。
   // states の claudeSessionId と同じ値を、setTabClaudeSessionId でまとめて更新する
   const claudeSessionIdBySlotRef = useRef(new Map<string, string>())
+  // 起動の結果の種類(タブ → 種類)。閉じる前の確認の名前を同期的に引くのに使う(描画は states の cliKind)。setTabCliKind でまとめて更新する
+  const cliKindBySlotRef = useRef(new Map<string, AgentCliKind>())
+  // 閉じる前の確認で使う、その時点の設定の種類(closeTab の参照を設定の変化で作り直さない)
+  const appCliKindRef = useLatestRef(appCliKind)
   // 起動中の依頼(起動の手順が終わると解決する)。2 回目の起動の抑止と、closeTab が起動の結果を待つのに使う
   const startingBySlotRef = useRef(new Map<string, Promise<void>>())
   // 起動の結果(started・already-running)を受け取った時刻(タブ → now())。起動の直後の終了の判定(isAgentExitedSoon)だけに使う。
@@ -186,6 +199,7 @@ export function useAgentSessions({
     sessionIdBySlotRef.current.delete(slotId)
     startedAtRef.current.delete(slotId)
     claudeSessionIdBySlotRef.current.delete(slotId)
+    cliKindBySlotRef.current.delete(slotId)
     if (!mountedRef.current) return
     setStates((prev) => {
       const next = new Map(prev)
@@ -216,6 +230,16 @@ export function useAgentSessions({
       if (claudeSessionId === null) claudeSessionIdBySlotRef.current.delete(slotId)
       else claudeSessionIdBySlotRef.current.set(slotId, claudeSessionId)
       patchTab(slotId, { claudeSessionId })
+    },
+    [patchTab]
+  )
+
+  // タブの起動の結果の種類を、同期の参照用の ref と描画用の状態の両方に置く(null は「起動の結果が無い」)
+  const setTabCliKind = useCallback(
+    (slotId: string, cliKind: AgentCliKind | null): void => {
+      if (cliKind === null) cliKindBySlotRef.current.delete(slotId)
+      else cliKindBySlotRef.current.set(slotId, cliKind)
+      patchTab(slotId, { cliKind })
     },
     [patchTab]
   )
@@ -282,6 +306,7 @@ export function useAgentSessions({
           if (hasSessionOrStarting(tab.slotId)) continue
           adoptSession(tab.slotId, entry.sessionId)
           setTabClaudeSessionId(tab.slotId, entry.claudeSessionId)
+          setTabCliKind(tab.slotId, entry.cliKind)
           patchTab(tab.slotId, { status: 'running' })
         }
       })
@@ -289,7 +314,15 @@ export function useAgentSessions({
     return () => {
       cancelled = true
     }
-  }, [enabled, tabs, hasSessionOrStarting, adoptSession, setTabClaudeSessionId, patchTab])
+  }, [
+    enabled,
+    tabs,
+    hasSessionOrStarting,
+    adoptSession,
+    setTabClaudeSessionId,
+    setTabCliKind,
+    patchTab
+  ])
 
   // 終了の購読は controller ではなく hook が 1 つだけ張り、sessionId でタブへ振り分ける。effect の後始末で外す
   useEffect(
@@ -325,7 +358,7 @@ export function useAgentSessions({
 
   const start = useCallback(
     async (slotId: string, launch: AgentLaunchRequest): Promise<void> => {
-      // フォルダ無し・起動を受け付けない間(実行方式の切り替えの途中。切り替えた後に見えないセッションが残るため)
+      // フォルダ無し・起動を受け付けない間(実行方式・使う CLI の切り替えの途中。止める対象に入らないセッションが切り替えの後に残るため)
       if (folderPath === null || startDisabledReason !== null) return
       if (hasSessionOrStarting(slotId)) return
       // 閉じる途中のタブで起動すると、直後の削除で controller が捨てられ、main に持ち主のいないセッションが残る
@@ -344,6 +377,8 @@ export function useAgentSessions({
       patchTab(slotId, { status: 'starting', error: null, exit: null })
       // resume は依頼した ID を起動中から持つ(同じ ID の二重の起動を renderer でも押せなくする)。new は結果が届いてから
       setTabClaudeSessionId(slotId, launch.kind === 'resume' ? launch.claudeSessionId : null)
+      // 起動の結果の種類は結果が届いてから入れる(起動中は設定の種類で出す。前の起動の種類を残さない)
+      setTabCliKind(slotId, null)
       try {
         // 呼び順は controller の約束どおり: prepareForStart → fit → 起動の依頼 → setSession
         controller.prepareForStart()
@@ -367,6 +402,7 @@ export function useAgentSessions({
         if (mountedRef.current) setStartConfirmedCount((count) => count + 1)
         adoptSession(slotId, result.sessionId)
         setTabClaudeSessionId(slotId, result.claudeSessionId)
+        setTabCliKind(slotId, result.cliKind)
         patchTab(slotId, { status: 'running' })
         const earlyExit = exitsWhileStartingRef.current.get(result.sessionId)
         if (earlyExit !== undefined) applyExit(slotId, earlyExit)
@@ -385,6 +421,7 @@ export function useAgentSessions({
       beginStarting,
       patchTab,
       setTabClaudeSessionId,
+      setTabCliKind,
       failStart,
       adoptSession,
       applyExit,
@@ -464,7 +501,14 @@ export function useAgentSessions({
         const starting = startingBySlotRef.current.get(slotId)
         if (
           hasSessionOrStarting(slotId) &&
-          !onConfirm(agentCloseTabConfirm(formatAgentTabLabel(tab.number)))
+          !onConfirm(
+            agentCloseTabConfirm(
+              formatAgentTabLabel(
+                tab.number,
+                cliKindBySlotRef.current.get(slotId) ?? appCliKindRef.current
+              )
+            )
+          )
         )
           return false
         setClosing(slotId, true)
@@ -480,7 +524,7 @@ export function useAgentSessions({
         setClosing(slotId, false)
       }
     },
-    [tabs, findTab, hasSessionOrStarting, onConfirm, setClosing, stop, forgetTab]
+    [tabs, findTab, hasSessionOrStarting, onConfirm, setClosing, stop, forgetTab, appCliKindRef]
   )
 
   const addDisabledReason = agentAddTabDisabledReason(
@@ -533,17 +577,21 @@ export function useAgentSessions({
 
   const tabViews = useMemo(
     () =>
-      snapshot.tabs.map(
-        (tab): AgentSessionTabView => ({
+      snapshot.tabs.map((tab): AgentSessionTabView => {
+        const fields = agentTabSessionFieldsOf(states, tab.slotId)
+        // 起動の結果の種類が無ければ(未起動・起動中・起動の失敗)設定の種類で出す
+        const cliKind = fields.cliKind ?? appCliKind
+        return {
           slotId: tab.slotId,
           number: tab.number,
-          label: formatAgentTabLabel(tab.number),
-          ...agentTabSessionFieldsOf(states, tab.slotId),
+          ...fields,
+          cliKind,
+          label: formatAgentTabLabel(tab.number, cliKind),
           isClosing: closingSlotIds.has(tab.slotId),
           controller: tab.controller
-        })
-      ),
-    [snapshot, states, closingSlotIds]
+        }
+      }),
+    [snapshot, states, closingSlotIds, appCliKind]
   )
   // 置き場は少なくとも 1 つのタブを持ち、選択中のタブは一覧にある
   const selected = tabViews.find((tab) => tab.slotId === snapshot.selectedSlotId) ?? tabViews[0]

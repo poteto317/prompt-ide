@@ -19,7 +19,8 @@ import {
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
   AGENT_INTERRUPT_DISABLED_STARTING,
-  AGENT_INTERRUPT_NOT_RUNNING
+  AGENT_INTERRUPT_NOT_RUNNING,
+  agentInterruptUnsupportedReason
 } from '../agentInterruptMessages'
 
 const STATUSES: readonly AgentSessionStatus[] = ['none', 'starting', 'running', 'exited']
@@ -36,6 +37,7 @@ const FLAG_REASONS: Record<Flag, string> = {
 
 const RUNNING_WORKING: AgentInterruptAvailabilityInput = {
   status: 'running',
+  cliKind: 'claude',
   isClosing: false,
   activity: 'working',
   isSending: false,
@@ -103,6 +105,7 @@ describe('getAgentInterruptAvailability', () => {
     expect(
       getAgentInterruptAvailability({
         status: 'starting',
+        cliKind: 'claude',
         isClosing: true,
         activity: 'permission',
         isSending: true,
@@ -213,5 +216,50 @@ describe('checkAgentInterruptAtPress', () => {
         throw error
       })
     ).toEqual({ kind: 'unreadable', error })
+  })
+})
+
+describe('getAgentInterruptAvailability(CLI の種類)', () => {
+  const COPILOT = agentInterruptUnsupportedReason('copilot')
+  const COPILOT_RUNNING: AgentInterruptAvailabilityInput = {
+    ...RUNNING_WORKING,
+    cliKind: 'copilot'
+  }
+
+  it('copilot の running は出すが押せず、閉じる途中・送信中・確認の表示中・待ち・活動より先にその理由', () => {
+    for (const activity of ACTIVITIES) {
+      for (const flag of FLAGS) {
+        const input: AgentInterruptAvailabilityInput = { ...COPILOT_RUNNING, activity }
+        input[flag] = true
+        expect(getAgentInterruptAvailability(input)).toEqual({ visible: true, reason: COPILOT })
+      }
+      expect(getAgentInterruptAvailability({ ...COPILOT_RUNNING, activity })).toEqual({
+        visible: true,
+        reason: COPILOT
+      })
+    }
+  })
+
+  it('copilot でも starting は起動中の理由が先(判定の順は starting の直後)', () => {
+    expect(getAgentInterruptAvailability({ ...COPILOT_RUNNING, status: 'starting' })).toEqual({
+      visible: true,
+      reason: AGENT_INTERRUPT_DISABLED_STARTING
+    })
+  })
+
+  it.each(['none', 'exited'] as const)('copilot の %s は出さない', (status) => {
+    expect(getAgentInterruptAvailability({ ...COPILOT_RUNNING, status })).toEqual({
+      visible: false,
+      reason: AGENT_INTERRUPT_NOT_RUNNING
+    })
+  })
+
+  it('押した時点の判定も、copilot なら画面を読まずに止める(L-058)', () => {
+    const readScreen = vi.fn((): readonly ViewportLine[] => agentScreen('working').lines)
+    expect(checkAgentInterruptAtPress(COPILOT_RUNNING, readScreen)).toEqual({
+      kind: 'blocked',
+      reason: COPILOT
+    })
+    expect(readScreen).not.toHaveBeenCalled()
   })
 })

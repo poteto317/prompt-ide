@@ -92,6 +92,16 @@ describe('createAgentToolActivity(あるべき段階)', () => {
     expect(tracker.activityOf(1)).toEqual({ phase: 'idle', lost: null, unassignable: false })
   })
 
+  it('区別に対応しない CLI(cli-unsupported)のセッションがあれば、その理由で区別をやめる合図を出す', () => {
+    confirmed()
+    tracker.addSession(1, 's2', { kind: 'unconfirmed', reason: 'cli-unsupported' })
+    expect(tracker.activityOf(1)).toEqual({
+      phase: 'agent',
+      lost: 'cli-unsupported',
+      unassignable: false
+    })
+  })
+
   it('pending と confirmed が混ざれば agent。confirmed が 1 つも無くなれば paused(猶予の間でも)', () => {
     confirmed(1, 's1')
     tracker.addSession(1, 's2', { kind: 'pending' })

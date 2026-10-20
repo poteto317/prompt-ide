@@ -1422,7 +1422,7 @@ body {
 .agent-terminal-panel__toggle:hover:not(:disabled),
 .agent-terminal-panel__button:hover:not(:disabled),
 .external-change-banner__button:hover:not(:disabled),
-.execution-mode-section__option:hover:not(:disabled) {
+.execution-mode-section__option:hover:not(:disabled):not([aria-disabled='true']) {
   background: #094771;
   color: #ffffff;
 }
@@ -2654,6 +2654,13 @@ body {
 .execution-mode-section__option[aria-checked='true'] {
   border-color: #007acc;
   color: #ffffff;
+}
+
+/* 切り替えの途中の選択肢(aria-disabled。押した選択肢のフォーカスを残すため disabled にしない)。:disabled と同じ見た目にする。
+   ホバーの色は共通のホバーの規則の :not([aria-disabled='true']) で当てない */
+.execution-mode-section__option[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .settings-panel__note {

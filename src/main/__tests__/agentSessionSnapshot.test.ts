@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
-import { attachClaudeSessionIds } from '../agentSessionSnapshot'
+import { attachSessionInfo } from '../agentSessionSnapshot'
+import type { AgentSessionInfo } from '../agentSessionStarter'
 
 const ID_A = '11111111-1111-4111-8111-111111111111'
-const ID_B = '22222222-2222-4222-9222-222222222222'
 
-describe('attachClaudeSessionIds', () => {
+describe('attachSessionInfo', () => {
   let warnSpy: MockInstance<typeof console.warn> | null = null
 
   afterEach(() => {
@@ -13,40 +13,44 @@ describe('attachClaudeSessionIds', () => {
     warnSpy = null
   })
 
-  it('各セッションに claude の会話の ID を足し、順序を保つ', () => {
-    const ids = new Map([
-      ['s1', ID_A],
-      ['s2', ID_B]
+  it('各セッションに種類と claude の会話の ID(再開に対応しない種類は null)を足し、順序を保つ', () => {
+    const infos = new Map<string, AgentSessionInfo>([
+      ['s1', { cliKind: 'claude', claudeSessionId: ID_A }],
+      ['s2', { cliKind: 'copilot', claudeSessionId: null }]
     ])
     expect(
-      attachClaudeSessionIds(
+      attachSessionInfo(
         [
           { slotId: 'tab-1', sessionId: 's1' },
           { slotId: 'tab-2', sessionId: 's2' }
         ],
-        (sessionId) => ids.get(sessionId)
+        (sessionId) => infos.get(sessionId)
       )
     ).toEqual([
-      { slotId: 'tab-1', sessionId: 's1', claudeSessionId: ID_A },
-      { slotId: 'tab-2', sessionId: 's2', claudeSessionId: ID_B }
+      { slotId: 'tab-1', sessionId: 's1', cliKind: 'claude', claudeSessionId: ID_A },
+      { slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', claudeSessionId: null }
     ])
   })
 
-  it('ID が引けないセッションだけを外して警告を出し、ほかは返す', () => {
+  it('情報が引けないセッションだけを外して警告を出し、ほかは返す', () => {
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     expect(
-      attachClaudeSessionIds(
+      attachSessionInfo(
         [
           { slotId: 'tab-1', sessionId: 'gone' },
           { slotId: 'tab-2', sessionId: 's2' }
         ],
-        (sessionId) => (sessionId === 's2' ? ID_B : undefined)
+        (sessionId) =>
+          sessionId === 's2' ? { cliKind: 'copilot', claudeSessionId: null } : undefined
       )
-    ).toEqual([{ slotId: 'tab-2', sessionId: 's2', claudeSessionId: ID_B }])
-    expect(warnSpy).toHaveBeenCalledWith(expect.any(String), 'gone')
+    ).toEqual([{ slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', claudeSessionId: null }])
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[agentTerminal:getState] セッションの種類と会話の ID が見つからないセッションを一覧から外します:',
+      'gone'
+    )
   })
 
   it('空の一覧は空', () => {
-    expect(attachClaudeSessionIds([], () => ID_A)).toEqual([])
+    expect(attachSessionInfo([], () => ({ cliKind: 'claude', claudeSessionId: ID_A }))).toEqual([])
   })
 })

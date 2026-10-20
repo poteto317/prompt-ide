@@ -119,6 +119,7 @@ describe('AgentSessionRegistry', () => {
     const result = {
       kind: 'error' as const,
       error: 'command-not-found' as const,
+      cliKind: 'claude' as const,
       shellPathUnavailable: false
     }
     await expect(registry.start(1, 'a', async () => ({ kind: 'failed', result }))).resolves.toEqual(
@@ -814,7 +815,12 @@ describe('空になった枠の後始末', () => {
     const registry = new AgentSessionRegistry()
     const failed = async (): Promise<AgentSessionCreation> => ({
       kind: 'failed',
-      result: { kind: 'error', error: 'command-not-found', shellPathUnavailable: false }
+      result: {
+        kind: 'error',
+        error: 'command-not-found',
+        cliKind: 'claude',
+        shellPathUnavailable: false
+      }
     })
     for (const slotId of ['a', 'b', 'c', 'd', 'e', 'f']) await registry.start(1, slotId, failed)
     expect(registry.slotCountOf(1)).toBe(0)

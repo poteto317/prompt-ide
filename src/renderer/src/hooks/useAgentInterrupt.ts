@@ -33,12 +33,12 @@ export interface AgentInterruptPanelState {
 }
 
 /**
- * 中断に使う選択中のタブの値(AgentSessionTabView の一部)。判定に status・isClosing、slotId に活動・待ちの取り出しと送り先、
+ * 中断に使う選択中のタブの値(AgentSessionTabView の一部)。判定に status・cliKind・isClosing、slotId に活動・待ちの取り出しと送り先、
  * 読み上げに label、押した時点の画面の読み直しに controller の readScreen だけを使う
  */
 export type AgentInterruptTab = Pick<
   AgentSessionTabView,
-  'slotId' | 'label' | 'status' | 'isClosing'
+  'slotId' | 'label' | 'status' | 'isClosing' | 'cliKind'
 > & {
   controller: Pick<AgentTerminalController, 'readScreen'>
 }
@@ -72,6 +72,7 @@ export function toAgentInterruptAvailabilityInput(
 ): AgentInterruptAvailabilityInput {
   return {
     status: selected.status,
+    cliKind: selected.cliKind,
     isClosing: selected.isClosing,
     activity: activities.get(selected.slotId) ?? 'unknown',
     isSending,

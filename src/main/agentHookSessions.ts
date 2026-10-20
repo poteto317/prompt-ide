@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto'
+import { agentCliCapabilities } from '@shared/agentCliKinds'
 import { buildAgentHookSettings } from './agentHookSettings'
 import type { AgentHookSettingsDir, AgentHookSettingsJson } from './agentHookSettings'
 import type { AgentHookReceiver } from './agentHookReceiver'
@@ -55,6 +56,11 @@ export function createAgentHookSessions({
 
   return {
     async prepare(ownerId, plan) {
+      // 区別に対応しない種類(copilot)は、版の確認も受け口の用意もしない(copilot の実行ファイルに --version を渡して claude の版
+      // として読まない。L-043)。activate は今の hooks === null の経路で、追跡に unconfirmed(cli-unsupported)で足す
+      if (!agentCliCapabilities(plan.cliKind).changeAttribution) {
+        return without(ownerId, 'cli-unsupported')
+      }
       try {
         const check = await versions.readClaudeVersion(plan)
         if (check.kind !== 'supported') return without(ownerId, 'claude-version-unsupported')

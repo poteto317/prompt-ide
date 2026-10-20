@@ -10,15 +10,13 @@ import {
   isAbsolute as win32IsAbsolute,
   join as win32Join
 } from 'node:path/win32'
-import type { AgentLaunchRequest } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import { appendSearchPaths, getCliSearchPaths } from './cliSearchPaths'
+import { AGENT_CLI_LAUNCH_SPECS } from './agentCliLaunchSpecs'
 
 // エージェントの起動のコマンドと環境変数を main で決める(設計書「セキュリティ」「PATH の継承」)。renderer からは受け取らない
 
-/** 起動するコマンドの名前。引数は main が決めたセッションの指定(--session-id / --resume と UUID)と、hooks の設定のファイル(--settings と main が作った絶対パス)だけ。--dangerously-skip-permissions などは付けない */
-export const AGENT_COMMAND_NAME = 'claude'
-
-/** 取り除く環境変数(完全一致)。親の Claude Code のセッションの通信先と token、VS Code の端末から引き継ぐもの(確認の結果 12) */
+/** すべての CLI で取り除く。取り除く環境変数(完全一致)。親の Claude Code のセッションの通信先と token、VS Code の端末から引き継ぐもの(確認の結果 12) */
 export const REMOVED_AGENT_ENV_KEYS: readonly string[] = [
   'TERM_PROGRAM',
   'TERM_PROGRAM_VERSION',
@@ -116,13 +114,14 @@ function addLoopbackNoProxy(env: Record<string, string>, platform: NodeJS.Platfo
 }
 
 /**
- * pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数を除き、PATH・TERM・COLORTERM・LANG を設定し、
- * NO_PROXY・no_proxy にループバックを足す
+ * pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数(すべての CLI の一覧と、種類ごとの追加の一覧)を除き、
+ * PATH・TERM・COLORTERM・LANG を設定し、NO_PROXY・no_proxy にループバックを足す。platform と追加の一覧は省略できない(L-060)
  */
 export function buildAgentEnv(
   base: NodeJS.ProcessEnv,
   pathValue: string,
-  platform: NodeJS.Platform = process.platform
+  platform: NodeJS.Platform,
+  extraRemovedKeys: readonly string[]
 ): Record<string, string> {
   // Windows の環境変数名は大文字小文字を区別しない(Path と PATH を重複させない)。POSIX は区別する
   const normalize = platform === 'win32' ? (key: string) => key.toUpperCase() : (key: string) => key
@@ -133,6 +132,8 @@ export function buildAgentEnv(
     if (name === 'PATH') continue
     if (REMOVED_AGENT_ENV_KEYS.includes(name)) continue
     if (REMOVED_AGENT_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) continue
+    // 種類ごとの追加の除外(copilot の COPILOT_ALLOW_ALL)。名前は大文字で持ち、Windows は normalize で大文字にそろう
+    if (extraRemovedKeys.includes(name)) continue
     env[key] = value
   }
   env.PATH = pathValue
@@ -152,56 +153,36 @@ function getEnvIgnoreCase(env: NodeJS.ProcessEnv, name: string): string | undefi
 }
 
 export interface AgentLaunchPlan {
-  /** 起動する claude の絶対パス */
+  /** main が設定から読んだ種類(後の手順はこの値を使い、読み直さない。L-018) */
+  cliKind: AgentCliKind
+  /** 起動する CLI の絶対パス */
   file: string
-  /** 引数(空。セッションの指定と --settings は starter が buildAgentLaunchArgs で後ろに足す) */
+  /** 引数(空。セッションの指定と --settings は starter が起動の表の buildArgs で後ろに足す) */
   args: string[]
   env: Record<string, string>
 }
 
 export type AgentLaunchResolution =
   | { kind: 'ok'; plan: AgentLaunchPlan }
-  | { kind: 'not-found'; shellPathUnavailable: boolean }
+  | { kind: 'not-found'; cliKind: AgentCliKind; shellPathUnavailable: boolean }
 
 export interface ResolveAgentLaunchDeps {
   env: NodeJS.ProcessEnv
   platform: NodeJS.Platform
+  /** main が設定から読んだ種類(renderer の値ではない) */
+  cliKind: AgentCliKind
   readLoginShellPath: () => Promise<string | null>
   isExecutable: ExecutableProbe
 }
 
 /**
- * claude の起動の引数(設計書「起動の流れ」3、hooks の設計書「起動の引数」)。新しく起動するときは main が振った ID を --session-id で、
- * 再開は記録と照合した ID を --resume で渡す。hookSettingsPath(main が作った設定のファイルの絶対パス。L-034)があれば後ろに
- * --settings を足す。null(受け口を用意できない・claude の版が対応していると分からない)なら 2 つだけ。省略できる引数にしない(L-060)。
- * claudeSessionId は検証を通った値をそのまま使い、別の場所で読み直さない(L-018)。起動の種類を足したときに既定の --session-id へ
- * 流さないよう、kind ごとに分けて未知の kind は投げる(L-044)
- */
-export function buildAgentLaunchArgs(
-  launch: AgentLaunchRequest,
-  claudeSessionId: string,
-  hookSettingsPath: string | null
-): string[] {
-  const settings = hookSettingsPath === null ? [] : ['--settings', hookSettingsPath]
-  switch (launch.kind) {
-    case 'new':
-      return ['--session-id', claudeSessionId, ...settings]
-    case 'resume':
-      return ['--resume', claudeSessionId, ...settings]
-    default: {
-      const unknownLaunch: never = launch
-      throw new Error(`未知の起動の指定です: ${JSON.stringify(unknownLaunch)}`)
-    }
-  }
-}
-
-/**
  * 起動のコマンドと環境変数を決める。macOS・Linux はログインシェルの PATH(取得できなければ main の PATH)の後ろに
- * 既定の探索先を足した PATH で claude を探す。Windows は main の PATH と PATHEXT で探す
+ * 既定の探索先を足した PATH で設定の種類のコマンド(起動の表の commandName)を探す。Windows は main の PATH と PATHEXT で探す
  */
 export async function resolveAgentLaunch({
   env,
   platform,
+  cliKind,
   readLoginShellPath,
   isExecutable
 }: ResolveAgentLaunchDeps): Promise<AgentLaunchResolution> {
@@ -214,11 +195,20 @@ export async function resolveAgentLaunch({
     shellPathUnavailable = loginPath === null
     pathValue = appendSearchPaths(loginPath ?? env.PATH, getCliSearchPaths(env.HOME))
   }
-  const file = await findExecutableInPath(AGENT_COMMAND_NAME, pathValue, {
+  const spec = AGENT_CLI_LAUNCH_SPECS[cliKind]
+  const file = await findExecutableInPath(spec.commandName, pathValue, {
     platform,
     pathExt: platform === 'win32' ? getEnvIgnoreCase(env, 'PATHEXT') : undefined,
     isExecutable
   })
-  if (file === null) return { kind: 'not-found', shellPathUnavailable }
-  return { kind: 'ok', plan: { file, args: [], env: buildAgentEnv(env, pathValue, platform) } }
+  if (file === null) return { kind: 'not-found', cliKind, shellPathUnavailable }
+  return {
+    kind: 'ok',
+    plan: {
+      cliKind,
+      file,
+      args: [],
+      env: buildAgentEnv(env, pathValue, platform, spec.extraRemovedEnvKeys)
+    }
+  }
 }

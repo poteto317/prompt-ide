@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, AgentLaunchRequest, PromptExecutionMode } from '@shared/types'
 import type { HistoryActionAvailability, HistoryEntry } from '../types'
 import type { AgentSessionsState } from './useAgentSessions'
@@ -25,6 +26,8 @@ export interface UseAgentResumeOptions {
   folderPath: string | null
   /** 実行方式(読み込み中は null) */
   mode: PromptExecutionMode | null
+  /** 設定の種類(次に起動する CLI)。再開の入口の判定に使う(タブの種類ではない) */
+  appCliKind: AgentCliKind
   sessions: Pick<
     AgentSessionsState,
     | 'tabs'
@@ -49,6 +52,7 @@ export interface AgentResumeState {
 export function useAgentResume({
   folderPath,
   mode,
+  appCliKind,
   sessions,
   activateTab
 }: UseAgentResumeOptions): AgentResumeState {
@@ -62,6 +66,7 @@ export function useAgentResume({
   })
   const resumeLastReason = getResumeLastDisabledReason({
     startDisabledReason: sessions.startDisabledReason,
+    appCliKind,
     lastSession,
     tabs: sessions.tabs
   })
@@ -84,6 +89,7 @@ export function useAgentResume({
   const resumeEntryReasonOf = (recorded: AgentHistoryInfo): string | null =>
     getResumeEntryDisabledReason({
       mode,
+      appCliKind,
       folderPath,
       recorded,
       startDisabledReason: sessions.startDisabledReason,

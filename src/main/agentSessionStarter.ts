@@ -7,6 +7,8 @@ import type {
   AgentStartRequest,
   AgentStartResult
 } from '@shared/types'
+import { agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import { agentStartCanceled } from '@shared/types'
 import type { FolderAccessManager } from './folderAccessManager'
 import type {
@@ -16,7 +18,7 @@ import type {
 } from './agentSessionRegistry'
 import { startAgentSession } from './agentSession'
 import type { AgentSession, PtySpawn, StopTree } from './agentSession'
-import { buildAgentLaunchArgs } from './agentCommand'
+import { AGENT_CLI_LAUNCH_SPECS } from './agentCliLaunchSpecs'
 import type { AgentLaunchPlan, AgentLaunchResolution } from './agentCommand'
 import { toAgentFolderKey } from './agentSessionRecordStore'
 import type { AgentSessionRecordStore } from './agentSessionRecordStore'
@@ -28,8 +30,9 @@ import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
 // Electron に依存しない。IPC の受け口(送信元・ペイロードの検証、送信先の webContents への送信)は handlers/agentTerminalHandlers.ts。
 // 起動のコマンド・作業ディレクトリ・環境変数・claude のセッションの指定は main で決め、依頼の folderPath は許可のフォルダとの
 // 一致の確認にだけ使う。ここは起動の手順(照合・取り消しの確認・ID の選択・予約・spawn を await を挟まずに行う順序)と、起動の記録への
-// 書き込みの契機を持つ。各段の規則は別のモジュールにある: 起動に使う claude の会話の ID の選択(新規は振る・再開は記録と照合)は
-// claudeSessionIdSelection.ts、引数(--session-id / --resume と --settings)は agentCommand.buildAgentLaunchArgs、同じ ID の二重の
+// 書き込みの契機を持つ。各段の規則は別のモジュールにある: CLI の種類ごとの能力(再開の拒否・会話の ID と予約と記録の有無を分ける)は
+// shared/agentCliKinds.ts の agentCliCapabilities、起動に使う claude の会話の ID の選択(新規は振る・再開は記録と照合)は
+// claudeSessionIdSelection.ts、引数(--session-id / --resume と --settings)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
 // 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts、claude の hooks の準備・結び付け・解放は
 // agentHookSessions.ts
 
@@ -73,13 +76,19 @@ export type AgentSessionStarter = (
   sink: AgentSessionSink
 ) => Promise<AgentStartResult>
 
+/** pty のセッションの CLI の種類と claude の会話の ID(再開に対応しない種類は null)。already-running と状態の取得で返す */
+export interface AgentSessionInfo {
+  cliKind: AgentCliKind
+  claudeSessionId: string | null
+}
+
 export interface AgentSessionStarterService {
   start: AgentSessionStarter
   /**
-   * pty の sessionId → claude の会話の ID。作ったセッションの exited の解決で消す(消す購読はセッションを registry へ返す前に
+   * pty の sessionId → 種類と claude の会話の ID。作ったセッションの exited の解決で消す(消す購読はセッションを registry へ返す前に
    * 付けるため、registry が枠からセッションを外すより先に消える)。無ければ undefined
    */
-  claudeSessionIdOf(sessionId: string): string | undefined
+  sessionInfoOf(sessionId: string): AgentSessionInfo | undefined
   /**
    * 「前回」の取得(agentTerminal:getLastSession)。folderPath を正規化して許可のフォルダと一致するときだけ、記録の先頭を返す。
    * 一致しない・記録が無ければ null
@@ -104,8 +113,10 @@ interface StartContext {
   folderKey: string
 }
 
-/** この依頼の create で作ったセッションの claude の会話の ID の受け渡し(registry が started を返したときに記録する) */
-interface CreatedClaudeSession {
+/** この依頼の create で作ったセッションの種類と claude の会話の ID の受け渡し(registry が started を返したときに記録する)。
+ *  cliKind の null は「まだ入っていない」(spawnSession が created を返す直前に入れる) */
+interface CreatedAgentSession {
+  cliKind: AgentCliKind | null
   claudeSessionId: string | null
 }
 
@@ -140,8 +151,8 @@ export function createAgentSessionStarter({
   canonicalize = canonicalOrSelf,
   isDirectory = isDirectoryOnDisk
 }: AgentSessionStarterDeps): AgentSessionStarterService {
-  // pty の sessionId → claude の会話の ID(already-running・作り直しの後の合わせ込みで返す)
-  const claudeSessionIdBySessionId = new Map<string, string>()
+  // pty の sessionId → 種類と claude の会話の ID(already-running・作り直しの後の合わせ込みで返す)
+  const sessionInfoBySessionId = new Map<string, AgentSessionInfo>()
 
   /**
    * 依頼のフォルダ(renderer の文字列)を正規化して許可のフォルダと比べる。許可のフォルダが無ければ正規化せずに返す。
@@ -188,21 +199,22 @@ export function createAgentSessionStarter({
       allowedFolder,
       folderKey
     }
-    // この依頼の create で作ったセッションの claude の会話の ID(registry が started を返したときに記録して返す)
-    const createdClaudeSession: CreatedClaudeSession = { claudeSessionId: null }
+    // この依頼の create で作ったセッションの種類と claude の会話の ID(registry が started を返したときに記録して返す)
+    const createdAgentSession: CreatedAgentSession = { cliKind: null, claudeSessionId: null }
     const result = await registry.start(ownerId, request.slotId, () =>
-      createSession(context, createdClaudeSession)
+      createSession(context, createdAgentSession)
     )
-    return finishStart(result, folderKey, createdClaudeSession.claudeSessionId)
+    return finishStart(result, folderKey, createdAgentSession)
   }
 
   /**
-   * registry.start に渡す create。起動の前の確かめ(作業ディレクトリ・コマンド)と hooks の準備・記録の読み込みを待ち、
-   * 取り消しを確かめ直してから spawnSession(await を挟まない区間)に進む。起動しなかったら finally で hooks を解放する
+   * registry.start に渡す create。起動の前の確かめ(作業ディレクトリ・コマンド・再開の可否)と hooks の準備・記録の読み込みを待ち、
+   * 取り消しを確かめ直してから spawnSession(await を挟まない区間)に進む。確かめで断ったら hooks を準備しない。準備の後に
+   * 起動しなかったら finally で hooks を解放する
    */
   async function createSession(
     context: StartContext,
-    createdClaudeSession: CreatedClaudeSession
+    createdAgentSession: CreatedAgentSession
   ): Promise<AgentSessionCreation> {
     const { ownerId, request, sink, requestedGeneration, allowedFolder } = context
     // 作業ディレクトリは renderer の文字列ではなく許可のフォルダ(main の値)
@@ -220,9 +232,17 @@ export function createAgentSessionStarter({
         result: {
           kind: 'error',
           error: 'command-not-found',
+          cliKind: launch.cliKind,
           shellPathUnavailable: launch.shellPathUnavailable
         }
       }
+    }
+    // 再開の依頼で、使う CLI が再開に対応していなければ、hooks を準備する前に断る(起動しない。renderer の理由に加えた main の守り。L-041)
+    if (
+      request.launch.kind === 'resume' &&
+      !agentCliCapabilities(launch.plan.cliKind).sessionResume
+    ) {
+      return { kind: 'failed', result: { kind: 'error', error: 'resume-unsupported' } }
     }
     // hooks の準備(版の確認・受け口・設定のファイル)。spawn の直前の await を挟まない区間に入れないため、ここで待つ。
     // pty の sessionId はまだ振らない(その区間で振る)。activate しなかったら finally で自分が書いたファイルだけを消す(L-004)
@@ -241,7 +261,7 @@ export function createAgentSessionStarter({
       ) {
         return { kind: 'failed', result: agentStartCanceled() }
       }
-      creation = spawnSession(context, launch.plan, prepared, createdClaudeSession)
+      creation = spawnSession(context, launch.plan, prepared, createdAgentSession)
       return creation
     } finally {
       // 取り消し・ID の選択の拒否・予約の失敗・spawn の失敗・例外(records.whenLoaded の reject など)で
@@ -267,22 +287,31 @@ export function createAgentSessionStarter({
     { request, sink, allowedFolder, folderKey }: StartContext,
     plan: AgentLaunchPlan,
     prepared: PreparedAgentHooks,
-    createdClaudeSession: CreatedClaudeSession
+    createdAgentSession: CreatedAgentSession
   ): AgentSessionCreation {
-    const selection = selectClaudeSessionId(
-      request.launch,
-      folderKey,
-      records,
-      createClaudeSessionId
-    )
-    if (selection.kind === 'rejected') return { kind: 'failed', result: selection.result }
-    const { claudeSessionId } = selection
+    const capabilities = agentCliCapabilities(plan.cliKind)
+    // 会話の ID の選択・予約は再開に対応する種類(claude)だけ。copilot は ID を選ばず予約もしない(設計書「起動の手順」4)
+    let claudeSessionId: string | null = null
+    if (capabilities.sessionResume) {
+      const selection = selectClaudeSessionId(
+        request.launch,
+        folderKey,
+        records,
+        createClaudeSessionId
+      )
+      if (selection.kind === 'rejected') return { kind: 'failed', result: selection.result }
+      claudeSessionId = selection.claudeSessionId
+    }
     // 予約の後で投げて予約が残らないよう、ID は予約の前に振る
     const sessionId = createSessionId()
     // 新しい ID も予約する(UUID の衝突は起きない前提だが、外す経路を 1 つにそろえるため)
-    const releaseReservation = reservations.tryReserve(claudeSessionId)
-    if (releaseReservation === null) {
-      return { kind: 'failed', result: { kind: 'error', error: 'session-in-use' } }
+    let releaseReservation: () => void = () => undefined
+    if (claudeSessionId !== null) {
+      const release = reservations.tryReserve(claudeSessionId)
+      if (release === null) {
+        return { kind: 'failed', result: { kind: 'error', error: 'session-in-use' } }
+      }
+      releaseReservation = release
     }
     let session: AgentSession
     try {
@@ -290,13 +319,14 @@ export function createAgentSessionStarter({
         id: sessionId,
         spawn: spawnPty,
         file: plan.file,
-        // 検証を通った ID と、main が作った設定のファイルの絶対パスをそのまま引数にする(L-018・L-034)
+        // 検証を通った ID と、main が作った設定のファイルの絶対パスをそのまま引数にする(L-018・L-034)。区別に対応しない種類には
+        // 設定のファイルを渡さない(起動の表が投げる)
         args: [
           ...plan.args,
-          ...buildAgentLaunchArgs(
+          ...AGENT_CLI_LAUNCH_SPECS[plan.cliKind].buildArgs(
             request.launch,
             claudeSessionId,
-            prepared.hooks?.settingsPath ?? null
+            capabilities.changeAttribution ? (prepared.hooks?.settingsPath ?? null) : null
           )
         ],
         env: plan.env,
@@ -318,9 +348,9 @@ export function createAgentSessionStarter({
     // 解決になる(AgentSession.stop は止まりきると exited を解決する)。止める操作の間(stoppingSessions)は予約が残る。
     // registry へ返す前に購読するので、registry が枠からセッションを外すより先に Map から消える。activate より前に購読し、
     // activate が投げても後始末が漏れない(頑健性の 5)
-    claudeSessionIdBySessionId.set(sessionId, claudeSessionId)
+    sessionInfoBySessionId.set(sessionId, { cliKind: plan.cliKind, claudeSessionId })
     void session.exited.then(() => {
-      cleanUpQuietly('Map', () => claudeSessionIdBySessionId.delete(sessionId))
+      cleanUpQuietly('Map', () => sessionInfoBySessionId.delete(sessionId))
       cleanUpQuietly('予約', releaseReservation)
       cleanUpQuietly('hooks', () => hooks.release(prepared, sessionId))
     })
@@ -331,22 +361,23 @@ export function createAgentSessionStarter({
     } catch (err) {
       console.error('[agentSessionStarter] hooks の結び付けに失敗しました:', err)
     }
-    createdClaudeSession.claudeSessionId = claudeSessionId
+    createdAgentSession.cliKind = plan.cliKind
+    createdAgentSession.claudeSessionId = claudeSessionId
     return { kind: 'created', session }
   }
 
-  /** registry の結果に claude の会話の ID を足す。起動が確定した(started)ときだけ記録する */
+  /** registry の結果に種類と claude の会話の ID を足す。起動が確定した(started)ときだけ記録する */
   function finishStart(
     result: AgentRegistryStartResult,
     folderKey: string,
-    createdClaudeSessionId: string | null
+    createdAgentSession: CreatedAgentSession
   ): AgentStartResult {
     // registry の結果の種類を足したときに already-running として返さないよう、kind ごとに分けて未知の kind は投げる(L-044)
     switch (result.kind) {
       case 'error':
         return result
       case 'started':
-        return recordStarted(result.sessionId, folderKey, createdClaudeSessionId)
+        return recordStarted(result.sessionId, folderKey, createdAgentSession)
       case 'already-running':
         return alreadyRunning(result.sessionId)
       default: {
@@ -356,35 +387,46 @@ export function createAgentSessionStarter({
     }
   }
 
-  /** started を共有の結果にして記録する。registry の started は、この依頼の create が作り、取り消さずに枠に置いたセッションだけ */
+  /**
+   * started を共有の結果にして記録する。registry の started は、この依頼の create が作り、取り消さずに枠に置いたセッションだけ。
+   * 種類が入っていない取り違えは能力で見分けずに投げる(L-044)。再開に対応する種類は会話の ID を必ず持ち、記録する。
+   * 対応しない種類(copilot)は ID を持たず、記録しない(前回の続きからに出さない)
+   */
   function recordStarted(
     sessionId: string,
     folderKey: string,
-    createdClaudeSessionId: string | null
+    { cliKind, claudeSessionId }: CreatedAgentSession
   ): AgentStartResult {
-    if (createdClaudeSessionId === null) {
-      throw new Error('起動したセッションの claude のセッション ID がありません')
+    if (cliKind === null) {
+      throw new Error('起動したセッションの CLI の種類がありません')
     }
-    // 起動は成功しているため、記録の失敗はログだけにする(次の 前回の続きから が古い記録を使うことがある。L-001)
-    try {
-      records.record(folderKey, createdClaudeSessionId)
-    } catch (err) {
-      console.error('[agentSessionStarter] 起動の記録に失敗しました:', err)
+    if (agentCliCapabilities(cliKind).sessionResume) {
+      if (claudeSessionId === null) {
+        throw new Error('起動したセッションの claude のセッション ID がありません')
+      }
+      // 起動は成功しているため、記録の失敗はログだけにする(次の 前回の続きから が古い記録を使うことがある。L-001)
+      try {
+        records.record(folderKey, claudeSessionId)
+      } catch (err) {
+        console.error('[agentSessionStarter] 起動の記録に失敗しました:', err)
+      }
+    } else if (claudeSessionId !== null) {
+      throw new Error('再開に対応しない CLI のセッションに claude のセッション ID があります')
     }
-    return { kind: 'started', sessionId, claudeSessionId: createdClaudeSessionId }
+    return { kind: 'started', sessionId, cliKind, claudeSessionId }
   }
 
-  /** already-running(StrictMode の二重の依頼など)は、動いているセッションの ID を返す(依頼の launch は使わない) */
+  /** already-running(StrictMode の二重の依頼など)は、動いているセッションの種類と ID を返す(依頼の launch は使わない) */
   function alreadyRunning(sessionId: string): AgentStartResult {
-    const claudeSessionId = claudeSessionIdBySessionId.get(sessionId)
-    if (claudeSessionId === undefined) {
+    const info = sessionInfoBySessionId.get(sessionId)
+    if (info === undefined) {
       console.error(
-        '[agentSessionStarter] 動いているセッションの claude のセッション ID が見つかりません:',
+        '[agentSessionStarter] 動いているセッションの種類と claude のセッション ID が見つかりません:',
         sessionId
       )
-      throw new Error('動いているセッションの claude のセッション ID が見つかりません')
+      throw new Error('動いているセッションの種類と claude のセッション ID が見つかりません')
     }
-    return { kind: 'already-running', sessionId, claudeSessionId }
+    return { kind: 'already-running', sessionId, ...info }
   }
 
   async function lastSessionOf(
@@ -403,7 +445,7 @@ export function createAgentSessionStarter({
 
   return {
     start,
-    claudeSessionIdOf: (sessionId) => claudeSessionIdBySessionId.get(sessionId),
+    sessionInfoOf: (sessionId) => sessionInfoBySessionId.get(sessionId),
     lastSessionOf
   }
 }

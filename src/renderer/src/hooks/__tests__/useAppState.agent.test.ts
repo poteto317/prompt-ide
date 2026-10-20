@@ -860,6 +860,7 @@ describe('useAppState', () => {
           mode: 'agent-cli',
           saveError: '保存できませんでした',
           isLocked: true,
+          isSwitching: false,
           lockedReason: '理由',
           onSelect: vi.fn()
         },
@@ -883,12 +884,30 @@ describe('useAppState', () => {
         agentNotificationPanel: {
           enabled: false,
           saveError: '通知の設定を保存できませんでした: x',
-          onChange: vi.fn()
+          onChange: vi.fn(),
+          unsupportedNote: null
         }
       })
       mockUseAgentWorkspace.mockReturnValue(workspace)
       const { result } = renderHook(() => useAppState())
       expect(result.current.agentNotificationPanel).toBe(workspace.agentNotificationPanel)
+    })
+
+    it('使うエージェント CLI の設定の項目を、useAgentWorkspace の戻り値のまま公開する', () => {
+      const workspace = makeAgentWorkspaceState({
+        agentCliKindPanel: {
+          kind: 'copilot',
+          fallback: 'invalid-value',
+          saveError: null,
+          isLocked: false,
+          isSwitching: false,
+          lockedReason: null,
+          onSelect: vi.fn()
+        }
+      })
+      mockUseAgentWorkspace.mockReturnValue(workspace)
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentCliKindPanel).toBe(workspace.agentCliKindPanel)
     })
 
     it('送信前の確認の設定の項目を、useAgentWorkspace の戻り値のまま公開する', () => {
