@@ -125,6 +125,21 @@ describe('AgentCliKindSection', () => {
     }
   })
 
+  it('切り替えの途中(isSwitching)の理由も出し、aria-disabled のまま選択肢から aria-describedby で参照する', () => {
+    render(
+      <AgentCliKindSection
+        {...props({ isSwitching: true, lockedReason: '使うエージェント CLI を切り替えています' })}
+      />
+    )
+    const reason = screen.getByText('使うエージェント CLI を切り替えています')
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeDisabled()
+      expect(radio).toHaveAttribute('aria-disabled', 'true')
+      expect(radio).toHaveAccessibleDescription('使うエージェント CLI を切り替えています')
+      expect(radio.getAttribute('aria-describedby')).toBe(reason.id)
+    }
+  })
+
   it('copilot を選んでいると、使えない機能の注記に能力の表のすべての名前を含む', () => {
     render(<AgentCliKindSection {...props({ kind: 'copilot' })} />)
     const note = screen.getByText(

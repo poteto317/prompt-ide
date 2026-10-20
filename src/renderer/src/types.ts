@@ -250,7 +250,7 @@ export interface ExecutionModePanelState {
   isLocked: boolean
   /** 実行方式か CLI の切り替えの途中(押した結果)。選択肢を aria-disabled にし、押しても選ばない(L-157) */
   isSwitching: boolean
-  /** 選べない理由(従来の方式の実行中)。無ければ null・省略 */
+  /** 選べない理由(従来の方式の実行中・実行方式か CLI の切り替えの途中。実行中を優先)。無ければ null・省略 */
   lockedReason?: string | null
   onSelect: (mode: PromptExecutionMode) => void
 }
@@ -283,7 +283,7 @@ export interface AgentCliKindPanelState {
   isLocked: boolean
   /** 実行方式か CLI の切り替えの途中(押した結果)。選択肢を aria-disabled にし、押しても選ばない(L-157) */
   isSwitching: boolean
-  /** 選べない理由(起動中だけ)。表示し、選択肢から参照する。出さないときは null */
+  /** 選べない理由(起動中・実行方式か CLI の切り替えの途中。起動中を優先)。表示し、選択肢から参照する。出さないときは null */
   lockedReason: string | null
   /** 選ぶ(動いているタブがあれば確認してから止め、保存する) */
   onSelect: (kind: AgentCliKind) => void

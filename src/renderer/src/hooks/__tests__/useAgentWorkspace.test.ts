@@ -1507,6 +1507,37 @@ describe('useAgentWorkspace', () => {
       )
     })
 
+    it('停止を待つ間は、実行方式・使う CLI の両方の節の選べない理由に切り替えの途中の文言を出し、終わったら戻す', async () => {
+      setMode('agent-cli')
+      let finishStop: () => void = () => undefined
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          selected: { status: 'running' },
+          stopAll: vi.fn(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishStop = () => resolve(true)
+              })
+          )
+        })
+      )
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      await select(result, 'legacy')
+      // 途中は選択肢が aria-disabled になるので、押せない理由を両方の節に出す(読み上げで理由が分かるように)
+      expect(result.current.executionModePanel.lockedReason).toBe(
+        AGENT_START_DISABLED_SWITCHING_MODE
+      )
+      expect(result.current.agentCliKindPanel.lockedReason).toBe(
+        AGENT_START_DISABLED_SWITCHING_MODE
+      )
+      await act(async () => {
+        finishStop()
+      })
+      await waitFor(() => expect(result.current.executionModePanel.isSwitching).toBe(false))
+      expect(result.current.executionModePanel.lockedReason).toBeNull()
+      expect(result.current.agentCliKindPanel.lockedReason).toBeNull()
+    })
+
     // changeMode は失敗を false で返し、stopAll は reject しないので本来は投げない。投げても選択肢を押せないまま
     // 残さず、Promise は捨てる側(onSelect)で記録して握る
     it('保存が投げてもロックを戻し、例外は記録して呼び出し元へ投げない', async () => {
@@ -1751,6 +1782,38 @@ describe('useAgentWorkspace', () => {
       expect(mockUseAgentSessions).toHaveBeenLastCalledWith(
         expect.objectContaining({ startBlockedReason: null })
       )
+    })
+
+    it('使う CLI の切り替えで停止を待つ間は、両方の節の選べない理由に切り替えの途中の文言を出し、終わったら戻す', async () => {
+      setMode('agent-cli')
+      setCliKind('claude')
+      let finishStop: () => void = () => undefined
+      mockUseAgentSessions.mockReturnValue(
+        makeAgentSessionsState({
+          selected: { status: 'running' },
+          stopAll: vi.fn(
+            () =>
+              new Promise<boolean>((resolve) => {
+                finishStop = () => resolve(true)
+              })
+          )
+        })
+      )
+      const { result } = renderWorkspace({ onConfirm: () => true })
+      await selectCli(result, 'copilot')
+      // 途中は選択肢が aria-disabled になるので、押せない理由を両方の節に出す(読み上げで理由が分かるように)
+      expect(result.current.agentCliKindPanel.lockedReason).toBe(
+        AGENT_START_DISABLED_SWITCHING_CLI_KIND
+      )
+      expect(result.current.executionModePanel.lockedReason).toBe(
+        AGENT_START_DISABLED_SWITCHING_CLI_KIND
+      )
+      await act(async () => {
+        finishStop()
+      })
+      await waitFor(() => expect(result.current.agentCliKindPanel.isSwitching).toBe(false))
+      expect(result.current.agentCliKindPanel.lockedReason).toBeNull()
+      expect(result.current.executionModePanel.lockedReason).toBeNull()
     })
 
     it('実行方式の切り替えの途中は、使う CLI を選べず、選んでも何もしない(確認・停止・保存を重ねない)', async () => {

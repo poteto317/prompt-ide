@@ -92,14 +92,15 @@ export interface UseAgentWorkspaceOptions {
 export interface AgentWorkspaceState {
   /** 設定パネルの実行方式の項目。mode は読み込み中は null。isLocked は読み込み中・エージェントの起動中・
    *  従来の方式の実行中(disabled)。isSwitching は実行方式か CLI の切り替えの途中(aria-disabled)。lockedReason は
-   *  従来の方式の実行中だけ。onSelect は従来の方式へ切り替えるとき、実行中のエージェントがあれば確認してから止める */
+   *  従来の方式の実行中・切り替えの途中(実行中を優先)。onSelect は従来の方式へ切り替えるとき、実行中のエージェントがあれば確認してから止める */
   executionModePanel: ExecutionModePanelState
   /** 設定パネルのエージェントの通知の項目 */
   agentNotificationPanel: AgentNotificationPanelState
   /** 設定パネルの送信前の確認の項目 */
   agentSendConfirmPanel: AgentSendConfirmPanelState
   /** 設定パネルの使うエージェント CLI の項目。kind は読み込み中は null。isLocked は読み込み中・エージェントの起動中(disabled)。
-   *  isSwitching は実行方式か CLI の切り替えの途中(aria-disabled)。onSelect は動いているタブがあれば確認してから止め、保存する */
+   *  isSwitching は実行方式か CLI の切り替えの途中(aria-disabled)。lockedReason は起動中・切り替えの途中(起動中を優先)。
+   *  onSelect は動いているタブがあれば確認してから止め、保存する */
   agentCliKindPanel: AgentCliKindPanelState
   /** フォルダの切り替えの前に、実行中(起動中を含む)のエージェントを終了してよいかを確かめる。無ければ確認せずに true */
   confirmStopAgent: (message: string) => boolean
@@ -395,7 +396,7 @@ export function useAgentWorkspace({
       isLocked: executionMode.mode === null || isAnyAgentStarting || isExecuting,
       // 押した結果として起きる状態なので isLocked と分ける(部品は disabled ではなく aria-disabled にする。L-157)
       isSwitching: switching !== null,
-      lockedReason: isExecuting ? EXECUTION_MODE_LOCKED_WHILE_EXECUTING : null,
+      lockedReason: isExecuting ? EXECUTION_MODE_LOCKED_WHILE_EXECUTING : startBlockedReason,
       // 選択肢のクリックは完了を待たない。changeMode は失敗を false で返し、stopAll は reject しないので本来は
       // 投げないが、投げたら記録して握る(ロックは finally で戻している)
       onSelect: (mode) => {
@@ -428,7 +429,7 @@ export function useAgentWorkspace({
       isLocked: agentCliKind.kind === null || isAnyAgentStarting,
       // 押した結果として起きる状態なので isLocked と分ける(部品は disabled ではなく aria-disabled にする。L-157)
       isSwitching: switching !== null,
-      lockedReason: isAnyAgentStarting ? AGENT_CLI_KIND_LOCKED_WHILE_STARTING : null,
+      lockedReason: isAnyAgentStarting ? AGENT_CLI_KIND_LOCKED_WHILE_STARTING : startBlockedReason,
       // 選択肢のクリックは完了を待たない。changeKind は失敗を false で返し、stopAll は reject しないので本来は投げないが、
       // 投げたら記録して握る(ロックは finally で戻している)
       onSelect: (kind) => {

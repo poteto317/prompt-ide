@@ -104,6 +104,26 @@ describe('ExecutionModeSection', () => {
     }
   })
 
+  it('切り替えの途中(isSwitching)の理由も出し、aria-disabled のまま選択肢から参照する', () => {
+    render(
+      <ExecutionModeSection
+        mode="agent-cli"
+        saveError={null}
+        isLocked={false}
+        isSwitching
+        lockedReason="使うエージェント CLI を切り替えています"
+        onSelect={vi.fn()}
+      />
+    )
+    const reason = screen.getByText('使うエージェント CLI を切り替えています')
+    for (const radio of screen.getAllByRole('radio')) {
+      expect(radio).not.toBeDisabled()
+      expect(radio).toHaveAttribute('aria-disabled', 'true')
+      expect(radio).toHaveAccessibleDescription('使うエージェント CLI を切り替えています')
+      expect(radio.getAttribute('aria-describedby')).toBe(reason.id)
+    }
+  })
+
   it('選べない理由が無ければ、理由も参照も出さない', () => {
     render(
       <ExecutionModeSection
