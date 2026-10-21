@@ -149,6 +149,12 @@ describe('readSettingsFile', () => {
       expectFixedSettingsFileError(err)
       expect(mockWriteFile).not.toHaveBeenCalled()
       expect(mockRename).not.toHaveBeenCalled()
+      // 読み込みの SettingsFileError をそのまま返す(書き込みの失敗として包み直さず、二重に記録しない)
+      expect(consoleErrorSpy).toHaveBeenCalledOnce()
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to read settings file:',
+        expect.any(SyntaxError)
+      )
     })
 
     it('ファイルが存在しない(ENOENT)ときは今までどおり空の設定を返し、console.error に記録しない', async () => {
@@ -171,6 +177,37 @@ describe('readSettingsFile', () => {
 })
 
 describe('writeSettingsFile', () => {
+  // 書き込みの失敗の元の例外(fs の例外にはパスが入る)は console.error にだけ記録し、固定の文言の SettingsFileError で返す(L-017)
+  let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleErrorSpy?.mockRestore()
+    consoleErrorSpy = null
+  })
+
+  async function writeFailure(): Promise<unknown> {
+    return writeSettingsFile({ modelId: 'claude-opus-4-8' }).then(
+      () => {
+        throw new Error('writeSettingsFile は失敗するはず')
+      },
+      (err: unknown) => err
+    )
+  }
+
+  function expectWriteFailureLogged(err: unknown, cause: unknown): void {
+    expect(err).toBeInstanceOf(SettingsFileError)
+    expect((err as Error).message).toBe(SETTINGS_FILE_ERROR_REASON)
+    expect(String(err)).not.toContain('/mock/userData')
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to write settings file:',
+      cause
+    )
+  }
+
   it('既存内容が無いときは partial の内容だけを書き込む', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await writeSettingsFile({ modelId: 'claude-opus-4-8' })
@@ -262,36 +299,55 @@ describe('writeSettingsFile', () => {
 
   it('sync が失敗しても fd を閉じ、一時ファイルを消して失敗を返す(rename しない)', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
-    mockSync.mockRejectedValueOnce(Object.assign(new Error('EIO: sync failed'), { code: 'EIO' }))
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EIO')
+    const syncErr = Object.assign(new Error('EIO: sync failed'), { code: 'EIO' })
+    mockSync.mockRejectedValueOnce(syncErr)
+    expectWriteFailureLogged(await writeFailure(), syncErr)
     expect(mockClose).toHaveBeenCalledTimes(1)
     expect(mockRename).not.toHaveBeenCalled()
     expect(mockRm).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], { force: true })
   })
 
-  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を返す', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
-      const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
-      const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
-      mockRename.mockRejectedValueOnce(renameErr)
-      mockRm.mockRejectedValueOnce(rmErr)
-      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(renameErr)
-      expect(consoleError).toHaveBeenCalledWith(
-        '[settingsFileStore] failed to remove temp file:',
-        rmErr
-      )
-    } finally {
-      consoleError.mockRestore()
-    }
+  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を記録してから SettingsFileError で返す', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+    const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
+    mockRename.mockRejectedValueOnce(renameErr)
+    mockRm.mockRejectedValueOnce(rmErr)
+    expectWriteFailureLogged(await writeFailure(), renameErr)
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to remove temp file:',
+      rmErr
+    )
   })
 
-  it('rename が失敗したら一時ファイルを消して失敗を返す', async () => {
+  it('rename が失敗したら一時ファイルを消し、元の例外(パスを含む)を記録して固定の文言の SettingsFileError を返す', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
-    mockRename.mockRejectedValueOnce(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EPERM')
+    const renameErr = Object.assign(
+      new Error(
+        "EPERM: operation not permitted, rename '/mock/userData/settings.json.1.tmp' -> '/mock/userData/settings.json'"
+      ),
+      { code: 'EPERM' }
+    )
+    mockRename.mockRejectedValueOnce(renameErr)
+    expectWriteFailureLogged(await writeFailure(), renameErr)
     expect(mockRm).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], { force: true })
+  })
+
+  it('一時ファイルの作成が EEXIST なら、そのファイルを消さずに、元の例外を記録して SettingsFileError を返す', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    const existErr = Object.assign(new Error('EEXIST: file already exists'), { code: 'EEXIST' })
+    mockWriteFile.mockRejectedValueOnce(existErr)
+    expectWriteFailureLogged(await writeFailure(), existErr)
+    expect(mockRm).not.toHaveBeenCalled()
+  })
+
+  it('userData ディレクトリの作成(mkdir)の失敗も、元の例外を記録して SettingsFileError を返す', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    const mkdirErr = Object.assign(new Error("EACCES: permission denied, mkdir '/mock/userData'"), {
+      code: 'EACCES'
+    })
+    mockMkdir.mockRejectedValueOnce(mkdirErr)
+    expectWriteFailureLogged(await writeFailure(), mkdirErr)
   })
 
   it('並行して呼ばれても書き込みが直列化され、後勝ちが先勝ちの変更を消さない(lost update防止)', async () => {
@@ -328,8 +384,8 @@ describe('writeSettingsFile', () => {
     mockReadFile.mockResolvedValue(JSON.stringify({}))
     mockRename.mockRejectedValueOnce(new Error('unexpected write error'))
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow(
-      'unexpected write error'
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBeInstanceOf(
+      SettingsFileError
     )
     await expect(writeSettingsFile({ maxTokens: 4096 })).resolves.toBeUndefined()
   })

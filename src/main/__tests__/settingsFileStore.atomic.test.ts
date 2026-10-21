@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import {
   mkdtempSync,
   rmSync,
@@ -95,9 +96,42 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   return { ...mocked, default: mocked }
 })
 
-import { readSettingsFile, writeSettingsFile } from '../settingsFileStore'
+import { readSettingsFile, writeSettingsFile, SettingsFileError } from '../settingsFileStore'
 
 const settingsPath = (): string => join(userDataDir.current, 'settings.json')
+
+// 書き込みの失敗は元の例外を console.error に記録し、固定の文言の SettingsFileError で返す(L-017)
+let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+
+async function expectWriteFailure(write: Promise<void>, cause?: unknown): Promise<void> {
+  const err = await write.then(
+    () => {
+      throw new Error('writeSettingsFile は失敗するはず')
+    },
+    (e: unknown) => e
+  )
+  expect(err).toBeInstanceOf(SettingsFileError)
+  expect(String(err)).not.toContain(userDataDir.current)
+  if (cause !== undefined) {
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to write settings file:',
+      cause
+    )
+  } else {
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to write settings file:',
+      expect.anything()
+    )
+  }
+}
+
+function loggedWriteCause(): Error & { code?: string } {
+  const call = consoleErrorSpy?.mock.calls.find(
+    (c) => c[0] === '[settingsFileStore] failed to write settings file:'
+  )
+  if (!call) throw new Error('書き込みの失敗が記録されていない')
+  return call[1] as Error & { code?: string }
+}
 
 beforeEach(() => {
   userDataDir.current = mkdtempSync(join(tmpdir(), 'prompt-ide-settings-'))
@@ -113,9 +147,12 @@ beforeEach(() => {
   fsHooks.lstatError = null
   fsHooks.realpathCalls = 0
   fsHooks.events = []
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
+  consoleErrorSpy?.mockRestore()
+  consoleErrorSpy = null
   rmSync(userDataDir.current, { recursive: true, force: true })
 })
 
@@ -168,9 +205,10 @@ describe('writeSettingsFile の原子的な書き込み', () => {
   it('rename が失敗したら、一時ファイルを残さず元のファイルを壊さずに失敗を返す', async () => {
     const original = JSON.stringify({ agentCliKind: 'copilot', encryptedApiKey: 'enc' })
     writeFileSync(settingsPath(), original)
-    fsHooks.renameError = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+    const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+    fsHooks.renameError = renameErr
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EPERM')
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), renameErr)
 
     expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
@@ -179,11 +217,12 @@ describe('writeSettingsFile の原子的な書き込み', () => {
   it('一時ファイルの書き込みが途中で失敗したら、一時ファイルを残さず元のファイルを壊さずに失敗を返す', async () => {
     const original = JSON.stringify({ agentCliKind: 'copilot', encryptedApiKey: 'enc' })
     writeFileSync(settingsPath(), original)
-    fsHooks.writeError = Object.assign(new Error('ENOSPC: no space left on device'), {
+    const writeErr = Object.assign(new Error('ENOSPC: no space left on device'), {
       code: 'ENOSPC'
     })
+    fsHooks.writeError = writeErr
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('ENOSPC')
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), writeErr)
 
     expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
@@ -198,7 +237,9 @@ describe('writeSettingsFile の原子的な書き込み', () => {
       writeFileSync(file, 'someone else')
     }
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EEXIST')
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }))
+    // 一時ファイルを消すかどうかは、SettingsFileError で包む前の元の例外(EEXIST)で判定する
+    expect(loggedWriteCause().code).toBe('EEXIST')
 
     expect(readFileSync(collidedName, 'utf-8')).toBe('someone else')
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
@@ -218,7 +259,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
         })
         fsHooks.realpathError = realpathErr
 
-        await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(realpathErr)
+        await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), realpathErr)
 
         expect(fsHooks.events).toEqual([])
         expect(lstatSync(settingsPath()).isSymbolicLink()).toBe(true)
@@ -253,7 +294,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
     const lstatErr = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
     fsHooks.lstatError = lstatErr
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(lstatErr)
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), lstatErr)
 
     expect(fsHooks.realpathCalls).toBe(0)
     expect(fsHooks.events).toEqual([])
@@ -268,65 +309,60 @@ describe('writeSettingsFile の原子的な書き込み', () => {
     await expect(readSettingsFile()).resolves.toEqual({ modelId: 'claude-opus-4-8' })
   })
 
-  it('sync も close も失敗したら、close の失敗を console.error に記録し、sync の例外を返す', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const original = JSON.stringify({ agentCliKind: 'copilot' })
-      writeFileSync(settingsPath(), original)
-      const syncErr = Object.assign(new Error('EIO: sync failed'), { code: 'EIO' })
-      const closeErr = Object.assign(new Error('EBADF: close failed'), { code: 'EBADF' })
-      fsHooks.syncError = syncErr
-      fsHooks.closeError = closeErr
+  it('sync も close も失敗したら、close の失敗を console.error に記録し、sync の例外を記録して SettingsFileError を返す', async () => {
+    const original = JSON.stringify({ agentCliKind: 'copilot' })
+    writeFileSync(settingsPath(), original)
+    const syncErr = Object.assign(new Error('EIO: sync failed'), { code: 'EIO' })
+    const closeErr = Object.assign(new Error('EBADF: close failed'), { code: 'EBADF' })
+    fsHooks.syncError = syncErr
+    fsHooks.closeError = closeErr
 
-      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(syncErr)
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), syncErr)
 
-      expect(consoleError).toHaveBeenCalledWith(
-        '[settingsFileStore] failed to close temp file:',
-        closeErr
-      )
-      expect(fsHooks.events).toEqual(['sync', 'close'])
-      expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
-      expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
-    } finally {
-      consoleError.mockRestore()
-    }
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to close temp file:',
+      closeErr
+    )
+    expect(fsHooks.events).toEqual(['sync', 'close'])
+    expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+    expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
   })
 
-  it('close だけが失敗したら、rename せずに close の例外を返す', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const original = JSON.stringify({ agentCliKind: 'copilot' })
-      writeFileSync(settingsPath(), original)
-      const closeErr = Object.assign(new Error('EIO: close failed'), { code: 'EIO' })
-      fsHooks.closeError = closeErr
+  it('close だけが失敗したら、rename せずに close の例外を記録して SettingsFileError を返す', async () => {
+    const original = JSON.stringify({ agentCliKind: 'copilot' })
+    writeFileSync(settingsPath(), original)
+    const closeErr = Object.assign(new Error('EIO: close failed'), { code: 'EIO' })
+    fsHooks.closeError = closeErr
 
-      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(closeErr)
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), closeErr)
 
-      expect(fsHooks.events).toEqual(['sync', 'close'])
-      expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
-      expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
-    } finally {
-      consoleError.mockRestore()
-    }
+    expect(fsHooks.events).toEqual(['sync', 'close'])
+    expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+    expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
   })
 
-  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を返す', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
-      const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
-      fsHooks.renameError = renameErr
-      fsHooks.rmError = rmErr
+  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を記録して SettingsFileError を返す', async () => {
+    const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+    const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
+    fsHooks.renameError = renameErr
+    fsHooks.rmError = rmErr
 
-      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(renameErr)
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }), renameErr)
 
-      expect(consoleError).toHaveBeenCalledWith(
-        '[settingsFileStore] failed to remove temp file:',
-        rmErr
-      )
-    } finally {
-      consoleError.mockRestore()
-    }
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[settingsFileStore] failed to remove temp file:',
+      rmErr
+    )
+  })
+
+  it('書き込みが失敗しても、次の書き込みは止まらずに保存できる', async () => {
+    fsHooks.renameError = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+    await expectWriteFailure(writeSettingsFile({ modelId: 'claude-opus-4-8' }))
+
+    fsHooks.renameError = null
+    await writeSettingsFile({ agentCliKind: 'copilot' })
+
+    await expect(readSettingsFile()).resolves.toEqual({ agentCliKind: 'copilot' })
   })
 
   it('並行して書いても、すべての変更が残り、一時ファイルも残らない', async () => {

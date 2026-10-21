@@ -35,7 +35,7 @@ export interface SettingsFile {
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')
 
 /**
- * settings.json を読めない・壊れている(JSON として読めない・普通のオブジェクトでない)ときの失敗。文言は固定
+ * settings.json を読めない・壊れている(JSON として読めない・普通のオブジェクトでない)・書き込めないときの失敗。文言は固定
  * (SETTINGS_FILE_ERROR_REASON)で、パスも中身も含まない。元の例外(JSON.parse の SyntaxError には中身の断片〈API キーの
  * 暗号文を含みうる〉が、fs の例外にはパスが入る)は console.error にだけ記録する(L-017)。呼び出し元は instanceof で見分けられる
  */
@@ -82,13 +82,22 @@ export async function readSettingsFile(): Promise<SettingsFile> {
 const writeQueue = new WriteQueue()
 
 // Merge write: settings.json は複数の関心事(APIキー・モデル設定など)のフィールドを
-// 共有するため、既存内容を読み込んでから部分更新する(undefined を指定したキーは削除される)
+// 共有するため、既存内容を読み込んでから部分更新する(undefined を指定したキーは削除される)。
+// 書き込みの失敗(フォルダの作成・書き込み先の解決・一時ファイルの作成・sync・close・chmod・rename)は元の例外
+// (fs の例外にはパスが入る。例: Windows の rename の EPERM)を console.error に記録し、固定の文言の SettingsFileError で
+// 投げ直す(L-017)。先頭の読み込みの SettingsFileError は記録済みなので、包み直さずにそのまま返す。
+// 失敗してもキューは次の書き込みを止めない(WriteQueue)
 export function writeSettingsFile(partial: Partial<SettingsFile>): Promise<void> {
   return writeQueue.enqueue(async () => {
     const current = await readSettingsFile()
     const next = { ...current, ...partial }
-    await mkdir(app.getPath('userData'), { recursive: true })
-    await writeFileAtomically(getSettingsPath(), JSON.stringify(next, null, 2))
+    try {
+      await mkdir(app.getPath('userData'), { recursive: true })
+      await writeFileAtomically(getSettingsPath(), JSON.stringify(next, null, 2))
+    } catch (err) {
+      console.error('[settingsFileStore] failed to write settings file:', err)
+      throw new SettingsFileError()
+    }
   })
 }
 
