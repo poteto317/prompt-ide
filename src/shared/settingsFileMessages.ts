@@ -11,7 +11,7 @@ export const SETTINGS_FILE_RETRY_HINT =
   'ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください'
 
 /**
- * 設定ファイルの読み書きの失敗の理由(固定)。main は settings.json を読めない・壊れているときにこの文言で投げ、
+ * 設定ファイルの読み書きの失敗の理由(固定)。main は settings.json を読めない・壊れている・書き込めないときにこの文言で投げ、
  * renderer は実行方式・エージェントの通知・送信前の確認・使うエージェント CLI・モデルの保存の失敗の理由に使う。
  * 利用者が自分で直せる原因(ほかのアプリが settings.json を開いている〈Windows の rename の EPERM・EBUSY〉・
  * settings.json が壊れている〈保存は先に読み込むため、どの設定の保存も失敗し続ける〉)を案内する。パスと例外の中身は出さない

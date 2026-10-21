@@ -6,7 +6,7 @@
  * API キーの読み込みの失敗の理由の種類
  * - keystore-unavailable: システムのキーストア(キーチェーンなど)が使えない
  * - decrypt-failed: 保存済みのキーを復号できない(main がキーを消してあるため、再起動すると再設定できる)
- * - settings-file-error: settings.json を読めない・壊れている
+ * - settings-file-error: settings.json を読めない・壊れている・書き込めない(キーを消す・旧形式のキーを移すときの書き込み)
  * - unknown: 上のどれにも分類できない失敗(main が console.error に記録する)
  */
 export type ApiKeyLoadFailureReason =

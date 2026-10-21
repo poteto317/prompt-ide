@@ -24,7 +24,8 @@ export class ApiKeyDecryptError extends Error {
 
 /**
  * API キーの読み込みの失敗を理由の種類に変える。型は instanceof で見分ける(文言では見分けない)。
- * 分類できない失敗(キーを消すときの書き込みの失敗・旧形式のキーの暗号化し直しの失敗など)は unknown にし、
+ * settings.json の読み書きの失敗(キーを消すときの書き込み・旧形式のキーの暗号化し直しの書き込みを含む)は
+ * SettingsFileError として settings-file-error になる。分類できない失敗(Error でない値など)は unknown にし、
  * 元の例外を console.error に記録する(main の記録で、renderer へは送らない)
  */
 export function toApiKeyLoadFailureReason(err: unknown): ApiKeyLoadFailureReason {
