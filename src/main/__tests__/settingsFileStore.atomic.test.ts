@@ -19,7 +19,7 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => userDataDir.current) }
 }))
 
-// 実物の fs を使い、writeFile・open・rename・rm・realpath だけを差し替えられるようにする
+// 実物の fs を使い、writeFile・open・rename・rm・lstat・realpath だけを差し替えられるようにする
 // (書き込み先の解決の失敗・書き込みの途中・書き込みの失敗・sync の順序・sync と close の失敗・rename の失敗・後始末の失敗を作るため)
 const fsHooks = vi.hoisted(() => ({
   beforeRename: null as null | (() => Promise<void>),
@@ -31,6 +31,8 @@ const fsHooks = vi.hoisted(() => ({
   renameError: null as null | Error,
   rmError: null as null | Error,
   realpathError: null as null | Error,
+  lstatError: null as null | Error,
+  realpathCalls: 0,
   events: [] as string[]
 }))
 
@@ -81,10 +83,15 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     return actual.rm(file, options)
   }
   const realpath = (async (file: Parameters<typeof actual.realpath>[0]) => {
+    fsHooks.realpathCalls += 1
     if (fsHooks.realpathError !== null) throw fsHooks.realpathError
     return actual.realpath(file)
   }) as typeof actual.realpath
-  const mocked = { ...actual, writeFile, open, rename, rm, realpath }
+  const lstat = (async (file: Parameters<typeof actual.lstat>[0]) => {
+    if (fsHooks.lstatError !== null) throw fsHooks.lstatError
+    return actual.lstat(file)
+  }) as typeof actual.lstat
+  const mocked = { ...actual, writeFile, open, rename, rm, lstat, realpath }
   return { ...mocked, default: mocked }
 })
 
@@ -103,6 +110,8 @@ beforeEach(() => {
   fsHooks.renameError = null
   fsHooks.rmError = null
   fsHooks.realpathError = null
+  fsHooks.lstatError = null
+  fsHooks.realpathCalls = 0
   fsHooks.events = []
 })
 
@@ -195,14 +204,58 @@ describe('writeSettingsFile の原子的な書き込み', () => {
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
   })
 
-  it('書き込み先の解決(realpath)が ENOENT 以外で失敗したら、一時ファイルを作らず元のファイルを壊さずに失敗を返す', async () => {
+  it.skipIf(process.platform === 'win32')(
+    'settings.json がシンボリックリンクで、リンク先の解決(realpath)が ENOENT 以外で失敗したら、一時ファイルを作らずリンクとリンク先を壊さずに失敗を返す',
+    async () => {
+      const linkTargetDir = mkdtempSync(join(tmpdir(), 'prompt-ide-settings-target-'))
+      try {
+        const original = JSON.stringify({ agentCliKind: 'copilot' })
+        const linkTarget = join(linkTargetDir, 'real-settings.json')
+        writeFileSync(linkTarget, original)
+        symlinkSync(linkTarget, settingsPath())
+        const realpathErr = Object.assign(new Error('EACCES: permission denied'), {
+          code: 'EACCES'
+        })
+        fsHooks.realpathError = realpathErr
+
+        await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(realpathErr)
+
+        expect(fsHooks.events).toEqual([])
+        expect(lstatSync(settingsPath()).isSymbolicLink()).toBe(true)
+        expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+        expect(readdirSync(linkTargetDir)).toEqual(['real-settings.json'])
+        expect(readFileSync(linkTarget, 'utf-8')).toBe(original)
+      } finally {
+        rmSync(linkTargetDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it('settings.json が通常のファイルなら realpath を呼ばないので、realpath が失敗する環境でも保存できる', async () => {
+    writeFileSync(settingsPath(), JSON.stringify({ agentCliKind: 'copilot' }))
+    fsHooks.realpathError = Object.assign(new Error('EISDIR: illegal operation'), {
+      code: 'EISDIR'
+    })
+
+    await writeSettingsFile({ modelId: 'claude-opus-4-8' })
+
+    expect(fsHooks.realpathCalls).toBe(0)
+    expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+    await expect(readSettingsFile()).resolves.toEqual({
+      agentCliKind: 'copilot',
+      modelId: 'claude-opus-4-8'
+    })
+  })
+
+  it('書き込み先の確認(lstat)が ENOENT 以外で失敗したら、一時ファイルを作らず元のファイルを壊さずに失敗を返す', async () => {
     const original = JSON.stringify({ agentCliKind: 'copilot' })
     writeFileSync(settingsPath(), original)
-    const realpathErr = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
-    fsHooks.realpathError = realpathErr
+    const lstatErr = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    fsHooks.lstatError = lstatErr
 
-    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(realpathErr)
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(lstatErr)
 
+    expect(fsHooks.realpathCalls).toBe(0)
     expect(fsHooks.events).toEqual([])
     expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)

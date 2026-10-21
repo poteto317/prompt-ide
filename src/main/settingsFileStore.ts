@@ -1,7 +1,17 @@
 import { app } from 'electron'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { readFile, writeFile, mkdir, chmod, rename, rm, open, realpath } from 'node:fs/promises'
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  chmod,
+  rename,
+  rm,
+  open,
+  lstat,
+  realpath
+} from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
@@ -88,7 +98,11 @@ async function syncAndClose(handle: FileHandle): Promise<void> {
 // Windows の rename(MoveFileEx の置き換え)は、ほかのプロセスが settings.json を共有削除なしで開いていると
 // EPERM・EBUSY で失敗し得る。その場合も元のファイルはそのまま残り、保存の失敗として呼び出し元へ返す。
 // settings.json がシンボリックリンクなら realpath でたどり、リンク先と同じディレクトリに一時ファイルを作ってリンク先へ
-// rename する(リンクを通常のファイルに置き換えず、リンク先を更新する。以前の writeFile と同じ結果)。
+// rename する(リンクを通常のファイルに置き換えず、リンク先の内容を更新する)。ただし以前の writeFile(リンク先のファイルを
+// その場で上書き)と同じ結果ではない。リンク先のフォルダへの書き込み権限が要る(一時ファイルの作成と rename のため。
+// ファイルにだけ書き込み権限があるときは、以前は成功し、今は EACCES で失敗する)。またリンク先は新しいファイルに置き換わる
+// ので、元のファイルの所有者・ACL・ハードリンクは引き継がれない(所有者は保存した利用者になり、ほかのハードリンクは古い
+// 内容のまま切り離される)。
 async function writeFileAtomically(target: string, content: string): Promise<void> {
   const resolvedTarget = await resolveWriteTarget(target)
   const tempPath = `${resolvedTarget}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
@@ -109,11 +123,17 @@ async function writeFileAtomically(target: string, content: string): Promise<voi
   }
 }
 
-// 書き込み先のシンボリックリンクをたどった実体のパスを返す。ファイルが無ければ(realpath が ENOENT)今のパスのまま。
-// リンク切れ(リンクはあるがリンク先が無い)も ENOENT なので今のパスのままで、リンクを通常のファイルに置き換える
-// (リンク先の場所に新しいファイルを作らない)。ENOENT 以外の失敗は保存の失敗として投げる。
+// 書き込み先のシンボリックリンクをたどった実体のパスを返す。realpath は lstat でシンボリックリンクと分かったときだけ呼ぶ
+// (Windows の RAM ディスクや一部の仮想・ネットワークドライブでは realpath(realpath.native)が失敗することがあり、
+// 通常のファイルでも呼ぶと、リンクを使っていない利用者の保存がすべて失敗しうるため)。通常のファイルなら今のパスのまま。
+// ファイルが無ければ(lstat が ENOENT)今のパスのまま。リンク切れ(リンクはあるがリンク先が無い)は realpath が ENOENT に
+// なるので今のパスのままで、リンクを通常のファイルに置き換える(リンク先の場所に新しいファイルを作らない)。
+// lstat・realpath の ENOENT 以外の失敗は保存の失敗として投げる。lstat が失敗したときはリンクかどうかが分からず、今のパスの
+// まま進めるとリンクを通常のファイルに置き換えてしまいうるため(元のファイルとリンクは壊さずに残す)。
 async function resolveWriteTarget(target: string): Promise<string> {
   try {
+    const stats = await lstat(target)
+    if (!stats.isSymbolicLink()) return target
     return await realpath(target)
   } catch (err) {
     if (isEnoentError(err)) return target

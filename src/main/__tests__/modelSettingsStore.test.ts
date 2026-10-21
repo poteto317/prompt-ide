@@ -8,6 +8,7 @@ const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 // 一時ファイルを rename の前に sync するため、open は sync と close だけを持つ偽の FileHandle を返す
 const mockOpen = vi.hoisted(() => vi.fn())
+const mockLstat = vi.hoisted(() => vi.fn())
 const mockRealpath = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
@@ -23,6 +24,7 @@ vi.mock('node:fs/promises', () => ({
     rename: mockRename,
     rm: mockRm,
     open: mockOpen,
+    lstat: mockLstat,
     realpath: mockRealpath
   },
   readFile: mockReadFile,
@@ -32,6 +34,7 @@ vi.mock('node:fs/promises', () => ({
   rename: mockRename,
   rm: mockRm,
   open: mockOpen,
+  lstat: mockLstat,
   realpath: mockRealpath
 }))
 
@@ -39,7 +42,8 @@ import { getModelSettings, setModelSettings } from '../modelSettingsStore'
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // 書き込み先はシンボリックリンクではない(realpath は同じパスを返す)
+  // 書き込み先はシンボリックリンクではない(lstat は通常のファイルを返し、realpath は呼ばれない)
+  mockLstat.mockResolvedValue({ isSymbolicLink: () => false })
   mockRealpath.mockImplementation(async (target: string) => target)
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
