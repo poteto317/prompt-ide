@@ -4,6 +4,8 @@ const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
 const mockMkdir = vi.hoisted(() => vi.fn())
 const mockChmod = vi.hoisted(() => vi.fn())
+const mockRename = vi.hoisted(() => vi.fn())
+const mockRm = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
@@ -15,11 +17,20 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('node:fs/promises', () => ({
-  default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir, chmod: mockChmod },
+  default: {
+    readFile: mockReadFile,
+    writeFile: mockWriteFile,
+    mkdir: mockMkdir,
+    chmod: mockChmod,
+    rename: mockRename,
+    rm: mockRm
+  },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
-  chmod: mockChmod
+  chmod: mockChmod,
+  rename: mockRename,
+  rm: mockRm
 }))
 
 import { getApiKey, setApiKey } from '../apiKeyStore'
@@ -35,6 +46,8 @@ beforeEach(() => {
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
   mockChmod.mockResolvedValue(undefined)
+  mockRename.mockResolvedValue(undefined)
+  mockRm.mockResolvedValue(undefined)
   // merge 書き込みのため書き込み系も readFile を呼ぶ。デフォルトは「ファイルなし」
   mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
 })
@@ -138,10 +151,15 @@ describe('setApiKey', () => {
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
     const base64 = Buffer.from('sk-ant-abc').toString('base64')
+    // 一時ファイルへ書いてから settings.json へ rename で置き換える(書きかけを読ませない)
     expect(mockWriteFile).toHaveBeenCalledWith(
-      '/mock/userData/settings.json',
+      expect.stringMatching(/^\/mock\/userData\/settings\.json\.\d+\.[0-9a-f]{12}\.tmp$/),
       JSON.stringify({ encryptedApiKey: base64 }, null, 2),
       { encoding: 'utf-8', mode: 0o600 }
+    )
+    expect(mockRename).toHaveBeenCalledWith(
+      mockWriteFile.mock.calls[0][0],
+      '/mock/userData/settings.json'
     )
   })
 
@@ -166,13 +184,14 @@ describe('setApiKey', () => {
     expect(written.encryptedApiKey).toBe(Buffer.from('sk-ant-abc').toString('base64'))
   })
 
-  it('writeFile 後に chmod(0o600) を呼んで既存ファイルの権限も確実に設定する', async () => {
+  it('一時ファイルを writeFile した後、rename の前に chmod(0o600) を呼ぶ(置き換え後の権限も 0o600 にする)', async () => {
     mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
     await setApiKey('sk-ant-abc')
-    expect(mockChmod).toHaveBeenCalledWith('/mock/userData/settings.json', 0o600)
-    // chmod は writeFile の後に呼ばれる
+    expect(mockChmod).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], 0o600)
     const writeOrder = mockWriteFile.mock.invocationCallOrder[0]
     const chmodOrder = mockChmod.mock.invocationCallOrder[0]
+    const renameOrder = mockRename.mock.invocationCallOrder[0]
     expect(chmodOrder).toBeGreaterThan(writeOrder)
+    expect(renameOrder).toBeGreaterThan(chmodOrder)
   })
 })

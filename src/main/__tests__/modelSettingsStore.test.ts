@@ -4,17 +4,28 @@ const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
 const mockMkdir = vi.hoisted(() => vi.fn())
 const mockChmod = vi.hoisted(() => vi.fn())
+const mockRename = vi.hoisted(() => vi.fn())
+const mockRm = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') }
 }))
 
 vi.mock('node:fs/promises', () => ({
-  default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir, chmod: mockChmod },
+  default: {
+    readFile: mockReadFile,
+    writeFile: mockWriteFile,
+    mkdir: mockMkdir,
+    chmod: mockChmod,
+    rename: mockRename,
+    rm: mockRm
+  },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
-  chmod: mockChmod
+  chmod: mockChmod,
+  rename: mockRename,
+  rm: mockRm
 }))
 
 import { getModelSettings, setModelSettings } from '../modelSettingsStore'
@@ -24,6 +35,8 @@ beforeEach(() => {
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
   mockChmod.mockResolvedValue(undefined)
+  mockRename.mockResolvedValue(undefined)
+  mockRm.mockResolvedValue(undefined)
   // merge 書き込みのため書き込み系も readFile を呼ぶ。デフォルトは「ファイルなし」
   mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
 })

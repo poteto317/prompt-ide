@@ -4,17 +4,28 @@ const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
 const mockMkdir = vi.hoisted(() => vi.fn())
 const mockChmod = vi.hoisted(() => vi.fn())
+const mockRename = vi.hoisted(() => vi.fn())
+const mockRm = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') }
 }))
 
 vi.mock('node:fs/promises', () => ({
-  default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir, chmod: mockChmod },
+  default: {
+    readFile: mockReadFile,
+    writeFile: mockWriteFile,
+    mkdir: mockMkdir,
+    chmod: mockChmod,
+    rename: mockRename,
+    rm: mockRm
+  },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
-  chmod: mockChmod
+  chmod: mockChmod,
+  rename: mockRename,
+  rm: mockRm
 }))
 
 import { readSettingsFile, writeSettingsFile } from '../settingsFileStore'
@@ -24,6 +35,8 @@ beforeEach(() => {
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
   mockChmod.mockResolvedValue(undefined)
+  mockRename.mockResolvedValue(undefined)
+  mockRm.mockResolvedValue(undefined)
 })
 
 describe('readSettingsFile', () => {
@@ -100,35 +113,56 @@ describe('writeSettingsFile', () => {
     expect(mockMkdir).toHaveBeenCalledWith('/mock/userData', { recursive: true })
   })
 
-  it('writeFile を mode 0o600 で呼ぶ', async () => {
+  it('同じディレクトリの一時ファイル(pid と乱数入り)へ mode 0o600 で書き、settings.json へ rename する', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await writeSettingsFile({ modelId: 'claude-opus-4-8' })
-    expect(mockWriteFile).toHaveBeenCalledWith('/mock/userData/settings.json', expect.any(String), {
-      encoding: 'utf-8',
-      mode: 0o600
-    })
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/mock\/userData\/settings\.json\.\d+\.[0-9a-f]{12}\.tmp$/),
+      expect.any(String),
+      {
+        encoding: 'utf-8',
+        mode: 0o600
+      }
+    )
+    const tempPath = mockWriteFile.mock.calls[0][0] as string
+    expect(tempPath).toContain(`.${process.pid}.`)
+    expect(mockRename).toHaveBeenCalledWith(tempPath, '/mock/userData/settings.json')
   })
 
-  it('writeFile 後に chmod(0o600) を呼ぶ(既存ファイルの権限も確実に設定する)', async () => {
+  it('一時ファイルの writeFile 後、rename の前に chmod(0o600) を呼ぶ(置き換え後の権限も 0o600 にする)', async () => {
     mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
     await writeSettingsFile({ modelId: 'claude-opus-4-8' })
-    expect(mockChmod).toHaveBeenCalledWith('/mock/userData/settings.json', 0o600)
+    expect(mockChmod).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], 0o600)
     const writeOrder = mockWriteFile.mock.invocationCallOrder[0]
     const chmodOrder = mockChmod.mock.invocationCallOrder[0]
+    const renameOrder = mockRename.mock.invocationCallOrder[0]
     expect(chmodOrder).toBeGreaterThan(writeOrder)
+    expect(renameOrder).toBeGreaterThan(chmodOrder)
+  })
+
+  it('rename が失敗したら一時ファイルを消して失敗を返す', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    mockRename.mockRejectedValueOnce(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EPERM')
+    expect(mockRm).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], { force: true })
   })
 
   it('並行して呼ばれても書き込みが直列化され、後勝ちが先勝ちの変更を消さない(lost update防止)', async () => {
-    // read-modify-write を模した簡易フェイクストア。writeFile が呼ばれるたびに
-    // 状態を更新し、以降の readFile はその最新状態を返す
+    // read-modify-write を模した簡易フェイクストア。一時ファイルへの writeFile の内容を
+    // rename で確定し、以降の readFile はその最新状態を返す
     let fakeStore: Record<string, unknown> | null = null
+    const pendingWrites = new Map<string, string>()
     mockReadFile.mockImplementation(() =>
       fakeStore === null
         ? Promise.reject(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
         : Promise.resolve(JSON.stringify(fakeStore))
     )
-    mockWriteFile.mockImplementation((_path: string, content: string) => {
-      fakeStore = JSON.parse(content)
+    mockWriteFile.mockImplementation((tempFile: string, content: string) => {
+      pendingWrites.set(tempFile, content)
+      return Promise.resolve(undefined)
+    })
+    mockRename.mockImplementation((from: string) => {
+      fakeStore = JSON.parse(pendingWrites.get(from) ?? 'null')
       return Promise.resolve(undefined)
     })
 
