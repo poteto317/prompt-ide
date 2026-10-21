@@ -10,29 +10,57 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => userDataDir.current) }
 }))
 
-// 実物の fs を使い、writeFile と rename だけを差し替えられるようにする(書き込みの途中・rename の失敗を作るため)
+// 実物の fs を使い、writeFile・open・rename・rm だけを差し替えられるようにする
+// (書き込みの途中・書き込みの失敗・sync の順序・rename の失敗・後始末の失敗を作るため)
 const fsHooks = vi.hoisted(() => ({
   beforeRename: null as null | (() => Promise<void>),
+  beforeWrite: null as null | ((file: string) => void),
   partialWriteGate: null as null | Promise<void>,
-  renameError: null as null | Error
+  writeError: null as null | Error,
+  renameError: null as null | Error,
+  rmError: null as null | Error,
+  events: [] as string[]
 }))
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
   const writeFile: typeof actual.writeFile = async (file, data, options) => {
+    if (fsHooks.beforeWrite !== null && typeof file === 'string') fsHooks.beforeWrite(file)
+    // 書き込みの途中の失敗を再現する: 先頭だけ書いてから投げる(ディスクの空き不足など)
+    if (fsHooks.writeError !== null && typeof data === 'string') {
+      await actual.writeFile(file, data.slice(0, 5), options)
+      throw fsHooks.writeError
+    }
     // 書き込みの途中を再現する: 先頭だけ書いた状態で止め、合図のあとに残りを書く
+    // (残りは同じファイルへの上書き。wx のまま書くと、自分が作った一時ファイルで EEXIST になるため)
     if (fsHooks.partialWriteGate !== null && typeof data === 'string') {
       await actual.writeFile(file, data.slice(0, 5), options)
       await fsHooks.partialWriteGate
+      const rest = typeof options === 'object' && options !== null ? options : {}
+      return actual.writeFile(file, data, { ...rest, flag: 'w' })
     }
     return actual.writeFile(file, data, options)
   }
+  const open: typeof actual.open = async (file, flags, mode) => {
+    const handle = await actual.open(file, flags, mode)
+    const sync = handle.sync.bind(handle)
+    handle.sync = async () => {
+      fsHooks.events.push('sync')
+      return sync()
+    }
+    return handle
+  }
   const rename: typeof actual.rename = async (from, to) => {
+    fsHooks.events.push('rename')
     if (fsHooks.beforeRename !== null) await fsHooks.beforeRename()
     if (fsHooks.renameError !== null) throw fsHooks.renameError
     return actual.rename(from, to)
   }
-  const mocked = { ...actual, writeFile, rename }
+  const rm: typeof actual.rm = async (file, options) => {
+    if (fsHooks.rmError !== null) throw fsHooks.rmError
+    return actual.rm(file, options)
+  }
+  const mocked = { ...actual, writeFile, open, rename, rm }
   return { ...mocked, default: mocked }
 })
 
@@ -43,8 +71,12 @@ const settingsPath = (): string => join(userDataDir.current, 'settings.json')
 beforeEach(() => {
   userDataDir.current = mkdtempSync(join(tmpdir(), 'prompt-ide-settings-'))
   fsHooks.beforeRename = null
+  fsHooks.beforeWrite = null
   fsHooks.partialWriteGate = null
+  fsHooks.writeError = null
   fsHooks.renameError = null
+  fsHooks.rmError = null
+  fsHooks.events = []
 })
 
 afterEach(() => {
@@ -106,6 +138,60 @@ describe('writeSettingsFile の原子的な書き込み', () => {
 
     expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+  })
+
+  it('一時ファイルの書き込みが途中で失敗したら、一時ファイルを残さず元のファイルを壊さずに失敗を返す', async () => {
+    const original = JSON.stringify({ agentCliKind: 'copilot', encryptedApiKey: 'enc' })
+    writeFileSync(settingsPath(), original)
+    fsHooks.writeError = Object.assign(new Error('ENOSPC: no space left on device'), {
+      code: 'ENOSPC'
+    })
+
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('ENOSPC')
+
+    expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+    expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+  })
+
+  it('一時ファイルと同じ名前のファイルが既にあれば、切り詰めず消さずに失敗を返す(wx)', async () => {
+    const original = JSON.stringify({ agentCliKind: 'copilot' })
+    writeFileSync(settingsPath(), original)
+    let collidedName = ''
+    fsHooks.beforeWrite = (file) => {
+      collidedName = file
+      writeFileSync(file, 'someone else')
+    }
+
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EEXIST')
+
+    expect(readFileSync(collidedName, 'utf-8')).toBe('someone else')
+    expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+  })
+
+  it('一時ファイルを sync してから rename する', async () => {
+    await writeSettingsFile({ modelId: 'claude-opus-4-8' })
+
+    expect(fsHooks.events).toEqual(['sync', 'rename'])
+    await expect(readSettingsFile()).resolves.toEqual({ modelId: 'claude-opus-4-8' })
+  })
+
+  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+      const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
+      fsHooks.renameError = renameErr
+      fsHooks.rmError = rmErr
+
+      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(renameErr)
+
+      expect(consoleError).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to remove temp file:',
+        rmErr
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('並行して書いても一時ファイルが衝突せず、すべての変更が残る', async () => {

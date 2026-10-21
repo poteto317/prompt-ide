@@ -227,10 +227,11 @@ describe('SettingsPanel', () => {
       await user.click(screen.getAllByRole('button', { name: '保存' })[1])
       expect(
         await screen.findByText(
-          'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+          'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
         )
       ).toBeInTheDocument()
-      expect(screen.queryByText(/settings\.json/)).not.toBeInTheDocument()
+      // 文言は固定のファイル名(settings.json)だけを案内し、例外に入っていたパスは出さない
+      expect(screen.queryByText(/\/Users\/someone/)).not.toBeInTheDocument()
     })
 
     it('保存成功で modelSettings が更新され key が変わっても「保存しました」が表示される', async () => {

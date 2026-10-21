@@ -6,6 +6,8 @@ const mockMkdir = vi.hoisted(() => vi.fn())
 const mockChmod = vi.hoisted(() => vi.fn())
 const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
+// 一時ファイルを rename の前に sync するため、open は sync と close だけを持つ偽の FileHandle を返す
+const mockOpen = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
@@ -23,14 +25,16 @@ vi.mock('node:fs/promises', () => ({
     mkdir: mockMkdir,
     chmod: mockChmod,
     rename: mockRename,
-    rm: mockRm
+    rm: mockRm,
+    open: mockOpen
   },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
   chmod: mockChmod,
   rename: mockRename,
-  rm: mockRm
+  rm: mockRm,
+  open: mockOpen
 }))
 
 import { getApiKey, setApiKey } from '../apiKeyStore'
@@ -48,6 +52,10 @@ beforeEach(() => {
   mockChmod.mockResolvedValue(undefined)
   mockRename.mockResolvedValue(undefined)
   mockRm.mockResolvedValue(undefined)
+  mockOpen.mockResolvedValue({
+    sync: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn().mockResolvedValue(undefined)
+  })
   // merge 書き込みのため書き込み系も readFile を呼ぶ。デフォルトは「ファイルなし」
   mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
 })
@@ -155,7 +163,7 @@ describe('setApiKey', () => {
     expect(mockWriteFile).toHaveBeenCalledWith(
       expect.stringMatching(/^\/mock\/userData\/settings\.json\.\d+\.[0-9a-f]{12}\.tmp$/),
       JSON.stringify({ encryptedApiKey: base64 }, null, 2),
-      { encoding: 'utf-8', mode: 0o600 }
+      { encoding: 'utf-8', mode: 0o600, flag: 'wx' }
     )
     expect(mockRename).toHaveBeenCalledWith(
       mockWriteFile.mock.calls[0][0],

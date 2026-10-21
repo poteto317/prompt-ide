@@ -6,6 +6,9 @@ const mockMkdir = vi.hoisted(() => vi.fn())
 const mockChmod = vi.hoisted(() => vi.fn())
 const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
+const mockOpen = vi.hoisted(() => vi.fn())
+const mockSync = vi.hoisted(() => vi.fn())
+const mockClose = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') }
@@ -18,14 +21,16 @@ vi.mock('node:fs/promises', () => ({
     mkdir: mockMkdir,
     chmod: mockChmod,
     rename: mockRename,
-    rm: mockRm
+    rm: mockRm,
+    open: mockOpen
   },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
   mkdir: mockMkdir,
   chmod: mockChmod,
   rename: mockRename,
-  rm: mockRm
+  rm: mockRm,
+  open: mockOpen
 }))
 
 import { readSettingsFile, writeSettingsFile } from '../settingsFileStore'
@@ -37,6 +42,9 @@ beforeEach(() => {
   mockChmod.mockResolvedValue(undefined)
   mockRename.mockResolvedValue(undefined)
   mockRm.mockResolvedValue(undefined)
+  mockSync.mockResolvedValue(undefined)
+  mockClose.mockResolvedValue(undefined)
+  mockOpen.mockResolvedValue({ sync: mockSync, close: mockClose })
 })
 
 describe('readSettingsFile', () => {
@@ -121,7 +129,8 @@ describe('writeSettingsFile', () => {
       expect.any(String),
       {
         encoding: 'utf-8',
-        mode: 0o600
+        mode: 0o600,
+        flag: 'wx'
       }
     )
     const tempPath = mockWriteFile.mock.calls[0][0] as string
@@ -138,6 +147,49 @@ describe('writeSettingsFile', () => {
     const renameOrder = mockRename.mock.invocationCallOrder[0]
     expect(chmodOrder).toBeGreaterThan(writeOrder)
     expect(renameOrder).toBeGreaterThan(chmodOrder)
+  })
+
+  it('一時ファイルを r+ で開いて sync してから閉じ、そのあとで rename する(電源断で 0 バイトの settings.json を残さない)', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    await writeSettingsFile({ modelId: 'claude-opus-4-8' })
+    const tempPath = mockWriteFile.mock.calls[0][0] as string
+    expect(mockOpen).toHaveBeenCalledWith(tempPath, 'r+')
+    expect(mockSync).toHaveBeenCalledTimes(1)
+    expect(mockClose).toHaveBeenCalledTimes(1)
+    const writeOrder = mockWriteFile.mock.invocationCallOrder[0]
+    const syncOrder = mockSync.mock.invocationCallOrder[0]
+    const closeOrder = mockClose.mock.invocationCallOrder[0]
+    const renameOrder = mockRename.mock.invocationCallOrder[0]
+    expect(syncOrder).toBeGreaterThan(writeOrder)
+    expect(closeOrder).toBeGreaterThan(syncOrder)
+    expect(renameOrder).toBeGreaterThan(closeOrder)
+  })
+
+  it('sync が失敗しても fd を閉じ、一時ファイルを消して失敗を返す(rename しない)', async () => {
+    mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+    mockSync.mockRejectedValueOnce(Object.assign(new Error('EIO: sync failed'), { code: 'EIO' }))
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EIO')
+    expect(mockClose).toHaveBeenCalledTimes(1)
+    expect(mockRename).not.toHaveBeenCalled()
+    expect(mockRm).toHaveBeenCalledWith(mockWriteFile.mock.calls[0][0], { force: true })
+  })
+
+  it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+      const renameErr = Object.assign(new Error('EPERM: rename failed'), { code: 'EPERM' })
+      const rmErr = Object.assign(new Error('EBUSY: rm failed'), { code: 'EBUSY' })
+      mockRename.mockRejectedValueOnce(renameErr)
+      mockRm.mockRejectedValueOnce(rmErr)
+      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(renameErr)
+      expect(consoleError).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to remove temp file:',
+        rmErr
+      )
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('rename が失敗したら一時ファイルを消して失敗を返す', async () => {

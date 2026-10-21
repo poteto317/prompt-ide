@@ -80,7 +80,7 @@ describe('useModelSettingsForm', () => {
       const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
       await act(() => result.current.handleSave({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }))
       expect(result.current.saveError).toBe(
-        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
       )
       expect(result.current.saveError).not.toContain('SECRET-CIPHER')
       expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
@@ -98,7 +98,7 @@ describe('useModelSettingsForm', () => {
       const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
       await act(() => result.current.handleSave({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }))
       expect(result.current.saveError).toBe(
-        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
       )
     })
   })

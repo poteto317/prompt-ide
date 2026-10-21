@@ -80,9 +80,10 @@ describe('useAgentSendConfirmSetting', () => {
     })
     expect(result.current.enabled).toBe(true)
     expect(result.current.saveError).toBe(
-      '送信前の確認の設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+      '送信前の確認の設定を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
     )
-    expect(result.current.saveError).not.toContain('settings.json')
+    // 文言は固定のファイル名(settings.json)だけを案内し、例外に入っていたパスは出さない
+    expect(result.current.saveError).not.toContain('/Users/someone')
     expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
   })
 

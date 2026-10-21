@@ -1,8 +1,8 @@
 import { app } from 'electron'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { readFile, writeFile, mkdir, chmod, rename, rm } from 'node:fs/promises'
-import { isEnoentError } from './fsErrors'
+import { readFile, writeFile, mkdir, chmod, rename, rm, open } from 'node:fs/promises'
+import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
 export interface SettingsFile {
@@ -55,17 +55,35 @@ export function writeSettingsFile(partial: Partial<SettingsFile>): Promise<void>
 
 // 同じディレクトリの一時ファイルへ書き切ってから rename で置き換える(同じファイルシステム内の rename は原子的)。
 // 一時ファイルは 0o600 で作り、chmod でも 0o600 に揃える(umask に左右されない。API キーの暗号文を含むため、
-// 置き換え後の settings.json も含めて他の利用者から読めないようにする)。失敗したら一時ファイルを消す。
+// 置き換え後の settings.json も含めて他の利用者から読めないようにする)。
+// 一時ファイルは wx(排他の作成)で作る。名前が万一ほかのファイルと重なっても、そのファイルを切り詰めずに EEXIST で
+// 失敗する(mode も新しく作るときにだけ効くため、確実に 0o600 で作れる)。EEXIST のときはそのファイルを消さない。
+// rename の前に一時ファイルを sync する。しないと、電源断や OS のクラッシュが書き込みの直後に重なったとき、rename だけが
+// 永続化されて 0 バイトの settings.json が残りうる。その JSON は読み込めないため、利用者が手で消すまで、すべての設定の
+// 保存が失敗し続ける(書き込みは先に読み込むため)。ディレクトリの sync はしない(rename の永続化が遅れても、前の内容が
+// 残るだけで壊れない)。sync は writeFile とは別の fd で行う(writeFile は 1 回の呼び出しで書き切るため)。
+// 失敗したら一時ファイルを消す。消せなかったときは console.error に記録し、元の例外を返す。
 // Windows の rename(MoveFileEx の置き換え)は、ほかのプロセスが settings.json を共有削除なしで開いていると
 // EPERM・EBUSY で失敗し得る。その場合も元のファイルはそのまま残り、保存の失敗として呼び出し元へ返す。
 async function writeFileAtomically(target: string, content: string): Promise<void> {
   const tempPath = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
   try {
-    await writeFile(tempPath, content, { encoding: 'utf-8', mode: 0o600 })
+    await writeFile(tempPath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
+    const handle = await open(tempPath, 'r+')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close()
+    }
     await chmod(tempPath, 0o600)
     await rename(tempPath, target)
   } catch (err) {
-    await rm(tempPath, { force: true }).catch(() => {})
+    // EEXIST は wx の作成で、同じ名前のほかのファイルがあったとき。自分が作ったファイルではないので消さない
+    if (!isFsError(err, 'EEXIST')) {
+      await rm(tempPath, { force: true }).catch((rmErr: unknown) => {
+        console.error('[settingsFileStore] failed to remove temp file:', rmErr)
+      })
+    }
     throw err
   }
 }

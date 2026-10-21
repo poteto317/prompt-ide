@@ -2,8 +2,13 @@
 // SyntaxError に入る、API キーの暗号文を含みうる)が入るため、例外の文言は画面に出さず、理由は固定の文言にする(L-017)。
 // 例外は console.error に記録する。各設定の保存の失敗は「<設定名> を保存できませんでした: <理由>」の形にする
 
-/** 設定の保存の失敗の理由(固定)。実行方式・エージェントの通知・送信前の確認・使うエージェント CLI・モデルで共有する */
-export const SETTINGS_FILE_ERROR_REASON = '設定ファイルを読み書きできませんでした'
+/**
+ * 設定の保存の失敗の理由(固定)。実行方式・エージェントの通知・送信前の確認・使うエージェント CLI・モデルで共有する。
+ * 利用者が自分で直せる原因(ほかのアプリが settings.json を開いている〈Windows の rename の EPERM・EBUSY〉・
+ * settings.json が壊れている〈保存は先に読み込むため、どの設定の保存も失敗し続ける〉)を案内する。パスと例外の中身は出さない
+ */
+export const SETTINGS_FILE_ERROR_REASON =
+  '設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
 
 /** API キーの読み書きの失敗の理由(固定)。設定ファイルに加え、システムのキーストアの失敗もありうる */
 export const API_KEY_STORE_ERROR_REASON = 'システムのキーストアまたは設定ファイルを使えませんでした'
@@ -14,5 +19,8 @@ export const MODEL_SETTINGS_SAVE_ERROR_MESSAGE = `モデルの設定を保存で
 /** API キーの保存の失敗の文言 */
 export const API_KEY_SAVE_ERROR_MESSAGE = `API キーを保存できませんでした: ${API_KEY_STORE_ERROR_REASON}`
 
-/** API キーの読み込みの失敗の文言。保存済みのキーを復号できなかったときは main がキーを消すため、再起動すると再設定できる */
-export const API_KEY_LOAD_ERROR_MESSAGE = `API キーを読み込めませんでした: ${API_KEY_STORE_ERROR_REASON}。保存済みのキーを復号できなかったときはキーを消してあるため、アプリを再起動すると再設定できます`
+/**
+ * API キーの読み込みの失敗の文言。保存済みのキーを復号できなかったときは main がキーを消すため、再起動すると再設定できる。
+ * キーストアが使えないときと settings.json が壊れているときは再起動しても続くため、確かめる先も案内する
+ */
+export const API_KEY_LOAD_ERROR_MESSAGE = `API キーを読み込めませんでした: ${API_KEY_STORE_ERROR_REASON}。保存済みのキーを復号できなかったときはキーを消してあるため、アプリを再起動すると再設定できます。再起動しても続くときは、システムのキーストア（キーチェーンなど）が使えるか、settings.json が壊れていないかを確かめてください`
