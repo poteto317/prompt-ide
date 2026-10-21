@@ -3,10 +3,8 @@ import { DEFAULT_AGENT_CLI_KIND } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentCliKindSetting } from '@shared/types'
 import * as settingsApi from '../lib/settingsApi'
-import {
-  AGENT_CLI_KIND_SAVE_ERROR_PREFIX,
-  AGENT_CLI_KIND_SAVE_ERROR_REASON
-} from '../lib/agentCliMessages'
+import { AGENT_CLI_KIND_SAVE_ERROR_PREFIX } from '../lib/agentCliMessages'
+import { SETTINGS_FILE_ERROR_REASON } from '../lib/settingsMessages'
 
 // 使うエージェント CLI の設定(設計書 2026-10-20「設定」の「画面」。useExecutionMode と同じ形)。読み込みは main が既定に戻した理由
 // (fallback)も返す。useAgentWorkspace が 1 つだけ持ち、設定の画面と入口(タブの名前・再開の理由)が同じ値を読む(L-466)
@@ -61,11 +59,12 @@ export function useAgentCliKind(): AgentCliKindState {
       // 選び直して保存できたので、既定に戻した旨は消す
       setFallback(null)
       return true
-    } catch {
-      // 例外の文言は出さない(壊れた settings.json の中身の断片を含みうる。L-017)。理由は固定の文言にする
+    } catch (err) {
+      // 例外の文言は出さない(壊れた settings.json の中身の断片を含みうる。L-017)。記録だけして、理由は固定の文言にする
+      console.error('[useAgentCliKind] setAgentCliKind failed:', err)
       kindRef.current = previous
       setKind(previous)
-      setSaveError(`${AGENT_CLI_KIND_SAVE_ERROR_PREFIX}${AGENT_CLI_KIND_SAVE_ERROR_REASON}`)
+      setSaveError(`${AGENT_CLI_KIND_SAVE_ERROR_PREFIX}${SETTINGS_FILE_ERROR_REASON}`)
       return false
     }
   }, [])

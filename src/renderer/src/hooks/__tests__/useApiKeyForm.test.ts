@@ -1,12 +1,19 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import { useApiKeyForm } from '../useApiKeyForm'
 
-const makeOptions = (overrides?: Partial<{ onSave: (key: string) => Promise<void> }>) => ({
+interface Options {
+  apiKeyLoaded: boolean
+  keyStoreError: string | null
+  onSave: (key: string) => Promise<void>
+}
+
+const makeOptions = (overrides?: Partial<Pick<Options, 'onSave'>>): Options => ({
   apiKeyLoaded: true,
   keyStoreError: null as string | null,
   onSave: vi.fn().mockResolvedValue(undefined) as (key: string) => Promise<void>,
-  ...overrides,
+  ...overrides
 })
 
 let defaultOptions: ReturnType<typeof makeOptions>
@@ -52,9 +59,7 @@ describe('useApiKeyForm', () => {
     })
 
     it('apiKeyLoaded=false のとき true', () => {
-      const { result } = renderHook(() =>
-        useApiKeyForm({ ...defaultOptions, apiKeyLoaded: false })
-      )
+      const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, apiKeyLoaded: false }))
       act(() => result.current.setInputValue('sk-ant-test'))
       expect(result.current.isSaveDisabled).toBe(true)
     })
@@ -113,12 +118,30 @@ describe('useApiKeyForm', () => {
   })
 
   describe('handleSave — 失敗', () => {
-    it('onSave が reject したとき saveError にメッセージが入る', async () => {
-      const onSave = vi.fn().mockRejectedValue(new Error('キーストアが利用できません'))
+    let consoleSpy: MockInstance<typeof console.error>
+
+    beforeEach(() => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    })
+
+    afterEach(() => {
+      consoleSpy.mockRestore()
+    })
+
+    it('onSave が reject したとき、例外の文言ではなく固定の文言を出し、例外は記録だけする(L-017)', async () => {
+      // main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる
+      const err = new Error(
+        "Error invoking remote method 'settings:setApiKey': Error: EACCES: permission denied, open '/Users/someone/Library/Application Support/prompt-ide/settings.json'"
+      )
+      const onSave = vi.fn().mockRejectedValue(err)
       const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
       act(() => result.current.setInputValue('sk-ant-test'))
       await act(() => result.current.handleSave())
-      expect(result.current.saveError).toBe('キーストアが利用できません')
+      expect(result.current.saveError).toBe(
+        'API キーを保存できませんでした: システムのキーストアまたは設定ファイルを使えませんでした'
+      )
+      expect(result.current.saveError).not.toContain('settings.json')
+      expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
     })
 
     it('保存失敗時は saved が false のまま', async () => {
@@ -137,12 +160,14 @@ describe('useApiKeyForm', () => {
       expect(result.current.isSaving).toBe(false)
     })
 
-    it('Error でない reject のとき「保存に失敗しました」が saveError に入る', async () => {
+    it('Error でない reject のときも同じ固定の文言が saveError に入る', async () => {
       const onSave = vi.fn().mockRejectedValue('string error')
       const { result } = renderHook(() => useApiKeyForm({ ...defaultOptions, onSave }))
       act(() => result.current.setInputValue('sk-ant-test'))
       await act(() => result.current.handleSave())
-      expect(result.current.saveError).toBe('保存に失敗しました')
+      expect(result.current.saveError).toBe(
+        'API キーを保存できませんでした: システムのキーストアまたは設定ファイルを使えませんでした'
+      )
     })
   })
 

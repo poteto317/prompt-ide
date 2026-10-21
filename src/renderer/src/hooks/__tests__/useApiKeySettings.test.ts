@@ -9,6 +9,9 @@ import { useApiKeySettings } from '../useApiKeySettings'
 const mockHasApiKey = vi.mocked(claudeApi.hasApiKey)
 const mockSetApiKey = vi.mocked(claudeApi.setApiKey)
 
+const API_KEY_LOAD_ERROR =
+  'API キーを読み込めませんでした: システムのキーストアまたは設定ファイルを使えませんでした。保存済みのキーを復号できなかったときはキーを消してあるため、アプリを再起動すると再設定できます'
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockHasApiKey.mockResolvedValue(false)
@@ -47,21 +50,27 @@ describe('useApiKeySettings', () => {
     consoleSpy.mockRestore()
   })
 
-  it('hasApiKey が reject したとき keyStoreError にエラーメッセージがセットされる', async () => {
+  it('hasApiKey が reject したとき、keyStoreError に例外の文言ではなく固定の文言がセットされる(L-017)', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockHasApiKey.mockRejectedValue(new Error('システムのキーストアが利用できません'))
+    // main の設定ファイルの読み込みの例外(JSON.parse の SyntaxError)には settings.json の中身の断片が入りうる
+    mockHasApiKey.mockRejectedValue(
+      new Error(
+        'Error invoking remote method \'settings:hasApiKey\': SyntaxError: Unexpected token \'x\', "{"encryptedApiKey":"SECRET-CIPHER"x" is not valid JSON'
+      )
+    )
     const { result } = renderHook(() => useApiKeySettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
-    expect(result.current.keyStoreError).toBe('システムのキーストアが利用できません')
+    expect(result.current.keyStoreError).toBe(API_KEY_LOAD_ERROR)
+    expect(result.current.keyStoreError).not.toContain('SECRET-CIPHER')
     consoleSpy.mockRestore()
   })
 
-  it('hasApiKey が reject したとき Error でない場合もフォールバックメッセージがセットされる', async () => {
+  it('hasApiKey が reject したとき Error でない場合も同じ固定の文言がセットされる', async () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     mockHasApiKey.mockRejectedValue('string error')
     const { result } = renderHook(() => useApiKeySettings())
     await waitFor(() => expect(result.current.apiKeyLoaded).toBe(true))
-    expect(result.current.keyStoreError).toBe('キーストアへのアクセスに失敗しました')
+    expect(result.current.keyStoreError).toBe(API_KEY_LOAD_ERROR)
     consoleSpy.mockRestore()
   })
 

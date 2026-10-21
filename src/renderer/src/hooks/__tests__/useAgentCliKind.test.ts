@@ -67,6 +67,7 @@ describe('useAgentCliKind', () => {
 
   it('保存に失敗したら保存の前の値に戻し、false を返して理由を出す(既定に戻した旨は残す。L-001)', async () => {
     mockGet.mockResolvedValueOnce({ kind: 'claude', fallback: 'read-failed' })
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockSet.mockRejectedValueOnce(new Error('disk full'))
     const { result } = renderHook(() => useAgentCliKind())
     await waitFor(() => expect(result.current.kind).toBe('claude'))
@@ -82,6 +83,7 @@ describe('useAgentCliKind', () => {
 
   it('保存に続けて失敗しても、2 回目も保存の前の値(読み込んだ値)に戻す(失敗した値を次の戻し先にしない)', async () => {
     mockGet.mockResolvedValueOnce({ kind: 'claude', fallback: null })
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockSet.mockRejectedValueOnce(new Error('x')).mockRejectedValueOnce(new Error('x'))
     const { result } = renderHook(() => useAgentCliKind())
     await waitFor(() => expect(result.current.kind).toBe('claude'))
@@ -94,14 +96,14 @@ describe('useAgentCliKind', () => {
     expect(result.current.kind).toBe('claude')
   })
 
-  it('保存の失敗の文言に例外の文言を入れない(壊れた settings.json の中身の断片を出さない。L-017)', async () => {
+  it('保存の失敗の文言に例外の文言を入れず、例外は記録だけする(壊れた settings.json の中身の断片を出さない。L-017)', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockGet.mockResolvedValueOnce({ kind: 'claude', fallback: null })
     // settings.json が壊れていると、main の JSON.parse の SyntaxError(ファイルの中身の断片を含む)が IPC の拒否の文言に入る
-    mockSet.mockRejectedValueOnce(
-      new Error(
-        `Error invoking remote method 'settings:setAgentCliKind': SyntaxError: Unexpected token 'x', "{"encryptedApiKey":"SECRET-CIPHER"x" is not valid JSON`
-      )
+    const err = new Error(
+      `Error invoking remote method 'settings:setAgentCliKind': SyntaxError: Unexpected token 'x', "{"encryptedApiKey":"SECRET-CIPHER"x" is not valid JSON`
     )
+    mockSet.mockRejectedValueOnce(err)
     const { result } = renderHook(() => useAgentCliKind())
     await waitFor(() => expect(result.current.kind).toBe('claude'))
     await act(async () => {
@@ -109,10 +111,12 @@ describe('useAgentCliKind', () => {
     })
     expect(result.current.saveError).toBe(SAVE_ERROR)
     expect(result.current.saveError).not.toContain('SECRET-CIPHER')
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(String), err)
   })
 
   it('次の保存で失敗の文言を消す', async () => {
     mockGet.mockResolvedValueOnce({ kind: 'claude', fallback: null })
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockSet.mockRejectedValueOnce(new Error('x')).mockResolvedValueOnce(undefined)
     const { result } = renderHook(() => useAgentCliKind())
     await waitFor(() => expect(result.current.kind).toBe('claude'))

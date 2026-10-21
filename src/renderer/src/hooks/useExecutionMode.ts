@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PromptExecutionMode } from '@shared/types'
 import { DEFAULT_PROMPT_EXECUTION_MODE } from '@shared/types'
 import * as settingsApi from '../lib/settingsApi'
-import { toError } from '../lib/errorUtils'
+import { SETTINGS_FILE_ERROR_REASON } from '../lib/settingsMessages'
 
-/** 実行方式の保存の失敗の文言の接頭辞。後ろに理由を付ける */
+/** 実行方式の保存の失敗の文言の接頭辞。後ろに固定の理由(SETTINGS_FILE_ERROR_REASON)を付ける */
 export const EXECUTION_MODE_SAVE_ERROR_PREFIX = '実行方式を保存できませんでした: '
 
 export interface ExecutionModeState {
@@ -51,9 +51,11 @@ export function useExecutionMode(): ExecutionModeState {
       await settingsApi.setPromptExecutionMode(next)
       return true
     } catch (err) {
+      // 例外の文言は出さない(settings.json のパスや中身の断片を含みうる。L-017)。記録だけして、理由は固定の文言にする
+      console.error('[useExecutionMode] setPromptExecutionMode failed:', err)
       modeRef.current = previous
       setMode(previous)
-      setSaveError(`${EXECUTION_MODE_SAVE_ERROR_PREFIX}${toError(err).message}`)
+      setSaveError(`${EXECUTION_MODE_SAVE_ERROR_PREFIX}${SETTINGS_FILE_ERROR_REASON}`)
       return false
     }
   }, [])

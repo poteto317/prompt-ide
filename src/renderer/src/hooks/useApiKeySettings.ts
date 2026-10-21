@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import * as claudeApi from '../lib/claudeApi'
+import { API_KEY_LOAD_ERROR_MESSAGE } from '../lib/settingsMessages'
 
 interface ApiKeySettingsState {
   hasKey: boolean
@@ -21,9 +22,9 @@ export function useApiKeySettings(): ApiKeySettingsState {
         setKeyStoreError(null)
       })
       .catch((err) => {
-        const message = err instanceof Error ? err.message : 'キーストアへのアクセスに失敗しました'
+        // 例外の文言は出さない(settings.json のパスや中身の断片を含みうる。L-017)。記録だけして、固定の文言にする
         console.error('[useApiKeySettings] hasApiKey failed:', err)
-        setKeyStoreError(message)
+        setKeyStoreError(API_KEY_LOAD_ERROR_MESSAGE)
       })
       .finally(() => setApiKeyLoaded(true))
   }, [])

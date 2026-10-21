@@ -51,16 +51,25 @@ describe('useAgentNotificationSetting', () => {
     expect(result.current.saveError).toBeNull()
   })
 
-  it('保存に失敗したら保存前の値に戻し、理由を出す', async () => {
+  it('保存に失敗したら保存前の値に戻し、固定の理由を出して例外は記録だけする(L-017)', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    // main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる
+    const err = new Error(
+      "Error invoking remote method 'settings:setAgentNotificationsEnabled': Error: EACCES: permission denied, open '/Users/someone/Library/Application Support/prompt-ide/settings.json'"
+    )
     mockGet.mockResolvedValueOnce(true)
-    mockSet.mockRejectedValueOnce(new Error('EACCES'))
+    mockSet.mockRejectedValueOnce(err)
     const { result } = renderHook(() => useAgentNotificationSetting())
     await waitFor(() => expect(result.current.enabled).toBe(true))
     await act(async () => {
       await expect(result.current.changeEnabled(false)).resolves.toBe(false)
     })
     expect(result.current.enabled).toBe(true)
-    expect(result.current.saveError).toBe('通知の設定を保存できませんでした: EACCES')
+    expect(result.current.saveError).toBe(
+      '通知の設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+    )
+    expect(result.current.saveError).not.toContain('settings.json')
+    expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
   })
 
   describe('続けて変えたとき', () => {
@@ -88,6 +97,7 @@ describe('useAgentNotificationSetting', () => {
     }
 
     it('2 回とも失敗したら、最後に保存できた値(読み込んだ値)へ戻る', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       const a = deferred()
       const b = deferred()
       mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
@@ -112,10 +122,13 @@ describe('useAgentNotificationSetting', () => {
       })
       // 保存できた値は読み込んだ true。B の直前の値(A の false)ではない
       expect(result.current.enabled).toBe(true)
-      expect(result.current.saveError).toBe('通知の設定を保存できませんでした: B')
+      expect(result.current.saveError).toBe(
+        '通知の設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+      )
     })
 
     it('A 成功・B 失敗なら、A の値へ戻る', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       const a = deferred()
       const b = deferred()
       mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
@@ -140,6 +153,7 @@ describe('useAgentNotificationSetting', () => {
     })
 
     it('A 失敗・B 成功なら、B の値のまま', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
       const a = deferred()
       const b = deferred()
       mockSet.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)

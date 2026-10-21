@@ -5,7 +5,7 @@ import type { BooleanSettingState } from './useBooleanSetting'
 
 // エージェントへの送信前の確認のオン・オフ(設計書「設定」)。読み込み・保存・失敗の戻しは useBooleanSetting
 
-/** 送信前の確認の設定の保存の失敗の文言の接頭辞。後ろに理由を付ける */
+/** 送信前の確認の設定の保存の失敗の文言の接頭辞。後ろに固定の理由を付ける */
 export const AGENT_SEND_CONFIRM_SETTING_SAVE_ERROR_PREFIX =
   '送信前の確認の設定を保存できませんでした: '
 
@@ -18,6 +18,6 @@ export function useAgentSendConfirmSetting(): AgentSendConfirmSettingState {
     save: settingsApi.setAgentSendConfirmEnabled,
     defaultValue: DEFAULT_AGENT_SEND_CONFIRM_ENABLED,
     saveErrorPrefix: AGENT_SEND_CONFIRM_SETTING_SAVE_ERROR_PREFIX,
-    logLabel: '[useAgentSendConfirmSetting] getAgentSendConfirmEnabled failed:'
+    logLabel: '[useAgentSendConfirmSetting]'
   })
 }

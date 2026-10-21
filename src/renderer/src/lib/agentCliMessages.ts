@@ -26,11 +26,8 @@ export const AGENT_CLI_KIND_SECTION_NOTE =
 /** 設定の画面で、起動中のタブがあるときに選べない理由 */
 export const AGENT_CLI_KIND_LOCKED_WHILE_STARTING =
   'エージェントの起動中は、使う CLI を切り替えられません'
-/** 保存の失敗の文言の接頭辞。後ろに理由を付ける */
+/** 保存の失敗の文言の接頭辞。後ろに固定の理由(lib/settingsMessages の SETTINGS_FILE_ERROR_REASON)を付ける */
 export const AGENT_CLI_KIND_SAVE_ERROR_PREFIX = '使うエージェント CLI を保存できませんでした: '
-/** 保存の失敗の理由(固定)。settings.json が壊れていると、IPC の拒否の文言に JSON.parse の SyntaxError(ファイルの中身の断片。
- *  API キーの暗号文を含みうる)が入るため、例外の文言を画面に出さない(L-017) */
-export const AGENT_CLI_KIND_SAVE_ERROR_REASON = '設定ファイルを読み書きできませんでした'
 
 /** 選択肢の名前(`Claude Code（claude）`) */
 export function agentCliKindOptionLabel(kind: AgentCliKind): string {

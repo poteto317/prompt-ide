@@ -1,11 +1,14 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import { useModelSettingsForm } from '../useModelSettingsForm'
 import type { ModelSettings } from '@shared/types'
 
-const makeOptions = (
-  overrides?: Partial<{ onSave: (settings: ModelSettings) => Promise<void> }>
-) => ({
+interface Options {
+  onSave: (settings: ModelSettings) => Promise<void>
+}
+
+const makeOptions = (overrides?: Partial<Options>): Options => ({
   onSave: vi.fn().mockResolvedValue(undefined) as (settings: ModelSettings) => Promise<void>,
   ...overrides
 })
@@ -58,11 +61,29 @@ describe('useModelSettingsForm', () => {
   })
 
   describe('handleSave — 失敗', () => {
-    it('onSave が reject したとき saveError にメッセージが入る', async () => {
-      const onSave = vi.fn().mockRejectedValue(new Error('保存に失敗しました'))
+    let consoleSpy: MockInstance<typeof console.error>
+
+    beforeEach(() => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    })
+
+    afterEach(() => {
+      consoleSpy.mockRestore()
+    })
+
+    it('onSave が reject したとき、例外の文言ではなく固定の文言を出し、例外は記録だけする(L-017)', async () => {
+      // main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる
+      const err = new Error(
+        'Error invoking remote method \'settings:setModelSettings\': SyntaxError: Unexpected token \'x\', "{"encryptedApiKey":"SECRET-CIPHER"x" is not valid JSON'
+      )
+      const onSave = vi.fn().mockRejectedValue(err)
       const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
       await act(() => result.current.handleSave({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }))
-      expect(result.current.saveError).toBe('保存に失敗しました')
+      expect(result.current.saveError).toBe(
+        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+      )
+      expect(result.current.saveError).not.toContain('SECRET-CIPHER')
+      expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
     })
 
     it('保存失敗時は saved が false のまま', async () => {
@@ -72,11 +93,13 @@ describe('useModelSettingsForm', () => {
       expect(result.current.saved).toBe(false)
     })
 
-    it('Error でない reject のとき「保存に失敗しました」が saveError に入る', async () => {
+    it('Error でない reject のときも同じ固定の文言が saveError に入る', async () => {
       const onSave = vi.fn().mockRejectedValue('string error')
       const { result } = renderHook(() => useModelSettingsForm({ ...defaultOptions, onSave }))
       await act(() => result.current.handleSave({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }))
-      expect(result.current.saveError).toBe('保存に失敗しました')
+      expect(result.current.saveError).toBe(
+        'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+      )
     })
   })
 

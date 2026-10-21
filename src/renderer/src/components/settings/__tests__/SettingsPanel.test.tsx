@@ -1,9 +1,24 @@
 import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 import type { ModelSettings } from '@shared/types'
 import SettingsPanel from '../SettingsPanel'
+
+// main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる(L-017)
+const LEAKY_SETTINGS_ERROR_TEXT =
+  "Error: EACCES: permission denied, open '/Users/someone/Library/Application Support/prompt-ide/settings.json'"
+
+let consoleSpy: MockInstance<typeof console.error> | null = null
+
+beforeEach(() => {
+  consoleSpy = null
+})
+
+afterEach(() => {
+  consoleSpy?.mockRestore()
+})
 
 const defaultProps = {
   hasKey: false,
@@ -102,13 +117,19 @@ describe('SettingsPanel', () => {
     expect(input.value).toBe('')
   })
 
-  it('onSave が reject したときエラーメッセージが表示される', async () => {
+  it('onSave が reject したとき、例外の文言ではなく固定のエラーメッセージが表示される(L-017)', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const user = userEvent.setup()
-    const onSave = vi.fn().mockRejectedValue(new Error('キーストアが利用できません'))
+    const onSave = vi.fn().mockRejectedValue(new Error(LEAKY_SETTINGS_ERROR_TEXT))
     render(<SettingsPanel {...defaultProps} onSave={onSave} />)
     await user.type(screen.getByLabelText('API キー'), 'sk-ant-test')
     await user.click(screen.getAllByRole('button', { name: '保存' })[0])
-    expect(screen.getByText('キーストアが利用できません')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'API キーを保存できませんでした: システムのキーストアまたは設定ファイルを使えませんでした'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/settings\.json/)).not.toBeInTheDocument()
     expect(screen.queryByText('保存しました')).not.toBeInTheDocument()
   })
 
@@ -196,6 +217,20 @@ describe('SettingsPanel', () => {
         modelId: 'claude-haiku-4-5',
         maxTokens: 4096
       })
+    })
+
+    it('モデルの保存が reject したとき、例外の文言ではなく固定のエラーメッセージが表示される(L-017)', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const user = userEvent.setup()
+      const onSaveModelSettings = vi.fn().mockRejectedValue(new Error(LEAKY_SETTINGS_ERROR_TEXT))
+      render(<SettingsPanel {...defaultProps} onSaveModelSettings={onSaveModelSettings} />)
+      await user.click(screen.getAllByRole('button', { name: '保存' })[1])
+      expect(
+        await screen.findByText(
+          'モデルの設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+        )
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/settings\.json/)).not.toBeInTheDocument()
     })
 
     it('保存成功で modelSettings が更新され key が変わっても「保存しました」が表示される', async () => {

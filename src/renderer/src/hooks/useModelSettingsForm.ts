@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import type { ModelSettings } from '@shared/types'
+import { MODEL_SETTINGS_SAVE_ERROR_MESSAGE } from '../lib/settingsMessages'
 
 interface UseModelSettingsFormOptions {
   onSave: (settings: ModelSettings) => Promise<void>
@@ -44,7 +45,9 @@ export function useModelSettingsForm({
         if (timerRef.current !== null) clearTimeout(timerRef.current)
         timerRef.current = setTimeout(() => setSaved(false), 2000)
       } catch (err) {
-        setSaveError(err instanceof Error ? err.message : '保存に失敗しました')
+        // 例外の文言は出さない(settings.json のパスや中身の断片を含みうる。L-017)。記録だけして、固定の文言にする
+        console.error('[useModelSettingsForm] save failed:', err)
+        setSaveError(MODEL_SETTINGS_SAVE_ERROR_MESSAGE)
       } finally {
         isSavingRef.current = false
         setIsSaving(false)

@@ -65,19 +65,29 @@ describe('useAgentSendConfirmSetting', () => {
     expect(result.current.saveError).toBeNull()
   })
 
-  it('保存に失敗したら保存前の値に戻し、送信前の確認の接頭辞で理由を出す', async () => {
+  it('保存に失敗したら保存前の値に戻し、送信前の確認の接頭辞で固定の理由を出して例外は記録だけする(L-017)', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    // main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる
+    const err = new Error(
+      "Error invoking remote method 'settings:setAgentSendConfirmEnabled': Error: EACCES: permission denied, open '/Users/someone/Library/Application Support/prompt-ide/settings.json'"
+    )
     mockGet.mockResolvedValueOnce(true)
-    mockSet.mockRejectedValueOnce(new Error('EACCES'))
+    mockSet.mockRejectedValueOnce(err)
     const { result } = renderHook(() => useAgentSendConfirmSetting())
     await waitFor(() => expect(result.current.enabled).toBe(true))
     await act(async () => {
       await expect(result.current.changeEnabled(false)).resolves.toBe(false)
     })
     expect(result.current.enabled).toBe(true)
-    expect(result.current.saveError).toBe('送信前の確認の設定を保存できませんでした: EACCES')
+    expect(result.current.saveError).toBe(
+      '送信前の確認の設定を保存できませんでした: 設定ファイルを読み書きできませんでした'
+    )
+    expect(result.current.saveError).not.toContain('settings.json')
+    expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
   })
 
   it('続けて変えて、先が失敗・後が成功なら、後の値のまま失敗の文言を出さない(L-406)', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const a = deferred()
     const b = deferred()
     mockGet.mockResolvedValueOnce(true)

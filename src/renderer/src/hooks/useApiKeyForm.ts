@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react'
+import { API_KEY_SAVE_ERROR_MESSAGE } from '../lib/settingsMessages'
 
 interface UseApiKeyFormOptions {
   apiKeyLoaded: boolean
@@ -19,7 +20,7 @@ interface UseApiKeyFormResult {
 export function useApiKeyForm({
   apiKeyLoaded,
   keyStoreError,
-  onSave,
+  onSave
 }: UseApiKeyFormOptions): UseApiKeyFormResult {
   const [inputValue, setInputValue] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -47,13 +48,16 @@ export function useApiKeyForm({
       if (timerRef.current !== null) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => setSaved(false), 2000)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : '保存に失敗しました')
+      // 例外の文言は出さない(settings.json のパスや中身の断片を含みうる。L-017)。記録だけして、固定の文言にする
+      console.error('[useApiKeyForm] save failed:', err)
+      setSaveError(API_KEY_SAVE_ERROR_MESSAGE)
     } finally {
       setIsSaving(false)
     }
   }, [trimmedInput, onSave, apiKeyLoaded, isSaving, keyStoreError])
 
-  const isSaveDisabled = !apiKeyLoaded || isSaving || trimmedInput.length === 0 || keyStoreError !== null
+  const isSaveDisabled =
+    !apiKeyLoaded || isSaving || trimmedInput.length === 0 || keyStoreError !== null
 
   return { inputValue, setInputValue, isSaving, saved, saveError, isSaveDisabled, handleSave }
 }

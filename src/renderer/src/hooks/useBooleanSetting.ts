@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { toError } from '../lib/errorUtils'
+import { SETTINGS_FILE_ERROR_REASON } from '../lib/settingsMessages'
 
 // 設定画面の真偽値の設定(エージェントの通知・送信前の確認)の読み込みと保存。useExecutionMode と同じ形で、変更は楽観的に反映して
 // 保存し、失敗したら最後に保存できた値へ戻す。続けて変えたときは、後の変更の結果に任せる(L-406)
@@ -20,9 +20,9 @@ export interface UseBooleanSettingOptions {
   save: (enabled: boolean) => Promise<void>
   /** 読み込みに失敗したときの値 */
   defaultValue: boolean
-  /** 保存の失敗の文言の接頭辞。後ろに理由を付ける */
+  /** 保存の失敗の文言の接頭辞。後ろに固定の理由(SETTINGS_FILE_ERROR_REASON)を付ける */
   saveErrorPrefix: string
-  /** 読み込みの失敗を記録するときの見出し */
+  /** 読み込み・保存の失敗を記録するときの見出し(`[useFoo]` の形。後ろに `load failed:`・`save failed:` を付ける) */
   logLabel: string
 }
 
@@ -50,7 +50,7 @@ export function useBooleanSetting({
         setEnabled(loaded)
       })
       .catch((err) => {
-        console.error(logLabel, err)
+        console.error(`${logLabel} load failed:`, err)
         if (cancelled) return
         savedRef.current = defaultValue
         setEnabled(defaultValue)
@@ -70,15 +70,17 @@ export function useBooleanSetting({
         savedRef.current = next
         return true
       } catch (err) {
+        // 例外の文言は出さない(settings.json のパスや中身の断片を含みうる。L-017)。記録だけして、理由は固定の文言にする
+        console.error(`${logLabel} save failed:`, err)
         // 後から別の変更が始まっていれば、値も失敗の文言もその結果に任せる
         if (seq === changeSeqRef.current) {
           setEnabled(savedRef.current)
-          setSaveError(`${saveErrorPrefix}${toError(err).message}`)
+          setSaveError(`${saveErrorPrefix}${SETTINGS_FILE_ERROR_REASON}`)
         }
         return false
       }
     },
-    [save, saveErrorPrefix]
+    [save, saveErrorPrefix, logLabel]
   )
 
   return { enabled, saveError, changeEnabled }
