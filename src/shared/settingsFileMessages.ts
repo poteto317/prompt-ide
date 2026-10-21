@@ -6,9 +6,11 @@
 /** settings.json の場所の手がかり。パスは出さない(macOS と Windows で場所が違い、利用者名も入るため) */
 export const SETTINGS_FILE_LOCATION = 'アプリのデータフォルダの settings.json'
 
-/** settings.json をほかのアプリが開いているとき(Windows の rename の EPERM・EBUSY)の次の行動 */
-export const SETTINGS_FILE_RETRY_HINT =
-  'ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください'
+/** settings.json をほかのアプリが開いているとき(Windows の rename の EPERM・EBUSY)にまずすること(文の途中に入れる連用形) */
+export const SETTINGS_FILE_CLOSE_HINT = 'ほかのアプリで settings.json を開いていれば閉じ'
+
+/** settings.json をほかのアプリが開いているときの次の行動(保存の失敗向け。保存はもう一度試せる) */
+export const SETTINGS_FILE_RETRY_HINT = `${SETTINGS_FILE_CLOSE_HINT}てから、もう一度試してください`
 
 /**
  * 設定ファイルの読み書きの失敗の理由(固定)。main は settings.json を読めない・壊れている・書き込めないときにこの文言で投げ、

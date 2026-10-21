@@ -389,28 +389,21 @@ describe('usePromptExecution', () => {
       )
     })
 
-    it('settings.json の失敗では、画面(executionError)と履歴(errorMessage)に固定の文言が出て、中身もパスも出ない(L-017)', async () => {
+    it('main から届いた settings.json の失敗の固定の文言を、画面(executionError)と履歴(errorMessage)にそのまま出す', async () => {
       // main(settingsFileStore)は settings.json の失敗を固定の文言の SettingsFileError で投げ直す。renderer の invoke は
-      // 「Error invoking remote method '<channel>': <name>: <message>」の形で受け取るため、その形で渡す
-      const secretContent = 'djEwSECRET{'
-      const settingsPath = '/Users/someone/Library/Application Support/prompt-ide/settings.json'
-      mockInvokePrompt.mockRejectedValue(
-        new Error(
-          `Error invoking remote method 'claude:runPromptStream': SettingsFileError: ${SETTINGS_FILE_ERROR_REASON}`
-        )
-      )
+      // 「Error invoking remote method '<channel>': <name>: <message>」の形で受け取るため、その形で渡す。
+      // 入力は最初から固定の文言なので、ここでは renderer が届いた文言を変えずに画面と履歴へ渡すことだけを確かめる。
+      // 中身(暗号文を含みうる JSON.parse の断片)やパスが main から出ないことは、main 側のテスト
+      // (src/main/__tests__/handlers/claudeHandlers.settingsFile.test.ts)が固定している(L-017)
+      const received = `Error invoking remote method 'claude:runPromptStream': SettingsFileError: ${SETTINGS_FILE_ERROR_REASON}`
+      mockInvokePrompt.mockRejectedValue(new Error(received))
       const onExecuted = vi.fn()
       const { result } = renderHook(() => usePromptExecution())
       await act(async () => {
         await result.current.executePrompt('プロンプト', null, 'api', context, onExecuted)
       })
-      const shown = result.current.executionError?.message ?? ''
-      const saved = onExecuted.mock.calls[0][0].errorMessage as string
-      for (const message of [shown, saved]) {
-        expect(message).toContain(SETTINGS_FILE_ERROR_REASON)
-        expect(message).not.toContain(secretContent)
-        expect(message).not.toContain(settingsPath)
-      }
+      expect(result.current.executionError?.message).toBe(received)
+      expect(onExecuted.mock.calls[0][0].errorMessage).toBe(received)
       expect(onExecuted.mock.calls[0][0].status).toBe('error')
     })
 

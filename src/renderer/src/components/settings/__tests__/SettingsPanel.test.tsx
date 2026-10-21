@@ -157,26 +157,30 @@ describe('SettingsPanel', () => {
     expect(input.placeholder).toBe('sk-ant-...')
   })
 
+  // reason から文言への変換は useApiKeySettings が行い、そのテストが種類ごとの文言を固定している。ここでは、パネルが
+  // 種類ごとの文言(keyStoreError)をそのまま表示することだけを確かめる。文言に例外の中身やパスが入らないことは、main が
+  // 例外の文言を返さず理由の種類だけを返すこと(src/main/__tests__/handlers/settingsHandlers.apiKeyStatus.test.ts)で固定している(L-017)
   it.each([
     ['decrypt-failed'],
     ['keystore-unavailable'],
     ['settings-file-error'],
     ['unknown']
-  ] as const)(
-    'API キーの読み込みの失敗(%s)の固定の文言が表示され、settings.json のパスは表示されない',
-    (reason) => {
-      const { container } = render(
-        <SettingsPanel {...defaultProps} keyStoreError={API_KEY_LOAD_ERROR_MESSAGES[reason]} />
-      )
-      expect(screen.getByText(API_KEY_LOAD_ERROR_MESSAGES[reason])).toBeInTheDocument()
-      expect(container.textContent).not.toContain('Application Support')
-      expect(container.textContent).not.toContain('userData')
-    }
-  )
+  ] as const)('API キーの読み込みの失敗(%s)の文言を keyStoreError のとおりに表示する', (reason) => {
+    render(<SettingsPanel {...defaultProps} keyStoreError={API_KEY_LOAD_ERROR_MESSAGES[reason]} />)
+    expect(screen.getByText(API_KEY_LOAD_ERROR_MESSAGES[reason])).toBeInTheDocument()
+  })
 
   it('API キーの読み込みの失敗の文言は種類ごとに異なる', () => {
     const messages = Object.values(API_KEY_LOAD_ERROR_MESSAGES)
     expect(new Set(messages).size).toBe(messages.length)
+  })
+
+  // 読み込みは起動時に 1 回だけで、失敗すると入力欄と保存が無効のまま再読み込みの手段が無い。抜けるには再起動が要る
+  it('API キーの読み込みの失敗の文言は、どの種類も再起動を案内し、試す手段の無い「もう一度試す」を案内しない', () => {
+    for (const message of Object.values(API_KEY_LOAD_ERROR_MESSAGES)) {
+      expect(message).toContain('アプリを再起動')
+      expect(message).not.toContain('もう一度試して')
+    }
   })
 
   it('keyStoreError があるとき input が disabled になる', () => {

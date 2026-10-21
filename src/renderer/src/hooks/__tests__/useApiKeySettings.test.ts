@@ -10,17 +10,17 @@ import { useApiKeySettings } from '../useApiKeySettings'
 const mockHasApiKey = vi.mocked(claudeApi.hasApiKey)
 const mockSetApiKey = vi.mocked(claudeApi.setApiKey)
 
-// 文言は定数を通さずに書き、定数の文言が変わったらテストで気づけるようにする
-const SETTINGS_FILE_REASON =
-  '設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときはアプリのデータフォルダの settings.json が壊れていないか確かめてください'
+// 文言は定数を通さずに書き、定数の文言が変わったらテストで気づけるようにする。読み込みは起動時に 1 回だけで、失敗すると
+// 入力欄と保存が無効のまま再読み込みの手段が無いため、どの種類も原因を直してからアプリを再起動することを案内する
 const LOAD_ERRORS = {
   'decrypt-failed':
     'API キーを読み込めませんでした: 保存済みのキーを復号できませんでした。キーを消してあるため、アプリを再起動すると再設定できます',
   'keystore-unavailable':
-    'API キーを読み込めませんでした: システムのキーストアを使えませんでした。システムのキーストア（キーチェーンなど）が使えるかを確かめてください',
-  'settings-file-error': `API キーを読み込めませんでした: ${SETTINGS_FILE_REASON}`,
+    'API キーを読み込めませんでした: システムのキーストアを使えませんでした。システムのキーストア（キーチェーンなど）が使えるかを確かめてから、アプリを再起動してください',
+  'settings-file-error':
+    'API キーを読み込めませんでした: 設定ファイルを読み込めませんでした。ほかのアプリで settings.json を開いていれば閉じ、アプリのデータフォルダの settings.json が壊れていないかを確かめてから、アプリを再起動してください',
   unknown:
-    'API キーを読み込めませんでした: システムのキーストアまたは設定ファイルを使えませんでした。システムのキーストア（キーチェーンなど）が使えるか、アプリのデータフォルダの settings.json が壊れていないかを確かめてください'
+    'API キーを読み込めませんでした: システムのキーストアまたは設定ファイルを使えませんでした。システムのキーストア（キーチェーンなど）が使えるか、アプリのデータフォルダの settings.json が壊れていないかを確かめてから、アプリを再起動してください'
 } as const
 
 let consoleSpy: MockInstance<typeof console.error> | null = null
