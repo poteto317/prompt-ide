@@ -30,7 +30,7 @@ Object.defineProperty(window, 'api', {
         behind: 0,
         files: []
       }),
-    hasApiKey: () => Promise.resolve(false),
+    hasApiKey: () => Promise.resolve({ ok: true, hasKey: false }),
     setApiKey: () => Promise.resolve(),
     getModelSettings: () => Promise.resolve({ modelId: 'claude-haiku-4-5', maxTokens: 4096 }),
     setModelSettings: () => Promise.resolve(),

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockGetApiKey = vi.hoisted(() => vi.fn())
@@ -42,7 +43,11 @@ vi.mock('../../agentCliKindStore', () => ({
   setAgentCliKind: mockSetAgentCliKind
 }))
 
+vi.mock('electron', () => ({ app: { getPath: vi.fn(() => '/mock/userData') } }))
+
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
+import { ApiKeyDecryptError, KeystoreUnavailableError } from '../../apiKeyErrors'
+import { SettingsFileError } from '../../settingsFileStore'
 
 const mockIpcMain = { handle: mockHandle } as never
 
@@ -105,22 +110,64 @@ describe('registerSettingsHandlers', () => {
   })
 
   describe('settings:hasApiKey', () => {
-    it('getApiKey がキーを返すとき true を返す', async () => {
+    let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      consoleErrorSpy?.mockRestore()
+      consoleErrorSpy = null
+    })
+
+    it('getApiKey がキーを返すとき hasKey: true を返す', async () => {
       mockGetApiKey.mockResolvedValue('sk-ant-test')
       const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
-      expect(result).toBe(true)
+      expect(result).toEqual({ ok: true, hasKey: true })
     })
 
-    it('getApiKey が空文字を返すとき false を返す', async () => {
+    it('getApiKey が空文字を返すとき hasKey: false を返す', async () => {
       mockGetApiKey.mockResolvedValue('')
       const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
-      expect(result).toBe(false)
+      expect(result).toEqual({ ok: true, hasKey: false })
     })
 
-    it('getApiKey が空白のみを返すとき false を返す（trim ベース）', async () => {
+    it('getApiKey が空白のみを返すとき hasKey: false を返す（trim ベース）', async () => {
       mockGetApiKey.mockResolvedValue('   ')
       const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
-      expect(result).toBe(false)
+      expect(result).toEqual({ ok: true, hasKey: false })
+    })
+
+    it('キーストアが使えないときは keystore-unavailable を返す(reject しない)', async () => {
+      mockGetApiKey.mockRejectedValue(new KeystoreUnavailableError())
+      const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
+      expect(result).toEqual({ ok: false, reason: 'keystore-unavailable' })
+    })
+
+    it('保存済みのキーを復号できないときは decrypt-failed を返す', async () => {
+      mockGetApiKey.mockRejectedValue(new ApiKeyDecryptError())
+      const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
+      expect(result).toEqual({ ok: false, reason: 'decrypt-failed' })
+    })
+
+    it('settings.json が壊れているときは settings-file-error を返し、文言は送らない', async () => {
+      mockGetApiKey.mockRejectedValue(new SettingsFileError())
+      const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
+      expect(result).toEqual({ ok: false, reason: 'settings-file-error' })
+    })
+
+    it('分類できない失敗は unknown を返し、例外の文言・パスを含めず、console.error に記録する(L-017)', async () => {
+      const err = new Error(
+        "EPERM: operation not permitted, rename '/Users/someone/Library/Application Support/prompt-ide/settings.json' SECRET-CIPHER"
+      )
+      mockGetApiKey.mockRejectedValue(err)
+      const result = await getRegisteredHandler('settings:hasApiKey')(makeEvent(1))
+      expect(result).toEqual({ ok: false, reason: 'unknown' })
+      expect(JSON.stringify(result)).not.toContain('SECRET-CIPHER')
+      expect(JSON.stringify(result)).not.toContain('settings.json')
+      expect(consoleErrorSpy).toHaveBeenCalledOnce()
+      expect(consoleErrorSpy?.mock.calls[0]).toContain(err)
     })
 
     it('getApiKey を呼び出す', async () => {

@@ -13,6 +13,7 @@ import {
   realpath
 } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
+import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
 import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
@@ -33,17 +34,44 @@ export interface SettingsFile {
 
 const getSettingsPath = (): string => join(app.getPath('userData'), 'settings.json')
 
+/**
+ * settings.json を読めない・壊れている(JSON として読めない・普通のオブジェクトでない)ときの失敗。文言は固定
+ * (SETTINGS_FILE_ERROR_REASON)で、パスも中身も含まない。元の例外(JSON.parse の SyntaxError には中身の断片〈API キーの
+ * 暗号文を含みうる〉が、fs の例外にはパスが入る)は console.error にだけ記録する(L-017)。呼び出し元は instanceof で見分けられる
+ */
+export class SettingsFileError extends Error {
+  constructor() {
+    super(SETTINGS_FILE_ERROR_REASON)
+    this.name = 'SettingsFileError'
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 // 読み込みは書き込みのキューを通さない。書き込みを「一時ファイル → rename」の原子的な置き換えにしたので、
 // 読み込みが書き込みと重なっても前の内容か新しい内容のどちらかを丸ごと読み、書きかけの JSON は見ない
 // (キューに通すと、エージェントの起動のたびの読み込みが無関係な保存を待つことになるため)。
+// ファイルが無ければ空の設定を返す。それ以外の失敗は console.error に記録し、SettingsFileError で投げ直す
+// (書き込みも先にここで読むため、settings.json が壊れていると保存も同じ固定の文言で失敗する)
 export async function readSettingsFile(): Promise<SettingsFile> {
+  let parsed: unknown
   try {
     const content = await readFile(getSettingsPath(), 'utf-8')
-    return JSON.parse(content) as SettingsFile
+    parsed = JSON.parse(content)
   } catch (err) {
     if (isEnoentError(err)) return {}
-    throw err
+    console.error('[settingsFileStore] failed to read settings file:', err)
+    throw new SettingsFileError()
   }
+  if (!isPlainObject(parsed)) {
+    // 中身(API キーの暗号文を含みうる)は記録しない。型だけを残す
+    const kind = Array.isArray(parsed) ? 'array' : parsed === null ? 'null' : typeof parsed
+    console.error(`[settingsFileStore] settings file is not a plain object: ${kind}`)
+    throw new SettingsFileError()
+  }
+  return parsed as SettingsFile
 }
 
 // settings.json への書き込みを直列化するキュー。read-modify-write の read と write の間に

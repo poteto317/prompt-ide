@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../../lib/promptInvoker')
 vi.mock('../../lib/promptStreamApi')
 
+import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
 import * as promptInvoker from '../../lib/promptInvoker'
 import * as promptStreamApi from '../../lib/promptStreamApi'
 import { usePromptExecution } from '../usePromptExecution'
@@ -386,6 +387,31 @@ describe('usePromptExecution', () => {
           agent: null
         })
       )
+    })
+
+    it('settings.json の失敗では、画面(executionError)と履歴(errorMessage)に固定の文言が出て、中身もパスも出ない(L-017)', async () => {
+      // main(settingsFileStore)は settings.json の失敗を固定の文言の SettingsFileError で投げ直す。renderer の invoke は
+      // 「Error invoking remote method '<channel>': <name>: <message>」の形で受け取るため、その形で渡す
+      const secretContent = 'djEwSECRET{'
+      const settingsPath = '/Users/someone/Library/Application Support/prompt-ide/settings.json'
+      mockInvokePrompt.mockRejectedValue(
+        new Error(
+          `Error invoking remote method 'claude:runPromptStream': SettingsFileError: ${SETTINGS_FILE_ERROR_REASON}`
+        )
+      )
+      const onExecuted = vi.fn()
+      const { result } = renderHook(() => usePromptExecution())
+      await act(async () => {
+        await result.current.executePrompt('プロンプト', null, 'api', context, onExecuted)
+      })
+      const shown = result.current.executionError?.message ?? ''
+      const saved = onExecuted.mock.calls[0][0].errorMessage as string
+      for (const message of [shown, saved]) {
+        expect(message).toContain(SETTINGS_FILE_ERROR_REASON)
+        expect(message).not.toContain(secretContent)
+        expect(message).not.toContain(settingsPath)
+      }
+      expect(onExecuted.mock.calls[0][0].status).toBe('error')
     })
 
     it('onExecuted を渡さなくてもエラーにならない', async () => {

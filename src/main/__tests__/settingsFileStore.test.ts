@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 
 const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
@@ -39,7 +40,8 @@ vi.mock('node:fs/promises', () => ({
   realpath: mockRealpath
 }))
 
-import { readSettingsFile, writeSettingsFile } from '../settingsFileStore'
+import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
+import { readSettingsFile, writeSettingsFile, SettingsFileError } from '../settingsFileStore'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -62,14 +64,98 @@ describe('readSettingsFile', () => {
     expect(await readSettingsFile()).toEqual({})
   })
 
-  it('ENOENT 以外のエラーは伝播する', async () => {
-    mockReadFile.mockRejectedValue(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
-    await expect(readSettingsFile()).rejects.toThrow('EPERM')
-  })
+  describe('読み込みの失敗(L-017)', () => {
+    // 中身の断片(API キーの暗号文を含みうる)とパスを画面へ出さないよう、固定の文言の SettingsFileError で投げ直す
+    const SECRET_CONTENT = 'djEwSECRET{'
+    const SETTINGS_PATH = '/mock/userData/settings.json'
+    let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 
-  it('不正な JSON のときパースエラーが伝播する', async () => {
-    mockReadFile.mockResolvedValue('not json{{')
-    await expect(readSettingsFile()).rejects.toThrow()
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      consoleErrorSpy?.mockRestore()
+      consoleErrorSpy = null
+    })
+
+    async function readFailure(): Promise<unknown> {
+      return readSettingsFile().then(
+        () => {
+          throw new Error('readSettingsFile は失敗するはず')
+        },
+        (err: unknown) => err
+      )
+    }
+
+    function expectFixedSettingsFileError(err: unknown): void {
+      expect(err).toBeInstanceOf(SettingsFileError)
+      const error = err as SettingsFileError
+      expect(error.name).toBe('SettingsFileError')
+      expect(error.message).toBe(SETTINGS_FILE_ERROR_REASON)
+      expect(String(error)).not.toContain(SECRET_CONTENT)
+      expect(String(error)).not.toContain(SETTINGS_PATH)
+    }
+
+    it('壊れた JSON は固定の文言の SettingsFileError になり、中身もパスも含まず、元の例外を console.error に記録する', async () => {
+      mockReadFile.mockResolvedValue(SECRET_CONTENT)
+      const err = await readFailure()
+      expectFixedSettingsFileError(err)
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to read settings file:',
+        expect.any(SyntaxError)
+      )
+    })
+
+    it('読み込めない(EPERM)ときも固定の文言の SettingsFileError になり、パスを含まず、元の例外を console.error に記録する', async () => {
+      const cause = Object.assign(
+        new Error(`EPERM: operation not permitted, open '${SETTINGS_PATH}'`),
+        {
+          code: 'EPERM'
+        }
+      )
+      mockReadFile.mockRejectedValue(cause)
+      const err = await readFailure()
+      expectFixedSettingsFileError(err)
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to read settings file:',
+        cause
+      )
+    })
+
+    it.each([
+      ['null', 'null'],
+      ['配列', '[]'],
+      ['数', '42'],
+      ['文字列', JSON.stringify(SECRET_CONTENT)]
+    ])(
+      'JSON が普通のオブジェクトでない(%s)ときも固定の文言の SettingsFileError になる',
+      async (_label, content) => {
+        mockReadFile.mockResolvedValue(content)
+        const err = await readFailure()
+        expectFixedSettingsFileError(err)
+        expect(consoleErrorSpy).toHaveBeenCalledOnce()
+      }
+    )
+
+    it('書き込みの先頭の読み込みが壊れた JSON なら、固定の文言の SettingsFileError で失敗し、書き込まない', async () => {
+      mockReadFile.mockResolvedValue(SECRET_CONTENT)
+      const err = await writeSettingsFile({ modelId: 'claude-opus-4-8' }).then(
+        () => {
+          throw new Error('writeSettingsFile は失敗するはず')
+        },
+        (e: unknown) => e
+      )
+      expectFixedSettingsFileError(err)
+      expect(mockWriteFile).not.toHaveBeenCalled()
+      expect(mockRename).not.toHaveBeenCalled()
+    })
+
+    it('ファイルが存在しない(ENOENT)ときは今までどおり空の設定を返し、console.error に記録しない', async () => {
+      mockReadFile.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }))
+      expect(await readSettingsFile()).toEqual({})
+      expect(consoleErrorSpy).not.toHaveBeenCalled()
+    })
   })
 
   it('正しいパスのファイルを utf-8 で読み込む', async () => {
@@ -238,11 +324,12 @@ describe('writeSettingsFile', () => {
   })
 
   it('先行する write が失敗しても後続の write はブロックされない', async () => {
-    mockReadFile.mockRejectedValueOnce(new Error('unexpected read error'))
+    // 読み込みの失敗は console.error に記録されるため、書き込み(rename)の失敗で先行の write を失敗させる
     mockReadFile.mockResolvedValue(JSON.stringify({}))
+    mockRename.mockRejectedValueOnce(new Error('unexpected write error'))
 
     await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow(
-      'unexpected read error'
+      'unexpected write error'
     )
     await expect(writeSettingsFile({ maxTokens: 4096 })).resolves.toBeUndefined()
   })

@@ -31,7 +31,8 @@ export async function getAgentCliKindSetting(
 ): Promise<AgentCliKindSetting> {
   let value: unknown
   try {
-    // readSettingsFile は JSON.parse の結果を型の主張だけで返す。null・配列・数・文字列の JSON でも投げないため、ここで確かめる
+    // readSettingsFile は普通のオブジェクトでない JSON(null・配列・数・文字列)を SettingsFileError で投げる(下の catch で
+    // read-failed になる)。戻り値の型の主張に頼らないよう、ここでも確かめる
     const data: unknown = await readSettingsFile()
     if (!isPlainObject(data)) {
       log(READ_FAILED_LOG)

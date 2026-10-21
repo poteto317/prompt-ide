@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import type { ModelSettings } from '@shared/types'
 import SettingsPanel from '../SettingsPanel'
+import { API_KEY_LOAD_ERROR_MESSAGES } from '../../../lib/settingsMessages'
 
 // main の設定ファイルの読み書きの例外には settings.json のパスや中身の断片が入りうる(L-017)
 const LEAKY_SETTINGS_ERROR_TEXT =
@@ -156,9 +157,26 @@ describe('SettingsPanel', () => {
     expect(input.placeholder).toBe('sk-ant-...')
   })
 
-  it('keyStoreError があるときエラーメッセージが表示される', () => {
-    render(<SettingsPanel {...defaultProps} keyStoreError="システムのキーストアが利用できません" />)
-    expect(screen.getByText('システムのキーストアが利用できません')).toBeInTheDocument()
+  it.each([
+    ['decrypt-failed'],
+    ['keystore-unavailable'],
+    ['settings-file-error'],
+    ['unknown']
+  ] as const)(
+    'API キーの読み込みの失敗(%s)の固定の文言が表示され、settings.json のパスは表示されない',
+    (reason) => {
+      const { container } = render(
+        <SettingsPanel {...defaultProps} keyStoreError={API_KEY_LOAD_ERROR_MESSAGES[reason]} />
+      )
+      expect(screen.getByText(API_KEY_LOAD_ERROR_MESSAGES[reason])).toBeInTheDocument()
+      expect(container.textContent).not.toContain('Application Support')
+      expect(container.textContent).not.toContain('userData')
+    }
+  )
+
+  it('API キーの読み込みの失敗の文言は種類ごとに異なる', () => {
+    const messages = Object.values(API_KEY_LOAD_ERROR_MESSAGES)
+    expect(new Set(messages).size).toBe(messages.length)
   })
 
   it('keyStoreError があるとき input が disabled になる', () => {
@@ -178,7 +196,9 @@ describe('SettingsPanel', () => {
 
   it('keyStoreError が null のときエラーメッセージが表示されない', () => {
     render(<SettingsPanel {...defaultProps} keyStoreError={null} />)
-    expect(screen.queryByText('システムのキーストアが利用できません')).not.toBeInTheDocument()
+    for (const message of Object.values(API_KEY_LOAD_ERROR_MESSAGES)) {
+      expect(screen.queryByText(message)).not.toBeInTheDocument()
+    }
   })
 
   // モデル設定セクションの詳細な挙動(バリデーション・保存フローなど)は

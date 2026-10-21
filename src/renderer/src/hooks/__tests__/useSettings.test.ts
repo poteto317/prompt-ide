@@ -15,7 +15,7 @@ const mockSetModelSettings = vi.mocked(settingsApi.setModelSettings)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockHasApiKey.mockResolvedValue(false)
+  mockHasApiKey.mockResolvedValue({ ok: true, hasKey: false })
   mockSetApiKey.mockResolvedValue(undefined)
   mockGetModelSettings.mockResolvedValue({ modelId: 'claude-haiku-4-5', maxTokens: 4096 })
   mockSetModelSettings.mockResolvedValue(undefined)
@@ -26,7 +26,7 @@ beforeEach(() => {
 // 個別にテスト済みのため、ここでは「両方の結果が正しくマージされて返る」ことのみ確認する。
 describe('useSettings', () => {
   it('APIキー設定とモデル設定の両方が単一のオブジェクトとして返る', async () => {
-    mockHasApiKey.mockResolvedValue(true)
+    mockHasApiKey.mockResolvedValue({ ok: true, hasKey: true })
     mockGetModelSettings.mockResolvedValue({ modelId: 'claude-opus-4-8', maxTokens: 8000 })
 
     const { result } = renderHook(() => useSettings())

@@ -1,9 +1,10 @@
 import { safeStorage } from 'electron'
 import { readSettingsFile, writeSettingsFile } from './settingsFileStore'
+import { ApiKeyDecryptError, KeystoreUnavailableError } from './apiKeyErrors'
 
 function assertEncryptionAvailable(): void {
   if (!safeStorage.isEncryptionAvailable()) {
-    throw new Error('システムのキーストアが利用できません。API キーを安全に保存できません。')
+    throw new KeystoreUnavailableError()
   }
 }
 
@@ -19,7 +20,7 @@ export async function getApiKey(): Promise<string> {
       // OS キーチェーンの変更や別マシンからのコピーで復号不能になったキーは
       // 削除して再入力を促す状態に収束させる
       await writeSettingsFile({ encryptedApiKey: undefined })
-      throw new Error('保存済みの API キーを復号できませんでした。API キーを再設定してください。')
+      throw new ApiKeyDecryptError()
     }
   }
 

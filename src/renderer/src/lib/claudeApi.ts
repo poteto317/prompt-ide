@@ -1,4 +1,7 @@
-export function hasApiKey(): Promise<boolean> {
+import type { ApiKeyStatus } from '@shared/apiKeyStatus'
+
+/** API キーの状態。読み込みの失敗は reject せず、理由の種類で返る */
+export function hasApiKey(): Promise<ApiKeyStatus> {
   return window.api.hasApiKey()
 }
 

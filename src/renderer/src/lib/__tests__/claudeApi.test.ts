@@ -13,17 +13,23 @@ beforeEach(() => {
 })
 
 describe('hasApiKey', () => {
-  it('window.api.hasApiKey を呼び出し boolean を返す（キーあり）', async () => {
-    mockApi.hasApiKey.mockResolvedValue(true)
+  it('window.api.hasApiKey を呼び出し API キーの状態を返す（キーあり）', async () => {
+    mockApi.hasApiKey.mockResolvedValue({ ok: true, hasKey: true })
     const result = await hasApiKey()
     expect(mockApi.hasApiKey).toHaveBeenCalledOnce()
-    expect(result).toBe(true)
+    expect(result).toEqual({ ok: true, hasKey: true })
   })
 
-  it('window.api.hasApiKey を呼び出し boolean を返す（キーなし）', async () => {
-    mockApi.hasApiKey.mockResolvedValue(false)
+  it('window.api.hasApiKey を呼び出し API キーの状態を返す（キーなし）', async () => {
+    mockApi.hasApiKey.mockResolvedValue({ ok: true, hasKey: false })
     const result = await hasApiKey()
-    expect(result).toBe(false)
+    expect(result).toEqual({ ok: true, hasKey: false })
+  })
+
+  it('読み込みの失敗は理由の種類のまま返す', async () => {
+    mockApi.hasApiKey.mockResolvedValue({ ok: false, reason: 'decrypt-failed' })
+    const result = await hasApiKey()
+    expect(result).toEqual({ ok: false, reason: 'decrypt-failed' })
   })
 })
 

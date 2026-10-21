@@ -657,3 +657,10 @@ describe('interruptAgentSession の戻り値', () => {
     await expect(api.interruptAgentSession('id')).resolves.toBe(result)
   })
 })
+
+describe('hasApiKey の戻り値', () => {
+  it('main が返した API キーの状態(理由の種類)をそのまま返す', async () => {
+    mockInvoke.mockResolvedValueOnce({ ok: false, reason: 'keystore-unavailable' })
+    await expect(api.hasApiKey()).resolves.toEqual({ ok: false, reason: 'keystore-unavailable' })
+  })
+})

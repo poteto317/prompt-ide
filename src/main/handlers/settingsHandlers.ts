@@ -1,5 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 import { getApiKey, setApiKey } from '../apiKeyStore'
+import { toApiKeyLoadFailureReason } from '../apiKeyErrors'
 import { getModelSettings, setModelSettings } from '../modelSettingsStore'
 import { parseModelSettingsPayload } from './settingsPayloadParser'
 import {
@@ -14,9 +16,15 @@ import { getAgentCliKindSetting, setAgentCliKind } from '../agentCliKindStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
-  ipcMain.handle('settings:hasApiKey', async () => {
-    const key = await getApiKey()
-    return key.trim().length > 0
+  // API キーの状態。読み込みの失敗は reject せず理由の種類だけを返す(例外の文言には settings.json のパスや中身の断片が
+  // 入りうるため renderer へ送らない。L-017)。renderer は種類ごとに固定の文言を出す
+  ipcMain.handle('settings:hasApiKey', async (): Promise<ApiKeyStatus> => {
+    try {
+      const key = await getApiKey()
+      return { ok: true, hasKey: key.trim().length > 0 }
+    } catch (err) {
+      return { ok: false, reason: toApiKeyLoadFailureReason(err) }
+    }
   })
 
   ipcMain.handle('settings:setApiKey', async (_event: IpcMainInvokeEvent, apiKey: string) => {

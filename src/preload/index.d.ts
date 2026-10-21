@@ -42,6 +42,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
+import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 
 declare global {
   interface Window {
@@ -104,7 +105,7 @@ declare global {
       cloneRepository(url: string, folderName: string): Promise<CloneRepositoryResult>
       cancelCloneRepository(): Promise<void>
       addToGitignore(targetPath: string): Promise<void>
-      hasApiKey(): Promise<boolean>
+      hasApiKey(): Promise<ApiKeyStatus>
       setApiKey(apiKey: string): Promise<void>
       getModelSettings(): Promise<ModelSettings>
       setModelSettings(settings: ModelSettings): Promise<void>

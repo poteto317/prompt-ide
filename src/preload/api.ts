@@ -44,6 +44,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
+import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 import { AGENT_SLOT_ID_PATTERN, isAgentExitReason } from '@shared/types'
 
 export const api = {
@@ -130,7 +131,7 @@ export const api = {
   cancelCloneRepository: (): Promise<void> => ipcRenderer.invoke('git:cancelCloneRepository'),
   addToGitignore: (targetPath: string): Promise<void> =>
     ipcRenderer.invoke('fs:addToGitignore', targetPath),
-  hasApiKey: (): Promise<boolean> => ipcRenderer.invoke('settings:hasApiKey'),
+  hasApiKey: (): Promise<ApiKeyStatus> => ipcRenderer.invoke('settings:hasApiKey'),
   setApiKey: (apiKey: string): Promise<void> => ipcRenderer.invoke('settings:setApiKey', apiKey),
   getModelSettings: (): Promise<ModelSettings> => ipcRenderer.invoke('settings:getModelSettings'),
   setModelSettings: (settings: ModelSettings): Promise<void> =>

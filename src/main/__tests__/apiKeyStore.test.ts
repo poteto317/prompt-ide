@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { MockInstance } from 'vitest'
 
 const mockReadFile = vi.hoisted(() => vi.fn())
 const mockWriteFile = vi.hoisted(() => vi.fn())
@@ -43,7 +44,10 @@ vi.mock('node:fs/promises', () => ({
   realpath: mockRealpath
 }))
 
+import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
 import { getApiKey, setApiKey } from '../apiKeyStore'
+import { ApiKeyDecryptError, KeystoreUnavailableError } from '../apiKeyErrors'
+import { SettingsFileError } from '../settingsFileStore'
 import { safeStorage } from 'electron'
 
 const mockIsEncryptionAvailable = vi.mocked(safeStorage.isEncryptionAvailable)
@@ -70,9 +74,11 @@ beforeEach(() => {
 })
 
 describe('getApiKey', () => {
-  it('isEncryptionAvailable() が false のとき エラーを投げる', async () => {
+  it('isEncryptionAvailable() が false のとき KeystoreUnavailableError を投げる', async () => {
     mockIsEncryptionAvailable.mockReturnValue(false)
-    await expect(getApiKey()).rejects.toThrow('システムのキーストアが利用できません')
+    const rejection = getApiKey()
+    await expect(rejection).rejects.toBeInstanceOf(KeystoreUnavailableError)
+    await expect(rejection).rejects.toThrow('システムのキーストアが利用できません')
     expect(mockReadFile).not.toHaveBeenCalled()
   })
 
@@ -82,10 +88,28 @@ describe('getApiKey', () => {
     expect(await getApiKey()).toBe('')
   })
 
-  it('ENOENT 以外のエラーは伝播する', async () => {
-    const err = Object.assign(new Error('EPERM'), { code: 'EPERM' })
-    mockReadFile.mockRejectedValue(err)
-    await expect(getApiKey()).rejects.toThrow('EPERM')
+  describe('settings.json の読み込みの失敗', () => {
+    let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      consoleErrorSpy?.mockRestore()
+      consoleErrorSpy = null
+    })
+
+    it('ENOENT 以外のエラーは固定の文言の SettingsFileError として伝播する(パスを含まない。L-017)', async () => {
+      const err = Object.assign(
+        new Error("EPERM: operation not permitted, open '/mock/userData/settings.json'"),
+        { code: 'EPERM' }
+      )
+      mockReadFile.mockRejectedValue(err)
+      const rejection = getApiKey()
+      await expect(rejection).rejects.toBeInstanceOf(SettingsFileError)
+      await expect(rejection).rejects.toThrow(SETTINGS_FILE_ERROR_REASON)
+    })
   })
 
   it('encryptedApiKey が保存されている場合は復号して返す', async () => {
@@ -127,13 +151,15 @@ describe('getApiKey', () => {
     expect(written).toHaveProperty('encryptedApiKey')
   })
 
-  it('復号に失敗した場合は壊れたキーを削除して再設定を促すエラーを投げる', async () => {
+  it('復号に失敗した場合は壊れたキーを削除して再設定を促す ApiKeyDecryptError を投げる', async () => {
     const base64 = Buffer.from('broken').toString('base64')
     mockReadFile.mockResolvedValue(JSON.stringify({ encryptedApiKey: base64 }))
     mockDecrypt.mockImplementation(() => {
       throw new Error('decryption failed')
     })
-    await expect(getApiKey()).rejects.toThrow(
+    const rejection = getApiKey()
+    await expect(rejection).rejects.toBeInstanceOf(ApiKeyDecryptError)
+    await expect(rejection).rejects.toThrow(
       '保存済みの API キーを復号できませんでした。API キーを再設定してください。'
     )
     expect(mockWriteFile).toHaveBeenCalledOnce()
@@ -158,9 +184,11 @@ describe('getApiKey', () => {
 })
 
 describe('setApiKey', () => {
-  it('isEncryptionAvailable() が false のとき エラーを投げる', async () => {
+  it('isEncryptionAvailable() が false のとき KeystoreUnavailableError を投げる', async () => {
     mockIsEncryptionAvailable.mockReturnValue(false)
-    await expect(setApiKey('sk-ant-abc')).rejects.toThrow('システムのキーストアが利用できません')
+    const rejection = setApiKey('sk-ant-abc')
+    await expect(rejection).rejects.toBeInstanceOf(KeystoreUnavailableError)
+    await expect(rejection).rejects.toThrow('システムのキーストアが利用できません')
     expect(mockWriteFile).not.toHaveBeenCalled()
   })
 
