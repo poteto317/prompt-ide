@@ -1,4 +1,4 @@
-// 設定ファイル(settings.json)の読み書きの失敗の固定の文言。main(settingsFileStore が読み込みの失敗を SettingsFileError で
+// 設定ファイル(settings.json)の読み書きの失敗の固定の文言。main(settingsFileStore が読み書きの失敗を SettingsFileError で
 // 投げ直すときの文言)と renderer(各設定の保存の失敗の理由)で共有する(片方だけ変えて文言が食い違わないように。パターン 88)。
 // settings.json の読み書きの例外には、パスや中身の断片(JSON.parse の SyntaxError に入る、API キーの暗号文を含みうる)が
 // 入るため、例外の文言は画面に出さず、理由は固定の文言にする(L-017)
