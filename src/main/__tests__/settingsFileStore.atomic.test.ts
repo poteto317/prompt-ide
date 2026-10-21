@@ -248,7 +248,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
     }
   })
 
-  it('並行して書いても一時ファイルが衝突せず、すべての変更が残る', async () => {
+  it('並行して書いても、すべての変更が残り、一時ファイルも残らない', async () => {
     await Promise.all([
       writeSettingsFile({ encryptedApiKey: 'enc' }),
       writeSettingsFile({ modelId: 'claude-opus-4-8' }),

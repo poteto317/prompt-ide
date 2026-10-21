@@ -47,9 +47,11 @@ describe('useAgentSendConfirmSetting', () => {
 
   it('読み込みに失敗したら既定(オン)', async () => {
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    mockGet.mockRejectedValueOnce(new Error('broken'))
+    const loadErr = new Error('broken')
+    mockGet.mockRejectedValueOnce(loadErr)
     const { result } = renderHook(() => useAgentSendConfirmSetting())
     await waitFor(() => expect(result.current.enabled).toBe(true))
+    expect(consoleSpy).toHaveBeenCalledWith('[useAgentSendConfirmSetting] load failed:', loadErr)
   })
 
   it('変えたらすぐ反映して setAgentSendConfirmEnabled で保存する', async () => {
@@ -84,7 +86,7 @@ describe('useAgentSendConfirmSetting', () => {
     )
     // 文言は固定のファイル名(settings.json)だけを案内し、例外に入っていたパスは出さない
     expect(result.current.saveError).not.toContain('/Users/someone')
-    expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
+    expect(consoleSpy).toHaveBeenCalledWith('[useAgentSendConfirmSetting] save failed:', err)
   })
 
   it('続けて変えて、先が失敗・後が成功なら、後の値のまま失敗の文言を出さない(L-406)', async () => {

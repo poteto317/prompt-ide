@@ -33,9 +33,11 @@ describe('useAgentNotificationSetting', () => {
 
   it('読み込みに失敗したら既定(オン)', async () => {
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    mockGet.mockRejectedValueOnce(new Error('broken'))
+    const loadErr = new Error('broken')
+    mockGet.mockRejectedValueOnce(loadErr)
     const { result } = renderHook(() => useAgentNotificationSetting())
     await waitFor(() => expect(result.current.enabled).toBe(true))
+    expect(consoleSpy).toHaveBeenCalledWith('[useAgentNotificationSetting] load failed:', loadErr)
   })
 
   it('変えたらすぐ反映して保存する', async () => {
@@ -70,7 +72,7 @@ describe('useAgentNotificationSetting', () => {
     )
     // 文言は固定のファイル名(settings.json)だけを案内し、例外に入っていたパスは出さない
     expect(result.current.saveError).not.toContain('/Users/someone')
-    expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
+    expect(consoleSpy).toHaveBeenCalledWith('[useAgentNotificationSetting] save failed:', err)
   })
 
   describe('続けて変えたとき', () => {
