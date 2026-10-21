@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
-import { readFile, writeFile, mkdir, chmod, rename, rm, open } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, chmod, rename, rm, open, realpath } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
@@ -87,14 +87,17 @@ async function syncAndClose(handle: FileHandle): Promise<void> {
 // 失敗したら一時ファイルを消す。消せなかったときは console.error に記録し、元の例外を返す。
 // Windows の rename(MoveFileEx の置き換え)は、ほかのプロセスが settings.json を共有削除なしで開いていると
 // EPERM・EBUSY で失敗し得る。その場合も元のファイルはそのまま残り、保存の失敗として呼び出し元へ返す。
+// settings.json がシンボリックリンクなら realpath でたどり、リンク先と同じディレクトリに一時ファイルを作ってリンク先へ
+// rename する(リンクを通常のファイルに置き換えず、リンク先を更新する。以前の writeFile と同じ結果)。
 async function writeFileAtomically(target: string, content: string): Promise<void> {
-  const tempPath = `${target}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
+  const resolvedTarget = await resolveWriteTarget(target)
+  const tempPath = `${resolvedTarget}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`
   try {
     await writeFile(tempPath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
     const handle = await open(tempPath, 'r+')
     await syncAndClose(handle)
     await chmod(tempPath, 0o600)
-    await rename(tempPath, target)
+    await rename(tempPath, resolvedTarget)
   } catch (err) {
     // EEXIST は wx の作成で、同じ名前のほかのファイルがあったとき。自分が作ったファイルではないので消さない
     if (!isFsError(err, 'EEXIST')) {
@@ -102,6 +105,18 @@ async function writeFileAtomically(target: string, content: string): Promise<voi
         console.error('[settingsFileStore] failed to remove temp file:', rmErr)
       })
     }
+    throw err
+  }
+}
+
+// 書き込み先のシンボリックリンクをたどった実体のパスを返す。ファイルが無ければ(realpath が ENOENT)今のパスのまま。
+// リンク切れ(リンクはあるがリンク先が無い)も ENOENT なので今のパスのままで、リンクを通常のファイルに置き換える
+// (リンク先の場所に新しいファイルを作らない)。ENOENT 以外の失敗は保存の失敗として投げる。
+async function resolveWriteTarget(target: string): Promise<string> {
+  try {
+    return await realpath(target)
+  } catch (err) {
+    if (isEnoentError(err)) return target
     throw err
   }
 }

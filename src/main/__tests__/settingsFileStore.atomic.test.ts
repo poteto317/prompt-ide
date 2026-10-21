@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
+import {
+  mkdtempSync,
+  rmSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  symlinkSync,
+  lstatSync
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,8 +19,8 @@ vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => userDataDir.current) }
 }))
 
-// 実物の fs を使い、writeFile・open・rename・rm だけを差し替えられるようにする
-// (書き込みの途中・書き込みの失敗・sync の順序・sync と close の失敗・rename の失敗・後始末の失敗を作るため)
+// 実物の fs を使い、writeFile・open・rename・rm・realpath だけを差し替えられるようにする
+// (書き込み先の解決の失敗・書き込みの途中・書き込みの失敗・sync の順序・sync と close の失敗・rename の失敗・後始末の失敗を作るため)
 const fsHooks = vi.hoisted(() => ({
   beforeRename: null as null | (() => Promise<void>),
   beforeWrite: null as null | ((file: string) => void),
@@ -21,6 +30,7 @@ const fsHooks = vi.hoisted(() => ({
   closeError: null as null | Error,
   renameError: null as null | Error,
   rmError: null as null | Error,
+  realpathError: null as null | Error,
   events: [] as string[]
 }))
 
@@ -70,7 +80,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     if (fsHooks.rmError !== null) throw fsHooks.rmError
     return actual.rm(file, options)
   }
-  const mocked = { ...actual, writeFile, open, rename, rm }
+  const realpath = (async (file: Parameters<typeof actual.realpath>[0]) => {
+    if (fsHooks.realpathError !== null) throw fsHooks.realpathError
+    return actual.realpath(file)
+  }) as typeof actual.realpath
+  const mocked = { ...actual, writeFile, open, rename, rm, realpath }
   return { ...mocked, default: mocked }
 })
 
@@ -88,6 +102,7 @@ beforeEach(() => {
   fsHooks.closeError = null
   fsHooks.renameError = null
   fsHooks.rmError = null
+  fsHooks.realpathError = null
   fsHooks.events = []
 })
 
@@ -177,6 +192,19 @@ describe('writeSettingsFile の原子的な書き込み', () => {
     await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toThrow('EEXIST')
 
     expect(readFileSync(collidedName, 'utf-8')).toBe('someone else')
+    expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+  })
+
+  it('書き込み先の解決(realpath)が ENOENT 以外で失敗したら、一時ファイルを作らず元のファイルを壊さずに失敗を返す', async () => {
+    const original = JSON.stringify({ agentCliKind: 'copilot' })
+    writeFileSync(settingsPath(), original)
+    const realpathErr = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
+    fsHooks.realpathError = realpathErr
+
+    await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(realpathErr)
+
+    expect(fsHooks.events).toEqual([])
+    expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
     expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
   })
 
@@ -271,6 +299,50 @@ describe('writeSettingsFile の原子的な書き込み', () => {
       await writeSettingsFile({ encryptedApiKey: 'enc' })
 
       expect(statSync(settingsPath()).mode & 0o777).toBe(0o600)
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'settings.json がシンボリックリンクなら、リンクのまま残し、リンク先を新しい内容にして、リンク先のディレクトリに一時ファイルを残さない',
+    async () => {
+      const linkTargetDir = mkdtempSync(join(tmpdir(), 'prompt-ide-settings-target-'))
+      try {
+        const linkTarget = join(linkTargetDir, 'real-settings.json')
+        writeFileSync(linkTarget, JSON.stringify({ agentCliKind: 'copilot' }))
+        symlinkSync(linkTarget, settingsPath())
+
+        await writeSettingsFile({ modelId: 'claude-opus-4-8' })
+
+        expect(lstatSync(settingsPath()).isSymbolicLink()).toBe(true)
+        expect(JSON.parse(readFileSync(linkTarget, 'utf-8'))).toEqual({
+          agentCliKind: 'copilot',
+          modelId: 'claude-opus-4-8'
+        })
+        expect(readdirSync(linkTargetDir)).toEqual(['real-settings.json'])
+        expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+      } finally {
+        rmSync(linkTargetDir, { recursive: true, force: true })
+      }
+    }
+  )
+
+  it.skipIf(process.platform === 'win32')(
+    'settings.json がリンク切れのシンボリックリンクなら、リンクを通常のファイルに置き換えて保存する',
+    async () => {
+      const linkTargetDir = mkdtempSync(join(tmpdir(), 'prompt-ide-settings-target-'))
+      try {
+        const missingTarget = join(linkTargetDir, 'missing.json')
+        symlinkSync(missingTarget, settingsPath())
+
+        await writeSettingsFile({ modelId: 'claude-opus-4-8' })
+
+        expect(lstatSync(settingsPath()).isSymbolicLink()).toBe(false)
+        await expect(readSettingsFile()).resolves.toEqual({ modelId: 'claude-opus-4-8' })
+        expect(readdirSync(linkTargetDir)).toEqual([])
+        expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+      } finally {
+        rmSync(linkTargetDir, { recursive: true, force: true })
+      }
     }
   )
 

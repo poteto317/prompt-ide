@@ -8,6 +8,7 @@ const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 // 一時ファイルを rename の前に sync するため、open は sync と close だけを持つ偽の FileHandle を返す
 const mockOpen = vi.hoisted(() => vi.fn())
+const mockRealpath = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
   app: { getPath: vi.fn(() => '/mock/userData') },
@@ -26,7 +27,8 @@ vi.mock('node:fs/promises', () => ({
     chmod: mockChmod,
     rename: mockRename,
     rm: mockRm,
-    open: mockOpen
+    open: mockOpen,
+    realpath: mockRealpath
   },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
@@ -34,7 +36,8 @@ vi.mock('node:fs/promises', () => ({
   chmod: mockChmod,
   rename: mockRename,
   rm: mockRm,
-  open: mockOpen
+  open: mockOpen,
+  realpath: mockRealpath
 }))
 
 import { getApiKey, setApiKey } from '../apiKeyStore'
@@ -46,6 +49,8 @@ const mockDecrypt = vi.mocked(safeStorage.decryptString)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 書き込み先はシンボリックリンクではない(realpath は同じパスを返す)
+  mockRealpath.mockImplementation(async (target: string) => target)
   mockIsEncryptionAvailable.mockReturnValue(true)
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)

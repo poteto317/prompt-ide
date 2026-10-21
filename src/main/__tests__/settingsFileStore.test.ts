@@ -7,6 +7,7 @@ const mockChmod = vi.hoisted(() => vi.fn())
 const mockRename = vi.hoisted(() => vi.fn())
 const mockRm = vi.hoisted(() => vi.fn())
 const mockOpen = vi.hoisted(() => vi.fn())
+const mockRealpath = vi.hoisted(() => vi.fn())
 const mockSync = vi.hoisted(() => vi.fn())
 const mockClose = vi.hoisted(() => vi.fn())
 
@@ -22,7 +23,8 @@ vi.mock('node:fs/promises', () => ({
     chmod: mockChmod,
     rename: mockRename,
     rm: mockRm,
-    open: mockOpen
+    open: mockOpen,
+    realpath: mockRealpath
   },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
@@ -30,13 +32,16 @@ vi.mock('node:fs/promises', () => ({
   chmod: mockChmod,
   rename: mockRename,
   rm: mockRm,
-  open: mockOpen
+  open: mockOpen,
+  realpath: mockRealpath
 }))
 
 import { readSettingsFile, writeSettingsFile } from '../settingsFileStore'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 書き込み先はシンボリックリンクではない(realpath は同じパスを返す)
+  mockRealpath.mockImplementation(async (target: string) => target)
   mockMkdir.mockResolvedValue(undefined)
   mockWriteFile.mockResolvedValue(undefined)
   mockChmod.mockResolvedValue(undefined)
