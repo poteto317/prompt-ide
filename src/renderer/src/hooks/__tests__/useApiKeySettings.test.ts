@@ -10,7 +10,7 @@ const mockHasApiKey = vi.mocked(claudeApi.hasApiKey)
 const mockSetApiKey = vi.mocked(claudeApi.setApiKey)
 
 const API_KEY_LOAD_ERROR =
-  'API キーを読み込めませんでした: システムのキーストアまたは設定ファイルを使えませんでした。保存済みのキーを復号できなかったときはキーを消してあるため、アプリを再起動すると再設定できます。再起動しても続くときは、システムのキーストア（キーチェーンなど）が使えるか、settings.json が壊れていないかを確かめてください'
+  'API キーを読み込めませんでした: システムのキーストアまたは設定ファイルを使えませんでした。保存済みのキーを復号できなかったときはキーを消してあるため、アプリを再起動すると再設定できます。再起動しても続くときは、システムのキーストア（キーチェーンなど）が使えるか、アプリのデータフォルダの settings.json が壊れていないかを確かめてください'
 
 beforeEach(() => {
   vi.clearAllMocks()

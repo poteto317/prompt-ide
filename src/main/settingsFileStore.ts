@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { join } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { readFile, writeFile, mkdir, chmod, rename, rm, open } from 'node:fs/promises'
+import type { FileHandle } from 'node:fs/promises'
 import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
@@ -53,6 +54,26 @@ export function writeSettingsFile(partial: Partial<SettingsFile>): Promise<void>
   })
 }
 
+// sync してから close する。sync が失敗して close も失敗したら、close の失敗は console.error に記録し、sync の例外を投げる
+// (本当の原因を残すため)。sync が成功して close だけが失敗したら、close の例外を投げる(書き込みの成功を装わない)
+async function syncAndClose(handle: FileHandle): Promise<void> {
+  let syncFailed = false
+  let syncError: unknown
+  try {
+    await handle.sync()
+  } catch (err) {
+    syncFailed = true
+    syncError = err
+  }
+  try {
+    await handle.close()
+  } catch (closeErr) {
+    if (!syncFailed) throw closeErr
+    console.error('[settingsFileStore] failed to close temp file:', closeErr)
+  }
+  if (syncFailed) throw syncError
+}
+
 // 同じディレクトリの一時ファイルへ書き切ってから rename で置き換える(同じファイルシステム内の rename は原子的)。
 // 一時ファイルは 0o600 で作り、chmod でも 0o600 に揃える(umask に左右されない。API キーの暗号文を含むため、
 // 置き換え後の settings.json も含めて他の利用者から読めないようにする)。
@@ -62,6 +83,7 @@ export function writeSettingsFile(partial: Partial<SettingsFile>): Promise<void>
 // 永続化されて 0 バイトの settings.json が残りうる。その JSON は読み込めないため、利用者が手で消すまで、すべての設定の
 // 保存が失敗し続ける(書き込みは先に読み込むため)。ディレクトリの sync はしない(rename の永続化が遅れても、前の内容が
 // 残るだけで壊れない)。sync は writeFile とは別の fd で行う(writeFile は 1 回の呼び出しで書き切るため)。
+// close の失敗は sync の例外を置き換えない(syncAndClose)。close が失敗したら rename しない(保存の成功を装わない)。
 // 失敗したら一時ファイルを消す。消せなかったときは console.error に記録し、元の例外を返す。
 // Windows の rename(MoveFileEx の置き換え)は、ほかのプロセスが settings.json を共有削除なしで開いていると
 // EPERM・EBUSY で失敗し得る。その場合も元のファイルはそのまま残り、保存の失敗として呼び出し元へ返す。
@@ -70,11 +92,7 @@ async function writeFileAtomically(target: string, content: string): Promise<voi
   try {
     await writeFile(tempPath, content, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
     const handle = await open(tempPath, 'r+')
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
+    await syncAndClose(handle)
     await chmod(tempPath, 0o600)
     await rename(tempPath, target)
   } catch (err) {

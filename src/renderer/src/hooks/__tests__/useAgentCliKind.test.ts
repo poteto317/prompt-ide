@@ -12,7 +12,7 @@ const mockSet = vi.mocked(settingsApi.setAgentCliKind)
 let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 
 const SAVE_ERROR =
-  '使うエージェント CLI を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときは settings.json が壊れていないか確かめてください'
+  '使うエージェント CLI を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときはアプリのデータフォルダの settings.json が壊れていないか確かめてください'
 
 beforeEach(() => {
   vi.resetAllMocks()

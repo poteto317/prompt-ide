@@ -11,12 +11,14 @@ vi.mock('electron', () => ({
 }))
 
 // 実物の fs を使い、writeFile・open・rename・rm だけを差し替えられるようにする
-// (書き込みの途中・書き込みの失敗・sync の順序・rename の失敗・後始末の失敗を作るため)
+// (書き込みの途中・書き込みの失敗・sync の順序・sync と close の失敗・rename の失敗・後始末の失敗を作るため)
 const fsHooks = vi.hoisted(() => ({
   beforeRename: null as null | (() => Promise<void>),
   beforeWrite: null as null | ((file: string) => void),
   partialWriteGate: null as null | Promise<void>,
   writeError: null as null | Error,
+  syncError: null as null | Error,
+  closeError: null as null | Error,
   renameError: null as null | Error,
   rmError: null as null | Error,
   events: [] as string[]
@@ -44,9 +46,17 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const open: typeof actual.open = async (file, flags, mode) => {
     const handle = await actual.open(file, flags, mode)
     const sync = handle.sync.bind(handle)
+    const close = handle.close.bind(handle)
     handle.sync = async () => {
       fsHooks.events.push('sync')
+      if (fsHooks.syncError !== null) throw fsHooks.syncError
       return sync()
+    }
+    // close の失敗を再現するときも、実物の fd は閉じる(テストで fd を漏らさないため)
+    handle.close = async () => {
+      fsHooks.events.push('close')
+      await close()
+      if (fsHooks.closeError !== null) throw fsHooks.closeError
     }
     return handle
   }
@@ -74,6 +84,8 @@ beforeEach(() => {
   fsHooks.beforeWrite = null
   fsHooks.partialWriteGate = null
   fsHooks.writeError = null
+  fsHooks.syncError = null
+  fsHooks.closeError = null
   fsHooks.renameError = null
   fsHooks.rmError = null
   fsHooks.events = []
@@ -171,8 +183,50 @@ describe('writeSettingsFile の原子的な書き込み', () => {
   it('一時ファイルを sync してから rename する', async () => {
     await writeSettingsFile({ modelId: 'claude-opus-4-8' })
 
-    expect(fsHooks.events).toEqual(['sync', 'rename'])
+    expect(fsHooks.events).toEqual(['sync', 'close', 'rename'])
     await expect(readSettingsFile()).resolves.toEqual({ modelId: 'claude-opus-4-8' })
+  })
+
+  it('sync も close も失敗したら、close の失敗を console.error に記録し、sync の例外を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const original = JSON.stringify({ agentCliKind: 'copilot' })
+      writeFileSync(settingsPath(), original)
+      const syncErr = Object.assign(new Error('EIO: sync failed'), { code: 'EIO' })
+      const closeErr = Object.assign(new Error('EBADF: close failed'), { code: 'EBADF' })
+      fsHooks.syncError = syncErr
+      fsHooks.closeError = closeErr
+
+      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(syncErr)
+
+      expect(consoleError).toHaveBeenCalledWith(
+        '[settingsFileStore] failed to close temp file:',
+        closeErr
+      )
+      expect(fsHooks.events).toEqual(['sync', 'close'])
+      expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+      expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
+
+  it('close だけが失敗したら、rename せずに close の例外を返す', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const original = JSON.stringify({ agentCliKind: 'copilot' })
+      writeFileSync(settingsPath(), original)
+      const closeErr = Object.assign(new Error('EIO: close failed'), { code: 'EIO' })
+      fsHooks.closeError = closeErr
+
+      await expect(writeSettingsFile({ modelId: 'claude-opus-4-8' })).rejects.toBe(closeErr)
+
+      expect(fsHooks.events).toEqual(['sync', 'close'])
+      expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
+      expect(readFileSync(settingsPath(), 'utf-8')).toBe(original)
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('一時ファイルの後始末が失敗したら console.error に記録し、元の例外を返す', async () => {
