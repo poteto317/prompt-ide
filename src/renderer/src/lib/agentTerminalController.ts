@@ -85,7 +85,11 @@ export interface AgentTerminalController {
   writeToSession(data: string): void
   /** 送信の手順の間、利用者のキー入力を溜める。endSending で順に送る */
   beginSending(): void
-  endSending(): void
+  /**
+   * 保留を解き、溜めた入力を順に送る。discard が真なら送らずに捨て、捨てた数を返す(捨てないときは 0)。捨てる経路は書き込みを
+   * 減らすだけで、pty へ届くバイトは増やさない(L-019)
+   */
+  endSending(options?: { discard: boolean }): number
   /** F6 でターミナルから抜けるときの移動先 */
   setFocusOutHandler(handler: (() => void) | null): void
   focus(): void
@@ -240,12 +244,14 @@ export function createAgentTerminalController({
     beginSending() {
       sending = true
     },
-    endSending() {
+    endSending(options) {
       sending = false
       const held = heldInput
       heldInput = []
-      if (disposed || sessionId === null) return
+      if (options?.discard === true) return held.length
+      if (disposed || sessionId === null) return 0
       for (const data of held) api.writeAgentSession(sessionId, data)
+      return 0
     },
     setFocusOutHandler(handler) {
       focusOutHandler = handler

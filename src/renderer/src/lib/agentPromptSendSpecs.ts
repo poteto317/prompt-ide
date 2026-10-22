@@ -1,5 +1,10 @@
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import type { AgentSendClock, AgentSendOutcome, AgentSendTarget } from './agentPromptSend'
+import type {
+  AgentSendClock,
+  AgentSendFailure,
+  AgentSendOutcome,
+  AgentSendTarget
+} from './agentPromptSend'
 import { sendClaudePrompt } from './claudePromptSend'
 import { sendCopilotPrompt } from './copilotPromptSend'
 
@@ -19,9 +24,19 @@ export interface AgentPromptSendSpec {
     rawText: string,
     clock: AgentSendClock
   ) => Promise<AgentSendOutcome>
+  /**
+   * 失敗したときに、送信の手順の間に溜めた利用者のキー入力を流さずに捨てる理由。貼り付けの後に Enter を送らなかった・送れたか
+   * 確かめられなかった失敗で、溜めた Enter が入力欄に残った本文を送る・シェルで実行するのを防ぐ。claude は空(今のまま流す。
+   * 同じ経路が残ることは ROADMAP の既知の制約)。捨てたときは useAgentPromptSender が失敗の文言に添える
+   */
+  discardHeldInputOn: ReadonlySet<AgentSendFailure>
 }
 
 export const AGENT_PROMPT_SEND_SPECS: Record<AgentCliKind, AgentPromptSendSpec> = {
-  claude: { requiresIdle: false, send: sendClaudePrompt },
-  copilot: { requiresIdle: true, send: sendCopilotPrompt }
+  claude: { requiresIdle: false, send: sendClaudePrompt, discardHeldInputOn: new Set() },
+  copilot: {
+    requiresIdle: true,
+    send: sendCopilotPrompt,
+    discardHeldInputOn: new Set(['not-echoed', 'shell-mode-after-paste', 'not-confirmed'])
+  }
 }

@@ -25,15 +25,29 @@ vi.mock('@shared/agentCliKinds', async (importOriginal) => {
 import { AGENT_CLEAR_INPUT_CHUNK, buildAgentPasteBytes } from '@shared/agentPasteText'
 import { AGENT_BEFORE_SEND_TIMEOUT_MS, useAgentPromptSender } from '../useAgentPromptSender'
 import type { AgentHistoryInfo } from '@shared/types'
-import type { AgentPromptSendResult, AgentSendClock } from '../../lib/agentPromptSend'
+import type {
+  AgentPromptSendResult,
+  AgentSendClock,
+  AgentSendOutcome
+} from '../../lib/agentPromptSend'
+import { AGENT_PROMPT_SEND_SPECS } from '../../lib/agentPromptSendSpecs'
+import { createAgentTerminalController } from '../../lib/agentTerminalController'
 import {
+  AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX,
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
   RUN_DISABLED_INTERRUPTING,
   agentPromptSendUnsupportedReason,
-  agentSendBlockedByActivityReason
+  agentSendBlockedByActivityReason,
+  agentSendFailureMessage
 } from '../../lib/agentSendMessages'
-import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
+import {
+  makeFakeAgentApi,
+  makeFakeClipboard,
+  makeFakeController,
+  makeFakeFitAddon,
+  makeFakeTerminal
+} from '../../__tests__/makeFakeAgentTerminal'
 import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
 import { copilotInputScreen } from '../../lib/__tests__/fixtures/copilotInputScreens'
 import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
@@ -98,7 +112,10 @@ describe('useAgentPromptSender', () => {
     const controller = controllerWithEmptyInput()
     let holding = false
     controller.beginSending.mockImplementation(() => void (holding = true))
-    controller.endSending.mockImplementation(() => void (holding = false))
+    controller.endSending.mockImplementation(() => {
+      holding = false
+      return 0
+    })
     const heldAtWrite: boolean[] = []
     const write = controller.writeToSession
     controller.writeToSession = (data) => {
@@ -714,5 +731,104 @@ describe('useAgentPromptSender: copilot の送り先(表の copilot の手順)',
     })
     expect(result.current.error).toBe(agentSendBlockedByActivityReason('working', 'copilot'))
     expect(controller.writes).toEqual([])
+  })
+})
+
+// 送信中に溜めた利用者のキー入力の扱い。本物の controller(偽の xterm・IPC)を使い、手順の結果は表の手順を差し替えて作る。手順の
+// 途中で利用者が Enter を押したことにし、手順の後に pty へ書かれたか(api.writeAgentSession)を確かめる
+describe('useAgentPromptSender: 送信中に溜めた利用者のキー入力', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function sendWithHeldInput(
+    cliKind: AgentCliKind,
+    outcome: AgentSendOutcome,
+    typed: string[] = ['x', '\r']
+  ): Promise<{ written: string[][]; error: string | null }> {
+    const terminal = makeFakeTerminal()
+    const api = makeFakeAgentApi()
+    const controller = createAgentTerminalController({
+      terminal,
+      fitAddon: makeFakeFitAddon(),
+      api,
+      clipboard: makeFakeClipboard(),
+      isMac: false,
+      createHost: () => document.createElement('div')
+    })
+    controller.setSession('s1')
+    vi.spyOn(AGENT_PROMPT_SEND_SPECS[cliKind], 'send').mockImplementation(async () => {
+      for (const data of typed) terminal.typeKey(data)
+      return outcome
+    })
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind
+      })
+    })
+    return { written: api.writeAgentSession.mock.calls, error: result.current.error }
+  }
+
+  it.each(['not-echoed', 'shell-mode-after-paste', 'not-confirmed'] as const)(
+    'copilot の貼り付けの後の失敗(%s)では、溜めた入力を pty へ書かずに捨て、捨てたことを文言に添える',
+    async (reason) => {
+      const { written, error } = await sendWithHeldInput('copilot', { kind: 'failed', reason })
+      expect(written).toEqual([])
+      expect(error).toBe(
+        `${agentSendFailureMessage(reason, 'copilot')}${AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX}`
+      )
+    }
+  )
+
+  it('copilot の貼り付けの後の失敗でも、溜めた入力が無ければ文言に添えない', async () => {
+    const { written, error } = await sendWithHeldInput(
+      'copilot',
+      { kind: 'failed', reason: 'shell-mode-after-paste' },
+      []
+    )
+    expect(written).toEqual([])
+    expect(error).toBe(agentSendFailureMessage('shell-mode-after-paste', 'copilot'))
+  })
+
+  it('copilot が送れたときは、溜めた入力を順に流す', async () => {
+    const { written, error } = await sendWithHeldInput('copilot', {
+      kind: 'sent',
+      clearedDraft: false
+    })
+    expect(written).toEqual([
+      ['s1', 'x'],
+      ['s1', '\r']
+    ])
+    expect(error).toBeNull()
+  })
+
+  it.each(['screen-working', 'input-undetermined', 'draft-present', 'shell-mode'] as const)(
+    'copilot の貼り付けの前の失敗(%s)では、溜めた入力を順に流し、文言に添えない',
+    async (reason) => {
+      const { written, error } = await sendWithHeldInput('copilot', { kind: 'failed', reason })
+      expect(written).toEqual([
+        ['s1', 'x'],
+        ['s1', '\r']
+      ])
+      expect(error).toBe(agentSendFailureMessage(reason, 'copilot'))
+    }
+  )
+
+  it('claude は not-echoed でも今どおり溜めた入力を流し、文言を変えない', async () => {
+    const { written, error } = await sendWithHeldInput('claude', {
+      kind: 'failed',
+      reason: 'not-echoed'
+    })
+    expect(written).toEqual([
+      ['s1', 'x'],
+      ['s1', '\r']
+    ])
+    expect(error).toBe(agentSendFailureMessage('not-echoed', 'claude'))
   })
 })

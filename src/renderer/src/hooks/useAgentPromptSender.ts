@@ -9,6 +9,7 @@ import { AGENT_PROMPT_SEND_SPECS } from '../lib/agentPromptSendSpecs'
 import type { AgentPromptSendResult, AgentSendClock } from '../lib/agentPromptSend'
 import {
   AGENT_SEND_ERROR_PREFIX,
+  AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX,
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
   agentSendFailureMessage
@@ -124,9 +125,12 @@ export function useAgentPromptSender({
       }
       // 送信の手順の間は利用者のキー入力を溜める(貼り付けの途中に打鍵が混ざらないように)。finally で必ず解く
       controller.beginSending()
+      // 手順は送り先の CLI の種類の表から引く(claude は今の手順のまま。copilot は画面の末尾を読む)
+      const spec = AGENT_PROMPT_SEND_SPECS[target.cliKind]
+      // 溜めた入力を流さずに捨てるか(表の discardHeldInputOn の失敗のとき。例外のときは今のまま流す)
+      let discardHeldInput = false
       try {
-        // 手順は送り先の CLI の種類の表から引く(claude は今の手順のまま。copilot は画面の末尾を読む)
-        const outcome = await AGENT_PROMPT_SEND_SPECS[target.cliKind].send(
+        const outcome = await spec.send(
           {
             isBracketedPasteEnabled: () => controller.isBracketedPasteEnabled(),
             readViewport: () => controller.readViewport(),
@@ -140,6 +144,7 @@ export function useAgentPromptSender({
         if (outcome.kind === 'sent') {
           announce(outcome.clearedDraft ? AGENT_SENT_AFTER_CLEAR_NOTICE : AGENT_SENT_NOTICE)
         } else {
+          discardHeldInput = spec.discardHeldInputOn.has(outcome.reason)
           setError(agentSendFailureMessage(outcome.reason, target.cliKind))
         }
         onSettled()
@@ -152,7 +157,13 @@ export function useAgentPromptSender({
         onSettled()
         return undefined
       } finally {
-        controller.endSending()
+        // 捨てた入力があったときだけ、失敗の文言(見える文字と読み上げの両方が error から作られる)に捨てたことを添える
+        const discarded = controller.endSending({ discard: discardHeldInput })
+        if (discarded > 0) {
+          setError((message) =>
+            message === null ? message : `${message}${AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX}`
+          )
+        }
         sendingRef.current = false
         setSendingSlotId(null)
       }

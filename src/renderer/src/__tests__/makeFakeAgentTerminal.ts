@@ -156,7 +156,7 @@ export function makeFakeController(): FakeController {
       fake.writes.push(data)
     },
     beginSending: vi.fn<AgentTerminalController['beginSending']>(),
-    endSending: vi.fn<AgentTerminalController['endSending']>(),
+    endSending: vi.fn<AgentTerminalController['endSending']>(() => 0),
     setFocusOutHandler: vi.fn<AgentTerminalController['setFocusOutHandler']>(),
     focus: vi.fn<AgentTerminalController['focus']>(),
     dispose: vi.fn<AgentTerminalController['dispose']>()

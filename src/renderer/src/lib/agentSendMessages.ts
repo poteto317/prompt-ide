@@ -115,6 +115,13 @@ export function agentSendFailureMessage(reason: AgentSendFailure, kind: AgentCli
   }
 }
 
+/**
+ * 貼り付けの後の失敗(AGENT_PROMPT_SEND_SPECS の discardHeldInputOn)で、送信の手順の間に利用者が打ったキー入力を捨てたときに、
+ * 失敗の文言の後ろに添える文。捨てた入力があったときだけ添える
+ */
+export const AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX =
+  '。送信の間にターミナルで打ったキー入力は、送らずに捨てました'
+
 /** 送信の途中で例外が起きたとき(pty への書き込みの失敗など)の文言の接頭辞。後ろに理由を付ける */
 export const AGENT_SEND_ERROR_PREFIX = 'エージェントへ送信できませんでした: '
 

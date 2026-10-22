@@ -168,6 +168,28 @@ describe('入力', () => {
       ['s1', 'b']
     ])
   })
+
+  it('捨てる指定の endSending は溜めた入力を送らずに捨て、捨てた数を返す。保留は解く', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('a')
+    terminal.typeKey('\r')
+    expect(controller.endSending({ discard: true })).toBe(2)
+    expect(api.writeAgentSession).not.toHaveBeenCalled()
+    // 保留を解いた後の入力はそのまま送る(捨てた入力を後から送らない)
+    terminal.typeKey('c')
+    expect(api.writeAgentSession.mock.calls).toEqual([['s1', 'c']])
+  })
+
+  it('溜めた入力が無ければ、捨てる指定でも 0 を返す。捨てない指定は流して 0 を返す', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    expect(controller.endSending({ discard: true })).toBe(0)
+    controller.beginSending()
+    terminal.typeKey('a')
+    expect(controller.endSending({ discard: false })).toBe(0)
+    expect(api.writeAgentSession.mock.calls).toEqual([['s1', 'a']])
+  })
 })
 
 describe('fit', () => {

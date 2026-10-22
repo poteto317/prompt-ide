@@ -95,7 +95,12 @@
 
 ```ts
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import type { AgentSendClock, AgentSendOutcome, AgentSendTarget } from './agentPromptSend'
+import type {
+  AgentSendClock,
+  AgentSendFailure,
+  AgentSendOutcome,
+  AgentSendTarget
+} from './agentPromptSend'
 import { sendClaudePrompt } from './claudePromptSend'
 import { sendCopilotPrompt } from './copilotPromptSend'
 
@@ -114,13 +119,24 @@ export interface AgentPromptSendSpec {
     rawText: string,
     clock: AgentSendClock
   ) => Promise<AgentSendOutcome>
+  /**
+   * 失敗したときに、送信の手順の間に溜めた利用者のキー入力を流さずに捨てる理由。claude は空(今のまま流す)。
+   * 捨てたときは useAgentPromptSender が失敗の文言に添える
+   */
+  discardHeldInputOn: ReadonlySet<AgentSendFailure>
 }
 
 export const AGENT_PROMPT_SEND_SPECS: Record<AgentCliKind, AgentPromptSendSpec> = {
-  claude: { requiresIdle: false, send: sendClaudePrompt },
-  copilot: { requiresIdle: true, send: sendCopilotPrompt }
+  claude: { requiresIdle: false, send: sendClaudePrompt, discardHeldInputOn: new Set() },
+  copilot: {
+    requiresIdle: true,
+    send: sendCopilotPrompt,
+    discardHeldInputOn: new Set(['not-echoed', 'shell-mode-after-paste', 'not-confirmed'])
+  }
 }
 ```
+
+（`discardHeldInputOn` は PR #65 のレビュー第 3 周で足した。それまでは、溜めた入力を結果を問わず流していた）
 
 | 段                       | `claude`（今の手順のまま）                                                             | `copilot`                                                                                                                                                                              |
 | ------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -138,11 +154,12 @@ export const AGENT_PROMPT_SEND_SPECS: Record<AgentCliKind, AgentPromptSendSpec> 
 
 ### 呼び出し（`useAgentPromptSender.send`）
 
-今の流れ（同期の二重送信の防止 → 能力 → 準備 → 送り先の控え → `beginSending` → 手順 → 通知・失敗の文言 → `onSettled` → `endSending`）のまま、変えるのは次の 3 つ。
+今の流れ（同期の二重送信の防止 → 能力 → 準備 → 送り先の控え → `beginSending` → 手順 → 通知・失敗の文言 → `onSettled` → `endSending`）のまま、変えるのは次の 4 つ（4 は PR #65 のレビュー第 3 周で足した）。
 
 1. 能力の確かめの直後に、`AGENT_PROMPT_SEND_SPECS[target.cliKind].requiresIdle` が真で `isInterrupting(target.slotId)` が真なら、準備・控え・入力の保留・書き込みをどれもせずに `interrupting` で断る（`unsupported-cli` と同じ扱い。文言を出してパネルを開く）
 2. `sendAgentPrompt(...)` の呼び出しを `AGENT_PROMPT_SEND_SPECS[target.cliKind].send(...)` にする
 3. 送り先（`AgentSendTarget`。lib の型）に `readScreen: () => controller.readScreen()` を足す（`copilot` の手順は画面の末尾を読む。代替画面なので見え方は `readViewport` と同じだが、段階 2a の判定と同じ読み方にそろえる。`claude` の手順は今までどおり `readViewport`）
+4. 手順が失敗し、理由が `AGENT_PROMPT_SEND_SPECS[target.cliKind].discardHeldInputOn` に含まれるときは、`finally` の `endSending({ discard: true })` で溜めた利用者のキー入力を送らずに捨てる（`endSending` は捨てた数を返す）。捨てた入力があったときだけ、失敗の文言の後ろに `AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX`（`。送信の間にターミナルで打ったキー入力は、送らずに捨てました`）を添える。見える文字と読み上げは同じ `error` から作るので、両方に出る。送れたとき・ほかの失敗・例外のときは今のまま流す。捨てる経路は書き込みを減らすだけで、pty へ届くバイトは増やさない（L-019）
 
 `UseAgentPromptSenderOptions` に `isInterrupting: (slotId: string) => boolean` を足す（省略できない。L-060）。`useAgentWorkspace` は sender を作る前に `useRef` を用意して `(slotId) => ref.current(slotId)` を渡し、`useAgentInterrupt` が返す `isInterrupting`（参照が安定）を effect で ref に入れる（描画の中で ref を書かない。最初の effect の前は `false`。送信はマウントの後にしか起きない）。`useAgentInterrupt` の戻り値の型は、`AgentInterruptPanelState` を広げた `AgentInterruptState`（`isInterrupting`・`isInterruptPending` を足したもの）にし、`useAgentWorkspace` はパネルへ `AgentInterruptPanelState` の 4 つの値だけを渡す。
 
@@ -382,32 +399,34 @@ const AGENT_SEND_FAILURE_KIND_TEXTS: Record<AgentCliKind, AgentSendFailureKindTe
 
 `copilot` の送信の間（送信中。準備の最大 10 秒 + 保留の最大 2.5 秒 + echo の最大 1.5 秒 + 確かめの最大 2 秒）は、今の「送信中」の状態がそのまま覆う。新しく足す守りは「中断の流れの間は送らない」だけ。
 
-| 入口                                                    | `copilot` の送信中                       | `copilot` のタブの中断の流れの間（1,000ms の待ちが明けるまで） |
-| ------------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------- |
-| プロンプトの `実行`・履歴の `再実行`                    | 押せない（送信中。今のまま）             | 押せない（`RUN_DISABLED_INTERRUPTING`）                        |
-| 送信前の確認の `送信`                                   | 押せない（送信中。今のまま）             | 押せない（同じ理由を確認に出す）                               |
-| 帯の `中断`                                             | 押せない（送信中。今のまま）             | 何もしない（段階 2a の同期の再入の防止と待ち）                 |
-| ターミナルのキー入力                                    | 溜めて、手順の後に送る（今のまま）       | 許す（段階 2a のまま）                                         |
-| `終了`・タブの `×`・フォルダや実行方式や CLI の切り替え | 今のまま（止めたセッションには届かない） | 今のまま                                                       |
-| タブの選択                                              | 送り先は押した時点のタブのまま           | 送信の判定は選択中のタブで見る                                 |
+| 入口                                                    | `copilot` の送信中                                                                                                      | `copilot` のタブの中断の流れの間（1,000ms の待ちが明けるまで） |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| プロンプトの `実行`・履歴の `再実行`                    | 押せない（送信中。今のまま）                                                                                            | 押せない（`RUN_DISABLED_INTERRUPTING`）                        |
+| 送信前の確認の `送信`                                   | 押せない（送信中。今のまま）                                                                                            | 押せない（同じ理由を確認に出す）                               |
+| 帯の `中断`                                             | 押せない（送信中。今のまま）                                                                                            | 何もしない（段階 2a の同期の再入の防止と待ち）                 |
+| ターミナルのキー入力                                    | 溜めて、手順の後に送る。貼り付けの後の失敗（`not-echoed`・`shell-mode-after-paste`・`not-confirmed`）では送らずに捨てる | 許す（段階 2a のまま）                                         |
+| `終了`・タブの `×`・フォルダや実行方式や CLI の切り替え | 今のまま（止めたセッションには届かない）                                                                                | 今のまま                                                       |
+| タブの選択                                              | 送り先は押した時点のタブのまま                                                                                          | 送信の判定は選択中のタブで見る                                 |
 
 - 段階 2a の `checkAgentInterruptFollowUp` は送信中を見直さない。送信中は 1 回目を押せず、中断の流れの間は送信を始めないので、2 回目を待つ間に送信が始まることはない。`agentInterrupt.ts` の「送信は copilot では使えず」のコメントを、この排他の説明に直す
 
 ## エラー処理
 
-| 場面                                                       | 扱い                                                                                                                                                                                                 |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 本文が断られる（空・長すぎる・先頭）                       | 何も書かない。送信前の確認では開いた時点に `送信` が押せず理由が出る。確認がオフならプロンプトパネルの上部に出る（今の置き場）                                                                       |
-| 作業中・許可待ち・確認待ち・判定できない                   | 押せない（理由を出す）。押した時点で変わっていれば、何も書かずに同じ文言で失敗を出す                                                                                                                 |
-| 中断の流れの間                                             | 押せない。押した時点に始まっていれば、準備も書き込みもせずに断る                                                                                                                                     |
-| 書きかけ・シェルのモード                                   | 何も書かずに断る。書きかけは消さない                                                                                                                                                                 |
-| 一時的な帯が 2,500ms 続いた（`?` のヘルプなど）            | 何も書かずに `input-undetermined`                                                                                                                                                                    |
-| echo を確かめられない（確認の画面が出た・表示が違う）      | `Enter` を送らずに `not-echoed`。本文が入力欄に残りうることを文言で伝える                                                                                                                            |
-| echo を待つ間に入力欄がシェルのモードに変わった            | 上限を待たず、`Enter` を送らずに `shell-mode-after-paste`。本文を送るとシェルで実行されるので、送らずに消してからシェルのモードを抜けるよう文言で伝える（`not-echoed` の「送るか消して」は出さない） |
-| `Enter` の後に確かめられない（補完に取られた・表示が違う） | `Enter` を送り直さずに `not-confirmed`。通知・`onSent`（参照を外す）・タブへの移動はしない                                                                                                           |
-| pty への書き込み・貼り付けより前の画面の読み取りが例外     | 今のまま（`useAgentPromptSender` が `エージェントへ送信できませんでした: <message>` を出す。何も書いていない）                                                                                       |
-| 貼り付けの後、echo を待つ間の画面の読み取りが例外          | `Enter` を送らず `not-echoed`（手順 5。本文が入力欄に残りうるので、例外の文言ではなくこの文言で案内する。例外は `console.error` に残す）                                                             |
-| Enter の後の画面の読み取りが例外                           | Enter を送り直さず `not-confirmed`（手順 7。例外は `console.error` に残す）                                                                                                                          |
+| 場面                                                       | 扱い                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 本文が断られる（空・長すぎる・先頭）                       | 何も書かない。送信前の確認では開いた時点に `送信` が押せず理由が出る。確認がオフならプロンプトパネルの上部に出る（今の置き場）                                                                                                                         |
+| 作業中・許可待ち・確認待ち・判定できない                   | 押せない（理由を出す）。押した時点で変わっていれば、何も書かずに同じ文言で失敗を出す                                                                                                                                                                   |
+| 中断の流れの間                                             | 押せない。押した時点に始まっていれば、準備も書き込みもせずに断る                                                                                                                                                                                       |
+| 書きかけ・シェルのモード                                   | 何も書かずに断る。書きかけは消さない                                                                                                                                                                                                                   |
+| 一時的な帯が 2,500ms 続いた（`?` のヘルプなど）            | 何も書かずに `input-undetermined`                                                                                                                                                                                                                      |
+| echo を確かめられない（確認の画面が出た・表示が違う）      | `Enter` を送らずに `not-echoed`。本文が入力欄に残りうることを文言で伝える。送信中に溜めたキー入力は送らずに捨てる（下の注）                                                                                                                            |
+| echo を待つ間に入力欄がシェルのモードに変わった            | 上限を待たず、`Enter` を送らずに `shell-mode-after-paste`。本文を送るとシェルで実行されるので、送らずに消してからシェルのモードを抜けるよう文言で伝える（`not-echoed` の「送るか消して」は出さない）。送信中に溜めたキー入力は送らずに捨てる（下の注） |
+| `Enter` の後に確かめられない（補完に取られた・表示が違う） | `Enter` を送り直さずに `not-confirmed`。通知・`onSent`（参照を外す）・タブへの移動はしない。送信中に溜めたキー入力は送らずに捨てる（下の注）                                                                                                           |
+| pty への書き込み・貼り付けより前の画面の読み取りが例外     | 今のまま（`useAgentPromptSender` が `エージェントへ送信できませんでした: <message>` を出す。何も書いていない）                                                                                                                                         |
+| 貼り付けの後、echo を待つ間の画面の読み取りが例外          | `Enter` を送らず `not-echoed`（手順 5。本文が入力欄に残りうるので、例外の文言ではなくこの文言で案内する。例外は `console.error` に残す）                                                                                                               |
+| Enter の後の画面の読み取りが例外                           | Enter を送り直さず `not-confirmed`（手順 7。例外は `console.error` に残す）                                                                                                                                                                            |
+
+- 注（PR #65 のレビュー第 3 周で足した）: 送信の手順の間に利用者がターミナルで打ったキー入力は溜めて、手順の後に送る。それまでは結果を問わず送っていたので、貼り付けの後の失敗の後に溜めた `Enter` が届くと、入力欄に残った本文が送られる・シェルのモードで実行される・補完の候補が確定することがあった。`copilot` の `not-echoed`・`shell-mode-after-paste`・`not-confirmed`（貼り付けの後の読み取りの例外を倒したものを含む）では、溜めた入力を送らずに捨て、捨てた入力があったときだけ失敗の文言に `。送信の間にターミナルで打ったキー入力は、送らずに捨てました` を添える。貼り付けの前の失敗は何も書いていないので今のまま送る（打ったキーが遅れて届くだけ）。`claude` は今のまま送る（ROADMAP の既知の制約）
 
 ## 実装の最初に確かめること（copilot の入力欄の台帳）
 
@@ -578,6 +597,7 @@ vitest。renderer は `@testing-library/react` と `window.api` の偽物と偽�
 - 末尾が `#` の語（`fix #12`）は、オフラインの記録では送れた。GitHub に接続した `copilot` で issue の補完が開くと `Enter` が取られ、`not-confirmed` になりうる（記録できていない）
 - 送れたことを確かめられなかった（`not-confirmed`）とき、実際には送れていることがある（`Enter` の直後に入力欄が消える確認の画面が出た、など）。アプリは `Enter` を送り直さないので、ターミナルの画面で確かめる。このとき添えた参照は外れない。`Enter` の後の画面の読み取りが失敗したときも同じ扱い（`not-confirmed`）
 - 本文が入力欄に入ったかを確かめられなかった（`not-echoed`）とき、本文は入力欄に残りうる（文字の幅が違う絵文字・結合文字・タブの表示などで、入力欄の文字と本文を照らせないとき）。ターミナルで送るか消す
+- 送信の手順の間（最大で約 4 秒）にターミナルで打ったキー入力は、`copilot` の貼り付けの後の失敗（`not-echoed`・`shell-mode-after-paste`・`not-confirmed`）では送らずに捨てる（失敗の文言に添えて伝える）。捨てた入力は戻せないので、必要ならターミナルで打ち直す。送れたとき・貼り付けの前の失敗では、遅れて届く
 - 選択範囲の参照（行の範囲付き。`@src/app.ts#L10-20`）を添えた本文で、末尾に空白を足すと補完の一覧が開かないかは記録していない（記録はファイル全体の参照だけ）。一覧が開いて `Enter` が取られると `not-confirmed` になる
 - `copilot` のシェルのモードで空白だけを入力している間は、記号の行が `!` だけになり入力欄として認められないので、`入力待ちか判定できない` の理由で送れない（段階 2a の判定のまま。`shell-mode` の文言にはならない）
 - 入力欄が空か決められない一時的な帯（`esc again to rewind` など）の間は最大 2.5 秒待つ。`?` のヘルプを開いている間は送れない（キーを送って閉じることはしない）
