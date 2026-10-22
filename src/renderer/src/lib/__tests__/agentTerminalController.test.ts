@@ -181,6 +181,29 @@ describe('入力', () => {
     expect(api.writeAgentSession.mock.calls).toEqual([['s1', 'c']])
   })
 
+  it('捨てる指定でも、xterm が出したフォーカスの通知(ESC [I・ESC [O の完全一致のチャンク)は順に流し、捨てた数に数えない', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('\x1b[O')
+    terminal.typeKey('\r')
+    terminal.typeKey('\x1b[I')
+    // フォーカスの通知と同じ列を含んでも、完全一致でないチャンクは利用者の入力として捨てる
+    terminal.typeKey('\x1b[Ix')
+    expect(controller.endSending({ discard: true })).toBe(2)
+    expect(api.writeAgentSession.mock.calls).toEqual([
+      ['s1', '\x1b[O'],
+      ['s1', '\x1b[I']
+    ])
+  })
+
+  it('溜めたのがフォーカスの通知だけなら、捨てる指定でも流して 0 を返す', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('\x1b[I')
+    expect(controller.endSending({ discard: true })).toBe(0)
+    expect(api.writeAgentSession.mock.calls).toEqual([['s1', '\x1b[I']])
+  })
+
   it('溜めた入力が無ければ、捨てる指定でも 0 を返す。捨てない指定は流して 0 を返す', () => {
     controller.setSession('s1')
     controller.beginSending()

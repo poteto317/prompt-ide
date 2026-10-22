@@ -86,8 +86,9 @@ export interface AgentTerminalController {
   /** 送信の手順の間、利用者のキー入力を溜める。endSending で順に送る */
   beginSending(): void
   /**
-   * 保留を解き、溜めた入力を順に送る。discard が真なら送らずに捨て、捨てた数を返す(捨てないときは 0)。捨てる経路は書き込みを
-   * 減らすだけで、pty へ届くバイトは増やさない(L-019)
+   * 保留を解き、溜めた入力を順に送る。discard が真なら送らずに捨て、捨てた数を返す(捨てないときは 0)。捨てるときも、xterm が
+   * 自動で返すフォーカスの通知(FOCUS_REPORTS と完全一致のチャンク)は利用者の入力ではないので順に送り、数に入れない。捨てる
+   * 経路は書き込みを減らすだけで、pty へ届くバイトは増やさない(L-019)
    */
   endSending(options?: { discard: boolean }): number
   /** F6 でターミナルから抜けるときの移動先 */
@@ -96,6 +97,12 @@ export interface AgentTerminalController {
   /** IPC の購読を外し、xterm を破棄する(閉じたタブ)。以後の取り付け・fit・セッションへの書き込み・2 回目の dispose は何もしない */
   dispose(): void
 }
+
+/**
+ * xterm がフォーカスの通知のモード(DECSET 1004。copilot が有効にする)の間に、フォーカス・ブラーで onData へ単独で出す固定の列。
+ * 送信中に溜めた入力を捨てるときも、この列と完全一致のチャンクだけは送る(混ざったチャンクは利用者の入力として捨てる)
+ */
+const FOCUS_REPORTS: ReadonlySet<string> = new Set(['\x1b[I', '\x1b[O'])
 
 /** sessionId が決まるまでに届いた出力を溜める、セッションごとの上限(UTF-16 の単位) */
 const MAX_PENDING_OUTPUT = 1_000_000
@@ -248,10 +255,12 @@ export function createAgentTerminalController({
       sending = false
       const held = heldInput
       heldInput = []
-      if (options?.discard === true) return held.length
-      if (disposed || sessionId === null) return 0
-      for (const data of held) api.writeAgentSession(sessionId, data)
-      return 0
+      const discard = options?.discard === true
+      const sent = discard ? held.filter((data) => FOCUS_REPORTS.has(data)) : held
+      if (!disposed && sessionId !== null) {
+        for (const data of sent) api.writeAgentSession(sessionId, data)
+      }
+      return discard ? held.length - sent.length : 0
     },
     setFocusOutHandler(handler) {
       focusOutHandler = handler

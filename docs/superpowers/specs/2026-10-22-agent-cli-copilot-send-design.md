@@ -159,7 +159,7 @@ export const AGENT_PROMPT_SEND_SPECS: Record<AgentCliKind, AgentPromptSendSpec> 
 1. 能力の確かめの直後に、`AGENT_PROMPT_SEND_SPECS[target.cliKind].requiresIdle` が真で `isInterrupting(target.slotId)` が真なら、準備・控え・入力の保留・書き込みをどれもせずに `interrupting` で断る（`unsupported-cli` と同じ扱い。文言を出してパネルを開く）
 2. `sendAgentPrompt(...)` の呼び出しを `AGENT_PROMPT_SEND_SPECS[target.cliKind].send(...)` にする
 3. 送り先（`AgentSendTarget`。lib の型）に `readScreen: () => controller.readScreen()` を足す（`copilot` の手順は画面の末尾を読む。代替画面なので見え方は `readViewport` と同じだが、段階 2a の判定と同じ読み方にそろえる。`claude` の手順は今までどおり `readViewport`）
-4. 手順が失敗し、理由が `AGENT_PROMPT_SEND_SPECS[target.cliKind].discardHeldInputOn` に含まれるときは、`finally` の `endSending({ discard: true })` で溜めた利用者のキー入力を送らずに捨てる（`endSending` は捨てた数を返す）。捨てた入力があったときだけ、失敗の文言の後ろに `AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX`（`。送信の間にターミナルで打ったキー入力は、送らずに捨てました`）を添える。見える文字と読み上げは同じ `error` から作るので、両方に出る。送れたとき・ほかの失敗・例外のときは今のまま流す。捨てる経路は書き込みを減らすだけで、pty へ届くバイトは増やさない（L-019）
+4. 手順が失敗し、理由が `AGENT_PROMPT_SEND_SPECS[target.cliKind].discardHeldInputOn` に含まれるときは、`finally` の `endSending({ discard: true })` で溜めた利用者のキー入力を送らずに捨てる（`endSending` は捨てた数を返す）。xterm が自動で返すフォーカスの通知（`copilot` が有効にする DECSET 1004 の `ESC [I`・`ESC [O`。完全一致のチャンクだけ）は利用者の入力ではないので、捨てるときも順に送り、捨てた数に入れない（PR #65 のレビュー第 4 周で足した。それまでは通知も捨てて数えていたので、送信中にターミナルをクリックしただけでも添え書きが出て、`copilot` に通知が届かなかった）。捨てた入力があったときだけ、失敗の文言の後ろに `AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX`（`。送信の間にターミナルで打ったキー入力は、送らずに捨てました`）を添える。見える文字と読み上げは同じ `error` から作るので、両方に出る。送れたとき・ほかの失敗・例外のときは今のまま流す。捨てる経路は書き込みを減らすだけで、pty へ届くバイトは増やさない（L-019）
 
 `UseAgentPromptSenderOptions` に `isInterrupting: (slotId: string) => boolean` を足す（省略できない。L-060）。`useAgentWorkspace` は sender を作る前に `useRef` を用意して `(slotId) => ref.current(slotId)` を渡し、`useAgentInterrupt` が返す `isInterrupting`（参照が安定）を effect で ref に入れる（描画の中で ref を書かない。最初の effect の前は `false`。送信はマウントの後にしか起きない）。`useAgentInterrupt` の戻り値の型は、`AgentInterruptPanelState` を広げた `AgentInterruptState`（`isInterrupting`・`isInterruptPending` を足したもの）にし、`useAgentWorkspace` はパネルへ `AgentInterruptPanelState` の 4 つの値だけを渡す。
 
@@ -426,7 +426,7 @@ const AGENT_SEND_FAILURE_KIND_TEXTS: Record<AgentCliKind, AgentSendFailureKindTe
 | 貼り付けの後、echo を待つ間の画面の読み取りが例外          | `Enter` を送らず `not-echoed`（手順 5。本文が入力欄に残りうるので、例外の文言ではなくこの文言で案内する。例外は `console.error` に残す）                                                                                                               |
 | Enter の後の画面の読み取りが例外                           | Enter を送り直さず `not-confirmed`（手順 7。例外は `console.error` に残す）                                                                                                                                                                            |
 
-- 注（PR #65 のレビュー第 3 周で足した）: 送信の手順の間に利用者がターミナルで打ったキー入力は溜めて、手順の後に送る。それまでは結果を問わず送っていたので、貼り付けの後の失敗の後に溜めた `Enter` が届くと、入力欄に残った本文が送られる・シェルのモードで実行される・補完の候補が確定することがあった。`copilot` の `not-echoed`・`shell-mode-after-paste`・`not-confirmed`（貼り付けの後の読み取りの例外を倒したものを含む）では、溜めた入力を送らずに捨て、捨てた入力があったときだけ失敗の文言に `。送信の間にターミナルで打ったキー入力は、送らずに捨てました` を添える。貼り付けの前の失敗は何も書いていないので今のまま送る（打ったキーが遅れて届くだけ）。`claude` は今のまま送る（ROADMAP の既知の制約）
+- 注（PR #65 のレビュー第 3 周で足した）: 送信の手順の間に利用者がターミナルで打ったキー入力は溜めて、手順の後に送る。それまでは結果を問わず送っていたので、貼り付けの後の失敗の後に溜めた `Enter` が届くと、入力欄に残った本文が送られる・シェルのモードで実行される・補完の候補が確定することがあった。`copilot` の `not-echoed`・`shell-mode-after-paste`・`not-confirmed`（貼り付けの後の読み取りの例外を倒したものを含む）では、溜めた入力を送らずに捨て（フォーカスの通知 `ESC [I`・`ESC [O` は送る）、捨てた入力があったときだけ失敗の文言に `。送信の間にターミナルで打ったキー入力は、送らずに捨てました` を添える。貼り付けの前の失敗は何も書いていないので今のまま送る（打ったキーが遅れて届くだけ）。`claude` は今のまま送る（ROADMAP の既知の制約）
 
 ## 実装の最初に確かめること（copilot の入力欄の台帳）
 

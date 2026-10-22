@@ -796,6 +796,19 @@ describe('useAgentPromptSender: 送信中に溜めた利用者のキー入力', 
     expect(error).toBe(agentSendFailureMessage('shell-mode-after-paste', 'copilot'))
   })
 
+  it('copilot の貼り付けの後の失敗でも、溜めたのがフォーカスの通知だけなら流し、文言に添えない', async () => {
+    const { written, error } = await sendWithHeldInput(
+      'copilot',
+      { kind: 'failed', reason: 'not-echoed' },
+      ['\x1b[O', '\x1b[I']
+    )
+    expect(written).toEqual([
+      ['s1', '\x1b[O'],
+      ['s1', '\x1b[I']
+    ])
+    expect(error).toBe(agentSendFailureMessage('not-echoed', 'copilot'))
+  })
+
   it('copilot が送れたときは、溜めた入力を順に流す', async () => {
     const { written, error } = await sendWithHeldInput('copilot', {
       kind: 'sent',
