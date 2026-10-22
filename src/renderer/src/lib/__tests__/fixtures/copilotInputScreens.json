@@ -1,0 +1,4818 @@
+{
+ "_note": "copilot の入力欄の画面(@xterm/headless の表示中のバッファ)。GitHub Copilot CLI 1.0.87・node-pty 1.1.0・@xterm/headless 6.0.0 で記録した(段階 2b の追加の記録)。screens.<名前>.lines は 行番号 -> [文字列, dim の範囲, 反転の範囲](範囲は [開始, 終わり) のセルの位置)。文字列は記録の文字列の末尾の空白を除いたもの(全角の文字の右半分のセルは除いてある)。空の行は省く。sequences.<名前>.frames は [{ dt: 書き込みからの ms, lines: 画面の末尾の行の文字列(末尾の空白を除く。属性は持たない) }]。記録の手順は .superpowers/agent-cli-kind/copilot-input-recorder/report.md",
+ "screens": {
+  "empty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ╴╶ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "spacesTyped": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "spacesPasted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "spacesEsc1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " esc again to clear input                                                           gpt-4o · Medium"
+    ]
+   }
+  },
+  "newlinesPasted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "24": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "25": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "26": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "multiPasted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "23": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ first line"
+    ],
+    "26": [
+     "  second line"
+    ],
+    "27": [
+     "  third line"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "shellEmpty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "! Execute shell command"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     " ← open sidebar · shell · / commands · ? help · tab next tab · esc exit shell mode           gpt-4o"
+    ]
+   }
+  },
+  "shellDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "! echo hi"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     " shell                                                                                       gpt-4o"
+    ]
+   }
+  },
+  "shellSpaces": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "!"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     " shell                                                                                       gpt-4o"
+    ]
+   }
+  },
+  "afterTurnEmpty": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " ❯ say hello                                                                                 15:58"
+    ],
+    "15": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "afterTurn1char": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " ❯ say hello                                                                                 15:58"
+    ],
+    "15": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ x"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "fold10": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /copy"
+    ],
+    "8": [
+     "   └ Copy the last response to the clipboard"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "16": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "17": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "18": [
+     "❯ L10-1"
+    ],
+    "19": [
+     "  L10-2"
+    ],
+    "20": [
+     "  L10-3"
+    ],
+    "21": [
+     "  L10-4"
+    ],
+    "22": [
+     "  L10-5"
+    ],
+    "23": [
+     "  L10-6"
+    ],
+    "24": [
+     "  L10-7"
+    ],
+    "25": [
+     "  L10-8"
+    ],
+    "26": [
+     "  L10-9"
+    ],
+    "27": [
+     "  L10-10"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "fold11": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /copy"
+    ],
+    "8": [
+     "   └ Copy the last response to the clipboard"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ [Paste #1 - 11 lines]"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "long5000": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /copy"
+    ],
+    "8": [
+     "   └ Copy the last response to the clipboard"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "15": [
+     "❯ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "16": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "17": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "18": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "19": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "20": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "21": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "22": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "23": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "24": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "25": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "26": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    ],
+    "27": [
+     "  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxENDMARK"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "send11": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "   U7                                                                                              ┃"
+    ],
+    "3": [
+     "   U8                                                                                              ┃"
+    ],
+    "4": [
+     "   U9                                                                                              ┃"
+    ],
+    "5": [
+     "   U10                                                                                             ┃"
+    ],
+    "6": [
+     "   U11                                                                                             ┃"
+    ],
+    "7": [
+     "   U12                                                                                             ┃"
+    ],
+    "8": [
+     "                                                                                                   ┃"
+    ],
+    "9": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "10": [
+     "                                                                                                   ┃"
+    ],
+    "11": [
+     " ❯ S1                                                                                        15:52 ┃"
+    ],
+    "12": [
+     "   S2                                                                                              ┃"
+    ],
+    "13": [
+     "   S3                                                                                              ┃"
+    ],
+    "14": [
+     "   S4                                                                                              ┃"
+    ],
+    "15": [
+     "   S5                                                                                              ┃"
+    ],
+    "16": [
+     "   S6                                                                                              ┃"
+    ],
+    "17": [
+     "   S7                                                                                              ┃"
+    ],
+    "18": [
+     "   S8                                                                                              ┃"
+    ],
+    "19": [
+     "   S9                                                                                              ┃"
+    ],
+    "20": [
+     "   S10                                                                                             ┃"
+    ],
+    "21": [
+     "   S11                                                                                             ┃"
+    ],
+    "22": [
+     "                                                                                                   ┃"
+    ],
+    "23": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "24": [
+     "                                                                                                   ┃"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "inline20480": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "15": [
+     "❯ T02755.T02756.T02757.T02758.T02759.T02760.T02761.T02762.T02763.T02764.T02765.T02766.T02767.T027"
+    ],
+    "16": [
+     "  68.T02769.T02770.T02771.T02772.T02773.T02774.T02775.T02776.T02777.T02778.T02779.T02780.T02781.T"
+    ],
+    "17": [
+     "  02782.T02783.T02784.T02785.T02786.T02787.T02788.T02789.T02790.T02791.T02792.T02793.T02794.T0279"
+    ],
+    "18": [
+     "  5.T02796.T02797.T02798.T02799.T02800.T02801.T02802.T02803.T02804.T02805.T02806.T02807.T02808.T0"
+    ],
+    "19": [
+     "  2809.T02810.T02811.T02812.T02813.T02814.T02815.T02816.T02817.T02818.T02819.T02820.T02821.T02822"
+    ],
+    "20": [
+     "  .T02823.T02824.T02825.T02826.T02827.T02828.T02829.T02830.T02831.T02832.T02833.T02834.T02835.T02"
+    ],
+    "21": [
+     "  836.T02837.T02838.T02839.T02840.T02841.T02842.T02843.T02844.T02845.T02846.T02847.T02848.T02849."
+    ],
+    "22": [
+     "  T02850.T02851.T02852.T02853.T02854.T02855.T02856.T02857.T02858.T02859.T02860.T02861.T02862.T028"
+    ],
+    "23": [
+     "  63.T02864.T02865.T02866.T02867.T02868.T02869.T02870.T02871.T02872.T02873.T02874.T02875.T02876.T"
+    ],
+    "24": [
+     "  02877.T02878.T02879.T02880.T02881.T02882.T02883.T02884.T02885.T02886.T02887.T02888.T02889.T0289"
+    ],
+    "25": [
+     "  0.T02891.T02892.T02893.T02894.T02895.T02896.T02897.T02898.T02899.T02900.T02901.T02902.T02903.T0"
+    ],
+    "26": [
+     "  2904.T02905.T02906.T02907.T02908.T02909.T02910.T02911.T02912.T02913.T02914.T02915.T02916.T02917"
+    ],
+    "27": [
+     "  .T02918.T02919.T02920.T02921.T02922.T02923.T02924.TBEND"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "saved20481": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ [Saved pasted content to workspace (20.0 KB) id=1]"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "ja6800": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "14": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "15": [
+     "❯ 漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "16": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "17": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "18": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "19": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "20": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "21": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "22": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "23": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "24": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "25": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "26": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢"
+    ],
+    "27": [
+     "  漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢漢JEND"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "huge": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ [Saved pasted content to workspace (195.3 KB) id=1]"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "tallIdle": {
+   "cols": 60,
+   "rows": 12,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "   └ Run code review agent to analyze changes              ┃"
+    ],
+    "3": [
+     "                                                           ┃"
+    ],
+    "4": [
+     " ● MCP Servers reloaded: 0 servers connected               ┃"
+    ],
+    "5": [
+     "                                                           ┃"
+    ],
+    "6": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "7": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "8": [
+     "❯"
+    ],
+    "9": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "10": [
+     " ← open sidebar · / commands · ? help · tab next tab"
+    ],
+    "11": [
+     " gpt-4o · Medium"
+    ]
+   }
+  },
+  "tallPaste9": {
+   "cols": 60,
+   "rows": 12,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "3": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "4": [
+     "❯ N6"
+    ],
+    "5": [
+     "  N7"
+    ],
+    "6": [
+     "  N8"
+    ],
+    "7": [
+     "  N9"
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "9": [
+     " @ files · # issues                         gpt-4o · Medium"
+    ]
+   }
+  },
+  "tallPaste30": {
+   "cols": 60,
+   "rows": 12,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     " ● Tip: /review                                            ┃"
+    ],
+    "3": [
+     "   └ Run code review agent to analyze changes              ┃"
+    ],
+    "4": [
+     "                                                           ┃"
+    ],
+    "5": [
+     " ● MCP Servers reloaded: 0 servers connected               ┃"
+    ],
+    "6": [
+     "                                                           ┃"
+    ],
+    "7": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "9": [
+     "❯ [Paste #2 - 30 lines]"
+    ],
+    "10": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "11": [
+     " @ files · # issues                                  gpt-4o"
+    ]
+   }
+  },
+  "tallPaste5000": {
+   "cols": 60,
+   "rows": 12,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "3": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "4": [
+     "❯ wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+    ],
+    "5": [
+     "  wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+    ],
+    "6": [
+     "  wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+    ],
+    "7": [
+     "  wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwWEND"
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "9": [
+     " @ files · # issues                                  gpt-4o"
+    ]
+   }
+  },
+  "tallSent": {
+   "cols": 60,
+   "rows": 12,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "   vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv       ┃"
+    ],
+    "3": [
+     "   vvvvvvvvvvvvvv                                          ┃"
+    ],
+    "4": [
+     "                                                           ┃"
+    ],
+    "5": [
+     " ● Hello from the fake provider.                           ┃"
+    ],
+    "6": [
+     "                                                           ┃"
+    ],
+    "7": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "8": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "9": [
+     "❯"
+    ],
+    "10": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "11": [
+     " ← open sidebar · / commands · ? help · tab next tab gpt-4o"
+    ]
+   }
+  },
+  "atPaste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "20": [
+     "  ❯ @file.txt"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ look at @file"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atEnter": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ look at @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "ctrlcBandPaste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /permissions"
+    ],
+    "8": [
+     "   └ Switch between permission modes"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say hello                                                                                 15:58"
+    ],
+    "14": [
+     " ● Hello from the fake provider."
+    ],
+    "16": [
+     " ❯ pasted during rewind band                                                                 15:58"
+    ],
+    "18": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ pasted during ctrlc band"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ctrl+c again to exit                                                                        gpt-4o"
+    ]
+   }
+  },
+  "helpOpen": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "3": [
+     "                                                                                                   ┃"
+    ],
+    "4": [
+     " ❯ long one                                                                                  15:59 ┃"
+    ],
+    "5": [
+     "                                                                                                   ┃"
+    ],
+    "6": [
+     " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17                                   ┃"
+    ],
+    "7": [
+     "                                                                                                   ┃"
+    ],
+    "8": [
+     " ● Operation cancelled by user                                                                     ┃"
+    ],
+    "9": [
+     "                                                                                                   ┃"
+    ],
+    "10": [
+     " /help       show full help                            ctrl+a       go to line start"
+    ],
+    "11": [
+     " ?           show quick help                           ctrl+e       go to line end"
+    ],
+    "12": [
+     " /           commands                                  ctrl+u       delete from cursor to beginning"
+    ],
+    "13": [
+     " @           mention files                                          of line"
+    ],
+    "14": [
+     " #           mention issues and pull requests          ctrl+k       delete from cursor to end of"
+    ],
+    "15": [
+     " shift+tab   switch modes                                           line"
+    ],
+    "16": [
+     " ctrl+s      stash/pop current prompt                  meta+←/→     move cursor by word"
+    ],
+    "17": [
+     " ctrl+q      enqueue prompt                            shift+enter  insert newline"
+    ],
+    "18": [
+     " ctrl+r      reverse search history                    ctrl+g       edit prompt in $EDITOR"
+    ],
+    "19": [
+     " ctrl+o      toggle all timeline"
+    ],
+    "20": [
+     " ctrl+c      cancel"
+    ],
+    "21": [
+     " ctrl+c×2    exit"
+    ],
+    "22": [
+     " esc esc     clear input, interrupt, stop agents,"
+    ],
+    "23": [
+     "             or rewind"
+    ],
+    "24": [
+     " ctrl+t      toggle reasoning display"
+    ],
+    "25": [
+     " ctrl+x → o  open most recent link"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " any key close help                                                                          gpt-4o"
+    ]
+   }
+  },
+  "workingInterrupted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     " ● Tip: /permissions                                                                               ┃"
+    ],
+    "3": [
+     "   └ Switch between permission modes                                                               ┃"
+    ],
+    "4": [
+     "                                                                                                   ┃"
+    ],
+    "5": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "6": [
+     "                                                                                                   ┃"
+    ],
+    "7": [
+     " ❯ say hello                                                                                 15:58 ┃"
+    ],
+    "8": [
+     "                                                                                                   ┃"
+    ],
+    "9": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "10": [
+     "                                                                                                   ┃"
+    ],
+    "11": [
+     " ❯ pasted during rewind band                                                                 15:58 ┃"
+    ],
+    "12": [
+     "                                                                                                   ┃"
+    ],
+    "13": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "14": [
+     "                                                                                                   ┃"
+    ],
+    "15": [
+     " ❯ pasted during ctrlc band                                                                  15:58 ┃"
+    ],
+    "16": [
+     "                                                                                                   ┃"
+    ],
+    "17": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "18": [
+     "                                                                                                   ┃"
+    ],
+    "19": [
+     " ❯ long one                                                                                  15:59 ┃"
+    ],
+    "20": [
+     "                                                                                                   ┃"
+    ],
+    "21": [
+     " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17                                   ┃"
+    ],
+    "22": [
+     "                                                                                                   ┃"
+    ],
+    "23": [
+     " ● Operation cancelled by user                                                                     ┃"
+    ],
+    "24": [
+     "                                                                                                   ┃"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "aeInstantEnd": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /instructions"
+    ],
+    "8": [
+     "   └ View and toggle custom instruction files"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ prompt instant                                                                            15:57"
+    ],
+    "14": [
+     " ● w0 w1"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "atref1Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "18": [
+     "  ❯ @file.txt"
+    ],
+    "19": [
+     "    @file2.txt"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref1Enter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "23": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "atref1hPaste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "17": [
+     "  ❯ @file.txt"
+    ],
+    "18": [
+     "    @file2.txt"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ 本文"
+    ],
+    "26": [
+     "  参照:"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref1hEnter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "22": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ 本文"
+    ],
+    "26": [
+     "  参照:"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "atref2Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /tasks"
+    ],
+    "8": [
+     "   └ View and manage tasks (subagents and shell commands)"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "23": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref2Enter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /tasks"
+    ],
+    "8": [
+     "   └ View and manage tasks (subagents and shell commands)"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ 本文                                                                                      16:25"
+    ],
+    "14": [
+     "   - @file.txt"
+    ],
+    "16": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "atref3Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "18": [
+     "  ❯ @file.txt"
+    ],
+    "19": [
+     "    @file2.txt"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref4Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /cwd"
+    ],
+    "8": [
+     "   └ Change working directory or show current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "23": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @nofile.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref4Enter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /cwd"
+    ],
+    "8": [
+     "   └ Change working directory or show current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ 本文                                                                                      16:26"
+    ],
+    "14": [
+     "   - @nofile.txt"
+    ],
+    "16": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "atref5Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /clear"
+    ],
+    "8": [
+     "   └ Abandon this session and start fresh"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "17": [
+     "  ❯ @file2.txt"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ 本文"
+    ],
+    "26": [
+     "  - @file.txt"
+    ],
+    "27": [
+     "  - @file2.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref5Enter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /clear"
+    ],
+    "8": [
+     "   └ Abandon this session and start fresh"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "22": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ 本文"
+    ],
+    "26": [
+     "  - @file.txt"
+    ],
+    "27": [
+     "  - @file2.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "atref6Esc": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "18": [
+     "  ❯ @file.txt"
+    ],
+    "19": [
+     "    @file2.txt"
+    ],
+    "24": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "25": [
+     "❯ 本文"
+    ],
+    "27": [
+     "  - @file.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref7SameWriteCr": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /review"
+    ],
+    "8": [
+     "   └ Run code review agent to analyze changes"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ 本文                                                                                      16:27"
+    ],
+    "14": [
+     "   - @file.txt"
+    ],
+    "16": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref8Paste": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "22": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ 本文"
+    ],
+    "26": [
+     "  - @file.txt"
+    ],
+    "27": [
+     "  - @file2.txt"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "atref8Enter1": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /share"
+    ],
+    "8": [
+     "   └ Share session or research report to a markdown file, HTML file, GitHub gist, or a shareable"
+    ],
+    "9": [
+     "     GitHub link"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " ❯ 本文                                                                                      16:27"
+    ],
+    "15": [
+     "   - @file.txt"
+    ],
+    "16": [
+     "   - @file2.txt"
+    ],
+    "18": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work-atref"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  }
+ },
+ "sequences": {
+  "aeInstant": {
+   "frames": [
+    {
+     "dt": 52,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯ prompt instant",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " @ files · # issues                                                                 gpt-4o · Medium"
+     ]
+    },
+    {
+     "dt": 63,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                            gpt-4o · Medium"
+     ]
+    },
+    {
+     "dt": 99,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+     ]
+    },
+    {
+     "dt": 2405,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  },
+  "aeFirst300": {
+   "frames": [
+    {
+     "dt": 10,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯ prompt first300",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " @ files · # issues                                                                          gpt-4o"
+     ]
+    },
+    {
+     "dt": 88,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 133,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 205,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 299,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 435,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 458,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 3 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 491,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 527,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 9 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 562,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  },
+  "aeFirst2000": {
+   "frames": [
+    {
+     "dt": 12,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯ prompt first2000",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " @ files · # issues                                                                          gpt-4o"
+     ]
+    },
+    {
+     "dt": 91,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 126,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 208,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 301,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 405,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 474,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 567,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 702,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 761,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 844,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1002,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1025,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1117,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1293,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1304,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1398,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1493,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1603,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1673,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1769,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1905,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 1953,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 2048,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 2208,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 3 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 2243,
+     "lines": [
+      " ● w",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 3 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 2278,
+     "lines": [
+      " ● w0",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 2312,
+     "lines": [
+      " ● w0 w",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 2346,
+     "lines": [
+      " ● w0 w1",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 9 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 2381,
+     "lines": [
+      " ● w0 w1 w2",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 12 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2404,
+     "lines": [
+      " ● w0 w1 w2 w",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 12 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2484,
+     "lines": [
+      " ● w0 w1 w2 w3 w",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 15 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2508,
+     "lines": [
+      " ● w0 w1 w2 w3 w4",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  },
+  "aeStream": {
+   "frames": [
+    {
+     "dt": 11,
+     "lines": [
+      " ● w0 w1 w2 w3 w4",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 42,
+     "lines": [
+      "                                                                                                   ┃",
+      " ❯ prompt stream                                                                             15:58 ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 124,
+     "lines": [
+      "                                                                                                   ┃",
+      " ❯ prompt stream                                                                             15:58 ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working esc interrupt                                                                     gpt-4o"
+     ]
+    },
+    {
+     "dt": 169,
+     "lines": [
+      "                                                                                                   ┃",
+      " ❯ prompt stream                                                                             15:58 ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 3 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 202,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w                                                                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 3 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 272,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0                                                                                              ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 308,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w                                                                                            ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 341,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1                                                                                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 6 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 410,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w                                                                                         ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 9 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 444,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2                                                                                        ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 9 B esc interrupt                                                               gpt-4o"
+     ]
+    },
+    {
+     "dt": 477,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2                                                                                        ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 12 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 569,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w                                                                                      ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 12 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 580,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3                                                                                     ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 12 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 615,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w                                                                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 15 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 650,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4                                                                                  ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 15 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 684,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4                                                                                  ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 15 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 718,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w                                                                                ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 18 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 740,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5                                                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 18 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 874,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5                                                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 21 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 885,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6                                                                            ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 21 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 920,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w                                                                          ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 24 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 955,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7                                                                         ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 24 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1023,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w                                                                       ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 27 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1057,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8                                                                      ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 27 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1182,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9                                                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 30 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1193,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9                                                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 34 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1230,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w1                                                                ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 34 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1266,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10                                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 34 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1300,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10                                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 38 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1335,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w1                                                            ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 38 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1370,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11                                                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 38 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1403,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11                                                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 42 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1480,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12                                                       ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 42 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1502,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12                                                       ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 46 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1537,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w1                                                    ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 46 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1572,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13                                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 46 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1605,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13                                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 50 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1639,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w1                                                ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 50 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1675,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 50 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1709,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14                                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ● Working · 54 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1776,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15                                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 54 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1809,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15                                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 58 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1853,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w1                                        ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 58 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1876,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16                                       ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 58 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1910,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16                                       ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 62 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1944,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w1                                    ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 62 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 1978,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 62 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2013,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17                                   ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ○ Working · 66 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2077,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w1                                ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 66 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2090,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◎ Working · 66 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2122,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18                               ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 70 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2158,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w1                            ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 70 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2191,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ◉ Working · 70 B esc interrupt                                                              gpt-4o"
+     ]
+    },
+    {
+     "dt": 2224,
+     "lines": [
+      "                                                                                                   ┃",
+      " ● w0 w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 w15 w16 w17 w18 w19                           ┃",
+      "                                                                                                   ┃",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  },
+  "escRewindBand": {
+   "frames": [
+    {
+     "dt": 12,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    },
+    {
+     "dt": 71,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " esc again to rewind                                                                         gpt-4o"
+     ]
+    },
+    {
+     "dt": 570,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  },
+  "ctrlcBand": {
+   "frames": [
+    {
+     "dt": 11,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    },
+    {
+     "dt": 21,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ctrl+c again to exit                                                                        gpt-4o"
+     ]
+    },
+    {
+     "dt": 2020,
+     "lines": [
+      "",
+      "",
+      "",
+      " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────────────────────────────────────────────────────────────",
+      " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { AgentSendConfirmDialogState, AgentSendConfirmPending } from '../../../types'
 import {
-  AGENT_SEND_FAILURE_MESSAGES,
+  agentSendFailureMessage,
   RUN_DISABLED_CLOSING,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING
@@ -18,6 +18,7 @@ const makePending = (
   text: 'このフォルダのファイルを一覧して',
   slotId: 'slot-2',
   label: 'claude 2',
+  cliKind: 'claude',
   promptId: 'p1',
   unsavedPaths: [],
   ...overrides
@@ -161,7 +162,7 @@ describe('AgentSendConfirmDialog', () => {
         />
       )
       expect(getDialog()).toHaveAccessibleDescription(
-        `送り先: claude 2 ${NOTICE} ${AGENT_SEND_FAILURE_MESSAGES['leading-bang']}`
+        `送り先: claude 2 ${NOTICE} ${agentSendFailureMessage('leading-bang', 'claude')}`
       )
     })
 
@@ -173,9 +174,9 @@ describe('AgentSendConfirmDialog', () => {
 
   describe('送れない理由', () => {
     it.each([
-      ['先頭が「!」', '!ls', AGENT_SEND_FAILURE_MESSAGES['leading-bang']],
-      ['空白だけ', '  \n', AGENT_SEND_FAILURE_MESSAGES.empty],
-      ['長すぎる', 'a'.repeat(200_001), AGENT_SEND_FAILURE_MESSAGES['too-long']]
+      ['先頭が「!」', '!ls', agentSendFailureMessage('leading-bang', 'claude')],
+      ['空白だけ', '  \n', agentSendFailureMessage('empty', 'claude')],
+      ['長すぎる', 'a'.repeat(200_001), agentSendFailureMessage('too-long', 'claude')]
     ])(
       '本文が %s なら理由を role="alert" で出し、送信を押せず、理由を送信の説明にする',
       (_label, text, message) => {
@@ -217,8 +218,51 @@ describe('AgentSendConfirmDialog', () => {
       )
       expect(screen.getAllByRole('alert')).toHaveLength(1)
       expect(screen.getByRole('alert')).toHaveTextContent(
-        AGENT_SEND_FAILURE_MESSAGES['leading-bang']
+        agentSendFailureMessage('leading-bang', 'claude')
       )
+    })
+  })
+
+  describe('送り先の種類(確認を開いた時点に控えた送り先の CLI)', () => {
+    it('送り先が copilot なら、/help で送信を押せず copilot の理由を出す', () => {
+      render(
+        <AgentSendConfirmDialog
+          state={makeState({
+            pending: makePending({ text: '/help', label: 'copilot 1', cliKind: 'copilot' })
+          })}
+        />
+      )
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        agentSendFailureMessage('leading-slash', 'copilot')
+      )
+      expect(submitButton()).toBeDisabled()
+    })
+
+    it('送り先が claude なら、/help は今までどおり送れる', () => {
+      render(
+        <AgentSendConfirmDialog state={makeState({ pending: makePending({ text: '/help' }) })} />
+      )
+      expect(screen.queryByRole('alert')).toBeNull()
+      expect(submitButton()).not.toBeDisabled()
+    })
+
+    it('未保存の注意は送り先の CLI の名前で出す', () => {
+      render(
+        <AgentSendConfirmDialog
+          state={makeState({
+            pending: makePending({
+              label: 'copilot 1',
+              cliKind: 'copilot',
+              unsavedPaths: ['src/app.ts']
+            })
+          })}
+        />
+      )
+      expect(
+        screen.getByText(
+          '未保存の変更があるファイルは、保存するまで copilot に見えません: src/app.ts'
+        )
+      ).toBeInTheDocument()
     })
   })
 

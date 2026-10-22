@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import { toAgentInterruptAvailabilityInput, useAgentInterrupt } from '../useAgentInterrupt'
 import type {
-  AgentInterruptPanelState,
+  AgentInterruptState,
   AgentInterruptTab,
   UseAgentInterruptOptions
 } from '../useAgentInterrupt'
@@ -61,7 +61,7 @@ function runningTab(
 const workingOf = (...slotIds: string[]): ReadonlyMap<string, AgentActivity> =>
   new Map(slotIds.map((slotId): [string, AgentActivity] => [slotId, 'working']))
 
-function render(props: Partial<Props> = {}): RenderHookResult<AgentInterruptPanelState, Props> {
+function render(props: Partial<Props> = {}): RenderHookResult<AgentInterruptState, Props> {
   const initialProps: Props = {
     selected: tab1,
     activities: workingOf(tab1.slotId),
@@ -78,7 +78,7 @@ function render(props: Partial<Props> = {}): RenderHookResult<AgentInterruptPane
 }
 
 const press = async (
-  result: RenderHookResult<AgentInterruptPanelState, Props>['result']
+  result: RenderHookResult<AgentInterruptState, Props>['result']
 ): Promise<void> => {
   await act(async () => {
     result.current.onInterrupt()
@@ -412,7 +412,7 @@ describe('useAgentInterrupt(2 回目の要る種類: copilot)', () => {
 
   const renderCopilot = (
     props: Partial<Props> = {}
-  ): RenderHookResult<AgentInterruptPanelState, Props> =>
+  ): RenderHookResult<AgentInterruptState, Props> =>
     render({ selected: copilot1, activities: workingOf('slot-1'), ...props })
 
   it('押すと 1 回目を送り、afterMs の後に画面が作業中なら同じ sessionId で 2 回目を頼み、2 回送ったと読み上げる', async () => {
@@ -676,5 +676,68 @@ describe('useAgentInterrupt(2 回目の要る種類: copilot)', () => {
     await advanceAsync(AGENT_INTERRUPT_COOLDOWN_MS)
     expect(interruptFollowUp).not.toHaveBeenCalled()
     expect(result.current.notice?.text).toBe('claude 1 に中断（Esc）を送りました')
+  })
+})
+
+describe('useAgentInterrupt: 送信の判定に使う中断の流れ(isInterrupting・isInterruptPending)', () => {
+  it('claude: 押す前は偽、押してから 1,000ms の待ちの間だけ真で、isInterrupting の参照は描画をまたいで同じ', async () => {
+    const { result, rerender } = render()
+    const first = result.current.isInterrupting
+    expect(result.current.isInterrupting('slot-1')).toBe(false)
+    expect(result.current.isInterruptPending('slot-1')).toBe(false)
+    await press(result)
+    expect(result.current.isInterrupting('slot-1')).toBe(true)
+    expect(result.current.isInterruptPending('slot-1')).toBe(true)
+    // 待ちはタブごと
+    expect(result.current.isInterrupting('slot-2')).toBe(false)
+    advance(AGENT_INTERRUPT_COOLDOWN_MS - 1)
+    expect(result.current.isInterrupting('slot-1')).toBe(true)
+    expect(result.current.isInterruptPending('slot-1')).toBe(true)
+    advance(1)
+    expect(result.current.isInterrupting('slot-1')).toBe(false)
+    expect(result.current.isInterruptPending('slot-1')).toBe(false)
+    rerender({
+      selected: tab1,
+      activities: workingOf('slot-1'),
+      isSending: false,
+      isSendConfirmOpen: false
+    })
+    expect(result.current.isInterrupting).toBe(first)
+  })
+
+  it('1 回目の結果が 1,000ms を超えて届かない間も真(isInFlight を合わせている)', async () => {
+    const deferred = deferredOutcome()
+    interrupt.mockReturnValueOnce(deferred.promise)
+    const { result } = render()
+    await press(result)
+    await advanceAsync(AGENT_INTERRUPT_COOLDOWN_MS + 500)
+    expect(result.current.isInterrupting('slot-1')).toBe(true)
+    expect(result.current.isInterruptPending('slot-1')).toBe(true)
+    await act(async () => {
+      deferred.resolve({ kind: 'sent', followUp: null })
+    })
+    expect(result.current.isInterrupting('slot-1')).toBe(false)
+    expect(result.current.isInterruptPending('slot-1')).toBe(false)
+  })
+
+  it('copilot: 2 回目の流れが 1,000ms を超えて続く間も真で、流れが終わってから 1,000ms の待ちを数え直す', async () => {
+    const copilot1 = copilotTab('slot-1', 1)
+    interrupt.mockResolvedValue({ kind: 'sent', followUp: { afterMs: 1_200, sessionId: 'sid-1' } })
+    const { result } = render({ selected: copilot1, activities: workingOf('slot-1') })
+    await press(result)
+    // 2 回目を頼む前(押してから 1,100ms。押した時点からの 1,000ms の待ちは明けている)
+    await advanceAsync(1_100)
+    expect(interruptFollowUp).not.toHaveBeenCalled()
+    expect(result.current.isInterrupting('slot-1')).toBe(true)
+    expect(result.current.isInterruptPending('slot-1')).toBe(true)
+    // 2 回目を頼み、流れが終わる(ここから 1,000ms の待ちを数え直す)
+    await advanceAsync(100)
+    expect(interruptFollowUp).toHaveBeenCalledTimes(1)
+    await advanceAsync(AGENT_INTERRUPT_COOLDOWN_MS - 1)
+    expect(result.current.isInterrupting('slot-1')).toBe(true)
+    expect(result.current.isInterruptPending('slot-1')).toBe(true)
+    await advanceAsync(1)
+    expect(result.current.isInterrupting('slot-1')).toBe(false)
+    expect(result.current.isInterruptPending('slot-1')).toBe(false)
   })
 })

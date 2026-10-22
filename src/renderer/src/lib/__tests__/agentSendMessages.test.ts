@@ -1,98 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import type { PromptExecutionMode } from '@shared/types'
+import type { AgentSendFailure } from '../agentPromptSend'
 import {
-  AGENT_SEND_FAILURE_MESSAGES,
+  AGENT_SEND_FAILURE_COMMON_TEXTS,
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
   PROMPT_RUN_ARIA_LABEL_AGENT,
   PROMPT_RUN_ARIA_LABEL_LEGACY,
-  RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
-  RERUN_DISABLED_AGENT_MODE,
-  RUN_DISABLED_CLOSING,
-  RUN_DISABLED_LOADING_MODE,
-  RUN_DISABLED_NO_SESSION,
-  RUN_DISABLED_SENDING,
+  RUN_DISABLED_INTERRUPTING,
   agentPromptSendUnsupportedReason,
-  agentSendFailureMessage,
-  getHistoryRerunAvailability,
-  getPromptRunAvailability,
-  getRerunAvailability,
-  rerunDisabledAgentEntryFolderMismatch
+  agentSendBlockedByActivityReason,
+  agentSendFailureMessage
 } from '../agentSendMessages'
-
-describe('getPromptRunAvailability', () => {
-  const base = {
-    cliKind: 'claude' as const,
-    isExecuting: false,
-    isSessionRunning: false,
-    isSessionClosing: false,
-    isSending: false
-  }
-  it.each([
-    ['読み込み中', { ...base, mode: null }, { disabled: true, reason: RUN_DISABLED_LOADING_MODE }],
-    ['従来の方式・実行中でない', { ...base, mode: 'legacy' }, { disabled: false, reason: null }],
-    [
-      '従来の方式・実行中(理由は出さない)',
-      { ...base, mode: 'legacy', isExecuting: true },
-      { disabled: true, reason: null }
-    ],
-    [
-      'エージェント・セッションなし',
-      { ...base, mode: 'agent-cli' },
-      { disabled: true, reason: RUN_DISABLED_NO_SESSION }
-    ],
-    [
-      'エージェント・送信中',
-      { ...base, mode: 'agent-cli', isSessionRunning: true, isSending: true },
-      { disabled: true, reason: RUN_DISABLED_SENDING }
-    ],
-    [
-      'エージェント・送り先のタブが閉じる途中(running でも送らない)',
-      { ...base, mode: 'agent-cli', isSessionRunning: true, isSessionClosing: true },
-      { disabled: true, reason: RUN_DISABLED_CLOSING }
-    ],
-    [
-      '従来の方式は閉じる途中を見ない',
-      { ...base, mode: 'legacy', isSessionClosing: true },
-      { disabled: false, reason: null }
-    ],
-    [
-      'エージェント・送れる',
-      { ...base, mode: 'agent-cli', isSessionRunning: true },
-      { disabled: false, reason: null }
-    ],
-    [
-      'エージェント・従来の実行中フラグは見ない(C13)',
-      { ...base, mode: 'agent-cli', isSessionRunning: true, isExecuting: true },
-      { disabled: false, reason: null }
-    ]
-  ] as const)('%s', (_label, params, expected) => {
-    expect(getPromptRunAvailability(params)).toEqual(expected)
-  })
-})
-
-describe('getRerunAvailability', () => {
-  it.each([
-    [
-      { mode: null, isExecuting: false },
-      { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
-    ],
-    [
-      { mode: 'agent-cli', isExecuting: false },
-      { disabled: true, reason: RERUN_DISABLED_AGENT_MODE }
-    ],
-    [
-      { mode: 'legacy', isExecuting: true },
-      { disabled: true, reason: null }
-    ],
-    [
-      { mode: 'legacy', isExecuting: false },
-      { disabled: false, reason: null }
-    ]
-  ] as const)('%o', (params, expected) => {
-    expect(getRerunAvailability(params)).toEqual(expected)
-  })
-})
 
 describe('送信の通知の文言', () => {
   // clearedDraft は「書きかけがあると判定できたか」で、偽陰性・偽陽性がある(設計書の既知の制約)。
@@ -113,148 +31,6 @@ describe('実行ボタンの aria-label', () => {
   })
 })
 
-describe('getHistoryRerunAvailability(履歴のエントリごとの 再実行)', () => {
-  const base = {
-    cliKind: 'claude' as const,
-    isExecuting: false,
-    isSessionRunning: true,
-    isSessionClosing: false,
-    isSending: false,
-    folderPath: '/repo'
-  }
-
-  it('従来のエントリは今のまま(エージェント CLI 方式では押せない)', () => {
-    expect(
-      getHistoryRerunAvailability({ ...base, recordedFolderPath: null, mode: 'agent-cli' })
-    ).toEqual({
-      disabled: true,
-      reason: RERUN_DISABLED_AGENT_MODE
-    })
-    expect(
-      getHistoryRerunAvailability({
-        ...base,
-        recordedFolderPath: null,
-        mode: 'legacy',
-        isExecuting: true
-      })
-    ).toEqual({ disabled: true, reason: null })
-  })
-
-  it('エージェントのエントリは、従来の方式では押せず、読み込み中は読み込みの理由', () => {
-    expect(
-      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: 'legacy' })
-    ).toEqual({
-      disabled: true,
-      reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE
-    })
-    expect(RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE).toBe(
-      'エージェント CLI 方式で記録した履歴は、エージェント CLI 方式でだけ再実行できます'
-    )
-    expect(
-      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: null })
-    ).toEqual({
-      disabled: true,
-      reason: RUN_DISABLED_LOADING_MODE
-    })
-  })
-
-  it('エージェントのエントリは、未知の方式(方式を足したとき)をエージェント CLI 方式として押せるようにしない', () => {
-    // 型の外の値(方式の列挙を足したときに、この関数を直し忘れた場合)
-    const unknownMode = 'remote' as unknown as PromptExecutionMode
-    expect(
-      getHistoryRerunAvailability({ ...base, recordedFolderPath: '/repo', mode: unknownMode })
-    ).toEqual({ disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE })
-  })
-
-  it('エージェントのエントリは、エージェント CLI 方式では一覧の 実行 と同じ条件(L-048)', () => {
-    const agent = { ...base, recordedFolderPath: '/repo', mode: 'agent-cli' as const }
-    expect(getHistoryRerunAvailability(agent)).toEqual({ disabled: false, reason: null })
-    expect(getHistoryRerunAvailability({ ...agent, isSessionRunning: false })).toEqual({
-      disabled: true,
-      reason: RUN_DISABLED_NO_SESSION
-    })
-    expect(getHistoryRerunAvailability({ ...agent, isSessionClosing: true })).toEqual({
-      disabled: true,
-      reason: RUN_DISABLED_CLOSING
-    })
-    expect(getHistoryRerunAvailability({ ...agent, isSending: true })).toEqual({
-      disabled: true,
-      reason: RUN_DISABLED_SENDING
-    })
-  })
-
-  it('エージェントのエントリは、記録したフォルダと違うフォルダ・フォルダを開いていないときは押せない(全文の @相対パス が別のファイルを指すため)', () => {
-    const agent = { ...base, recordedFolderPath: '/repo', mode: 'agent-cli' as const }
-    const mismatch = { disabled: true, reason: rerunDisabledAgentEntryFolderMismatch('/repo') }
-    expect(getHistoryRerunAvailability({ ...agent, folderPath: '/other' })).toEqual(mismatch)
-    expect(getHistoryRerunAvailability({ ...agent, folderPath: null })).toEqual(mismatch)
-    // セッションが無いときもフォルダ違いを先に出す(フォルダを開き直さないと直らないため。このセッションで再開 と同じ順)
-    expect(
-      getHistoryRerunAvailability({ ...agent, folderPath: '/other', isSessionRunning: false })
-    ).toEqual(mismatch)
-    expect(rerunDisabledAgentEntryFolderMismatch('/repo')).toBe(
-      '記録したフォルダ（/repo）を開いているときだけ再実行できます'
-    )
-  })
-
-  it('従来のエントリはフォルダに関係なく今のまま', () => {
-    expect(
-      getHistoryRerunAvailability({
-        ...base,
-        recordedFolderPath: null,
-        mode: 'legacy',
-        folderPath: null
-      })
-    ).toEqual({ disabled: false, reason: null })
-  })
-})
-
-describe('送信の入口の CLI の種類(送り先のタブの cliKind)', () => {
-  const COPILOT = agentPromptSendUnsupportedReason('copilot')
-  const running = {
-    mode: 'agent-cli' as const,
-    isExecuting: false,
-    cliKind: 'copilot' as const,
-    isSessionRunning: true,
-    isSessionClosing: false,
-    isSending: false
-  }
-
-  it('送り先が copilot なら押せず、理由を出す', () => {
-    expect(getPromptRunAvailability(running)).toEqual({ disabled: true, reason: COPILOT })
-  })
-
-  it('copilot の理由は、閉じる途中・未起動・送信中より先(起動しても送れないため)', () => {
-    for (const patch of [
-      { isSessionClosing: true },
-      { isSessionRunning: false },
-      { isSending: true }
-    ]) {
-      expect(getPromptRunAvailability({ ...running, ...patch })).toEqual({
-        disabled: true,
-        reason: COPILOT
-      })
-    }
-  })
-
-  it('読み込み中・従来の方式は種類を見ない(従来の方式の判定の直後に見る)', () => {
-    expect(getPromptRunAvailability({ ...running, mode: null })).toEqual({
-      disabled: true,
-      reason: RUN_DISABLED_LOADING_MODE
-    })
-    expect(getPromptRunAvailability({ ...running, mode: 'legacy' })).toEqual({
-      disabled: false,
-      reason: null
-    })
-  })
-
-  it('履歴の再実行(エージェントのエントリ)も同じ理由(getPromptRunAvailability を通る)', () => {
-    expect(
-      getHistoryRerunAvailability({ ...running, recordedFolderPath: '/repo', folderPath: '/repo' })
-    ).toEqual({ disabled: true, reason: COPILOT })
-  })
-})
-
 describe('送信に対応しない CLI の理由(agentPromptSendUnsupportedReason)', () => {
   it('実行・再実行・送信前の確認の理由は CLI の名前で作る', () => {
     expect(agentPromptSendUnsupportedReason('copilot')).toBe(
@@ -270,13 +46,132 @@ describe('送信の失敗の文言(agentSendFailureMessage)', () => {
     )
   })
 
-  it('ほかの理由は AGENT_SEND_FAILURE_MESSAGES の文言(CLI の名前を使わない)', () => {
-    expect(agentSendFailureMessage('input-not-found', 'copilot')).toBe(
-      AGENT_SEND_FAILURE_MESSAGES['input-not-found']
-    )
+  it.each<[AgentSendFailure, string]>([
+    ['empty', '送信する内容がありません'],
+    ['too-long', 'プロンプトが長すぎます'],
+    [
+      'leading-bang',
+      '先頭が「!」のプロンプトは、エージェントのシェルのコマンドとして実行されるため送信できません（先頭に空白を入れると送れます）'
+    ],
+    ['not-accepting', 'エージェントが入力を受け付けていません'],
+    [
+      'input-not-found',
+      'エージェントの入力欄が見つかりません。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+    ],
+    [
+      'clear-failed',
+      'エージェントの入力欄を空にできませんでした。ターミナルで入力欄を確かめてから、もう一度実行してください'
+    ],
+    [
+      'not-echoed',
+      'エージェントの入力欄に入りませんでした。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+    ]
+  ])('claude の %s は段階 2b の前と 1 文字も変わらない', (reason, text) => {
+    expect(agentSendFailureMessage(reason, 'claude')).toBe(text)
   })
 
-  it('AGENT_SEND_FAILURE_MESSAGES は unsupported-cli を持たない(CLI の名前の要る文言は関数で引く)', () => {
-    expect(Object.keys(AGENT_SEND_FAILURE_MESSAGES)).not.toContain('unsupported-cli')
+  it.each<[AgentSendFailure, string]>([
+    [
+      'leading-bang',
+      '先頭（空白を除く）が「!」のプロンプトは、copilot のシェルのコマンドとして実行されるため送信できません（先頭に空白・「!」・「/」以外の文字を足すと送れます）'
+    ],
+    [
+      'not-echoed',
+      'copilot の入力欄に本文が入ったか確かめられなかったため、Enter を送りませんでした。ターミナルの画面を確かめてください（入力欄に本文が入っていれば、送るか消してください）'
+    ],
+    [
+      'leading-slash',
+      '先頭（空白を除く）が「/」のプロンプトは、copilot のスラッシュコマンドとして実行されるため送信できません（先頭に空白・「!」・「/」以外の文字を足すと送れます）'
+    ],
+    [
+      'interrupting',
+      '中断を送ったばかりのため送信できません（2 秒ほど待ってから、もう一度実行してください）'
+    ],
+    [
+      'screen-working',
+      'copilot が作業中のため送信できません（作業が終わって入力待ちになってから、もう一度実行してください）'
+    ],
+    [
+      'screen-permission',
+      'copilot が許可待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）'
+    ],
+    [
+      'screen-confirm',
+      'copilot が確認待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）'
+    ],
+    [
+      'screen-unknown',
+      'copilot が入力待ちか判定できないため送信できません（ターミナルの画面を確かめてから、もう一度実行してください）'
+    ],
+    [
+      'shell-mode',
+      'copilot がシェルのモードのため送信できません（ターミナルでシェルのモードを抜けてから、もう一度実行してください）'
+    ],
+    [
+      'draft-present',
+      'copilot の入力欄に書きかけがあるため送信できません（書きかけは消していません。ターミナルで送るか消してから、もう一度実行してください）'
+    ],
+    [
+      'input-undetermined',
+      'copilot の入力欄が空か確かめられなかったため送信できません（ターミナルの画面を確かめてから、もう一度実行してください）'
+    ],
+    [
+      'shell-mode-after-paste',
+      'copilot の入力欄がシェルのモードに変わったため、Enter を送りませんでした。入力欄の本文は送らずに、ターミナルで消してからシェルのモードを抜けてください（Enter を押すとシェルのコマンドとして実行されます）'
+    ],
+    [
+      'not-confirmed',
+      'copilot に送れたか確かめられませんでした。ターミナルの画面を確かめてください（入力欄に本文が残っていれば、送るか消してください）'
+    ]
+  ])('copilot の %s', (reason, text) => {
+    expect(agentSendFailureMessage(reason, 'copilot')).toBe(text)
+  })
+
+  it('screen-* の失敗は、押せない理由(agentSendBlockedByActivityReason)と同じ文(L-058)', () => {
+    for (const activity of ['working', 'permission', 'confirm', 'unknown'] as const) {
+      expect(agentSendFailureMessage(`screen-${activity}`, 'copilot')).toBe(
+        agentSendBlockedByActivityReason(activity, 'copilot')
+      )
+    }
+  })
+
+  it('interrupting の失敗は、押せない理由 RUN_DISABLED_INTERRUPTING と同じ文', () => {
+    expect(agentSendFailureMessage('interrupting', 'copilot')).toBe(RUN_DISABLED_INTERRUPTING)
+  })
+
+  it('共通の表は、CLI で文が違う失敗(unsupported-cli・leading-bang・not-echoed)を持たない', () => {
+    const keys = Object.keys(AGENT_SEND_FAILURE_COMMON_TEXTS)
+    for (const reason of ['unsupported-cli', 'leading-bang', 'not-echoed']) {
+      expect(keys).not.toContain(reason)
+    }
+  })
+})
+
+describe('送り先のタブの活動の理由(agentSendBlockedByActivityReason)', () => {
+  it.each([
+    [
+      'working',
+      'copilot が作業中のため送信できません（作業が終わって入力待ちになってから、もう一度実行してください）'
+    ],
+    [
+      'permission',
+      'copilot が許可待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）'
+    ],
+    [
+      'confirm',
+      'copilot が確認待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）'
+    ],
+    [
+      'unknown',
+      'copilot が入力待ちか判定できないため送信できません（ターミナルの画面を確かめてから、もう一度実行してください）'
+    ]
+  ] as const)('%s', (activity, text) => {
+    expect(agentSendBlockedByActivityReason(activity, 'copilot')).toBe(text)
+  })
+
+  it('中断の流れの間の理由', () => {
+    expect(RUN_DISABLED_INTERRUPTING).toBe(
+      '中断を送ったばかりのため送信できません（2 秒ほど待ってから、もう一度実行してください）'
+    )
   })
 })

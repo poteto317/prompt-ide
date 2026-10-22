@@ -135,7 +135,8 @@ export type AgentInterruptFollowUpCheck =
 /**
  * 2 回目の Esc を頼む直前に、送った先のタブの画面をタブの種類の規則で読み直す。作業中のときだけ send(入力待ちの copilot に 2 回目が
  * 届くと、1 回目と組になって書きかけの消去・巻き戻しの画面になるため。L-041)。送信中・確認の表示中・閉じる途中は見直さない
- * (送信は copilot では使えず〈promptSend が false〉、閉じる途中は useAgentSessions の interruptFollowUp が stale で止める)
+ * (送信中は 1 回目を押せず、中断の流れの間は送信を始めない〈useAgentPromptSender と押せる条件の requiresIdle〉ので、2 回目を待つ間に
+ * 送信が始まることはない。閉じる途中は useAgentSessions の interruptFollowUp が stale で止める)
  */
 export function checkAgentInterruptFollowUp(
   cliKind: AgentCliKind,

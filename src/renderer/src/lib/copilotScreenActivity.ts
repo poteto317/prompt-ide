@@ -1,19 +1,14 @@
 import type { AgentActivity } from './agentActivity'
 import type { ViewportLine } from './agentViewport'
-import { lineText } from './agentViewport'
+import { copilotScreenTexts, locateCopilotInputBox, readCopilotInputState } from './copilotInputBox'
 
 // 画面の末尾から、copilot の活動の状態を判定する純粋関数(設計書 2026-10-21「copilot の判定」)。GitHub Copilot CLI 1.0.87 の
 // 画面で記録した(copilotScreens.json)。規則の定数(文言)はこのファイルに閉じ、claude の規則(claudeScreenActivity.ts の
 // `esc to interrupt`・スピナーの記号・`Enter to confirm` など)とは共有しない。分からない画面は、作業中でないのに working・
 // 利用者の操作を待っているのに idle にならない側(unknown・confirm)に倒す(L-041)。判定は上から順に、最初に当てはまったもの。
 // dim・反転の属性は使わない(--screen-reader でも同じ文言が出るため)。例外は投げない
+// 入力欄の特定(罫線・記号の行・続きの行と帯)は copilotInputBox.ts(段階 2b で送信の手順と共有するために切り出した)
 
-/** 全幅の罫線の行(行全体が ─ で 20 文字以上)。枠の中の `│ ─── │` は行頭が │ なので当たらない */
-const BORDER = /^─{20,}$/
-/** 入力欄の記号の行(`❯ `・`! `・--screen-reader の `Start of Prompt Indicator`)。末尾の空白を除くと、空の入力欄は `❯` だけになる */
-const SYMBOL_LINE = /^(?:❯(?:[ \xa0]|$)|! |Start of Prompt Indicator)/
-/** 入力欄の 2 行目以降(2 桁の字下げ)か空行 */
-const CONTINUATION = /^ {2}|^\s*$/
 /** 作業中の案内(帯だけで見る) */
 const INTERRUPT_HINTS = ['esc interrupt', 'esc again to interrupt'] as const
 /** 帯の先頭のスピナー(作業中の補助の手がかり。案内が見えなくても入力待ちとしない) */
@@ -26,52 +21,6 @@ const PERMISSION_QUESTION = /^Do you want to /
 const FRAME_PREFIX = /^[│┃\s]+/
 /** 選択の画面の外枠の上端(行頭の ╭)。問いを探すのはこの行より下だけ */
 const DIALOG_TOP = /^╭/
-
-/** 入力欄の位置と帯(段階 2b で送信に使うときに copilotInputBox.ts へ切り出す) */
-interface CopilotInputBox {
-  /** 上の罫線の行 */
-  top: number
-  /** 下の罫線の行 */
-  bottom: number
-  /** 帯(下の罫線より下の行)の、前後の空白を除いた空でない行を空白 1 つでつないだ文字列(連続する空白は 1 つ)。40 列などで
-   *  折り返した案内(`esc` / `interrupt`)も 1 つの文字列で見る */
-  band: string
-  /** 帯の空でない最初の行(前後の空白を除く)。帯が空なら null */
-  bandHead: string | null
-}
-
-/** from から上へ、最初の全幅の罫線の行。無ければ null */
-function findBorderAbove(texts: readonly string[], from: number): number | null {
-  for (let y = from; y >= 0; y--) {
-    if (BORDER.test(texts[y])) return y
-  }
-  return null
-}
-
-/**
- * 画面の下から入力欄(上の罫線・記号の行・続きの行・下の罫線)を探す。上の罫線が見えない(入力欄が画面の高さを超えた)・
- * 罫線の間に行が無い・記号の行や続きの行の形が違う画面は、入力欄なし(null)
- */
-function locateCopilotInputBox(texts: readonly string[]): CopilotInputBox | null {
-  const bottom = findBorderAbove(texts, texts.length - 1)
-  if (bottom === null) return null
-  const top = findBorderAbove(texts, bottom - 1)
-  if (top === null || bottom - top < 2) return null
-  if (!SYMBOL_LINE.test(texts[top + 1])) return null
-  for (let y = top + 2; y < bottom; y++) {
-    if (!CONTINUATION.test(texts[y])) return null
-  }
-  const bandLines = texts
-    .slice(bottom + 1)
-    .map((text) => text.trim())
-    .filter((text) => text !== '')
-  return {
-    top,
-    bottom,
-    band: bandLines.join(' ').replace(/\s+/g, ' '),
-    bandHead: bandLines[0] ?? null
-  }
-}
 
 /** 選択の案内の行から上へ、外枠の上端(行頭の ╭)に当たるまでの間に、枠の縦線と空白を除くと許可の問いで始まる行があるか */
 function hasPermissionQuestion(texts: readonly string[]): boolean {
@@ -87,8 +36,7 @@ function hasPermissionQuestion(texts: readonly string[]): boolean {
 
 export function classifyCopilotScreen(lines: readonly ViewportLine[]): AgentActivity {
   // アプリの画面の行は列の数まで空白で埋まり、台帳の行は右の空白を除いてある。どちらでも同じ判定にするため末尾の空白を除く
-  // (BORDER などの `$` は末尾の空白があると当たらない)
-  const texts = lines.map((line) => lineText(line).trimEnd())
+  const texts = copilotScreenTexts(lines)
   const box = locateCopilotInputBox(texts)
   if (box === null) {
     // シェルのコマンドの許可の確認(記録済み)。シェル以外のツールの確認も同じ部品の画面だと見込んで同じ規則で拾う
@@ -110,4 +58,14 @@ export function classifyCopilotScreen(lines: readonly ViewportLine[]): AgentActi
   if (BAND_SPINNER.test(box.bandHead)) return 'unknown'
   // 入力待ちの帯(空・書きかけ・シェルのモード・Esc や Ctrl+C の直後・`?`・`/`)はどれもスピナーで始まらず、中断の案内を含まない
   return 'idle'
+}
+
+/**
+ * 送れたことの確かめ(送信の手順 copilotPromptSend.ts の手順 7 の判定)。Enter の後の画面で、帯が作業中になったか入力欄が空に
+ * 戻ったら送れたとみなす。即答では作業中が約 36ms しか見えず入力待ちに戻るが、そのときは入力欄が空なので拾える(記録の 4)。
+ * Enter が補完の確定に取られた(入力欄が書き換わったまま)なら偽。活動の判定と入力欄の読み取りの両方を使うので、両方に依存して
+ * よいこのファイルに置く(依存の向きは copilotInputBox ← copilotScreenActivity ← copilotPromptSend の一方向)
+ */
+export function isCopilotSubmitConfirmed(lines: readonly ViewportLine[]): boolean {
+  return classifyCopilotScreen(lines) === 'working' || readCopilotInputState(lines) === 'empty'
 }

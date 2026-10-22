@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
 import {
-  sendAgentPrompt,
+  sendClaudePrompt,
   AGENT_CLEAR_INTERVAL_MS,
   AGENT_CLEAR_TIMEOUT_MS,
   AGENT_ECHO_POLL_MS,
   AGENT_ECHO_TIMEOUT_MS,
   AGENT_EMPTY_CONFIRM_INTERVAL_MS
-} from '../agentPromptSend'
+} from '../claudePromptSend'
 import type { AgentSendClock, AgentSendTarget } from '../agentPromptSend'
 import type { ViewportLine } from '../agentViewport'
 import { findInputBox, isInputBoxEmpty } from '../agentInputBox'
@@ -73,6 +73,9 @@ function makeFakeClaude(
     bracketed: true,
     isBracketedPasteEnabled: () => fake.bracketed,
     getCols: () => 60,
+    readScreen: (): ViewportLine[] => {
+      throw new Error('claude の手順は readScreen を読まない(readViewport を読む)')
+    },
     readViewport: (): ViewportLine[] => {
       if (options.clock !== undefined)
         fake.reads.push({
@@ -123,11 +126,11 @@ function makeFakeClaude(
   return fake
 }
 
-describe('sendAgentPrompt', () => {
+describe('sendClaudePrompt', () => {
   it('空の入力欄でも消去を 1 回送ってから、空を 2 回確かめて貼り付け、現れたら Enter を送る', async () => {
     const fake = makeFakeClaude()
     const clock = makeClock()
-    await expect(sendAgentPrompt(fake, 'hello\nworld', clock)).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'hello\nworld', clock)).resolves.toEqual({
       kind: 'sent',
       clearedDraft: false
     })
@@ -138,7 +141,7 @@ describe('sendAgentPrompt', () => {
   it('消去の書き込みは 30ms 以上空け、空の確認の 2 回は 50ms 以上空けてから貼り付ける(消去とは別の書き込み)', async () => {
     const clock = makeClock()
     const fake = makeFakeClaude({ input: 'abcdefghij', clearPerChunk: 4, clock })
-    await expect(sendAgentPrompt(fake, 'prompt', clock)).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'prompt', clock)).resolves.toEqual({
       kind: 'sent',
       clearedDraft: true
     })
@@ -166,7 +169,7 @@ describe('sendAgentPrompt', () => {
     expect(box).not.toBeNull()
     expect(isInputBoxEmpty(box as NonNullable<typeof box>)).toBe(true)
 
-    await expect(sendAgentPrompt(fake, 'prompt', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'prompt', makeClock())).resolves.toEqual({
       kind: 'sent',
       clearedDraft: false
     })
@@ -177,7 +180,7 @@ describe('sendAgentPrompt', () => {
 
   it('書きかけがあれば 24 バイトずつ 30ms 空けて消し、空になったら止め、消去と貼り付けは別の書き込みにする', async () => {
     const fake = makeFakeClaude({ input: 'abcdefghij', clearPerChunk: 4 })
-    const result = await sendAgentPrompt(fake, 'prompt', makeClock())
+    const result = await sendClaudePrompt(fake, 'prompt', makeClock())
     expect(result).toEqual({ kind: 'sent', clearedDraft: true })
     const clears = fake.writes.filter((data) => data === AGENT_CLEAR_INPUT_CHUNK)
     expect(clears).toHaveLength(3)
@@ -190,7 +193,7 @@ describe('sendAgentPrompt', () => {
 
   it('1 回の書き込みが 24 バイトを超えない(消去)', async () => {
     const fake = makeFakeClaude({ input: 'x'.repeat(50), clearPerChunk: 5 })
-    await sendAgentPrompt(fake, 'p', makeClock())
+    await sendClaudePrompt(fake, 'p', makeClock())
     for (const data of fake.writes.filter((d) => d.includes('\x0b')))
       expect(data.length).toBeLessThanOrEqual(24)
   })
@@ -198,7 +201,7 @@ describe('sendAgentPrompt', () => {
   it('空にならなければ 3,000ms で止め、貼り付けも Enter も送らない', async () => {
     const fake = makeFakeClaude({ input: 'stuck', clearPerChunk: 0 })
     const clock = makeClock()
-    await expect(sendAgentPrompt(fake, 'p', clock)).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', clock)).resolves.toEqual({
       kind: 'failed',
       reason: 'clear-failed'
     })
@@ -210,7 +213,7 @@ describe('sendAgentPrompt', () => {
 
   it('入力欄が見つからなければ(確認画面)何も送らない', async () => {
     const fake = makeFakeClaude({ mode: 'dialog' })
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'failed',
       reason: 'input-not-found'
     })
@@ -225,7 +228,7 @@ describe('sendAgentPrompt', () => {
         f.mode = 'dialog'
       }
     })
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'failed',
       reason: 'input-not-found'
     })
@@ -243,7 +246,7 @@ describe('sendAgentPrompt', () => {
       if (reads === 3) fake.input = 'late'
       return original()
     }
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'sent',
       clearedDraft: true
     })
@@ -258,7 +261,7 @@ describe('sendAgentPrompt', () => {
 
   it('貼り付けた本文が 1,000ms 以内に現れなければ Enter を送らない', async () => {
     const fake = makeFakeClaude({ echo: false })
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'failed',
       reason: 'not-echoed'
     })
@@ -272,7 +275,7 @@ describe('sendAgentPrompt', () => {
       }
     })
     const clock = makeClock()
-    await expect(sendAgentPrompt(fake, ' x', clock)).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, ' x', clock)).resolves.toEqual({
       kind: 'failed',
       reason: 'not-echoed'
     })
@@ -288,7 +291,7 @@ describe('sendAgentPrompt', () => {
 
   it('シェルのモード(!)の書きかけは消して通常の入力欄に戻してから送る', async () => {
     const fake = makeFakeClaude({ input: 'ls', mode: 'shell', clearPerChunk: 10 })
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'sent',
       clearedDraft: true
     })
@@ -301,7 +304,7 @@ describe('sendAgentPrompt', () => {
     ['長すぎる', 'a'.repeat(200_001), 'too-long']
   ])('%s の本文は何も送らない', async (_label, text, reason) => {
     const fake = makeFakeClaude()
-    await expect(sendAgentPrompt(fake, text, makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, text, makeClock())).resolves.toEqual({
       kind: 'failed',
       reason
     })
@@ -311,7 +314,7 @@ describe('sendAgentPrompt', () => {
   it('bracketed paste が無効なら何も送らない', async () => {
     const fake = makeFakeClaude()
     fake.bracketed = false
-    await expect(sendAgentPrompt(fake, 'p', makeClock())).resolves.toEqual({
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'failed',
       reason: 'not-accepting'
     })
@@ -320,7 +323,7 @@ describe('sendAgentPrompt', () => {
 
   it('本文の ESC を取り除いて貼り付ける', async () => {
     const fake = makeFakeClaude()
-    await sendAgentPrompt(fake, 'a\x1b[201~\rb', makeClock())
+    await sendClaudePrompt(fake, 'a\x1b[201~\rb', makeClock())
     expect(fake.writes[1]).toBe('\x1b[200~a[201~\nb\x1b[201~')
   })
 })

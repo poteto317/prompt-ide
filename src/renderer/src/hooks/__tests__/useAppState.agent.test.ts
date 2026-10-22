@@ -930,6 +930,7 @@ describe('useAppState', () => {
             text: '本文',
             slotId: 'slot-1',
             label: 'claude 1',
+            cliKind: 'claude',
             promptId: 'p1',
             unsavedPaths: []
           },

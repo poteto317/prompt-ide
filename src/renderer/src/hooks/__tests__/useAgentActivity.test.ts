@@ -19,7 +19,10 @@ import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabi
 
 // 能力が無い種類のテストのために、能力の表の screenActivity・interrupt を種類ごとに偽にできるようにする(今の表には能力が無い種類が無い)
 const capabilityOverrides = vi.hoisted(
-  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set() })
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set(),
+    promptSendUnsupportedKinds: new Set()
+  })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()

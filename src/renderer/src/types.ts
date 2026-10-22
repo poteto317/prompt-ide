@@ -342,6 +342,8 @@ export interface AgentSendConfirmPending {
   slotId: string
   /** 送り先のタブの名前(開いた時点で固定) */
   label: string
+  /** 送り先のタブの CLI の種類(開いた時点で固定。本文の規則・送れない理由・未保存の注意の CLI の名前に使う) */
+  cliKind: AgentCliKind
   /** 開いた元のプロンプトの id(キャンセルで閉じたとき・送信が失敗したときのフォーカスの戻り先) */
   promptId: string | null
   /** 未保存の変更がある、参照として添えたファイル(表示用の相対パス)。実行を押した時点の写しで、開いている間に保存しても変えない */

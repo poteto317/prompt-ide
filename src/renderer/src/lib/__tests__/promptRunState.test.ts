@@ -6,6 +6,8 @@ const base: PromptRunStateInput = {
   mode: 'legacy',
   isExecuting: false,
   cliKind: 'claude',
+  activity: 'idle',
+  isInterrupting: false,
   sessionStatus: 'none',
   isSessionClosing: false,
   isSending: false,
@@ -132,16 +134,26 @@ describe('buildPromptRunPanelState', () => {
     )
   })
 
-  it('エージェント CLI 方式で送り先が copilot なら、running でも押せず理由を出す', () => {
-    const state = buildPromptRunPanelState({
+  it('エージェント CLI 方式で送り先が copilot なら、活動と中断の流れが押せる条件に渡る', () => {
+    const copilot = {
       ...base,
-      mode: 'agent-cli',
-      cliKind: 'copilot',
-      sessionStatus: 'running'
+      mode: 'agent-cli' as const,
+      cliKind: 'copilot' as const,
+      sessionStatus: 'running' as const
+    }
+    expect(buildPromptRunPanelState(copilot)).toMatchObject({
+      isRunDisabled: false,
+      runDisabledReason: null
     })
-    expect(state.isRunDisabled).toBe(true)
-    expect(state.runDisabledReason).toBe(
-      'copilot へのプロンプトの送信には、まだ対応していません（ターミナルに直接入力してください）'
-    )
+    expect(buildPromptRunPanelState({ ...copilot, activity: 'working' })).toMatchObject({
+      isRunDisabled: true,
+      runDisabledReason:
+        'copilot が作業中のため送信できません（作業が終わって入力待ちになってから、もう一度実行してください）'
+    })
+    expect(buildPromptRunPanelState({ ...copilot, isInterrupting: true })).toMatchObject({
+      isRunDisabled: true,
+      runDisabledReason:
+        '中断を送ったばかりのため送信できません（2 秒ほど待ってから、もう一度実行してください）'
+    })
   })
 })

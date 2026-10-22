@@ -47,6 +47,17 @@ export interface AgentInterruptPanelState {
 }
 
 /**
+ * useAgentInterrupt の戻り値。パネル(AgentTerminalPanel)へは AgentInterruptPanelState の値だけを渡し、送信の判定に使う 2 つは
+ * useAgentWorkspace が使う(設計書 2026-10-22「中断との排他」)
+ */
+export interface AgentInterruptState extends AgentInterruptPanelState {
+  /** 押した時点用: そのタブが中断の流れの間(1 回目を送ってから 2 回目の流れが終わり、1,000ms の待ちが明けるまで)。ref で常に最新。参照は安定 */
+  isInterrupting: (slotId: string) => boolean
+  /** 描画用: isInterrupting と同じ間(state)。実行・再実行・送信前の確認の押せない理由に使う */
+  isInterruptPending: (slotId: string) => boolean
+}
+
+/**
  * 中断に使う選択中のタブの値(AgentSessionTabView の一部)。判定に status・cliKind・isClosing、slotId に活動・待ちの取り出しと送り先、
  * 読み上げに label・cliKind、押した時点と 2 回目の前の画面の読み直しに controller の readScreen(規則は cliKind で引く)だけを使う
  */
@@ -107,7 +118,7 @@ export function useAgentInterrupt({
   interrupt,
   interruptFollowUp,
   isTabOpen
-}: UseAgentInterruptOptions): AgentInterruptPanelState {
+}: UseAgentInterruptOptions): AgentInterruptState {
   const { notice, announce } = useTransientNotice(AGENT_INTERRUPT_NOTICE_MS)
   const cooldown = useAgentInterruptCooldown()
   const { isInFlight, isCoolingDown, begin, finish, restartCooldown } = cooldown
@@ -225,6 +236,9 @@ export function useAgentInterrupt({
     visible: availability.visible,
     disabledReason: availability.reason,
     notice,
-    onInterrupt
+    onInterrupt,
+    // 送信の押した時点の判定用(useAgentPromptSender)と描画用(押せない理由)。同じ間を useAgentInterruptCooldown が両方の形で持つ
+    isInterrupting: cooldown.isPendingNow,
+    isInterruptPending: cooldown.isPending
   }
 }

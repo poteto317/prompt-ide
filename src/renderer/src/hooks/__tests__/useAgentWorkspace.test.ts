@@ -53,9 +53,13 @@ const mockUseAgentLastSession = vi.hoisted(() =>
 )
 vi.mock('../useAgentLastSession', () => ({ useAgentLastSession: mockUseAgentLastSession }))
 // 通知の注記が通知の節へ届く配線を確かめるため、能力の表の screenActivity・interrupt を種類ごとに偽にできるようにする
-// (今の表ではどの種類も画面を判定し、注記は出ない)
+// (今の表ではどの種類も画面を判定し、注記は出ない)。送信に対応しない種類の入口の守りを確かめるため、promptSend も偽にできる
+// (段階 2b で copilot も送信に対応した)
 const capabilityOverrides = vi.hoisted(
-  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set<AgentCliKind>() })
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+  })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
@@ -82,15 +86,19 @@ import type { AgentPromptSendResult } from '../../lib/agentPromptSend'
 import type { AgentSessionTabView } from '../useAgentSessions'
 import type { AgentSessionsState } from '../useAgentSessions'
 import type { HistoryEntry } from '../../types'
+import type { AgentActivity } from '../../lib/agentActivity'
 import type { AgentLastSessionLookup } from '../../lib/agentResumeAvailability'
 import { getAgentSessionTabs } from '../../lib/xtermFactory'
 import {
+  AGENT_SENT_NOTICE,
   RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
   RERUN_DISABLED_AGENT_MODE,
   RUN_DISABLED_CLOSING,
+  RUN_DISABLED_INTERRUPTING,
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING,
-  agentPromptSendUnsupportedReason
+  agentPromptSendUnsupportedReason,
+  agentSendBlockedByActivityReason
 } from '../../lib/agentSendMessages'
 import {
   AGENT_START_DISABLED_SWITCHING_CLI_KIND,
@@ -109,6 +117,8 @@ import {
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { agentScreen } from '../../lib/__tests__/fixtures/agentScreens'
 import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
+import { copilotInputScreen } from '../../lib/__tests__/fixtures/copilotInputScreens'
+import { buildAgentPasteBytes } from '@shared/agentPasteText'
 import type { UseAgentNotificationsOptions } from '../useAgentNotifications'
 import { AGENT_INTERRUPT_COOLDOWN_MS } from '../../lib/agentInterrupt'
 
@@ -191,6 +201,7 @@ afterEach(() => {
   windowConfirmSpy?.mockRestore()
   consoleErrorSpy?.mockRestore()
   capabilityOverrides.unsupportedKinds.clear()
+  capabilityOverrides.promptSendUnsupportedKinds.clear()
 })
 
 type Rendered = RenderHookResult<AgentWorkspaceState, unknown>
@@ -385,7 +396,8 @@ describe('useAgentWorkspace', () => {
       const { result } = renderWorkspace()
       expect(mockUseAgentPromptSender).toHaveBeenLastCalledWith({
         onSettled: result.current.agentTerminal.layout.open,
-        beforeSend: undefined
+        beforeSend: undefined,
+        isInterrupting: expect.any(Function)
       })
     })
 
@@ -495,6 +507,12 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('送信の入口の CLI の種類(選択中のタブの cliKind)', () => {
+    // 送信に対応しない種類の入口の守り(段階 1)と、能力の判定に使う種類の選び方(agentCapabilityCliKindOf)を、能力の表で
+    // copilot の送信を偽にして確かめる(段階 2b で copilot も送信に対応した)
+    beforeEach(() => {
+      capabilityOverrides.promptSendUnsupportedKinds.add('copilot')
+    })
+
     const COPILOT = agentPromptSendUnsupportedReason('copilot')
     const copilotRunning = (): ReturnType<typeof makeAgentSessionsState> =>
       makeAgentSessionsState({ selected: { status: 'running', cliKind: 'copilot' } })
@@ -635,6 +653,141 @@ describe('useAgentWorkspace', () => {
     })
   })
 
+  describe('送信の押せる条件の活動と中断の流れ(copilot は入力待ちで中断の流れの外だけ。L-058)', () => {
+    const agentEntry: HistoryEntry = {
+      id: 'h-activity',
+      promptId: 'p1',
+      promptTitle: '要約',
+      promptContent: '本文',
+      fileContent: null,
+      toolId: 'claude',
+      status: 'sent',
+      resultText: null,
+      errorMessage: null,
+      executedAt: 1000,
+      agent: {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        tabLabel: 'claude 1',
+        folderPath: '/p'
+      }
+    }
+    const WORKING = agentSendBlockedByActivityReason('working', 'copilot')
+    const runningTabOf = (cliKind: AgentCliKind): ReturnType<typeof makeAgentSessionsState> =>
+      makeAgentSessionsState({ selected: { status: 'running', cliKind } })
+    const activityOf = (activity: AgentActivity): ReadonlyMap<string, AgentActivity> =>
+      new Map([['slot-1', activity]])
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('選択中の copilot のタブが作業中なら、実行・再実行・送信前の確認の理由が活動の理由になる', async () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('copilot'))
+      mockUseAgentActivity.mockReturnValue(activityOf('working'))
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: true,
+        runDisabledReason: WORKING
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: true,
+        reason: WORKING
+      })
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(WORKING)
+      expect(result.current.agentSendConfirmDialog.pending?.cliKind).toBe('copilot')
+    })
+
+    it('選択中の copilot のタブが入力待ちなら、実行・再実行を押せる', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('copilot'))
+      mockUseAgentActivity.mockReturnValue(activityOf('idle'))
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: false,
+        runDisabledReason: null
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: false,
+        reason: null
+      })
+    })
+
+    it('活動が未記録のタブは unknown として扱う(中断の判定と同じ写像)', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('copilot'))
+      mockUseAgentActivity.mockReturnValue(new Map())
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun.runDisabledReason).toBe(
+        agentSendBlockedByActivityReason('unknown', 'copilot')
+      )
+    })
+
+    it('claude のタブは作業中でも実行・再実行を押せる(今のまま)', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('claude'))
+      mockUseAgentActivity.mockReturnValue(activityOf('working'))
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: false,
+        runDisabledReason: null
+      })
+      expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+        disabled: false,
+        reason: null
+      })
+    })
+
+    it('中断を押した直後は、実行・再実行・送信前の確認の理由が RUN_DISABLED_INTERRUPTING で、1,000ms の待ちが明けると活動の理由に戻る', async () => {
+      // 1,000ms の待ちを実時間で待たないよう、偽のタイマーで進める(このテストは waitFor を使わない)
+      vi.useFakeTimers()
+      setMode('agent-cli')
+      const sessions = runningTabOf('copilot')
+      const controller = sessions.selected.controller as FakeController
+      controller.screen = copilotScreen('working3000').lines
+      mockUseAgentSessions.mockReturnValue(sessions)
+      mockUseAgentActivity.mockReturnValue(activityOf('working'))
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(sessions.interrupt).toHaveBeenCalledExactlyOnceWith('slot-1')
+      expect(result.current.promptRun.runDisabledReason).toBe(RUN_DISABLED_INTERRUPTING)
+      expect(result.current.getHistoryActions(agentEntry).rerun.reason).toBe(
+        RUN_DISABLED_INTERRUPTING
+      )
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        RUN_DISABLED_INTERRUPTING
+      )
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AGENT_INTERRUPT_COOLDOWN_MS - 1)
+      })
+      expect(result.current.promptRun.runDisabledReason).toBe(RUN_DISABLED_INTERRUPTING)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(result.current.promptRun.runDisabledReason).toBe(WORKING)
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(WORKING)
+    })
+
+    it('パネル(agentTerminal.interrupt)には中断の UI の値だけを渡す(送信の判定の値は渡さない)', () => {
+      setMode('agent-cli')
+      const { result } = renderWorkspace()
+      expect(Object.keys(result.current.agentTerminal.interrupt).sort()).toEqual([
+        'disabledReason',
+        'notice',
+        'onInterrupt',
+        'visible'
+      ])
+    })
+  })
+
   describe('送信前の確認', () => {
     // 選択中のタブ 2 が running(送り先)。タブ 1 も running
     const twoRunningTabs = (
@@ -680,6 +833,7 @@ describe('useAgentWorkspace', () => {
         text: 'hello',
         slotId: 'slot-2',
         label: 'claude 2',
+        cliKind: 'claude',
         promptId: 'p1',
         unsavedPaths: []
       })
@@ -772,7 +926,7 @@ describe('useAgentWorkspace', () => {
       // 送信が終わるまではターミナルへフォーカスを移さない(送信の前の準備の間のキー入力が claude へ直接届かないように)
       expect(tab2.controller.focus).not.toHaveBeenCalled()
       await act(async () => {
-        resolveSend({ kind: 'sent', clearedDraft: false, sentTo: null })
+        resolveSend({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' })
       })
       expect(result.current.agentTerminal.layout.isOpen).toBe(true)
       expect(selectTab).toHaveBeenCalledWith('slot-2')
@@ -822,7 +976,7 @@ describe('useAgentWorkspace', () => {
         const other = addButton()
         other.focus()
         await act(async () => {
-          resolve({ kind: 'sent', clearedDraft: false, sentTo: null })
+          resolve({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' })
         })
         expect(selectTab).not.toHaveBeenCalled()
         expect(tab1.controller.focus).not.toHaveBeenCalled()
@@ -917,6 +1071,32 @@ describe('useAgentWorkspace', () => {
           expect(button).toHaveFocus()
         }
       )
+
+      // copilot の送り先が失敗の時点で作業中・許可待ちに変わった・中断の流れの間 など、送信中が解けても実行ボタンが押せないまま
+      // のときは移さない(設計書 2026-10-22「気をつける知見」の L-157・L-408)
+      it('送信中でなくても同じプロンプトの実行ボタンが押せない(disabled)なら、そこへ移さない', async () => {
+        setMode('agent-cli')
+        mockUseAgentPromptSender.mockReturnValue(
+          makeSender({
+            send: vi.fn<AgentPromptSenderState['send']>(async () => ({
+              kind: 'failed',
+              reason: 'screen-working'
+            }))
+          })
+        )
+        const { tab1, tab2 } = twoRunningTabs()
+        setTabs([tab1, tab2], 'slot-2')
+        const button = addRunButton('p1', true)
+        // jsdom は disabled の要素へ focus() してもフォーカスを移さないため、移そうとしたこと自体を見る
+        const focus = vi.spyOn(button, 'focus')
+        const { result } = renderWorkspace()
+        await openConfirm(result)
+        await act(async () => {
+          result.current.agentSendConfirmDialog.onConfirm()
+        })
+        expect(focus).not.toHaveBeenCalled()
+        expect(document.activeElement).toBe(document.body)
+      })
 
       describe('確認を開いた時点の要素(履歴の詳細の 再実行 など)', () => {
         let opener: HTMLButtonElement | null = null
@@ -1047,7 +1227,8 @@ describe('useAgentWorkspace', () => {
         send: vi.fn<AgentPromptSenderState['send']>(async () => ({
           kind: 'sent',
           clearedDraft: false,
-          sentTo: null
+          sentTo: null,
+          cliKind: 'claude'
         }))
       })
       mockUseAgentPromptSender.mockReturnValue(sender)
@@ -1059,7 +1240,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
       })
-      expect(onSent).toHaveBeenCalledExactlyOnceWith(null)
+      expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude')
     })
 
     it('設定がオフで送信が失敗したら onSent を呼ばない', async () => {
@@ -1091,7 +1272,8 @@ describe('useAgentWorkspace', () => {
           send: vi.fn<AgentPromptSenderState['send']>(async () => ({
             kind: 'sent',
             clearedDraft: false,
-            sentTo: null
+            sentTo: null,
+            cliKind: 'claude'
           }))
         })
       )
@@ -1258,6 +1440,57 @@ describe('useAgentWorkspace', () => {
       rerender()
       expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBeNull()
       expect(result.current.agentSendConfirmDialog.pending?.label).toBe('claude 2')
+    })
+
+    // 送り先(控えたタブ 2)と選択中のタブ(1)の活動・中断の流れを変え、確認の理由が控えた送り先で決まることを固定する(L-037)
+    const twoCopilotTabs = (): { tab1: AgentSessionTabView; tab2: AgentSessionTabView } => {
+      const { tab1, tab2 } = twoRunningTabs({ cliKind: 'copilot', label: 'copilot 2' })
+      return { tab1: { ...tab1, cliKind: 'copilot', label: 'copilot 1' }, tab2 }
+    }
+    const tab2WorkingTab1Idle = (): ReadonlyMap<string, AgentActivity> =>
+      new Map<string, AgentActivity>([
+        ['slot-1', 'idle'],
+        ['slot-2', 'working']
+      ])
+
+    it('理由の活動は控えた送り先のタブの活動(開いた後に入力待ちのタブを選んでも、作業中の理由のまま)', async () => {
+      setMode('agent-cli')
+      const { tab1, tab2 } = twoCopilotTabs()
+      setTabs([tab1, tab2], 'slot-2')
+      mockUseAgentActivity.mockReturnValue(tab2WorkingTab1Idle())
+      const { result, rerender } = renderWorkspace()
+      await openConfirm(result)
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        agentSendBlockedByActivityReason('working', 'copilot')
+      )
+      setTabs([tab1, tab2], 'slot-1')
+      rerender()
+      expect(result.current.agentSendConfirmDialog.pending?.slotId).toBe('slot-2')
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        agentSendBlockedByActivityReason('working', 'copilot')
+      )
+    })
+
+    it('理由の中断の流れは控えた送り先のタブのもの(中断を押したタブへ確認を開き、別のタブを選んでも RUN_DISABLED_INTERRUPTING のまま)', async () => {
+      setMode('agent-cli')
+      const { tab1, tab2 } = twoCopilotTabs()
+      ;(tab2.controller as FakeController).screen = copilotScreen('working3000').lines
+      setTabs([tab1, tab2], 'slot-2')
+      mockUseAgentActivity.mockReturnValue(tab2WorkingTab1Idle())
+      const { result, rerender } = renderWorkspace()
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      await openConfirm(result)
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        RUN_DISABLED_INTERRUPTING
+      )
+      setTabs([tab1, tab2], 'slot-1')
+      rerender()
+      expect(result.current.agentSendConfirmDialog.pending?.slotId).toBe('slot-2')
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        RUN_DISABLED_INTERRUPTING
+      )
     })
 
     it('開いている間に設定をオフにしても閉じない(次の実行から確認しない)', async () => {
@@ -2490,14 +2723,14 @@ describe('useAgentWorkspace', () => {
       })
     }
 
-    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行・前回の続きから・このセッションで再開は copilot の理由で押せず、中断は活動の理由で押せない', async () => {
+    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行と中断は活動の理由で押せず、前回の続きから・このセッションで再開は copilot の理由で押せない', async () => {
       setCliKind('copilot')
       const { result } = renderWorkspace({ folderPath: '/p' })
       expect(result.current.agentTerminal.sessions.selected.label).toBe('copilot 1')
       await startWith(result, 'copilot')
       expect(result.current.promptRun).toMatchObject({
         isRunDisabled: true,
-        runDisabledReason: agentPromptSendUnsupportedReason('copilot')
+        runDisabledReason: agentSendBlockedByActivityReason('unknown', 'copilot')
       })
       // 段階 2a で copilot も中断の能力を持つ。活動が未判定(unknown)なので活動の理由で押せない
       expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
@@ -2511,7 +2744,7 @@ describe('useAgentWorkspace', () => {
       )
     })
 
-    it('起動の結果が copilot なら、設定が claude のままでも(別のウィンドウで変えた場合)そのタブの実行は押せない', async () => {
+    it('起動の結果が copilot なら、設定が claude のままでも(別のウィンドウで変えた場合)そのタブの実行は copilot の活動で決まる', async () => {
       setCliKind('claude')
       const { result } = renderWorkspace({ folderPath: '/p' })
       await startWith(result, 'copilot')
@@ -2520,7 +2753,7 @@ describe('useAgentWorkspace', () => {
         label: 'copilot 1'
       })
       expect(result.current.promptRun.runDisabledReason).toBe(
-        agentPromptSendUnsupportedReason('copilot')
+        agentSendBlockedByActivityReason('unknown', 'copilot')
       )
       // 再開の入口は設定の種類(claude)で決まる
       expect(result.current.agentTerminal.resumeLast.disabledReason).not.toBe(
@@ -2549,6 +2782,7 @@ describe('useAgentWorkspace', () => {
     // 共有の偽のタブの画面を書き換えるので、終わったら戻す
     let controller: FakeController | null = null
     let originalScreen: FakeController['screen'] | null = null
+    let originalWrite: FakeController['writeToSession'] | null = null
 
     beforeEach(async () => {
       const sessions =
@@ -2582,13 +2816,16 @@ describe('useAgentWorkspace', () => {
       slotId = snapshot.selectedSlotId
       controller = snapshot.tabs.find((tab) => tab.slotId === slotId)?.controller as FakeController
       originalScreen = controller.screen
+      originalWrite = controller.writeToSession
       controller.screen = copilotScreen('working3000').lines
     })
 
     afterEach(() => {
       if (controller !== null && originalScreen !== null) controller.screen = originalScreen
+      if (controller !== null && originalWrite !== null) controller.writeToSession = originalWrite
       controller = null
       originalScreen = null
+      originalWrite = null
       startSpy?.mockRestore()
       interruptSpy?.mockRestore()
       followUpSpy?.mockRestore()
@@ -2762,6 +2999,138 @@ describe('useAgentWorkspace', () => {
       expect(result.current.agentTerminal.sessions.selected.slotId).toBe(slotId)
       expect(followUpSpy).not.toHaveBeenCalled()
       await waitFor(() => expect(followUpSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot-2'))
+    })
+
+    // 送信の配線: 本物の sender(useAgentPromptSender)を使う。偽の controller の画面は、貼り付けで記録の echo の画面(atref2Paste)、
+    // \r で送った後の画面(aeInstantEnd)に変える
+    const COPILOT_TEXT = '本文\n\n- @file.txt'
+    const installRealSender = async (): Promise<void> => {
+      const sender =
+        await vi.importActual<typeof import('../useAgentPromptSender')>('../useAgentPromptSender')
+      mockUseAgentPromptSender.mockImplementation(sender.useAgentPromptSender)
+    }
+    const echoOnWrite = (target: FakeController): void => {
+      const write = target.writeToSession
+      target.writeToSession = (data) => {
+        write(data)
+        if (data.startsWith('\x1b[200~')) target.screen = copilotInputScreen('atref2Paste').lines
+        if (data === '\r') target.screen = copilotInputScreen('aeInstantEnd').lines
+      }
+    }
+    const startIdle = async (result: Rendered['result']): Promise<void> => {
+      if (controller !== null) controller.screen = copilotInputScreen('empty').lines
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() => expect(result.current.agentTerminal.activities.get(slotId)).toBe('idle'))
+    }
+
+    it('入力待ちの copilot のタブへ、実行(送信前の確認はオフ)で貼り付けと \\r を書き、送れたことを確かめて通知し、onSent に copilot を渡す', async () => {
+      await installRealSender()
+      setSendConfirmEnabled(false)
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await startIdle(result)
+      expect(result.current.promptRun).toMatchObject({
+        isRunDisabled: false,
+        runDisabledReason: null
+      })
+      if (controller === null) throw new Error('controller がありません')
+      echoOnWrite(controller)
+      const writesBefore = controller.writes.length
+      const onSent = vi.fn()
+      await act(async () => {
+        await result.current.sendToAgent(COPILOT_TEXT, { promptId: 'p1', unsavedPaths: [], onSent })
+      })
+      expect(controller.writes.slice(writesBefore)).toEqual([
+        buildAgentPasteBytes(`${COPILOT_TEXT} `),
+        '\r'
+      ])
+      expect(result.current.promptRun.agentSend?.notice?.text).toBe(AGENT_SENT_NOTICE)
+      expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'copilot')
+    })
+
+    it('画面が作業中になると実行の理由が copilot の作業中の理由になり、確認を開いた後に作業中になると確認の理由も同じになる', async () => {
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await startIdle(result)
+      await act(async () => {
+        await result.current.sendToAgent(COPILOT_TEXT, { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBeNull()
+      if (controller !== null) controller.screen = copilotScreen('working3000').lines
+      act(() => controller?.emitOutputWritten())
+      const working = agentSendBlockedByActivityReason('working', 'copilot')
+      await waitFor(() =>
+        expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(working)
+      )
+      expect(result.current.promptRun.runDisabledReason).toBe(working)
+    })
+
+    it('中断を押した直後に実行すると、sender が押した時点の中断の流れで interrupting として断り、何も書かない(isInterrupting の配線)', async () => {
+      await installRealSender()
+      setSendConfirmEnabled(false)
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(slotId)).toBe('working')
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot')
+      expect(result.current.promptRun.runDisabledReason).toBe(RUN_DISABLED_INTERRUPTING)
+      if (controller === null) throw new Error('controller がありません')
+      const writesBefore = controller.writes.length
+      let outcome: AgentPromptSendResult | undefined
+      await act(async () => {
+        outcome = await result.current.sendToAgent(COPILOT_TEXT, {
+          promptId: 'p1',
+          unsavedPaths: []
+        })
+      })
+      expect(outcome).toEqual({ kind: 'failed', reason: 'interrupting' })
+      expect(result.current.promptRun.agentSend?.error).toBe(RUN_DISABLED_INTERRUPTING)
+      expect(controller.writes.slice(writesBefore)).toEqual([])
+      // 2 回目の流れを終わらせてから抜ける(タイマーを残さない)
+      await waitFor(() => expect(followUpSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot'))
+    })
+
+    it('中断を押した同じ act の中で(再描画を挟まずに)実行しても、sender が押した時点の ref で interrupting として断る(描画の state でなく ref を見る)', async () => {
+      await installRealSender()
+      setSendConfirmEnabled(false)
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(slotId)).toBe('working')
+      )
+      if (controller === null) throw new Error('controller がありません')
+      const writesBefore = controller.writes.length
+      // 押す前の描画の値を控え、再描画の後の値を使わない(描画の上では作業中の理由のままで、中断の流れの理由ではない)
+      const { onInterrupt } = result.current.agentTerminal.interrupt
+      const { sendToAgent } = result.current
+      expect(result.current.promptRun.runDisabledReason).toBe(
+        agentSendBlockedByActivityReason('working', 'copilot')
+      )
+      let outcome: AgentPromptSendResult | undefined
+      await act(async () => {
+        onInterrupt()
+        outcome = await sendToAgent(COPILOT_TEXT, { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot')
+      expect(outcome).toEqual({ kind: 'failed', reason: 'interrupting' })
+      expect(result.current.promptRun.agentSend?.error).toBe(RUN_DISABLED_INTERRUPTING)
+      expect(controller.writes.slice(writesBefore)).toEqual([])
+      // 2 回目の流れを終わらせてから抜ける(タイマーを残さない)
+      await waitFor(() => expect(followUpSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot'))
+      // sender へ渡す関数は参照が安定(ref から引く)ので、中断の流れの間の再描画をまたいでも送信の関数は同じ参照
+      // (usePromptRunner の useCallback の依存を壊さない)
+      expect(result.current.sendToAgent).toBe(sendToAgent)
     })
   })
 })

@@ -40,7 +40,7 @@ const openFolder = async (): Promise<HTMLElement> => {
 const prompt: Prompt = { id: 'p1', title: '要約', content: '要約して', createdAt: 1000000 }
 
 // 選択中のタブの偽の controller を空の入力欄の claude の画面にする(共有の prepareClaudeScreen。useAgentPromptSender.test と同じ流儀)。
-// 本物の sendAgentPrompt がこの画面を読んで Enter まで送る。上書きの前に戻す restore を控え、afterEach(restoreControllerState)で戻す
+// 本物の sendClaudePrompt がこの画面を読んで Enter まで送る。上書きの前に戻す restore を控え、afterEach(restoreControllerState)で戻す
 let restoreControllerState: (() => void) | null = null
 const prepareClaudeScreen = (): FakeController => {
   const { controller, restore } = prepareClaudeScreenOf(getAgentSessionTabs())

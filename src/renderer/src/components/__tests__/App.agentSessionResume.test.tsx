@@ -16,7 +16,7 @@ import { getAgentSessionTabs } from '../../lib/xtermFactory'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { prepareClaudeScreen as prepareClaudeScreenOf } from '../../__tests__/prepareClaudeScreen'
 import {
-  AGENT_SEND_FAILURE_MESSAGES,
+  agentSendFailureMessage,
   PROMPT_RUN_ARIA_LABEL_AGENT,
   rerunDisabledAgentEntryFolderMismatch
 } from '../../lib/agentSendMessages'
@@ -179,7 +179,7 @@ describe('App: セッションの再開と履歴の配線', () => {
     // 偽の controller の画面は空(入力欄が無い)のまま送るため、送信は失敗する
     const dialog = await screen.findByRole('dialog', { name: '送信前の確認' })
     await userEvent.click(within(dialog).getByRole('button', { name: '送信' }))
-    const message = AGENT_SEND_FAILURE_MESSAGES['input-not-found']
+    const message = agentSendFailureMessage('input-not-found', 'claude')
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(message)
     // 読み上げの領域はパネルの外(Sidebar の常設)。alert・送信の結果の status は全体で 1 つずつ

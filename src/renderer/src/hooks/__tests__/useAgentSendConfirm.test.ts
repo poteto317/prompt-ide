@@ -30,7 +30,12 @@ const tab2 = {
   describeSession: vi.fn((): AgentHistoryInfo | null => null)
 }
 
-const SENT: AgentPromptSendResult = { kind: 'sent', clearedDraft: false, sentTo: null }
+const SENT: AgentPromptSendResult = {
+  kind: 'sent',
+  clearedDraft: false,
+  sentTo: null,
+  cliKind: 'claude'
+}
 
 // request の第 2 引数(送る元のプロンプト・未保存の一覧)
 const opts = (promptId: string | null, unsavedPaths: readonly string[] = []): AgentSendOptions => ({
@@ -304,7 +309,8 @@ describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
     const send = vi.fn<UseAgentSendConfirmOptions['send']>(async () => ({
       kind: 'sent',
       clearedDraft: false,
-      sentTo: SENT_TO_1
+      sentTo: SENT_TO_1,
+      cliKind: 'claude'
     }))
     const onSent = vi.fn()
     const { result, rerender, onSendSettled } = renderConfirm({ send })
@@ -314,7 +320,7 @@ describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
     act(() => result.current.confirm())
     await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
     expect(send.mock.calls[0][1].describeSession).toBe(tab1.describeSession)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1, 'claude')
   })
 
   it('確認を開いた時点の送り先の cliKind を控え、開いた後に選択中のタブが変わっても控えた値で送る', async () => {

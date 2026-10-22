@@ -10,7 +10,7 @@ import { useLatestRef } from './useLatestRef'
 // 知らせを呼ぶ。確認を開くか・すぐ送るかの判断と、閉じる契機(方式・フォルダ・タブ)は呼び出し側(useAgentWorkspace)が持つ
 
 export interface PendingAgentSend extends AgentSendOptions {
-  /** 送る全文(正規化の前。送るときに sendAgentPrompt が正規化する) */
+  /** 送る全文(正規化の前。送るときに送信の手順が正規化する) */
   text: string
   /** 開いた時点の選択中のタブ(送り先) */
   target: AgentSendTarget

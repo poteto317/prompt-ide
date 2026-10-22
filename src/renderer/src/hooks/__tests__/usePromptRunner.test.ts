@@ -239,7 +239,7 @@ describe('usePromptRunner: 実行方式', () => {
     )
     // 足したファイルを外すのは送れたときだけ(押した時点の写しを渡す。L-407)
     expect(agentReferences.markSent).not.toHaveBeenCalled()
-    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO)
+    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO, 'claude')
     expect(agentReferences.markSent).toHaveBeenCalledExactlyOnceWith(prepared)
   })
 
@@ -312,7 +312,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
   it('送れたら(onSent)、送った全文(参照を含む)と控えた送り先を status: sent で記録する', async () => {
     const { onSent, addHistoryEntry } = await runAndTakeOnSent()
     expect(addHistoryEntry).not.toHaveBeenCalled()
-    onSent(SENT_TO)
+    onSent(SENT_TO, 'claude')
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith({
       promptId: 'p1',
       promptTitle: 'プロンプトタイトル',
@@ -327,13 +327,22 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     })
   })
 
-  it('送り先を控えられなかった(null)ときは、参照の後始末だけ行い、記録を省いてログに残す', async () => {
+  it('claude の送り先で送り先を控えられなかった(null)ときは、参照の後始末だけ行い、記録を省いてログに残す', async () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
-    onSent(null)
+    onSent(null, 'claude')
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
     expect(addHistoryEntry).not.toHaveBeenCalled()
     expect(consoleErrorSpy).toHaveBeenCalled()
+  })
+
+  it('会話の ID を持たない種類(copilot。sessionResume が偽)の送り先で送れたときは、参照の後始末だけ行い、記録もログもしない(段階 3 で記録する)', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
+    onSent(null, 'copilot')
+    expect(agentReferences.markSent).toHaveBeenCalledOnce()
+    expect(addHistoryEntry).not.toHaveBeenCalled()
+    expect(consoleErrorSpy).not.toHaveBeenCalled()
   })
 
   it('参照の後始末が投げても記録し、記録が投げても参照の後始末は済んでいる(段ごとに別の try。L-053)', async () => {
@@ -345,7 +354,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
         })
       })
     })
-    expect(() => first.onSent(SENT_TO)).not.toThrow()
+    expect(() => first.onSent(SENT_TO, 'claude')).not.toThrow()
     expect(first.addHistoryEntry).toHaveBeenCalledOnce()
 
     const addHistoryEntry = vi.fn<AddHistoryEntry>(() => {
@@ -353,7 +362,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     })
     const agentReferences = makeAgentReferencesState()
     const second = await runAndTakeOnSent({ addHistoryEntry, agentReferences })
-    expect(() => second.onSent(SENT_TO)).not.toThrow()
+    expect(() => second.onSent(SENT_TO, 'claude')).not.toThrow()
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
   })
 })
@@ -399,7 +408,7 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
       claudeSessionId: '22222222-2222-4222-9222-222222222222',
       tabLabel: 'claude 1'
     }
-    sendToAgent.mock.calls[0][1].onSent?.(resent)
+    sendToAgent.mock.calls[0][1].onSent?.(resent, 'claude')
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         promptId: 'p2',
@@ -410,6 +419,33 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
       })
     )
     expect(agentReferences.markSent).not.toHaveBeenCalled()
+  })
+
+  it('copilot のタブへ再実行して送れたとき(sentTo が null)は、記録もログもしない', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const addHistoryEntry = vi.fn()
+      const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+        async () => undefined
+      )
+      const { result } = renderHook(() =>
+        usePromptRunner({
+          openFile,
+          folderPath: '/repo',
+          executePrompt: vi.fn(),
+          addHistoryEntry,
+          executionMode: 'agent-cli',
+          sendToAgent,
+          agentReferences: makeAgentReferencesState()
+        })
+      )
+      await result.current.rerunHistoryEntry(agentEntry)
+      sendToAgent.mock.calls[0][1].onSent?.(null, 'copilot')
+      expect(addHistoryEntry).not.toHaveBeenCalled()
+      expect(consoleError).not.toHaveBeenCalled()
+    } finally {
+      consoleError.mockRestore()
+    }
   })
 
   it('従来の方式ではエージェントのエントリを再実行しない(処理の側の守り。L-058)', async () => {

@@ -12,7 +12,7 @@ export function isAgentCliKind(value: unknown): value is AgentCliKind {
 
 /** CLI ごとに、アプリの機能が使えるか(claude の画面・引数・hooks に依存する機能) */
 export interface AgentCliCapabilities {
-  /** 実行ボタン・履歴の再実行・送信前の確認からの送信(入力欄の判定・消去・貼り付け) */
+  /** 実行ボタン・履歴の再実行・送信前の確認からの送信(入力欄の判定・貼り付け)。押せる条件と手順は renderer の agentPromptSendSpecs.ts */
   promptSend: boolean
   /** 画面からの活動の判定と、それに基づく表示・完了と許可待ちの通知・変更の一覧の自動の取り直し */
   screenActivity: boolean
@@ -49,7 +49,7 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
     displayName: 'GitHub Copilot CLI',
     commandName: 'copilot',
     capabilities: {
-      promptSend: false,
+      promptSend: true,
       screenActivity: true,
       interrupt: true,
       changeAttribution: false,

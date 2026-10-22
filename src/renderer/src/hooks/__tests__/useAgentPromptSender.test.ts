@@ -1,25 +1,54 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, vi, afterEach } from 'vitest'
-import { AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 段階 2b で copilot も送信に対応したため、送信に対応しない種類の理由は能力の表を差し替えて確かめる
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+  })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
+import { AGENT_CLEAR_INPUT_CHUNK, buildAgentPasteBytes } from '@shared/agentPasteText'
 import { AGENT_BEFORE_SEND_TIMEOUT_MS, useAgentPromptSender } from '../useAgentPromptSender'
 import type { AgentHistoryInfo } from '@shared/types'
 import type { AgentPromptSendResult, AgentSendClock } from '../../lib/agentPromptSend'
 import {
   AGENT_SENT_AFTER_CLEAR_NOTICE,
   AGENT_SENT_NOTICE,
-  agentPromptSendUnsupportedReason
+  RUN_DISABLED_INTERRUPTING,
+  agentPromptSendUnsupportedReason,
+  agentSendBlockedByActivityReason
 } from '../../lib/agentSendMessages'
 import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
+import { copilotInputScreen } from '../../lib/__tests__/fixtures/copilotInputScreens'
+import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
 import { toAnnouncementText } from '../../lib/announcementText'
 
 afterEach(() => {
   vi.useRealTimers()
+  capabilityOverrides.promptSendUnsupportedKinds.clear()
 })
 
 // 仮想の時計(sleep で時間を進めるだけ)
 // 送り先の claude のセッションを控えない(送信の手順だけを確かめるテスト用)
 const noSession = (): AgentHistoryInfo | null => null
+// 中断の流れの外(送信の守りを通す。中断の流れの間のテストだけが真を返す関数を渡す)
+const notInterrupting = (): boolean => false
 
 const clock: AgentSendClock = (() => {
   let now = 0
@@ -44,7 +73,9 @@ describe('useAgentPromptSender', () => {
   it('送信の間は利用者の入力を溜め、成功を通知し、パネルを開く', async () => {
     const controller = controllerWithEmptyInput()
     const onSettled = vi.fn()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, clock })
+    )
     await act(async () => {
       await result.current.send('hello', {
         slotId: 'a',
@@ -74,7 +105,9 @@ describe('useAgentPromptSender', () => {
       heldAtWrite.push(holding)
       write(data)
     }
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
     await act(async () => {
       await result.current.send('hello', {
         slotId: 'a',
@@ -90,7 +123,9 @@ describe('useAgentPromptSender', () => {
   it('失敗の理由の文言を出し、パネルを開く。送らなかったときも入力の保留を解く', async () => {
     const controller = makeFakeController()
     const onSettled = vi.fn()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, clock })
+    )
     await act(async () => {
       await result.current.send('hello', {
         slotId: 'a',
@@ -108,7 +143,9 @@ describe('useAgentPromptSender', () => {
 
   it('clearResult は前の送信の失敗の文言と成功の通知を消す', async () => {
     const failing = makeFakeController()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
     await act(async () => {
       await result.current.send('hello', {
         slotId: 'a',
@@ -143,7 +180,9 @@ describe('useAgentPromptSender', () => {
         controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
       write(data)
     }
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
     await act(async () => {
       await result.current.send('p', {
         slotId: 'a',
@@ -162,7 +201,9 @@ describe('useAgentPromptSender', () => {
       throw new Error('IPC closed')
     }
     const onSettled = vi.fn()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled, clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, clock })
+    )
     await act(async () => {
       await expect(
         result.current.send('hello', {
@@ -198,7 +239,11 @@ describe('useAgentPromptSender', () => {
       sleep: () => new Promise<void>((resolve) => (release = resolve))
     }
     const { result } = renderHook(() =>
-      useAgentPromptSender({ onSettled: vi.fn(), clock: slowClock })
+      useAgentPromptSender({
+        isInterrupting: notInterrupting,
+        onSettled: vi.fn(),
+        clock: slowClock
+      })
     )
     let first: Promise<unknown> = Promise.resolve()
     act(() => {
@@ -240,7 +285,11 @@ describe('useAgentPromptSender', () => {
       sleep: () => new Promise<void>((resolve) => (release = resolve))
     }
     const { result } = renderHook(() =>
-      useAgentPromptSender({ onSettled: vi.fn(), clock: slowClock })
+      useAgentPromptSender({
+        isInterrupting: notInterrupting,
+        onSettled: vi.fn(),
+        clock: slowClock
+      })
     )
     expect(result.current.sendingSlotId).toBeNull()
     let first: Promise<unknown> = Promise.resolve()
@@ -301,7 +350,12 @@ describe('useAgentPromptSender', () => {
       let finishPreparation: () => void = () => undefined
       const beforeSend = vi.fn(() => new Promise<void>((resolve) => (finishPreparation = resolve)))
       const { result } = renderHook(() =>
-        useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: testClock })
+        useAgentPromptSender({
+          isInterrupting: notInterrupting,
+          onSettled: vi.fn(),
+          beforeSend,
+          clock: testClock
+        })
       )
       let sending: Promise<unknown> = Promise.resolve()
       act(() => {
@@ -329,7 +383,12 @@ describe('useAgentPromptSender', () => {
         throw new Error('begin failed')
       })
       const { result } = renderHook(() =>
-        useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
+        useAgentPromptSender({
+          isInterrupting: notInterrupting,
+          onSettled: vi.fn(),
+          beforeSend,
+          clock: timeoutClock()
+        })
       )
       await act(async () => {
         await result.current.send('hello', {
@@ -349,7 +408,12 @@ describe('useAgentPromptSender', () => {
         throw new Error('sync failure')
       })
       const { result } = renderHook(() =>
-        useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: timeoutClock() })
+        useAgentPromptSender({
+          isInterrupting: notInterrupting,
+          onSettled: vi.fn(),
+          beforeSend,
+          clock: timeoutClock()
+        })
       )
       await act(async () => {
         await result.current.send('a', {
@@ -369,7 +433,12 @@ describe('useAgentPromptSender', () => {
       const testClock = timeoutClock()
       const beforeSend = vi.fn(() => new Promise<void>(() => undefined))
       const { result } = renderHook(() =>
-        useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock: testClock })
+        useAgentPromptSender({
+          isInterrupting: notInterrupting,
+          onSettled: vi.fn(),
+          beforeSend,
+          clock: testClock
+        })
       )
       let sending: Promise<unknown> = Promise.resolve()
       act(() => {
@@ -411,7 +480,12 @@ describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
       order.push('before')
     })
     const { result } = renderHook(() =>
-      useAgentPromptSender({ onSettled: vi.fn(), beforeSend, clock })
+      useAgentPromptSender({
+        isInterrupting: notInterrupting,
+        onSettled: vi.fn(),
+        beforeSend,
+        clock
+      })
     )
     let outcome: AgentPromptSendResult | undefined = undefined
     await act(async () => {
@@ -424,12 +498,19 @@ describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
     })
     expect(order).toEqual(['before', 'describe', 'begin'])
     expect(describeSession).toHaveBeenCalledOnce()
-    expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: SENT_TO })
+    expect(outcome).toEqual({
+      kind: 'sent',
+      clearedDraft: false,
+      sentTo: SENT_TO,
+      cliKind: 'claude'
+    })
   })
 
   it('送れなかったときは結果に sentTo を載せない', async () => {
     const controller = makeFakeController()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
     let outcome: AgentPromptSendResult | undefined = undefined
     await act(async () => {
       outcome = await result.current.send('hello', {
@@ -446,7 +527,9 @@ describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     try {
       const controller = controllerWithEmptyInput()
-      const { result } = renderHook(() => useAgentPromptSender({ onSettled: vi.fn(), clock }))
+      const { result } = renderHook(() =>
+        useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+      )
       let outcome: AgentPromptSendResult | undefined = undefined
       await act(async () => {
         outcome = await result.current.send('hello', {
@@ -458,7 +541,12 @@ describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
           cliKind: 'claude'
         })
       })
-      expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: null })
+      expect(outcome).toEqual({
+        kind: 'sent',
+        clearedDraft: false,
+        sentTo: null,
+        cliKind: 'claude'
+      })
       expect(consoleErrorSpy).toHaveBeenCalled()
     } finally {
       consoleErrorSpy.mockRestore()
@@ -466,13 +554,19 @@ describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
   })
 })
 
-describe('useAgentPromptSender: 送信に対応しない CLI(copilot)の送り先', () => {
+describe('useAgentPromptSender: 送信に対応しない CLI(能力の表で送信を偽にした copilot)の送り先', () => {
+  beforeEach(() => {
+    capabilityOverrides.promptSendUnsupportedKinds.add('copilot')
+  })
+
   it('準備・送り先の控え・入力の保留・書き込みをどれもせず unsupported-cli で失敗し、実行ボタンの理由と同じ文言を出す(L-058)', async () => {
     const controller = controllerWithEmptyInput()
     const beforeSend = vi.fn(async () => undefined)
     const describeSession = vi.fn(noSession)
     const onSettled = vi.fn()
-    const { result } = renderHook(() => useAgentPromptSender({ onSettled, beforeSend, clock }))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, beforeSend, clock })
+    )
     let outcome: AgentPromptSendResult | undefined
     await act(async () => {
       outcome = await result.current.send('hello', {
@@ -491,5 +585,134 @@ describe('useAgentPromptSender: 送信に対応しない CLI(copilot)の送り�
     expect(result.current.isSending).toBe(false)
     expect(result.current.sendingSlotId).toBeNull()
     expect(onSettled).toHaveBeenCalledOnce()
+  })
+})
+
+// copilot の入力欄の偽の controller。空の入力欄から始め、貼り付けを書き込むと記録の echo の画面(atref2Paste)、\r で空の入力欄
+// (atref2Enter1)にする。本文は記録で貼った '本文\n\n- @file.txt'(末尾の @ の語なので、空白を 1 つ足して貼る)
+const COPILOT_TEXT = '本文\n\n- @file.txt'
+function copilotController(): ReturnType<typeof makeFakeController> {
+  const controller = makeFakeController()
+  controller.screen = copilotInputScreen('empty').lines
+  const original = controller.writeToSession
+  controller.writeToSession = (data) => {
+    original(data)
+    if (data.startsWith('\x1b[200~')) controller.screen = copilotInputScreen('atref2Paste').lines
+    if (data === '\r') controller.screen = copilotInputScreen('atref2Enter1').lines
+  }
+  return controller
+}
+
+describe('useAgentPromptSender: copilot の送り先(表の copilot の手順)', () => {
+  it('表の copilot の手順を通り、貼り付けと \\r だけを書いて sent になり、結果に送り先の種類を載せる', async () => {
+    const controller = copilotController()
+    const onSettled = vi.fn()
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, clock })
+    )
+    let outcome: AgentPromptSendResult | undefined
+    await act(async () => {
+      outcome = await result.current.send(COPILOT_TEXT, {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'copilot'
+      })
+    })
+    expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'copilot' })
+    expect(controller.writes).toEqual([buildAgentPasteBytes(`${COPILOT_TEXT} `), '\r'])
+    expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_NOTICE)
+    expect(controller.beginSending).toHaveBeenCalledOnce()
+    expect(controller.endSending).toHaveBeenCalledOnce()
+    expect(onSettled).toHaveBeenCalledOnce()
+  })
+
+  it('そのタブが中断の流れの間なら、準備・送り先の控え・入力の保留・書き込みをどれもせず interrupting で断り、押せない理由と同じ文言を出す', async () => {
+    const controller = copilotController()
+    const beforeSend = vi.fn(async () => undefined)
+    const describeSession = vi.fn(noSession)
+    const isInterrupting = vi.fn((slotId: string) => slotId === 'a')
+    const onSettled = vi.fn()
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting, onSettled, beforeSend, clock })
+    )
+    let outcome: AgentPromptSendResult | undefined
+    await act(async () => {
+      outcome = await result.current.send(COPILOT_TEXT, {
+        slotId: 'a',
+        controller,
+        describeSession,
+        cliKind: 'copilot'
+      })
+    })
+    expect(outcome).toEqual({ kind: 'failed', reason: 'interrupting' })
+    expect(isInterrupting).toHaveBeenCalledWith('a')
+    expect(beforeSend).not.toHaveBeenCalled()
+    expect(describeSession).not.toHaveBeenCalled()
+    expect(controller.beginSending).not.toHaveBeenCalled()
+    expect(controller.writes).toEqual([])
+    expect(result.current.error).toBe(RUN_DISABLED_INTERRUPTING)
+    expect(result.current.isSending).toBe(false)
+    expect(onSettled).toHaveBeenCalledOnce()
+  })
+
+  it('中断の流れの間で断るときは、前の送信の成功の通知を消す(成功の通知と失敗の文言を同時に出さない)', async () => {
+    const controller = copilotController()
+    let interrupting = false
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: () => interrupting, onSettled: vi.fn(), clock })
+    )
+    const target = {
+      slotId: 'a',
+      controller,
+      describeSession: noSession,
+      cliKind: 'copilot' as const
+    }
+    await act(async () => {
+      await result.current.send(COPILOT_TEXT, target)
+    })
+    expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_NOTICE)
+    interrupting = true
+    await act(async () => {
+      await result.current.send(COPILOT_TEXT, target)
+    })
+    expect(result.current.error).toBe(RUN_DISABLED_INTERRUPTING)
+    expect(result.current.notice).toBeNull()
+  })
+
+  it('claude の送り先は、中断の流れの間でも今までどおり送る(requiresIdle: false)', async () => {
+    const controller = controllerWithEmptyInput()
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: () => true, onSettled: vi.fn(), clock })
+    )
+    let outcome: AgentPromptSendResult | undefined
+    await act(async () => {
+      outcome = await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'claude'
+      })
+    })
+    expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' })
+    expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+  })
+
+  it('copilot の失敗は copilot の文言で出す(押した時点の画面が作業中なら、押せない理由と同じ文で何も書かない)', async () => {
+    const controller = makeFakeController()
+    controller.screen = copilotScreen('working3000').lines
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send(COPILOT_TEXT, {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'copilot'
+      })
+    })
+    expect(result.current.error).toBe(agentSendBlockedByActivityReason('working', 'copilot'))
+    expect(controller.writes).toEqual([])
   })
 })

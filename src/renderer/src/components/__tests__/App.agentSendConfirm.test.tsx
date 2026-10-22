@@ -38,6 +38,7 @@ describe('App: 送信前の確認の配線', () => {
             text: '本文',
             slotId: 'slot-1',
             label: 'claude 1',
+            cliKind: 'claude',
             promptId: 'p1',
             unsavedPaths: []
           },
@@ -64,6 +65,7 @@ describe('App: 送信前の確認の配線', () => {
             text: '本文',
             slotId: 'slot-1',
             label: 'claude 1',
+            cliKind: 'claude',
             promptId: 'p1',
             unsavedPaths: []
           },

@@ -2,8 +2,8 @@ import type { AgentSessionTabs } from '../lib/agentSessionTabs'
 import { makeLine } from '../lib/__tests__/fixtures/agentScreens'
 import type { FakeController } from './makeFakeAgentTerminal'
 
-// App の配線のテスト(本物の sendAgentPrompt を通す)で、選択中のタブの偽の controller(xterm の境界)を、空の入力欄の claude の
-// 画面にする。貼り付けを書き込むと本文の 1 行目が入力欄に出るので、sendAgentPrompt がこの画面を読んで Enter まで送る。
+// App の配線のテスト(本物の sendClaudePrompt を通す)で、選択中のタブの偽の controller(xterm の境界)を、空の入力欄の claude の
+// 画面にする。貼り付けを書き込むと本文の 1 行目が入力欄に出るので、sendClaudePrompt がこの画面を読んで Enter まで送る。
 // タブの置き場(makeFakeAgentSessionTabs)はテストファイルで共有しているため、上書きする前の writeToSession・viewport・
 // sessionId・writes を控えて戻す restore を返す(afterEach で呼ぶ)
 

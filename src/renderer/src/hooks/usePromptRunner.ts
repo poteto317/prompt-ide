@@ -1,4 +1,6 @@
 import { useCallback } from 'react'
+import { agentCliCapabilities } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import type { HistoryEntry, OpenFile, Prompt, PromptToolId } from '../types'
 import type { ExecutionContext, PromptExecutionState } from './usePromptExecution'
@@ -52,11 +54,20 @@ export function usePromptRunner({
   )
 
   // エージェント CLI 方式で送れたときの記録(結果の文章は記録しない)。送り先(sentTo)は送信の手順を始める時点に控えた値。
-  // 控えられなかった(null。ありえない想定)ときは記録を省いてログに残す。記録が投げても呼び出し元(参照の後始末)を止めない
+  // 会話の ID を持たない種類(copilot。能力の表の sessionResume が偽)は送り先を控えられないのが常なので、黙って記録を省く(copilot へ
+  // 送ったプロンプトの履歴への記録は段階 3)。会話の ID を持つ種類(claude)で控えられなかった(ありえない想定)ときだけログに残す。
+  // 記録が投げても呼び出し元(参照の後始末)を止めない
   const recordAgentSent = useCallback(
-    (context: ExecutionContext, text: string, sentTo: AgentHistoryInfo | null): void => {
+    (
+      context: ExecutionContext,
+      text: string,
+      sentTo: AgentHistoryInfo | null,
+      cliKind: AgentCliKind
+    ): void => {
       if (sentTo === null) {
-        console.error('[usePromptRunner] 送り先のセッションが分からないため、履歴に記録しません')
+        if (agentCliCapabilities(cliKind).sessionResume) {
+          console.error('[usePromptRunner] 送り先のセッションが分からないため、履歴に記録しません')
+        }
         return
       }
       try {
@@ -76,14 +87,14 @@ export function usePromptRunner({
         // 足したファイルは、送れたときだけ、この写しの分を外す(確認のキャンセル・送信の失敗では外さない。L-407)
         const prepared = prepareAgentReferences()
         const context: ExecutionContext = { promptId: prompt.id, promptTitle: prompt.title }
-        const request = buildAgentPromptRequest(content, prompt.id, prepared, (sentTo) => {
+        const request = buildAgentPromptRequest(content, prompt.id, prepared, (sentTo, cliKind) => {
           // 参照の後始末と履歴の記録は段ごとに別の try で包み、片方が投げてももう片方を止めない(L-053)
           try {
             markAgentReferencesSent(prepared)
           } catch (err) {
             console.error('[usePromptRunner] markSent failed:', err)
           }
-          recordAgentSent(context, request.text, sentTo)
+          recordAgentSent(context, request.text, sentTo, cliKind)
         })
         await sendToAgent(request.text, request.options)
         return
@@ -119,7 +130,8 @@ export function usePromptRunner({
           promptId: entry.promptId,
           // 記録した全文をそのまま送る。全文から参照を解析し直すのは脆いので、未保存の注意は出さない(既知の制約。設計書の「既知の制約」)
           unsavedPaths: [],
-          onSent: (sentTo) => recordAgentSent(context, entry.promptContent, sentTo)
+          onSent: (sentTo, cliKind) =>
+            recordAgentSent(context, entry.promptContent, sentTo, cliKind)
         })
         return
       }

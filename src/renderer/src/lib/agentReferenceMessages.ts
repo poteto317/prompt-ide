@@ -42,6 +42,6 @@ export const formatAgentReferenceAlreadyAddedAnnouncement = (label: string): str
 /** エクスプローラから足したファイルを外すボタンの名前 */
 export const formatAgentReferenceRemoveLabel = (label: string): string => `${label} を参照から外す`
 
-/** 送信前の確認のダイアログの未保存の注意(パスは表示用の相対パス) */
-export const formatAgentUnsavedNotice = (paths: readonly string[]): string =>
-  `未保存の変更があるファイルは、保存するまで claude に見えません: ${paths.join('、')}`
+/** 送信前の確認のダイアログの未保存の注意(パスは表示用の相対パス。CLI の名前は送り先の種類のコマンド名) */
+export const formatAgentUnsavedNotice = (paths: readonly string[], commandName: string): string =>
+  `未保存の変更があるファイルは、保存するまで ${commandName} に見えません: ${paths.join('、')}`

@@ -23,7 +23,7 @@ describe('normalizeAgentPrompt', () => {
     ['先頭が改行の「!」は通す', '\n!echo', '\n!echo'],
     ['先頭が「/」は通す', '/help', '/help']
   ])('%s', (_label, raw, expected) => {
-    expect(normalizeAgentPrompt(raw)).toEqual({ kind: 'ok', text: expected })
+    expect(normalizeAgentPrompt(raw, 'claude')).toEqual({ kind: 'ok', text: expected })
   })
 
   it.each([
@@ -31,12 +31,12 @@ describe('normalizeAgentPrompt', () => {
     ['空白と改行だけ', ' \n\t\r\n '],
     ['制御文字を除くと空白だけ', '\x1b\x07 ']
   ])('%s は empty で拒否する', (_label, raw) => {
-    expect(normalizeAgentPrompt(raw)).toEqual({ kind: 'rejected', reason: 'empty' })
+    expect(normalizeAgentPrompt(raw, 'claude')).toEqual({ kind: 'rejected', reason: 'empty' })
   })
 
   it('上限ちょうどは通し、1 文字超えると too-long で拒否する', () => {
-    expect(normalizeAgentPrompt('a'.repeat(AGENT_PROMPT_MAX_LENGTH)).kind).toBe('ok')
-    expect(normalizeAgentPrompt('a'.repeat(AGENT_PROMPT_MAX_LENGTH + 1))).toEqual({
+    expect(normalizeAgentPrompt('a'.repeat(AGENT_PROMPT_MAX_LENGTH), 'claude').kind).toBe('ok')
+    expect(normalizeAgentPrompt('a'.repeat(AGENT_PROMPT_MAX_LENGTH + 1), 'claude')).toEqual({
       kind: 'rejected',
       reason: 'too-long'
     })
@@ -44,15 +44,67 @@ describe('normalizeAgentPrompt', () => {
 
   it('上限は正規化の後の長さで数える(\\r\\n は 1 文字になる)', () => {
     const raw = 'a'.repeat(AGENT_PROMPT_MAX_LENGTH - 1) + '\r\n'
-    expect(normalizeAgentPrompt(raw).kind).toBe('ok')
+    expect(normalizeAgentPrompt(raw, 'claude').kind).toBe('ok')
   })
 
   it('1 文字目が「!」なら leading-bang で拒否する', () => {
-    expect(normalizeAgentPrompt('!echo hi')).toEqual({ kind: 'rejected', reason: 'leading-bang' })
+    expect(normalizeAgentPrompt('!echo hi', 'claude')).toEqual({
+      kind: 'rejected',
+      reason: 'leading-bang'
+    })
   })
 
   it('制御文字を除いた後の 1 文字目が「!」でも拒否する', () => {
-    expect(normalizeAgentPrompt('\x1b!rm')).toEqual({ kind: 'rejected', reason: 'leading-bang' })
+    expect(normalizeAgentPrompt('\x1b!rm', 'claude')).toEqual({
+      kind: 'rejected',
+      reason: 'leading-bang'
+    })
+  })
+})
+
+describe('normalizeAgentPrompt(種類ごとの規則。AGENT_PROMPT_TEXT_RULES)', () => {
+  it.each([
+    ['先頭が「!」', '!ls', 'leading-bang'],
+    ['先頭が「/」', '/help', 'leading-slash'],
+    ['先頭の空白の後の「!」', '  !ls', 'leading-bang'],
+    ['先頭の空白の後の「/」', '  /help', 'leading-slash'],
+    // 先頭の改行・タブも空白として除く(記録していない形は送る側に倒さない)
+    ['先頭の改行・タブの後の「/」', '\n\t/help', 'leading-slash'],
+    ['先頭の改行の後の「!」', '\n!ls', 'leading-bang'],
+    ['制御文字を除いた後に先頭へ来る「!」(L-083)', '\x1b!ls', 'leading-bang']
+  ] as const)('copilot: %s は断る', (_label, raw, reason) => {
+    expect(normalizeAgentPrompt(raw, 'copilot')).toEqual({ kind: 'rejected', reason })
+  })
+
+  it.each([
+    'x!ls',
+    'run /help',
+    '?why',
+    '# heading',
+    'fix #12',
+    'say hi!',
+    'look at @file',
+    '@',
+    '本文\n\n参照:\n- @src/app.ts'
+  ])('copilot: %j は通す(行の途中の !・/、末尾の @ の語は断らない)', (raw) => {
+    expect(normalizeAgentPrompt(raw, 'copilot')).toEqual({ kind: 'ok', text: raw })
+  })
+
+  it('claude は今までどおり 1 文字目の「!」だけを断り、「/」・先頭の空白の後の「!」は通す', () => {
+    expect(normalizeAgentPrompt('/help', 'claude')).toEqual({ kind: 'ok', text: '/help' })
+    expect(normalizeAgentPrompt('  !ls', 'claude')).toEqual({ kind: 'ok', text: '  !ls' })
+    expect(normalizeAgentPrompt('!ls', 'claude')).toEqual({
+      kind: 'rejected',
+      reason: 'leading-bang'
+    })
+  })
+
+  it('判定の順は 空 → 長すぎる → 種類の規則(先頭が「/」でも空白だけ・長すぎるならそちら)', () => {
+    expect(normalizeAgentPrompt('  \n', 'copilot')).toEqual({ kind: 'rejected', reason: 'empty' })
+    expect(normalizeAgentPrompt('/' + 'a'.repeat(AGENT_PROMPT_MAX_LENGTH), 'copilot')).toEqual({
+      kind: 'rejected',
+      reason: 'too-long'
+    })
   })
 })
 
@@ -80,6 +132,9 @@ describe('cleanAgentPromptText', () => {
 
   it('normalizeAgentPrompt が ok のときの text と同じ', () => {
     const raw = 'line1\r\nline2\x07'
-    expect(normalizeAgentPrompt(raw)).toEqual({ kind: 'ok', text: cleanAgentPromptText(raw) })
+    expect(normalizeAgentPrompt(raw, 'claude')).toEqual({
+      kind: 'ok',
+      text: cleanAgentPromptText(raw)
+    })
   })
 })

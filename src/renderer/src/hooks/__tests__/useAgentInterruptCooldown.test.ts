@@ -63,6 +63,37 @@ describe('useAgentInterruptCooldown', () => {
     expect(result.current.isPending('slot-1')).toBe(false)
   })
 
+  it('isPendingNow(押した処理用)は isPending(描画用)と同じ間だけ真で、begin の直後から同期で読める', () => {
+    const { result } = renderHook(() => useAgentInterruptCooldown())
+    const { isPendingNow } = result.current
+    expect(isPendingNow('slot-1')).toBe(false)
+    act(() => {
+      result.current.begin('slot-1')
+      // 同じ同期の処理の中で読める(描画を待たない)
+      expect(result.current.isPendingNow('slot-1')).toBe(true)
+    })
+    expect(result.current.isPendingNow('slot-2')).toBe(false)
+    // 結果が AGENT_INTERRUPT_COOLDOWN_MS を超えて届かない間も、isPending と同じく真のまま(isInFlight を合わせている)
+    act(() => {
+      vi.advanceTimersByTime(AGENT_INTERRUPT_COOLDOWN_MS + 500)
+    })
+    expect(result.current.isCoolingDown('slot-1')).toBe(false)
+    expect(result.current.isPending('slot-1')).toBe(true)
+    expect(result.current.isPendingNow('slot-1')).toBe(true)
+    // 結果が届いた後も、2 回目の流れの数え直し(restartCooldown)の待ちの間は真
+    act(() => result.current.restartCooldown('slot-1'))
+    act(() => result.current.finish('slot-1'))
+    expect(result.current.isPending('slot-1')).toBe(true)
+    expect(result.current.isPendingNow('slot-1')).toBe(true)
+    act(() => {
+      vi.advanceTimersByTime(AGENT_INTERRUPT_COOLDOWN_MS)
+    })
+    expect(result.current.isPending('slot-1')).toBe(false)
+    expect(result.current.isPendingNow('slot-1')).toBe(false)
+    // 参照は安定(useAgentWorkspace が effect で ref に入れ、sender へ渡す)
+    expect(result.current.isPendingNow).toBe(isPendingNow)
+  })
+
   it('もう一度 begin すると、前の待ちのタイマーを消して数え直す', () => {
     const { result } = renderHook(() => useAgentInterruptCooldown())
     act(() => result.current.begin('slot-1'))

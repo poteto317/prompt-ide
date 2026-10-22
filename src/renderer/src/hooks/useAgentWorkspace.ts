@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DEFAULT_AGENT_CLI_KIND } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import { DEFAULT_AGENT_SEND_CONFIRM_ENABLED } from '@shared/types'
@@ -43,7 +43,7 @@ import { useLatestRef } from './useLatestRef'
 import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
 import { buildPromptRunPanelState } from '../lib/promptRunState'
-import { getHistoryRerunAvailability, getPromptRunAvailability } from '../lib/agentSendMessages'
+import { getHistoryRerunAvailability, getPromptRunAvailability } from '../lib/promptRunAvailability'
 import { notifyAgentSent } from '../lib/agentSendCallbacks'
 import { describeAgentTabSession } from '../lib/agentTabSessionInfo'
 import { agentCapabilityCliKindOf } from '../lib/agentSessionTabState'
@@ -162,9 +162,18 @@ export function useAgentWorkspace({
   const activities = useAgentActivity({ tabs: agentSessions.tabs })
   // タブの活動が作業中に変わったら、main へ知らせる(hooks が効いているかの確かめ。画面・一覧は変えない)
   useAgentHooksWorkingReport({ tabs: agentSessions.tabs, activities })
+  // sender は中断の hook より先に作る(中断の押せる条件が送信中を使う)ため、押した時点の「そのタブが中断の流れの間か」は ref から引く。
+  // ref は下の effect で useAgentInterrupt の isInterrupting(参照が安定)を入れる(描画の中で ref を書かない。最初の effect の前は
+  // 中断の流れの外〈false〉。送信はマウントの後にしか起きない)
+  const isInterruptingRef = useRef<(slotId: string) => boolean>(() => false)
+  const isSlotInterrupting = useCallback(
+    (slotId: string): boolean => isInterruptingRef.current(slotId),
+    []
+  )
   const agentSender = useAgentPromptSender({
     onSettled: agentLayout.open,
-    beforeSend: beforeAgentSend
+    beforeSend: beforeAgentSend,
+    isInterrupting: isSlotInterrupting
   })
   const isAgentMode = executionMode.mode === 'agent-cli'
   // タブへ移る(パネルを開く・選ぶ・描画の後のフォーカス)。ステータスバーのまとめ・通知を押したとき・送信前の確認の送信で使う
@@ -231,7 +240,7 @@ export function useAgentWorkspace({
     send: agentSender.send,
     onSendSettled: handleSendSettled
   })
-  // 帯の 中断(設計書 2026-10-19)。押せないのは送信中・送信前の確認の表示中(送信の手順〈消去・貼り付け・Enter〉と Esc を混ぜない)と、
+  // 帯の 中断(設計書 2026-10-19)。押せないのは送信中・送信前の確認の表示中(送信の手順〈貼り付け・Enter など〉と Esc を混ぜない)と、
   // 選択中のタブが作業中でないとき。送り先は押した時点の選択中のタブ。copilot は 2 回目を同じタブのセッションへ頼む(interruptFollowUp)。
   const agentInterrupt = useAgentInterrupt({
     selected: agentSessions.selected,
@@ -242,6 +251,16 @@ export function useAgentWorkspace({
     interruptFollowUp: agentSessions.interruptFollowUp,
     isTabOpen: (slotId) => agentSessions.tabs.some((tab) => tab.slotId === slotId)
   })
+  // 実行・再実行・送信前の確認の押せる条件に渡す、送り先のタブの活動(中断の判定と同じ写像。L-058)と中断の流れ。3 つの入口で同じ組を
+  // 渡すため 1 か所で作る。requiresIdle の種類(copilot)だけが見る
+  const sendGateOf = (slotId: string): { activity: AgentActivity; isInterrupting: boolean } => ({
+    activity: activities.get(slotId) ?? 'unknown',
+    isInterrupting: agentInterrupt.isInterruptPending(slotId)
+  })
+  const { isInterrupting } = agentInterrupt
+  useEffect(() => {
+    isInterruptingRef.current = isInterrupting
+  }, [isInterrupting])
   // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
   // usePromptRunner の useCallback の依存に入るため、選択中のタブ・send・確認の要否が変わらなければ同じ参照を返す
   const sendAgentPrompt = agentSender.send
@@ -296,7 +315,8 @@ export function useAgentWorkspace({
           cliKind: pendingSend.target.cliKind,
           isSessionRunning: pendingTab.status === 'running',
           isSessionClosing: pendingTab.isClosing,
-          isSending: agentSender.isSending
+          isSending: agentSender.isSending,
+          ...sendGateOf(pendingSend.target.slotId)
         }).reason
   const statusBarAgent = useAgentStatusBar({
     enabled: isAgentMode,
@@ -338,6 +358,7 @@ export function useAgentWorkspace({
     sessionStatus: agentSessions.selected.status,
     isSessionClosing: agentSessions.selected.isClosing,
     isSending: agentSender.isSending,
+    ...sendGateOf(agentSessions.selected.slotId),
     sendError: agentSender.error,
     sendNotice: agentSender.notice
   })
@@ -351,7 +372,8 @@ export function useAgentWorkspace({
       cliKind: selectedCapabilityCliKind,
       isSessionRunning: agentSessions.selected.status === 'running',
       isSessionClosing: agentSessions.selected.isClosing,
-      isSending: agentSender.isSending
+      isSending: agentSender.isSending,
+      ...sendGateOf(agentSessions.selected.slotId)
     })
     return { rerun, resume: agentResume.resumeActionOf(entry) }
   }
@@ -449,7 +471,12 @@ export function useAgentWorkspace({
       sendingSlotId: agentSender.sendingSlotId,
       activities,
       resumeLast: agentResume.resumeLast,
-      interrupt: agentInterrupt,
+      interrupt: {
+        visible: agentInterrupt.visible,
+        disabledReason: agentInterrupt.disabledReason,
+        notice: agentInterrupt.notice,
+        onInterrupt: agentInterrupt.onInterrupt
+      },
       appCliKind
     },
     statusBarAgent,
@@ -462,6 +489,7 @@ export function useAgentWorkspace({
               text: pendingSend.text,
               slotId: pendingSend.target.slotId,
               label: pendingSend.label,
+              cliKind: pendingSend.target.cliKind,
               promptId: pendingSend.promptId,
               unsavedPaths: pendingSend.unsavedPaths
             },

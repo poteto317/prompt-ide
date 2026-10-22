@@ -29,7 +29,10 @@ import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabi
 
 // 中断の能力が無い種類の理由(段階 1 の agentInterruptUnsupportedReason)を確かめるため、能力の表を種類ごとに差し替える
 const capabilityOverrides = vi.hoisted(
-  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set<AgentCliKind>() })
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+  })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()

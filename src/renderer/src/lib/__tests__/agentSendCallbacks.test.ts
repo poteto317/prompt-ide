@@ -12,8 +12,8 @@ afterEach(() => {
 describe('notifyAgentSent', () => {
   it('送れた(sent)ときだけ onSent を呼ぶ', () => {
     const onSent = vi.fn()
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(null)
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude')
   })
 
   it('送れたときは、結果の sentTo(控えた送り先)を onSent に渡す', () => {
@@ -23,8 +23,8 @@ describe('notifyAgentSent', () => {
       tabLabel: 'claude 1',
       folderPath: '/work'
     }
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo)
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo, cliKind: 'claude' }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'claude')
   })
 
   it('失敗・結果なし(undefined)では呼ばない', () => {
@@ -36,7 +36,10 @@ describe('notifyAgentSent', () => {
 
   it('onSent が無ければ何もしない', () => {
     expect(() =>
-      notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, undefined)
+      notifyAgentSent(
+        { kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' },
+        undefined
+      )
     ).not.toThrow()
   })
 
@@ -46,11 +49,20 @@ describe('notifyAgentSent', () => {
       throw new Error('broken')
     })
     expect(() =>
-      notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null }, onSent)
+      notifyAgentSent(
+        { kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' },
+        onSent
+      )
     ).not.toThrow()
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[notifyAgentSent] onSent failed:',
       expect.any(Error)
     )
+  })
+
+  it('送り先の種類を onSent に渡す(copilot の送り先は sentTo が null で、種類で記録を省くかを決める)', () => {
+    const onSent = vi.fn()
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'copilot' }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'copilot')
   })
 })

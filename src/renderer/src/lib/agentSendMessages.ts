@@ -1,34 +1,118 @@
-import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import type { PromptExecutionMode } from '@shared/types'
+import type { AgentActivity } from './agentActivity'
 import type { AgentSendFailure } from './agentPromptSend'
-import { isSamePath } from './pathUtils'
 
-// プロンプトの送信の文言(設計書「プロンプトの送信」「セッションが無いときのボタン」「エラー処理」)
+// プロンプトの送信の文言(設計書「プロンプトの送信」「セッションが無いときのボタン」「エラー処理」、2026-10-22「文言」)。
+// claude の文言は段階 2b で 1 文字も変えていない。CLI で文が違う失敗は種類の表(AGENT_SEND_FAILURE_KIND_TEXTS)、ほかは CLI に
+// 依らない共通の表(AGENT_SEND_FAILURE_COMMON_TEXTS)で、CLI の名前は AGENT_CLI_PROFILES[kind].commandName から作る。
+// 文言には次の行動(待つ・答える・抜ける・送るか消す)と、消していない・Enter を送っていない・送り直していないことを入れる(L-597)
 
-// CLI の名前が要る unsupported-cli は持たない(agentSendFailureMessage で引く)
-export const AGENT_SEND_FAILURE_MESSAGES: Record<
-  Exclude<AgentSendFailure, 'unsupported-cli'>,
-  string
+/** 送り先のタブの活動が入力待ちでないときの理由。押せない理由と送った後の失敗(screen-*)で同じ文にする(L-058)。活動を足したときの決め忘れを型エラーにする。
+ *  外からは agentSendBlockedByActivityReason で引く(表は export しない) */
+const AGENT_SEND_BLOCKED_BY_ACTIVITY: Record<
+  Exclude<AgentActivity, 'idle'>,
+  (commandName: string) => string
 > = {
-  empty: '送信する内容がありません',
-  'too-long': 'プロンプトが長すぎます',
-  'leading-bang':
-    '先頭が「!」のプロンプトは、エージェントのシェルのコマンドとして実行されるため送信できません（先頭に空白を入れると送れます）',
-  'not-accepting': 'エージェントが入力を受け付けていません',
-  'input-not-found':
-    'エージェントの入力欄が見つかりません。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください',
-  'clear-failed':
-    'エージェントの入力欄を空にできませんでした。ターミナルで入力欄を確かめてから、もう一度実行してください',
-  'not-echoed':
-    'エージェントの入力欄に入りませんでした。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+  working: (commandName) =>
+    `${commandName} が作業中のため送信できません（作業が終わって入力待ちになってから、もう一度実行してください）`,
+  permission: (commandName) =>
+    `${commandName} が許可待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）`,
+  confirm: (commandName) =>
+    `${commandName} が確認待ちのため送信できません（ターミナルで答えてから、もう一度実行してください）`,
+  unknown: (commandName) =>
+    `${commandName} が入力待ちか判定できないため送信できません（ターミナルの画面を確かめてから、もう一度実行してください）`
 }
 
-/** 送信の失敗の文言。unsupported-cli は実行ボタンの理由と同じ関数で、送り先の CLI の名前で作る */
-export function agentSendFailureMessage(reason: AgentSendFailure, commandName: string): string {
-  return reason === 'unsupported-cli'
-    ? agentPromptSendUnsupportedReason(commandName)
-    : AGENT_SEND_FAILURE_MESSAGES[reason]
+/** 実行・再実行・送信前の確認の押せない理由と、send の screen-* の文言(送り先のタブの活動が入力待ちでない) */
+export function agentSendBlockedByActivityReason(
+  activity: Exclude<AgentActivity, 'idle'>,
+  commandName: string
+): string {
+  return AGENT_SEND_BLOCKED_BY_ACTIVITY[activity](commandName)
+}
+
+/**
+ * 送り先のタブが中断の流れの間(1 回目を送ってから 2 回目の流れが終わり、1,000ms の待ちが明けるまで)の、実行・再実行・送信前の
+ * 確認の押せない理由と、send の interrupting の文言。copilot は押せない間が約 1.1 秒＋IPC 2 往復なので、それを超える 2 秒で案内する
+ */
+export const RUN_DISABLED_INTERRUPTING =
+  '中断を送ったばかりのため送信できません（2 秒ほど待ってから、もう一度実行してください）'
+
+/** CLI で文が違う失敗の文言 */
+interface AgentSendFailureKindTexts {
+  /** 先頭が「!」(leading-bang) */
+  leadingBang: (commandName: string) => string
+  /** 本文が入力欄に入ったかを確かめられなかった(not-echoed) */
+  notEchoed: (commandName: string) => string
+}
+
+/** 種類ごとの文言の表。外からは agentSendFailureMessage で引く(表は export しない) */
+const AGENT_SEND_FAILURE_KIND_TEXTS: Record<AgentCliKind, AgentSendFailureKindTexts> = {
+  claude: {
+    leadingBang: () =>
+      '先頭が「!」のプロンプトは、エージェントのシェルのコマンドとして実行されるため送信できません（先頭に空白を入れると送れます）',
+    notEchoed: () =>
+      'エージェントの入力欄に入りませんでした。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください'
+  },
+  // copilot は先頭の空白の後の ! ・ / も断る(案内は規則と同じ範囲で、空白・!・/ 以外の文字を足す)。not-echoed のときは Enter を送っておらず、本文が入力欄に
+  // 残りうる
+  copilot: {
+    leadingBang: (commandName) =>
+      `先頭（空白を除く）が「!」のプロンプトは、${commandName} のシェルのコマンドとして実行されるため送信できません（先頭に空白・「!」・「/」以外の文字を足すと送れます）`,
+    notEchoed: (commandName) =>
+      `${commandName} の入力欄に本文が入ったか確かめられなかったため、Enter を送りませんでした。ターミナルの画面を確かめてください（入力欄に本文が入っていれば、送るか消してください）`
+  }
+}
+
+/** CLI に依らない失敗の文言。CLI で文が違う失敗(種類の表)と unsupported-cli(関数)は持たない。種類を足したときの決め忘れを型エラーにする */
+export const AGENT_SEND_FAILURE_COMMON_TEXTS: Record<
+  Exclude<AgentSendFailure, 'unsupported-cli' | 'leading-bang' | 'not-echoed'>,
+  (commandName: string) => string
+> = {
+  empty: () => '送信する内容がありません',
+  'too-long': () => 'プロンプトが長すぎます',
+  'leading-slash': (commandName) =>
+    `先頭（空白を除く）が「/」のプロンプトは、${commandName} のスラッシュコマンドとして実行されるため送信できません（先頭に空白・「!」・「/」以外の文字を足すと送れます）`,
+  'not-accepting': () => 'エージェントが入力を受け付けていません',
+  'input-not-found': () =>
+    'エージェントの入力欄が見つかりません。ターミナルの画面（確認や選択の画面が出ていないか）を確かめてください',
+  'clear-failed': () =>
+    'エージェントの入力欄を空にできませんでした。ターミナルで入力欄を確かめてから、もう一度実行してください',
+  interrupting: () => RUN_DISABLED_INTERRUPTING,
+  'screen-working': (commandName) => agentSendBlockedByActivityReason('working', commandName),
+  'screen-permission': (commandName) => agentSendBlockedByActivityReason('permission', commandName),
+  'screen-confirm': (commandName) => agentSendBlockedByActivityReason('confirm', commandName),
+  'screen-unknown': (commandName) => agentSendBlockedByActivityReason('unknown', commandName),
+  'shell-mode': (commandName) =>
+    `${commandName} がシェルのモードのため送信できません（ターミナルでシェルのモードを抜けてから、もう一度実行してください）`,
+  'draft-present': (commandName) =>
+    `${commandName} の入力欄に書きかけがあるため送信できません（書きかけは消していません。ターミナルで送るか消してから、もう一度実行してください）`,
+  'input-undetermined': (commandName) =>
+    `${commandName} の入力欄が空か確かめられなかったため送信できません（ターミナルの画面を確かめてから、もう一度実行してください）`,
+  // 本文が入ったシェルのモードで Enter を押すと、本文がシェルのコマンドとして実行される(report.md の 1)ので、送るよう案内しない
+  'shell-mode-after-paste': (commandName) =>
+    `${commandName} の入力欄がシェルのモードに変わったため、Enter を送りませんでした。入力欄の本文は送らずに、ターミナルで消してからシェルのモードを抜けてください（Enter を押すとシェルのコマンドとして実行されます）`,
+  'not-confirmed': (commandName) =>
+    `${commandName} に送れたか確かめられませんでした。ターミナルの画面を確かめてください（入力欄に本文が残っていれば、送るか消してください）`
+}
+
+/**
+ * 送信の失敗の文言。送り先の CLI の種類で引く(kind は省略できない。L-060)。unsupported-cli は実行ボタンの理由と同じ関数、
+ * leading-bang・not-echoed は種類の表、ほかは共通の表
+ */
+export function agentSendFailureMessage(reason: AgentSendFailure, kind: AgentCliKind): string {
+  const { commandName } = AGENT_CLI_PROFILES[kind]
+  switch (reason) {
+    case 'unsupported-cli':
+      return agentPromptSendUnsupportedReason(commandName)
+    case 'leading-bang':
+      return AGENT_SEND_FAILURE_KIND_TEXTS[kind].leadingBang(commandName)
+    case 'not-echoed':
+      return AGENT_SEND_FAILURE_KIND_TEXTS[kind].notEchoed(commandName)
+    default:
+      return AGENT_SEND_FAILURE_COMMON_TEXTS[reason](commandName)
+  }
 }
 
 /** 送信の途中で例外が起きたとき(pty への書き込みの失敗など)の文言の接頭辞。後ろに理由を付ける */
@@ -68,83 +152,4 @@ export const RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE =
  */
 export function rerunDisabledAgentEntryFolderMismatch(folderPath: string): string {
   return `記録したフォルダ（${folderPath}）を開いているときだけ再実行できます`
-}
-
-export interface PromptRunAvailability {
-  disabled: boolean
-  /** 押せない理由(画面に 1 か所だけ表示し、aria-describedby で参照する)。従来の方式の実行中は理由を出さない(従来どおり) */
-  reason: string | null
-}
-
-/** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
- *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため)。
- *  送り先の CLI が送信に対応していなければ押せない */
-export function getPromptRunAvailability(params: {
-  mode: PromptExecutionMode | null
-  isExecuting: boolean
-  /** 能力の判定に使う CLI の種類。実行ボタンでは agentCapabilityCliKindOf で選ぶ(動いているタブはタブの種類〈起動の結果の種類〉、
-   *  未起動・終了したタブは次に起動する設定の種類)。送信前の確認では、確認を開いた時点に控えた送り先の種類を渡す */
-  cliKind: AgentCliKind
-  isSessionRunning: boolean
-  isSessionClosing: boolean
-  isSending: boolean
-}): PromptRunAvailability {
-  if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
-  if (params.mode === 'legacy') return { disabled: params.isExecuting, reason: null }
-  // 送り先の CLI が送信に対応していない(copilot など)。実行ボタンでは未起動・終了したタブの種類は次に起動する設定の種類なので
-  // (呼び出し側が agentCapabilityCliKindOf で選ぶ)、起動しても送れない。閉じる途中・未起動より前に見る
-  if (!agentCliCapabilities(params.cliKind).promptSend) {
-    return {
-      disabled: true,
-      reason: agentPromptSendUnsupportedReason(AGENT_CLI_PROFILES[params.cliKind].commandName)
-    }
-  }
-  if (params.isSessionClosing) return { disabled: true, reason: RUN_DISABLED_CLOSING }
-  if (!params.isSessionRunning) return { disabled: true, reason: RUN_DISABLED_NO_SESSION }
-  if (params.isSending) return { disabled: true, reason: RUN_DISABLED_SENDING }
-  return { disabled: false, reason: null }
-}
-
-/** 従来のエントリ(agent が null)の履歴の再実行を押せるか(設計書「決定した点」5。エージェントのエントリは getHistoryRerunAvailability) */
-export function getRerunAvailability(params: {
-  mode: PromptExecutionMode | null
-  isExecuting: boolean
-}): PromptRunAvailability {
-  if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
-  if (params.mode === 'agent-cli') return { disabled: true, reason: RERUN_DISABLED_AGENT_MODE }
-  return { disabled: params.isExecuting, reason: null }
-}
-
-/**
- * 履歴のエントリごとの 再実行 を押せるか(セッションの再開の設計書「エージェントのエントリの 再実行 の押せない理由」)。
- * 従来のエントリは getRerunAvailability のまま。エージェントのエントリは、エージェント CLI 方式でない(従来の方式)ときと、
- * 記録したフォルダを開いていない(isSamePath。このセッションで再開 と同じ判定・同じ順)ときは押せず、それ以外は一覧の 実行 と
- * 同じ条件(選択中のタブへ送るため。L-048)
- */
-export function getHistoryRerunAvailability(params: {
-  /** エージェントのエントリの記録したフォルダ(entry.agent.folderPath)。従来のエントリ(agent が null)は null */
-  recordedFolderPath: string | null
-  /** 今開いているフォルダ。開いていなければ null */
-  folderPath: string | null
-  mode: PromptExecutionMode | null
-  isExecuting: boolean
-  /** 能力の判定に使う CLI の種類(getPromptRunAvailability と同じ。agentCapabilityCliKindOf) */
-  cliKind: AgentCliKind
-  isSessionRunning: boolean
-  isSessionClosing: boolean
-  isSending: boolean
-}): PromptRunAvailability {
-  const { recordedFolderPath, folderPath } = params
-  if (recordedFolderPath === null) {
-    return getRerunAvailability({ mode: params.mode, isExecuting: params.isExecuting })
-  }
-  if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
-  // 方式を足したときに選択中のタブへ送れる扱いにしないよう、エージェント CLI 方式でないものはすべて止める
-  if (params.mode !== 'agent-cli') {
-    return { disabled: true, reason: RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE }
-  }
-  if (folderPath === null || !isSamePath(folderPath, recordedFolderPath)) {
-    return { disabled: true, reason: rerunDisabledAgentEntryFolderMismatch(recordedFolderPath) }
-  }
-  return getPromptRunAvailability(params)
 }

@@ -121,3 +121,32 @@ text = re.sub(r'/private/tmp/claude-\d+/[^\s")]*', neutral_path, text)
 ```
 
 個人情報（`/Users/`・`-Users-`・`/home/user/` 以外のホーム・`claude-<UID>`・`/private/tmp`・ゼロ以外の UUID・メールアドレス・`sk-`・`ghp_` など）が含まれないことは `copilotScreensFixture.test.ts` で固定している。
+
+# `copilotInputScreens.json`（`copilot` の入力欄の台帳）
+
+`copilotInputBox.test.ts` が `copilot` の入力欄の読み取り（`readCopilotInputState`・`isCopilotPasteEchoed`）と活動の判定を、`copilotPromptSend.test.ts`・`useAgentPromptSender.test.ts`・`useAgentWorkspace.test.ts` が送信の手順と配線を、実物の画面で固定するための台帳。
+GitHub Copilot CLI 1.0.87・node-pty 1.1.0・`@xterm/headless` 6.0.0 で記録した 45 の画面（空の入力欄・空白だけや改行だけの書きかけ・複数行・シェルのモード・畳み〈`[Paste #N - M lines]`・`[Saved pasted content to workspace (…)`〉・長い 1 行・全角の文字・12 行の画面・末尾の `@` の語と末尾の参照〈補完の候補の一覧〉・一時的な帯・`Enter` の後）と 6 つの列（`Enter` の後の移り変わり・一時的な帯の移り変わり）を、
+段階 2b の追加の記録（`.superpowers/agent-cli-kind/copilot-input-recorder/out/*/snaps.json`・`watch.jsonl`。リポジトリの外）から写した（新しく記録はしていない。場面と期待は設計書 `docs/superpowers/specs/2026-10-22-agent-cli-copilot-send-design.md` の「実装の最初に確かめること」）。
+段階 2a の `copilotScreens.json` とは記録の道具と回が違うため、別の台帳にした（段階 2a の台帳とそのハッシュは変えない）。
+
+画面（`screens`）の形式は `copilotScreens.json` と同じ（`screens.<名前>.lines` は 行番号 → `[文字列, dim の範囲, 反転の範囲]`）。文字列は記録の文字列の末尾の空白を除いたもの。空の行は省く。
+全角の文字は記録の時点で右半分のセルを除いて連結してある（`ja6800` の入力欄の行は 49 文字。`agentScreens.json` と同じ）。全角の文字のある行に dim・反転の範囲は無い（あれば変換のスクリプトが止まる）。
+列・行の数はフォルダの名前の大きさ（`tall-60x12` は 60 × 12）、大きさの無いフォルダ（`big-run3`）は 100 × 30。列（`sequences`）は `sequences.<名前>.frames` が `[{ dt, lines }]`（`dt` は書き込みからの ms、`lines` は画面の末尾の 8 行の文字列。末尾の空白を除く。属性は持たない。`copilot` の入力欄の規則は属性を使わないため）。
+**prettier やエディタで整形しない**（`.prettierignore` で外している）。
+
+## `copilot` の版を上げたら記録し直す
+
+入力欄の規則（空の入力欄の帯 `← open … / commands`・書きかけの帯 `@ files · # issues`・畳みの形・記号 `❯`・`!`・`Start of Prompt Indicator`）と送信の規則（先頭の `!`・`/`、末尾の `@` の語の補完、`Enter` の後の移り変わり）は `copilot` の版で変わりうる。版に依存する規則は `copilotInputBox.ts`・`copilotPromptSend.ts` の定数と、`agentPasteText.ts` の `AGENT_PROMPT_TEXT_RULES.copilot` に閉じている。
+版を上げたら、段階 2b の記録用のスクリプト（`.superpowers/agent-cli-kind/copilot-input-recorder/rec.js` と `scenarios2.js`。偽のローカルの提供元と一時の `HOME`・`COPILOT_HOME` で、GitHub のサービスに接続せずに記録する）で記録し直し、同じフォルダの `to-fixture.js`（変換）と `sanitize-copilot.py`（下の置き換え）をかけてから写し、`copilotInputScreensFixture.test.ts` の個人情報のテストが通ることを確かめてから `COPILOT_INPUT_SCREENS_SHA256` を更新してテストを流す。
+画面を足し・消したら `copilotInputBox.test.ts` の期待の表（`EXPECTED`）も直す（全画面が活動と入力欄の両方の期待を持っていないと型エラーとテストで落ちる）。
+
+## 個人情報の置き換え（`copilotInputScreens.json` の作り方）
+
+記録した画面と列には、記録した端末のユーザー名・UID（記録時の一時ディレクトリ）が入力欄の上の作業ディレクトリの行に出ていた。`copilotScreens.json` と同じく、同じ長さの ASCII の中立な文字列に置き換えたものを置く。
+
+- 変換の後・置き換えの前（`to-fixture.js` の出力。リポジトリの外）: SHA-256 `f6f1fdd8f865c8365eb5a4129f4746f937ee73bb50ee90321230bdab88bb0099`
+- 置き換えた後（このディレクトリの `copilotInputScreens.json`）: SHA-256 `b2015f3d08d739570b384bccd5291e79f2aad6a1a47fde81b890300bc71cac6e`（`copilotInputScreensFixture.test.ts` で固定）
+- 変わった行: 145 行（どれも入力欄の上の作業ディレクトリの行。画面 38 行・列 107 行）。ファイルの大きさは同じ（203,079 バイト）。UUID は記録に無い
+
+置換の規則とスクリプトは、上の `copilotScreens.json` の節と同じ（規則 1・1'・2・3 をこの順にかける。`python3 sanitize-copilot.py <to-fixture.js の出力> <写し先の copilotInputScreens.json>`。スクリプトは段階 2a の `sanitize-copilot.py` の冒頭のコメントだけを直したもの）。
+個人情報（`/Users/`・`-Users-`・`/home/user/` 以外のホーム・`claude-<UID>`・`/private/tmp`・ゼロ以外の UUID・メールアドレス・`sk-`・`ghp_` など）が含まれないことは `copilotInputScreensFixture.test.ts` で固定している。

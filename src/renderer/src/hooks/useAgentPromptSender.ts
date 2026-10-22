@@ -1,10 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
-import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
+import { agentCliCapabilities } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo } from '@shared/types'
 import type { Announcement } from '../types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
-import { sendAgentPrompt, realClock } from '../lib/agentPromptSend'
+import { realClock } from '../lib/agentPromptSend'
+import { AGENT_PROMPT_SEND_SPECS } from '../lib/agentPromptSendSpecs'
 import type { AgentPromptSendResult, AgentSendClock } from '../lib/agentPromptSend'
 import {
   AGENT_SEND_ERROR_PREFIX,
@@ -31,7 +32,7 @@ export interface AgentPromptSenderState {
   /** 送信中のタブ(パネルはそのタブの × を押せなくする)。送信中でなければ null */
   sendingSlotId: string | null
   /** target のタブへ送る。送信中は何もしない(undefined を返す)。途中で例外が起きたときも reject せず undefined を返す。
-   *  送れたときは、送信の手順を始める時点に控えた送り先(sentTo)を結果に載せる */
+   *  送れたときは、送信の手順を始める時点に控えた送り先(sentTo)と送り先の種類(cliKind)を結果に載せる */
   send: (text: string, target: AgentSendTarget) => Promise<AgentPromptSendResult | undefined>
   /** 前の送信の結果(失敗の文言・成功の通知)を消す。送信前の確認を開いたとき、今のプロンプトの文言に見えないように呼ぶ */
   clearResult: () => void
@@ -54,14 +55,20 @@ export interface AgentSendTarget {
 export interface UseAgentPromptSenderOptions {
   /** 送った後・失敗した後に呼ぶ(ターミナルのパネルを開く) */
   onSettled: () => void
-  /** 送信の手順(消去・貼り付け・Enter)の前に待つ準備(エージェントの変更の記録を始める)。失敗しても・上限を超えても送る */
+  /** 送信の手順(送り先の種類の手順。claude は消去・貼り付け・Enter、copilot は貼り付け・Enter)の前に待つ準備(エージェントの変更の記録を始める)。失敗しても・上限を超えても送る */
   beforeSend?: () => Promise<void>
+  /**
+   * そのタブが中断の流れの間か(useAgentInterrupt の isInterrupting。押した時点の判定。省略できない。L-060)。送り先の種類の手順が
+   * requiresIdle(copilot)なら、間のときは準備・控え・入力の保留・書き込みをどれもせずに interrupting で断る
+   */
+  isInterrupting: (slotId: string) => boolean
   clock?: AgentSendClock
 }
 
 export function useAgentPromptSender({
   onSettled,
   beforeSend,
+  isInterrupting,
   clock = realClock
 }: UseAgentPromptSenderOptions): AgentPromptSenderState {
   const [error, setError] = useState<string | null>(null)
@@ -74,15 +81,23 @@ export function useAgentPromptSender({
   const send = useCallback(
     async (text: string, target: AgentSendTarget): Promise<AgentPromptSendResult | undefined> => {
       if (sendingRef.current) return undefined
-      // 送り先の CLI が送信に対応していなければ、準備(変更の記録)・送り先の控え・入力の保留・書き込みをどれもせずに断る
-      // (実行ボタンの理由と同じ判定・同じ文言。見た目だけで止めない。L-058)。ほかの失敗と同じくパネルを開く
-      if (!agentCliCapabilities(target.cliKind).promptSend) {
+      // 準備(変更の記録)・送り先の控え・入力の保留・書き込みをどれもせずに断る(実行ボタンの理由と同じ判定・同じ文言。見た目だけで
+      // 止めない。L-058)。ほかの失敗と同じくパネルを開く
+      const rejectBeforeSending = (
+        reason: 'unsupported-cli' | 'interrupting'
+      ): AgentPromptSendResult => {
         clear()
-        setError(
-          agentSendFailureMessage('unsupported-cli', AGENT_CLI_PROFILES[target.cliKind].commandName)
-        )
+        setError(agentSendFailureMessage(reason, target.cliKind))
         onSettled()
-        return { kind: 'failed', reason: 'unsupported-cli' }
+        return { kind: 'failed', reason }
+      }
+      // 送り先の CLI が送信に対応していない
+      if (!agentCliCapabilities(target.cliKind).promptSend) {
+        return rejectBeforeSending('unsupported-cli')
+      }
+      // 入力待ちのときだけ送る種類(copilot)は、そのタブが中断の流れの間なら断る(2 回目の Esc が貼った本文を消しうる。L-594)
+      if (AGENT_PROMPT_SEND_SPECS[target.cliKind].requiresIdle && isInterrupting(target.slotId)) {
+        return rejectBeforeSending('interrupting')
       }
       const { controller } = target
       sendingRef.current = true
@@ -110,10 +125,12 @@ export function useAgentPromptSender({
       // 送信の手順の間は利用者のキー入力を溜める(貼り付けの途中に打鍵が混ざらないように)。finally で必ず解く
       controller.beginSending()
       try {
-        const outcome = await sendAgentPrompt(
+        // 手順は送り先の CLI の種類の表から引く(claude は今の手順のまま。copilot は画面の末尾を読む)
+        const outcome = await AGENT_PROMPT_SEND_SPECS[target.cliKind].send(
           {
             isBracketedPasteEnabled: () => controller.isBracketedPasteEnabled(),
             readViewport: () => controller.readViewport(),
+            readScreen: () => controller.readScreen(),
             getCols: () => controller.getSize().cols,
             write: (data) => controller.writeToSession(data)
           },
@@ -123,16 +140,14 @@ export function useAgentPromptSender({
         if (outcome.kind === 'sent') {
           announce(outcome.clearedDraft ? AGENT_SENT_AFTER_CLEAR_NOTICE : AGENT_SENT_NOTICE)
         } else {
-          setError(
-            agentSendFailureMessage(outcome.reason, AGENT_CLI_PROFILES[target.cliKind].commandName)
-          )
+          setError(agentSendFailureMessage(outcome.reason, target.cliKind))
         }
         onSettled()
-        return outcome.kind === 'sent' ? { ...outcome, sentTo } : outcome
+        return outcome.kind === 'sent' ? { ...outcome, sentTo, cliKind: target.cliKind } : outcome
       } catch (err) {
-        // write・readViewport が例外を投げると sendAgentPrompt は reject する。実行ボタンの処理へ
-        // 未処理の拒否として漏らさず、理由を出してパネルを開く
-        console.error('[useAgentPromptSender] sendAgentPrompt failed:', err)
+        // write・画面の読み取りが例外を投げると送信の手順は reject する(copilot の貼り付けの後の読み取りの例外は、手順の中で
+        // not-echoed・not-confirmed に倒すのでここへは来ない)。実行ボタンの処理へ未処理の拒否として漏らさず、理由を出してパネルを開く
+        console.error('[useAgentPromptSender] 送信の手順が失敗しました:', err)
         setError(`${AGENT_SEND_ERROR_PREFIX}${toError(err).message}`)
         onSettled()
         return undefined
@@ -142,7 +157,7 @@ export function useAgentPromptSender({
         setSendingSlotId(null)
       }
     },
-    [onSettled, beforeSend, clock, announce, clear]
+    [onSettled, beforeSend, isInterrupting, clock, announce, clear]
   )
 
   const clearResult = useCallback((): void => {

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import type { AgentSendConfirmDialogState, AgentSendConfirmPending } from '../../types'
 import { buildAgentSendPreview } from '../../lib/agentSendPreview'
 import { formatAgentUnsavedNotice } from '../../lib/agentReferenceMessages'
@@ -51,8 +52,11 @@ function AgentSendConfirmDialogBody({
   const targetId = useId()
   const unsavedId = useId()
 
-  // 本文は最大 20 万字になりうるため、描画のたびに正規化し直さない
-  const preview = useMemo(() => buildAgentSendPreview(pending.text), [pending.text])
+  // 本文は最大 20 万字になりうるため、描画のたびに正規化し直さない。規則は開いた時点に控えた送り先の種類で引く
+  const preview = useMemo(
+    () => buildAgentSendPreview(pending.text, pending.cliKind),
+    [pending.text, pending.cliKind]
+  )
   // 本文の理由はキャンセルして直すしかないため先に出す。1 つだけ出す
   const reason = preview.rejection ?? targetBlockedReason
   const isSubmitDisabled = reason !== null
@@ -162,7 +166,10 @@ function AgentSendConfirmDialogBody({
         <p className="agent-send-confirm__count">{LENGTH_FORMAT.format(preview.length)} 文字</p>
         {hasUnsaved && (
           <p id={unsavedId} className="agent-send-confirm__unsaved">
-            {formatAgentUnsavedNotice(pending.unsavedPaths)}
+            {formatAgentUnsavedNotice(
+              pending.unsavedPaths,
+              AGENT_CLI_PROFILES[pending.cliKind].commandName
+            )}
           </p>
         )}
         {reason !== null && (

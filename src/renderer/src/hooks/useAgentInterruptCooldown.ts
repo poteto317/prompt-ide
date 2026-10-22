@@ -3,7 +3,7 @@ import { AGENT_INTERRUPT_COOLDOWN_MS } from '../lib/agentInterrupt'
 
 // 帯の 中断 の、タブごとの「結果を待っている」と「押してから〈2 回目の要る種類は 2 回目の流れが終わってから数え直して〉
 // AGENT_INTERRUPT_COOLDOWN_MS の待ち」の控え(useAgentInterrupt が使う)。
-// 押した処理が読む最新の値(ref)と、描画が読む値(state)を両方持つ。待ちのタイマーはアンマウントですべて消す(L-052)
+// 押した処理が読む最新の値(ref)と、描画が読む値(state)を両方持ち、どちらも「中断の流れの間」をこのファイルで決める。待ちのタイマーはアンマウントですべて消す(L-052)
 
 export interface AgentInterruptCooldown {
   /** 描画用: そのタブが結果を待っているか、1,000ms の待ちの間か(state。押せない理由の判定に使う) */
@@ -12,6 +12,11 @@ export interface AgentInterruptCooldown {
   isInFlight: (slotId: string) => boolean
   /** 押した処理用: そのタブが 1,000ms の待ちの間か(ref。常に最新) */
   isCoolingDown: (slotId: string) => boolean
+  /**
+   * 押した処理用: isPending と同じ間(結果を待っているか、1,000ms の待ちの間)。ref で常に最新。参照は安定。描画用の isPending と
+   * 同じ間を同じファイルで決め、片方だけ変えて食い違わないようにする(送信の押した時点の判定。useAgentInterrupt の isInterrupting)
+   */
+  isPendingNow: (slotId: string) => boolean
   /** 送り始める: 結果を待っている状態にし、1,000ms の待ちを始める(前の待ちがあれば数え直す) */
   begin: (slotId: string) => void
   /** 結果が届いた(例外を含む): 結果を待っている状態を解く。1,000ms の待ちはタイマーが解く */
@@ -61,6 +66,13 @@ export function useAgentInterruptCooldown(): AgentInterruptCooldown {
 
   const isCoolingDown = useCallback((slotId: string): boolean => timersRef.current.has(slotId), [])
 
+  // isPending の ref 版。isCoolingDown だけでは、結果が 1,000ms を超えて届かない間(1 回目の結果・2 回目の流れ)に偽になるため、
+  // 結果を待っている間(isInFlight)も合わせる
+  const isPendingNow = useCallback(
+    (slotId: string): boolean => isInFlight(slotId) || isCoolingDown(slotId),
+    [isInFlight, isCoolingDown]
+  )
+
   // そのタブの 1,000ms の待ちを今から始める(前のタイマーがあれば消して数え直す)
   const startCooldown = useCallback((slotId: string): void => {
     const timers = timersRef.current
@@ -99,5 +111,5 @@ export function useAgentInterruptCooldown(): AgentInterruptCooldown {
     if (mountedRef.current) setWaitingSlots((prev) => withSlot(prev, slotId, false))
   }, [])
 
-  return { isPending, isInFlight, isCoolingDown, begin, finish, restartCooldown }
+  return { isPending, isInFlight, isCoolingDown, isPendingNow, begin, finish, restartCooldown }
 }

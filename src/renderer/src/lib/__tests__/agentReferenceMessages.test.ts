@@ -30,14 +30,20 @@ describe('formatAgentReferenceRemoveLabel', () => {
 
 describe('formatAgentUnsavedNotice', () => {
   it('複数のパスを「、」で区切って並べる', () => {
-    expect(formatAgentUnsavedNotice(['src/app.ts', 'docs/a.md'])).toBe(
+    expect(formatAgentUnsavedNotice(['src/app.ts', 'docs/a.md'], 'claude')).toBe(
       '未保存の変更があるファイルは、保存するまで claude に見えません: src/app.ts、docs/a.md'
     )
   })
 
   it('1 つだけのときは区切りを入れない', () => {
-    expect(formatAgentUnsavedNotice(['src/app.ts'])).toBe(
+    expect(formatAgentUnsavedNotice(['src/app.ts'], 'claude')).toBe(
       '未保存の変更があるファイルは、保存するまで claude に見えません: src/app.ts'
+    )
+  })
+
+  it('CLI の名前は送り先の種類のコマンド名で作る', () => {
+    expect(formatAgentUnsavedNotice(['src/app.ts'], 'copilot')).toBe(
+      '未保存の変更があるファイルは、保存するまで copilot に見えません: src/app.ts'
     )
   })
 })

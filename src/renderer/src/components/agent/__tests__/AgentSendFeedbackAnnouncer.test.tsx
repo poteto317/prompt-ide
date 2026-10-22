@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 import AgentSendFeedbackAnnouncer from '../AgentSendFeedbackAnnouncer'
-import { AGENT_SEND_FAILURE_MESSAGES, AGENT_SENT_NOTICE } from '../../../lib/agentSendMessages'
+import { agentSendFailureMessage, AGENT_SENT_NOTICE } from '../../../lib/agentSendMessages'
 
 // 送信の結果の読み上げの領域(Sidebar がパネルの外に常に置く 1 か所)。見える文字(AgentSendFeedbackMessages)は aria-hidden なので、
 // 読み上げの中身はここで確かめる
@@ -36,7 +36,7 @@ describe('AgentSendFeedbackAnnouncer', () => {
   })
 
   it('失敗があるときだけ role="alert" にその文言を出す', () => {
-    const message = AGENT_SEND_FAILURE_MESSAGES['input-not-found']
+    const message = agentSendFailureMessage('input-not-found', 'claude')
     const { rerender } = render(
       <AgentSendFeedbackAnnouncer feedback={{ error: message, notice: null }} />
     )
