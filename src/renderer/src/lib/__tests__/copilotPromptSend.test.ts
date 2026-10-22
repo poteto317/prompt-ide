@@ -474,6 +474,9 @@ describe('buildCopilotPasteText', () => {
     ['look at @file  ', 'look at @file '],
     // 末尾が @ だけ
     ['@', '@ '],
+    // 末尾の @ の語の前が改行・タブ
+    ['以下を見て\n@src/app.ts', '以下を見て\n@src/app.ts '],
+    ['見て\t@a.ts', '見て\t@a.ts '],
     // 参照が 2 つ
     ['- @a.ts\n- @b.ts', '- @a.ts\n- @b.ts '],
     // 本文の途中だけに @ の語がある
