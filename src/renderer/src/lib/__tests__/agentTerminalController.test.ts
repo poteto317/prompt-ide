@@ -196,6 +196,35 @@ describe('入力', () => {
     ])
   })
 
+  it('捨てる指定では、xterm が出した SGR のマウスの報告(完全一致のチャンク)は流さずに黙って捨て、捨てた数に数えない', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('\x1b[<35;10;5M')
+    terminal.typeKey('\x1b[<0;10;5M')
+    terminal.typeKey('\x1b[<0;10;5m')
+    terminal.typeKey('\x1b[<64;1;1M')
+    expect(controller.endSending({ discard: true })).toBe(0)
+    expect(api.writeAgentSession).not.toHaveBeenCalled()
+  })
+
+  it('マウスの報告の形を含んでも、完全一致でないチャンクは利用者の入力として捨てて数える', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('\x1b[<0;10;5Mx')
+    terminal.typeKey('\x1b[<0;10;5M\x1b[<0;10;5m')
+    terminal.typeKey('\r')
+    expect(controller.endSending({ discard: true })).toBe(3)
+    expect(api.writeAgentSession).not.toHaveBeenCalled()
+  })
+
+  it('捨てない指定では、マウスの報告も今どおり順に流す', () => {
+    controller.setSession('s1')
+    controller.beginSending()
+    terminal.typeKey('\x1b[<0;10;5M')
+    expect(controller.endSending({ discard: false })).toBe(0)
+    expect(api.writeAgentSession.mock.calls).toEqual([['s1', '\x1b[<0;10;5M']])
+  })
+
   it('溜めたのがフォーカスの通知だけなら、捨てる指定でも流して 0 を返す', () => {
     controller.setSession('s1')
     controller.beginSending()

@@ -809,6 +809,16 @@ describe('useAgentPromptSender: 送信中に溜めた利用者のキー入力', 
     expect(error).toBe(agentSendFailureMessage('not-echoed', 'copilot'))
   })
 
+  it('copilot の貼り付けの後の失敗で、溜めたのがマウスの報告だけなら流さずに捨て、文言に添えない', async () => {
+    const { written, error } = await sendWithHeldInput(
+      'copilot',
+      { kind: 'failed', reason: 'shell-mode-after-paste' },
+      ['\x1b[<35;10;5M', '\x1b[<0;10;5m']
+    )
+    expect(written).toEqual([])
+    expect(error).toBe(agentSendFailureMessage('shell-mode-after-paste', 'copilot'))
+  })
+
   it('copilot が送れたときは、溜めた入力を順に流す', async () => {
     const { written, error } = await sendWithHeldInput('copilot', {
       kind: 'sent',

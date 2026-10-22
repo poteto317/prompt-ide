@@ -87,8 +87,9 @@ export interface AgentTerminalController {
   beginSending(): void
   /**
    * 保留を解き、溜めた入力を順に送る。discard が真なら送らずに捨て、捨てた数を返す(捨てないときは 0)。捨てるときも、xterm が
-   * 自動で返すフォーカスの通知(FOCUS_REPORTS と完全一致のチャンク)は利用者の入力ではないので順に送り、数に入れない。捨てる
-   * 経路は書き込みを減らすだけで、pty へ届くバイトは増やさない(L-019)
+   * 自動で返すフォーカスの通知(FOCUS_REPORTS と完全一致のチャンク)は利用者の入力ではないので順に送り、数に入れない。マウスの
+   * 報告(SGR_MOUSE_REPORT と完全一致のチャンク)も利用者のキー入力ではないので数に入れないが、クリックが選択肢を確定させうるので
+   * 送らずに黙って捨てる。捨てる経路は書き込みを減らすだけで、pty へ届くバイトは増やさない(L-019)
    */
   endSending(options?: { discard: boolean }): number
   /** F6 でターミナルから抜けるときの移動先 */
@@ -103,6 +104,14 @@ export interface AgentTerminalController {
  * 送信中に溜めた入力を捨てるときも、この列と完全一致のチャンクだけは送る(混ざったチャンクは利用者の入力として捨てる)
  */
 const FOCUS_REPORTS: ReadonlySet<string> = new Set(['\x1b[I', '\x1b[O'])
+
+/**
+ * xterm が SGR のマウスの報告のモード(DECSET 1006。copilot が 1003 とあわせて有効にする)の間に、マウスの操作 1 回ごとに onData へ
+ * 単独で出す報告(CoreMouseService の SGR の形)。送信中に溜めた入力を捨てるときは、この形と完全一致のチャンクを送らず、捨てた数
+ * (利用者のキー入力)にも入れない。X10 の形(DEFAULT)は onBinary へ出て、ここでは購読していないので溜まらない
+ */
+// eslint-disable-next-line no-control-regex
+const SGR_MOUSE_REPORT = /^\x1b\[<\d+;\d+;\d+[Mm]$/
 
 /** sessionId が決まるまでに届いた出力を溜める、セッションごとの上限(UTF-16 の単位) */
 const MAX_PENDING_OUTPUT = 1_000_000
@@ -256,11 +265,22 @@ export function createAgentTerminalController({
       const held = heldInput
       heldInput = []
       const discard = options?.discard === true
-      const sent = discard ? held.filter((data) => FOCUS_REPORTS.has(data)) : held
-      if (!disposed && sessionId !== null) {
-        for (const data of sent) api.writeAgentSession(sessionId, data)
+      if (!discard) {
+        if (!disposed && sessionId !== null) {
+          for (const data of held) api.writeAgentSession(sessionId, data)
+        }
+        return 0
       }
-      return discard ? held.length - sent.length : 0
+      // 捨てるとき: フォーカスの通知は送る、マウスの報告は黙って捨てる、ほか(利用者のキー入力)は捨てて数える
+      let discarded = 0
+      for (const data of held) {
+        if (FOCUS_REPORTS.has(data)) {
+          if (!disposed && sessionId !== null) api.writeAgentSession(sessionId, data)
+        } else if (!SGR_MOUSE_REPORT.test(data)) {
+          discarded += 1
+        }
+      }
+      return discarded
     },
     setFocusOutHandler(handler) {
       focusOutHandler = handler
