@@ -18,14 +18,20 @@ describe('agentNotificationApi', () => {
     const unsubscribe = vi.fn()
     mockApi.onAgentNotificationActivated.mockReturnValue(unsubscribe)
     const listener = vi.fn()
-    agentNotificationApi.showAgentNotification({ slotId: 's-1', tabNumber: 1, kind: 'done' })
+    agentNotificationApi.showAgentNotification({
+      slotId: 's-1',
+      tabNumber: 1,
+      kind: 'done',
+      cliKind: 'claude'
+    })
     agentNotificationApi.setAgentNotificationBadge(2)
     agentNotificationApi.dismissAgentNotification({ slotId: 's-2' })
     expect(agentNotificationApi.onAgentNotificationActivated(listener)).toBe(unsubscribe)
     expect(mockApi.showAgentNotification).toHaveBeenCalledWith({
       slotId: 's-1',
       tabNumber: 1,
-      kind: 'done'
+      kind: 'done',
+      cliKind: 'claude'
     })
     expect(mockApi.setAgentNotificationBadge).toHaveBeenCalledWith(2)
     expect(mockApi.dismissAgentNotification).toHaveBeenCalledWith({ slotId: 's-2' })

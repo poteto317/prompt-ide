@@ -5,3 +5,4 @@ LICENSE.md
 tsconfig.json
 tsconfig.*.json
 src/renderer/src/lib/__tests__/fixtures/agentScreens.json
+src/renderer/src/lib/__tests__/fixtures/copilotScreens.json

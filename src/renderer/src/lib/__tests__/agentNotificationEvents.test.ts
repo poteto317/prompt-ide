@@ -86,6 +86,7 @@ const tab = (n: number, overrides: Partial<AgentNotificationTab> = {}): AgentNot
   number: n,
   status: 'running',
   isClosing: false,
+  cliKind: 'claude',
   ...overrides
 })
 
@@ -103,8 +104,8 @@ describe('advanceAgentNotifications', () => {
       ])
     )
     expect(events).toEqual([
-      { slotId: 'slot-1', tabNumber: 1, kind: 'done' },
-      { slotId: 'slot-2', tabNumber: 2, kind: 'permission' }
+      { slotId: 'slot-1', tabNumber: 1, kind: 'done', cliKind: 'claude' },
+      { slotId: 'slot-2', tabNumber: 2, kind: 'permission', cliKind: 'claude' }
     ])
     expect([...settled]).toEqual([
       ['slot-1', 'idle'],
@@ -181,8 +182,8 @@ describe('advanceAgentNotifications', () => {
       ])
     )
     expect(events).toEqual([
-      { slotId: 'slot-1', tabNumber: 1, kind: 'confirm' },
-      { slotId: 'slot-2', tabNumber: 2, kind: 'done' }
+      { slotId: 'slot-1', tabNumber: 1, kind: 'confirm', cliKind: 'claude' },
+      { slotId: 'slot-2', tabNumber: 2, kind: 'done', cliKind: 'claude' }
     ])
     expect(finishedWaiting).toEqual([])
   })
@@ -226,6 +227,15 @@ describe('advanceAgentNotifications', () => {
       new Map<string, AgentActivity>([['slot-1', 'idle']])
     )
     expect([...previous]).toEqual([['slot-1', 'working']])
+  })
+
+  it('出来事にタブの種類を写す(copilot のタブの出来事は cliKind が copilot)', () => {
+    const { events } = advanceAgentNotifications(
+      new Map<string, AgentActivity>([['slot-1', 'working']]),
+      [tab(1, { cliKind: 'copilot' })],
+      new Map<string, AgentActivity>([['slot-1', 'idle']])
+    )
+    expect(events).toEqual([{ slotId: 'slot-1', tabNumber: 1, kind: 'done', cliKind: 'copilot' }])
   })
 })
 
@@ -283,21 +293,31 @@ describe('AgentNotificationEvent', () => {
 describe('formatAgentNotificationAnnouncement', () => {
   // 文言そのものは agentNotificationText のテストで固定し、ここではつなぎ方だけを見る(文言の変更を 1 か所に閉じる)
   const said = (kind: AgentNotificationKind, tabNumber: number): string =>
-    agentNotificationText(kind, tabNumber).announcement
+    agentNotificationText(kind, tabNumber, 'claude').announcement
 
   it('出来事ごとの読み上げの文言を、タブの並び順のまま「。」でつなぐ', () => {
     expect(
       formatAgentNotificationAnnouncement([
-        { slotId: 'slot-1', tabNumber: 1, kind: 'permission' },
-        { slotId: 'slot-2', tabNumber: 2, kind: 'done' },
-        { slotId: 'slot-3', tabNumber: 3, kind: 'confirm' }
+        { slotId: 'slot-1', tabNumber: 1, kind: 'permission', cliKind: 'claude' },
+        { slotId: 'slot-2', tabNumber: 2, kind: 'done', cliKind: 'claude' },
+        { slotId: 'slot-3', tabNumber: 3, kind: 'confirm', cliKind: 'claude' }
       ])
     ).toBe(`${said('permission', 1)}。${said('done', 2)}。${said('confirm', 3)}`)
   })
 
   it('出来事が 1 件なら区切りを付けない', () => {
     expect(
-      formatAgentNotificationAnnouncement([{ slotId: 'slot-4', tabNumber: 4, kind: 'done' }])
+      formatAgentNotificationAnnouncement([
+        { slotId: 'slot-4', tabNumber: 4, kind: 'done', cliKind: 'claude' }
+      ])
     ).toBe(said('done', 4))
+  })
+
+  it('読み上げは出来事の種類の名前で作る', () => {
+    expect(
+      formatAgentNotificationAnnouncement([
+        { slotId: 'slot-1', tabNumber: 1, kind: 'done', cliKind: 'copilot' }
+      ])
+    ).toBe('copilot 1 の作業が終わりました')
   })
 })

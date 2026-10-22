@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import type { AgentInterruptResult, AgentLaunchRequest, AgentSessionExit } from '@shared/types'
+import type {
+  AgentInterruptFollowUpResult,
+  AgentLaunchRequest,
+  AgentSessionExit
+} from '@shared/types'
 import { isAgentStartCanceled } from '@shared/types'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
 import type { AgentSessionTab, AgentSessionTabs } from '../lib/agentSessionTabs'
@@ -14,11 +19,11 @@ import {
   formatAgentTabLabel
 } from '../lib/agentSessionMessages'
 import {
-  AGENT_INTERRUPT_ERROR_NO_SESSION,
   AGENT_INTERRUPT_ERROR_PREFIX,
-  AGENT_INTERRUPT_ERROR_WRITE_FAILED,
-  agentInterruptError
+  agentInterruptError,
+  agentInterruptFailureError
 } from '../lib/agentInterruptMessages'
+import { invokeForCurrentSession } from '../lib/agentInterruptInvocation'
 import { toError } from '../lib/errorUtils'
 import { useLatestRef } from './useLatestRef'
 import {
@@ -60,9 +65,10 @@ export interface AgentSessionTabView {
   controller: AgentTerminalController
 }
 
-/** 中断(帯の 中断)の結果。送れたかだけを扱い、作業が止まったかは claude の画面の判定で分かる(L-001) */
+/** 中断(帯の 中断)の 1 回目の結果。送れたかだけを扱い、作業が止まったかは画面の判定で分かる(L-001) */
 export type AgentInterruptOutcome =
-  | { kind: 'sent' }
+  /** followUp は 2 回目を頼む案内。sessionId は 1 回目を送ったセッション(2 回目を同じセッションにだけ頼むため) */
+  | { kind: 'sent'; followUp: { afterMs: number; sessionId: string } | null }
   /** そのタブにセッションが無い(IPC を呼ばない) */
   | { kind: 'skipped' }
   /** 結果が届いた時点で、そのタブの sessionId が送った値と違う(起動し直した・終了した・閉じた)。何も出さない */
@@ -70,6 +76,13 @@ export type AgentInterruptOutcome =
   | { kind: 'no-session' }
   | { kind: 'write-failed' }
   /** invoke の拒否・同期の例外 */
+  | { kind: 'error'; message: string }
+
+/** 中断の 2 回目の結果(main の結果〈AgentInterruptFollowUpResult〉をそのまま返し、renderer の側の stale・error を足す) */
+export type AgentInterruptFollowUpOutcome =
+  | AgentInterruptFollowUpResult
+  /** 頼む時点か結果が届いた時点で、そのタブのセッションが 1 回目と違う・閉じる途中(IPC を呼ばない・結果を出さない) */
+  | { kind: 'stale' }
   | { kind: 'error'; message: string }
 
 export interface AgentLastExit extends AgentSessionExitView {
@@ -88,10 +101,13 @@ export interface AgentSessionsState {
   start: (slotId: string, launch: AgentLaunchRequest) => Promise<void>
   /** 確認なしで止める。止め終わってから解決し、失敗したら false(エラーはそのタブに出す) */
   stop: (slotId: string) => Promise<boolean>
-  /** そのタブの claude に中断(Esc を 1 回)を送る。そのタブにセッションが無ければ IPC を呼ばず skipped(何も出さない)。
+  /** そのタブの CLI に中断の 1 回目を送る(2 回目の要る種類は sent の followUp で案内する)。そのタブにセッションが無ければ IPC を呼ばず skipped(何も出さない)。
    *  押した時点の sessionId を控え、結果が届いた時点で同じときだけ結果を出す(違えば stale)。送れなかったらそのタブの error に出し、
    *  送れたらそのタブの中断の失敗の文言だけを消す。拒否しない */
   interrupt: (slotId: string) => Promise<AgentInterruptOutcome>
+  /** 1 回目を送ったセッション(sessionId)へ中断の 2 回目を頼む。そのタブの今の sessionId が違う・閉じる途中なら IPC を呼ばず stale。
+   *  結果が届いた時点でも確かめ、違えば stale(L-037)。送れなかったらそのタブの error に出し、送れたら中断の失敗の文言だけを消す。拒否しない */
+  interruptFollowUp: (slotId: string, sessionId: string) => Promise<AgentInterruptFollowUpOutcome>
   /** タブを作って選択し、起動する */
   addTab: () => Promise<void>
   /** 新しいタブを足して選択し、そのタブで claudeSessionId を再開する(+ と同じ検査の後。同じ ID のタブが起動中・実行中なら
@@ -150,10 +166,16 @@ export function useAgentSessions({
   // 起動中・実行中のタブの claude の会話の ID(タブ → ID)。同じ ID の再開を同期で止める判定に使う(描画は states の claudeSessionId)。
   // states の claudeSessionId と同じ値を、setTabClaudeSessionId でまとめて更新する
   const claudeSessionIdBySlotRef = useRef(new Map<string, string>())
-  // 起動の結果の種類(タブ → 種類)。閉じる前の確認の名前を同期的に引くのに使う(描画は states の cliKind)。setTabCliKind でまとめて更新する
+  // 起動の結果の種類(タブ → 種類)。閉じる前の確認・中断の失敗の文言の名前を同期的に引くのに使う(描画は states の cliKind)。
+  // setTabCliKind でまとめて更新する
   const cliKindBySlotRef = useRef(new Map<string, AgentCliKind>())
-  // 閉じる前の確認で使う、その時点の設定の種類(closeTab の参照を設定の変化で作り直さない)
+  // 起動の結果が無いタブに使う、その時点の設定の種類(closeTab・interrupt の参照を設定の変化で作り直さない)
   const appCliKindRef = useLatestRef(appCliKind)
+  // そのタブの種類を同期的に引く(起動の結果が無ければ設定の種類。描画の states の cliKind ?? appCliKind と同じ規則。タブの名前と同じ値)
+  const cliKindOf = useCallback(
+    (slotId: string): AgentCliKind => cliKindBySlotRef.current.get(slotId) ?? appCliKindRef.current,
+    [appCliKindRef]
+  )
   // 起動中の依頼(起動の手順が終わると解決する)。2 回目の起動の抑止と、closeTab が起動の結果を待つのに使う
   const startingBySlotRef = useRef(new Map<string, Promise<void>>())
   // 起動の結果(started・already-running)を受け取った時刻(タブ → now())。起動の直後の終了の判定(isAgentExitedSoon)だけに使う。
@@ -458,37 +480,66 @@ export function useAgentSessions({
     [findTab]
   )
 
+  // 失敗の文言の CLI の名前(そのタブの種類のコマンド名)
+  const commandNameOf = useCallback(
+    (slotId: string): string => AGENT_CLI_PROFILES[cliKindOf(slotId)].commandName,
+    [cliKindOf]
+  )
+
   const interrupt = useCallback(
     async (slotId: string): Promise<AgentInterruptOutcome> => {
       const id = sessionIdBySlotRef.current.get(slotId)
       if (id === undefined) return { kind: 'skipped' }
       // 結果が届いた時点で、そのタブのセッションが送った相手のままか(古いセッションの結果を今のタブに出さない。L-037)
-      const isCurrent = (): boolean => sessionIdBySlotRef.current.get(slotId) === id
-      let result: AgentInterruptResult
-      try {
-        // 同期の例外も拒否と同じ経路で扱う(L-055)
-        result = await Promise.resolve().then(() => agentTerminalApi.interruptAgentSession(id))
-      } catch (err) {
-        if (!isCurrent()) return { kind: 'stale' }
-        const message = toError(err).message
-        patchTab(slotId, { error: agentInterruptError(message) })
-        return { kind: 'error', message }
+      const invoked = await invokeForCurrentSession(
+        () => agentTerminalApi.interruptAgentSession(id),
+        () => sessionIdBySlotRef.current.get(slotId) === id
+      )
+      if (invoked.kind === 'stale') return invoked
+      if (invoked.kind === 'error') {
+        patchTab(slotId, { error: agentInterruptError(invoked.message) })
+        return invoked
       }
-      if (!isCurrent()) return { kind: 'stale' }
+      const { result } = invoked
       if (result.kind === 'sent') {
         clearInterruptError(slotId)
-        return { kind: 'sent' }
+        return {
+          kind: 'sent',
+          followUp:
+            result.followUp === null ? null : { afterMs: result.followUp.afterMs, sessionId: id }
+        }
       }
-      patchTab(slotId, {
-        error:
-          result.kind === 'no-session'
-            ? AGENT_INTERRUPT_ERROR_NO_SESSION
-            : AGENT_INTERRUPT_ERROR_WRITE_FAILED
-      })
       // ここでは no-session か write-failed(sent は上で返した)
+      patchTab(slotId, { error: agentInterruptFailureError(result.kind, commandNameOf(slotId)) })
       return result
     },
-    [patchTab, clearInterruptError]
+    [patchTab, clearInterruptError, commandNameOf]
+  )
+
+  const interruptFollowUp = useCallback(
+    async (slotId: string, sessionId: string): Promise<AgentInterruptFollowUpOutcome> => {
+      // 頼む時点と結果が届いた時点で、そのタブのセッションが 1 回目のままで、閉じる途中でないか(L-037)
+      const isCurrent = (): boolean =>
+        sessionIdBySlotRef.current.get(slotId) === sessionId && !closingRef.current.has(slotId)
+      if (!isCurrent()) return { kind: 'stale' }
+      const invoked = await invokeForCurrentSession(
+        () => agentTerminalApi.interruptAgentSessionFollowUp(sessionId),
+        isCurrent
+      )
+      if (invoked.kind === 'stale') return invoked
+      if (invoked.kind === 'error') {
+        patchTab(slotId, { error: agentInterruptError(invoked.message) })
+        return invoked
+      }
+      const { result } = invoked
+      if (result.kind === 'sent') {
+        clearInterruptError(slotId)
+        return result
+      }
+      patchTab(slotId, { error: agentInterruptFailureError(result.kind, commandNameOf(slotId)) })
+      return result
+    },
+    [patchTab, clearInterruptError, commandNameOf]
   )
 
   const closeTab = useCallback(
@@ -501,14 +552,7 @@ export function useAgentSessions({
         const starting = startingBySlotRef.current.get(slotId)
         if (
           hasSessionOrStarting(slotId) &&
-          !onConfirm(
-            agentCloseTabConfirm(
-              formatAgentTabLabel(
-                tab.number,
-                cliKindBySlotRef.current.get(slotId) ?? appCliKindRef.current
-              )
-            )
-          )
+          !onConfirm(agentCloseTabConfirm(formatAgentTabLabel(tab.number, cliKindOf(slotId))))
         )
           return false
         setClosing(slotId, true)
@@ -524,7 +568,7 @@ export function useAgentSessions({
         setClosing(slotId, false)
       }
     },
-    [tabs, findTab, hasSessionOrStarting, onConfirm, setClosing, stop, forgetTab, appCliKindRef]
+    [tabs, findTab, hasSessionOrStarting, onConfirm, setClosing, stop, forgetTab, cliKindOf]
   )
 
   const addDisabledReason = agentAddTabDisabledReason(
@@ -604,6 +648,7 @@ export function useAgentSessions({
     start,
     stop,
     interrupt,
+    interruptFollowUp,
     addTab,
     resumeInNewTab,
     closeTab,

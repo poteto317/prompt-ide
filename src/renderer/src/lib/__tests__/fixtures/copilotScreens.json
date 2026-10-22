@@ -1,0 +1,3689 @@
+{
+ "_note": "copilot の画面(@xterm/headless の表示中のバッファ)。GitHub Copilot CLI 1.0.87・node-pty 1.1.0・@xterm/headless 6.0.0 で記録した。lines は 行番号 -> [文字列, dim の範囲, 反転の範囲](範囲は [開始, 終わり) のセルの位置)。文字列は記録の文字列の末尾の空白を除いたもの。空の行は省く。記録の手順は .superpowers/agent-cli-kind/copilot-screens-recorder/report.md",
+ "screens": {
+  "trust": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "11": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "12": [
+     "│ Confirm folder trust                                                                             │"
+    ],
+    "13": [
+     "│ ──────────────────────────────────────────────────────────────────────────────────────────────── │"
+    ],
+    "14": [
+     "│ ╭──────────────────────────────────────────────────────────────────────────────────────────────╮ │"
+    ],
+    "15": [
+     "│ │ /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/00000000-0000-0000-0000-000000000000/ │ │"
+    ],
+    "16": [
+     "│ │ scratchpad/copilot-research/work                                                             │ │"
+    ],
+    "17": [
+     "│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │"
+    ],
+    "18": [
+     "│                                                                                                  │"
+    ],
+    "19": [
+     "│ Copilot can read files in this folder and, with your permission, edit them or run code and shell │"
+    ],
+    "20": [
+     "│  commands. It will remember your permissions for the rest of this session.                       │"
+    ],
+    "21": [
+     "│                                                                                                  │"
+    ],
+    "22": [
+     "│ Do you trust the files in this folder?                                                           │"
+    ],
+    "23": [
+     "│                                                                                                  │"
+    ],
+    "24": [
+     "│ ❯ 1. Yes                                                                                         │"
+    ],
+    "25": [
+     "│   2. Yes, and remember this folder for future sessions                                           │"
+    ],
+    "26": [
+     "│   3. No (Esc)                                                                                    │"
+    ],
+    "27": [
+     "│                                                                                                  │"
+    ],
+    "28": [
+     "│ ↑/↓ to navigate · enter to select · esc to cancel                                                │"
+    ],
+    "29": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ]
+   }
+  },
+  "idle": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ╴╶ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "idleDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ hello there"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "working250": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ theresay something                                                                        19:57"
+    ],
+    "14": [
+     " ● wo"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 6 B esc interrupt                                                      gpt-4o · Medium"
+    ]
+   }
+  },
+  "working3000": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ theresay something                                                                        19:57"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "15": [
+     "   word15 word16 word17 word1"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 123 B esc interrupt                                                             gpt-4o"
+    ]
+   }
+  },
+  "beforeFirstToken": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ slow start                                                                                20:03"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ○ Working esc interrupt                                                            gpt-4o · Medium"
+    ]
+   }
+  },
+  "reasoning": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ slow start                                                                                20:03"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9"
+    ],
+    "16": [
+     " ❯ think first                                                                               20:03"
+    ],
+    "18": [
+     " ⌄ Thinking…"
+    ],
+    "19": [
+     " │ thinking0 thinking1 thinking",
+     [
+      [
+       1,
+       2
+      ]
+     ]
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 30 B esc interrupt                                                              gpt-4o"
+    ]
+   }
+  },
+  "workingDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /mcp"
+    ],
+    "8": [
+     "   └ Manage MCP server configuration"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something                                                                             20:00"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ draft during work"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 67 B esc interrupt · ctrl+q enqueue                                    gpt-4o · Medium"
+    ]
+   }
+  },
+  "afterEscWorking": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ theresay something                                                                        19:57"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "15": [
+     "   word15 word16 word17 word18 word19 word20"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ● Working · 137 B esc again to interrupt                                                    gpt-4o"
+    ]
+   }
+  },
+  "afterEscWorking1500": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ theresay something                                                                        19:57"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "15": [
+     "   word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27"
+    ],
+    "16": [
+     "   word28"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 193 B esc interrupt                                                             gpt-4o"
+    ]
+   }
+  },
+  "interrupted": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /permissions"
+    ],
+    "8": [
+     "   └ Switch between permission modes"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something gap 150                                                                     20:09"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5"
+    ],
+    "16": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "interruptedDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /autopilot"
+    ],
+    "8": [
+     "   └ Toggle autopilot mode, or set an autopilot objective with an optional AI-credit limit"
+    ],
+    "9": [
+     "     (--max-ai-credits)"
+    ],
+    "11": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "13": [
+     " ❯ say something                                                                             20:11"
+    ],
+    "15": [
+     " ● word0 word1 word2 word3 word4 word5 word6"
+    ],
+    "17": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ draft during work"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "done": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ theresay something                                                                        19:57"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "15": [
+     "   word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27"
+    ],
+    "16": [
+     "   word28 word29 word30 word31 word32 word33 word34 word35 word36 word37 word38 word39 word40"
+    ],
+    "17": [
+     "   word41 word42 word43 word44 word45 word46 word47 word48 word49 word50 word51 word52 word53"
+    ],
+    "18": [
+     "   word54 word55 word56 word57 word58 word59"
+    ],
+    "20": [
+     " ❯ say hello                                                                                 19:57"
+    ],
+    "22": [
+     " ● Hello from the fake provider."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "reasoningDone": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /skills"
+    ],
+    "8": [
+     "   └ Manage skills for enhanced capabilities"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ slow start                                                                                20:03"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9"
+    ],
+    "16": [
+     " ❯ think first                                                                               20:03"
+    ],
+    "18": [
+     " ⌄ Thought for 6s"
+    ],
+    "19": [
+     " │ thinking0 thinking1 thinking2 thinking3 thinking4 thinking5 thinking6 thinking7 thinking8",
+     [
+      [
+       1,
+       2
+      ]
+     ]
+    ],
+    "20": [
+     " │ thinking9 thinking10 thinking11 thinking12 thinking13 thinking14 thinking15 thinking16",
+     [
+      [
+       1,
+       2
+      ]
+     ]
+    ],
+    "21": [
+     " │ thinking17 thinking18 thinking19",
+     [
+      [
+       1,
+       2
+      ]
+     ]
+    ],
+    "23": [
+     " ● answer20 answer21 answer22 answer23 answer24 answer25 answer26 answer27 answer28 answer29"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "toolDone": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /context"
+    ],
+    "8": [
+     "   └ Show context window token usage and visualization"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ wait two seconds                                                                          19:59"
+    ],
+    "14": [
+     " $ Shell Wait two seconds 1 line…"
+    ],
+    "15": [
+     "   sleep 2"
+    ],
+    "17": [
+     " ● Done with the tool."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "permission": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI.                                                                 ┃"
+    ],
+    "3": [
+     "  █ ▘▝ █  Check for mistakes.                                                                      ┃"
+    ],
+    "4": [
+     "   ▔▔▔▔                                                                                            ┃"
+    ],
+    "5": [
+     "                                                                                                   ┃"
+    ],
+    "6": [
+     " ● Tip: /permissions                                                                               ┃"
+    ],
+    "7": [
+     "   └ Switch between permission modes                                                               ┃"
+    ],
+    "8": [
+     "                                                                                                   ┃"
+    ],
+    "9": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "10": [
+     "                                                                                                   ┃"
+    ],
+    "11": [
+     " ❯ make a file                                                                               19:59 ┃"
+    ],
+    "12": [
+     "                                                                                                   ┃"
+    ],
+    "13": [
+     " $ Shell Write a file                                                                              ┃"
+    ],
+    "14": [
+     "   echo hi > out.txt                                                                               ┃"
+    ],
+    "15": [
+     "                                                                                                   ┃"
+    ],
+    "16": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "17": [
+     "│ Write a file                                                                                     │"
+    ],
+    "18": [
+     "│ ──────────────────────────────────────────────────────────────────────────────────────────────── │"
+    ],
+    "19": [
+     "│ ╭──────────────────────────────────────────────────────────────────────────────────────────────╮ │"
+    ],
+    "20": [
+     "│ │ echo hi > out.txt                                                                            │ │"
+    ],
+    "21": [
+     "│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │"
+    ],
+    "22": [
+     "│                                                                                                  │"
+    ],
+    "23": [
+     "│ Do you want to run this command?                                                                 │"
+    ],
+    "24": [
+     "│                                                                                                  │"
+    ],
+    "25": [
+     "│ ❯ 1. Yes                                                                                         │"
+    ],
+    "26": [
+     "│   2. No, and tell Copilot what to do differently (Esc to stop)                                   │"
+    ],
+    "27": [
+     "│                                                                                                  │"
+    ],
+    "28": [
+     "│ ↑/↓ to navigate · enter to select · esc to cancel                                                │"
+    ],
+    "29": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ]
+   }
+  },
+  "permissionDown": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI.                                                                 ┃"
+    ],
+    "3": [
+     "  █ ▘▝ █  Check for mistakes.                                                                      ┃"
+    ],
+    "4": [
+     "   ▔▔▔▔                                                                                            ┃"
+    ],
+    "5": [
+     "                                                                                                   ┃"
+    ],
+    "6": [
+     " ● Tip: /permissions                                                                               ┃"
+    ],
+    "7": [
+     "   └ Switch between permission modes                                                               ┃"
+    ],
+    "8": [
+     "                                                                                                   ┃"
+    ],
+    "9": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "10": [
+     "                                                                                                   ┃"
+    ],
+    "11": [
+     " ❯ make a file                                                                               19:59 ┃"
+    ],
+    "12": [
+     "                                                                                                   ┃"
+    ],
+    "13": [
+     " $ Shell Write a file                                                                              ┃"
+    ],
+    "14": [
+     "   echo hi > out.txt                                                                               ┃"
+    ],
+    "15": [
+     "                                                                                                   ┃"
+    ],
+    "16": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "17": [
+     "│ Write a file                                                                                     │"
+    ],
+    "18": [
+     "│ ──────────────────────────────────────────────────────────────────────────────────────────────── │"
+    ],
+    "19": [
+     "│ ╭──────────────────────────────────────────────────────────────────────────────────────────────╮ │"
+    ],
+    "20": [
+     "│ │ echo hi > out.txt                                                                            │ │"
+    ],
+    "21": [
+     "│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │"
+    ],
+    "22": [
+     "│                                                                                                  │"
+    ],
+    "23": [
+     "│ Do you want to run this command?                                                                 │"
+    ],
+    "24": [
+     "│                                                                                                  │"
+    ],
+    "25": [
+     "│   1. Yes                                                                                         │"
+    ],
+    "26": [
+     "│ ❯ 2. No, and tell Copilot what to do differently (Esc to stop)                                   │"
+    ],
+    "27": [
+     "│                                                                                                  │"
+    ],
+    "28": [
+     "│ ↑/↓ to navigate · enter to select · esc to cancel                                                │"
+    ],
+    "29": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ]
+   }
+  },
+  "permission3": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  █ ▘▝ █  Check for mistakes.                                                                      ┃"
+    ],
+    "3": [
+     "   ▔▔▔▔                                                                                            ┃"
+    ],
+    "4": [
+     "                                                                                                   ┃"
+    ],
+    "5": [
+     " ● Tip: /cwd                                                                                       ┃"
+    ],
+    "6": [
+     "   └ Change working directory or show current directory                                            ┃"
+    ],
+    "7": [
+     "                                                                                                   ┃"
+    ],
+    "8": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "9": [
+     "                                                                                                   ┃"
+    ],
+    "10": [
+     " ❯ wait a bit                                                                                19:59 ┃"
+    ],
+    "11": [
+     "                                                                                                   ┃"
+    ],
+    "12": [
+     " $ Shell Wait a bit                                                                                ┃"
+    ],
+    "13": [
+     "   sleep 8                                                                                         ┃"
+    ],
+    "14": [
+     "                                                                                                   ┃"
+    ],
+    "15": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "16": [
+     "│ Wait a bit                                                                                       │"
+    ],
+    "17": [
+     "│ ──────────────────────────────────────────────────────────────────────────────────────────────── │"
+    ],
+    "18": [
+     "│ ╭──────────────────────────────────────────────────────────────────────────────────────────────╮ │"
+    ],
+    "19": [
+     "│ │ sleep 8                                                                                      │ │"
+    ],
+    "20": [
+     "│ ╰──────────────────────────────────────────────────────────────────────────────────────────────╯ │"
+    ],
+    "21": [
+     "│                                                                                                  │"
+    ],
+    "22": [
+     "│ Do you want to run this command?                                                                 │"
+    ],
+    "23": [
+     "│                                                                                                  │"
+    ],
+    "24": [
+     "│ ❯ 1. Yes                                                                                         │"
+    ],
+    "25": [
+     "│   2. Yes, and don't ask again for `sleep` in this directory (/home/user/project/xxxxxxxxxxxxx)   │"
+    ],
+    "26": [
+     "│   3. No, and tell Copilot what to do differently (Esc to stop)                                   │"
+    ],
+    "27": [
+     "│                                                                                                  │"
+    ],
+    "28": [
+     "│ ↑/↓ to navigate · enter to select · esc to cancel                                                │"
+    ],
+    "29": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ]
+   }
+  },
+  "afterEscPermission": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /permissions"
+    ],
+    "8": [
+     "   └ Switch between permission modes"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ make a file                                                                               19:59"
+    ],
+    "14": [
+     " ✗ Shell Write a file Operation aborted by user"
+    ],
+    "15": [
+     "   echo hi > out.txt"
+    ],
+    "17": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "afterEscEscPermission": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ wait a bit                                                                                20:08"
+    ],
+    "14": [
+     " ✗ Shell Wait a bit Operation aborted by user"
+    ],
+    "15": [
+     "   sleep 8"
+    ],
+    "17": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " esc again to rewind                                                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "toolRunning": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /cwd"
+    ],
+    "8": [
+     "   └ Change working directory or show current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ wait a bit                                                                                19:59"
+    ],
+    "14": [
+     " $ Shell Wait a bit"
+    ],
+    "15": [
+     "   sleep 8"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◎ Working · 52 B esc interrupt                                                     gpt-4o · Medium"
+    ]
+   }
+  },
+  "afterEscToolRunning": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /cwd"
+    ],
+    "8": [
+     "   └ Change working directory or show current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ wait a bit                                                                                19:59"
+    ],
+    "14": [
+     " $ Shell Wait a bit"
+    ],
+    "15": [
+     "   sleep 8"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◉ Working · 52 B esc again to interrupt                                                     gpt-4o"
+    ]
+   }
+  },
+  "interruptedToolRunning": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ wait a bit                                                                                20:08"
+    ],
+    "14": [
+     " ✗ Shell Wait a bit Operation aborted by user"
+    ],
+    "15": [
+     "   sleep 8"
+    ],
+    "17": [
+     " ● Operation cancelled by user"
+    ],
+    "19": [
+     " ❯ wait again                                                                                20:08"
+    ],
+    "21": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                         gpt-4o"
+    ]
+   }
+  },
+  "draftEsc": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ● Nothing to rewind yet. Start a conversation first."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ line one"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " esc again to clear input                                                                    gpt-4o"
+    ]
+   }
+  },
+  "rewindHint": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ● Nothing to rewind yet. Start a conversation first."
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " esc again to rewind                                                                         gpt-4o"
+    ]
+   }
+  },
+  "rewindPicker": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /context"
+    ],
+    "8": [
+     "   └ Show context window token usage and visualization"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ● Nothing to rewind yet. Start a conversation first."
+    ],
+    "14": [
+     " ❯ say hello                                                                                 19:59"
+    ],
+    "16": [
+     " ● Hello from the fake provider."
+    ],
+    "23": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "24": [
+     "│ Rewind to a previous point                                                                       │"
+    ],
+    "25": [
+     "│                                                                                                  │"
+    ],
+    "26": [
+     "│ ❯  1. say hello (just now)                                                                       │"
+    ],
+    "27": [
+     "│                                                                                                  │"
+    ],
+    "28": [
+     "│ ↑↓ Navigate · Enter Select · Esc Cancel                                                          │"
+    ],
+    "29": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ]
+   }
+  },
+  "help": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "                                                                                                   ┃"
+    ],
+    "3": [
+     " ● Tip: /diff                                                                                      ┃"
+    ],
+    "4": [
+     "   └ Review the changes made in the current directory                                              ┃"
+    ],
+    "5": [
+     "                                                                                                   ┃"
+    ],
+    "6": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "7": [
+     "                                                                                                   ┃"
+    ],
+    "8": [
+     " ● Nothing to rewind yet. Start a conversation first.                                              ┃"
+    ],
+    "9": [
+     "                                                                                                   ┃"
+    ],
+    "10": [
+     " /help       show full help                            ctrl+a       go to line start"
+    ],
+    "11": [
+     " ?           show quick help                           ctrl+e       go to line end"
+    ],
+    "12": [
+     " /           commands                                  ctrl+u       delete from cursor to beginning"
+    ],
+    "13": [
+     " @           mention files                                          of line"
+    ],
+    "14": [
+     " #           mention issues and pull requests          ctrl+k       delete from cursor to end of"
+    ],
+    "15": [
+     " shift+tab   switch modes                                           line"
+    ],
+    "16": [
+     " ctrl+s      stash/pop current prompt                  meta+←/→     move cursor by word"
+    ],
+    "17": [
+     " ctrl+q      enqueue prompt                            shift+enter  insert newline"
+    ],
+    "18": [
+     " ctrl+r      reverse search history                    ctrl+g       edit prompt in $EDITOR"
+    ],
+    "19": [
+     " ctrl+o      toggle all timeline"
+    ],
+    "20": [
+     " ctrl+c      cancel"
+    ],
+    "21": [
+     " ctrl+c×2    exit"
+    ],
+    "22": [
+     " esc esc     clear input, interrupt, stop agents,"
+    ],
+    "23": [
+     "             or rewind"
+    ],
+    "24": [
+     " ctrl+t      toggle reasoning display"
+    ],
+    "25": [
+     " ctrl+x → o  open most recent link"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " any key close help                                                                          gpt-4o"
+    ]
+   }
+  },
+  "ctrlcWorking": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /theme"
+    ],
+    "8": [
+     "   └ View or set color mode"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something long                                                                        20:00"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4"
+    ],
+    "16": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ← open sidebar · / commands · ? help · tab next tab                                gpt-4o · Medium"
+    ]
+   }
+  },
+  "ctrlcDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /theme"
+    ],
+    "8": [
+     "   └ View or set color mode"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something long                                                                        20:00"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4"
+    ],
+    "16": [
+     " ● Operation cancelled by user"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ctrl+c again to exit                                                                        gpt-4o"
+    ]
+   }
+  },
+  "exited": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "2": [
+     "  ╭─╮╭─╮   Changes    +0 -0"
+    ],
+    "3": [
+     "  ╰─╯╰─╯   Duration   7s"
+    ],
+    "4": [
+     "  █ ▘▝ █   Resume     copilot --resume=00000000-0000-0000-0000-000000000000"
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ]
+   }
+  },
+  "pending": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /mcp"
+    ],
+    "8": [
+     "   └ Manage MCP server configuration"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something                                                                             20:00"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13"
+    ],
+    "15": [
+     " ❯ draft during work                                                                         20:00"
+    ],
+    "16": [
+     "   └ [pending · ↑ recall]"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ● Working · 88 B esc interrupt                                                     gpt-4o · Medium"
+    ]
+   }
+  },
+  "ctrlqQueued": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "   ▔▔▔▔                                                                                            ┃"
+    ],
+    "3": [
+     "                                                                                                   ┃"
+    ],
+    "4": [
+     " ● Tip: /remote                                                                                    ┃"
+    ],
+    "5": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI   ┃"
+    ],
+    "6": [
+     "                                                                                                   ┃"
+    ],
+    "7": [
+     " ● MCP Servers reloaded: 0 servers connected                                                       ┃"
+    ],
+    "8": [
+     "                                                                                                   ┃"
+    ],
+    "9": [
+     " ❯ say something                                                                             20:03 ┃"
+    ],
+    "10": [
+     "                                                                                                   ┃"
+    ],
+    "11": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9                                     ┃"
+    ],
+    "12": [
+     "                                                                                                   ┃"
+    ],
+    "13": [
+     " ● Operation cancelled by user                                                                     ┃"
+    ],
+    "14": [
+     "                                                                                                   ┃"
+    ],
+    "15": [
+     " ❯ queued message                                                                            20:03 ┃"
+    ],
+    "16": [
+     "                                                                                                   ┃"
+    ],
+    "17": [
+     " ● Hello from the fake provider.                                                                   ┃"
+    ],
+    "18": [
+     "                                                                                                   ┃"
+    ],
+    "19": [
+     " ❯ again                                                                                     20:03 ┃"
+    ],
+    "20": [
+     "                                                                                                   ┃"
+    ],
+    "21": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 wo                                              ┃"
+    ],
+    "22": [
+     "                                                                                                   ┃"
+    ],
+    "23": [
+     "Queued (1) ↑ recall"
+    ],
+    "24": [
+     " └ enqueue with ctrl q"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◉ Working · 54 B esc interrupt                                                              gpt-4o"
+    ]
+   }
+  },
+  "interruptedPendingSent": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /remote"
+    ],
+    "8": [
+     "   └ Share this session: remote control from GitHub web and mobile, or directly with another CLI"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something                                                                             20:03"
+    ],
+    "14": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8 word9"
+    ],
+    "16": [
+     " ● Operation cancelled by user"
+    ],
+    "18": [
+     " ❯ queued message                                                                            20:03"
+    ],
+    "20": [
+     " ● Hello from the f"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " ◉ Working · 20 B esc interrupt                                                              gpt-4o"
+    ]
+   }
+  },
+  "paste12": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /mcp"
+    ],
+    "8": [
+     "   └ Manage MCP server configuration"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "24": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "25": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "26": [
+     "❯ first line"
+    ],
+    "27": [
+     "  [Paste #1 - 12 lines]"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "multiline": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ● Nothing to rewind yet. Start a conversation first."
+    ],
+    "22": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "23": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "24": [
+     "❯ line one"
+    ],
+    "25": [
+     "  two"
+    ],
+    "26": [
+     "  three"
+    ],
+    "27": [
+     "  four"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "shellMode": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "27": [
+     "! Execute shell command"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────"
+    ],
+    "29": [
+     " ← open sidebar · shell · / commands · ? help · tab next tab · esc exit shell mode  gpt-4o · Medium"
+    ]
+   }
+  },
+  "slashList": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /diff"
+    ],
+    "8": [
+     "   └ Review the changes made in the current directory"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "20": [
+     "┃ ❯ /add-dir                            Allow file access to a directory and load its .github skill…"
+    ],
+    "21": [
+     "┃   /agent                              Browse and select agents: /agent [name]"
+    ],
+    "22": [
+     "┃   /allow-all                          Enable all permissions (tools, paths, and URLs)"
+    ],
+    "23": [
+     "┃   /app                                Prefer a visual workspace? Try out the GitHub Copilot deskt…"
+    ],
+    "24": [
+     "┃   /ask                                Ask a quick side question without adding to conversation hi…"
+    ],
+    "25": [
+     "┃   /autopilot                          Toggle autopilot mode, or set an autopilot objective with a…"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "❯ /add-dir"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " /help show help                                                                    gpt-4o · Medium"
+    ]
+   }
+  },
+  "idle80": {
+   "cols": 80,
+   "rows": 24,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ╴╶ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /context"
+    ],
+    "8": [
+     "   └ Show context window token usage and visualization"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "19": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "20": [
+     "────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       80
+      ]
+     ]
+    ],
+    "21": [
+     "❯"
+    ],
+    "22": [
+     "────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       80
+      ]
+     ]
+    ],
+    "23": [
+     " ← open sidebar · / commands · ? help · tab next tab            gpt-4o · Medium"
+    ]
+   }
+  },
+  "working80": {
+   "cols": 80,
+   "rows": 24,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  ╭─╮╭─╮"
+    ],
+    "3": [
+     "  ╰─╯╰─╯  Copilot v1.0.87 uses AI."
+    ],
+    "4": [
+     "  █ ▘▝ █  Check for mistakes."
+    ],
+    "5": [
+     "   ▔▔▔▔"
+    ],
+    "7": [
+     " ● Tip: /context"
+    ],
+    "8": [
+     "   └ Show context window token usage and visualization"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers connected"
+    ],
+    "12": [
+     " ❯ say something                                                         20:05"
+    ],
+    "14": [
+     " ● word0 word1 word2"
+    ],
+    "19": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "20": [
+     "────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       80
+      ]
+     ]
+    ],
+    "21": [
+     "❯"
+    ],
+    "22": [
+     "────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       80
+      ]
+     ]
+    ],
+    "23": [
+     " ◎ Working · 18 B esc interrupt                                 gpt-4o · Medium"
+    ]
+   }
+  },
+  "resized60": {
+   "cols": 60,
+   "rows": 20,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues   Pull requests   Gists",
+     [
+      [
+       22,
+       30
+      ],
+      [
+       31,
+       46
+      ]
+     ]
+    ],
+    "2": [
+     "  █ ▘▝ █  Check for mistakes.                              ┃"
+    ],
+    "3": [
+     "   ▔▔▔▔                                                    ┃"
+    ],
+    "4": [
+     "                                                           ┃"
+    ],
+    "5": [
+     " ● Tip: /context                                           ┃"
+    ],
+    "6": [
+     "   └ Show context window token usage and visualization     ┃"
+    ],
+    "7": [
+     "                                                           ┃"
+    ],
+    "8": [
+     " ● MCP Servers reloaded: 0 servers connected               ┃"
+    ],
+    "9": [
+     "                                                           ┃"
+    ],
+    "10": [
+     " ❯ say something                                     20:05 ┃"
+    ],
+    "11": [
+     "                                                           ┃"
+    ],
+    "12": [
+     " ● word0 word1 word2 word3 word4 word5 word6 word7 word8   ┃"
+    ],
+    "13": [
+     "   word9 word10 word11 word12 word13                       ┃"
+    ],
+    "14": [
+     "                                                           ┃"
+    ],
+    "15": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "16": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "17": [
+     "❯"
+    ],
+    "18": [
+     "────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       60
+      ]
+     ]
+    ],
+    "19": [
+     " ◉ Working · 88 B esc interrupt                      gpt-4o"
+    ]
+   }
+  },
+  "idle40": {
+   "cols": 40,
+   "rows": 20,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues  →",
+     [
+      [
+       22,
+       30
+      ]
+     ]
+    ],
+    "2": [
+     "   ▔▔▔▔                                ┃"
+    ],
+    "3": [
+     "                                       ┃"
+    ],
+    "4": [
+     " ● Tip: /autopilot                     ┃"
+    ],
+    "5": [
+     "   └ Toggle autopilot mode, or set an  ┃"
+    ],
+    "6": [
+     "     autopilot objective with an       ┃"
+    ],
+    "7": [
+     "     optional AI-credit limit          ┃"
+    ],
+    "8": [
+     "     (--max-ai-credits)                ┃"
+    ],
+    "9": [
+     "                                       ┃"
+    ],
+    "10": [
+     " ● MCP Servers reloaded: 0 servers     ┃"
+    ],
+    "11": [
+     "   connected                           ┃"
+    ],
+    "12": [
+     "                                       ┃"
+    ],
+    "13": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "14": [
+     "────────────────────────────────────────",
+     [
+      [
+       0,
+       40
+      ]
+     ]
+    ],
+    "15": [
+     "❯"
+    ],
+    "16": [
+     "────────────────────────────────────────",
+     [
+      [
+       0,
+       40
+      ]
+     ]
+    ],
+    "17": [
+     " ← open     · / commands · ? help · tab"
+    ],
+    "18": [
+     " sidebar       next tab"
+    ],
+    "19": [
+     " gpt-4o · Medium"
+    ]
+   }
+  },
+  "working40": {
+   "cols": 40,
+   "rows": 20,
+   "lines": {
+    "0": [
+     " [Current]  Sessions   Issues  →",
+     [
+      [
+       22,
+       30
+      ]
+     ]
+    ],
+    "2": [
+     "   └ Toggle autopilot mode, or set an  ┃"
+    ],
+    "3": [
+     "     autopilot objective with an       ┃"
+    ],
+    "4": [
+     "     optional AI-credit limit          ┃"
+    ],
+    "5": [
+     "     (--max-ai-credits)                ┃"
+    ],
+    "6": [
+     "                                       ┃"
+    ],
+    "7": [
+     " ● MCP Servers reloaded: 0 servers     ┃"
+    ],
+    "8": [
+     "   connected                           ┃"
+    ],
+    "9": [
+     "                                       ┃"
+    ],
+    "10": [
+     " ❯ say something                 20:06 ┃"
+    ],
+    "11": [
+     "                                       ┃"
+    ],
+    "12": [
+     " ● word0 word1 word2                   ┃"
+    ],
+    "13": [
+     "                                       ┃"
+    ],
+    "14": [
+     " /home/user/project/xxxxxxxxxxxxx"
+    ],
+    "15": [
+     "────────────────────────────────────────",
+     [
+      [
+       0,
+       40
+      ]
+     ]
+    ],
+    "16": [
+     "❯"
+    ],
+    "17": [
+     "────────────────────────────────────────",
+     [
+      [
+       0,
+       40
+      ]
+     ]
+    ],
+    "18": [
+     " ◎ Working · 18 B esc interrupt"
+    ],
+    "19": [
+     " gpt-4o · Medium"
+    ]
+   }
+  },
+  "srTrust": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /skills"
+    ],
+    "6": [
+     "   Manage skills for enhanced capabilities"
+    ],
+    "14": [
+     "Confirm folder trust"
+    ],
+    "15": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "16": [
+     "│ /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/00000000-0000-0000-0000-000000000000/scra │"
+    ],
+    "17": [
+     "│ tchpad/copilot-research/work                                                                     │"
+    ],
+    "18": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ],
+    "20": [
+     "Copilot can read files in this folder and, with your permission, edit them or run code and shell"
+    ],
+    "21": [
+     "commands. It will remember your permissions for the rest of this session."
+    ],
+    "23": [
+     "Do you trust the files in this folder?"
+    ],
+    "25": [
+     "Current selection: 1. Yes"
+    ],
+    "26": [
+     "  2. Yes, and remember this folder for future sessions"
+    ],
+    "27": [
+     "  3. No (Esc)"
+    ],
+    "29": [
+     "↑/↓ to navigate · enter to select · esc to cancel"
+    ]
+   }
+  },
+  "srIdleDraft": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /skills"
+    ],
+    "6": [
+     "   Manage skills for enhanced capabilities"
+    ],
+    "8": [
+     "  MCP Servers reloaded: 0 servers connected"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "Start of Prompt Indicatorhello there"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     " @ files · # issues                                                                          gpt-4o"
+    ]
+   }
+  },
+  "srWorking": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /skills"
+    ],
+    "6": [
+     "   Manage skills for enhanced capabilities"
+    ],
+    "8": [
+     "  MCP Servers reloaded: 0 servers connected"
+    ],
+    "10": [
+     "  theresay something                                                                         20:06"
+    ],
+    "12": [
+     "  word0 word1 word2 word3"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "Start of Prompt Indicator"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     "  Working · 24 B esc interrupt                                                               gpt-4o"
+    ]
+   }
+  },
+  "srAfterEsc": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /skills"
+    ],
+    "6": [
+     "   Manage skills for enhanced capabilities"
+    ],
+    "8": [
+     "  MCP Servers reloaded: 0 servers connected"
+    ],
+    "10": [
+     "  theresay something                                                                         20:06"
+    ],
+    "12": [
+     "  word0 word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14"
+    ],
+    "13": [
+     "  word15 word16 word17 word18 word19 word20"
+    ],
+    "25": [
+     " /home/user/project/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/.../work"
+    ],
+    "26": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "27": [
+     "Start of Prompt Indicator"
+    ],
+    "28": [
+     "────────────────────────────────────────────────────────────────────────────────────────────────────",
+     [
+      [
+       0,
+       100
+      ]
+     ]
+    ],
+    "29": [
+     "  Working · 137 B esc again to interrupt                                                     gpt-4o"
+    ]
+   }
+  },
+  "srPermission": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /experimental"
+    ],
+    "6": [
+     "   Show available experimental features, or enable/disable experimental mode"
+    ],
+    "8": [
+     "  MCP Servers reloaded: 0 servers connected"
+    ],
+    "10": [
+     "  make a file                                                                                20:06"
+    ],
+    "12": [
+     "  Shell Write a file"
+    ],
+    "13": [
+     "   echo hi > out.txt"
+    ],
+    "19": [
+     "Write a file"
+    ],
+    "20": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "21": [
+     "│ echo hi > out.txt                                                                                │"
+    ],
+    "22": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ],
+    "24": [
+     "Do you want to run this command?"
+    ],
+    "26": [
+     "Current selection: 1. Yes"
+    ],
+    "27": [
+     "  2. No, and tell Copilot what to do differently (Esc to stop)"
+    ],
+    "29": [
+     "↑/↓ to navigate · enter to select · esc to cancel"
+    ]
+   }
+  },
+  "srPermissionDown": {
+   "cols": 100,
+   "rows": 30,
+   "lines": {
+    "0": [
+     " Home: current tab: Current, Sessions, Issues, Pull requests, Gists"
+    ],
+    "2": [
+     "Copilot v1.0.87 uses AI."
+    ],
+    "3": [
+     "Check for mistakes."
+    ],
+    "5": [
+     "  Tip: /experimental"
+    ],
+    "6": [
+     "   Show available experimental features, or enable/disable experimental mode"
+    ],
+    "8": [
+     "  MCP Servers reloaded: 0 servers connected"
+    ],
+    "10": [
+     "  make a file                                                                                20:06"
+    ],
+    "12": [
+     "  Shell Write a file"
+    ],
+    "13": [
+     "   echo hi > out.txt"
+    ],
+    "19": [
+     "Write a file"
+    ],
+    "20": [
+     "╭──────────────────────────────────────────────────────────────────────────────────────────────────╮"
+    ],
+    "21": [
+     "│ echo hi > out.txt                                                                                │"
+    ],
+    "22": [
+     "╰──────────────────────────────────────────────────────────────────────────────────────────────────╯"
+    ],
+    "24": [
+     "Do you want to run this command?"
+    ],
+    "26": [
+     "  1. Yes"
+    ],
+    "27": [
+     "Current selection: 2. No, and tell Copilot what to do differently (Esc to stop)"
+    ],
+    "29": [
+     "↑/↓ to navigate · enter to select · esc to cancel"
+    ]
+   }
+  }
+ }
+}

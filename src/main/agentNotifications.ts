@@ -143,7 +143,7 @@ export function createAgentNotificationCenter({
   }
 
   return {
-    show(window, { slotId, tabNumber, kind }) {
+    show(window, { slotId, tabNumber, kind, cliKind }) {
       if (window.isDestroyed()) return
       // 新しい出来事が起きた時点で、同じタブの前の通知は古い。前面のとき・通知に対応していないときも、前の通知は閉じる
       if (window.isFocused() || !isSupported()) {
@@ -151,7 +151,7 @@ export function createAgentNotificationCenter({
         return
       }
       // 題・本文は固定の表から作る(renderer の文字列を通知に出さない。L-019)
-      const { title, body } = agentNotificationText(kind, tabNumber)
+      const { title, body } = agentNotificationText(kind, tabNumber, cliKind)
       dismissPrevious(window, slotId)
       const handle = createNotification({ title, body })
       remember(window, slotId, handle)

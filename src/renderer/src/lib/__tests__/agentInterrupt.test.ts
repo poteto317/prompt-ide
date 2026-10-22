@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   AGENT_INTERRUPT_COOLDOWN_MS,
   checkAgentInterruptAtPress,
+  checkAgentInterruptFollowUp,
   describeAgentInterruptBlockedByActivity,
   getAgentInterruptAvailability
 } from '../agentInterrupt'
@@ -10,18 +11,38 @@ import type { AgentActivity } from '../agentActivity'
 import { isActiveAgentSessionStatus } from '../agentSessionTabState'
 import type { AgentSessionStatus } from '../agentSessionTabState'
 import type { ViewportLine } from '../agentViewport'
-import { agentScreen } from './fixtures/agentScreens'
+import { agentScreen, makeLine } from './fixtures/agentScreens'
+import { copilotScreen } from './fixtures/copilotScreens'
 import type { AgentScreenName } from './fixtures/agentScreens'
 import {
-  AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
   AGENT_INTERRUPT_DISABLED_STARTING,
-  AGENT_INTERRUPT_NOT_RUNNING,
+  agentInterruptBlockedByActivityReason,
+  agentInterruptNotRunningReason,
   agentInterruptUnsupportedReason
 } from '../agentInterruptMessages'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 中断の能力が無い種類の理由(段階 1 の agentInterruptUnsupportedReason)を確かめるため、能力の表を種類ごとに差し替える
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set<AgentCliKind>() })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 
 const STATUSES: readonly AgentSessionStatus[] = ['none', 'starting', 'running', 'exited']
 const ACTIVITIES: readonly AgentActivity[] = ['working', 'idle', 'permission', 'confirm', 'unknown']
@@ -47,10 +68,13 @@ const RUNNING_WORKING: AgentInterruptAvailabilityInput = {
 
 // 表の期待(状態 → 閉じる途中・送信中・確認の表示中・待ち → 活動の順で最初に当たった理由)
 function expectedReason(input: AgentInterruptAvailabilityInput): string | null {
-  if (input.status === 'none' || input.status === 'exited') return AGENT_INTERRUPT_NOT_RUNNING
+  if (input.status === 'none' || input.status === 'exited')
+    return agentInterruptNotRunningReason('claude')
   if (input.status === 'starting') return AGENT_INTERRUPT_DISABLED_STARTING
   for (const flag of FLAGS) if (input[flag]) return FLAG_REASONS[flag]
-  return input.activity === 'working' ? null : AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY[input.activity]
+  return input.activity === 'working'
+    ? null
+    : agentInterruptBlockedByActivityReason(input.activity, 'claude')
 }
 
 // 状態(4)× 活動(5)× 閉じる途中・送信中・確認の表示中・待ち(16)の組
@@ -96,7 +120,7 @@ describe('getAgentInterruptAvailability', () => {
     (status) => {
       expect(getAgentInterruptAvailability({ ...RUNNING_WORKING, status })).toEqual({
         visible: false,
-        reason: AGENT_INTERRUPT_NOT_RUNNING
+        reason: agentInterruptNotRunningReason('claude')
       })
     }
   )
@@ -147,18 +171,23 @@ describe('getAgentInterruptAvailability', () => {
     '活動が %s なら押せない(L-041。許可待ちの Esc は許可の拒否、入力待ちの 2 回目の Esc は書きかけの消去)',
     (activity) => {
       expect(getAgentInterruptAvailability({ ...RUNNING_WORKING, activity }).reason).toBe(
-        AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY[activity]
+        agentInterruptBlockedByActivityReason(activity, 'claude')
       )
     }
   )
 })
 
 describe('describeAgentInterruptBlockedByActivity', () => {
-  it.each(['idle', 'permission', 'confirm', 'unknown'] as const)('%s の理由', (activity) => {
-    expect(describeAgentInterruptBlockedByActivity(activity)).toBe(
-      AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY[activity]
-    )
-  })
+  it.each(['idle', 'permission', 'confirm', 'unknown'] as const)(
+    '%s の理由は、タブの種類の文言の表から作る',
+    (activity) => {
+      for (const kind of ['claude', 'copilot'] as const) {
+        expect(describeAgentInterruptBlockedByActivity(activity, kind)).toBe(
+          agentInterruptBlockedByActivityReason(activity, kind)
+        )
+      }
+    }
+  )
 })
 
 describe('AGENT_INTERRUPT_COOLDOWN_MS', () => {
@@ -180,10 +209,10 @@ describe('checkAgentInterruptAtPress', () => {
   })
 
   it.each<[string, Partial<AgentInterruptAvailabilityInput>, string]>([
-    ['終了', { status: 'exited' }, AGENT_INTERRUPT_NOT_RUNNING],
+    ['終了', { status: 'exited' }, agentInterruptNotRunningReason('claude')],
     ['起動中', { status: 'starting' }, AGENT_INTERRUPT_DISABLED_STARTING],
     ['待ち', { isInterrupting: true }, AGENT_INTERRUPT_DISABLED_COOLDOWN],
-    ['入力待ち', { activity: 'idle' }, AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY.idle]
+    ['入力待ち', { activity: 'idle' }, agentInterruptBlockedByActivityReason('idle', 'claude')]
   ])(
     '押せない状態(%s。手順 2)なら、画面を読まずに blocked と理由を返す',
     (_name, overrides, reason) => {
@@ -197,8 +226,8 @@ describe('checkAgentInterruptAtPress', () => {
   )
 
   it.each<[AgentScreenName, string]>([
-    ['permission', AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY.permission],
-    ['tallTyped', AGENT_INTERRUPT_BLOCKED_BY_ACTIVITY.unknown]
+    ['permission', agentInterruptBlockedByActivityReason('permission', 'claude')],
+    ['tallTyped', agentInterruptBlockedByActivityReason('unknown', 'claude')]
   ])(
     '描画の活動は作業中でも、押した時点の画面が %s(手順 3)なら blocked と理由を返す',
     (name, reason) => {
@@ -219,12 +248,18 @@ describe('checkAgentInterruptAtPress', () => {
   })
 })
 
-describe('getAgentInterruptAvailability(CLI の種類)', () => {
+describe('getAgentInterruptAvailability(中断の能力が無い種類。能力の表で copilot を差し替えて作る)', () => {
   const COPILOT = agentInterruptUnsupportedReason('copilot')
   const COPILOT_RUNNING: AgentInterruptAvailabilityInput = {
     ...RUNNING_WORKING,
     cliKind: 'copilot'
   }
+  beforeEach(() => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
+  })
+  afterEach(() => {
+    capabilityOverrides.unsupportedKinds.clear()
+  })
 
   it('copilot の running は出すが押せず、閉じる途中・送信中・確認の表示中・待ち・活動より先にその理由', () => {
     for (const activity of ACTIVITIES) {
@@ -250,7 +285,7 @@ describe('getAgentInterruptAvailability(CLI の種類)', () => {
   it.each(['none', 'exited'] as const)('copilot の %s は出さない', (status) => {
     expect(getAgentInterruptAvailability({ ...COPILOT_RUNNING, status })).toEqual({
       visible: false,
-      reason: AGENT_INTERRUPT_NOT_RUNNING
+      reason: agentInterruptNotRunningReason('copilot')
     })
   })
 
@@ -261,5 +296,77 @@ describe('getAgentInterruptAvailability(CLI の種類)', () => {
       reason: COPILOT
     })
     expect(readScreen).not.toHaveBeenCalled()
+  })
+})
+
+describe('checkAgentInterruptAtPress(タブの種類の規則で読む)', () => {
+  const COPILOT_RUNNING: AgentInterruptAvailabilityInput = {
+    ...RUNNING_WORKING,
+    cliKind: 'copilot'
+  }
+
+  it('copilot の作業中の台帳の画面は、copilot のタブとして渡すと send', () => {
+    expect(
+      checkAgentInterruptAtPress(COPILOT_RUNNING, () => copilotScreen('working3000').lines)
+    ).toEqual({ kind: 'send' })
+  })
+
+  it('同じ画面を claude のタブとして渡すと blocked(claude の規則では入力待ち)', () => {
+    expect(
+      checkAgentInterruptAtPress(RUNNING_WORKING, () => copilotScreen('working3000').lines)
+    ).toEqual({ kind: 'blocked', reason: agentInterruptBlockedByActivityReason('idle', 'claude') })
+  })
+
+  it('copilot の許可の確認の画面は、copilot の許可待ちの理由で blocked', () => {
+    expect(
+      checkAgentInterruptAtPress(COPILOT_RUNNING, () => copilotScreen('permission').lines)
+    ).toEqual({
+      kind: 'blocked',
+      reason: agentInterruptBlockedByActivityReason('permission', 'copilot')
+    })
+  })
+
+  it('copilot の動いていないタブの理由は copilot の名前', () => {
+    expect(getAgentInterruptAvailability({ ...COPILOT_RUNNING, status: 'exited' })).toEqual({
+      visible: false,
+      reason: agentInterruptNotRunningReason('copilot')
+    })
+  })
+})
+
+describe('checkAgentInterruptFollowUp(2 回目の前の確かめ)', () => {
+  it('画面が作業中なら send', () => {
+    expect(
+      checkAgentInterruptFollowUp('copilot', () => copilotScreen('working3000').lines)
+    ).toEqual({
+      kind: 'send'
+    })
+  })
+
+  it.each<[string, () => readonly ViewportLine[], AgentActivity]>([
+    ['入力待ち(台帳の done)', () => copilotScreen('done').lines, 'idle'],
+    ['許可待ち(台帳の permission)', () => copilotScreen('permission').lines, 'permission'],
+    [
+      '判定できない(帯が空の手書きの画面)',
+      () => ['─'.repeat(100), '❯', '─'.repeat(100)].map((text) => makeLine(text)),
+      'unknown'
+    ]
+  ])('画面が %s なら skip と活動', (_name, readScreen, activity) => {
+    expect(checkAgentInterruptFollowUp('copilot', readScreen)).toEqual({ kind: 'skip', activity })
+  })
+
+  it('タブの種類の規則で読む(copilot の作業中の画面も claude の規則では skip)', () => {
+    expect(
+      checkAgentInterruptFollowUp('claude', () => copilotScreen('working3000').lines).kind
+    ).toBe('skip')
+  })
+
+  it('画面を読めなければ unreadable と例外を返す(投げない)', () => {
+    const error = new Error('disposed')
+    expect(
+      checkAgentInterruptFollowUp('copilot', () => {
+        throw error
+      })
+    ).toEqual({ kind: 'unreadable', error })
   })
 })

@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { agentCliCapabilities } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import { classifyAgentScreen } from '../lib/agentActivity'
+import { classifyAgentScreenFor } from '../lib/agentScreenClassifiers'
 import type { AgentActivity } from '../lib/agentActivity'
 import type { AgentSessionStatus } from '../lib/agentSessionTabState'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
 import type { ViewportLine } from '../lib/agentViewport'
 
-// タブごとの claude の活動(設計書「活動の hook」「再判定のきっかけ」)。controller の書き込みの通知(onOutputWritten)を購読し、
+// タブごとのエージェント CLI の活動(設計書「活動の hook」「再判定のきっかけ」)。controller の書き込みの通知(onOutputWritten)を購読し、
 // 最後の通知から出力が途絶えたら(続いていても最初の未判定の通知から上限が経てば)画面の末尾を読んで判定する。セッションの起動・停止の手順(useAgentSessions)とは分ける。
-// 画面の判定が無い種類(copilot)のタブは購読しない
+// 判定の関数は、判定の時点のタブの種類で種類ごとの表(agentScreenClassifiers)から引く。画面の判定が無い種類
+// (能力の表の screenActivity が false の種類。段階 2a の時点では無い)のタブは購読しない
 
 /** 最後の書き込みの通知から判定までの待ち。背面でも止まらないよう requestAnimationFrame ではなく setTimeout で待つ */
 export const AGENT_ACTIVITY_SETTLE_MS = 150
 
 /**
- * 最初の未判定の通知から判定までの上限の待ち。claude は作業中にスピナーなどを描き続け、通知が待ちより短い間隔で
+ * 最初の未判定の通知から判定までの上限の待ち。エージェント CLI は作業中にスピナーなどを描き続け、通知が待ちより短い間隔で
  * 続くことがあるため、出力が途絶えなくてもこの時間が経てば判定する(lodash の debounce の maxWait に当たる)
  */
 export const AGENT_ACTIVITY_MAX_WAIT_MS = 500
@@ -26,14 +27,14 @@ export interface AgentActivityTab {
   slotId: string
   status: AgentSessionStatus
   controller: AgentTerminalController
-  /** タブの CLI の種類。画面の判定(screenActivity)が無い種類は購読しない(設計書「画面の判定を止める」) */
+  /** タブの CLI の種類。判定の関数を引く(agentScreenClassifiers)。画面の判定(screenActivity)が無い種類は購読しない */
   cliKind: AgentCliKind
 }
 
 export interface UseAgentActivityOptions {
   tabs: readonly AgentActivityTab[]
-  /** 画面の行から活動を判定する(既定は classifyAgentScreen)。行は読むだけ */
-  classify?: (lines: readonly ViewportLine[]) => AgentActivity
+  /** タブの種類と画面の行から活動を判定する(既定は classifyAgentScreenFor。種類ごとの判定の表を引く)。行は読むだけ */
+  classify?: (kind: AgentCliKind, lines: readonly ViewportLine[]) => AgentActivity
 }
 
 // タブごとに持つもの(購読・待っている判定のタイマー〈待ちと上限〉・前回 running だったか)。寿命はタブと同じで、
@@ -95,7 +96,7 @@ function acquireWatch(
 /** タブごとの活動。running でないタブ・まだ判定していないタブは 'unknown' */
 export function useAgentActivity({
   tabs,
-  classify = classifyAgentScreen
+  classify = classifyAgentScreenFor
 }: UseAgentActivityOptions): ReadonlyMap<string, AgentActivity> {
   const [entries, setEntries] = useState<ReadonlyMap<string, AgentActivity>>(() => new Map())
   // 判定の結果の控え。結果が前と同じなら setState を呼ばない(関数の更新で prev を返しても描画が 1 回走りうるため)
@@ -115,7 +116,7 @@ export function useAgentActivity({
       setEntries(next)
     }
     /**
-     * 画面を読んで判定する。byDeadline は上限(出力が続いている最中)での判定か。上限の判定は claude の描き直しの途中
+     * 画面を読んで判定する。byDeadline は上限(出力が続いている最中)での判定か。上限の判定は CLI の描き直しの途中
      * (入力欄・スピナーを消した後、描く前)を読みうるため、結果が unknown なら採らずに前の活動を保ち、
      * 待ちのタイマー(上限が来たときは必ず張られている)を残して出力が途絶えた後の判定に任せる
      */
@@ -126,7 +127,9 @@ export function useAgentActivity({
         if (watch !== undefined) cancelTimer(watch)
         return
       }
-      const activity = classifyRef.current(tab.controller.readScreen())
+      // 判定の時点のタブ(tabsRef の最新)の種類で判定の関数を引く。控えに種類は持たない(同じタブで別の種類を起動し直すときは
+      // 必ず running から出て入り直すので、その区切りで判定の予約も記録も消える)
+      const activity = classifyRef.current(tab.cliKind, tab.controller.readScreen())
       if (watch !== undefined) {
         if (byDeadline && activity === 'unknown') {
           // 上限の起点だけを消す(次の上限は次の通知から数える)。待ちのタイマーは残す
@@ -168,7 +171,7 @@ export function useAgentActivity({
     }
 
     for (const tab of tabs) {
-      // 画面の判定が無い種類(copilot): 購読・タイマーを持たず、記録も消す(種類が変わったタブ〈同じタブで起動し直した〉の区切り)。
+      // 画面の判定が無い種類(能力の表の screenActivity が false の種類): 購読・タイマーを持たず、記録も消す(種類が変わったタブ〈同じタブで起動し直した〉の区切り)。
       // 常に unknown を返す判定に差し替えず、購読そのものを張らない。記録の無いタブは各機能が unknown として扱う
       if (!agentCliCapabilities(tab.cliKind).screenActivity) {
         forget(tab.slotId)
@@ -185,7 +188,7 @@ export function useAgentActivity({
       }
       watch.wasRunning = running
       // running に入ったら(初めて見たタブを含む)、通知を待たずに判定を予約する。起動の直後の書き込みの通知は
-      // running になる前に届いて捨てられ、その後 claude が何も描かずに入力欄で待つことがあるため
+      // running になる前に届いて捨てられ、その後 CLI が何も描かずに入力欄で待つことがあるため
       if (running && previous !== true) schedule(tab.slotId)
     }
 

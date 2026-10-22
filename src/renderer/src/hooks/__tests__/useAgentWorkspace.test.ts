@@ -4,6 +4,7 @@ import type { MockInstance } from 'vitest'
 import type { RenderHookResult } from '@testing-library/react'
 import type { AgentCliKindSetting, PromptExecutionMode } from '@shared/types'
 import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
 import {
   makeAgentSessionsState,
   makeAgentSessionTabView
@@ -51,6 +52,23 @@ const mockUseAgentLastSession = vi.hoisted(() =>
   vi.fn<(options: unknown) => AgentLastSessionLookup>(() => ({ kind: 'none' }))
 )
 vi.mock('../useAgentLastSession', () => ({ useAgentLastSession: mockUseAgentLastSession }))
+// 通知の注記が通知の節へ届く配線を確かめるため、能力の表の screenActivity・interrupt を種類ごとに偽にできるようにする
+// (今の表ではどの種類も画面を判定し、注記は出ない)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set<AgentCliKind>() })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 vi.mock('../../lib/xtermFactory', async () => {
   const { makeFakeAgentSessionTabs } = await import('../../__tests__/makeFakeAgentSessionTabs')
   const tabs = makeFakeAgentSessionTabs()
@@ -80,18 +98,19 @@ import {
   agentResumeEntryUnsupportedReason,
   agentResumeLastUnsupportedReason
 } from '../../lib/agentSessionMessages'
+import { AGENT_CLI_KIND_LOCKED_WHILE_STARTING } from '../../lib/agentCliMessages'
 import {
-  AGENT_CLI_KIND_LOCKED_WHILE_STARTING,
-  agentNotificationUnsupportedNote
-} from '../../lib/agentCliMessages'
-import {
+  AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
-  agentInterruptSentNotice,
-  agentInterruptUnsupportedReason
+  agentInterruptBlockedByActivityReason,
+  agentInterruptSentNotice
 } from '../../lib/agentInterruptMessages'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import { agentScreen } from '../../lib/__tests__/fixtures/agentScreens'
+import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
+import type { UseAgentNotificationsOptions } from '../useAgentNotifications'
+import { AGENT_INTERRUPT_COOLDOWN_MS } from '../../lib/agentInterrupt'
 
 const defaultUseExecutionMode = mockUseExecutionMode.getMockImplementation()!
 
@@ -171,6 +190,7 @@ beforeEach(() => {
 afterEach(() => {
   windowConfirmSpy?.mockRestore()
   consoleErrorSpy?.mockRestore()
+  capabilityOverrides.unsupportedKinds.clear()
 })
 
 type Rendered = RenderHookResult<AgentWorkspaceState, unknown>
@@ -1585,8 +1605,17 @@ describe('useAgentWorkspace', () => {
         expect.objectContaining({ appCliKind: 'copilot' })
       )
       expect(result.current.agentTerminal.appCliKind).toBe('copilot')
+      // copilot も画面を判定するので、通知の注記は出ない(段階 2a)
+      expect(result.current.agentNotificationPanel.unsupportedNote).toBeNull()
+    })
+
+    it('画面の判定が無い種類(能力の表を差し替えた copilot)を選んでいると、通知の注記を通知の節に渡す', () => {
+      capabilityOverrides.unsupportedKinds.add('copilot')
+      setMode('agent-cli')
+      setCliKind('copilot')
+      const { result } = renderWorkspace()
       expect(result.current.agentNotificationPanel.unsupportedNote).toBe(
-        agentNotificationUnsupportedNote('copilot')
+        'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
       )
     })
 
@@ -2342,7 +2371,7 @@ describe('useAgentWorkspace', () => {
       })
       interruptSpy = vi
         .spyOn(window.api, 'interruptAgentSession')
-        .mockResolvedValue({ kind: 'sent' })
+        .mockResolvedValue({ kind: 'sent', followUp: null })
       // 文書ごとのタブの置き場(テストでは偽の controller の置き場)の選択中のタブを作業中の画面にする
       const snapshot = getAgentSessionTabs().getSnapshot()
       slotId = snapshot.selectedSlotId
@@ -2382,7 +2411,7 @@ describe('useAgentWorkspace', () => {
       expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-wire')
       const label = result.current.agentTerminal.sessions.selected.label
       expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
-        agentInterruptSentNotice(label)
+        agentInterruptSentNotice(label, 'claude')
       )
     })
 
@@ -2461,7 +2490,7 @@ describe('useAgentWorkspace', () => {
       })
     }
 
-    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行・中断・前回の続きから・このセッションで再開がどれも copilot の理由で押せない', async () => {
+    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行・前回の続きから・このセッションで再開は copilot の理由で押せず、中断は活動の理由で押せない', async () => {
       setCliKind('copilot')
       const { result } = renderWorkspace({ folderPath: '/p' })
       expect(result.current.agentTerminal.sessions.selected.label).toBe('copilot 1')
@@ -2470,8 +2499,9 @@ describe('useAgentWorkspace', () => {
         isRunDisabled: true,
         runDisabledReason: agentPromptSendUnsupportedReason('copilot')
       })
+      // 段階 2a で copilot も中断の能力を持つ。活動が未判定(unknown)なので活動の理由で押せない
       expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
-        agentInterruptUnsupportedReason('copilot')
+        agentInterruptBlockedByActivityReason('unknown', 'copilot')
       )
       expect(result.current.agentTerminal.resumeLast.disabledReason).toBe(
         agentResumeLastUnsupportedReason('copilot')
@@ -2506,6 +2536,232 @@ describe('useAgentWorkspace', () => {
         isRunDisabled: false,
         runDisabledReason: null
       })
+    })
+  })
+
+  describe('copilot の配線(本物の useAgentSessions・useAgentActivity・useAgentInterrupt・useAgentNotifications。L-060)', () => {
+    let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
+    let interruptSpy: MockInstance<typeof window.api.interruptAgentSession> | null = null
+    let followUpSpy: MockInstance<typeof window.api.interruptAgentSessionFollowUp> | null = null
+    let showSpy: MockInstance<typeof window.api.showAgentNotification> | null = null
+    let stopSpy: MockInstance<typeof window.api.stopAgentSession> | null = null
+    let slotId: string
+    // 共有の偽のタブの画面を書き換えるので、終わったら戻す
+    let controller: FakeController | null = null
+    let originalScreen: FakeController['screen'] | null = null
+
+    beforeEach(async () => {
+      const sessions =
+        await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
+      const activity =
+        await vi.importActual<typeof import('../useAgentActivity')>('../useAgentActivity')
+      const notifications = await vi.importActual<typeof import('../useAgentNotifications')>(
+        '../useAgentNotifications'
+      )
+      mockUseAgentSessions.mockImplementation(sessions.useAgentSessions)
+      mockUseAgentActivity.mockImplementation(activity.useAgentActivity)
+      mockUseAgentNotifications.mockImplementation((options) =>
+        notifications.useAgentNotifications(options as UseAgentNotificationsOptions)
+      )
+      setMode('agent-cli')
+      setCliKind('copilot')
+      startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
+        kind: 'started',
+        sessionId: 'sid-copilot',
+        cliKind: 'copilot',
+        claudeSessionId: null
+      })
+      interruptSpy = vi
+        .spyOn(window.api, 'interruptAgentSession')
+        .mockResolvedValue({ kind: 'sent', followUp: { afterMs: 100 } })
+      followUpSpy = vi
+        .spyOn(window.api, 'interruptAgentSessionFollowUp')
+        .mockResolvedValue({ kind: 'sent' })
+      showSpy = vi.spyOn(window.api, 'showAgentNotification').mockResolvedValue(undefined)
+      const snapshot = getAgentSessionTabs().getSnapshot()
+      slotId = snapshot.selectedSlotId
+      controller = snapshot.tabs.find((tab) => tab.slotId === slotId)?.controller as FakeController
+      originalScreen = controller.screen
+      controller.screen = copilotScreen('working3000').lines
+    })
+
+    afterEach(() => {
+      if (controller !== null && originalScreen !== null) controller.screen = originalScreen
+      controller = null
+      originalScreen = null
+      startSpy?.mockRestore()
+      interruptSpy?.mockRestore()
+      followUpSpy?.mockRestore()
+      showSpy?.mockRestore()
+      stopSpy?.mockRestore()
+      stopSpy = null
+      // テストで足したタブが残っていたら消し、選択を元のタブへ戻す(タブの置き場は共有)
+      const tabsStore = getAgentSessionTabs()
+      for (const tab of tabsStore.getSnapshot().tabs) {
+        if (tab.slotId !== slotId) tabsStore.remove(tab.slotId)
+      }
+      tabsStore.select(slotId)
+    })
+
+    it('作業中の画面で帯が作業中になり、中断で 1 回目と 2 回目を同じ sessionId で頼み、入力待ちに変わると copilot の名前で通知を頼む', async () => {
+      const rendered = renderWorkspace({ folderPath: '/p' })
+      const { result } = rendered
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(slotId)).toBe('working')
+      )
+      const { label, number } = result.current.agentTerminal.sessions.selected
+      expect(label).toBe(`copilot ${number}`)
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot')
+      await waitFor(() => expect(followUpSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot'))
+      await waitFor(() =>
+        expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+          agentInterruptSentNotice(label, 'copilot')
+        )
+      )
+      if (controller !== null) controller.screen = copilotScreen('interrupted').lines
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() => expect(result.current.agentTerminal.activities.get(slotId)).toBe('idle'))
+      await waitFor(() =>
+        expect(showSpy).toHaveBeenCalledWith({
+          slotId,
+          tabNumber: number,
+          kind: 'done',
+          cliKind: 'copilot'
+        })
+      )
+    })
+
+    it('連打しても 1 回目は 1 回だけ main に届き、2 回目の流れが終わった時点から 1,000ms は押し直しても届かない(L-408)', async () => {
+      // 2 回目の流れを長めにし、押した時点から 1,000ms を過ぎても、流れの終わりから 1,000ms 以内の時点を作る
+      interruptSpy?.mockResolvedValue({ kind: 'sent', followUp: { afterMs: 600 } })
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(slotId)).toBe('working')
+      )
+      const pressedAt = Date.now()
+      // 同じタブを続けて押す(1 回目の結果・2 回目を待つ間は同期の再入の防止で何もしない)
+      for (let i = 0; i < 3; i += 1) {
+        await act(async () => {
+          result.current.agentTerminal.interrupt.onInterrupt()
+        })
+      }
+      expect(interruptSpy).toHaveBeenCalledTimes(1)
+      await waitFor(() => expect(followUpSpy).toHaveBeenCalledTimes(1))
+      await waitFor(() =>
+        expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+          agentInterruptSentNotice(result.current.agentTerminal.sessions.selected.label, 'copilot')
+        )
+      )
+      // 押した時点から 1,000ms を過ぎる(待ちを押した時点から数えていたら、ここで押せてしまう)
+      const rest = pressedAt + AGENT_INTERRUPT_COOLDOWN_MS + 100 - Date.now()
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, Math.max(0, rest)))
+      })
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledTimes(1)
+      expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+        AGENT_INTERRUPT_DISABLED_COOLDOWN
+      )
+    })
+    it('2 回目を待つ間に送った先のタブを閉じたら、その画面を読まず 2 回目も頼まず、読み上げない(isTabOpen の配線)', async () => {
+      interruptSpy?.mockResolvedValue({ kind: 'sent', followUp: { afterMs: 300 } })
+      stopSpy = vi.spyOn(window.api, 'stopAgentSession').mockResolvedValue(undefined)
+      startSpy?.mockResolvedValueOnce({
+        kind: 'started',
+        sessionId: 'sid-copilot-2',
+        cliKind: 'copilot',
+        claudeSessionId: null
+      })
+      const onConfirm = vi.fn(() => true)
+      // 閉じられるように 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
+      const tabsStore = getAgentSessionTabs()
+      tabsStore.add()
+      const target = tabsStore.getSnapshot().tabs.at(-1)
+      const targetSlotId = target?.slotId ?? ''
+      const targetController = target?.controller as FakeController
+      expect(targetSlotId).not.toBe(slotId)
+      targetController.screen = copilotScreen('working3000').lines
+      const readScreenSpy = vi.spyOn(targetController, 'readScreen')
+      const { result } = renderWorkspace({ folderPath: '/p', onConfirm })
+      expect(result.current.agentTerminal.sessions.selected.slotId).toBe(targetSlotId)
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(targetSlotId, { kind: 'new' })
+      })
+      act(() => targetController.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(targetSlotId)).toBe('working')
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot-2')
+      // 1 回目の結果が返った後、afterMs の前に閉じる(確認は true・停止はすぐ解決)
+      readScreenSpy.mockClear()
+      const closedAt = Date.now()
+      await act(async () => {
+        expect(await result.current.agentTerminal.sessions.closeTab(targetSlotId)).toBe(true)
+      })
+      expect(Date.now() - closedAt).toBeLessThan(300)
+      expect(onConfirm).toHaveBeenCalledTimes(1)
+      expect(stopSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot-2')
+      expect(result.current.agentTerminal.sessions.tabs.map((tab) => tab.slotId)).not.toContain(
+        targetSlotId
+      )
+      // afterMs を過ぎるまで待つ
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 450))
+      })
+      expect(followUpSpy).not.toHaveBeenCalled()
+      expect(readScreenSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.interrupt.notice).toBeNull()
+    })
+    it('2 回目を待つ間に別のタブを選んでも、送った先のタブが開いていて作業中なら、送った先の sessionId で 2 回目を頼む(isTabOpen の配線)', async () => {
+      interruptSpy?.mockResolvedValue({ kind: 'sent', followUp: { afterMs: 300 } })
+      startSpy?.mockResolvedValueOnce({
+        kind: 'started',
+        sessionId: 'sid-copilot-2',
+        cliKind: 'copilot',
+        claudeSessionId: null
+      })
+      // 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
+      const tabsStore = getAgentSessionTabs()
+      tabsStore.add()
+      const target = tabsStore.getSnapshot().tabs.at(-1)
+      const targetSlotId = target?.slotId ?? ''
+      const targetController = target?.controller as FakeController
+      expect(targetSlotId).not.toBe(slotId)
+      targetController.screen = copilotScreen('working3000').lines
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.agentTerminal.sessions.selected.slotId).toBe(targetSlotId)
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(targetSlotId, { kind: 'new' })
+      })
+      act(() => targetController.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(targetSlotId)).toBe('working')
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot-2')
+      // 1 回目の結果が返った後、afterMs の前に元のタブを選ぶ(送った先のタブは開いたまま)
+      act(() => tabsStore.select(slotId))
+      expect(result.current.agentTerminal.sessions.selected.slotId).toBe(slotId)
+      expect(followUpSpy).not.toHaveBeenCalled()
+      await waitFor(() => expect(followUpSpy).toHaveBeenCalledExactlyOnceWith('sid-copilot-2'))
     })
   })
 })

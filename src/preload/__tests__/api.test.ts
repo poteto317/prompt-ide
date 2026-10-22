@@ -462,6 +462,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['agentTerminal:interrupt', 'id']
     ],
     [
+      'interruptAgentSessionFollowUp は agentTerminal:interruptFollowUp に sessionId だけを渡す',
+      () => api.interruptAgentSessionFollowUp('id'),
+      ['agentTerminal:interruptFollowUp', 'id']
+    ],
+    [
       'getAgentSessions は agentTerminal:getState を呼ぶ',
       () => api.getAgentSessions(),
       ['agentTerminal:getState']
@@ -533,8 +538,9 @@ describe('エージェントのターミナル・外部変更・実行方式・�
     ],
     [
       'showAgentNotification は agentNotification:show に依頼を渡す',
-      () => api.showAgentNotification({ slotId: 's-1', tabNumber: 1, kind: 'done' }),
-      ['agentNotification:show', { slotId: 's-1', tabNumber: 1, kind: 'done' }]
+      () =>
+        api.showAgentNotification({ slotId: 's-1', tabNumber: 1, kind: 'done', cliKind: 'claude' }),
+      ['agentNotification:show', { slotId: 's-1', tabNumber: 1, kind: 'done', cliKind: 'claude' }]
     ],
     [
       'setAgentNotificationBadge は agentNotification:setBadge に数を包んで渡す',
@@ -655,6 +661,14 @@ describe('interruptAgentSession の戻り値', () => {
     const result = { kind: 'no-session' }
     mockInvoke.mockResolvedValue(result)
     await expect(api.interruptAgentSession('id')).resolves.toBe(result)
+  })
+})
+
+describe('interruptAgentSessionFollowUp の戻り値', () => {
+  it('agentTerminal:interruptFollowUp の結果をそのまま返す', async () => {
+    const result = { kind: 'expired' }
+    mockInvoke.mockResolvedValue(result)
+    await expect(api.interruptAgentSessionFollowUp('id')).resolves.toBe(result)
   })
 })
 

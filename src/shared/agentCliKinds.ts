@@ -14,11 +14,12 @@ export function isAgentCliKind(value: unknown): value is AgentCliKind {
 export interface AgentCliCapabilities {
   /** 実行ボタン・履歴の再実行・送信前の確認からの送信(入力欄の判定・消去・貼り付け) */
   promptSend: boolean
-  /** 画面からの活動の判定と、それに基づく表示・完了と許可待ちの通知・変更の一覧の自動の取り直し・hooks への作業中の知らせ */
+  /** 画面からの活動の判定と、それに基づく表示・完了と許可待ちの通知・変更の一覧の自動の取り直し */
   screenActivity: boolean
-  /** 帯の中断(Esc を 1 回)。押せる条件が screenActivity の working なので、true なら screenActivity も true */
+  /** 帯の中断(送り方は main の agentCliInterruptSpecs.ts。claude は Esc を 1 回、copilot は 2 回)。押せる条件が screenActivity の
+   *  working なので、true なら screenActivity も true */
   interrupt: boolean
-  /** hooks によるエージェントの変更と利用者の変更の区別 */
+  /** hooks によるエージェントの変更と利用者の変更の区別と、画面の作業中・作業の終わりを main の区間の追跡へ知らせること */
   changeAttribution: boolean
   /** 前回の続きから・このセッションで再開・起動の記録(agent-sessions.json)・会話の ID の予約 */
   sessionResume: boolean
@@ -49,8 +50,8 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
     commandName: 'copilot',
     capabilities: {
       promptSend: false,
-      screenActivity: false,
-      interrupt: false,
+      screenActivity: true,
+      interrupt: true,
       changeAttribution: false,
       sessionResume: false
     }

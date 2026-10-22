@@ -14,7 +14,8 @@ import { spawn as ptySpawn } from 'node-pty'
 import { isExecutableRegularFile, resolveAgentLaunch } from '../agentCommand'
 import type { AgentLaunchPlan } from '../agentCommand'
 import { AGENT_CLI_LAUNCH_SPECS } from '../agentCliLaunchSpecs'
-import { startAgentSession } from '../agentSession'
+import { monotonicNow, startAgentSession } from '../agentSession'
+import { AGENT_CLI_INTERRUPT_SPECS } from '../agentCliInterruptSpecs'
 import type { AgentSession, AgentSessionExitInfo, PtySpawn } from '../agentSession'
 import { stopProcessTree } from '../agentProcessTree'
 import { createTestTimers, waitForFile } from './helpers/processProbe'
@@ -91,7 +92,9 @@ function runPlan(plan: AgentLaunchPlan, cwd: string): Promise<AgentSessionExitIn
       cols: 80,
       rows: 24,
       callbacks: { onData: () => undefined, onExit: (exit) => resolve(exit) },
-      stopTree: (pty, exited) => stopProcessTree({ pid: pty.pid, exited })
+      stopTree: (pty, exited) => stopProcessTree({ pid: pty.pid, exited }),
+      interruptSpec: AGENT_CLI_INTERRUPT_SPECS[plan.cliKind],
+      now: monotonicNow
     })
     started.push(session)
   })

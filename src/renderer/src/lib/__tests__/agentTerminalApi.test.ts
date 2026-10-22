@@ -7,6 +7,7 @@ const mockApi = {
   resizeAgentSession: vi.fn(),
   stopAgentSession: vi.fn(),
   interruptAgentSession: vi.fn(),
+  interruptAgentSessionFollowUp: vi.fn(),
   getAgentSessions: vi.fn(),
   getLastAgentSession: vi.fn(),
   onAgentData: vi.fn(),
@@ -34,6 +35,7 @@ describe('agentTerminalApi', () => {
     agentTerminalApi.resizeAgentSession('s', 100, 30)
     agentTerminalApi.stopAgentSession('s')
     agentTerminalApi.interruptAgentSession('s')
+    agentTerminalApi.interruptAgentSessionFollowUp('s')
     agentTerminalApi.getAgentSessions()
     agentTerminalApi.getLastAgentSession('/p')
     agentTerminalApi.setAgentTerminalFocused(true)
@@ -50,6 +52,7 @@ describe('agentTerminalApi', () => {
     expect(mockApi.resizeAgentSession).toHaveBeenCalledWith('s', 100, 30)
     expect(mockApi.stopAgentSession).toHaveBeenCalledWith('s')
     expect(mockApi.interruptAgentSession).toHaveBeenCalledWith('s')
+    expect(mockApi.interruptAgentSessionFollowUp).toHaveBeenCalledWith('s')
     expect(mockApi.getAgentSessions).toHaveBeenCalledOnce()
     expect(mockApi.getLastAgentSession).toHaveBeenCalledWith('/p')
     expect(mockApi.setAgentTerminalFocused).toHaveBeenCalledWith(true)

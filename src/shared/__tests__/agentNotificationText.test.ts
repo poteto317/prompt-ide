@@ -28,6 +28,23 @@ describe('agentNotificationText', () => {
       }
     ]
   ] as const)('%s の題・本文・読み上げ', (kind, expected) => {
-    expect(agentNotificationText(kind, 2)).toEqual(expected)
+    expect(agentNotificationText(kind, 2, 'claude')).toEqual(expected)
+  })
+
+  it.each([
+    ['permission', 'copilot 1: 許可待ち', 'copilot 1 が許可待ちになりました'],
+    ['confirm', 'copilot 1: 確認待ち', 'copilot 1 が確認待ちになりました'],
+    ['done', 'copilot 1: 作業が終わりました', 'copilot 1 の作業が終わりました']
+  ] as const)(
+    'copilot の %s は、題と読み上げに copilot の名前を使う',
+    (kind, title, announcement) => {
+      expect(agentNotificationText(kind, 1, 'copilot')).toMatchObject({ title, announcement })
+    }
+  )
+
+  it.each(['permission', 'confirm', 'done'] as const)('%s の本文は種類で変わらない', (kind) => {
+    expect(agentNotificationText(kind, 1, 'copilot').body).toBe(
+      agentNotificationText(kind, 1, 'claude').body
+    )
   })
 })

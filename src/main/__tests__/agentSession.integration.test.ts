@@ -3,7 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
-import { startAgentSession } from '../agentSession'
+import { monotonicNow, startAgentSession } from '../agentSession'
+import { AGENT_CLI_INTERRUPT_SPECS } from '../agentCliInterruptSpecs'
+import type { AgentCliInterruptSpec } from '../agentCliInterruptSpecs'
 import type { AgentSession, PtySpawn } from '../agentSession'
 import { isSignalablePid, stopProcessTree } from '../agentProcessTree'
 import { buildAgentPasteBytes, AGENT_CLEAR_INPUT_CHUNK } from '@shared/agentPasteText'
@@ -52,7 +54,11 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
-function start(script: string, stopTreeGraceMs = 3000): AgentSession {
+function start(
+  script: string,
+  stopTreeGraceMs = 3000,
+  interruptSpec: AgentCliInterruptSpec = AGENT_CLI_INTERRUPT_SPECS.claude
+): AgentSession {
   const file = join(dir, 'fake-agent')
   writeFakeExecutable(file, script)
   const session = startAgentSession({
@@ -65,7 +71,9 @@ function start(script: string, stopTreeGraceMs = 3000): AgentSession {
     cols: 80,
     rows: 24,
     callbacks: { onData: () => undefined, onExit: () => undefined },
-    stopTree: (pty, exited) => stopProcessTree({ pid: pty.pid, exited, graceMs: stopTreeGraceMs })
+    stopTree: (pty, exited) => stopProcessTree({ pid: pty.pid, exited, graceMs: stopTreeGraceMs }),
+    interruptSpec,
+    now: monotonicNow
   })
   started.push(session)
   return session
@@ -109,11 +117,68 @@ describe.skipIf(process.platform === 'win32')('AgentSession(実物の pty)', () 
     )
     const session = start(`exec '${process.execPath}' '${script}'`)
     await waitForFile(ready, timers)
-    expect(session.interrupt()).toBe('sent')
+    expect(session.interrupt()).toEqual({ kind: 'sent', followUp: null })
     expect(await waitForFile(out, timers)).toBe('1b')
     // 続けて余分なバイト(改行・Ctrl+C など)が届かないことを、少し待ってから確かめる
     await timers.delay(300)
     expect(readFileSync(out, 'utf8')).toBe('1b')
+  }, 15_000)
+
+  it('copilot の送り方では、interrupt と 100ms 後の interruptFollowUp で、子に 1b を 2 回、別々の読み取りで届ける(2 回の間は親の側で 80ms 以上空ける)', async () => {
+    const out = join(dir, 'received-hex-lines')
+    const ready = join(dir, 'ready')
+    const script = join(dir, 'raw-hex-lines.js')
+    writeFileSync(
+      script,
+      [
+        "const fs = require('node:fs')",
+        'process.stdin.setRawMode(true)',
+        // 読み取りごとに、受け取ったバイト(16 進)を 1 行に書く。2 つの Esc が 1 回の読み取りに詰められると 1 行(1b1b)になる
+        `process.stdin.on('data', (chunk) => fs.appendFileSync(${JSON.stringify(out)}, chunk.toString('hex') + '\\n'))`,
+        `fs.writeFileSync(${JSON.stringify(ready)}, 'ready')`
+      ].join('\n')
+    )
+    const session = start(
+      `exec '${process.execPath}' '${script}'`,
+      3000,
+      AGENT_CLI_INTERRUPT_SPECS.copilot
+    )
+    const readLines = (): string[] =>
+      existsSync(out)
+        ? readFileSync(out, 'utf8')
+            .split('\n')
+            .filter((line) => line !== '')
+        : []
+    const waitForLines = async (count: number): Promise<void> => {
+      const deadline = Date.now() + 5000
+      while (Date.now() < deadline && readLines().length < count) await timers.delay(5)
+    }
+    await waitForFile(ready, timers)
+    // 2 回の間隔は、子がいつ動くかに左右されない親の側(interrupt と interruptFollowUp を呼ぶ直前の時刻)で測る
+    const firstAt = performance.now()
+    expect(session.interrupt()).toEqual({ kind: 'sent', followUp: { afterMs: 100 } })
+    // 1 回目を子が読み取ったのを見てから 2 回目を頼む。こうすると 2 回の Esc が 1 回の読み取りに入る(['1b1b'])ことは無く、
+    // 「1b が合わせて 2 つ届いた」に緩めずに済む(緩めると、main が 1 回目で 2 バイトをまとめて書く誤りを見逃すため、
+    // 「別々の読み取りで 1 回ずつ」を確かめる形のまま残す)。ただし限界があり、子の 1 回目の読み取りが期限の 400ms より
+    // 遅れると、2 回目は expired で落ちる(下の失敗の文言の経過時間で見分けられる)
+    await waitForLines(1)
+    expect(readLines(), '子が 1 回目を読み取っていない').toHaveLength(1)
+    // renderer と同じく afterMs(100ms)まで待って頼む。Node の setTimeout はループのキャッシュした時刻で数えるため、
+    // performance.now() で測った経過が 100ms を少し切ることがあるが、main の受け付けの下限(minIntervalMs: 50)との間に余裕がある
+    const waitedMs = performance.now() - firstAt
+    if (waitedMs < 100) await timers.delay(100 - waitedMs)
+    const followUpAt = performance.now()
+    // 落ちたときに、期限(400ms)を過ぎた expired か早すぎた not-pending かを経過時間で見分けられるようにする
+    const elapsedMs = followUpAt - firstAt
+    expect(
+      session.interruptFollowUp(),
+      `interrupt の直前から interruptFollowUp の直前まで ${elapsedMs.toFixed(1)}ms`
+    ).toBe('sent')
+    expect(elapsedMs).toBeGreaterThanOrEqual(80)
+    await waitForLines(2)
+    // 続けて余分なバイトが届かないことを、少し待ってから確かめる
+    await timers.delay(300)
+    expect(readLines()).toEqual(['1b', '1b'])
   }, 15_000)
 
   it('別のセッションへ抜けた孫(setsid)も、停止の後に残らない', async () => {

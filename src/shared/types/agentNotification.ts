@@ -1,4 +1,5 @@
 // エージェントの完了・許可待ちの通知の IPC の型。main・preload・renderer が共有する
+import type { AgentCliKind } from '../agentCliKinds'
 
 /** 知らせる出来事(許可待ち・確認待ち・作業の完了) */
 export const AGENT_NOTIFICATION_KINDS = ['permission', 'confirm', 'done'] as const
@@ -13,9 +14,11 @@ export function isAgentNotificationKind(value: unknown): value is AgentNotificat
 /** agentNotification:show の入力。題・本文は main が固定の表から作る(renderer の文字列を通知に出さない) */
 export interface AgentNotificationShowRequest {
   slotId: string
-  /** タブの番号(題の claude N にだけ使う) */
+  /** タブの番号(題の `claude N`・`copilot N` の番号にだけ使う) */
   tabNumber: number
   kind: AgentNotificationKind
+  /** タブの CLI の種類(題の名前にだけ使う。main が isAgentCliKind で検証する。押したときに届く先は slotId で決まる) */
+  cliKind: AgentCliKind
 }
 
 /** agentNotification:setBadge の入力(利用者の操作を待っているタブの数) */

@@ -1,5 +1,6 @@
 import type { AgentNotificationKind } from './types/agentNotification'
 import { formatAgentTabLabel } from './agentTabLabel'
+import type { AgentCliKind } from './agentCliKinds'
 
 // 通知の文言の表(設計書「知らせる出来事」)。OS の通知の題・本文は main がここから作り、renderer は読み上げだけを使う
 
@@ -31,10 +32,11 @@ const TEXTS: Record<AgentNotificationKind, (label: string) => AgentNotificationT
   })
 }
 
+/** 出来事・タブの番号・タブの CLI の種類から文言を作る。種類は省略させない(省略で claude の名前に流さない。L-060) */
 export function agentNotificationText(
   kind: AgentNotificationKind,
-  tabNumber: number
+  tabNumber: number,
+  cliKind: AgentCliKind
 ): AgentNotificationText {
-  // 通知は画面の判定(screenActivity)が true の種類でだけ出るため claude の名前にする(種類を通知の依頼に足すのは段階 2)
-  return TEXTS[kind](formatAgentTabLabel(tabNumber, 'claude'))
+  return TEXTS[kind](formatAgentTabLabel(tabNumber, cliKind))
 }

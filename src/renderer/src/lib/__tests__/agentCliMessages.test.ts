@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AGENT_CLI_KINDS, agentCliCapabilities } from '@shared/agentCliKinds'
 import {
   AGENT_CLI_CAPABILITY_NAMES,
@@ -12,6 +12,29 @@ import {
   agentNotificationUnsupportedNote,
   isAgentCliKindResaveAllowed
 } from '../agentCliMessages'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 注記が出る経路(能力が無い種類)を確かめるため、能力の表の screenActivity・interrupt を種類ごとに偽にできるようにする
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set<AgentCliKind>() })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
+
+afterEach(() => {
+  capabilityOverrides.unsupportedKinds.clear()
+})
 
 describe('agentCliMessages(設定の画面)', () => {
   it('見出し・説明・選択肢・選べない理由・保存の失敗の接頭辞', () => {
@@ -40,11 +63,18 @@ describe('agentCliMessages(設定の画面)', () => {
     )
   })
 
-  it('使えない機能の注記: copilot は能力の表のすべての名前を並べ、claude は出さない', () => {
+  it('使えない機能の注記: copilot は送信・区別・再開の 3 つを並べ(段階 2a で画面の判定と中断に対応した)、claude は出さない', () => {
+    expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、利用者の変更との区別、前回の続きから・このセッションで再開'
+    )
+    expect(agentCliUnsupportedFeaturesNote('claude')).toBeNull()
+  })
+
+  it('使えない機能の注記: 画面の判定と中断が無い種類(能力の表を差し替えた copilot)は、その 2 つの名前も並べる', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
       'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、作業中・入力待ちの表示と通知、中断、利用者の変更との区別、前回の続きから・このセッションで再開'
     )
-    expect(agentCliUnsupportedFeaturesNote('claude')).toBeNull()
   })
 
   it.each(AGENT_CLI_KINDS)('%s: 使えない機能の注記は、false の能力の名前だけを含む', (kind) => {
@@ -65,7 +95,13 @@ describe('agentCliMessages(設定の画面)', () => {
     )
   })
 
-  it('通知の注記: 画面の判定が無い種類だけに出す', () => {
+  it('通知の注記: 今の表ではどの種類にも出さない(copilot も画面を判定する)', () => {
+    expect(agentNotificationUnsupportedNote('copilot')).toBeNull()
+    expect(agentNotificationUnsupportedNote('claude')).toBeNull()
+  })
+
+  it('通知の注記: 画面の判定が無い種類(能力の表を差し替えた copilot)にだけ出す', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     expect(agentNotificationUnsupportedNote('copilot')).toBe(
       'copilot では、完了・許可待ちの通知を出しません（作業中・入力待ちを判定しないため）'
     )

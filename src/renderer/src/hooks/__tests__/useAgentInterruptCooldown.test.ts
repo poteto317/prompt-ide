@@ -100,6 +100,7 @@ describe('useAgentInterruptCooldown', () => {
     expect(result.current.isCoolingDown).toBe(first.isCoolingDown)
     expect(result.current.begin).toBe(first.begin)
     expect(result.current.finish).toBe(first.finish)
+    expect(result.current.restartCooldown).toBe(first.restartCooldown)
   })
 
   it('アンマウントでタブごとのタイマーをすべて消す', () => {
@@ -124,5 +125,41 @@ describe('useAgentInterruptCooldown', () => {
     } finally {
       consoleErrorSpy.mockRestore()
     }
+  })
+
+  it('restartCooldown はそのタブの待ちを今から数え直す(前のタイマーを消す。ref と描画の値の両方)', () => {
+    const { result } = renderHook(() => useAgentInterruptCooldown())
+    act(() => result.current.begin('slot-1'))
+    act(() => result.current.finish('slot-1'))
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+    act(() => result.current.restartCooldown('slot-1'))
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => {
+      vi.advanceTimersByTime(AGENT_INTERRUPT_COOLDOWN_MS - 1)
+    })
+    expect(result.current.isCoolingDown('slot-1')).toBe(true)
+    expect(result.current.isPending('slot-1')).toBe(true)
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(result.current.isCoolingDown('slot-1')).toBe(false)
+    expect(result.current.isPending('slot-1')).toBe(false)
+  })
+
+  it('restartCooldown はほかのタブの待ちを変えない', () => {
+    const { result } = renderHook(() => useAgentInterruptCooldown())
+    act(() => result.current.restartCooldown('slot-1'))
+    expect(result.current.isCoolingDown('slot-1')).toBe(true)
+    expect(result.current.isCoolingDown('slot-2')).toBe(false)
+    expect(result.current.isPending('slot-2')).toBe(false)
+  })
+
+  it('アンマウントの後の restartCooldown はタイマーを残さない', () => {
+    const { result, unmount } = renderHook(() => useAgentInterruptCooldown())
+    unmount()
+    result.current.restartCooldown('slot-1')
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

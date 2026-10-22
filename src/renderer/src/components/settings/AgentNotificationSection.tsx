@@ -3,7 +3,8 @@ import type { AgentNotificationPanelState } from '../../types'
 import BooleanSettingSection from './BooleanSettingSection'
 
 // 設定パネルの「エージェントの通知」(設計書「設定」)。表示と状態の出し分けは BooleanSettingSection が持ち、ここは文言だけ。
-// 選んだ CLI が画面を判定しない(copilot)ときは、通知を出さない旨の注記を添える(設計書 2026-10-20「入口ごとの表」)
+// 選んだ CLI が画面を判定しない(能力の表の screenActivity が false の種類。段階 2a の時点では無い)ときは、通知を出さない旨の
+// 注記を添える(設計書 2026-10-20「入口ごとの表」)
 export default function AgentNotificationSection({
   unsupportedNote,
   ...props

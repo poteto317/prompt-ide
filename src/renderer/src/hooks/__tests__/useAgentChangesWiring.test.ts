@@ -170,7 +170,8 @@ describe('useAgentChangesWiring', () => {
         slotId: 's1',
         number: 1,
         status: 'running',
-        isClosing: false
+        isClosing: false,
+        cliKind: 'claude'
       }
       const activitiesOf = (activity: AgentActivity): ReadonlyMap<string, AgentActivity> =>
         new Map([['s1', activity]])

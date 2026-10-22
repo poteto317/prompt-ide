@@ -2,23 +2,37 @@ import { useCallback, useEffect, useRef } from 'react'
 import type { Announcement } from '../types'
 import type { AgentActivity } from '../lib/agentActivity'
 import type { AgentTerminalController } from '../lib/agentTerminalController'
-import { checkAgentInterruptAtPress, getAgentInterruptAvailability } from '../lib/agentInterrupt'
+import {
+  checkAgentInterruptAtPress,
+  checkAgentInterruptFollowUp,
+  getAgentInterruptAvailability
+} from '../lib/agentInterrupt'
 import type { AgentInterruptAvailabilityInput } from '../lib/agentInterrupt'
-import { agentInterruptSentNotice } from '../lib/agentInterruptMessages'
-import type { AgentInterruptOutcome, AgentSessionTabView } from './useAgentSessions'
+import {
+  agentInterruptFollowUpSkippedNotice,
+  agentInterruptSentNotice
+} from '../lib/agentInterruptMessages'
+import type {
+  AgentInterruptFollowUpOutcome,
+  AgentInterruptOutcome,
+  AgentSessionTabView
+} from './useAgentSessions'
 import { useAgentInterruptCooldown } from './useAgentInterruptCooldown'
+import { useAgentInterruptFollowUpWait } from './useAgentInterruptFollowUpWait'
 import { useLatestRef } from './useLatestRef'
 import { useTransientNotice } from './useTransientNotice'
 
-// 帯の 中断 の押した処理と読み上げ(設計書 2026-10-19「押したときの処理」)。useAgentWorkspace が選択中のタブ・活動・送信中・
+// 帯の 中断 の押した処理と読み上げ(設計書 2026-10-19「押したときの処理」、2026-10-21「中断の流れ」の手順 5〜9)。useAgentWorkspace が選択中のタブ・活動・送信中・
 // 送信前の確認の表示中を渡し、結果を AgentTerminalPanelState.interrupt に載せる。判定の入力は描画と押した処理で同じ写像
 // (toAgentInterruptAvailabilityInput)で組み立てる。押した時点の判定は checkAgentInterruptAtPress、
-// タブごとの結果の待ちと 1,000ms の待ちの控えは useAgentInterruptCooldown が持つ。
+// タブごとの結果の待ちと 1,000ms の待ちの控えは useAgentInterruptCooldown、2 回目を頼むまでの待ちは useAgentInterruptFollowUpWait が持つ。
 // 連打の対策は組で働く(L-408): 押してから 1,000ms は押せない・同期の再入の防止(useAgentInterruptCooldown を通してこのファイル)・
 // ダブルクリックの 2 回目とキーリピートの無視(AgentTerminalPanel)・押した後もフォーカスを 中断 に残す(aria-disabled。AgentTerminalPanel)。
 // どれかを外すと、押し続けた Enter が 1,000ms ごとに Esc を送る、または body に落ちたフォーカスの先へ届く
+// 2 回目の要る種類(copilot)は、1 回目の結果の案内の時間だけ待ち、送った先のタブの画面が作業中のときだけ 2 回目を頼み、
+// 2 回目の流れが終わった時点で 1,000ms の待ちを数え直す(次の 1 回目を前の 2 回目から常に 1,000ms 以上空ける)
 
-/** 読み上げ(送れたとき・押せない状態で押したとき)を出しておく時間 */
+/** 読み上げ(送れたとき・押せない状態で押したとき・2 回目を頼まなかったとき)を出しておく時間 */
 export const AGENT_INTERRUPT_NOTICE_MS = 3_000
 
 export interface AgentInterruptPanelState {
@@ -26,7 +40,7 @@ export interface AgentInterruptPanelState {
   visible: boolean
   /** 押せない理由。押せるなら null */
   disabledReason: string | null
-  /** 送れたとき・押せない状態で押したとき(手順 2・3)の読み上げ(3,000ms で null) */
+  /** 送れたとき・押せない状態で押したとき(手順 2・3)・2 回目を頼まなかったとき(手順 7)の読み上げ(3,000ms で null) */
   notice: Announcement | null
   /** 押したとき。押せないときは何もしない(理由を読み上げる) */
   onInterrupt: () => void
@@ -34,7 +48,7 @@ export interface AgentInterruptPanelState {
 
 /**
  * 中断に使う選択中のタブの値(AgentSessionTabView の一部)。判定に status・cliKind・isClosing、slotId に活動・待ちの取り出しと送り先、
- * 読み上げに label、押した時点の画面の読み直しに controller の readScreen だけを使う
+ * 読み上げに label・cliKind、押した時点と 2 回目の前の画面の読み直しに controller の readScreen(規則は cliKind で引く)だけを使う
  */
 export type AgentInterruptTab = Pick<
   AgentSessionTabView,
@@ -54,6 +68,10 @@ export interface UseAgentInterruptOptions {
   isSendConfirmOpen: boolean
   /** そのタブのセッションへ中断を送る(useAgentSessions の interrupt。拒否しない) */
   interrupt: (slotId: string) => Promise<AgentInterruptOutcome>
+  /** 1 回目を送ったセッションへ中断の 2 回目を頼む(useAgentSessions の interruptFollowUp。拒否しない。省略できない。L-060) */
+  interruptFollowUp: (slotId: string, sessionId: string) => Promise<AgentInterruptFollowUpOutcome>
+  /** そのタブがまだあるか(useAgentSessions の tabs にあるか)。2 回目を待つ間に閉じたタブの、破棄した画面を読まないため。省略できない */
+  isTabOpen: (slotId: string) => boolean
 }
 
 /** 押せるかの判定の入力の元になる値(描画の値、または押した時点の最新の値) */
@@ -86,11 +104,15 @@ export function useAgentInterrupt({
   activities,
   isSending,
   isSendConfirmOpen,
-  interrupt
+  interrupt,
+  interruptFollowUp,
+  isTabOpen
 }: UseAgentInterruptOptions): AgentInterruptPanelState {
   const { notice, announce } = useTransientNotice(AGENT_INTERRUPT_NOTICE_MS)
   const cooldown = useAgentInterruptCooldown()
-  const { isInFlight, isCoolingDown, begin, finish } = cooldown
+  const { isInFlight, isCoolingDown, begin, finish, restartCooldown } = cooldown
+  // 2 回目を頼むまでの待ち。アンマウントで消し、待っている流れには 2 回目を頼ませない
+  const waitForFollowUp = useAgentInterruptFollowUpWait()
   const mountedRef = useRef(false)
 
   useEffect(() => {
@@ -106,15 +128,24 @@ export function useAgentInterrupt({
       cooldown.isPending(selected.slotId)
     )
   )
-  const latestRef = useLatestRef({ selected, activities, isSending, isSendConfirmOpen, interrupt })
+  const latestRef = useLatestRef({
+    selected,
+    activities,
+    isSending,
+    isSendConfirmOpen,
+    interrupt,
+    interruptFollowUp,
+    isTabOpen
+  })
 
   const onInterrupt = useCallback((): void => {
     const current = latestRef.current
+    // 押した時点のタブ。2 回目の前の確かめも、待つ間に別のタブを選んでもこのタブ(送った先)で行う
     const tab = current.selected
-    const { slotId, label } = tab
-    // 1. 同期の再入の防止(同じタブの結果を待つ間)。何も出さない
+    const { slotId, label, cliKind } = tab
+    // 1. 同期の再入の防止(同じタブの結果を待つ間。2 回目まで続く)。何も出さない
     if (isInFlight(slotId)) return
-    // 2・3. 最新の値で押せるかを求め直し、押した時点の画面を読み直す。押せなければ理由を読み上げる(L-057)
+    // 2・3. 最新の値で押せるかを求め直し、押した時点の画面をタブの種類の規則で読み直す。押せなければ理由を読み上げる(L-057)
     const check = checkAgentInterruptAtPress(
       toAgentInterruptAvailabilityInput(current, isCoolingDown(slotId)),
       () => tab.controller.readScreen()
@@ -130,18 +161,65 @@ export function useAgentInterrupt({
     // 4. 送っている途中と 1,000ms の待ちを始める(待ちはタブごと)
     begin(slotId)
     void (async () => {
+      // 2 回目を頼む案内があり、案内の時間を待ち終えた流れか(手順 8 で 1,000ms の待ちを数え直す)
+      let followUpFlow = false
       try {
-        // 5・6. 送れたときだけ読み上げる(L-001)。stale・skipped は何も出さず、失敗は useAgentSessions がタブの error に出す
+        // 5. 1 回目。stale・skipped は何も出さず、失敗は useAgentSessions がタブの error に出す
         const outcome = await current.interrupt(slotId)
-        if (outcome.kind === 'sent' && mountedRef.current) announce(agentInterruptSentNotice(label))
+        if (outcome.kind !== 'sent') return
+        const { followUp } = outcome
+        if (followUp === null) {
+          // 2 回目の無い種類(claude)は、送れたときだけ読み上げる(L-001)
+          if (mountedRef.current) announce(agentInterruptSentNotice(label, cliKind))
+          return
+        }
+        // 6. 2 回目の要る種類(copilot)。main の案内の時間だけ待つ(アンマウントで消したら頼まない)
+        if (!(await waitForFollowUp(followUp.afterMs))) return
+        followUpFlow = true
+        // 待つ間に送った先のタブを閉じたら、何もせず終える(破棄した画面は読めない。セッションも無いので 2 回目は届かない)
+        if (!latestRef.current.isTabOpen(slotId)) return
+        // 7. 送った先のタブの画面を、そのタブの種類の規則で読み直す。作業中のときだけ 2 回目を頼む(L-041)
+        const followUpCheck = checkAgentInterruptFollowUp(cliKind, () =>
+          tab.controller.readScreen()
+        )
+        if (followUpCheck.kind === 'unreadable') {
+          console.error(
+            '[useAgentInterrupt] 画面を読めないため、中断の 2 回目を送りません:',
+            followUpCheck.error
+          )
+          return
+        }
+        if (followUpCheck.kind === 'skip') {
+          if (mountedRef.current) {
+            announce(agentInterruptFollowUpSkippedNotice(label, followUpCheck.activity))
+          }
+          return
+        }
+        const followUpOutcome = await current.interruptFollowUp(slotId, followUp.sessionId)
+        // 2 回目まで送れたときだけ「中断を送りました」と読み上げる(L-001)。stale は何も出さず、失敗は useAgentSessions が出す
+        if (followUpOutcome.kind === 'sent' && mountedRef.current) {
+          announce(agentInterruptSentNotice(label, cliKind))
+        }
       } catch (err) {
         console.error('[useAgentInterrupt] 中断の送信に失敗しました:', err)
       } finally {
-        // 7. 例外でも固まらない(L-053)。1,000ms の待ちはタイマーが外す(結果が 1,000ms より遅いと、届くまで押せない)
+        // 8. 2 回目の流れが終わった時点から 1,000ms の待ちを数え直す(copilot の 500ms の窓で前の Esc と組にしない)。
+        // アンマウントの後は数え直さない
+        if (followUpFlow && mountedRef.current) restartCooldown(slotId)
+        // 9. 2 回目まで終わってから解く(例外でも固まらない。L-053)
         finish(slotId)
       }
     })()
-  }, [latestRef, announce, isInFlight, isCoolingDown, begin, finish])
+  }, [
+    latestRef,
+    announce,
+    isInFlight,
+    isCoolingDown,
+    begin,
+    finish,
+    restartCooldown,
+    waitForFollowUp
+  ])
 
   return {
     visible: availability.visible,

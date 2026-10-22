@@ -684,7 +684,7 @@ describe('agentTerminal:interrupt', () => {
 
   it('今のセッションへ固定の 1 バイトを書いて sent を返す。余分な引数を渡しても書くバイト列は変わらない(L-019)', async () => {
     const event = await started()
-    expect(interrupt(event, 'sid-1', 'evil', '\x03')).toEqual({ kind: 'sent' })
+    expect(interrupt(event, 'sid-1', 'evil', '\x03')).toEqual({ kind: 'sent', followUp: null })
     expect(pty.write.mock.calls).toEqual([[AGENT_INTERRUPT_SEQUENCE]])
   })
 
@@ -712,7 +712,8 @@ describe('agentTerminal:interrupt', () => {
       resize: vi.fn(),
       stop: vi.fn(async () => undefined),
       snapshot: vi.fn(() => []),
-      interrupt: registryInterrupt
+      interrupt: registryInterrupt,
+      interruptFollowUp: vi.fn()
     }
     register({ registry: fakeRegistry })
     expect(interrupt(makeEvent(7), 'sid-x', 'extra')).toEqual({ kind: 'write-failed' })
@@ -859,5 +860,55 @@ describe.each<[string, 'reportWorking' | 'reportWorkingEnded', string]>([
     const report = registerReport()
     listeners.get(channel)?.(makeEvent(3, false), 'sid-9')
     expect(report).not.toHaveBeenCalled()
+  })
+})
+
+describe('agentTerminal:interruptFollowUp', () => {
+  const followUp = (event: ReturnType<typeof makeEvent>, ...args: unknown[]): unknown =>
+    handles.get('agentTerminal:interruptFollowUp')?.(event, ...args)
+
+  it('サブフレームからの依頼・空や文字列でない sessionId は投げて registry を呼ばない', () => {
+    const registryFollowUp = vi.fn<AgentSessionRegistry['interruptFollowUp']>()
+    register({
+      registry: {
+        write: vi.fn(),
+        resize: vi.fn(),
+        stop: vi.fn(async () => undefined),
+        snapshot: vi.fn(() => []),
+        interrupt: vi.fn(),
+        interruptFollowUp: registryFollowUp
+      }
+    })
+    expect(() => followUp(makeEvent(1, false), 'sid-1')).toThrow()
+    expect(() => followUp(makeEvent(), '')).toThrow()
+    expect(() => followUp(makeEvent(), 1)).toThrow()
+    expect(registryFollowUp).not.toHaveBeenCalled()
+  })
+
+  it('registry.interruptFollowUp に送信元の id と sessionId だけを渡し、結果をそのまま返す。余分な引数を渡しても変わらない(L-019)', () => {
+    const registryFollowUp = vi.fn<AgentSessionRegistry['interruptFollowUp']>(() => ({
+      kind: 'expired'
+    }))
+    register({
+      registry: {
+        write: vi.fn(),
+        resize: vi.fn(),
+        stop: vi.fn(async () => undefined),
+        snapshot: vi.fn(() => []),
+        interrupt: vi.fn(),
+        interruptFollowUp: registryFollowUp
+      }
+    })
+    expect(followUp(makeEvent(7), 'sid-x', '\x1b\x1b', 3)).toEqual({ kind: 'expired' })
+    expect(registryFollowUp).toHaveBeenCalledExactlyOnceWith(7, 'sid-x')
+  })
+
+  it('claude のセッション(2 回目の無い種類)では書かずに not-pending を返す(本物の registry と starter を通す)', async () => {
+    register()
+    folderAccess.set(1, '/work')
+    const event = makeEvent()
+    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+    expect(followUp(event, 'sid-1')).toEqual({ kind: 'not-pending' })
+    expect(pty.write).not.toHaveBeenCalled()
   })
 })

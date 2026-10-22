@@ -28,7 +28,7 @@ beforeEach(() => {
 })
 
 describe('agentNotification:show', () => {
-  const payload = { slotId: 'slot-1', tabNumber: 1, kind: 'done' }
+  const payload = { slotId: 'slot-1', tabNumber: 1, kind: 'done', cliKind: 'claude' }
 
   it('送信元のウィンドウと検証した依頼を center へ渡す', async () => {
     const event = makeEvent()

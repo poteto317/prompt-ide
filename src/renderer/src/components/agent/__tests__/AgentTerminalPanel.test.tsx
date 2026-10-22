@@ -602,7 +602,7 @@ describe('AgentTerminalPanel: 中断', () => {
     )
   })
 
-  it('名前は選択中のタブの種類のコマンド名(設定の種類ではない)', () => {
+  it('名前は選択中のタブの種類で変わる(copilot は Esc を 2 回。設定の種類ではない)', () => {
     render(
       <AgentTerminalPanel
         state={makeAgentTerminalPanelState({
@@ -612,7 +612,7 @@ describe('AgentTerminalPanel: 中断', () => {
         })}
       />
     )
-    expect(interruptButton()).toHaveAccessibleName('中断（作業中の copilot に Esc を送る）')
+    expect(interruptButton()).toHaveAccessibleName('中断（作業中の copilot に Esc を 2 回送る）')
   })
 
   it('押せるときは aria-disabled・説明・title を付けない', () => {

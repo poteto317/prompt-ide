@@ -1112,4 +1112,15 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     await makeStarter({ hooks })(1, REQUEST, makeSink())
     expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [], expect.any(Object))
   })
+
+  it('copilot の計画で起動したセッションの中断は、2 回目の案内(afterMs: 100)を返す(starter が計画の種類の送り方を渡す。L-018)', async () => {
+    await makeStarter()(1, REQUEST, makeSink())
+    expect(registry.interrupt(1, 'sid-1')).toEqual({ kind: 'sent', followUp: { afterMs: 100 } })
+  })
+
+  it('claude の計画で起動したセッションの中断は、2 回目の案内が null(今までどおり 1 回)', async () => {
+    resolveLaunch.mockResolvedValue(OK_LAUNCH)
+    await makeStarter()(1, REQUEST, makeSink())
+    expect(registry.interrupt(1, 'sid-1')).toEqual({ kind: 'sent', followUp: null })
+  })
 })

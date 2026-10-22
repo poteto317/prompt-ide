@@ -75,7 +75,7 @@ function setup(options: { platform?: NodeJS.Platform; supported?: boolean } = {}
   return { center, created, setDockBadge }
 }
 
-const request = { slotId: 'slot-1', tabNumber: 2, kind: 'permission' } as const
+const request = { slotId: 'slot-1', tabNumber: 2, kind: 'permission', cliKind: 'claude' } as const
 
 describe('createAgentNotificationCenter', () => {
   describe('show', () => {
@@ -84,9 +84,18 @@ describe('createAgentNotificationCenter', () => {
       center.show(makeWindow(), request)
       expect(created).toHaveLength(1)
       // 文言そのものは agentNotificationText のテストで固定し、ここでは表から作ることだけを見る(文言の変更を 1 か所に閉じる)
-      const { title, body } = agentNotificationText('permission', 2)
+      const { title, body } = agentNotificationText('permission', 2, 'claude')
       expect(created[0].options).toEqual({ title, body })
       expect(created[0].show).toHaveBeenCalledOnce()
+    })
+
+    it('題は依頼の種類の名前で作る(copilot の依頼は copilot 2: 許可待ち。本文は同じ)', () => {
+      const { center, created } = setup()
+      center.show(makeWindow(), { ...request, cliKind: 'copilot' })
+      expect(created[0].options).toEqual({
+        title: 'copilot 2: 許可待ち',
+        body: 'ツールの実行の許可を待っています'
+      })
     })
 
     it.each([

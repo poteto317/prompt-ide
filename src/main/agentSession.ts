@@ -1,8 +1,11 @@
+import { performance } from 'node:perf_hooks'
 import type { AgentExitReason } from '@shared/types'
+import type { AgentCliInterruptSpec } from './agentCliInterruptSpecs'
+import { judgeAgentCliInterruptFollowUpTiming } from './agentCliInterruptSpecs'
 
-// 1 つのエージェントのセッション(pty の子の claude)。pty の生成は注入する(単体テストは偽物、結合テストは実物の node-pty)
+// 1 つのエージェントのセッション(pty の子の CLI(claude・copilot))。pty の生成は注入する(単体テストは偽物、結合テストは実物の node-pty)
 
-/** claude の作業の中断(ターミナルで Esc を 1 回押すのと同じ)。renderer の値を混ぜない固定の 1 バイト */
+/** CLI の作業の中断(ターミナルで Esc を押すのと同じ)。回数は種類ごとの表(agentCliInterruptSpecs.ts)。renderer の値を混ぜない固定の 1 バイト */
 export const AGENT_INTERRUPT_SEQUENCE = '\x1b'
 
 export interface PtyDisposable {
@@ -43,11 +46,32 @@ export interface AgentSessionCallbacks {
 /** 子孫を含めて止める(agentProcessTree.stopProcessTree を pid と終了の Promise で呼ぶ形) */
 export type StopTree = (pty: PtyLike, exited: Promise<void>) => Promise<void>
 
+/** 中断の 1 回目の結果。sent の followUp は 2 回目を頼むまでに待つ時間(2 回目の無い種類は null) */
+export type AgentSessionInterruptResult =
+  | { kind: 'sent'; followUp: { afterMs: number } | null }
+  | { kind: 'not-alive' }
+  | { kind: 'write-failed' }
+
+/** 中断の 2 回目の結果 */
+export type AgentSessionInterruptFollowUpResult =
+  | 'sent'
+  | 'not-pending'
+  | 'expired'
+  | 'not-alive'
+  | 'write-failed'
+
+/** 単調増加の時刻(performance.now)。AgentSessionParams.now の本番の値(参照が安定した関数) */
+export const monotonicNow = (): number => performance.now()
+
 export interface AgentSessionParams {
   id: string
   pty: PtyLike
   callbacks: AgentSessionCallbacks
   stopTree: StopTree
+  /** この起動の CLI の中断の送り方(starter が起動の計画の種類で AGENT_CLI_INTERRUPT_SPECS から引く。L-018)。省略できない(L-060) */
+  interruptSpec: AgentCliInterruptSpec
+  /** 単調増加の時刻(ms)。本番は monotonicNow、テストは偽の時計 */
+  now: () => number
 }
 
 export class AgentSession {
@@ -62,9 +86,15 @@ export class AgentSession {
   private readonly subscriptions: PtyDisposable[]
   private readonly callbacks: AgentSessionCallbacks
   private readonly markExited: () => void
+  private readonly interruptSpec: AgentCliInterruptSpec
+  private readonly now: () => number
+  /** 1 回目の中断を書いた時刻。2 回目を受け付けている間だけ値を持つ(1 回で使い切る。停止・終了で消す) */
+  private followUpSince: number | null = null
 
-  constructor({ id, pty, callbacks, stopTree }: AgentSessionParams) {
+  constructor({ id, pty, callbacks, stopTree, interruptSpec, now }: AgentSessionParams) {
     this.id = id
+    this.interruptSpec = interruptSpec
+    this.now = now
     this.pty = pty
     this.stopTree = stopTree
     this.callbacks = callbacks
@@ -93,6 +123,7 @@ export class AgentSession {
   private finish(exitCode: number | null, signal: number | null): void {
     if (!this.alive) return
     this.alive = false
+    this.followUpSince = null
     for (const subscription of this.subscriptions) subscription.dispose()
     try {
       this.callbacks.onExit({ exitCode, signal, reason: this.stopReason ?? 'exited' })
@@ -120,16 +151,46 @@ export class AgentSession {
   }
 
   /**
-   * 作業の中断(Esc を 1 回)を書く。既存の write は打鍵の経路のため書き込みの例外を握って何も返さないが、中断は結果を返す
-   * (L-001)。停止の途中(stop の後、終了の前)は止めている pty に送らない。pty.write は同期で返り、claude の反応は待たない
+   * 作業の中断の 1 回目(Esc を 1 回)を書く。既存の write は打鍵の経路のため書き込みの例外を握って何も返さないが、中断は結果を返す
+   * (L-001)。停止の途中(stop の後、終了の前)は止めている pty に送らない。2 回目の要る種類(copilot)なら、書いた時刻を控えて
+   * 2 回目の依頼を受け付け、待つ時間を返す(前の控えは上書き)。pty.write は同期で返り、CLI の反応は待たない(L-052)
    */
-  interrupt(): 'sent' | 'not-alive' | 'write-failed' {
+  interrupt(): AgentSessionInterruptResult {
+    if (!this.alive || this.stopping !== null) return { kind: 'not-alive' }
+    // 書けなかった 1 回目の後に、前の控えで 2 回目を書かない
+    this.followUpSince = null
+    if (!this.writeInterruptSequence()) return { kind: 'write-failed' }
+    const followUp = this.interruptSpec.followUp
+    if (followUp === null) return { kind: 'sent', followUp: null }
+    this.followUpSince = this.now()
+    return { kind: 'sent', followUp: { afterMs: followUp.afterMs } }
+  }
+
+  /**
+   * 作業の中断の 2 回目(renderer が画面を確かめ直してから頼む)。控えは 1 回で使い切る(先に読み出して null に戻す)。控えが無い
+   * (2 回目の無い種類・使い切った・同じセッションへの 2 回目の依頼)か、1 回目から minIntervalMs 未満(2 回を 1 つの読み取りに詰めて
+   * 送らないための守り。renderer が待つ afterMs より小さく、タイマーの早い発火を断らない)なら not-pending、deadlineMs を過ぎたら expired(CLI の 2 回の窓を外れるので書かない)。
+   * 経過の判定は表の側の judgeAgentCliInterruptFollowUpTiming。回数・間隔・期限は main の表だけが決める(L-019)
+   */
+  interruptFollowUp(): AgentSessionInterruptFollowUpResult {
+    const since = this.followUpSince
+    this.followUpSince = null
     if (!this.alive || this.stopping !== null) return 'not-alive'
+    const followUp = this.interruptSpec.followUp
+    if (since === null || followUp === null) return 'not-pending'
+    const timing = judgeAgentCliInterruptFollowUpTiming(followUp, this.now() - since)
+    if (timing === 'too-early') return 'not-pending'
+    if (timing === 'expired') return 'expired'
+    return this.writeInterruptSequence() ? 'sent' : 'write-failed'
+  }
+
+  /** 中断の固定の 1 バイトを書く(1 回目・2 回目で共通)。書けたら true、pty.write の例外は握って false */
+  private writeInterruptSequence(): boolean {
     try {
       this.pty.write(AGENT_INTERRUPT_SEQUENCE)
-      return 'sent'
+      return true
     } catch {
-      return 'write-failed'
+      return false
     }
   }
 
@@ -144,6 +205,7 @@ export class AgentSession {
 
   /** 子孫を含めて止め、終了を待って解決する。二重に呼ばれても 1 回だけ動き、最初の理由を使う */
   stop(reason: AgentExitReason): Promise<void> {
+    this.followUpSince = null
     if (this.stopping !== null) return this.stopping
     if (!this.alive) return Promise.resolve()
     this.stopReason = reason
@@ -175,6 +237,10 @@ export interface StartAgentSessionParams {
   rows: number
   callbacks: AgentSessionCallbacks
   stopTree: StopTree
+  /** この起動の CLI の中断の送り方(starter が起動の計画の種類で AGENT_CLI_INTERRUPT_SPECS から引く。L-018)。省略できない(L-060) */
+  interruptSpec: AgentCliInterruptSpec
+  /** 単調増加の時刻(ms)。本番は monotonicNow、テストは偽の時計 */
+  now: () => number
 }
 
 /** pty で起動する。spawn の例外はそのまま投げる(呼び出し側が spawn-failed にする) */
@@ -188,8 +254,10 @@ export function startAgentSession({
   cols,
   rows,
   callbacks,
-  stopTree
+  stopTree,
+  interruptSpec,
+  now
 }: StartAgentSessionParams): AgentSession {
   const pty = spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env })
-  return new AgentSession({ id, pty, callbacks, stopTree })
+  return new AgentSession({ id, pty, callbacks, stopTree, interruptSpec, now })
 }

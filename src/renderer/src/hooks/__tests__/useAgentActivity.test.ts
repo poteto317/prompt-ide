@@ -14,6 +14,25 @@ import { makeFakeController } from '../../__tests__/makeFakeAgentTerminal'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import type { AgentSessionStatus } from '../../lib/agentSessionTabState'
 import type { AgentCliKind } from '@shared/agentCliKinds'
+import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 能力が無い種類のテストのために、能力の表の screenActivity・interrupt を種類ごとに偽にできるようにする(今の表には能力が無い種類が無い)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({ unsupportedKinds: new Set() })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 
 const tabOf = (
   slotId: string,
@@ -24,15 +43,20 @@ const tabOf = (
 
 describe('useAgentActivity', () => {
   let activity: AgentActivity
-  let classify: ReturnType<typeof vi.fn<(lines: readonly ViewportLine[]) => AgentActivity>>
+  let classify: ReturnType<
+    typeof vi.fn<(kind: AgentCliKind, lines: readonly ViewportLine[]) => AgentActivity>
+  >
 
   beforeEach(() => {
     vi.useFakeTimers()
     activity = 'working'
-    classify = vi.fn<(lines: readonly ViewportLine[]) => AgentActivity>(() => activity)
+    classify = vi.fn<(kind: AgentCliKind, lines: readonly ViewportLine[]) => AgentActivity>(
+      () => activity
+    )
   })
 
   afterEach(() => {
+    capabilityOverrides.unsupportedKinds.clear()
     vi.clearAllTimers()
     vi.useRealTimers()
   })
@@ -59,7 +83,7 @@ describe('useAgentActivity', () => {
 
     act(() => vi.advanceTimersByTime(1))
     expect(classify).toHaveBeenCalledTimes(1)
-    expect(classify).toHaveBeenCalledWith(screen)
+    expect(classify).toHaveBeenCalledWith('claude', screen)
     expect(result.current.get('a')).toBe('working')
   })
 
@@ -367,7 +391,7 @@ describe('useAgentActivity', () => {
     expect(result.current).toBe(first)
   })
 
-  it('classify を省くと classifyAgentScreen で判定する(空の画面は unknown)', () => {
+  it('classify を省くと classifyAgentScreenFor で判定する(空の画面は unknown)', () => {
     const controller = makeFakeController()
     const { result } = renderHook(() => useAgentActivity({ tabs: [tabOf('a', controller)] }))
     act(() => controller.emitOutputWritten())
@@ -375,7 +399,34 @@ describe('useAgentActivity', () => {
     expect(result.current.get('a')).toBe('unknown')
   })
 
-  it('画面の判定が無い種類(copilot)のタブは購読せず、出力が来ても判定しない(タイマーも張らない)', () => {
+  it('classify を省くと、タブの種類の判定で読む: copilot の作業中の台帳の画面は copilot のタブで working、claude のタブでは working 以外', () => {
+    const copilotController = makeFakeController()
+    copilotController.screen = copilotScreen('working3000').lines
+    const claudeController = makeFakeController()
+    claudeController.screen = copilotScreen('working3000').lines
+    const { result } = renderHook(() =>
+      useAgentActivity({
+        tabs: [tabOf('a', copilotController, 'running', 'copilot'), tabOf('b', claudeController)]
+      })
+    )
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(result.current.get('a')).toBe('working')
+    expect(result.current.get('b')).not.toBe('working')
+  })
+
+  it('copilot のタブも購読し、classify にタブの種類(copilot)と画面を渡して活動を記録する', () => {
+    const controller = makeFakeController()
+    const screen = copilotScreen('working3000').lines
+    controller.screen = screen
+    const { result } = render([tabOf('a', controller, 'running', 'copilot')])
+    expect(controller.outputWrittenListeners.size).toBe(1)
+    act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
+    expect(classify).toHaveBeenCalledWith('copilot', screen)
+    expect(result.current.get('a')).toBe('working')
+  })
+
+  it('画面の判定が無い種類(能力の表を差し替えた copilot)のタブは購読せず、出力が来ても判定しない(タイマーも張らない)', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     const controller = makeFakeController()
     const { result } = render([tabOf('a', controller, 'running', 'copilot')])
     expect(controller.outputWrittenListeners.size).toBe(0)
@@ -386,7 +437,8 @@ describe('useAgentActivity', () => {
     expect(result.current.get('a')).toBe('unknown')
   })
 
-  it('claude から copilot に種類が変わったタブ(同じタブで起動し直した)は、購読を外して活動の記録を消す', () => {
+  it('claude から画面の判定が無い種類(差し替えた copilot)に変わったタブ(同じタブで起動し直した)は、購読を外して活動の記録を消す', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     const controller = makeFakeController()
     const { result, rerender } = render([tabOf('a', controller)])
     act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))
@@ -400,7 +452,8 @@ describe('useAgentActivity', () => {
     expect(classify).not.toHaveBeenCalled()
   })
 
-  it('claude から copilot に種類が変わった直後の最初の描画(記録を消す effect の前)でも、古い活動を返さず unknown にする', () => {
+  it('claude から画面の判定が無い種類に変わった直後の最初の描画(記録を消す effect の前)でも、古い活動を返さず unknown にする', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     const controller = makeFakeController()
     // 描画ごとの戻り値を記録する(effect が記録を消した後の再描画では、最初の描画の値が見えないため)
     const seen: AgentActivity[] = []
@@ -421,7 +474,8 @@ describe('useAgentActivity', () => {
     expect(seen.slice(before)).toEqual(seen.slice(before).map(() => 'unknown'))
   })
 
-  it('copilot から claude に戻ったタブは、購読を張り直して判定する', () => {
+  it('画面の判定が無い種類から claude に戻ったタブは、購読を張り直して判定する', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     const controller = makeFakeController()
     const { result, rerender } = render([tabOf('a', controller, 'running', 'copilot')])
     rerender({ tabs: [tabOf('a', controller)], classify })
@@ -430,7 +484,8 @@ describe('useAgentActivity', () => {
     expect(result.current.get('a')).toBe('working')
   })
 
-  it('claude → copilot → claude と戻ったタブは、戻った後の判定までは copilot の前の活動を返さず unknown にする', () => {
+  it('claude → 画面の判定が無い種類 → claude と戻ったタブは、戻った後の判定までは前の活動を返さず unknown にする', () => {
+    capabilityOverrides.unsupportedKinds.add('copilot')
     const controller = makeFakeController()
     const { result, rerender } = render([tabOf('a', controller)])
     act(() => vi.advanceTimersByTime(AGENT_ACTIVITY_SETTLE_MS))

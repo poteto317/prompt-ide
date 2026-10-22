@@ -144,9 +144,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
                 ref={interruptRef}
                 type="button"
                 className="agent-terminal-panel__button"
-                aria-label={agentInterruptAriaLabel(
-                  AGENT_CLI_PROFILES[session.cliKind].commandName
-                )}
+                aria-label={agentInterruptAriaLabel(session.cliKind)}
                 aria-disabled={interrupt.disabledReason !== null ? true : undefined}
                 aria-describedby={interrupt.disabledReason !== null ? interruptReasonId : undefined}
                 title={interrupt.disabledReason ?? undefined}
@@ -263,7 +261,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
           onFocusOut={focusToggle}
         />
       </div>
-      {/* 中断の読み上げ(送れたとき・押せない状態で押したとき)。ライブリージョンは先に在る必要があるため常に描く(パターン 87) */}
+      {/* 中断の読み上げ(送れたとき・押せない状態で押したとき・2 回目を頼まなかったとき)。ライブリージョンは先に在る必要があるため常に描く(パターン 87) */}
       <p className="agent-terminal-panel__live" role="status">
         {toAnnouncementText(interrupt.notice)}
       </p>

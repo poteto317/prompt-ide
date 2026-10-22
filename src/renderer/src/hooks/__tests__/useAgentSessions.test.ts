@@ -7,6 +7,7 @@ vi.mock('../../lib/agentTerminalApi')
 import * as agentTerminalApi from '../../lib/agentTerminalApi'
 import { useAgentSessions } from '../useAgentSessions'
 import type {
+  AgentInterruptFollowUpOutcome,
   AgentInterruptOutcome,
   AgentSessionsState,
   UseAgentSessionsOptions
@@ -22,6 +23,7 @@ import {
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, AGENT_START_CANCELED_DETAIL } from '@shared/types'
 import type {
+  AgentInterruptFollowUpResult,
   AgentInterruptResult,
   AgentLaunchRequest,
   AgentSessionExit,
@@ -1501,8 +1503,8 @@ describe('useAgentSessions — 中断(interrupt)', () => {
   it('そのタブの sessionId だけを渡し、sent を返す', async () => {
     const { result } = render()
     await startS1(result)
-    mockInterrupt.mockResolvedValueOnce({ kind: 'sent' })
-    expect(await interruptNow(result)).toEqual({ kind: 'sent' })
+    mockInterrupt.mockResolvedValueOnce({ kind: 'sent', followUp: null })
+    expect(await interruptNow(result)).toEqual({ kind: 'sent', followUp: null })
     expect(mockInterrupt).toHaveBeenCalledExactlyOnceWith('s1')
     expect(result.current.selected.error).toBeNull()
   })
@@ -1633,7 +1635,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
     await startS1(result)
     mockInterrupt.mockResolvedValueOnce({ kind: 'write-failed' })
     await interruptNow(result)
-    mockInterrupt.mockResolvedValueOnce({ kind: 'sent' })
+    mockInterrupt.mockResolvedValueOnce({ kind: 'sent', followUp: null })
     await interruptNow(result)
     expect(result.current.selected.error).toBeNull()
     mockStop.mockRejectedValueOnce(new Error('x'))
@@ -1641,9 +1643,203 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       await result.current.stop('slot-1')
     })
     expect(result.current.selected.error).toBe('エージェントを終了できませんでした: x')
-    mockInterrupt.mockResolvedValueOnce({ kind: 'sent' })
+    mockInterrupt.mockResolvedValueOnce({ kind: 'sent', followUp: null })
     await interruptNow(result)
     expect(result.current.selected.error).toBe('エージェントを終了できませんでした: x')
+  })
+
+  it('main の sent の followUp に、送ったセッションの sessionId を添えて返す', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockInterrupt.mockResolvedValueOnce({ kind: 'sent', followUp: { afterMs: 100 } })
+    expect(await interruptNow(result)).toEqual({
+      kind: 'sent',
+      followUp: { afterMs: 100, sessionId: 's1' }
+    })
+  })
+
+  it('copilot のタブの no-session の文言は copilot の名前', async () => {
+    const { result } = render()
+    mockStart.mockResolvedValueOnce({
+      kind: 'started',
+      sessionId: 's1',
+      cliKind: 'copilot',
+      claudeSessionId: null
+    })
+    await startSelected(result)
+    mockInterrupt.mockResolvedValueOnce({ kind: 'no-session' })
+    await interruptNow(result)
+    expect(result.current.selected.error).toBe(
+      '中断を送れませんでした: copilot が終了したか、起動し直しました'
+    )
+  })
+})
+
+describe('useAgentSessions — 中断の 2 回目(interruptFollowUp)', () => {
+  const mockFollowUp = vi.mocked(agentTerminalApi.interruptAgentSessionFollowUp)
+
+  const startCopilotS1 = async (result: Rendered['result']): Promise<void> => {
+    mockStart.mockResolvedValueOnce({
+      kind: 'started',
+      sessionId: 's1',
+      cliKind: 'copilot',
+      claudeSessionId: null
+    })
+    await startSelected(result)
+  }
+
+  const followUpNow = async (
+    result: Rendered['result'],
+    slotId = 'slot-1',
+    sessionId = 's1'
+  ): Promise<AgentInterruptFollowUpOutcome | undefined> => {
+    let outcome: AgentInterruptFollowUpOutcome | undefined
+    await act(async () => {
+      outcome = await result.current.interruptFollowUp(slotId, sessionId)
+    })
+    return outcome
+  }
+
+  it('そのタブの今のセッションの sessionId だけを渡して sent を返し、中断の失敗の文言を消す', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    mockFollowUp.mockResolvedValueOnce({ kind: 'expired' })
+    await followUpNow(result)
+    mockFollowUp.mockResolvedValueOnce({ kind: 'sent' })
+    expect(await followUpNow(result)).toEqual({ kind: 'sent' })
+    expect(mockFollowUp).toHaveBeenLastCalledWith('s1')
+    expect(result.current.selected.error).toBeNull()
+  })
+
+  it('渡した sessionId がそのタブの今のセッションと違えば、IPC を呼ばず stale(L-037)', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    expect(await followUpNow(result, 'slot-1', 's-old')).toEqual({ kind: 'stale' })
+    expect(mockFollowUp).not.toHaveBeenCalled()
+  })
+
+  it('閉じる途中のタブは、IPC を呼ばず stale', async () => {
+    const { result } = render({ onConfirm: () => true })
+    await runTwoTabs(result)
+    let releaseStop: () => void = () => undefined
+    mockStop.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseStop = resolve
+      })
+    )
+    let closing: Promise<boolean> | undefined
+    act(() => {
+      closing = result.current.closeTab('slot-2')
+    })
+    expect(await followUpNow(result, 'slot-2', 's-2')).toEqual({ kind: 'stale' })
+    expect(mockFollowUp).not.toHaveBeenCalled()
+    await act(async () => {
+      releaseStop()
+      await closing
+    })
+  })
+
+  it('結果を待つ間に終了して起動し直したら stale で、新しいセッションのタブに何も出さない', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    let resolvePending: (value: AgentInterruptFollowUpResult) => void = () => undefined
+    mockFollowUp.mockReturnValueOnce(
+      new Promise<AgentInterruptFollowUpResult>((resolve) => {
+        resolvePending = resolve
+      })
+    )
+    let outcome: Promise<AgentInterruptFollowUpOutcome> | undefined
+    act(() => {
+      outcome = result.current.interruptFollowUp('slot-1', 's1')
+    })
+    act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
+    mockStart.mockResolvedValueOnce({
+      kind: 'started',
+      sessionId: 's2',
+      cliKind: 'copilot',
+      claudeSessionId: null
+    })
+    await startSelected(result)
+    let settled: AgentInterruptFollowUpOutcome | undefined
+    await act(async () => {
+      resolvePending({ kind: 'no-session' })
+      settled = await outcome
+    })
+    expect(settled).toEqual({ kind: 'stale' })
+    expect(result.current.selected.error).toBeNull()
+  })
+
+  it('結果を待つ間にそのタブが閉じる途中になったら(停止を待つ間。sessionId は同じ)、stale でそのタブに何も出さない', async () => {
+    const { result } = render({ onConfirm: () => true })
+    await runTwoTabs(result)
+    let resolvePending: (value: AgentInterruptFollowUpResult) => void = () => undefined
+    mockFollowUp.mockReturnValueOnce(
+      new Promise<AgentInterruptFollowUpResult>((resolve) => {
+        resolvePending = resolve
+      })
+    )
+    let outcome: Promise<AgentInterruptFollowUpOutcome> | undefined
+    act(() => {
+      outcome = result.current.interruptFollowUp('slot-2', 's-2')
+    })
+    let releaseStop: () => void = () => undefined
+    mockStop.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        releaseStop = resolve
+      })
+    )
+    let closing: Promise<boolean> | undefined
+    act(() => {
+      closing = result.current.closeTab('slot-2')
+    })
+    let settled: AgentInterruptFollowUpOutcome | undefined
+    await act(async () => {
+      resolvePending({ kind: 'write-failed' })
+      settled = await outcome
+    })
+    expect(settled).toEqual({ kind: 'stale' })
+    expect(tabOf(result.current, 'slot-2').error).toBeNull()
+    await act(async () => {
+      releaseStop()
+      await closing
+    })
+  })
+
+  it.each<[AgentInterruptFollowUpResult, string]>([
+    [
+      { kind: 'not-pending' },
+      '中断を送れませんでした: 2 回目の Esc を送れる状態ではありませんでした（まだ作業中なら、もう一度押してください）'
+    ],
+    [
+      { kind: 'expired' },
+      '中断を送れませんでした: 2 回目の Esc が間に合いませんでした（まだ作業中なら、もう一度押してください）'
+    ],
+    [{ kind: 'no-session' }, '中断を送れませんでした: copilot が終了したか、起動し直しました'],
+    [{ kind: 'write-failed' }, '中断を送れませんでした: ターミナルへの書き込みに失敗しました']
+  ])('%o はそのタブの error に出して、そのまま返す', async (ipcResult, message) => {
+    const { result } = render()
+    await startCopilotS1(result)
+    mockFollowUp.mockResolvedValueOnce(ipcResult)
+    expect(await followUpNow(result)).toEqual(ipcResult)
+    expect(result.current.selected.error).toBe(message)
+  })
+
+  it('invoke の拒否は、接頭辞に例外の message を付けて error に出し、error を返す', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    mockFollowUp.mockRejectedValueOnce(new Error('ipc down'))
+    expect(await followUpNow(result)).toEqual({ kind: 'error', message: 'ipc down' })
+    expect(result.current.selected.error).toBe('中断を送れませんでした: ipc down')
+  })
+
+  it('window.api の呼び出しが同期で投げても、拒否と同じに扱う(L-055)', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    mockFollowUp.mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    expect(await followUpNow(result)).toEqual({ kind: 'error', message: 'boom' })
+    expect(result.current.selected.error).toBe('中断を送れませんでした: boom')
   })
 })
 
@@ -1689,6 +1885,26 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
     })
     rerender({ appCliKind: 'claude' })
     expect(result.current.selected.cliKind).toBe('copilot')
+  })
+
+  it('中断の失敗の文言の名前も、設定が変わった後まで起動の結果の種類のまま(タブの名前と同じ規則)', async () => {
+    mockStart.mockResolvedValueOnce({
+      kind: 'started',
+      sessionId: 's1',
+      cliKind: 'copilot',
+      claudeSessionId: null
+    })
+    const { result, rerender } = renderKind('copilot')
+    await startSelected(result)
+    rerender({ appCliKind: 'claude' })
+    mockInterrupt.mockResolvedValueOnce({ kind: 'no-session' })
+    await act(async () => {
+      await result.current.interrupt('slot-1')
+    })
+    expect(result.current.selected).toMatchObject({
+      label: 'copilot 1',
+      error: '中断を送れませんでした: copilot が終了したか、起動し直しました'
+    })
   })
 
   it('終了しても種類は残る(終了したタブの名前と画面の中身が合う)', async () => {

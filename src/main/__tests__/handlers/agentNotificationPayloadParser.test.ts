@@ -6,7 +6,7 @@ import {
   parseAgentNotificationShowRequest
 } from '../../handlers/agentNotificationPayloadParser'
 
-const valid = { slotId: 'slot-1', tabNumber: 2, kind: 'permission' }
+const valid = { slotId: 'slot-1', tabNumber: 2, kind: 'permission', cliKind: 'claude' }
 
 describe('parseAgentNotificationShowRequest', () => {
   it('検証を通った値だけを返す(余分なフィールドは捨てる)', () => {
@@ -17,6 +17,9 @@ describe('parseAgentNotificationShowRequest', () => {
   })
   it.each([1, AGENT_MAX_SESSIONS_PER_WINDOW])('tabNumber %s を受ける', (tabNumber) => {
     expect(parseAgentNotificationShowRequest({ ...valid, tabNumber }).tabNumber).toBe(tabNumber)
+  })
+  it.each(['claude', 'copilot'])('cliKind %s を受ける', (cliKind) => {
+    expect(parseAgentNotificationShowRequest({ ...valid, cliKind }).cliKind).toBe(cliKind)
   })
   it.each([
     ['オブジェクトでない', null, '引数はオブジェクトである必要があります'],
@@ -31,7 +34,22 @@ describe('parseAgentNotificationShowRequest', () => {
     ['tabNumber が整数でない', { ...valid, tabNumber: 1.5 }, 'tabNumber は 1〜'],
     ['tabNumber が文字列', { ...valid, tabNumber: '1' }, 'tabNumber は 1〜'],
     ['kind が 3 つのどれでもない', { ...valid, kind: 'working' }, 'kind は'],
-    ['kind が無い', { slotId: 'slot-1', tabNumber: 1 }, 'kind は']
+    ['kind が無い', { slotId: 'slot-1', tabNumber: 1 }, 'kind は'],
+    [
+      'cliKind が無い',
+      { slotId: 'slot-1', tabNumber: 1, kind: 'done' },
+      'cliKind は claude・copilot のどれかである必要があります'
+    ],
+    [
+      'cliKind が知らない文字列',
+      { ...valid, cliKind: 'codex' },
+      'cliKind は claude・copilot のどれかである必要があります'
+    ],
+    [
+      'cliKind が数',
+      { ...valid, cliKind: 1 },
+      'cliKind は claude・copilot のどれかである必要があります'
+    ]
   ])('%s なら投げる', (_label, payload, message) => {
     expect(() => parseAgentNotificationShowRequest(payload)).toThrow(message)
   })

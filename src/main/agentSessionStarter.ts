@@ -16,9 +16,10 @@ import type {
   AgentSessionCreation,
   AgentSessionRegistry
 } from './agentSessionRegistry'
-import { startAgentSession } from './agentSession'
+import { monotonicNow, startAgentSession } from './agentSession'
 import type { AgentSession, PtySpawn, StopTree } from './agentSession'
 import { AGENT_CLI_LAUNCH_SPECS } from './agentCliLaunchSpecs'
+import { AGENT_CLI_INTERRUPT_SPECS } from './agentCliInterruptSpecs'
 import type { AgentLaunchPlan, AgentLaunchResolution } from './agentCommand'
 import { toAgentFolderKey } from './agentSessionRecordStore'
 import type { AgentSessionRecordStore } from './agentSessionRecordStore'
@@ -334,6 +335,9 @@ export function createAgentSessionStarter({
         cols: request.cols,
         rows: request.rows,
         stopTree,
+        // 中断の送り方は起動の計画の種類で引き、設定を読み直さない(L-018)
+        interruptSpec: AGENT_CLI_INTERRUPT_SPECS[plan.cliKind],
+        now: monotonicNow,
         callbacks: {
           onData: (data) => sink.onData({ sessionId, data }),
           onExit: (exit) => sink.onExit({ sessionId, ...exit })

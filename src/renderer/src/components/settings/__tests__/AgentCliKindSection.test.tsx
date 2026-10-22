@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import AgentCliKindSection from '../AgentCliKindSection'
 import type { AgentCliKindPanelState } from '../../../types'
-import { AGENT_CLI_CAPABILITY_NAMES } from '../../../lib/agentCliMessages'
 
 const LOCKED = 'エージェントの起動中は、使う CLI を切り替えられません'
 
@@ -140,14 +139,13 @@ describe('AgentCliKindSection', () => {
     }
   })
 
-  it('copilot を選んでいると、使えない機能の注記に能力の表のすべての名前を含む', () => {
+  it('copilot を選んでいると、使えない機能の注記に能力の表で使えない機能(送信・区別・再開)を出す', () => {
     render(<AgentCliKindSection {...props({ kind: 'copilot' })} />)
-    const note = screen.getByText(
-      /^copilot では次の機能を使えません（ターミナルで直接操作します）: /
-    )
-    for (const name of Object.values(AGENT_CLI_CAPABILITY_NAMES)) {
-      expect(note).toHaveTextContent(name)
-    }
+    expect(
+      screen.getByText(
+        'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、利用者の変更との区別、前回の続きから・このセッションで再開'
+      )
+    ).toBeInTheDocument()
   })
 
   it('claude では使えない機能の注記を出さない', () => {

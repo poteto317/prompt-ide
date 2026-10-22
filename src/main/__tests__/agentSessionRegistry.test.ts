@@ -6,6 +6,38 @@ import { AGENT_MAX_SESSIONS_PER_WINDOW, AGENT_START_CANCELED_DETAIL } from '@sha
 import type { AgentSessionCreation } from '../agentSessionRegistry'
 import { makeFakePty } from './helpers/fakePty'
 import type { FakePty } from './helpers/fakePty'
+import { AGENT_CLI_INTERRUPT_SPECS } from '../agentCliInterruptSpecs'
+
+// 中断の送り方と時計(2 回目の要る種類〈copilot〉のテスト以外は claude の送り方と止まった時計)
+const CLAUDE_INTERRUPT = { interruptSpec: AGENT_CLI_INTERRUPT_SPECS.claude, now: (): number => 0 }
+
+// copilot の送り方(2 回目あり)のセッション。advance で偽の時計を進める
+function makeCopilotSession(id: string): {
+  session: AgentSession
+  pty: FakePty
+  advance: (ms: number) => void
+} {
+  const pty = makeFakePty()
+  let clock = 0
+  const session = new AgentSession({
+    id,
+    pty,
+    callbacks: { onData: vi.fn(), onExit: vi.fn() },
+    stopTree: vi.fn<StopTree>(async (_pty, exited) => {
+      pty.emitExit(0, 15)
+      await exited
+    }),
+    interruptSpec: AGENT_CLI_INTERRUPT_SPECS.copilot,
+    now: () => clock
+  })
+  return {
+    session,
+    pty,
+    advance: (ms) => {
+      clock += ms
+    }
+  }
+}
 
 // stop で pty の終了を起こす偽の stopTree を持つセッション
 function makeSession(id: string): {
@@ -19,6 +51,7 @@ function makeSession(id: string): {
     await exited
   })
   const session = new AgentSession({
+    ...CLAUDE_INTERRUPT,
     id,
     pty,
     callbacks: { onData: vi.fn(), onExit: vi.fn() },
@@ -48,6 +81,7 @@ function makeSlowStoppingSession(id: string): {
     await exited
   })
   const session = new AgentSession({
+    ...CLAUDE_INTERRUPT,
     id,
     pty,
     callbacks: { onData: vi.fn(), onExit: vi.fn() },
@@ -779,6 +813,7 @@ describe('枠(タブ)ごとのセッション', () => {
       await gate
     })
     const session = new AgentSession({
+      ...CLAUDE_INTERRUPT,
       id: 'old',
       pty,
       callbacks: { onData: vi.fn(), onExit: vi.fn() },
@@ -876,7 +911,7 @@ describe('AgentSessionRegistry.interrupt', () => {
     const registry = new AgentSessionRegistry()
     const { session, pty } = makeSession('s1')
     await registry.start(1, 'a', created(session))
-    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'sent' })
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'sent', followUp: null })
     expect(pty.write.mock.calls).toEqual([[AGENT_INTERRUPT_SEQUENCE]])
   })
 
@@ -932,6 +967,88 @@ describe('AgentSessionRegistry.interrupt', () => {
       throw new Error('EIO')
     })
     expect(registry.interrupt(1, 's1')).toEqual({ kind: 'write-failed' })
+  })
+
+  it('2 回目の要る種類(copilot)のセッションでは、セッションの 2 回目の案内(followUp)をそのまま返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session } = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.interrupt(1, 's1')).toEqual({ kind: 'sent', followUp: { afterMs: 100 } })
+  })
+})
+
+describe('AgentSessionRegistry.interruptFollowUp', () => {
+  it('所有者の枠の現在のセッションだけに 2 回目を書き、sent を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty, advance } = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(session))
+    registry.interrupt(1, 's1')
+    advance(100)
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'sent' })
+    expect(pty.write.mock.calls).toEqual([[AGENT_INTERRUPT_SEQUENCE], [AGENT_INTERRUPT_SEQUENCE]])
+  })
+
+  it('別の所有者・知らない sessionId には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty, advance } = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(session))
+    registry.interrupt(1, 's1')
+    advance(100)
+    expect(registry.interruptFollowUp(2, 's1')).toEqual({ kind: 'no-session' })
+    expect(registry.interruptFollowUp(1, 'other')).toEqual({ kind: 'no-session' })
+    expect(pty.write).toHaveBeenCalledTimes(1)
+  })
+
+  it('起動し直した後の古い sessionId には書かず no-session を返す(世代の確認。L-037)', async () => {
+    const registry = new AgentSessionRegistry()
+    const first = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(first.session))
+    registry.interrupt(1, 's1')
+    first.pty.emitExit(0)
+    await first.session.exited
+    const second = makeCopilotSession('s2')
+    await registry.start(1, 'a', created(second.session))
+    first.advance(100)
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'no-session' })
+    expect(second.pty.write).not.toHaveBeenCalled()
+  })
+
+  it('停止中のセッション(stop の後、止まりきる前)には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const slow = makeSlowStoppingSession('old')
+    await registry.start(1, 'a', created(slow.session))
+    const stopping = registry.stop(1, 'stopped', 'old')
+    expect(registry.interruptFollowUp(1, 'old')).toEqual({ kind: 'no-session' })
+    expect(slow.pty.write).not.toHaveBeenCalled()
+    slow.release()
+    await stopping
+  })
+
+  it('終了した直後(枠から外れる前)のセッションは no-session(セッションの not-alive を写す)', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty, advance } = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(session))
+    registry.interrupt(1, 's1')
+    pty.emitExit(0)
+    advance(100)
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'no-session' })
+    await session.exited
+  })
+
+  it('セッションの not-pending・expired・write-failed をそのまま写す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty, advance } = makeCopilotSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'not-pending' })
+    registry.interrupt(1, 's1')
+    advance(401)
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'expired' })
+    registry.interrupt(1, 's1')
+    advance(100)
+    pty.write.mockImplementationOnce(() => {
+      throw new Error('EIO')
+    })
+    expect(registry.interruptFollowUp(1, 's1')).toEqual({ kind: 'write-failed' })
   })
 })
 

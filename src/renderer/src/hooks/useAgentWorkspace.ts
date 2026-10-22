@@ -68,11 +68,11 @@ export interface AgentTerminalPanelState {
   layout: AgentTerminalPanelLayout
   /** 送信中のタブ(× を押せない)。送信中でなければ null */
   sendingSlotId: string | null
-  /** タブごとの claude の活動(画面から判定。running でないタブ・未判定は 'unknown') */
+  /** タブごとのエージェント CLI の活動(画面から判定。running でないタブ・未判定は 'unknown') */
   activities: ReadonlyMap<string, AgentActivity>
   /** 「前回の続きから」の押せない理由と操作 */
   resumeLast: AgentResumeLastState
-  /** 帯の 中断(選択中のタブの claude に Esc を 1 回)。押せない理由・読み上げ・押したとき */
+  /** 帯の 中断(選択中のタブの CLI に中断。claude は Esc を 1 回、copilot は作業中だけ Esc を 2 回)。押せない理由・読み上げ・押したとき */
   interrupt: AgentInterruptPanelState
   /** 設定の種類(次に起動する CLI)。帯の 起動 の名前に使う(タブの名前はタブの cliKind。能力は agentCapabilityCliKindOf) */
   appCliKind: AgentCliKind
@@ -232,13 +232,15 @@ export function useAgentWorkspace({
     onSendSettled: handleSendSettled
   })
   // 帯の 中断(設計書 2026-10-19)。押せないのは送信中・送信前の確認の表示中(送信の手順〈消去・貼り付け・Enter〉と Esc を混ぜない)と、
-  // 選択中のタブが作業中でないとき。送り先は押した時点の選択中のタブ
+  // 選択中のタブが作業中でないとき。送り先は押した時点の選択中のタブ。copilot は 2 回目を同じタブのセッションへ頼む(interruptFollowUp)。
   const agentInterrupt = useAgentInterrupt({
     selected: agentSessions.selected,
     activities,
     isSending: agentSender.isSending,
     isSendConfirmOpen: sendConfirm.pending !== null,
-    interrupt: agentSessions.interrupt
+    interrupt: agentSessions.interrupt,
+    interruptFollowUp: agentSessions.interruptFollowUp,
+    isTabOpen: (slotId) => agentSessions.tabs.some((tab) => tab.slotId === slotId)
   })
   // 送り先は押した時点の選択中のタブ。送信の途中でタブを切り替えても変えない(sender が target を控える)
   // usePromptRunner の useCallback の依存に入るため、選択中のタブ・send・確認の要否が変わらなければ同じ参照を返す

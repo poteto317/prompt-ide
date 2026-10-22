@@ -46,7 +46,12 @@ afterEach(() => {
 // どの出来事を読み上げたかだけを見る(文言の変更を 1 か所に閉じる)
 const said = (...events: [kind: AgentNotificationKind, tabNumber: number][]): string =>
   formatAgentNotificationAnnouncement(
-    events.map(([kind, tabNumber]) => ({ slotId: `slot-${tabNumber}`, tabNumber, kind }))
+    events.map(([kind, tabNumber]) => ({
+      slotId: `slot-${tabNumber}`,
+      tabNumber,
+      kind,
+      cliKind: 'claude' as const
+    }))
   )
 
 const tab = (n: number, overrides: Partial<AgentNotificationTab> = {}): AgentNotificationTab => ({
@@ -54,6 +59,7 @@ const tab = (n: number, overrides: Partial<AgentNotificationTab> = {}): AgentNot
   number: n,
   status: 'running',
   isClosing: false,
+  cliKind: 'claude',
   ...overrides
 })
 const acts = (...entries: [string, AgentActivity][]): ReadonlyMap<string, AgentActivity> =>
@@ -96,7 +102,8 @@ describe('useAgentNotifications', () => {
       expect(mockShow).toHaveBeenCalledExactlyOnceWith({
         slotId: 'slot-1',
         tabNumber: 1,
-        kind: 'done'
+        kind: 'done',
+        cliKind: 'claude'
       })
     })
 
@@ -108,7 +115,7 @@ describe('useAgentNotifications', () => {
       update({ activities: acts(['slot-1', 'permission']) })
       expect(result.current).toBe(said(['permission', 1]))
       expect(mockShow.mock.calls).toEqual([
-        [{ slotId: 'slot-1', tabNumber: 1, kind: 'permission' }]
+        [{ slotId: 'slot-1', tabNumber: 1, kind: 'permission', cliKind: 'claude' }]
       ])
     })
 
@@ -164,8 +171,8 @@ describe('useAgentNotifications', () => {
       update({ activities: acts(['slot-1', 'permission'], ['slot-2', 'idle']) })
       expect(result.current).toBe(said(['permission', 1], ['done', 2]))
       expect(mockShow.mock.calls).toEqual([
-        [{ slotId: 'slot-1', tabNumber: 1, kind: 'permission' }],
-        [{ slotId: 'slot-2', tabNumber: 2, kind: 'done' }]
+        [{ slotId: 'slot-1', tabNumber: 1, kind: 'permission', cliKind: 'claude' }],
+        [{ slotId: 'slot-2', tabNumber: 2, kind: 'done', cliKind: 'claude' }]
       ])
     })
   })
@@ -312,7 +319,8 @@ describe('useAgentNotifications', () => {
       expect(mockShow).toHaveBeenLastCalledWith({
         slotId: 'slot-1',
         tabNumber: 1,
-        kind: 'confirm'
+        kind: 'confirm',
+        cliKind: 'claude'
       })
       expect(mockDismiss).not.toHaveBeenCalled()
     })
@@ -495,9 +503,14 @@ describe('useAgentNotifications と useAgentActivity の組(CLI の種類)', () 
     expect(mockShow).toHaveBeenCalledOnce()
   })
 
-  it('copilot のタブは画面を判定しないので、同じ出力でも知らせない', () => {
+  it('copilot のタブも、作業中 → 入力待ちで copilot の名前の完了を知らせ、依頼に cliKind: copilot を載せる', () => {
     const { result } = runWorkThenIdle('copilot')
-    expect(result.current).toBe('')
-    expect(mockShow).not.toHaveBeenCalled()
+    expect(result.current).toBe('copilot 1 の作業が終わりました')
+    expect(mockShow).toHaveBeenCalledExactlyOnceWith({
+      slotId: 'slot-1',
+      tabNumber: 1,
+      kind: 'done',
+      cliKind: 'copilot'
+    })
   })
 })

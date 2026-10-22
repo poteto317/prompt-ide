@@ -1,5 +1,6 @@
 import type { IpcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type {
+  AgentInterruptFollowUpResult,
   AgentInterruptResult,
   AgentLastSession,
   AgentSessionSnapshotEntry,
@@ -22,8 +23,11 @@ import {
 // renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断を含む)だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
-  /** 書き込み・リサイズ・停止・中断・状態の取得の相手(所有者・枠ごとのセッション) */
-  registry: Pick<AgentSessionRegistry, 'write' | 'resize' | 'stop' | 'snapshot' | 'interrupt'>
+  /** 書き込み・リサイズ・停止・中断(1 回目と 2 回目)・状態の取得の相手(所有者・枠ごとのセッション) */
+  registry: Pick<
+    AgentSessionRegistry,
+    'write' | 'resize' | 'stop' | 'snapshot' | 'interrupt' | 'interruptFollowUp'
+  >
   /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
    *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
   startSession: AgentSessionStarter
@@ -94,13 +98,24 @@ export function registerAgentTerminalHandlers(
     }
   )
 
-  // 中断(claude に Esc を 1 回)。renderer からは sessionId だけを受け取り、書くバイト列は main が決める(L-019)。
-  // 書けたか・セッションが無かったかを返すため invoke にする(L-001)。照合は write と同じ(送信元のウィンドウの今のセッション)
+  // 中断(CLI に Esc を 1 回。2 回目の要る種類は結果の followUp で案内する)。renderer からは sessionId だけを受け取り、
+  // 書くバイト列は main が決める(L-019)。書けたか・セッションが無かったかを返すため invoke にする(L-001)。照合は write と
+  // 同じ(送信元のウィンドウの今のセッション)
   ipcMain.handle(
     'agentTerminal:interrupt',
     (event: IpcMainInvokeEvent, sessionId: unknown): AgentInterruptResult => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
       return registry.interrupt(event.sender.id, parseAgentSessionId(sessionId))
+    }
+  )
+
+  // 中断の 2 回目(copilot)。renderer からは sessionId だけを受け取り、書くバイト列・回数・時間は main の表とセッションの控えで
+  // 決める(L-019)。控えが無ければ書かないので、renderer が 2 回目だけを繰り返し呼んでも余分な Esc は届かない
+  ipcMain.handle(
+    'agentTerminal:interruptFollowUp',
+    (event: IpcMainInvokeEvent, sessionId: unknown): AgentInterruptFollowUpResult => {
+      if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
+      return registry.interruptFollowUp(event.sender.id, parseAgentSessionId(sessionId))
     }
   )
 

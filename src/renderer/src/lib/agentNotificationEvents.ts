@@ -1,5 +1,6 @@
 import type { AgentNotificationKind } from '@shared/types'
 import { agentNotificationText } from '@shared/agentNotificationText'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentActivity } from './agentActivity'
 import { isAgentActivityWaitingForUser } from './agentActivity'
 import type { AgentSessionStatus } from './agentSessionTabState'
@@ -11,11 +12,13 @@ export type { AgentNotificationKind }
 
 export interface AgentNotificationTab {
   slotId: string
-  /** タブの番号(題・読み上げの claude N) */
+  /** タブの番号(題・読み上げの claude N・copilot N の番号) */
   number: number
   status: AgentSessionStatus
   /** 閉じる途中(知らせず、バッジに数えない) */
   isClosing: boolean
+  /** タブの CLI の種類(題・読み上げの名前。タブの名前と同じ値〈AgentSessionTabView.cliKind〉で、名前と題が食い違わない) */
+  cliKind: AgentCliKind
 }
 
 /**
@@ -24,9 +27,11 @@ export interface AgentNotificationTab {
  */
 export interface AgentNotificationEvent {
   slotId: string
-  /** タブの番号(題・読み上げの claude N) */
+  /** タブの番号(題・読み上げの claude N・copilot N の番号) */
   tabNumber: number
   kind: AgentNotificationKind
+  /** タブの CLI の種類(題・読み上げの名前) */
+  cliKind: AgentCliKind
 }
 
 export interface AgentNotificationDecision {
@@ -102,7 +107,12 @@ export function advanceAgentNotifications(
       finishedWaiting.push(tab.slotId)
     }
     if (decision.kind === null || tab.isClosing) continue
-    events.push({ slotId: tab.slotId, tabNumber: tab.number, kind: decision.kind })
+    events.push({
+      slotId: tab.slotId,
+      tabNumber: tab.number,
+      kind: decision.kind,
+      cliKind: tab.cliKind
+    })
   }
   return { settled, events, finishedWaiting }
 }
@@ -125,7 +135,9 @@ export function formatAgentNotificationAnnouncement(
   events: readonly AgentNotificationEvent[]
 ): string {
   return events
-    .map(({ kind, tabNumber }) => agentNotificationText(kind, tabNumber).announcement)
+    .map(
+      ({ kind, tabNumber, cliKind }) => agentNotificationText(kind, tabNumber, cliKind).announcement
+    )
     .join('。')
 }
 

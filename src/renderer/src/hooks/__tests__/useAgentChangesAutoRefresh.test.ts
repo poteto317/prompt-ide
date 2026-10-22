@@ -9,7 +9,13 @@ import {
 } from '../useAgentChangesAutoRefresh'
 import type { AgentChangesAutoRefreshOptions } from '../useAgentChangesAutoRefresh'
 
-const tab: AgentNotificationTab = { slotId: 's1', number: 1, status: 'running', isClosing: false }
+const tab: AgentNotificationTab = {
+  slotId: 's1',
+  number: 1,
+  status: 'running',
+  isClosing: false,
+  cliKind: 'claude'
+}
 const activitiesOf = (activity: AgentActivity): ReadonlyMap<string, AgentActivity> =>
   new Map([['s1', activity]])
 
@@ -78,6 +84,13 @@ describe('useAgentChangesAutoRefresh', () => {
     expect(refresh).toHaveBeenCalledExactlyOnceWith({ announce: false, quiet: true })
     await advance(AUTO_REFRESH_MAX_WAIT_MS)
     expect(refresh).toHaveBeenCalledOnce()
+  })
+
+  it('copilot のタブの完了(working → idle)でも取り直す', async () => {
+    const { refresh, update } = setup({ tabs: [{ ...tab, cliKind: 'copilot' }] })
+    update({ activities: activitiesOf('idle') })
+    await advance(AUTO_REFRESH_WAIT_MS)
+    expect(refresh).toHaveBeenCalledExactlyOnceWith({ announce: false, quiet: true })
   })
 
   it.each<AgentActivity>(['permission', 'confirm'])(

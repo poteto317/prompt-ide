@@ -4,6 +4,7 @@ import { renderHook } from '@testing-library/react'
 import type { RenderHookResult } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentActivity } from '../../lib/agentActivity'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 
 const mockReport = vi.hoisted(() => vi.fn<(sessionId: string) => void>())
 const mockReportEnded = vi.hoisted(() => vi.fn<(sessionId: string) => void>())
@@ -18,8 +19,13 @@ import type {
   UseAgentHooksWorkingReportOptions
 } from '../useAgentHooksWorkingReport'
 
-const tab = (slotId: string, sessionId: string | null): AgentHooksWorkingReportTab => ({
+const tab = (
+  slotId: string,
+  sessionId: string | null,
+  cliKind: AgentCliKind = 'claude'
+): AgentHooksWorkingReportTab => ({
   slotId,
+  cliKind,
   controller: { getSessionId: () => sessionId }
 })
 const activitiesOf = (
@@ -169,5 +175,35 @@ describe('useAgentHooksWorkingReport(作業の終わり)', () => {
       ])
     })
     expect(mockReportEnded).toHaveBeenCalledExactlyOnceWith('sid-a')
+  })
+})
+
+describe('useAgentHooksWorkingReport(変更の区別をしない種類)', () => {
+  it('copilot のタブは、作業中・作業の終わりを知らせない(main の hooks は cli-unsupported で使わない)', () => {
+    const tabs = [tab('a', 'sid-a', 'copilot')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReport).not.toHaveBeenCalled()
+    expect(mockReportEnded).not.toHaveBeenCalled()
+  })
+
+  it('claude と copilot のタブが並んでいても、claude のタブだけを今までどおり知らせる', () => {
+    const tabs = [tab('a', 'sid-a'), tab('b', 'sid-b', 'copilot')]
+    const { rerender } = render({
+      tabs,
+      activities: activitiesOf([
+        ['a', 'working'],
+        ['b', 'working']
+      ])
+    })
+    rerender({
+      tabs,
+      activities: activitiesOf([
+        ['a', 'idle'],
+        ['b', 'idle']
+      ])
+    })
+    expect(mockReport.mock.calls).toEqual([['sid-a']])
+    expect(mockReportEnded.mock.calls).toEqual([['sid-a']])
   })
 })

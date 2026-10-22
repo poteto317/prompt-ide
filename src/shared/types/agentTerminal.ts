@@ -136,8 +136,24 @@ export interface AgentLastSession {
   claudeSessionId: string
 }
 
-/** 中断(agentTerminal:interrupt)の結果。main は固定の 1 バイトを書けたかだけを返す(作業が止まったかは claude の画面の判定で分かる) */
+/** 中断の 2 回目の案内(main の種類ごとの表で決める。renderer は回数・間隔を決めない) */
+export interface AgentInterruptFollowUp {
+  /** 1 回目を書いてから、2 回目を頼むまでに待つ時間(ms) */
+  afterMs: number
+}
+
+/** 中断(agentTerminal:interrupt)の結果。main は固定の 1 バイトを書けたかと、2 回目を頼むかの案内を返す(作業が止まったかは画面の判定で分かる) */
 export type AgentInterruptResult =
+  | { kind: 'sent'; followUp: AgentInterruptFollowUp | null }
+  | { kind: 'no-session' }
+  | { kind: 'write-failed' }
+
+/** 中断の 2 回目(agentTerminal:interruptFollowUp)の結果 */
+export type AgentInterruptFollowUpResult =
   | { kind: 'sent' }
+  /** 2 回目を受け付けていない(2 回目の無い種類・使い切った・早すぎる) */
+  | { kind: 'not-pending' }
+  /** 1 回目から期限を過ぎた(書かない) */
+  | { kind: 'expired' }
   | { kind: 'no-session' }
   | { kind: 'write-failed' }

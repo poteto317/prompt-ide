@@ -1,4 +1,5 @@
 import type {
+  AgentInterruptFollowUpResult,
   AgentInterruptResult,
   AgentLastSession,
   AgentSessionData,
@@ -26,9 +27,16 @@ export function stopAgentSession(sessionId: string): Promise<void> {
   return window.api.stopAgentSession(sessionId)
 }
 
-/** 中断(claude の作業を止める。ターミナルで Esc を 1 回押すのと同じ)。書くバイト列は main が決める */
+/** 中断の 1 回目(作業を止める。ターミナルで Esc を押すのと同じ)。2 回目の要る種類は結果の followUp で案内される。書くバイト列は main が決める */
 export function interruptAgentSession(sessionId: string): Promise<AgentInterruptResult> {
   return window.api.interruptAgentSession(sessionId)
+}
+
+/** 中断の 2 回目(copilot。renderer が画面を確かめ直してから頼む)。書くバイト列・回数・時間は main が決める */
+export function interruptAgentSessionFollowUp(
+  sessionId: string
+): Promise<AgentInterruptFollowUpResult> {
+  return window.api.interruptAgentSessionFollowUp(sessionId)
 }
 
 export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {
