@@ -9,6 +9,7 @@ const tab = (overrides: Partial<AgentTabSessionSource>): AgentTabSessionSource =
   slotId: 'tab-1',
   label: 'claude',
   status: 'running',
+  cliKind: 'claude',
   claudeSessionId: ID_A,
   ...overrides
 })
@@ -18,7 +19,20 @@ describe('describeAgentTabSession', () => {
     const tabs = [tab({}), tab({ slotId: 'tab-2', label: 'claude 2', claudeSessionId: ID_B })]
     expect(describeAgentTabSession(tabs, 'tab-2', '/work')).toEqual({
       claudeSessionId: ID_B,
+      cliKind: 'claude',
       tabLabel: 'claude 2',
+      folderPath: '/work'
+    })
+  })
+
+  it('送り先の種類はタブの種類(起動の結果の種類)', () => {
+    const tabs = [
+      tab({ slotId: 'tab-2', label: 'copilot 2', cliKind: 'copilot', claudeSessionId: ID_B })
+    ]
+    expect(describeAgentTabSession(tabs, 'tab-2', '/work')).toEqual({
+      claudeSessionId: ID_B,
+      cliKind: 'copilot',
+      tabLabel: 'copilot 2',
       folderPath: '/work'
     })
   })

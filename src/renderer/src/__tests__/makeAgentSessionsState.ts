@@ -72,6 +72,7 @@ export function makeAgentSessionsState(
     isAnyStarting: isAnyAgentSessionStarting(tabs),
     lastExit: null,
     startConfirmedCount: 0,
+    noteScreenActivity: vi.fn<AgentSessionsState['noteScreenActivity']>(),
     ...rest
   }
 }

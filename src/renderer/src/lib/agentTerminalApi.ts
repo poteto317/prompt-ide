@@ -1,3 +1,4 @@
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type {
   AgentInterruptFollowUpResult,
   AgentInterruptResult,
@@ -43,8 +44,12 @@ export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {
   return window.api.getAgentSessions()
 }
 
-export function getLastAgentSession(folderPath: string): Promise<AgentLastSession | null> {
-  return window.api.getLastAgentSession(folderPath)
+/** このフォルダで最後に起動が確定した、cliKind の種類のセッション(前回の続きから)。照合は main が行う */
+export function getLastAgentSession(
+  folderPath: string,
+  cliKind: AgentCliKind
+): Promise<AgentLastSession | null> {
+  return window.api.getLastAgentSession(folderPath, cliKind)
 }
 
 export function onAgentData(listener: (payload: AgentSessionData) => void): () => void {

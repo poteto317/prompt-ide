@@ -145,7 +145,10 @@ declare global {
       interruptAgentSession(sessionId: string): Promise<AgentInterruptResult>
       interruptAgentSessionFollowUp(sessionId: string): Promise<AgentInterruptFollowUpResult>
       getAgentSessions(): Promise<AgentSessionSnapshotEntry[]>
-      getLastAgentSession(folderPath: string): Promise<AgentLastSession | null>
+      getLastAgentSession(
+        folderPath: string,
+        cliKind: AgentCliKind
+      ): Promise<AgentLastSession | null>
       onAgentData(listener: (payload: AgentSessionData) => void): () => void
       onAgentExit(listener: (payload: AgentSessionExit) => void): () => void
       setAgentTerminalFocused(focused: boolean): void

@@ -22,7 +22,12 @@ import { setupAgentSessionLifecycle } from './agentSessionLifecycle'
 import { registerAgentTerminalHandlers } from './handlers/agentTerminalHandlers'
 import { createAgentSessionStarter } from './agentSessionStarter'
 import { createAgentSessionRecordStore } from './agentSessionRecordStore'
-import { createAgentSessionRecordFileIo } from './agentSessionRecordFileIo'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentSessionRecordStore } from './agentSessionRecordStore'
+import {
+  AGENT_SESSION_RECORD_FILE_NAMES,
+  createAgentSessionRecordFileIo
+} from './agentSessionRecordFileIo'
 import { createClaudeSessionReservations } from './claudeSessionReservations'
 import { createAgentHooksRuntime } from './agentHooksRuntime'
 import { setupAgentHooksLifecycle } from './agentHooksLifecycle'
@@ -78,10 +83,17 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   // エージェントのセッション。作業ディレクトリは開いているフォルダ(同じ FolderAccessManager)で、フォルダの切り替えで止める
   const agentRegistry = new AgentSessionRegistry()
   setupAgentSessionLifecycle(app, agentRegistry, folderAccess)
-  // claude のセッションの起動の記録(userData/agent-sessions.json)。読み込みはここで一度だけ始める
-  const agentSessionRecords = createAgentSessionRecordStore(
-    createAgentSessionRecordFileIo(app.getPath('userData'))
-  )
+  // エージェント CLI のセッションの起動の記録(種類ごとに userData の別のファイル。claude は agent-sessions.json)。読み込みはここで
+  // 一度だけ始める。種類を足したときに記録の決め忘れを型エラーにするため、種類をキーにしたオブジェクトで作る(L-060)
+  const userDataDir = app.getPath('userData')
+  const recordStoreOf = (kind: AgentCliKind): AgentSessionRecordStore =>
+    createAgentSessionRecordStore(
+      createAgentSessionRecordFileIo(userDataDir, AGENT_SESSION_RECORD_FILE_NAMES[kind])
+    )
+  const agentSessionRecords: Record<AgentCliKind, AgentSessionRecordStore> = {
+    claude: recordStoreOf('claude'),
+    copilot: recordStoreOf('copilot')
+  }
   // claude の hooks(ツールの区間の追跡・127.0.0.1 の受け口・起動ごとの準備)。実物の依存の組み立ては agentHooksRuntime.ts。
   // 追跡の合図の変化・PreToolUse の待ち・待ちの打ち切りを記録の registry につなぐ(設計書「registry へのつなぎ方」)。runtime は生成の中で
   // これらを呼ばず、最初に呼ぶのは組み立てが終わった後の IPC(起動の activate・hooks の知らせ)なので、後で作る registry を参照してよい

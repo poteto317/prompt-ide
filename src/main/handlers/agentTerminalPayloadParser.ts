@@ -1,4 +1,6 @@
 import type { AgentLaunchRequest, AgentStartRequest } from '@shared/types'
+import { AGENT_CLI_KINDS, isAgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import {
   AGENT_SLOT_ID_MAX_LENGTH,
   AGENT_SLOT_ID_PATTERN,
@@ -38,11 +40,19 @@ export function parseAgentFolderPath(value: unknown): string {
   return value
 }
 
+/** エージェント CLI の種類(再開の依頼・「前回」の取得)。無い・知らない値は投げる(既定の claude に流さない。L-044) */
+export function parseAgentCliKind(value: unknown): AgentCliKind {
+  if (!isAgentCliKind(value)) {
+    throw new Error(`cliKind は ${AGENT_CLI_KINDS.join('・')} のどれかである必要があります`)
+  }
+  return value
+}
+
 const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]): boolean =>
   Object.keys(value).every((key) => keys.includes(key))
 
 /**
- * 起動の指定(新しく起動・記録した ID で再開)。無い・未知の kind・余分なキー・ID が小文字の UUID v4 でないものは投げる
+ * 起動の指定(新しく起動・記録した ID で再開)。無い・未知の kind・余分なキー・ID が小文字の UUID v4 でないもの・resume の種類が無い・知らない値は投げる
  * (既定の new に流さない。L-044。`-` 始まりの値が claude のオプションとして解釈される経路を断つ。L-034)
  */
 export function parseAgentLaunchRequest(value: unknown): AgentLaunchRequest {
@@ -55,13 +65,17 @@ export function parseAgentLaunchRequest(value: unknown): AgentLaunchRequest {
     return { kind: 'new' }
   }
   if (launch.kind === 'resume') {
-    if (!hasOnlyKeys(launch, ['kind', 'claudeSessionId'])) {
+    if (!hasOnlyKeys(launch, ['kind', 'claudeSessionId', 'cliKind'])) {
       throw new Error('launch に余分なキーがあります')
     }
     if (!isClaudeSessionId(launch.claudeSessionId)) {
       throw new Error('claudeSessionId は小文字の UUID v4 である必要があります')
     }
-    return { kind: 'resume', claudeSessionId: launch.claudeSessionId }
+    return {
+      kind: 'resume',
+      claudeSessionId: launch.claudeSessionId,
+      cliKind: parseAgentCliKind(launch.cliKind)
+    }
   }
   throw new Error('launch.kind は new か resume である必要があります')
 }

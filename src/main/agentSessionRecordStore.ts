@@ -2,8 +2,9 @@ import { isClaudeSessionId } from '@shared/types'
 import { isEnoentError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
-// フォルダごとの claude のセッションの起動の記録(設計書「記録の置き場」「記録の中身」)。main が振った ID の一覧を新しい順に持ち、
-// 先頭が「前回」。再開の ID が main の振ったものかを照合する相手で、main だけが書く(renderer が丸ごと保存する履歴は信頼しない)。
+// フォルダごとのエージェント CLI のセッションの起動の記録(種類ごとに 1 つ作る。ファイルも種類ごと〈agentSessionRecordFileIo.ts〉。
+// 設計書「記録の置き場」「記録の中身」、段階 3a の設計書「起動の記録」)。main が振った ID の一覧を新しい順に持ち、先頭が「前回」。
+// 再開の ID が main の振ったものかを照合する相手で、main だけが書く(renderer が丸ごと保存する履歴は信頼しない)。
 // 記録はメモリに持ち、has・last は同期で引く(starter の resume の照合は await を挟まない区間にあるため)。読み込みは作った時点で
 // 一度だけ始め、使う側は whenLoaded を待ってから同期の区間に入る。ファイルの形は { version: 1, folders: [{ key, ids }] }。
 // ファイルの入出力は注入する(AgentSessionRecordIo。実物は agentSessionRecordFileIo.ts)。fs・Electron に依存しない

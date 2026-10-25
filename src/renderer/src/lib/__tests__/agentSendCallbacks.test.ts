@@ -20,6 +20,7 @@ describe('notifyAgentSent', () => {
     const onSent = vi.fn()
     const sentTo = {
       claudeSessionId: '11111111-1111-4111-8111-111111111111',
+      cliKind: 'claude',
       tabLabel: 'claude 1',
       folderPath: '/work'
     }
@@ -60,9 +61,15 @@ describe('notifyAgentSent', () => {
     )
   })
 
-  it('送り先の種類を onSent に渡す(copilot の送り先は sentTo が null で、種類で記録を省くかを決める)', () => {
+  it('送り先の種類を onSent に渡す(copilot の送り先も、控えた送り先を渡す。段階 3a)', () => {
     const onSent = vi.fn()
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'copilot' }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'copilot')
+    const sentTo = {
+      claudeSessionId: '33333333-3333-4333-8333-333333333333',
+      cliKind: 'copilot',
+      tabLabel: 'copilot 1',
+      folderPath: '/work'
+    }
+    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo, cliKind: 'copilot' }, onSent)
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'copilot')
   })
 })

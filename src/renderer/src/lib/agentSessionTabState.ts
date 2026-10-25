@@ -1,5 +1,5 @@
 import type { AgentCliKind } from '@shared/agentCliKinds'
-import type { AgentExitReason, AgentSessionExit } from '@shared/types'
+import type { AgentExitReason, AgentLaunchRequest, AgentSessionExit } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
 import {
   AGENT_ADD_TAB_DISABLED_LIMIT,
@@ -88,6 +88,25 @@ export const isAgentExitedSoon = (
   now: number
 ): boolean =>
   event.reason === 'exited' && event.exitCode !== 0 && now - (startedAt ?? 0) < AGENT_EXITED_SOON_MS
+
+/**
+ * 再開の失敗か(設計書 2026-10-23「再開の失敗の見分け方と伝え方」)。再開(resume)で起動したタブが、画面の活動を一度も見ないまま
+ * (起動の後に活動が unknown 以外にならなかった)、エージェント自身の終了(exited)で 0 以外(null を含む)で終わったときだけ真。
+ * 時間では見ない(初回の起動は遅いことがある)。文言を出すかは種類ごとの表(AGENT_RESUME_FAILURE_NOTES)で決める
+ */
+export function isAgentResumeFailure({
+  launchKind,
+  exit,
+  sawScreenActivity
+}: {
+  launchKind: AgentLaunchRequest['kind']
+  exit: Pick<AgentSessionExit, 'exitCode' | 'reason'>
+  sawScreenActivity: boolean
+}): boolean {
+  return (
+    launchKind === 'resume' && exit.reason === 'exited' && exit.exitCode !== 0 && !sawScreenActivity
+  )
+}
 
 /** 起動を押せない理由(フォルダ無し、または起動を受け付けない間の理由。フォルダ無しを優先する)。押せるなら null */
 export const agentStartDisabledReason = (

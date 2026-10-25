@@ -53,10 +53,10 @@ export function usePromptRunner({
     [executePrompt, addHistoryEntry]
   )
 
-  // エージェント CLI 方式で送れたときの記録(結果の文章は記録しない)。送り先(sentTo)は送信の手順を始める時点に控えた値。
-  // 会話の ID を持たない種類(copilot。能力の表の sessionResume が偽)は送り先を控えられないのが常なので、黙って記録を省く(copilot へ
-  // 送ったプロンプトの履歴への記録は段階 3)。会話の ID を持つ種類(claude)で控えられなかった(ありえない想定)ときだけログに残す。
-  // 記録が投げても呼び出し元(参照の後始末)を止めない
+  // エージェント CLI 方式で送れたときの記録(結果の文章は記録しない)。送り先(sentTo)は送信の手順を始める時点に控えた値で、送り先の
+  // タブの種類を含む(段階 3a で copilot へ送ったプロンプトも記録する)。会話の ID を持たない種類(能力の表の sessionResume が偽。今の
+  // 表には無い)は送り先を控えられないのが常なので、黙って記録を省く。会話の ID を持つ種類で控えられなかった(ありえない想定)ときだけ
+  // ログに残す。記録が投げても呼び出し元(参照の後始末)を止めない
   const recordAgentSent = useCallback(
     (
       context: ExecutionContext,

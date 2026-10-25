@@ -15,6 +15,7 @@ import {
   findAgentSlotBySessionId,
   isActiveAgentSessionStatus,
   isAgentExitedSoon,
+  isAgentResumeFailure,
   isAnyAgentSessionActive,
   isAnyAgentSessionStarting
 } from '../agentSessionTabState'
@@ -215,5 +216,30 @@ describe('agentCapabilityCliKindOf', () => {
     expect(agentCapabilityCliKindOf({ status: 'none', cliKind: 'claude' }, 'copilot')).toBe(
       'copilot'
     )
+  })
+})
+
+describe('isAgentResumeFailure(再開の失敗の見分け)', () => {
+  const failure = {
+    launchKind: 'resume' as const,
+    exit: { exitCode: 1, reason: 'exited' as const },
+    sawScreenActivity: false
+  }
+
+  it('再開で起動し、画面の活動を見ないまま、エージェント自身が 0 以外で終わったら真(終了コードが分からない null も含む)', () => {
+    expect(isAgentResumeFailure(failure)).toBe(true)
+    expect(isAgentResumeFailure({ ...failure, exit: { exitCode: null, reason: 'exited' } })).toBe(
+      true
+    )
+  })
+
+  it.each<[string, Partial<Parameters<typeof isAgentResumeFailure>[0]>]>([
+    ['新しい起動', { launchKind: 'new' }],
+    ['止めた終了(stopped)', { exit: { exitCode: 1, reason: 'stopped' } }],
+    ['フォルダの切り替え', { exit: { exitCode: 1, reason: 'folder-changed' } }],
+    ['終了コード 0', { exit: { exitCode: 0, reason: 'exited' } }],
+    ['活動を見た後', { sawScreenActivity: true }]
+  ])('%s なら偽', (_label, override) => {
+    expect(isAgentResumeFailure({ ...failure, ...override })).toBe(false)
   })
 })

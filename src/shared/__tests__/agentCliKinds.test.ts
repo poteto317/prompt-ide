@@ -55,7 +55,7 @@ describe('AGENT_CLI_PROFILES', () => {
     })
   })
 
-  it('claude の能力はすべて真、copilot は promptSend・screenActivity・interrupt だけ真(段階 2b)', () => {
+  it('claude の能力はすべて真、copilot は changeAttribution だけ偽(段階 3a で sessionResume も真にした)', () => {
     expect(agentCliCapabilities('claude')).toEqual({
       promptSend: true,
       screenActivity: true,
@@ -68,7 +68,7 @@ describe('AGENT_CLI_PROFILES', () => {
       screenActivity: true,
       interrupt: true,
       changeAttribution: false,
-      sessionResume: false
+      sessionResume: true
     })
   })
 

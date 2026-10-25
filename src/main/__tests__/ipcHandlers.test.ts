@@ -43,14 +43,19 @@ const mockSetupAgentHooksLifecycle = vi.hoisted(() => vi.fn())
 vi.mock('../agentHooksLifecycle', () => ({
   setupAgentHooksLifecycle: mockSetupAgentHooksLifecycle
 }))
-const mockAgentSessionRecords = vi.hoisted(() => ({ marker: 'records' }))
-const mockAgentSessionRecordIo = vi.hoisted(() => ({ marker: 'record-io' }))
-const mockCreateAgentSessionRecordStore = vi.hoisted(() => vi.fn(() => mockAgentSessionRecords))
-const mockCreateAgentSessionRecordFileIo = vi.hoisted(() => vi.fn(() => mockAgentSessionRecordIo))
+// 記録の store と入出力の偽物。種類ごとに作られた値を見分けられるよう、受け取った値を持たせる
+const mockCreateAgentSessionRecordStore = vi.hoisted(() =>
+  vi.fn((io: unknown) => ({ marker: 'records', io }))
+)
+const mockCreateAgentSessionRecordFileIo = vi.hoisted(() =>
+  vi.fn((_userDataDir: string, fileName: string) => ({ marker: 'record-io', fileName }))
+)
 vi.mock('../agentSessionRecordStore', () => ({
   createAgentSessionRecordStore: mockCreateAgentSessionRecordStore
 }))
-vi.mock('../agentSessionRecordFileIo', () => ({
+// ファイル名の表(AGENT_SESSION_RECORD_FILE_NAMES)は本物を使う
+vi.mock('../agentSessionRecordFileIo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agentSessionRecordFileIo')>()),
   createAgentSessionRecordFileIo: mockCreateAgentSessionRecordFileIo
 }))
 const mockRuntime = vi.hoisted(() => ({
@@ -445,19 +450,26 @@ describe('registerIpcHandlers', () => {
     const first = createSessionId()
     expect(first).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     expect(createSessionId()).not.toBe(first)
-    // 起動の記録は userData の agent-sessions.json(読み込みは組み立ての時点で一度だけ始める)
-    expect(mockCreateAgentSessionRecordFileIo).toHaveBeenCalledExactlyOnceWith('/mock/userData')
-    expect(mockCreateAgentSessionRecordStore).toHaveBeenCalledExactlyOnceWith(
-      mockAgentSessionRecordIo
-    )
-    expect(starterDeps.records).toBe(mockAgentSessionRecords)
+    // 起動の記録は種類ごとに userData の別のファイル(claude は今の agent-sessions.json)。読み込みは組み立ての時点で一度だけ始める
+    expect(mockCreateAgentSessionRecordFileIo.mock.calls).toEqual([
+      ['/mock/userData', 'agent-sessions.json'],
+      ['/mock/userData', 'agent-sessions-copilot.json']
+    ])
+    expect(mockCreateAgentSessionRecordStore).toHaveBeenCalledTimes(2)
+    expect(starterDeps.records).toEqual({
+      claude: { marker: 'records', io: { marker: 'record-io', fileName: 'agent-sessions.json' } },
+      copilot: {
+        marker: 'records',
+        io: { marker: 'record-io', fileName: 'agent-sessions-copilot.json' }
+      }
+    })
     // 予約の集合は 1 つ(同じ ID の 2 回目は null)
     const reservations = starterDeps.reservations as {
       tryReserve: (id: string) => (() => void) | null
     }
     expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).not.toBeNull()
     expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).toBeNull()
-    // claude のセッション ID は呼ぶたびに別の小文字の UUID v4
+    // 新しい会話の ID(再開に対応する種類で共通)は呼ぶたびに別の小文字の UUID v4
     const createClaudeSessionId = starterDeps.createClaudeSessionId as () => string
     const claudeId = createClaudeSessionId()
     expect(isClaudeSessionId(claudeId)).toBe(true)

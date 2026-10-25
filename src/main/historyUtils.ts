@@ -1,5 +1,9 @@
 import type { AgentHistoryInfo, HistoryEntry, HistoryStatus, PromptToolId } from '@shared/types'
 import { EXECUTION_TOOLS, isClaudeSessionId } from '@shared/types'
+import {
+  LEGACY_AGENT_HISTORY_CLI_KIND,
+  isHistoryAgentCliKindValue
+} from '@shared/historyAgentCliKind'
 
 const TOOL_IDS = EXECUTION_TOOLS.map((tool) => tool.id) as readonly string[]
 
@@ -19,6 +23,8 @@ function isAgentHistoryInfo(value: unknown): value is AgentHistoryInfo {
   const a = value as Record<string, unknown>
   return (
     isClaudeSessionId(a.claudeSessionId) &&
+    // 段階 3a より前のエントリは cliKind が無い(正規化で claude を補う)。形の不正な値は既定に流さず不正とする(L-044)
+    (a.cliKind === undefined || isHistoryAgentCliKindValue(a.cliKind)) &&
     isNonEmptyString(a.tabLabel) &&
     isNonEmptyString(a.folderPath)
   )
@@ -51,7 +57,7 @@ export function isValidHistoryEntry(item: unknown): item is HistoryEntry {
 }
 
 // 保存(history:save)も同じ関数を通るため、agent をここで取り出し直さないと保存のたびに黙って消える(L-015)。
-// 古い形式(agent 無し)は null にし、agent の中も 3 つのフィールドだけに作り直す
+// 古い形式(agent 無し)は null にし、agent の中も 4 つのフィールドだけに作り直す(cliKind が無い段階 3a より前のエントリは claude を補う)
 export function sanitizeHistoryEntry(item: HistoryEntry): HistoryEntry {
   const {
     id,
@@ -82,6 +88,8 @@ export function sanitizeHistoryEntry(item: HistoryEntry): HistoryEntry {
         ? null
         : {
             claudeSessionId: agent.claudeSessionId,
+            // 段階 3a より前のエントリは cliKind が無い(型の外の値)。知らない種類の値はそのまま保つ(L-456・L-459)
+            cliKind: (agent.cliKind as string | undefined) ?? LEGACY_AGENT_HISTORY_CLI_KIND,
             tabLabel: agent.tabLabel,
             folderPath: agent.folderPath
           }

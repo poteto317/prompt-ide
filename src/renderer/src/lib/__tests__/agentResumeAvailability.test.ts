@@ -1,14 +1,40 @@
-import { describe, it, expect } from 'vitest'
-import type { PromptExecutionMode } from '@shared/types'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import {
   getResumeEntryDisabledReason,
   getResumeLastDisabledReason
 } from '../agentResumeAvailability'
 import type { AgentResumeTab } from '../agentResumeAvailability'
 import {
+  agentResumeEntryCliMismatch,
+  agentResumeEntryUnknownCli,
   agentResumeEntryUnsupportedReason,
   agentResumeLastUnsupportedReason
 } from '../agentSessionMessages'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 設定の種類が再開に対応していない理由(agentResume*UnsupportedReason)を確かめるため、能力の表を種類ごとに差し替える
+// (段階 3a で copilot も再開に対応し、今の表には該当する種類が無い)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
+  })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 
 const ID = '11111111-1111-4111-8111-111111111111'
 const tab = (overrides: Partial<AgentResumeTab> = {}): AgentResumeTab => ({
@@ -24,7 +50,7 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
       getResumeLastDisabledReason({
         appCliKind: 'claude',
         startDisabledReason: 'フォルダを開いてください',
-        lastSession: { kind: 'found', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
         tabs: [tab()]
       })
     ).toBe('フォルダを開いてください')
@@ -56,7 +82,7 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
         getResumeLastDisabledReason({
           appCliKind: 'claude',
           startDisabledReason: null,
-          lastSession: { kind: 'found', claudeSessionId: ID },
+          lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
           tabs: [tab(), tab({ label: 'claude 2', status, claudeSessionId: ID })]
         })
       ).toBe('前回のセッションは claude 2 で動いています')
@@ -68,7 +94,7 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
       getResumeLastDisabledReason({
         appCliKind: 'claude',
         startDisabledReason: null,
-        lastSession: { kind: 'found', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
         tabs: [tab({ status: 'exited', claudeSessionId: null })]
       })
     ).toBeNull()
@@ -76,7 +102,12 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
 })
 
 describe('getResumeEntryDisabledReason(このセッションで再開)', () => {
-  const recorded = { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/work' }
+  const recorded = {
+    claudeSessionId: ID,
+    cliKind: 'claude',
+    tabLabel: 'claude 1',
+    folderPath: '/work'
+  }
   const ok = {
     mode: 'agent-cli' as const,
     appCliKind: 'claude' as const,
@@ -148,16 +179,28 @@ describe('getResumeEntryDisabledReason(このセッションで再開)', () => {
   })
 })
 
-describe('再開の入口の CLI の種類(設定の種類)', () => {
+describe('再開の入口の CLI の種類(設定の種類が再開に対応しない種類。能力の表を差し替えた copilot)', () => {
+  beforeEach(() => {
+    capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
+  })
+  afterEach(() => {
+    capabilityOverrides.sessionResumeUnsupportedKinds.clear()
+  })
+
   const LAST = agentResumeLastUnsupportedReason('copilot')
   const ENTRY = agentResumeEntryUnsupportedReason('copilot')
-  const recorded = { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/work' }
+  const recorded = {
+    claudeSessionId: ID,
+    cliKind: 'claude',
+    tabLabel: 'claude 1',
+    folderPath: '/work'
+  }
 
   it('前回の続きから: 設定が copilot なら、取得中・記録なし・同じ ID のタブより先にその理由', () => {
     for (const lastSession of [
       { kind: 'loading' as const },
       { kind: 'none' as const },
-      { kind: 'found' as const, claudeSessionId: ID }
+      { kind: 'found' as const, cliKind: 'claude' as const, claudeSessionId: ID }
     ]) {
       expect(
         getResumeLastDisabledReason({
@@ -175,7 +218,7 @@ describe('再開の入口の CLI の種類(設定の種類)', () => {
       getResumeLastDisabledReason({
         startDisabledReason: '使うエージェント CLI を切り替えています',
         appCliKind: 'copilot',
-        lastSession: { kind: 'found', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
         tabs: []
       })
     ).toBe('使うエージェント CLI を切り替えています')
@@ -208,5 +251,93 @@ describe('再開の入口の CLI の種類(設定の種類)', () => {
     expect(getResumeEntryDisabledReason({ ...base, mode: 'legacy' })).toBe(
       'エージェント CLI 方式でだけ再開できます（設定で切り替えると使えます）'
     )
+  })
+})
+
+describe('再開の入口の CLI の種類(copilot も再開に対応する。段階 3a)', () => {
+  it('前回の続きから: 設定が copilot で copilot の前回があれば押せる', () => {
+    expect(
+      getResumeLastDisabledReason({
+        startDisabledReason: null,
+        appCliKind: 'copilot',
+        lastSession: { kind: 'found', cliKind: 'copilot', claudeSessionId: ID },
+        tabs: [tab({ label: 'copilot 1' })]
+      })
+    ).toBeNull()
+  })
+})
+
+describe('getResumeEntryDisabledReason: エントリの種類(段階 3a)', () => {
+  const recordedOf = (cliKind: string): AgentHistoryInfo => ({
+    claudeSessionId: ID,
+    cliKind,
+    tabLabel: `${cliKind} 1`,
+    folderPath: '/work'
+  })
+  const base = {
+    mode: 'agent-cli' as const,
+    appCliKind: 'copilot' as const,
+    folderPath: '/work',
+    startDisabledReason: null,
+    addDisabledReason: null,
+    tabs: [tab()]
+  }
+
+  it('エントリの種類と設定の種類が同じ(copilot)なら押せる', () => {
+    expect(getResumeEntryDisabledReason({ ...base, recorded: recordedOf('copilot') })).toBeNull()
+  })
+
+  it('エントリの種類と設定の種類が違えば、切り替えれば再開できる理由', () => {
+    expect(getResumeEntryDisabledReason({ ...base, recorded: recordedOf('claude') })).toBe(
+      agentResumeEntryCliMismatch('claude', 'copilot')
+    )
+    expect(
+      getResumeEntryDisabledReason({
+        ...base,
+        appCliKind: 'claude',
+        recorded: recordedOf('copilot')
+      })
+    ).toBe(agentResumeEntryCliMismatch('copilot', 'claude'))
+  })
+
+  it('知らない種類(gemini)のエントリは、その種類の名前を出す理由(設定の種類に依らない)', () => {
+    for (const appCliKind of ['claude', 'copilot'] as const) {
+      expect(
+        getResumeEntryDisabledReason({ ...base, appCliKind, recorded: recordedOf('gemini') })
+      ).toBe(agentResumeEntryUnknownCli('gemini'))
+    }
+  })
+
+  it('種類の理由は、フォルダ・起動を受け付けない間・同じ ID のタブ・上限の理由より先(フォルダを開き直しても押せないため)', () => {
+    const blocked = {
+      ...base,
+      folderPath: '/other',
+      startDisabledReason: '実行方式を切り替えています',
+      addDisabledReason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）',
+      tabs: [tab({ label: 'copilot 2', status: 'running', claudeSessionId: ID })]
+    }
+    expect(getResumeEntryDisabledReason({ ...blocked, recorded: recordedOf('gemini') })).toBe(
+      agentResumeEntryUnknownCli('gemini')
+    )
+    expect(getResumeEntryDisabledReason({ ...blocked, recorded: recordedOf('claude') })).toBe(
+      agentResumeEntryCliMismatch('claude', 'copilot')
+    )
+  })
+
+  it('読み込み中・従来の方式・設定の種類が再開に対応しない理由は、種類の理由より先', () => {
+    expect(
+      getResumeEntryDisabledReason({ ...base, mode: null, recorded: recordedOf('gemini') })
+    ).toBe('設定を読み込んでいます')
+    expect(
+      getResumeEntryDisabledReason({ ...base, mode: 'legacy', recorded: recordedOf('gemini') })
+    ).toBe('エージェント CLI 方式でだけ再開できます（設定で切り替えると使えます）')
+    capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
+    try {
+      expect(getResumeEntryDisabledReason({ ...base, recorded: recordedOf('gemini') })).toBe(
+        agentResumeEntryUnsupportedReason('copilot')
+      )
+    } finally {
+      capabilityOverrides.sessionResumeUnsupportedKinds.clear()
+    }
   })
 })

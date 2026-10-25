@@ -1,6 +1,7 @@
 import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
+import { knownAgentCliKindOf } from '@shared/historyAgentCliKind'
 import type { AgentSessionStatus } from './agentSessionTabState'
 import { findActiveAgentTabByClaudeSessionId } from './agentSessionTabState'
 import { isSamePath } from './pathUtils'
@@ -9,22 +10,25 @@ import {
   AGENT_RESUME_ENTRY_LEGACY_MODE,
   AGENT_RESUME_LAST_LOADING,
   AGENT_RESUME_LAST_NO_RECORD,
+  agentResumeEntryCliMismatch,
   agentResumeEntryFolderMismatch,
   agentResumeEntryInUse,
+  agentResumeEntryUnknownCli,
   agentResumeEntryUnsupportedReason,
   agentResumeLastInUse,
   agentResumeLastUnsupportedReason
 } from './agentSessionMessages'
 
-// claude のセッションの再開の入口(ターミナルのタブの「前回の続きから」・実行の履歴の「このセッションで再開」)の押せない理由
+// エージェント CLI のセッションの再開の入口(ターミナルのタブの「前回の続きから」・実行の履歴の「このセッションで再開」)の押せない理由
 // (設計書「前回の続きから」「このセッションで再開 の押せない理由」)。React に依存しない純粋な関数で、組み立ては useAgentResume。
-// 同じ ID のタブの判定は renderer の表示のためで、拒否の正は main(別のウィンドウのセッションは renderer から見えない)
+// 同じ ID のタブの判定は renderer の表示のためで、拒否の正は main(別のウィンドウのセッションは renderer から見えない)。
+// 再開できるのは設定と同じ種類のセッションだけ(段階 3a の設計書「決めたこと(推奨案)」)。
 
-/** 「前回」の取得の結果(useAgentLastSession) */
+/** 「前回」の取得の結果(useAgentLastSession)。found の cliKind は取りに行った種類 */
 export type AgentLastSessionLookup =
   | { kind: 'loading' }
   | { kind: 'none' }
-  | { kind: 'found'; claudeSessionId: string }
+  | { kind: 'found'; cliKind: AgentCliKind; claudeSessionId: string }
 
 /** 押せない理由の判定に使うタブの値(AgentSessionTabView の一部) */
 export interface AgentResumeTab {
@@ -61,9 +65,10 @@ export function getResumeLastDisabledReason({
 }
 
 /**
- * 「このセッションで再開」の押せない理由(上から順に、最初に当たったものを 1 つ)。実行方式の読み込み中 → エージェント CLI 方式でない → 設定の CLI が再開に対応していない →
- * 記録したフォルダを開いていない(isSamePath。Windows は大文字小文字を区別しない) → 起動を受け付けない間 → 同じ ID のタブが
- * 起動中・実行中 → タブが上限(+ と同じ。L-048)。押せるなら null
+ * 「このセッションで再開」の押せない理由(上から順に、最初に当たったものを 1 つ)。実行方式の読み込み中 → エージェント CLI 方式でない →
+ * 設定の CLI が再開に対応していない → エントリの種類をこの版が知らない → エントリの種類と設定の種類が違う → 記録したフォルダを
+ * 開いていない(isSamePath。Windows は大文字小文字を区別しない) → 起動を受け付けない間 → 同じ ID のタブが起動中・実行中 →
+ * タブが上限(+ と同じ。L-048)。種類の理由をフォルダの理由より前に置くのは、フォルダを開き直しても押せないため。押せるなら null
  */
 export function getResumeEntryDisabledReason({
   mode,
@@ -89,6 +94,15 @@ export function getResumeEntryDisabledReason({
   // 設定の CLI が再開に対応していない。実行方式の判定の直後(設計書「入口ごとの表」)
   if (!agentCliCapabilities(appCliKind).sessionResume) {
     return agentResumeEntryUnsupportedReason(AGENT_CLI_PROFILES[appCliKind].commandName)
+  }
+  // エントリの種類(この版が知らない種類・設定と違う種類)。再開は設定と同じ種類だけ(起動の種類は main が読む設定で決まるため)
+  const entryCliKind = knownAgentCliKindOf(recorded)
+  if (entryCliKind === null) return agentResumeEntryUnknownCli(recorded.cliKind)
+  if (entryCliKind !== appCliKind) {
+    return agentResumeEntryCliMismatch(
+      AGENT_CLI_PROFILES[entryCliKind].commandName,
+      AGENT_CLI_PROFILES[appCliKind].commandName
+    )
   }
   if (folderPath === null || !isSamePath(folderPath, recorded.folderPath)) {
     return agentResumeEntryFolderMismatch(recorded.folderPath)

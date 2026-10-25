@@ -5,9 +5,12 @@ export type HistoryStatus = 'success' | 'error' | 'sent'
 
 /** エージェント CLI 方式で送ったときの送り先(送信の手順を始める時点に控えたタブの状態とフォルダ)。送信の onSent・describeSession も同じ型 */
 export interface AgentHistoryInfo {
-  /** 送り先のタブで動いていた claude の会話の ID(UUID) */
+  /** 送り先のタブで動いていたエージェント CLI の会話の ID(UUID。claude・copilot)。欄名は古い版との互換のため claude のまま */
   claudeSessionId: string
-  /** 送り先のタブの名前(claude 2 など) */
+  /** 送り先のタブの CLI の種類。知らない種類(新しい版の種類)の値も保つ。AgentCliKind として使うときは knownAgentCliKindOf で読む
+   *  (shared/historyAgentCliKind.ts)。段階 3a より前のエントリは無く、読み込みで claude を補う */
+  cliKind: string
+  /** 送り先のタブの名前(claude 2・copilot 1 など) */
   tabLabel: string
   /** 送ったときに開いていたフォルダ(renderer の文字列) */
   folderPath: string

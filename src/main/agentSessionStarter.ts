@@ -29,12 +29,12 @@ import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
 
 // エージェントのセッションの起動の規則と pty の配線(設計書「IPC」「停止の契機」、セッションの再開の設計書「起動の流れ」)。
 // Electron に依存しない。IPC の受け口(送信元・ペイロードの検証、送信先の webContents への送信)は handlers/agentTerminalHandlers.ts。
-// 起動のコマンド・作業ディレクトリ・環境変数・claude のセッションの指定は main で決め、依頼の folderPath は許可のフォルダとの
+// 起動のコマンド・作業ディレクトリ・環境変数・会話の ID の指定(new・resume)は main で決め、依頼の folderPath は許可のフォルダとの
 // 一致の確認にだけ使う。ここは起動の手順(照合・取り消しの確認・ID の選択・予約・spawn を await を挟まずに行う順序)と、起動の記録への
 // 書き込みの契機を持つ。各段の規則は別のモジュールにある: CLI の種類ごとの能力(再開の拒否・会話の ID と予約と記録の有無を分ける)は
-// shared/agentCliKinds.ts の agentCliCapabilities、起動に使う claude の会話の ID の選択(新規は振る・再開は記録と照合)は
+// shared/agentCliKinds.ts の agentCliCapabilities、起動に使う会話の ID の選択(新規は振る・再開は記録と照合)は
 // claudeSessionIdSelection.ts、引数(--session-id / --resume と --settings)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
-// 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts、claude の hooks の準備・結び付け・解放は
+// 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts(種類ごとに 1 つ。起動の計画の種類の記録だけを使う)、claude の hooks の準備・結び付け・解放は
 // agentHookSessions.ts
 
 /** 起動したセッションの出力の送り先(所有者の webContents。破棄済みかを確かめられる) */
@@ -54,14 +54,17 @@ export interface AgentSessionStarterDeps {
   stopTree: StopTree
   /** pty のセッションの id */
   createSessionId: () => string
-  /** フォルダごとの claude のセッションの起動の記録(再開の照合・起動が確定したときの記録・「前回」) */
-  records: Pick<AgentSessionRecordStore, 'whenLoaded' | 'has' | 'last' | 'record'>
-  /** 全ウィンドウで共有する claude のセッション ID の予約 */
+  /** 種類ごとの、フォルダごとのエージェント CLI のセッションの起動の記録(再開の照合・起動が確定したときの記録・「前回」)。起動の計画の
+   *  種類(main が読んだ設定)の記録だけを使う。種類をキーにした表で、種類を足したときの渡し忘れを型エラーにする(L-060) */
+  records: Readonly<
+    Record<AgentCliKind, Pick<AgentSessionRecordStore, 'whenLoaded' | 'has' | 'last' | 'record'>>
+  >
+  /** 全ウィンドウで共有する会話の ID の予約(種類をまたいで 1 つ。ID は main が振る UUID なので種類をまたいで重ならない) */
   reservations: Pick<ClaudeSessionReservations, 'tryReserve'>
   /** claude の hooks の準備(prepare)・spawn の後の結び付け(activate)・終了での解放(release)。組み立ては agentHooksRuntime.ts
    *  (agentHookSessions)で、ipcHandlers.ts が渡す。省略できない(渡し忘れで hooks なしの起動に黙って倒れないように。L-060) */
   hooks: Pick<AgentHookSessions, 'prepare' | 'activate' | 'release'>
-  /** 新しい claude のセッション ID(既定は crypto.randomUUID) */
+  /** 新しい会話の ID(再開に対応する種類〈claude・copilot〉の new で振る。既定は crypto.randomUUID) */
   createClaudeSessionId?: () => string
   /** 記録のフォルダのキーの作り方を決める(既定は process.platform) */
   platform?: NodeJS.Platform
@@ -91,10 +94,14 @@ export interface AgentSessionStarterService {
    */
   sessionInfoOf(sessionId: string): AgentSessionInfo | undefined
   /**
-   * 「前回」の取得(agentTerminal:getLastSession)。folderPath を正規化して許可のフォルダと一致するときだけ、記録の先頭を返す。
-   * 一致しない・記録が無ければ null
+   * 「前回」の取得(agentTerminal:getLastSession)。folderPath を正規化して許可のフォルダと一致するときだけ、cliKind の記録の先頭を
+   * 種類付きで返す。一致しない・記録が無ければ null
    */
-  lastSessionOf(ownerId: number, folderPath: string): Promise<AgentLastSession | null>
+  lastSessionOf(
+    ownerId: number,
+    folderPath: string,
+    cliKind: AgentCliKind
+  ): Promise<AgentLastSession | null>
 }
 
 /** 依頼のフォルダと許可のフォルダの照合の結果(起動と「前回」の取得で同じ規則を使う) */
@@ -245,13 +252,18 @@ export function createAgentSessionStarter({
     ) {
       return { kind: 'failed', result: { kind: 'error', error: 'resume-unsupported' } }
     }
+    // 再開の依頼の種類が、起動のたびに読んだ設定の種類と違えば起動しない(別のウィンドウで設定を変えた。起動の種類は依頼の値で変えず、
+    // main の値を使う。L-018)。hooks を準備する前に断る
+    if (request.launch.kind === 'resume' && request.launch.cliKind !== launch.plan.cliKind) {
+      return { kind: 'failed', result: { kind: 'error', error: 'resume-cli-mismatch' } }
+    }
     // hooks の準備(版の確認・受け口・設定のファイル)。spawn の直前の await を挟まない区間に入れないため、ここで待つ。
     // pty の sessionId はまだ振らない(その区間で振る)。activate しなかったら finally で自分が書いたファイルだけを消す(L-004)
     const prepared = await hooks.prepare(ownerId, launch.plan)
     let creation: AgentSessionCreation | undefined
     try {
-      // 再開の照合は下の同期の区間で行うため、記録の読み込みの完了をここで待つ(読み込みが間に合わない経路を作らない)
-      await records.whenLoaded()
+      // 再開の照合は下の同期の区間で行うため、起動の計画の種類の記録の読み込みの完了をここで待つ(ほかの種類の記録は待たない。L-002)
+      await records[launch.plan.cliKind].whenLoaded()
       // registry.start の前の await(realpath)の間に届いた停止(リロード・破棄・フォルダの切り替え)は、registry.start が
       // 控える世代に含まれてしまい registry では取り消せない。入口で控えた世代・破棄・許可のフォルダを起動の直前に
       // 確かめ直し、所有者のいない・リロード前の・切り替え前のフォルダのセッションを作らない
@@ -291,13 +303,13 @@ export function createAgentSessionStarter({
     createdAgentSession: CreatedAgentSession
   ): AgentSessionCreation {
     const capabilities = agentCliCapabilities(plan.cliKind)
-    // 会話の ID の選択・予約は再開に対応する種類(claude)だけ。copilot は ID を選ばず予約もしない(設計書「起動の手順」4)
+    // 会話の ID の選択・予約は能力の表で再開に対応する種類だけ(段階 3a で claude・copilot の両方。対応しない種類は ID を選ばず予約もしない)
     let claudeSessionId: string | null = null
     if (capabilities.sessionResume) {
       const selection = selectClaudeSessionId(
         request.launch,
         folderKey,
-        records,
+        records[plan.cliKind],
         createClaudeSessionId
       )
       if (selection.kind === 'rejected') return { kind: 'failed', result: selection.result }
@@ -394,7 +406,7 @@ export function createAgentSessionStarter({
   /**
    * started を共有の結果にして記録する。registry の started は、この依頼の create が作り、取り消さずに枠に置いたセッションだけ。
    * 種類が入っていない取り違えは能力で見分けずに投げる(L-044)。再開に対応する種類は会話の ID を必ず持ち、記録する。
-   * 対応しない種類(copilot)は ID を持たず、記録しない(前回の続きからに出さない)
+   * 対応しない種類は ID を持たず、記録しない(前回の続きからに出さない)。記録は起動した種類の記録だけに書く
    */
   function recordStarted(
     sessionId: string,
@@ -410,7 +422,7 @@ export function createAgentSessionStarter({
       }
       // 起動は成功しているため、記録の失敗はログだけにする(次の 前回の続きから が古い記録を使うことがある。L-001)
       try {
-        records.record(folderKey, claudeSessionId)
+        records[cliKind].record(folderKey, claudeSessionId)
       } catch (err) {
         console.error('[agentSessionStarter] 起動の記録に失敗しました:', err)
       }
@@ -435,16 +447,18 @@ export function createAgentSessionStarter({
 
   async function lastSessionOf(
     ownerId: number,
-    folderPath: string
+    folderPath: string,
+    cliKind: AgentCliKind
   ): Promise<AgentLastSession | null> {
     const match = await matchAllowedFolder(ownerId, folderPath)
     if (match.kind !== 'matched') return null
     const { allowedFolder } = match
-    await records.whenLoaded()
+    const kindRecords = records[cliKind]
+    await kindRecords.whenLoaded()
     // await の間にフォルダが切り替わっていたら、切り替え前のフォルダの記録を返さない
     if (folderAccess.get(ownerId) !== allowedFolder) return null
-    const claudeSessionId = records.last(toAgentFolderKey(allowedFolder, platform))
-    return claudeSessionId === null ? null : { claudeSessionId }
+    const claudeSessionId = kindRecords.last(toAgentFolderKey(allowedFolder, platform))
+    return claudeSessionId === null ? null : { cliKind, claudeSessionId }
   }
 
   return {

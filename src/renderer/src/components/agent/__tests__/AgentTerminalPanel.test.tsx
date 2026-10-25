@@ -404,6 +404,19 @@ describe('AgentTerminalPanel — 変更を確認', () => {
 describe('AgentTerminalPanel: 前回の続きから', () => {
   const RESUME_LABEL = '前回の続きから（このフォルダで最後に起動した claude のセッションを再開）'
 
+  it('名前は設定の種類のコマンド名(appCliKind)で作る', () => {
+    render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({ sessions: makeSessions(), appCliKind: 'copilot' })}
+      />
+    )
+    expect(
+      screen.getByRole('button', {
+        name: '前回の続きから（このフォルダで最後に起動した copilot のセッションを再開）'
+      })
+    ).toBeInTheDocument()
+  })
+
   it('動いていないタブで 起動 の隣に出し、押すと選択中のタブで onResume を呼ぶ', async () => {
     const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2', status: 'exited' }) })
     const button = screen.getByRole('button', { name: RESUME_LABEL })

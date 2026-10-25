@@ -209,9 +209,12 @@ export const api = {
     ipcRenderer.invoke('agentTerminal:interruptFollowUp', sessionId),
   getAgentSessions: (): Promise<AgentSessionSnapshotEntry[]> =>
     ipcRenderer.invoke('agentTerminal:getState'),
-  // このフォルダで最後に起動が確定した claude のセッション(前回の続きから)。照合は main が許可のフォルダで行う
-  getLastAgentSession: (folderPath: string): Promise<AgentLastSession | null> =>
-    ipcRenderer.invoke('agentTerminal:getLastSession', folderPath),
+  // このフォルダで最後に起動が確定した、cliKind の種類のセッション(前回の続きから)。照合は main が許可のフォルダと種類の記録で行う
+  getLastAgentSession: (
+    folderPath: string,
+    cliKind: AgentCliKind
+  ): Promise<AgentLastSession | null> =>
+    ipcRenderer.invoke('agentTerminal:getLastSession', folderPath, cliKind),
   onAgentData: (listener: (payload: AgentSessionData) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
       if (typeof payload !== 'object' || payload === null) return

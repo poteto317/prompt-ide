@@ -20,7 +20,7 @@ import {
   PROMPT_RUN_ARIA_LABEL_AGENT,
   rerunDisabledAgentEntryFolderMismatch
 } from '../../lib/agentSendMessages'
-import { AGENT_RESUME_LAST_ARIA_LABEL } from '../../lib/agentSessionMessages'
+import { agentResumeLastAriaLabel } from '../../lib/agentSessionMessages'
 import { activityBarPanels } from '../../config/activityBarPanels'
 
 // App → useAppState(useAgentWorkspace・usePromptRunner・useHistory)→ Sidebar(PromptsPanel・HistoryPanel)を本物のまま通し、
@@ -118,7 +118,12 @@ describe('App: セッションの再開と履歴の配線', () => {
           promptTitle: '要約',
           promptContent: '要約して',
           status: 'sent',
-          agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/project' }
+          agent: {
+            claudeSessionId: ID,
+            cliKind: 'claude',
+            tabLabel: 'claude 1',
+            folderPath: '/project'
+          }
         })
       ])
     )
@@ -142,7 +147,9 @@ describe('App: セッションの再開と履歴の配線', () => {
     await userEvent.click(resume)
     await waitFor(() =>
       expect(window.api.startAgentSession).toHaveBeenLastCalledWith(
-        expect.objectContaining({ launch: { kind: 'resume', claudeSessionId: ID } })
+        expect.objectContaining({
+          launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+        })
       )
     )
     expect(await screen.findByRole('tab', { name: /claude 2/, selected: true })).toBeInTheDocument()
@@ -161,7 +168,12 @@ describe('App: セッションの再開と履歴の配線', () => {
         resultText: null,
         errorMessage: null,
         executedAt: 1000000,
-        agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/project' }
+        agent: {
+          claudeSessionId: ID,
+          cliKind: 'claude',
+          tabLabel: 'claude 1',
+          folderPath: '/project'
+        }
       }
     ])
     render(<App />)
@@ -220,7 +232,12 @@ describe('App: セッションの再開と履歴の配線', () => {
         resultText: null,
         errorMessage: null,
         executedAt: 1000000,
-        agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/other' }
+        agent: {
+          claudeSessionId: ID,
+          cliKind: 'claude',
+          tabLabel: 'claude 1',
+          folderPath: '/other'
+        }
       }
     ])
     render(<App />)
@@ -241,7 +258,9 @@ describe('App: セッションの再開と履歴の配線', () => {
   })
 
   it('前回の続きから: 開いたフォルダの前回のセッションを本物の useAgentLastSession で取り、押すと resume を依頼し、動いている間は理由を見える文字で結ぶ', async () => {
-    window.api.getLastAgentSession = vi.fn().mockResolvedValue({ claudeSessionId: ID })
+    window.api.getLastAgentSession = vi
+      .fn()
+      .mockResolvedValue({ cliKind: 'claude', claudeSessionId: ID })
     // + で足すタブ(claude 2)は起動に失敗させ、起動していないタブとして 前回の続きから を出す
     window.api.startAgentSession = vi
       .fn()
@@ -256,13 +275,15 @@ describe('App: セッションの再開と履歴の配線', () => {
     await screen.findByRole('region', { name: 'エージェント' })
     await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
     await screen.findByRole('tree')
-    const resumeLast = screen.getByRole('button', { name: AGENT_RESUME_LAST_ARIA_LABEL })
+    const resumeLast = screen.getByRole('button', { name: agentResumeLastAriaLabel('claude') })
     await waitFor(() => expect(resumeLast).toBeEnabled())
-    expect(window.api.getLastAgentSession).toHaveBeenCalledWith('/project')
+    expect(window.api.getLastAgentSession).toHaveBeenCalledWith('/project', 'claude')
     await userEvent.click(resumeLast)
     await waitFor(() =>
       expect(window.api.startAgentSession).toHaveBeenLastCalledWith(
-        expect.objectContaining({ launch: { kind: 'resume', claudeSessionId: ID } })
+        expect.objectContaining({
+          launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+        })
       )
     )
     // 起動に成功したタブ(claude 1)が同じ ID で動いている間は、ほかのタブ(claude 2)から押せない
@@ -270,7 +291,9 @@ describe('App: セッションの再開と履歴の配線', () => {
     await screen.findByRole('button', { name: '終了（エージェントを止める）' })
     await userEvent.click(screen.getByRole('button', { name: '新しいセッション' }))
     await screen.findByRole('tab', { name: /claude 2/, selected: true })
-    const resumeLastOnNewTab = screen.getByRole('button', { name: AGENT_RESUME_LAST_ARIA_LABEL })
+    const resumeLastOnNewTab = screen.getByRole('button', {
+      name: agentResumeLastAriaLabel('claude')
+    })
     await waitFor(() => expect(resumeLastOnNewTab).toBeDisabled())
     expect(
       document.getElementById(resumeLastOnNewTab.getAttribute('aria-describedby') ?? '')

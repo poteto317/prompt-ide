@@ -1,4 +1,5 @@
 import { AGENT_CLI_PROFILES, DEFAULT_AGENT_CLI_COMMAND_NAME } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentStartResult } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
 import type { AgentActivity } from './agentActivity'
@@ -16,6 +17,15 @@ export const AGENT_START_DISABLED_SWITCHING_MODE = '実行方式を切り替え�
 /** 使う CLI の切り替えの途中(エージェントの停止を待つ間)に、起動・+・前回の続きからを押せない理由 */
 export const AGENT_START_DISABLED_SWITCHING_CLI_KIND = '使うエージェント CLI を切り替えています'
 export const AGENT_EXITED_SOON_NOTE = '起動の直後に終了しました。ターミナルの表示を確かめてください'
+/**
+ * 再開の失敗(isAgentResumeFailure)の文言。種類ごとの表で、claude は今の「起動の直後に終了しました」のまま(null)。copilot は
+ * 何も送らずに閉じたセッションを --resume で開けない(GitHub Copilot CLI 1.0.87 の記録の 5f)。原因を言い切らず、copilot の出力は写さずに
+ * ターミナルの表示を見るよう案内する(L-017)。起動の記録は消さない(終了コード 1 には別の原因もある。L-002)
+ */
+export const AGENT_RESUME_FAILURE_NOTES: Record<AgentCliKind, string | null> = {
+  claude: null,
+  copilot: `${AGENT_CLI_PROFILES.copilot.commandName} がセッションを再開できずに終了しました。ターミナルの表示を確かめてください（何も送らずに閉じたセッションは、${AGENT_CLI_PROFILES.copilot.commandName} が保存しないため再開できません）`
+}
 
 /** 同時に動かせるセッションの数の上限に達したときの文言(main が起動を拒否したとき用) */
 export const AGENT_TOO_MANY_SESSIONS = `同時に動かせるエージェントは ${AGENT_MAX_SESSIONS_PER_WINDOW} つまでです`
@@ -24,17 +34,22 @@ export const AGENT_ADD_TAB_DISABLED_LIMIT = `タブは ${AGENT_MAX_SESSIONS_PER_
 /** 再開の ID が main の起動の記録に無い(main が unknown-session で拒んだ) */
 export const AGENT_UNKNOWN_SESSION =
   'このセッションは再開できません（アプリの起動の記録にありません）'
-/** 同じ ID の claude がほかのタブかウィンドウで動いている(main が session-in-use で拒んだ) */
+/** 同じ ID のエージェント CLI がほかのタブかウィンドウで動いている(main が session-in-use で拒んだ) */
 export const AGENT_SESSION_IN_USE = 'このセッションはほかのタブかウィンドウで動いています'
 /** 再開の依頼だが、使う CLI が再開に対応していない(main が resume-unsupported で拒んだ) */
 export const AGENT_RESUME_UNSUPPORTED =
   '使っているエージェント CLI は、セッションの再開に対応していません'
+/** 再開の依頼の種類が main の読んだ設定の種類と違った(main が resume-cli-mismatch で拒んだ。別のウィンドウで設定を変えたとき) */
+export const AGENT_RESUME_CLI_MISMATCH =
+  '使うエージェント CLI の設定が変わったため、再開しませんでした（設定を確かめてから、もう一度押してください）'
 
-/** ターミナルのタブの「前回の続きから」(このフォルダで最後に起動が確定した claude のセッションを再開する) */
+/** ターミナルのタブの「前回の続きから」(このフォルダで最後に起動が確定した、設定の種類のセッションを再開する) */
 export const AGENT_RESUME_LAST_LABEL = '前回の続きから'
-/** 可視の文言「前回の続きから」で始める(パターン 76) */
-export const AGENT_RESUME_LAST_ARIA_LABEL =
-  '前回の続きから（このフォルダで最後に起動した claude のセッションを再開）'
+/** 帯の 前回の続きから の aria-label。可視の文言「前回の続きから」で始める(パターン 76)。commandName は設定の種類のコマンド名
+ *  (claude では段階 3a より前と同じ文字列) */
+export function agentResumeLastAriaLabel(commandName: string): string {
+  return `前回の続きから（このフォルダで最後に起動した ${commandName} のセッションを再開）`
+}
 export const AGENT_RESUME_LAST_LOADING = '前回のセッションを確かめています'
 export const AGENT_RESUME_LAST_NO_RECORD = 'このフォルダで前回起動したセッションの記録がありません'
 /** 前回の続きから の押せない理由(設定の種類が再開に対応していない) */
@@ -46,13 +61,24 @@ export function agentResumeLastInUse(label: string): string {
   return `前回のセッションは ${label} で動いています`
 }
 
-/** 実行の履歴の詳細の「このセッションで再開」(新しいタブを開いて、エントリの claude のセッションを再開する) */
+/** 実行の履歴の詳細の「このセッションで再開」(新しいタブを開いて、エントリのセッションを再開する) */
 export const AGENT_RESUME_ENTRY_LABEL = 'このセッションで再開'
 export const AGENT_RESUME_ENTRY_LEGACY_MODE =
   'エージェント CLI 方式でだけ再開できます（設定で切り替えると使えます）'
 /** 履歴の このセッションで再開 の押せない理由(設定の種類が再開に対応していない) */
 export function agentResumeEntryUnsupportedReason(commandName: string): string {
   return `${commandName} では「このセッションで再開」を使えません（設定で ${DEFAULT_AGENT_CLI_COMMAND_NAME} に戻すと使えます）`
+}
+/** 履歴の このセッションで再開 の押せない理由(エントリの種類と設定の種類が違う。設定を切り替えると再開できる) */
+export function agentResumeEntryCliMismatch(
+  entryCommandName: string,
+  appCommandName: string
+): string {
+  return `${entryCommandName} のセッションのため、${appCommandName} では再開できません（設定の「使うエージェント CLI」で ${entryCommandName} に切り替えると再開できます）`
+}
+/** 履歴の このセッションで再開 の押せない理由(エントリの種類をこの版が知らない)。cliKind は main が形を検証した履歴の値(L-017) */
+export function agentResumeEntryUnknownCli(cliKind: string): string {
+  return `このアプリの版が知らないエージェント CLI（${cliKind}）のセッションのため、再開できません`
 }
 /** 開いているフォルダが記録したフォルダと違う・フォルダを開いていない */
 export function agentResumeEntryFolderMismatch(folderPath: string): string {
@@ -97,6 +123,8 @@ export function describeAgentStartError(
       return AGENT_SESSION_IN_USE
     case 'resume-unsupported':
       return AGENT_RESUME_UNSUPPORTED
+    case 'resume-cli-mismatch':
+      return AGENT_RESUME_CLI_MISMATCH
     case 'spawn-failed':
       return `${AGENT_START_ERROR_PREFIX}${result.detail ?? ''}`
   }

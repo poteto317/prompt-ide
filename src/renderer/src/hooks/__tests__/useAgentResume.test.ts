@@ -1,5 +1,5 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { RenderHookResult } from '@testing-library/react'
 import type { HistoryEntry } from '../../types'
 import type { AgentLastSessionLookup } from '../../lib/agentResumeAvailability'
@@ -10,12 +10,37 @@ import {
 import {
   AGENT_RESUME_ENTRY_LEGACY_MODE,
   AGENT_RESUME_LAST_NO_RECORD,
+  agentResumeEntryCliMismatch,
+  agentResumeEntryUnknownCli,
   agentResumeEntryFolderMismatch,
   agentResumeEntryInUse,
   agentResumeEntryUnsupportedReason,
   agentResumeLastInUse,
   agentResumeLastUnsupportedReason
 } from '../../lib/agentSessionMessages'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 設定の種類が再開に対応していないときの理由を確かめるため、能力の表を差し替える(段階 3a で copilot も再開に対応した)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
+  })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 
 const mockUseAgentLastSession = vi.hoisted(() =>
   vi.fn<(options: unknown) => AgentLastSessionLookup>(() => ({ kind: 'none' }))
@@ -40,10 +65,16 @@ const agentEntry = (claudeSessionId = ID): HistoryEntry => ({
   resultText: null,
   errorMessage: null,
   executedAt: 1,
-  agent: { claudeSessionId, tabLabel: 'claude 1', folderPath: FOLDER }
+  agent: { claudeSessionId, cliKind: 'claude', tabLabel: 'claude 1', folderPath: FOLDER }
 })
 
 const legacyEntry: HistoryEntry = { ...agentEntry(), status: 'success', agent: null }
+
+/** 送り先の種類を cliKind にしたエージェントのエントリ */
+const agentEntryOf = (cliKind: string, claudeSessionId = ID): HistoryEntry => {
+  const entry = agentEntry(claudeSessionId)
+  return { ...entry, agent: entry.agent === null ? null : { ...entry.agent, cliKind } }
+}
 
 function renderResume(overrides: Partial<UseAgentResumeOptions> = {}): {
   options: UseAgentResumeOptions
@@ -74,6 +105,7 @@ describe('useAgentResume', () => {
       renderResume({ mode: 'legacy', sessions: makeAgentSessionsState({ tabs }) })
       expect(mockUseAgentLastSession).toHaveBeenLastCalledWith({
         folderPath: FOLDER,
+        cliKind: 'claude',
         enabled: false,
         refreshKey: '0'
       })
@@ -127,16 +159,28 @@ describe('useAgentResume', () => {
     })
 
     it('前回が見つかれば押せて、押すとそのタブで前回の ID を再開する', () => {
-      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ sessions })
       expect(result.current.resumeLast.disabledReason).toBeNull()
       act(() => result.current.resumeLast.onResume('slot-1'))
-      expect(sessions.start).toHaveBeenCalledWith('slot-1', { kind: 'resume', claudeSessionId: ID })
+      expect(sessions.start).toHaveBeenCalledWith('slot-1', {
+        kind: 'resume',
+        claudeSessionId: ID,
+        cliKind: 'claude'
+      })
     })
 
     it('起動の理由(sessions.startDisabledReason)を優先し、無ければ同じ ID のタブの名前を理由にする', () => {
-      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
       const tabs = [
         makeAgentSessionTabView({
           slotId: 'a',
@@ -161,6 +205,47 @@ describe('useAgentResume', () => {
       const first = result.current.resumeLast.onResume
       rerender()
       expect(result.current.resumeLast.onResume).toBe(first)
+    })
+
+    it('useAgentLastSession に設定の種類を渡し、押すと「前回」の種類を再開の依頼に載せる', () => {
+      // 依頼の種類が「前回」と設定のどちらから来たかを見分けるため、両者を変える(useAgentLastSession は依頼と違う種類の
+      // 結果を記録なしにするので実際には起きない組み合わせ。ここでは useAgentLastSession を差し替えている)
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
+      const sessions = makeAgentSessionsState()
+      const { result } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(mockUseAgentLastSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cliKind: 'copilot' })
+      )
+      act(() => result.current.resumeLast.onResume('slot-1'))
+      expect(sessions.start).toHaveBeenCalledWith('slot-1', {
+        kind: 'resume',
+        claudeSessionId: ID,
+        cliKind: 'claude'
+      })
+    })
+
+    it('設定が copilot なら、copilot の前回を取りに行き、押すと copilot の種類で再開する', () => {
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'copilot',
+        claudeSessionId: ID
+      })
+      const sessions = makeAgentSessionsState()
+      const { result } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(mockUseAgentLastSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({ cliKind: 'copilot' })
+      )
+      expect(result.current.resumeLast.disabledReason).toBeNull()
+      act(() => result.current.resumeLast.onResume('slot-1'))
+      expect(sessions.start).toHaveBeenCalledWith('slot-1', {
+        kind: 'resume',
+        claudeSessionId: ID,
+        cliKind: 'copilot'
+      })
     })
   })
 
@@ -241,7 +326,7 @@ describe('useAgentResume', () => {
         reason: null
       })
       act(() => result.current.onResumeEntry(agentEntry()))
-      expect(sessions.resumeInNewTab).toHaveBeenCalledWith(ID)
+      expect(sessions.resumeInNewTab).toHaveBeenCalledWith(ID, 'claude')
       expect(activateTab).toHaveBeenCalledWith('slot-new')
     })
 
@@ -251,11 +336,61 @@ describe('useAgentResume', () => {
       act(() => result.current.onResumeEntry(agentEntry()))
       expect(activateTab).not.toHaveBeenCalled()
     })
+
+    it('知らない種類のエントリは、押されても新しいタブを足さない(この版で起動できる種類が無い)', () => {
+      const sessions = makeAgentSessionsState({ resumeInNewTab: vi.fn(() => 'slot-new') })
+      const { result, options } = renderResume({ sessions })
+      act(() => result.current.onResumeEntry(agentEntryOf('gemini')))
+      expect(sessions.resumeInNewTab).not.toHaveBeenCalled()
+      expect(options.activateTab).not.toHaveBeenCalled()
+    })
+
+    it('設定と同じ種類(copilot)のエントリは押せて、押すとエントリの種類で新しいタブを足す', () => {
+      const sessions = makeAgentSessionsState({ resumeInNewTab: vi.fn(() => 'slot-new') })
+      const { result, options } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(result.current.resumeActionOf(agentEntryOf('copilot'))).toEqual({
+        disabled: false,
+        reason: null
+      })
+      act(() => result.current.onResumeEntry(agentEntryOf('copilot')))
+      expect(sessions.resumeInNewTab).toHaveBeenCalledExactlyOnceWith(ID, 'copilot')
+      expect(options.activateTab).toHaveBeenCalledWith('slot-new')
+    })
+
+    it('設定と違う種類のエントリは、切り替えれば再開できる理由を出し、押しても新しいタブを足さない', () => {
+      const sessions = makeAgentSessionsState({ resumeInNewTab: vi.fn(() => 'slot-new') })
+      const { result } = renderResume({ appCliKind: 'copilot', sessions })
+      expect(result.current.resumeActionOf(agentEntryOf('claude'))).toEqual({
+        disabled: true,
+        reason: agentResumeEntryCliMismatch('claude', 'copilot')
+      })
+      act(() => result.current.onResumeEntry(agentEntryOf('claude')))
+      expect(sessions.resumeInNewTab).not.toHaveBeenCalled()
+    })
+
+    it('知らない種類のエントリは、その種類の名前の理由を出す', () => {
+      const { result } = renderResume()
+      expect(result.current.resumeActionOf(agentEntryOf('gemini'))).toEqual({
+        disabled: true,
+        reason: agentResumeEntryUnknownCli('gemini')
+      })
+    })
   })
 
-  describe('設定の種類が再開に対応していない(copilot)', () => {
+  describe('設定の種類が再開に対応していない(能力の表を差し替えた copilot)', () => {
+    beforeEach(() => {
+      capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
+    })
+    afterEach(() => {
+      capabilityOverrides.sessionResumeUnsupportedKinds.clear()
+    })
+
     it('前回の続きからは理由を出し、前回が見つかっていても押しても起動しない', () => {
-      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ appCliKind: 'copilot', sessions })
       expect(result.current.resumeLast.disabledReason).toBe(

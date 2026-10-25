@@ -123,7 +123,7 @@ describe('buildAgentEnv', () => {
   }
 
   it('親の Claude Code・Electron・VS Code の変数を取り除く', () => {
-    const env = buildAgentEnv(base, '/p', 'darwin', [])
+    const env = buildAgentEnv(base, '/p', 'darwin', [], {})
     for (const key of [
       'ELECTRON_RUN_AS_NODE',
       'ELECTRON_RENDERER_URL',
@@ -146,14 +146,14 @@ describe('buildAgentEnv', () => {
   })
 
   it('利用者の設定の変数(CLAUDE_CODE_USE_BEDROCK・GIT_ASKPASS)は残す', () => {
-    const env = buildAgentEnv(base, '/p', 'darwin', [])
+    const env = buildAgentEnv(base, '/p', 'darwin', [], {})
     expect(env.CLAUDE_CODE_USE_BEDROCK).toBe('1')
     expect(env.GIT_ASKPASS).toBe('/askpass')
     expect(env.HOME).toBe('/home/u')
   })
 
   it('PATH・TERM・COLORTERM を設定し、undefined の値は写さない', () => {
-    const env = buildAgentEnv(base, '/p:/q', 'darwin', [])
+    const env = buildAgentEnv(base, '/p:/q', 'darwin', [], {})
     expect(env.PATH).toBe('/p:/q')
     expect(env.TERM).toBe('xterm-256color')
     expect(env.COLORTERM).toBe('truecolor')
@@ -161,7 +161,7 @@ describe('buildAgentEnv', () => {
   })
 
   it('LANG・LC_ALL・LC_CTYPE がどれも無ければ LANG=en_US.UTF-8 を足す', () => {
-    expect(buildAgentEnv({}, '/p', 'darwin', []).LANG).toBe('en_US.UTF-8')
+    expect(buildAgentEnv({}, '/p', 'darwin', [], {}).LANG).toBe('en_US.UTF-8')
   })
 
   it.each([
@@ -169,7 +169,7 @@ describe('buildAgentEnv', () => {
     ['LC_ALL', { LC_ALL: 'C' }, undefined],
     ['LC_CTYPE', { LC_CTYPE: 'UTF-8' }, undefined]
   ])('%s があれば LANG を足さない', (_label, given, expectedLang) => {
-    expect(buildAgentEnv(given, '/p', 'darwin', []).LANG).toBe(expectedLang)
+    expect(buildAgentEnv(given, '/p', 'darwin', [], {}).LANG).toBe(expectedLang)
   })
 
   it('win32 は大文字小文字を無視して Path を PATH に置き換え、除去キーも大文字小文字を無視する', () => {
@@ -177,7 +177,8 @@ describe('buildAgentEnv', () => {
       { Path: 'C:\\old', claudecode: '1', Electron_Foo: 'x', SystemRoot: 'C:\\Windows' },
       'C:\\new',
       'win32',
-      []
+      [],
+      {}
     )
     expect(Object.keys(env).filter((key) => key.toUpperCase() === 'PATH')).toEqual(['PATH'])
     expect(env.PATH).toBe('C:\\new')
@@ -187,7 +188,7 @@ describe('buildAgentEnv', () => {
   })
 
   it('POSIX は Path と PATH を別の変数として扱う(大文字小文字を区別する)', () => {
-    const env = buildAgentEnv({ Path: 'x', claudecode: '1' }, '/p', 'linux', [])
+    const env = buildAgentEnv({ Path: 'x', claudecode: '1' }, '/p', 'linux', [], {})
     expect(env.Path).toBe('x')
     expect(env.PATH).toBe('/p')
     expect(env.claudecode).toBe('1')
@@ -195,51 +196,51 @@ describe('buildAgentEnv', () => {
 
   it('元の env を変えない', () => {
     const given = { ELECTRON_RUN_AS_NODE: '1', PATH: '/x' }
-    buildAgentEnv(given, '/p', 'darwin', [])
+    buildAgentEnv(given, '/p', 'darwin', [], {})
     expect(given).toEqual({ ELECTRON_RUN_AS_NODE: '1', PATH: '/x' })
   })
 })
 
 describe('buildAgentEnv(NO_PROXY)', () => {
   it('どちらも無ければ、NO_PROXY・no_proxy の両方に 127.0.0.1,localhost を入れる', () => {
-    const env = buildAgentEnv({}, '/p', 'darwin', [])
+    const env = buildAgentEnv({}, '/p', 'darwin', [], {})
     expect(env.NO_PROXY).toBe('127.0.0.1,localhost')
     expect(env.no_proxy).toBe('127.0.0.1,localhost')
   })
 
   it('NO_PROXY だけがあれば、既存の値を残して両方に同じ値を入れる', () => {
-    const env = buildAgentEnv({ NO_PROXY: 'corp.example, .internal' }, '/p', 'linux', [])
+    const env = buildAgentEnv({ NO_PROXY: 'corp.example, .internal' }, '/p', 'linux', [], {})
     expect(env.NO_PROXY).toBe('corp.example,.internal,127.0.0.1,localhost')
     expect(env.no_proxy).toBe('corp.example,.internal,127.0.0.1,localhost')
   })
 
   it('no_proxy だけがあれば、NO_PROXY にも同じ値を入れる', () => {
-    const env = buildAgentEnv({ no_proxy: 'corp.example' }, '/p', 'darwin', [])
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, '/p', 'darwin', [], {})
     expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
     expect(env.no_proxy).toBe('corp.example,127.0.0.1,localhost')
   })
 
   it('両方が違う値なら、和集合(NO_PROXY の順 → no_proxy の順)を両方に入れ、重複を足さない', () => {
-    const env = buildAgentEnv({ NO_PROXY: 'a,localhost', no_proxy: 'b,a' }, '/p', 'darwin', [])
+    const env = buildAgentEnv({ NO_PROXY: 'a,localhost', no_proxy: 'b,a' }, '/p', 'darwin', [], {})
     expect(env.NO_PROXY).toBe('a,localhost,b,127.0.0.1')
     expect(env.no_proxy).toBe('a,localhost,b,127.0.0.1')
   })
 
   it('既にあれば足さない', () => {
-    expect(buildAgentEnv({ NO_PROXY: '127.0.0.1,localhost' }, '/p', 'linux', []).NO_PROXY).toBe(
+    expect(buildAgentEnv({ NO_PROXY: '127.0.0.1,localhost' }, '/p', 'linux', [], {}).NO_PROXY).toBe(
       '127.0.0.1,localhost'
     )
   })
 
   it('Windows は名前の大文字小文字を区別しないため、NO_PROXY 1 つにまとめる', () => {
-    const env = buildAgentEnv({ no_proxy: 'corp.example' }, 'C:\\p', 'win32', [])
+    const env = buildAgentEnv({ no_proxy: 'corp.example' }, 'C:\\p', 'win32', [], {})
     expect(Object.keys(env).filter((key) => key.toUpperCase() === 'NO_PROXY')).toEqual(['NO_PROXY'])
     expect(env.NO_PROXY).toBe('corp.example,127.0.0.1,localhost')
   })
 
   it('元の env を変えない', () => {
     const given = { NO_PROXY: 'a' }
-    buildAgentEnv(given, '/p', 'darwin', [])
+    buildAgentEnv(given, '/p', 'darwin', [], {})
     expect(given).toEqual({ NO_PROXY: 'a' })
   })
 })
@@ -416,6 +417,27 @@ describe('resolveAgentLaunch(CLI の種類)', () => {
     expect(copilot.plan.env).not.toHaveProperty('CLAUDECODE')
     expect(claude.plan.env).not.toHaveProperty('CLAUDECODE')
   })
+
+  it('copilot の計画の環境変数には COPILOT_DISABLE_RESUME_AUTO_CD=1 を足し(利用者の 0 を上書き)、claude の計画は利用者の値のまま', async () => {
+    const env = { HOME: '/home/u', PATH: '/usr/bin', COPILOT_DISABLE_RESUME_AUTO_CD: '0' }
+    const copilot = await resolveAgentLaunch({
+      ...deps,
+      env,
+      cliKind: 'copilot',
+      isExecutable: probeOf(['/nvm/bin/copilot'])
+    })
+    const claude = await resolveAgentLaunch({
+      ...deps,
+      env,
+      cliKind: 'claude',
+      isExecutable: probeOf(['/nvm/bin/claude'])
+    })
+    if (copilot.kind !== 'ok' || claude.kind !== 'ok') throw new Error('not ok')
+    expect(copilot.plan.env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
+    expect(claude.plan.env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('0')
+    // 計画の引数は空のまま(会話の指定は starter が起動の表の buildArgs で足す)
+    expect(copilot.plan.args).toEqual([])
+  })
 })
 
 describe('buildAgentEnv(種類ごとの追加の除外)', () => {
@@ -431,7 +453,8 @@ describe('buildAgentEnv(種類ごとの追加の除外)', () => {
       },
       '/p',
       'darwin',
-      ['COPILOT_ALLOW_ALL']
+      ['COPILOT_ALLOW_ALL'],
+      {}
     )
     expect(env).not.toHaveProperty('COPILOT_ALLOW_ALL')
     expect(env).toMatchObject({
@@ -444,9 +467,63 @@ describe('buildAgentEnv(種類ごとの追加の除外)', () => {
   })
 
   it('win32 は追加の除外も大文字小文字を無視する', () => {
-    const env = buildAgentEnv({ copilot_allow_all: 'true' }, 'C:\\p', 'win32', [
-      'COPILOT_ALLOW_ALL'
-    ])
+    const env = buildAgentEnv(
+      { copilot_allow_all: 'true' },
+      'C:\\p',
+      'win32',
+      ['COPILOT_ALLOW_ALL'],
+      {}
+    )
     expect(env).not.toHaveProperty('copilot_allow_all')
+  })
+})
+
+describe('buildAgentEnv(種類ごとの足す環境変数。段階 3a)', () => {
+  it('取り除く一覧を適用した後に足し、利用者の環境の同じ名前を上書きする', () => {
+    const env = buildAgentEnv(
+      { HOME: '/home/u', COPILOT_DISABLE_RESUME_AUTO_CD: '0' },
+      '/p',
+      'darwin',
+      [],
+      { COPILOT_DISABLE_RESUME_AUTO_CD: '1' }
+    )
+    expect(env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
+    expect(env.HOME).toBe('/home/u')
+    // 取り除く一覧に同じ名前があっても、足した値は残る(取り除いた後に足す)
+    const removedThenAdded = buildAgentEnv(
+      { COPILOT_DISABLE_RESUME_AUTO_CD: '0' },
+      '/p',
+      'darwin',
+      ['COPILOT_DISABLE_RESUME_AUTO_CD'],
+      { COPILOT_DISABLE_RESUME_AUTO_CD: '1' }
+    )
+    expect(removedThenAdded.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
+  })
+
+  it('win32 は大文字小文字だけ違う同じ名前を取り除いてから足す', () => {
+    const env = buildAgentEnv({ copilot_disable_resume_auto_cd: '0' }, 'C:\\p', 'win32', [], {
+      COPILOT_DISABLE_RESUME_AUTO_CD: '1'
+    })
+    expect(env).not.toHaveProperty('copilot_disable_resume_auto_cd')
+    expect(env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
+  })
+
+  it('POSIX は大文字小文字の違う名前を別の変数として残す', () => {
+    const env = buildAgentEnv({ copilot_disable_resume_auto_cd: '0' }, '/p', 'linux', [], {
+      COPILOT_DISABLE_RESUME_AUTO_CD: '1'
+    })
+    expect(env.copilot_disable_resume_auto_cd).toBe('0')
+    expect(env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
+  })
+
+  it('PATH・TERM・COLORTERM は足す環境変数より後に設定する(表に同じ名前があっても上書きされる)', () => {
+    const env = buildAgentEnv({}, '/p', 'darwin', [], {
+      PATH: '/evil',
+      TERM: 'dumb',
+      COLORTERM: 'none'
+    })
+    expect(env.PATH).toBe('/p')
+    expect(env.TERM).toBe('xterm-256color')
+    expect(env.COLORTERM).toBe('truecolor')
   })
 })

@@ -7,7 +7,8 @@ import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabi
 const capabilityOverrides = vi.hoisted(
   (): AgentCliCapabilityOverrides => ({
     unsupportedKinds: new Set<AgentCliKind>(),
-    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
   })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
@@ -59,7 +60,7 @@ afterEach(() => {
 })
 
 // 仮想の時計(sleep で時間を進めるだけ)
-// 送り先の claude のセッションを控えない(送信の手順だけを確かめるテスト用)
+// 送り先のセッションを控えない(送信の手順だけを確かめるテスト用)
 const noSession = (): AgentHistoryInfo | null => null
 // 中断の流れの外(送信の守りを通す。中断の流れの間のテストだけが真を返す関数を渡す)
 const notInterrupting = (): boolean => false
@@ -481,6 +482,7 @@ describe('useAgentPromptSender', () => {
 describe('useAgentPromptSender: 送り先の控え(sentTo)', () => {
   const SENT_TO: AgentHistoryInfo = {
     claudeSessionId: '11111111-1111-4111-8111-111111111111',
+    cliKind: 'claude',
     tabLabel: 'claude 1',
     folderPath: '/work'
   }
@@ -608,6 +610,12 @@ describe('useAgentPromptSender: 送信に対応しない CLI(能力の表で送�
 // copilot の入力欄の偽の controller。空の入力欄から始め、貼り付けを書き込むと記録の echo の画面(atref2Paste)、\r で空の入力欄
 // (atref2Enter1)にする。本文は記録で貼った '本文\n\n- @file.txt'(末尾の @ の語なので、空白を 1 つ足して貼る)
 const COPILOT_TEXT = '本文\n\n- @file.txt'
+const COPILOT_SENT_TO: AgentHistoryInfo = {
+  claudeSessionId: '33333333-3333-4333-8333-333333333333',
+  cliKind: 'copilot',
+  tabLabel: 'copilot 1',
+  folderPath: '/work'
+}
 function copilotController(): ReturnType<typeof makeFakeController> {
   const controller = makeFakeController()
   controller.screen = copilotInputScreen('empty').lines
@@ -621,7 +629,7 @@ function copilotController(): ReturnType<typeof makeFakeController> {
 }
 
 describe('useAgentPromptSender: copilot の送り先(表の copilot の手順)', () => {
-  it('表の copilot の手順を通り、貼り付けと \\r だけを書いて sent になり、結果に送り先の種類を載せる', async () => {
+  it('表の copilot の手順を通り、貼り付けと \\r だけを書いて sent になり、結果に送り先(会話の ID と種類)と種類を載せる', async () => {
     const controller = copilotController()
     const onSettled = vi.fn()
     const { result } = renderHook(() =>
@@ -632,11 +640,16 @@ describe('useAgentPromptSender: copilot の送り先(表の copilot の手順)',
       outcome = await result.current.send(COPILOT_TEXT, {
         slotId: 'a',
         controller,
-        describeSession: noSession,
+        describeSession: () => COPILOT_SENT_TO,
         cliKind: 'copilot'
       })
     })
-    expect(outcome).toEqual({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'copilot' })
+    expect(outcome).toEqual({
+      kind: 'sent',
+      clearedDraft: false,
+      sentTo: COPILOT_SENT_TO,
+      cliKind: 'copilot'
+    })
     expect(controller.writes).toEqual([buildAgentPasteBytes(`${COPILOT_TEXT} `), '\r'])
     expect(toAnnouncementText(result.current.notice)).toBe(AGENT_SENT_NOTICE)
     expect(controller.beginSending).toHaveBeenCalledOnce()

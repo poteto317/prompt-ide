@@ -37,9 +37,23 @@ describe('createHistoryEntry', () => {
 describe('buildAgentSentHistoryEntry', () => {
   const sent = {
     claudeSessionId: '11111111-1111-4111-8111-111111111111',
+    cliKind: 'claude',
     tabLabel: 'claude 2',
     folderPath: '/work/project'
   }
+
+  it('agent.cliKind は送り先の種類(copilot へ送ったエントリは copilot)。ツールの欄は今までどおり claude', () => {
+    const copilotSent = { ...sent, cliKind: 'copilot', tabLabel: 'copilot 1' }
+    const entry = buildAgentSentHistoryEntry(
+      { promptId: 'p1', promptTitle: 'タイトル' },
+      '全文',
+      copilotSent,
+      1
+    )
+    expect(entry.agent).toEqual(copilotSent)
+    expect(entry.agent?.cliKind).toBe('copilot')
+    expect(entry.toolId).toBe('claude')
+  })
 
   it('送った全文と送り先を、結果を持たない sent のエントリにする', () => {
     expect(

@@ -139,11 +139,11 @@ describe('AgentCliKindSection', () => {
     }
   })
 
-  it('copilot を選んでいると、使えない機能の注記に能力の表で使えない機能(区別・再開)を出す', () => {
+  it('copilot を選んでいると、使えない機能の注記に能力の表で使えない機能(区別)を出す', () => {
     render(<AgentCliKindSection {...props({ kind: 'copilot' })} />)
     expect(
       screen.getByText(
-        'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別、前回の続きから・このセッションで再開'
+        'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別'
       )
     ).toBeInTheDocument()
   })

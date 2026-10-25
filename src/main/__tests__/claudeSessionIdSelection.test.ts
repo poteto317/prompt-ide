@@ -22,7 +22,12 @@ describe('selectClaudeSessionId', () => {
     const has = vi.fn(() => true)
     const create = vi.fn(() => NEW_ID)
     expect(
-      selectClaudeSessionId({ kind: 'resume', claudeSessionId: ID }, FOLDER, { has }, create)
+      selectClaudeSessionId(
+        { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' },
+        FOLDER,
+        { has },
+        create
+      )
     ).toEqual({ kind: 'selected', claudeSessionId: ID })
     expect(has).toHaveBeenCalledWith(FOLDER, ID)
     expect(create).not.toHaveBeenCalled()
@@ -32,7 +37,7 @@ describe('selectClaudeSessionId', () => {
     const create = vi.fn(() => NEW_ID)
     expect(
       selectClaudeSessionId(
-        { kind: 'resume', claudeSessionId: ID },
+        { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' },
         FOLDER,
         { has: () => false },
         create

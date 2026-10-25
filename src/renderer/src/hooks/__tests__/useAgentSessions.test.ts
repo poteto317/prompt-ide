@@ -17,6 +17,8 @@ import { makeFakeAgentSessionTabs } from '../../__tests__/makeFakeAgentSessionTa
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
 import {
   AGENT_ADD_TAB_DISABLED_LIMIT,
+  AGENT_EXITED_SOON_NOTE,
+  AGENT_RESUME_FAILURE_NOTES,
   AGENT_TOO_MANY_SESSIONS,
   agentCloseTabConfirm
 } from '../../lib/agentSessionMessages'
@@ -34,9 +36,13 @@ import type {
 const CSID = '11111111-1111-4111-8111-111111111111'
 const CSID2 = '22222222-2222-4222-9222-222222222222'
 const NEW: AgentLaunchRequest = { kind: 'new' }
-const resumeOf = (claudeSessionId: string): AgentLaunchRequest => ({
+const resumeOf = (
+  claudeSessionId: string,
+  cliKind: AgentCliKind = 'claude'
+): AgentLaunchRequest => ({
   kind: 'resume',
-  claudeSessionId
+  claudeSessionId,
+  cliKind
 })
 
 const mockStart = vi.mocked(agentTerminalApi.startAgentSession)
@@ -1258,7 +1264,7 @@ describe('useAgentSessions — 複数のタブ', () => {
   })
 })
 
-describe('useAgentSessions — claude のセッション ID', () => {
+describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
   it('start は起動の指定(launch)をそのまま main へ渡す', async () => {
     mockStart.mockResolvedValueOnce({
       kind: 'started',
@@ -1392,7 +1398,7 @@ describe('useAgentSessions — claude のセッション ID', () => {
     const { result } = render()
     let slotId: string | null = null
     act(() => {
-      slotId = result.current.resumeInNewTab(CSID)
+      slotId = result.current.resumeInNewTab(CSID, 'claude')
     })
     expect(slotId).toBe('slot-2')
     expect(result.current.selected.slotId).toBe('slot-2')
@@ -1404,6 +1410,17 @@ describe('useAgentSessions — claude のセッション ID', () => {
         status: 'running',
         claudeSessionId: CSID
       })
+    )
+  })
+
+  it('resumeInNewTab は渡された種類を再開の依頼に載せる', () => {
+    mockStart.mockReturnValueOnce(new Promise<AgentStartResult>(() => undefined))
+    const { result } = render()
+    act(() => {
+      result.current.resumeInNewTab(CSID, 'copilot')
+    })
+    expect(mockStart).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ slotId: 'slot-2', launch: resumeOf(CSID, 'copilot') })
     )
   })
 
@@ -1423,7 +1440,7 @@ describe('useAgentSessions — claude のセッション ID', () => {
     const before = tabs.getSnapshot().tabs.length
     let slotId: string | null = 'x'
     act(() => {
-      slotId = result.current.resumeInNewTab(CSID)
+      slotId = result.current.resumeInNewTab(CSID, 'claude')
     })
     expect(slotId).toBeNull()
     expect(tabs.getSnapshot().tabs).toHaveLength(before)
@@ -1443,7 +1460,7 @@ describe('useAgentSessions — claude のセッション ID', () => {
     })
     let slotId: string | null = 'x'
     act(() => {
-      slotId = result.current.resumeInNewTab(CSID)
+      slotId = result.current.resumeInNewTab(CSID, 'claude')
     })
     expect(slotId).toBeNull()
     expect(tabs.getSnapshot().tabs).toHaveLength(1)
@@ -2032,5 +2049,162 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       resolveStart({ kind: 'started', sessionId: 's-2', cliKind: 'copilot', claudeSessionId: null })
       await adding
     })
+  })
+})
+
+describe('useAgentSessions — 再開の失敗(起動の控えと活動。段階 3a)', () => {
+  const COPILOT_NOTE = AGENT_RESUME_FAILURE_NOTES.copilot
+  const startedAs = (cliKind: AgentCliKind, sessionId = 's1'): AgentStartResult => ({
+    kind: 'started',
+    sessionId,
+    cliKind,
+    claudeSessionId: CSID
+  })
+  const exitWith = (exitCode: number, sessionId = 's1'): AgentSessionExit => ({
+    sessionId,
+    exitCode,
+    signal: null,
+    reason: 'exited'
+  })
+
+  it('copilot のタブを再開で起動し、活動を見ないまま終了コード 1 で終わると copilot の文言を出す(起動の直後の文言より優先)', async () => {
+    mockStart.mockResolvedValueOnce(startedAs('copilot'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1').error).toBe(COPILOT_NOTE)
+  })
+
+  it('時間では見ない(起動から 2 秒を超えて終わっても、活動を見ていなければ copilot の文言)', async () => {
+    mockStart.mockResolvedValueOnce(startedAs('copilot'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    now = 10_000
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1').error).toBe(COPILOT_NOTE)
+  })
+
+  it('活動を見た後(noteScreenActivity)なら、今までどおり起動の直後の文言', async () => {
+    mockStart.mockResolvedValueOnce(startedAs('copilot'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => result.current.noteScreenActivity('slot-1'))
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1').error).toBe(AGENT_EXITED_SOON_NOTE)
+  })
+
+  it('claude のタブの再開の失敗は、今までどおり起動の直後の文言(claude の文言は表で null)', async () => {
+    mockStart.mockResolvedValueOnce(startedAs('claude'))
+    const { result } = render()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID))
+    })
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1').error).toBe(AGENT_EXITED_SOON_NOTE)
+  })
+
+  it('copilot の新しい起動(new)の終了コード 1 は、今までどおり起動の直後の文言', async () => {
+    mockStart.mockResolvedValueOnce(startedAs('copilot'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', NEW)
+    })
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1').error).toBe(AGENT_EXITED_SOON_NOTE)
+  })
+
+  it('再開の後の終了コード 0 と、止めた終了(stopped)は文言を出さない', async () => {
+    mockStart
+      .mockResolvedValueOnce(startedAs('copilot'))
+      .mockResolvedValueOnce(startedAs('copilot', 's2'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit(exitWith(0)))
+    expect(tabOf(result.current, 'slot-1').error).toBeNull()
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit({ sessionId: 's2', exitCode: 1, signal: null, reason: 'stopped' }))
+    expect(tabOf(result.current, 'slot-1').error).toBeNull()
+  })
+
+  it('前の起動で見た活動は、起動し直すと戻す(次の再開の失敗は copilot の文言)', async () => {
+    mockStart
+      .mockResolvedValueOnce(startedAs('copilot'))
+      .mockResolvedValueOnce(startedAs('copilot', 's2'))
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => result.current.noteScreenActivity('slot-1'))
+    act(() => emitExit(exitWith(0)))
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit(exitWith(1, 's2')))
+    expect(tabOf(result.current, 'slot-1').error).toBe(COPILOT_NOTE)
+  })
+
+  it('起動の結果より先に届いた終了(起動中に溜めた終了)でも、再開の失敗なら copilot の文言', async () => {
+    let resolveStart: (result: AgentStartResult) => void = () => undefined
+    mockStart.mockReturnValueOnce(
+      new Promise<AgentStartResult>((resolve) => {
+        resolveStart = resolve
+      })
+    )
+    const { result } = render({ appCliKind: 'copilot' })
+    let started: Promise<void> = Promise.resolve()
+    act(() => {
+      started = result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit(exitWith(1)))
+    await act(async () => {
+      resolveStart(startedAs('copilot'))
+      await started
+    })
+    expect(tabOf(result.current, 'slot-1')).toMatchObject({ status: 'exited', error: COPILOT_NOTE })
+  })
+
+  it('作り直しの後に合わせ込んだタブは、起動の指定が分からないので new として扱う(copilot の文言を出さない)', async () => {
+    mockGetState.mockResolvedValueOnce([
+      { slotId: 'slot-1', sessionId: 's-9', cliKind: 'copilot', claudeSessionId: CSID }
+    ])
+    const { result } = render({ appCliKind: 'copilot' })
+    await waitFor(() => expect(result.current.selected.status).toBe('running'))
+    act(() => emitExit(exitWith(1, 's-9')))
+    expect(tabOf(result.current, 'slot-1').error).not.toBe(COPILOT_NOTE)
+  })
+
+  it('再開の依頼に already-running が返ったタブは、既存のセッションに合わせたので new として扱う(copilot の文言を出さない)', async () => {
+    mockStart.mockResolvedValueOnce({
+      kind: 'already-running',
+      sessionId: 's1',
+      cliKind: 'copilot',
+      claudeSessionId: CSID
+    })
+    const { result } = render({ appCliKind: 'copilot' })
+    await act(async () => {
+      await result.current.start('slot-1', resumeOf(CSID, 'copilot'))
+    })
+    act(() => emitExit(exitWith(1)))
+    expect(tabOf(result.current, 'slot-1')).toMatchObject({
+      status: 'exited',
+      error: AGENT_EXITED_SOON_NOTE
+    })
+  })
+
+  it('noteScreenActivity は描画をまたいで同じ参照(活動の effect を作り直さない)', () => {
+    const { result, rerender } = render()
+    const first = result.current.noteScreenActivity
+    rerender()
+    expect(result.current.noteScreenActivity).toBe(first)
   })
 })

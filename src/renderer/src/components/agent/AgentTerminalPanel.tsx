@@ -3,9 +3,9 @@ import { useCallback, useId, useRef } from 'react'
 import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import { isInsideAgentTerminal } from '../../lib/agentTerminalKeys'
 import {
-  AGENT_RESUME_LAST_ARIA_LABEL,
   AGENT_RESUME_LAST_LABEL,
   agentStartAriaLabel,
+  agentResumeLastAriaLabel,
   describeAgentStatus
 } from '../../lib/agentSessionMessages'
 import { AGENT_INTERRUPT_LABEL, agentInterruptAriaLabel } from '../../lib/agentInterruptMessages'
@@ -193,7 +193,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
             <button
               type="button"
               className="agent-terminal-panel__button agent-terminal-panel__button--resume"
-              aria-label={AGENT_RESUME_LAST_ARIA_LABEL}
+              aria-label={agentResumeLastAriaLabel(AGENT_CLI_PROFILES[appCliKind].commandName)}
               disabled={resumeDisabled}
               aria-describedby={resumeLast.disabledReason !== null ? reasonId : undefined}
               title={resumeLast.disabledReason ?? undefined}

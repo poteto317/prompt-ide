@@ -472,9 +472,9 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['agentTerminal:getState']
     ],
     [
-      'getLastAgentSession は agentTerminal:getLastSession にフォルダを渡す',
-      () => api.getLastAgentSession('/p'),
-      ['agentTerminal:getLastSession', '/p']
+      'getLastAgentSession は agentTerminal:getLastSession にフォルダと種類を渡す',
+      () => api.getLastAgentSession('/p', 'copilot'),
+      ['agentTerminal:getLastSession', '/p', 'copilot']
     ],
     [
       'writeFileChecked は fs:writeFileChecked に path・content・baseContent を渡す',

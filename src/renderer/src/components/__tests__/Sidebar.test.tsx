@@ -430,6 +430,7 @@ describe('Sidebar: 履歴のエントリごとの操作の受け渡し', () => {
       executedAt: 1000,
       agent: {
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/w'
       }

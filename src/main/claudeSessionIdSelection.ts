@@ -1,7 +1,8 @@
 import type { AgentLaunchRequest, AgentStartResult } from '@shared/types'
 import type { AgentSessionRecordStore } from './agentSessionRecordStore'
 
-// 起動に使う claude の会話の ID を決める(セッションの再開の設計書「起動の流れ」2)。新しく起動するときは main が振り、再開は
+// 起動に使うエージェント CLI の会話の ID を決める(再開に対応する種類〈claude・copilot〉。records は起動の計画の種類の記録。
+// セッションの再開の設計書「起動の流れ」2)。新しく起動するときは main が振り、再開は
 // 許可のフォルダの記録にある ID だけを受け付ける(renderer が乗っ取られても、ほかのプロジェクトの会話や任意の ID を再開させない。
 // L-019)。同期で判定する(starter の spawn までの await を挟まない区間から呼ぶため)。Electron に依存しない
 

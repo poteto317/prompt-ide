@@ -19,7 +19,8 @@ import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabi
 const capabilityOverrides = vi.hoisted(
   (): AgentCliCapabilityOverrides => ({
     unsupportedKinds: new Set<AgentCliKind>(),
-    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
   })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
@@ -38,6 +39,7 @@ vi.mock('@shared/agentCliKinds', async (importOriginal) => {
 afterEach(() => {
   capabilityOverrides.unsupportedKinds.clear()
   capabilityOverrides.promptSendUnsupportedKinds.clear()
+  capabilityOverrides.sessionResumeUnsupportedKinds.clear()
 })
 
 describe('agentCliMessages(設定の画面)', () => {
@@ -67,9 +69,9 @@ describe('agentCliMessages(設定の画面)', () => {
     )
   })
 
-  it('使えない機能の注記: copilot は区別・再開の 2 つを並べ(段階 2a で画面の判定と中断、段階 2b で送信に対応した)、claude は出さない', () => {
+  it('使えない機能の注記: copilot は区別だけを並べ(段階 2a で画面の判定と中断、段階 2b で送信、段階 3a で再開に対応した)、claude は出さない', () => {
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別、前回の続きから・このセッションで再開'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別'
     )
     expect(agentCliUnsupportedFeaturesNote('claude')).toBeNull()
   })
@@ -77,14 +79,21 @@ describe('agentCliMessages(設定の画面)', () => {
   it('使えない機能の注記: 画面の判定と中断が無い種類(能力の表を差し替えた copilot)は、その 2 つの名前も並べる', () => {
     capabilityOverrides.unsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断、利用者の変更との区別、前回の続きから・このセッションで再開'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断、利用者の変更との区別'
     )
   })
 
   it('使えない機能の注記: 送信が無い種類(能力の表を差し替えた copilot)は、送信の名前も並べる', () => {
     capabilityOverrides.promptSendUnsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、利用者の変更との区別、前回の続きから・このセッションで再開'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、利用者の変更との区別'
+    )
+  })
+
+  it('使えない機能の注記: 再開が無い種類(能力の表を差し替えた copilot)は、再開の名前も並べる', () => {
+    capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
+    expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別、前回の続きから・このセッションで再開'
     )
   })
 

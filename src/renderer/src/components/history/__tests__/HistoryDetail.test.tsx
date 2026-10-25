@@ -142,7 +142,7 @@ describe('HistoryDetail: エージェントのエントリ', () => {
     promptContent: '送った全文\n\n参照:\n- @src/app.ts',
     status: 'sent',
     resultText: null,
-    agent: { claudeSessionId: ID, tabLabel: 'claude 2', folderPath: '/w' }
+    agent: { claudeSessionId: ID, cliKind: 'claude', tabLabel: 'claude 2', folderPath: '/w' }
   }
   const actions = (
     rerun: HistoryEntryActions['rerun'],

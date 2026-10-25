@@ -24,6 +24,7 @@ const agentEntry: HistoryEntry = {
   resultText: null,
   agent: {
     claudeSessionId: '11111111-1111-4111-8111-111111111111',
+    cliKind: 'claude',
     tabLabel: 'claude 2',
     folderPath: '/work'
   }
@@ -158,27 +159,38 @@ describe('isValidHistoryEntry: エージェントのエントリ(agent・sent)',
     ['配列', []],
     [
       'claudeSessionId が UUID の形式でない',
-      { claudeSessionId: 'abc', tabLabel: 'claude 1', folderPath: '/w' }
+      { claudeSessionId: 'abc', cliKind: 'claude', tabLabel: 'claude 1', folderPath: '/w' }
     ],
     [
       'claudeSessionId が - 始まり',
-      { claudeSessionId: '--resume', tabLabel: 'claude 1', folderPath: '/w' }
+      { claudeSessionId: '--resume', cliKind: 'claude', tabLabel: 'claude 1', folderPath: '/w' }
     ],
     [
       'tabLabel が空',
-      { claudeSessionId: '11111111-1111-4111-8111-111111111111', tabLabel: '', folderPath: '/w' }
+      {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
+        tabLabel: '',
+        folderPath: '/w'
+      }
     ],
     [
       'folderPath が空',
       {
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: ''
       }
     ],
     [
       'tabLabel が文字列でない',
-      { claudeSessionId: '11111111-1111-4111-8111-111111111111', tabLabel: 1, folderPath: '/w' }
+      {
+        claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
+        tabLabel: 1,
+        folderPath: '/w'
+      }
     ]
   ])('agent が %s なら不正', (_label, agent) => {
     expect(isValidHistoryEntry({ ...agentEntry, agent })).toBe(false)
@@ -197,5 +209,60 @@ describe('sanitizeHistoryEntry: agent', () => {
 
   it('agent: null を保持する', () => {
     expect(sanitizeHistoryEntry(validEntry).agent).toBeNull()
+  })
+})
+
+describe('agent.cliKind(段階 3a。履歴への CLI の種類)', () => {
+  // 段階 3a より前のエージェントのエントリ(agent に cliKind が無い)
+  const legacyAgentEntry = (): Record<string, unknown> => {
+    const agent: Record<string, unknown> = { ...agentEntry.agent }
+    delete agent.cliKind
+    return { ...agentEntry, agent }
+  }
+  const withCliKind = (cliKind: unknown): Record<string, unknown> => ({
+    ...agentEntry,
+    agent: { ...agentEntry.agent, cliKind }
+  })
+
+  it('種類の無い古いエントリは有効で、保存の正規化で claude を補う(ID・時刻・ほかの欄は作り直さない。L-456)', () => {
+    const legacy = legacyAgentEntry()
+    expect(isValidHistoryEntry(legacy)).toBe(true)
+    const sanitized = sanitizeHistoryEntry(legacy as HistoryEntry)
+    expect(sanitized).toEqual(agentEntry)
+    expect(sanitized.id).toBe(agentEntry.id)
+    expect(sanitized.executedAt).toBe(agentEntry.executedAt)
+    expect(sanitized.agent?.claudeSessionId).toBe(agentEntry.agent?.claudeSessionId)
+  })
+
+  it.each(['copilot', 'gemini'])(
+    '%s の種類は読み込み(検証と正規化)と保存の往復で値を保つ(L-015・L-459)',
+    (cliKind) => {
+      const entry = withCliKind(cliKind)
+      expect(isValidHistoryEntry(entry)).toBe(true)
+      const once = sanitizeHistoryEntry(entry as HistoryEntry)
+      expect(once.agent?.cliKind).toBe(cliKind)
+      expect(isValidHistoryEntry(once)).toBe(true)
+      expect(sanitizeHistoryEntry(once)).toEqual(once)
+    }
+  )
+
+  it.each<[string, unknown]>([
+    ['数', 1],
+    ['空', ''],
+    ['大文字を含む', 'Gemini'],
+    ['33 文字', `a${'b'.repeat(32)}`],
+    ['null', null]
+  ])(
+    '形の不正な cliKind(%s)のエントリは捨てる(既定の claude に読み替えない。L-044)',
+    (_label, cliKind) => {
+      expect(isValidHistoryEntry(withCliKind(cliKind))).toBe(false)
+    }
+  )
+
+  it('agent の中の知らない欄は今どおり落とし、種類は保つ', () => {
+    const entry = { ...agentEntry, agent: { ...agentEntry.agent, cliKind: 'gemini', extra: 'x' } }
+    const sanitized = sanitizeHistoryEntry(entry as HistoryEntry)
+    expect(sanitized.agent).toEqual({ ...agentEntry.agent, cliKind: 'gemini' })
+    expect(sanitized.agent).not.toHaveProperty('extra')
   })
 })

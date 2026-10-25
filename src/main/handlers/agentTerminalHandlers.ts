@@ -12,6 +12,7 @@ import { isDestroyedSafely, sendSafely } from '../safeWebContentsSend'
 import { attachSessionInfo } from '../agentSessionSnapshot'
 import { isMainFrameSender } from './ipcSenderGuard'
 import {
+  parseAgentCliKind,
   parseAgentFolderPath,
   parseAgentResize,
   parseAgentSessionId,
@@ -20,7 +21,7 @@ import {
 } from './agentTerminalPayloadParser'
 
 // エージェントのセッションの IPC の受け口(設計書「IPC」)。起動のコマンド・作業ディレクトリ・環境変数は main で決め、
-// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型)・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断を含む)だけを受け取る
+// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型と種類)・「前回」の種類・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断を含む)だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
   /** 書き込み・リサイズ・停止・中断(1 回目と 2 回目)・状態の取得の相手(所有者・枠ごとのセッション) */
@@ -129,9 +130,17 @@ export function registerAgentTerminalHandlers(
 
   ipcMain.handle(
     'agentTerminal:getLastSession',
-    async (event: IpcMainInvokeEvent, folderPath: unknown): Promise<AgentLastSession | null> => {
+    async (
+      event: IpcMainInvokeEvent,
+      folderPath: unknown,
+      cliKind: unknown
+    ): Promise<AgentLastSession | null> => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
-      return getLastSession(event.sender.id, parseAgentFolderPath(folderPath))
+      return getLastSession(
+        event.sender.id,
+        parseAgentFolderPath(folderPath),
+        parseAgentCliKind(cliKind)
+      )
     }
   )
 

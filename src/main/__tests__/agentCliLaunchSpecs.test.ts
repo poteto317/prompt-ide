@@ -4,10 +4,22 @@ import type { AgentLaunchRequest } from '@shared/types'
 import { AGENT_CLI_LAUNCH_SPECS } from '../agentCliLaunchSpecs'
 
 const ID = '11111111-1111-4111-8111-111111111111'
+// 英字を含む ID(大文字にすると値が変わる)
+const LETTER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const HOOKS = '/tmp/prompt-ide-agent-hooks-x/a.json'
 const NEW: AgentLaunchRequest = { kind: 'new' }
-const RESUME: AgentLaunchRequest = { kind: 'resume', claudeSessionId: ID }
+const RESUME: AgentLaunchRequest = { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
 const UNKNOWN = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
+
+/** fn が投げた例外の文言(投げなければ空文字) */
+function thrownMessage(fn: () => unknown): string {
+  try {
+    fn()
+    return ''
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err)
+  }
+}
 
 describe('AGENT_CLI_LAUNCH_SPECS(表)', () => {
   it.each(AGENT_CLI_KINDS)('%s: 探すコマンドの名前は能力の表の commandName', (kind) => {
@@ -19,26 +31,38 @@ describe('AGENT_CLI_LAUNCH_SPECS(表)', () => {
     expect(AGENT_CLI_LAUNCH_SPECS.copilot.extraRemovedEnvKeys).toEqual(['COPILOT_ALLOW_ALL'])
   })
 
+  it('足す環境変数は copilot の COPILOT_DISABLE_RESUME_AUTO_CD=1 だけ(保存先への自動の移動を止める)', () => {
+    expect(AGENT_CLI_LAUNCH_SPECS.claude.extraEnv).toEqual({})
+    expect(AGENT_CLI_LAUNCH_SPECS.copilot.extraEnv).toEqual({ COPILOT_DISABLE_RESUME_AUTO_CD: '1' })
+  })
+
   // win32 では環境変数の名前を大文字にそろえて比べるため、表の名前は大文字で書く(小文字だと取りこぼす)
-  it.each(AGENT_CLI_KINDS)('%s: 追加で取り除く環境変数の名前はすべて大文字', (kind) => {
-    for (const key of AGENT_CLI_LAUNCH_SPECS[kind].extraRemovedEnvKeys) {
+  it.each(AGENT_CLI_KINDS)('%s: 取り除く・足す環境変数の名前はすべて大文字', (kind) => {
+    const spec = AGENT_CLI_LAUNCH_SPECS[kind]
+    for (const key of [...spec.extraRemovedEnvKeys, ...Object.keys(spec.extraEnv)]) {
       expect(key).toBe(key.toUpperCase())
     }
   })
 
-  // 能力が false の種類に会話の ID・設定のファイルが渡ったら投げる(呼び出し側の取り違えを黙って捨てない。L-044)。
-  // 能力が true の項目は確かめることが無いので、false の種類だけで回す(何も確かめずに通る行を作らない)
-  it.each(AGENT_CLI_KINDS.filter((kind) => !agentCliCapabilities(kind).sessionResume))(
-    '%s: 会話の再開に対応しない種類に会話の ID が渡ったら投げる',
+  // 能力の表と起動の表の引数の整合(呼び出し側の取り違えを黙って捨てない。L-044)。起動の表は能力の表を読まないので、表の今の値に
+  // 応じた期待で全種類を回す(どの種類も 1 件以上の確かめを作る。何も確かめずに通る行を作らない)
+  it.each(AGENT_CLI_KINDS)(
+    '%s: 会話の再開に対応する種類は ID が無いと投げ、対応しない種類は ID があると投げる',
     (kind) => {
-      expect(() => AGENT_CLI_LAUNCH_SPECS[kind].buildArgs(NEW, ID, null)).toThrow()
+      const { buildArgs } = AGENT_CLI_LAUNCH_SPECS[kind]
+      const call = agentCliCapabilities(kind).sessionResume
+        ? (): string[] => buildArgs(NEW, null, null)
+        : (): string[] => buildArgs(NEW, ID, null)
+      expect(call).toThrow()
     }
   )
 
   it.each(AGENT_CLI_KINDS.filter((kind) => !agentCliCapabilities(kind).changeAttribution))(
-    '%s: hooks に対応しない種類に設定のファイルが渡ったら投げる',
+    '%s: hooks に対応しない種類に設定のファイルが渡ったら投げる(会話の ID は正しい値を渡す)',
     (kind) => {
-      expect(() => AGENT_CLI_LAUNCH_SPECS[kind].buildArgs(NEW, null, HOOKS)).toThrow()
+      expect(() => AGENT_CLI_LAUNCH_SPECS[kind].buildArgs(NEW, ID, HOOKS)).toThrow(
+        'hooks の設定のファイルは渡せません'
+      )
     }
   )
 })
@@ -65,27 +89,45 @@ describe('AGENT_CLI_LAUNCH_SPECS.claude.buildArgs(MVP からの claude の起動
   })
 })
 
-describe('AGENT_CLI_LAUNCH_SPECS.copilot.buildArgs', () => {
+describe('AGENT_CLI_LAUNCH_SPECS.copilot.buildArgs(段階 3a)', () => {
   const { buildArgs } = AGENT_CLI_LAUNCH_SPECS.copilot
 
-  it('new は引数なし(対話のセッション。-C・--allow-*・--yolo などを付けない)', () => {
-    expect(buildArgs(NEW, null, null)).toEqual([])
+  it('new は --session-id <ID>(2 つの要素)、resume は --resume=<ID>(1 つの要素。-C・--allow-*・--yolo などを付けない)', () => {
+    expect(buildArgs(NEW, ID, null)).toEqual(['--session-id', ID])
+    expect(buildArgs(RESUME, ID, null)).toEqual([`--resume=${ID}`])
+    expect(buildArgs(RESUME, ID, null)).toHaveLength(1)
   })
 
-  it('resume は投げる(starter が先に resume-unsupported で断るので届かない)', () => {
-    expect(() => buildArgs(RESUME, null, null)).toThrow(
-      'copilot はセッションの再開に対応していません'
-    )
+  it('会話の ID が無いと投げる(new・resume とも)', () => {
+    expect(() => buildArgs(NEW, null, null)).toThrow('copilot の起動には会話の ID が要ります')
+    expect(() => buildArgs(RESUME, null, null)).toThrow('copilot の起動には会話の ID が要ります')
   })
 
-  it('会話の ID・hooks の設定のファイルが渡ったら投げる', () => {
-    expect(() => buildArgs(NEW, ID, null)).toThrow('copilot の起動に会話の ID は渡せません')
-    expect(() => buildArgs(NEW, null, HOOKS)).toThrow(
+  it.each<[string, string]>([
+    ['大文字', LETTER_ID.toUpperCase()],
+    ['36 文字でない', ID.slice(0, 35)],
+    ['UUID の先頭 8 文字(copilot の前方一致で別の会話が開きうる)', ID.slice(0, 8)],
+    ['- 始まり', '--yolo'],
+    ['UUID でない語(copilot では新しいセッションに落ちる)', 'my-session'],
+    ['v4 以外', '11111111-1111-1111-8111-111111111111']
+  ])(
+    '会話の ID が小文字の UUID v4 の完全な形でなければ(%s)、値を文言に入れずに投げる(L-007・L-017)',
+    (_label, value) => {
+      for (const launch of [NEW, RESUME]) {
+        const message = thrownMessage(() => buildArgs(launch, value, null))
+        expect(message).toBe('copilot の起動の会話の ID の形が正しくありません')
+        expect(message).not.toContain(value)
+      }
+    }
+  )
+
+  it('hooks の設定のファイルが渡ったら投げる(changeAttribution は偽のまま)', () => {
+    expect(() => buildArgs(NEW, ID, HOOKS)).toThrow(
       'copilot の起動に hooks の設定のファイルは渡せません'
     )
   })
 
   it('未知の kind は投げる', () => {
-    expect(() => buildArgs(UNKNOWN, null, null)).toThrow('未知の起動の指定です')
+    expect(() => buildArgs(UNKNOWN, ID, null)).toThrow('未知の起動の指定です')
   })
 })

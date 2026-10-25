@@ -2,7 +2,7 @@ import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import type { RenderHookResult } from '@testing-library/react'
-import type { AgentCliKindSetting, PromptExecutionMode } from '@shared/types'
+import type { AgentCliKindSetting, AgentSessionExit, PromptExecutionMode } from '@shared/types'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
 import {
@@ -58,7 +58,8 @@ vi.mock('../useAgentLastSession', () => ({ useAgentLastSession: mockUseAgentLast
 const capabilityOverrides = vi.hoisted(
   (): AgentCliCapabilityOverrides => ({
     unsupportedKinds: new Set<AgentCliKind>(),
-    promptSendUnsupportedKinds: new Set<AgentCliKind>()
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
   })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
@@ -101,10 +102,13 @@ import {
   agentSendBlockedByActivityReason
 } from '../../lib/agentSendMessages'
 import {
+  AGENT_RESUME_LAST_NO_RECORD,
   AGENT_START_DISABLED_SWITCHING_CLI_KIND,
   AGENT_START_DISABLED_SWITCHING_MODE,
+  agentResumeEntryCliMismatch,
   agentResumeEntryUnsupportedReason,
-  agentResumeLastUnsupportedReason
+  agentResumeLastUnsupportedReason,
+  AGENT_RESUME_FAILURE_NOTES
 } from '../../lib/agentSessionMessages'
 import { AGENT_CLI_KIND_LOCKED_WHILE_STARTING } from '../../lib/agentCliMessages'
 import {
@@ -202,6 +206,7 @@ afterEach(() => {
   consoleErrorSpy?.mockRestore()
   capabilityOverrides.unsupportedKinds.clear()
   capabilityOverrides.promptSendUnsupportedKinds.clear()
+  capabilityOverrides.sessionResumeUnsupportedKinds.clear()
 })
 
 type Rendered = RenderHookResult<AgentWorkspaceState, unknown>
@@ -261,6 +266,21 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('組み立て', () => {
+    it('活動が unknown 以外のタブだけを sessions.noteScreenActivity に渡す(再開の失敗の見分け)', () => {
+      setMode('agent-cli')
+      const sessions = makeAgentSessionsState()
+      mockUseAgentSessions.mockReturnValue(sessions)
+      mockUseAgentActivity.mockReturnValue(
+        new Map<string, AgentActivity>([
+          ['slot-1', 'unknown'],
+          ['slot-2', 'idle'],
+          ['slot-3', 'confirm']
+        ])
+      )
+      renderWorkspace({ folderPath: '/p' })
+      expect(vi.mocked(sessions.noteScreenActivity).mock.calls).toEqual([['slot-2'], ['slot-3']])
+    })
+
     it('useAgentSessions に開いているフォルダ・文書ごとのタブの置き場・エージェント CLI 方式か・設定の種類・確認を渡す', () => {
       setMode('agent-cli')
       const onConfirm = vi.fn(() => true)
@@ -543,6 +563,7 @@ describe('useAgentWorkspace', () => {
         executedAt: 1000,
         agent: {
           claudeSessionId: '11111111-1111-4111-8111-111111111111',
+          cliKind: 'claude',
           tabLabel: 'claude 1',
           folderPath: '/p'
         }
@@ -595,6 +616,7 @@ describe('useAgentWorkspace', () => {
       executedAt: 1000,
       agent: {
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/p'
       }
@@ -667,6 +689,7 @@ describe('useAgentWorkspace', () => {
       executedAt: 1000,
       agent: {
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/p'
       }
@@ -923,7 +946,7 @@ describe('useAgentWorkspace', () => {
         describeSession: expect.any(Function),
         cliKind: 'claude'
       })
-      // 送信が終わるまではターミナルへフォーカスを移さない(送信の前の準備の間のキー入力が claude へ直接届かないように)
+      // 送信が終わるまではターミナルへフォーカスを移さない(送信の前の準備の間のキー入力がタブの CLI へ直接届かないように)
       expect(tab2.controller.focus).not.toHaveBeenCalled()
       await act(async () => {
         resolveSend({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' })
@@ -2199,7 +2222,7 @@ describe('useAgentWorkspace', () => {
       expect(tabs[0].controller.focus).not.toHaveBeenCalled()
     })
 
-    // 確認はモーダルで背後を覆うため、開いたままターミナルへフォーカスを移すと、閉じるつもりの Esc が claude へ届く
+    // 確認はモーダルで背後を覆うため、開いたままターミナルへフォーカスを移すと、閉じるつもりの Esc がタブの CLI へ届く
     it('通知を押したとき、送信前の確認が開いていれば送らずに閉じてからタブへ移る', async () => {
       setMode('agent-cli')
       const sender = makeSender()
@@ -2357,6 +2380,7 @@ describe('useAgentWorkspace', () => {
       renderWorkspace({ folderPath: '/p' })
       expect(mockUseAgentLastSession).toHaveBeenLastCalledWith({
         folderPath: '/p',
+        cliKind: 'claude',
         enabled: true,
         refreshKey: '3'
       })
@@ -2375,14 +2399,19 @@ describe('useAgentWorkspace', () => {
 
     it('押せるときは、そのタブで前回の ID を resume で起動する', () => {
       setMode('agent-cli')
-      mockUseAgentLastSession.mockReturnValue({ kind: 'found', claudeSessionId: ID })
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'claude',
+        claudeSessionId: ID
+      })
       const sessions = makeAgentSessionsState()
       mockUseAgentSessions.mockReturnValue(sessions)
       const { result } = renderWorkspace({ folderPath: '/p' })
       act(() => result.current.agentTerminal.resumeLast.onResume('slot-1'))
       expect(sessions.start).toHaveBeenCalledExactlyOnceWith('slot-1', {
         kind: 'resume',
-        claudeSessionId: ID
+        claudeSessionId: ID,
+        cliKind: 'claude'
       })
     })
   })
@@ -2404,6 +2433,7 @@ describe('useAgentWorkspace', () => {
       const describeSession = vi.mocked(sender.send).mock.calls[0][1].describeSession
       expect(describeSession()).toEqual({
         claudeSessionId: ID,
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/p'
       })
@@ -2455,6 +2485,7 @@ describe('useAgentWorkspace', () => {
       await waitFor(() => expect(sender.send).toHaveBeenCalledOnce())
       expect(vi.mocked(sender.send).mock.calls[0][1].describeSession()).toEqual({
         claudeSessionId: ID,
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/p'
       })
@@ -2483,7 +2514,7 @@ describe('useAgentWorkspace', () => {
       id: 'h2',
       status: 'sent',
       resultText: null,
-      agent: { claudeSessionId: ID, tabLabel: 'claude 1', folderPath: '/p' }
+      agent: { claudeSessionId: ID, cliKind: 'claude', tabLabel: 'claude 1', folderPath: '/p' }
     }
 
     it('従来のエントリは、再実行は今のまま・このセッションで再開は出さない(null)', () => {
@@ -2576,7 +2607,7 @@ describe('useAgentWorkspace', () => {
       act(() => result.current.agentTerminal.layout.toggleOpen())
       expect(result.current.agentTerminal.layout.isOpen).toBe(false)
       act(() => result.current.onResume(agentEntry))
-      expect(sessions.resumeInNewTab).toHaveBeenCalledExactlyOnceWith(ID)
+      expect(sessions.resumeInNewTab).toHaveBeenCalledExactlyOnceWith(ID, 'claude')
       expect(selectTab).toHaveBeenCalledWith('slot-2')
       expect(result.current.agentTerminal.layout.isOpen).toBe(true)
     })
@@ -2682,6 +2713,8 @@ describe('useAgentWorkspace', () => {
 
   describe('使う CLI の配線(本物の useAgentSessions。L-060)', () => {
     const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
+    const COPILOT_ID = '33333333-3333-4333-8333-333333333333'
+    const ID_OF: Record<AgentCliKind, string> = { claude: CLAUDE_ID, copilot: COPILOT_ID }
     let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
     let slotId: string
     const agentEntry: HistoryEntry = {
@@ -2695,7 +2728,12 @@ describe('useAgentWorkspace', () => {
       resultText: null,
       errorMessage: null,
       executedAt: 1000,
-      agent: { claudeSessionId: CLAUDE_ID, tabLabel: 'claude 1', folderPath: '/p' }
+      agent: {
+        claudeSessionId: CLAUDE_ID,
+        cliKind: 'claude',
+        tabLabel: 'claude 1',
+        folderPath: '/p'
+      }
     }
 
     beforeEach(async () => {
@@ -2716,14 +2754,14 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-cli',
         cliKind,
-        claudeSessionId: cliKind === 'claude' ? CLAUDE_ID : null
+        claudeSessionId: ID_OF[cliKind]
       })
       await act(async () => {
         await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
       })
     }
 
-    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行と中断は活動の理由で押せず、前回の続きから・このセッションで再開は copilot の理由で押せない', async () => {
+    it('設定が copilot なら、未起動のタブの名前は copilot で、起動すると実行と中断は活動の理由で押せず、前回の続きからは記録の理由になる(copilot も再開に対応した。段階 3a)', async () => {
       setCliKind('copilot')
       const { result } = renderWorkspace({ folderPath: '/p' })
       expect(result.current.agentTerminal.sessions.selected.label).toBe('copilot 1')
@@ -2732,10 +2770,19 @@ describe('useAgentWorkspace', () => {
         isRunDisabled: true,
         runDisabledReason: agentSendBlockedByActivityReason('unknown', 'copilot')
       })
-      // 段階 2a で copilot も中断の能力を持つ。活動が未判定(unknown)なので活動の理由で押せない
       expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
         agentInterruptBlockedByActivityReason('unknown', 'copilot')
       )
+      expect(result.current.agentTerminal.resumeLast.disabledReason).toBe(
+        AGENT_RESUME_LAST_NO_RECORD
+      )
+    })
+
+    it('設定の種類が再開に対応していなければ(能力の表を差し替えた copilot)、前回の続きから・このセッションで再開はその理由で押せない', async () => {
+      capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
+      setCliKind('copilot')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      await startWith(result, 'copilot')
       expect(result.current.agentTerminal.resumeLast.disabledReason).toBe(
         agentResumeLastUnsupportedReason('copilot')
       )
@@ -2770,14 +2817,59 @@ describe('useAgentWorkspace', () => {
         runDisabledReason: null
       })
     })
+
+    it('設定が copilot なら、前回の続きからは copilot の前回を取りに行き、押すと copilot の種類で再開を依頼する(本物の useAgentSessions まで)', async () => {
+      setCliKind('copilot')
+      mockUseAgentLastSession.mockReturnValue({
+        kind: 'found',
+        cliKind: 'copilot',
+        claudeSessionId: COPILOT_ID
+      })
+      startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
+        kind: 'started',
+        sessionId: 'sid-cli',
+        cliKind: 'copilot',
+        claudeSessionId: COPILOT_ID
+      })
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(mockUseAgentLastSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({ folderPath: '/p', cliKind: 'copilot' })
+      )
+      expect(result.current.agentTerminal.resumeLast.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.resumeLast.onResume(slotId)
+      })
+      expect(startSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          slotId,
+          launch: { kind: 'resume', claudeSessionId: COPILOT_ID, cliKind: 'copilot' }
+        })
+      )
+    })
+
+    it('設定が copilot なら、履歴の claude のエントリの このセッションで再開 は、切り替えれば再開できる理由で押せない', () => {
+      setCliKind('copilot')
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      expect(result.current.getHistoryActions(agentEntry).resume).toEqual({
+        disabled: true,
+        reason: agentResumeEntryCliMismatch('claude', 'copilot')
+      })
+    })
   })
 
   describe('copilot の配線(本物の useAgentSessions・useAgentActivity・useAgentInterrupt・useAgentNotifications。L-060)', () => {
+    const COPILOT_ID = '33333333-3333-4333-8333-333333333333'
+    const COPILOT_ID_2 = '55555555-5555-4555-8555-555555555555'
     let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
     let interruptSpy: MockInstance<typeof window.api.interruptAgentSession> | null = null
     let followUpSpy: MockInstance<typeof window.api.interruptAgentSessionFollowUp> | null = null
     let showSpy: MockInstance<typeof window.api.showAgentNotification> | null = null
     let stopSpy: MockInstance<typeof window.api.stopAgentSession> | null = null
+    let exitSpy: MockInstance<typeof window.api.onAgentExit> | null = null
+    // 終了の購読者(本物の useAgentSessions が張る)。テストから終了を流す
+    let exitListeners: Set<(exit: AgentSessionExit) => void>
+    const emitAgentExit = (exit: AgentSessionExit): void =>
+      exitListeners.forEach((listener) => listener(exit))
     let slotId: string
     // 共有の偽のタブの画面を書き換えるので、終わったら戻す
     let controller: FakeController | null = null
@@ -2803,7 +2895,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot',
         cliKind: 'copilot',
-        claudeSessionId: null
+        claudeSessionId: COPILOT_ID
       })
       interruptSpy = vi
         .spyOn(window.api, 'interruptAgentSession')
@@ -2818,6 +2910,13 @@ describe('useAgentWorkspace', () => {
       originalScreen = controller.screen
       originalWrite = controller.writeToSession
       controller.screen = copilotScreen('working3000').lines
+      exitListeners = new Set()
+      exitSpy = vi.spyOn(window.api, 'onAgentExit').mockImplementation((listener) => {
+        exitListeners.add(listener)
+        return () => {
+          exitListeners.delete(listener)
+        }
+      })
     })
 
     afterEach(() => {
@@ -2832,12 +2931,54 @@ describe('useAgentWorkspace', () => {
       showSpy?.mockRestore()
       stopSpy?.mockRestore()
       stopSpy = null
+      exitSpy?.mockRestore()
+      exitSpy = null
       // テストで足したタブが残っていたら消し、選択を元のタブへ戻す(タブの置き場は共有)
       const tabsStore = getAgentSessionTabs()
       for (const tab of tabsStore.getSnapshot().tabs) {
         if (tab.slotId !== slotId) tabsStore.remove(tab.slotId)
       }
       tabsStore.select(slotId)
+    })
+
+    it('再開で起動した copilot のタブが、画面の活動を見ないまま終了コード 1 で終わると copilot の文言を出し、活動を見た後なら出さない(活動の受け渡しの配線。L-060)', async () => {
+      const { result } = renderWorkspace({ folderPath: '/p' })
+      // 1 回目: 画面に何も無い(判定は unknown)うちに終わる。running に入ると useAgentActivity が 150ms 後に画面を判定するので、
+      // 作業中の画面のままにしない
+      if (controller !== null) controller.screen = []
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, {
+          kind: 'resume',
+          claudeSessionId: COPILOT_ID,
+          cliKind: 'copilot'
+        })
+      })
+      act(() =>
+        emitAgentExit({ sessionId: 'sid-copilot', exitCode: 1, signal: null, reason: 'exited' })
+      )
+      expect(result.current.agentTerminal.sessions.selected.error).toBe(
+        AGENT_RESUME_FAILURE_NOTES.copilot
+      )
+      // 2 回目: 作業中の画面を判定してから終わる(本物の useAgentActivity → useAgentWorkspace → useAgentSessions)
+      if (controller !== null) controller.screen = copilotScreen('working3000').lines
+      await act(async () => {
+        await result.current.agentTerminal.sessions.start(slotId, {
+          kind: 'resume',
+          claudeSessionId: COPILOT_ID,
+          cliKind: 'copilot'
+        })
+      })
+      act(() => controller?.emitOutputWritten())
+      await waitFor(() =>
+        expect(result.current.agentTerminal.activities.get(slotId)).toBe('working')
+      )
+      act(() =>
+        emitAgentExit({ sessionId: 'sid-copilot', exitCode: 1, signal: null, reason: 'exited' })
+      )
+      expect(result.current.agentTerminal.sessions.selected.status).toBe('exited')
+      expect(result.current.agentTerminal.sessions.selected.error).not.toBe(
+        AGENT_RESUME_FAILURE_NOTES.copilot
+      )
     })
 
     it('作業中の画面で帯が作業中になり、中断で 1 回目と 2 回目を同じ sessionId で頼み、入力待ちに変わると copilot の名前で通知を頼む', async () => {
@@ -2920,7 +3061,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot-2',
         cliKind: 'copilot',
-        claudeSessionId: null
+        claudeSessionId: COPILOT_ID_2
       })
       const onConfirm = vi.fn(() => true)
       // 閉じられるように 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
@@ -2971,7 +3112,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot-2',
         cliKind: 'copilot',
-        claudeSessionId: null
+        claudeSessionId: COPILOT_ID_2
       })
       // 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
       const tabsStore = getAgentSessionTabs()
@@ -3026,7 +3167,7 @@ describe('useAgentWorkspace', () => {
       await waitFor(() => expect(result.current.agentTerminal.activities.get(slotId)).toBe('idle'))
     }
 
-    it('入力待ちの copilot のタブへ、実行(送信前の確認はオフ)で貼り付けと \\r を書き、送れたことを確かめて通知し、onSent に copilot を渡す', async () => {
+    it('入力待ちの copilot のタブへ、実行(送信前の確認はオフ)で貼り付けと \\r を書き、送れたことを確かめて通知し、onSent に copilot の送り先(会話の ID と種類)を渡す', async () => {
       await installRealSender()
       setSendConfirmEnabled(false)
       const { result } = renderWorkspace({ folderPath: '/p' })
@@ -3047,7 +3188,14 @@ describe('useAgentWorkspace', () => {
         '\r'
       ])
       expect(result.current.promptRun.agentSend?.notice?.text).toBe(AGENT_SENT_NOTICE)
-      expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'copilot')
+      expect(onSent).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          claudeSessionId: COPILOT_ID,
+          cliKind: 'copilot',
+          folderPath: '/p'
+        }),
+        'copilot'
+      )
     })
 
     it('画面が作業中になると実行の理由が copilot の作業中の理由になり、確認を開いた後に作業中になると確認の理由も同じになる', async () => {

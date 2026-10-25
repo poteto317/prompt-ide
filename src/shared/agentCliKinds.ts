@@ -10,7 +10,7 @@ export function isAgentCliKind(value: unknown): value is AgentCliKind {
   return typeof value === 'string' && (AGENT_CLI_KINDS as readonly string[]).includes(value)
 }
 
-/** CLI ごとに、アプリの機能が使えるか(claude の画面・引数・hooks に依存する機能) */
+/** CLI ごとに、アプリの機能が使えるか(CLI ごとの画面・引数・hooks に依存する機能) */
 export interface AgentCliCapabilities {
   /** 実行ボタン・履歴の再実行・送信前の確認からの送信(入力欄の判定・貼り付け)。押せる条件と手順は renderer の agentPromptSendSpecs.ts */
   promptSend: boolean
@@ -21,7 +21,7 @@ export interface AgentCliCapabilities {
   interrupt: boolean
   /** hooks によるエージェントの変更と利用者の変更の区別と、画面の作業中・作業の終わりを main の区間の追跡へ知らせること */
   changeAttribution: boolean
-  /** 前回の続きから・このセッションで再開・起動の記録(agent-sessions.json)・会話の ID の予約 */
+  /** 前回の続きから・このセッションで再開・種類ごとの起動の記録(main の agentSessionRecordFileIo.ts の表)・会話の ID の予約 */
   sessionResume: boolean
 }
 
@@ -53,7 +53,7 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
       screenActivity: true,
       interrupt: true,
       changeAttribution: false,
-      sessionResume: false
+      sessionResume: true
     }
   }
 }

@@ -60,6 +60,7 @@ let pty: FakePty
 let spawnPty: ReturnType<typeof vi.fn<PtySpawn>>
 let resolveLaunch: ReturnType<typeof vi.fn<() => Promise<AgentLaunchResolution>>>
 let records: AgentSessionRecordStore
+let copilotRecords: AgentSessionRecordStore
 const stopTree = vi.fn<StopTree>(async (target, exited) => {
   ;(target as FakePty).emitExit(0, 15)
   await exited
@@ -75,7 +76,7 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
     spawnPty,
     stopTree,
     createSessionId: () => 'sid-1',
-    records,
+    records: { claude: records, copilot: copilotRecords },
     reservations: createClaudeSessionReservations(),
     createClaudeSessionId: () => CLAUDE_ID,
     platform: 'linux',
@@ -122,6 +123,7 @@ beforeEach(() => {
   }))
   // 記録のファイルが無い(空の記録)
   records = createAgentSessionRecordStore(makeFakeRecordIo())
+  copilotRecords = createAgentSessionRecordStore(makeFakeRecordIo())
 })
 
 describe('agentTerminal:start', () => {
@@ -747,15 +749,53 @@ describe('agentTerminal:focus', () => {
 })
 
 describe('agentTerminal:getLastSession', () => {
-  const getLast = (event: ReturnType<typeof makeEvent>, folderPath: unknown): Promise<unknown> =>
-    handles.get('agentTerminal:getLastSession')?.(event, folderPath) as Promise<unknown>
+  const getLast = (
+    event: ReturnType<typeof makeEvent>,
+    folderPath: unknown,
+    cliKind: unknown = 'claude'
+  ): Promise<unknown> =>
+    handles.get('agentTerminal:getLastSession')?.(event, folderPath, cliKind) as Promise<unknown>
+
+  it('依頼の種類の記録の先頭を種類付きで返す(copilot の依頼に claude の記録を返さない)', async () => {
+    register()
+    folderAccess.set(1, '/work')
+    await records.whenLoaded()
+    await copilotRecords.whenLoaded()
+    records.record('/work', CLAUDE_ID)
+    await expect(getLast(makeEvent(), '/work', 'copilot')).resolves.toBeNull()
+    copilotRecords.record('/work', '22222222-2222-4222-9222-222222222222')
+    await expect(getLast(makeEvent(), '/work', 'copilot')).resolves.toEqual({
+      cliKind: 'copilot',
+      claudeSessionId: '22222222-2222-4222-9222-222222222222'
+    })
+  })
+
+  it.each<[string, unknown]>([
+    ['無い', undefined],
+    ['知らない値', 'gemini'],
+    ['大文字', 'Claude'],
+    ['文字列でない', 1]
+  ])('種類が%sなら投げる(既定の claude に流さない。L-044)', async (_label, cliKind) => {
+    register()
+    folderAccess.set(1, '/work')
+    await expect(
+      handles.get('agentTerminal:getLastSession')?.(
+        makeEvent(),
+        '/work',
+        cliKind
+      ) as Promise<unknown>
+    ).rejects.toThrow()
+  })
 
   it('許可のフォルダ(realpath が一致)のときだけ記録の先頭を返す', async () => {
     register()
     folderAccess.set(1, '/work')
     await records.whenLoaded()
     records.record('/work', CLAUDE_ID)
-    await expect(getLast(makeEvent(), '/work/.')).resolves.toEqual({ claudeSessionId: CLAUDE_ID })
+    await expect(getLast(makeEvent(), '/work/.')).resolves.toEqual({
+      cliKind: 'claude',
+      claudeSessionId: CLAUDE_ID
+    })
     await expect(getLast(makeEvent(), '/other')).resolves.toBeNull()
     // 別のウィンドウ(許可のフォルダが無い)
     await expect(getLast(makeEvent(2), '/work')).resolves.toBeNull()
@@ -776,7 +816,7 @@ describe('agentTerminal:getLastSession', () => {
   })
 })
 
-describe('agentTerminal:getState(種類と claude のセッション ID)', () => {
+describe('agentTerminal:getState(種類と会話の ID)', () => {
   let consoleWarnSpy: MockInstance<typeof console.warn> | null = null
 
   afterEach(() => {
@@ -797,7 +837,7 @@ describe('agentTerminal:getState(種類と claude のセッション ID)', () =>
     )
   })
 
-  it('copilot のセッションは、種類と null の会話の ID を載せて返す', async () => {
+  it('copilot のセッションは、種類と会話の ID を載せて返す(段階 3a で copilot も ID を持つ)', async () => {
     resolveLaunch.mockResolvedValue({
       kind: 'ok',
       plan: { cliKind: 'copilot', file: '/bin/copilot', args: [], env: { PATH: '/p' } }
@@ -811,10 +851,15 @@ describe('agentTerminal:getState(種類と claude のセッション ID)', () =>
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      claudeSessionId: CLAUDE_ID
     })
+    expect(spawnPty).toHaveBeenCalledWith(
+      '/bin/copilot',
+      ['--session-id', CLAUDE_ID],
+      expect.any(Object)
+    )
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'copilot', claudeSessionId: null }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'copilot', claudeSessionId: CLAUDE_ID }
     ])
   })
 })

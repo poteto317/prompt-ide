@@ -114,14 +114,35 @@ function addLoopbackNoProxy(env: Record<string, string>, platform: NodeJS.Platfo
 }
 
 /**
- * pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数(すべての CLI の一覧と、種類ごとの追加の一覧)を除き、
- * PATH・TERM・COLORTERM・LANG を設定し、NO_PROXY・no_proxy にループバックを足す。platform と追加の一覧は省略できない(L-060)
+ * 種類ごとの足す環境変数を env に入れる(利用者の環境の同じ名前を上書きする)。Windows は名前の大文字小文字を区別しないため、
+ * 大文字小文字だけ違う同じ名前を取り除いてから足す(NO_PROXY の扱いと同じ)
+ */
+function addExtraAgentEnv(
+  env: Record<string, string>,
+  extraEnv: Readonly<Record<string, string>>,
+  platform: NodeJS.Platform
+): void {
+  for (const [name, value] of Object.entries(extraEnv)) {
+    if (platform === 'win32') {
+      for (const key of Object.keys(env)) {
+        if (key.toUpperCase() === name.toUpperCase()) delete env[key]
+      }
+    }
+    env[name] = value
+  }
+}
+
+/**
+ * pty へ渡す環境変数(設計書「環境変数」)。base を写し、取り除く変数(すべての CLI の一覧と、種類ごとの追加の一覧)を除き、種類ごとの
+ * 足す環境変数を入れ、PATH・TERM・COLORTERM・LANG を設定し、NO_PROXY・no_proxy にループバックを足す。platform と追加の一覧・足す
+ * 環境変数は省略できない(L-060)
  */
 export function buildAgentEnv(
   base: NodeJS.ProcessEnv,
   pathValue: string,
   platform: NodeJS.Platform,
-  extraRemovedKeys: readonly string[]
+  extraRemovedKeys: readonly string[],
+  extraEnv: Readonly<Record<string, string>>
 ): Record<string, string> {
   // Windows の環境変数名は大文字小文字を区別しない(Path と PATH を重複させない)。POSIX は区別する
   const normalize = platform === 'win32' ? (key: string) => key.toUpperCase() : (key: string) => key
@@ -136,6 +157,9 @@ export function buildAgentEnv(
     if (extraRemovedKeys.includes(name)) continue
     env[key] = value
   }
+  // 種類ごとの足す環境変数(copilot の COPILOT_DISABLE_RESUME_AUTO_CD)。取り除く一覧を適用した後に足す。PATH・TERM などは
+  // この後に設定するので、表に同じ名前があっても上書きされる
+  addExtraAgentEnv(env, extraEnv, platform)
   env.PATH = pathValue
   env.TERM = 'xterm-256color'
   env.COLORTERM = 'truecolor'
@@ -208,7 +232,7 @@ export async function resolveAgentLaunch({
       cliKind,
       file,
       args: [],
-      env: buildAgentEnv(env, pathValue, platform, spec.extraRemovedEnvKeys)
+      env: buildAgentEnv(env, pathValue, platform, spec.extraRemovedEnvKeys, spec.extraEnv)
     }
   }
 }

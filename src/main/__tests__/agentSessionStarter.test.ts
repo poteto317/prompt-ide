@@ -38,7 +38,7 @@ const REQUEST: AgentStartRequest = {
   rows: 20,
   launch: { kind: 'new' }
 }
-// 新しく振る claude のセッション ID(呼ぶたびに次の値)
+// 新しく振る会話の ID(再開に対応する種類の new。呼ぶたびに次の値)
 const NEW_IDS = [
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -80,7 +80,8 @@ let spawnPty: ReturnType<typeof vi.fn<PtySpawn>>
 let resolveLaunch: ReturnType<typeof vi.fn<() => Promise<AgentLaunchResolution>>>
 let canonicalize: ReturnType<typeof vi.fn<(path: string) => Promise<string>>>
 let isDirectory: ReturnType<typeof vi.fn<(path: string) => Promise<boolean>>>
-let records: AgentSessionRecordStore
+let claudeRecords: AgentSessionRecordStore
+let copilotRecords: AgentSessionRecordStore
 let reservations: ClaudeSessionReservations
 let hooks: FakeAgentHookSessions
 let claudeIdCount: number
@@ -100,7 +101,7 @@ function makeStarterService(
     spawnPty,
     stopTree,
     createSessionId: () => 'sid-1',
-    records,
+    records: { claude: claudeRecords, copilot: copilotRecords },
     reservations,
     createClaudeSessionId: () => NEW_IDS[claudeIdCount++],
     platform: 'linux',
@@ -125,7 +126,8 @@ beforeEach(() => {
   resolveLaunch = vi.fn(async () => OK_LAUNCH)
   canonicalize = vi.fn(async (path: string) => (path === '/work/.' ? '/work' : path))
   isDirectory = vi.fn(async () => true)
-  records = createAgentSessionRecordStore(makeFakeRecordIo())
+  claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo())
+  copilotRecords = createAgentSessionRecordStore(makeFakeRecordIo())
   reservations = createClaudeSessionReservations()
   hooks = makeFakeAgentHookSessions()
   claudeIdCount = 0
@@ -379,7 +381,10 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
 describe('createAgentSessionStarter(claude のセッション ID・記録・予約)', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
   const OTHER = '22222222-2222-4222-9222-222222222222'
-  const RESUME: AgentStartRequest = { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID } }
+  const RESUME: AgentStartRequest = {
+    ...REQUEST,
+    launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+  }
   let ptys: FakePty[]
   let sessionCount: number
   const nextSessionId = (): string => `sid-${++sessionCount}`
@@ -404,7 +409,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       ptys.push(created)
       return created
     })
-    await records.whenLoaded()
+    await claudeRecords.whenLoaded()
   })
 
   it('new は ID を振って --session-id で起動し、started に返す。返した時点で記録の先頭になっていて、ID を予約している', async () => {
@@ -420,8 +425,8 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       ['--x', '--session-id', NEW_IDS[0]],
       expect.any(Object)
     )
-    expect(records.last('/work')).toBe(NEW_IDS[0])
-    expect(records.has('/work', NEW_IDS[0])).toBe(true)
+    expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
+    expect(claudeRecords.has('/work', NEW_IDS[0])).toBe(true)
     expect(reservations.tryReserve(NEW_IDS[0])).toBeNull()
     expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'claude', claudeSessionId: NEW_IDS[0] })
   })
@@ -434,8 +439,8 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('resume は記録にある ID を検証を通った値のまま --resume で起動し(L-018)、記録の先頭へ移す', async () => {
-    records.record('/work', ID)
-    records.record('/work', OTHER)
+    claudeRecords.record('/work', ID)
+    claudeRecords.record('/work', OTHER)
     const { start } = service()
     await expect(start(1, RESUME, makeSink())).resolves.toEqual({
       kind: 'started',
@@ -448,14 +453,14 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       ['--x', '--resume', ID],
       expect.any(Object)
     )
-    expect(records.last('/work')).toBe(ID)
+    expect(claudeRecords.last('/work')).toBe(ID)
     // 新しい ID は振らない
     expect(claudeIdCount).toBe(0)
   })
 
   it.each([
     ['記録が無い', (): void => undefined],
-    ['ほかのフォルダの記録にだけある', (): void => records.record('/other', ID)]
+    ['ほかのフォルダの記録にだけある', (): void => claudeRecords.record('/other', ID)]
   ])('resume で %s ID は unknown-session(spawn も予約もしない。L-019)', async (_label, seed) => {
     seed()
     const { start } = service()
@@ -468,7 +473,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('createSessionId が投げても予約が残らない(同じ ID をもう一度予約できる)', async () => {
-    records.record('/work', ID)
+    claudeRecords.record('/work', ID)
     const { start } = service({
       createSessionId: () => {
         throw new Error('id failed')
@@ -481,7 +486,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
 
   it('記録の読み込みが終わるまで照合を待つ(読み込みの前の空の記録で unknown-session にしない)', async () => {
     const read = deferred<string>()
-    records = createAgentSessionRecordStore(makeFakeRecordIo(read.promise))
+    claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo(read.promise))
     const { start } = service()
     const result = start(1, RESUME, makeSink())
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
@@ -491,11 +496,15 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('already-running は動いているセッションの ID を返し、依頼の ID は使わない(新しく振らない)', async () => {
-    records.record('/work', OTHER)
+    claudeRecords.record('/work', OTHER)
     const { start } = service()
     await start(1, REQUEST, makeSink())
     await expect(
-      start(1, { ...REQUEST, launch: { kind: 'resume', claudeSessionId: OTHER } }, makeSink())
+      start(
+        1,
+        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: OTHER, cliKind: 'claude' } },
+        makeSink()
+      )
     ).resolves.toEqual({
       kind: 'already-running',
       sessionId: 'sid-1',
@@ -532,7 +541,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     await expect(start(1, REQUEST, makeSink())).rejects.toThrow(
       '起動したセッションの CLI の種類がありません'
     )
-    expect(records.last('/work')).toBeNull()
+    expect(claudeRecords.last('/work')).toBeNull()
   })
 
   it('registry の未知の結果の種類は、動いているセッションの id でも already-running として返さず投げる(既定の分岐へ流さない)', async () => {
@@ -552,7 +561,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     await expect(start(1, REQUEST, makeSink())).resolves.toMatchObject({ kind: 'started' })
     await expect(start(1, REQUEST, makeSink())).rejects.toThrow('未知の起動の結果です')
     // 記録は最初の started の 1 回だけ
-    expect(records.last('/work')).toBe(NEW_IDS[0])
+    expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
   })
 
   it('セッションの exited で Map から消え(registry が枠から外す購読より先)、予約も外れ、次の依頼は新しく起動する', async () => {
@@ -590,7 +599,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('同じ ID の 2 つの再開が並んでも 1 つだけ通り、ほかは session-in-use', async () => {
-    records.record('/work', ID)
+    claudeRecords.record('/work', ID)
     const { start } = service()
     const results = await Promise.all([
       start(1, { ...RESUME, slotId: 'slot-a' }, makeSink()),
@@ -604,7 +613,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('同じ ID が動いている間は、別の枠・別の所有者(ウィンドウ)からの再開を session-in-use で拒む', async () => {
-    records.record('/work', ID)
+    claudeRecords.record('/work', ID)
     folderAccess.set(2, '/work')
     const { start } = service()
     await start(1, RESUME, makeSink())
@@ -621,7 +630,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('止める操作で止まりきる前は予約が残り(session-in-use)、止まりきると再開できる', async () => {
-    records.record('/work', ID)
+    claudeRecords.record('/work', ID)
     const stop = holdNextStop()
     const { start } = service()
     await start(1, RESUME, makeSink())
@@ -639,8 +648,8 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('spawn した後に取り消した起動は、取り消しの停止が終わるまで予約が残り、記録しない', async () => {
-    records.record('/work', ID)
-    records.record('/work', OTHER)
+    claudeRecords.record('/work', ID)
+    claudeRecords.record('/work', OTHER)
     const stop = holdNextStop()
     spawnPty.mockImplementationOnce(() => {
       // spawn の直後(registry が世代を比べる前)にリロードが届いた
@@ -658,7 +667,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     })
     stop.open()
     await expect(canceled).resolves.toEqual(CANCELED)
-    expect(records.last('/work')).toBe(OTHER)
+    expect(claudeRecords.last('/work')).toBe(OTHER)
     await expect(start(1, { ...RESUME, slotId: 'slot-3' }, makeSink())).resolves.toMatchObject({
       kind: 'started',
       claudeSessionId: ID
@@ -666,14 +675,14 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   })
 
   it('spawn が投げたら予約をすぐ外し、記録しない', async () => {
-    records.record('/work', ID)
-    records.record('/work', OTHER)
+    claudeRecords.record('/work', ID)
+    claudeRecords.record('/work', OTHER)
     spawnPty.mockImplementationOnce(() => {
       throw new Error('posix_spawnp failed.')
     })
     const { start } = service()
     await expect(start(1, RESUME, makeSink())).resolves.toMatchObject({ error: 'spawn-failed' })
-    expect(records.last('/work')).toBe(OTHER)
+    expect(claudeRecords.last('/work')).toBe(OTHER)
     await expect(start(1, RESUME, makeSink())).resolves.toMatchObject({
       kind: 'started',
       claudeSessionId: ID
@@ -684,12 +693,15 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { start } = service({
       records: {
-        whenLoaded: () => records.whenLoaded(),
-        has: (key, id) => records.has(key, id),
-        last: (key) => records.last(key),
-        record: vi.fn(() => {
-          throw new Error('disk full')
-        })
+        claude: {
+          whenLoaded: () => claudeRecords.whenLoaded(),
+          has: (key, id) => claudeRecords.has(key, id),
+          last: (key) => claudeRecords.last(key),
+          record: vi.fn(() => {
+            throw new Error('disk full')
+          })
+        },
+        copilot: copilotRecords
       }
     })
     await expect(start(1, REQUEST, makeSink())).resolves.toEqual({
@@ -707,56 +719,88 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
   it('Windows のフォルダのキーは小文字で照合・記録する', async () => {
     folderAccess.set(1, 'C:\\Work')
     canonicalize.mockImplementation(async (path: string) => path)
-    records.record('c:\\work', ID)
+    claudeRecords.record('c:\\work', ID)
     const { start } = service({ platform: 'win32' })
     await expect(
       start(1, { ...RESUME, folderPath: 'C:\\Work' }, makeSink())
     ).resolves.toMatchObject({ kind: 'started', claudeSessionId: ID })
-    expect(records.last('c:\\work')).toBe(ID)
+    expect(claudeRecords.last('c:\\work')).toBe(ID)
   })
 })
 
 describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
 
-  it('依頼のフォルダの正規化が許可のフォルダと一致するときだけ、記録の先頭を返す', async () => {
-    await records.whenLoaded()
-    records.record('/work', ID)
+  it('依頼の種類の記録の先頭を種類付きで返す(copilot の記録は copilot の依頼にだけ返す)', async () => {
+    const OTHER = '22222222-2222-4222-9222-222222222222'
+    await claudeRecords.whenLoaded()
+    await copilotRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
+    copilotRecords.record('/work', OTHER)
     const { lastSessionOf } = makeStarterService()
-    await expect(lastSessionOf(1, '/work/.')).resolves.toEqual({ claudeSessionId: ID })
-    await expect(lastSessionOf(1, '/other')).resolves.toBeNull()
-    await expect(lastSessionOf(2, '/work')).resolves.toBeNull()
+    await expect(lastSessionOf(1, '/work', 'claude')).resolves.toEqual({
+      cliKind: 'claude',
+      claudeSessionId: ID
+    })
+    await expect(lastSessionOf(1, '/work', 'copilot')).resolves.toEqual({
+      cliKind: 'copilot',
+      claudeSessionId: OTHER
+    })
+  })
+
+  it('ほかの種類の記録にだけある ID は返さない(copilot の依頼で claude の記録を見ない)', async () => {
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
+    await expect(makeStarterService().lastSessionOf(1, '/work', 'copilot')).resolves.toBeNull()
+  })
+
+  it('依頼のフォルダの正規化が許可のフォルダと一致するときだけ、記録の先頭を返す', async () => {
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
+    const { lastSessionOf } = makeStarterService()
+    await expect(lastSessionOf(1, '/work/.', 'claude')).resolves.toEqual({
+      cliKind: 'claude',
+      claudeSessionId: ID
+    })
+    await expect(lastSessionOf(1, '/other', 'claude')).resolves.toBeNull()
+    await expect(lastSessionOf(2, '/work', 'claude')).resolves.toBeNull()
   })
 
   it('Windows のフォルダのキーは小文字にそろえて引く(大文字小文字の違う表記で記録したものを引ける)', async () => {
     folderAccess.set(1, 'C:\\Work')
     canonicalize.mockImplementation(async (path: string) => path)
-    await records.whenLoaded()
-    records.record('c:\\work', ID)
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('c:\\work', ID)
     const { lastSessionOf } = makeStarterService({ platform: 'win32' })
-    await expect(lastSessionOf(1, 'C:\\Work')).resolves.toEqual({ claudeSessionId: ID })
+    await expect(lastSessionOf(1, 'C:\\Work', 'claude')).resolves.toEqual({
+      cliKind: 'claude',
+      claudeSessionId: ID
+    })
   })
 
   it('記録が無ければ null', async () => {
-    await expect(makeStarterService().lastSessionOf(1, '/work')).resolves.toBeNull()
+    await expect(makeStarterService().lastSessionOf(1, '/work', 'claude')).resolves.toBeNull()
   })
 
   it('許可のフォルダが無ければ、起動(start)と同じくフォルダを正規化せずに null', async () => {
-    await records.whenLoaded()
-    records.record('/work', ID)
-    await expect(makeStarterService().lastSessionOf(2, '/work')).resolves.toBeNull()
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
+    await expect(makeStarterService().lastSessionOf(2, '/work', 'claude')).resolves.toBeNull()
     expect(canonicalize).not.toHaveBeenCalled()
   })
 
   it('起動(start)と同じ照合の規則を使う(正規化して一致するフォルダは両方で通り、一致しないフォルダは両方で弾く)', async () => {
-    await records.whenLoaded()
-    records.record('/work', ID)
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
     const service = makeStarterService()
-    await expect(service.lastSessionOf(1, '/work/.')).resolves.toEqual({ claudeSessionId: ID })
+    await expect(service.lastSessionOf(1, '/work/.', 'claude')).resolves.toEqual({
+      cliKind: 'claude',
+      claudeSessionId: ID
+    })
     await expect(
       service.start(1, { ...REQUEST, folderPath: '/work/.' }, makeSink())
     ).resolves.toMatchObject({ kind: 'started' })
-    await expect(service.lastSessionOf(1, '/other')).resolves.toBeNull()
+    await expect(service.lastSessionOf(1, '/other', 'claude')).resolves.toBeNull()
     await expect(
       service.start(1, { ...REQUEST, slotId: 'slot-2', folderPath: '/other' }, makeSink())
     ).resolves.toEqual({ kind: 'error', error: 'folder-mismatch' })
@@ -764,18 +808,18 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
 
   it('記録の読み込みの完了を待ってから先頭を返す', async () => {
     const read = deferred<string>()
-    records = createAgentSessionRecordStore(makeFakeRecordIo(read.promise))
-    const result = makeStarterService().lastSessionOf(1, '/work')
+    claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo(read.promise))
+    const result = makeStarterService().lastSessionOf(1, '/work', 'claude')
     read.resolve(recordFileOf([{ key: '/work', ids: [ID] }]))
-    await expect(result).resolves.toEqual({ claudeSessionId: ID })
+    await expect(result).resolves.toEqual({ cliKind: 'claude', claudeSessionId: ID })
   })
 
   it('正規化を待つ間に許可のフォルダが切り替わったら null(切り替え前のフォルダの記録を返さない)', async () => {
-    await records.whenLoaded()
-    records.record('/work', ID)
+    await claudeRecords.whenLoaded()
+    claudeRecords.record('/work', ID)
     const pending = deferred<string>()
     canonicalize.mockReturnValueOnce(pending.promise)
-    const result = makeStarterService().lastSessionOf(1, '/work')
+    const result = makeStarterService().lastSessionOf(1, '/work', 'claude')
     folderAccess.set(1, '/other')
     pending.resolve('/work')
     await expect(result).resolves.toBeNull()
@@ -783,14 +827,17 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
 })
 
 describe('createAgentSessionStarter(hooks)', () => {
-  /** whenLoaded だけを差し替えた記録(ほかは本物の records に任せる) */
+  /** claude の記録の whenLoaded だけを差し替えた記録の表(ほかは本物の claudeRecords・copilotRecords に任せる) */
   const recordsWithWhenLoaded = (
     whenLoaded: () => Promise<void>
   ): AgentSessionStarterDeps['records'] => ({
-    whenLoaded,
-    has: (key, id) => records.has(key, id),
-    last: (key) => records.last(key),
-    record: (key, id) => records.record(key, id)
+    claude: {
+      whenLoaded,
+      has: (key, id) => claudeRecords.has(key, id),
+      last: (key) => claudeRecords.last(key),
+      record: (key, id) => claudeRecords.record(key, id)
+    },
+    copilot: copilotRecords
   })
 
   const PREPARED: PreparedAgentHooks = {
@@ -812,7 +859,7 @@ describe('createAgentSessionStarter(hooks)', () => {
     const start = makeStarter({
       records: recordsWithWhenLoaded(async () => {
         order.push('whenLoaded')
-        await records.whenLoaded()
+        await claudeRecords.whenLoaded()
       })
     })
     await start(1, REQUEST, makeSink())
@@ -870,7 +917,7 @@ describe('createAgentSessionStarter(hooks)', () => {
     const start = makeStarter()
     await start(
       1,
-      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: NEW_IDS[4] } },
+      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: NEW_IDS[4], cliKind: 'claude' } },
       makeSink()
     )
     expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
@@ -983,10 +1030,18 @@ describe('createAgentSessionStarter(hooks)', () => {
       'records.whenLoaded() の reject',
       {
         records: {
-          whenLoaded: async () => Promise.reject(new Error('load failed')),
-          has: () => false,
-          last: () => null,
-          record: () => undefined
+          claude: {
+            whenLoaded: async () => Promise.reject(new Error('load failed')),
+            has: () => false,
+            last: () => null,
+            record: () => undefined
+          },
+          copilot: {
+            whenLoaded: async () => undefined,
+            has: () => false,
+            last: () => null,
+            record: () => undefined
+          }
         }
       }
     ],
@@ -1035,59 +1090,113 @@ describe('createAgentSessionStarter(hooks)', () => {
 
 describe('createAgentSessionStarter(CLI の種類)', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
+  const OTHER = '22222222-2222-4222-9222-222222222222'
   const COPILOT_LAUNCH: AgentLaunchResolution = {
     kind: 'ok',
     plan: { cliKind: 'copilot', file: '/bin/copilot', args: [], env: { PATH: '/p' } }
   }
+  const copilotResume = (claudeSessionId: string, slotId = 'slot-1'): AgentStartRequest => ({
+    ...REQUEST,
+    slotId,
+    launch: { kind: 'resume', claudeSessionId, cliKind: 'copilot' }
+  })
 
   beforeEach(async () => {
     resolveLaunch.mockResolvedValue(COPILOT_LAUNCH)
-    await records.whenLoaded()
+    await claudeRecords.whenLoaded()
+    await copilotRecords.whenLoaded()
   })
 
-  it('copilot の計画で起動すると、引数は空で、会話の ID を振らず・予約せず・記録せず、結果に copilot と null を載せる', async () => {
-    const recordSpy = vi.spyOn(records, 'record')
+  it('copilot の new は会話の ID を振って --session-id <ID> で起動し、予約し、copilot の記録だけに書き、結果に copilot と ID を載せる', async () => {
+    const claudeRecordSpy = vi.spyOn(claudeRecords, 'record')
     const reserveSpy = vi.spyOn(reservations, 'tryReserve')
     const { start, sessionInfoOf } = makeStarterService()
     await expect(start(1, REQUEST, makeSink())).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      claudeSessionId: NEW_IDS[0]
     })
-    expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [], {
+    expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', ['--session-id', NEW_IDS[0]], {
       name: 'xterm-256color',
       cols: 90,
       rows: 20,
       cwd: '/work',
       env: { PATH: '/p' }
     })
-    expect(recordSpy).not.toHaveBeenCalled()
-    expect(reserveSpy).not.toHaveBeenCalled()
+    expect(reserveSpy).toHaveBeenCalledExactlyOnceWith(NEW_IDS[0])
+    expect(copilotRecords.last('/work')).toBe(NEW_IDS[0])
+    expect(claudeRecordSpy).not.toHaveBeenCalled()
+    expect(claudeRecords.last('/work')).toBeNull()
+    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', claudeSessionId: NEW_IDS[0] })
+  })
+
+  it('copilot の resume は copilot の記録にある ID を --resume=<ID>(1 つの引数)で起動し、記録の先頭へ移す(新しく振らない)', async () => {
+    copilotRecords.record('/work', ID)
+    copilotRecords.record('/work', OTHER)
+    await expect(makeStarter()(1, copilotResume(ID), makeSink())).resolves.toEqual({
+      kind: 'started',
+      sessionId: 'sid-1',
+      cliKind: 'copilot',
+      claudeSessionId: ID
+    })
+    expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [`--resume=${ID}`], expect.any(Object))
+    expect(copilotRecords.last('/work')).toBe(ID)
     expect(claudeIdCount).toBe(0)
-    expect(records.last('/work')).toBeNull()
-    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', claudeSessionId: null })
   })
 
-  it('copilot で resume の依頼は resume-unsupported で断り、hooks.prepare も spawn も呼ばない(起動しない。L-041)', async () => {
-    records.record('/work', ID)
-    const start = makeStarter()
-    await expect(
-      start(1, { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID } }, makeSink())
-    ).resolves.toEqual({ kind: 'error', error: 'resume-unsupported' })
-    expect(hooks.prepare).not.toHaveBeenCalled()
+  it('claude の記録にだけある ID の copilot の再開は unknown-session で、spawn しない(claude の ID を copilot で再開する経路は無い)', async () => {
+    claudeRecords.record('/work', ID)
+    await expect(makeStarter()(1, copilotResume(ID), makeSink())).resolves.toEqual({
+      kind: 'error',
+      error: 'unknown-session'
+    })
     expect(spawnPty).not.toHaveBeenCalled()
-    expect(registry.snapshot(1)).toEqual([])
   })
 
-  it('copilot の already-running は、動いているセッションの種類と null を返す', async () => {
+  it('同じ ID の copilot の再開を 2 つ起動すると、2 つ目は session-in-use', async () => {
+    copilotRecords.record('/work', ID)
+    let count = 0
+    spawnPty.mockImplementation(() => makeFakePty())
+    const { start } = makeStarterService({ createSessionId: () => `sid-${++count}` })
+    await expect(start(1, copilotResume(ID), makeSink())).resolves.toMatchObject({
+      kind: 'started'
+    })
+    await expect(start(1, copilotResume(ID, 'slot-2'), makeSink())).resolves.toEqual({
+      kind: 'error',
+      error: 'session-in-use'
+    })
+  })
+
+  it('claude で動いている ID の copilot の再開は session-in-use(種類をまたいで共有の予約)', async () => {
+    claudeRecords.record('/work', ID)
+    copilotRecords.record('/work', ID)
+    let count = 0
+    spawnPty.mockImplementation(() => makeFakePty())
+    resolveLaunch.mockResolvedValueOnce(OK_LAUNCH)
+    const { start } = makeStarterService({ createSessionId: () => `sid-${++count}` })
+    await expect(
+      start(
+        1,
+        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' } },
+        makeSink()
+      )
+    ).resolves.toMatchObject({ kind: 'started', cliKind: 'claude', claudeSessionId: ID })
+    await expect(start(1, copilotResume(ID, 'slot-2'), makeSink())).resolves.toEqual({
+      kind: 'error',
+      error: 'session-in-use'
+    })
+    expect(spawnPty).toHaveBeenCalledOnce()
+  })
+
+  it('copilot の already-running は、動いているセッションの種類と ID を返す', async () => {
     const start = makeStarter()
     await start(1, REQUEST, makeSink())
     await expect(start(1, REQUEST, makeSink())).resolves.toEqual({
       kind: 'already-running',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      claudeSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -1110,7 +1219,19 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
       unavailableReason: null
     }))
     await makeStarter({ hooks })(1, REQUEST, makeSink())
-    expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [], expect.any(Object))
+    expect(spawnPty).toHaveBeenCalledWith(
+      '/bin/copilot',
+      ['--session-id', NEW_IDS[0]],
+      expect.any(Object)
+    )
+  })
+
+  it('lastSessionOf は copilot の依頼に copilot の記録の先頭を種類付きで返す', async () => {
+    copilotRecords.record('/work', ID)
+    await expect(makeStarterService().lastSessionOf(1, '/work', 'copilot')).resolves.toEqual({
+      cliKind: 'copilot',
+      claudeSessionId: ID
+    })
   })
 
   it('copilot の計画で起動したセッションの中断は、2 回目の案内(afterMs: 100)を返す(starter が計画の種類の送り方を渡す。L-018)', async () => {
@@ -1123,4 +1244,105 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     await makeStarter()(1, REQUEST, makeSink())
     expect(registry.interrupt(1, 'sid-1')).toEqual({ kind: 'sent', followUp: null })
   })
+})
+
+describe('createAgentSessionStarter(種類ごとの起動の記録と種類の照らし合わせ)', () => {
+  const ID = '11111111-1111-4111-8111-111111111111'
+
+  beforeEach(async () => {
+    await claudeRecords.whenLoaded()
+    await copilotRecords.whenLoaded()
+  })
+
+  it('resume の依頼の種類が起動の計画の種類と違えば resume-cli-mismatch で断り、hooks の準備・記録の読み込み・spawn をしない(L-018)', async () => {
+    claudeRecords.record('/work', ID)
+    const claudeWhenLoaded = vi.fn(() => claudeRecords.whenLoaded())
+    const copilotWhenLoaded = vi.fn(() => copilotRecords.whenLoaded())
+    const start = makeStarter({
+      records: {
+        claude: {
+          whenLoaded: claudeWhenLoaded,
+          has: (key, id) => claudeRecords.has(key, id),
+          last: (key) => claudeRecords.last(key),
+          record: (key, id) => claudeRecords.record(key, id)
+        },
+        copilot: {
+          whenLoaded: copilotWhenLoaded,
+          has: (key, id) => copilotRecords.has(key, id),
+          last: (key) => copilotRecords.last(key),
+          record: (key, id) => copilotRecords.record(key, id)
+        }
+      }
+    })
+    await expect(
+      start(
+        1,
+        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'copilot' } },
+        makeSink()
+      )
+    ).resolves.toEqual({ kind: 'error', error: 'resume-cli-mismatch' })
+    expect(hooks.prepare).not.toHaveBeenCalled()
+    expect(claudeWhenLoaded).not.toHaveBeenCalled()
+    expect(copilotWhenLoaded).not.toHaveBeenCalled()
+    expect(spawnPty).not.toHaveBeenCalled()
+    expect(registry.snapshot(1)).toEqual([])
+  })
+
+  it('resume の依頼の種類が計画の種類と同じなら起動する(照らし合わせは依頼の種類で起動の種類を変えない)', async () => {
+    claudeRecords.record('/work', ID)
+    await expect(
+      makeStarter()(
+        1,
+        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' } },
+        makeSink()
+      )
+    ).resolves.toEqual({
+      kind: 'started',
+      sessionId: 'sid-1',
+      cliKind: 'claude',
+      claudeSessionId: ID
+    })
+    expect(spawnPty).toHaveBeenCalledWith(
+      '/bin/claude',
+      ['--x', '--resume', ID],
+      expect.any(Object)
+    )
+  })
+
+  it('claude の起動は claude の記録だけに書き、copilot の記録に触れない', async () => {
+    const copilotRecordSpy = vi.spyOn(copilotRecords, 'record')
+    const copilotHasSpy = vi.spyOn(copilotRecords, 'has')
+    await expect(makeStarter()(1, REQUEST, makeSink())).resolves.toMatchObject({
+      kind: 'started',
+      claudeSessionId: NEW_IDS[0]
+    })
+    expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
+    expect(copilotRecords.last('/work')).toBeNull()
+    expect(copilotRecordSpy).not.toHaveBeenCalled()
+    expect(copilotHasSpy).not.toHaveBeenCalled()
+  })
+
+  it.each<[string, () => Promise<string>]>([
+    ['読み込みが終わらない', () => new Promise<string>(() => undefined)],
+    [
+      '読み込みが失敗する',
+      async () => Promise.reject(Object.assign(new Error('denied'), { code: 'EACCES' }))
+    ]
+  ])(
+    'copilot の記録の%sときも、claude の起動と記録は今と同じ(別のファイル・別の store。L-002・L-006)',
+    async (_label, read) => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      copilotRecords = createAgentSessionRecordStore({
+        read: vi.fn(read),
+        write: vi.fn(async () => undefined)
+      })
+      await expect(makeStarter()(1, REQUEST, makeSink())).resolves.toEqual({
+        kind: 'started',
+        sessionId: 'sid-1',
+        cliKind: 'claude',
+        claudeSessionId: NEW_IDS[0]
+      })
+      expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
+    }
+  )
 })

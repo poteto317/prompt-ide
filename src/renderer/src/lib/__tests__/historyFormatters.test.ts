@@ -47,6 +47,7 @@ describe('getHistoryToolLabel', () => {
         toolId: 'claude',
         agent: {
           claudeSessionId: '11111111-1111-4111-8111-111111111111',
+          cliKind: 'claude',
           tabLabel: 'claude 2',
           folderPath: '/w'
         }

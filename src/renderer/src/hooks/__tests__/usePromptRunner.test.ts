@@ -8,6 +8,30 @@ import type { PreparedAgentReferences } from '../../lib/agentReferenceCandidates
 import { makeAgentReferencesState } from '../../__tests__/makeAgentReferencesState'
 import type { AgentReferencesState } from '../useAgentReferences'
 import { usePromptRunner } from '../usePromptRunner'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 会話の ID を持たない種類(sessionResume が偽)の記録の省略を確かめるため、能力の表を差し替える(段階 3a で copilot も再開に
+// 対応し、今の表には該当する種類が無い)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
+  })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
 
 const prompt: Prompt = {
   id: 'p1',
@@ -32,7 +56,15 @@ const historyEntry: HistoryEntry = {
 
 const SENT_TO: AgentHistoryInfo = {
   claudeSessionId: '11111111-1111-4111-8111-111111111111',
+  cliKind: 'claude',
   tabLabel: 'claude 2',
+  folderPath: '/repo'
+}
+
+const COPILOT_SENT_TO: AgentHistoryInfo = {
+  claudeSessionId: '33333333-3333-4333-8333-333333333333',
+  cliKind: 'copilot',
+  tabLabel: 'copilot 1',
   folderPath: '/repo'
 }
 
@@ -307,6 +339,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
   afterEach(() => {
     consoleErrorSpy?.mockRestore()
     consoleErrorSpy = null
+    capabilityOverrides.sessionResumeUnsupportedKinds.clear()
   })
 
   it('送れたら(onSent)、送った全文(参照を含む)と控えた送り先を status: sent で記録する', async () => {
@@ -336,7 +369,25 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     expect(consoleErrorSpy).toHaveBeenCalled()
   })
 
-  it('会話の ID を持たない種類(copilot。sessionResume が偽)の送り先で送れたときは、参照の後始末だけ行い、記録もログもしない(段階 3 で記録する)', async () => {
+  it('copilot の送り先で送れたら、cliKind: copilot のエントリを記録する(ツールの欄は claude のまま。段階 3a)', async () => {
+    const { onSent, addHistoryEntry } = await runAndTakeOnSent()
+    onSent(COPILOT_SENT_TO, 'copilot')
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ status: 'sent', toolId: 'claude', agent: COPILOT_SENT_TO })
+    )
+  })
+
+  it('copilot の送り先で送り先を控えられなかった(null)ときは、claude と同じく記録を省いてログに残す', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
+    onSent(null, 'copilot')
+    expect(agentReferences.markSent).toHaveBeenCalledOnce()
+    expect(addHistoryEntry).not.toHaveBeenCalled()
+    expect(consoleErrorSpy).toHaveBeenCalled()
+  })
+
+  it('会話の ID を持たない種類(能力の表を差し替えた copilot)の送り先で送れたときは、参照の後始末だけ行い、記録もログもしない', async () => {
+    capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
     onSent(null, 'copilot')
@@ -406,6 +457,7 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
     const resent = {
       ...SENT_TO,
       claudeSessionId: '22222222-2222-4222-9222-222222222222',
+      cliKind: 'claude',
       tabLabel: 'claude 1'
     }
     sendToAgent.mock.calls[0][1].onSent?.(resent, 'claude')
@@ -421,31 +473,32 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
     expect(agentReferences.markSent).not.toHaveBeenCalled()
   })
 
-  it('copilot のタブへ再実行して送れたとき(sentTo が null)は、記録もログもしない', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    try {
-      const addHistoryEntry = vi.fn()
-      const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
-        async () => undefined
-      )
-      const { result } = renderHook(() =>
-        usePromptRunner({
-          openFile,
-          folderPath: '/repo',
-          executePrompt: vi.fn(),
-          addHistoryEntry,
-          executionMode: 'agent-cli',
-          sendToAgent,
-          agentReferences: makeAgentReferencesState()
-        })
-      )
-      await result.current.rerunHistoryEntry(agentEntry)
-      sendToAgent.mock.calls[0][1].onSent?.(null, 'copilot')
-      expect(addHistoryEntry).not.toHaveBeenCalled()
-      expect(consoleError).not.toHaveBeenCalled()
-    } finally {
-      consoleError.mockRestore()
-    }
+  it('copilot のタブへ再実行して送れたときは、copilot の送り先で新しいエントリを記録する(エントリの種類は見ない)', async () => {
+    const addHistoryEntry = vi.fn()
+    const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+      async () => undefined
+    )
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        folderPath: '/repo',
+        executePrompt: vi.fn(),
+        addHistoryEntry,
+        executionMode: 'agent-cli',
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
+      })
+    )
+    await result.current.rerunHistoryEntry(agentEntry)
+    sendToAgent.mock.calls[0][1].onSent?.(COPILOT_SENT_TO, 'copilot')
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        promptId: 'p2',
+        promptContent: '送った全文\n\n参照:\n- @src/app.ts',
+        status: 'sent',
+        agent: COPILOT_SENT_TO
+      })
+    )
   })
 
   it('従来の方式ではエージェントのエントリを再実行しない(処理の側の守り。L-058)', async () => {

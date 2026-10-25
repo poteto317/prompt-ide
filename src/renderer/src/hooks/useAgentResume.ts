@@ -3,6 +3,7 @@ import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, AgentLaunchRequest, PromptExecutionMode } from '@shared/types'
 import type { HistoryActionAvailability, HistoryEntry } from '../types'
 import type { AgentSessionsState } from './useAgentSessions'
+import { knownAgentCliKindOf } from '@shared/historyAgentCliKind'
 import { useAgentLastSession } from './useAgentLastSession'
 import { useLatestRef } from './useLatestRef'
 import {
@@ -10,7 +11,7 @@ import {
   getResumeLastDisabledReason
 } from '../lib/agentResumeAvailability'
 
-// claude のセッションの再開の入口(ターミナルのタブの「前回の続きから」・実行の履歴の「このセッションで再開」)の押せない理由と
+// エージェント CLI のセッションの再開の入口(ターミナルのタブの「前回の続きから」・実行の履歴の「このセッションで再開」)の押せない理由と
 // 操作の組み立て(セッションの再開の設計書「前回の続きから」「このセッションで再開」)。押せない理由の規則は
 // lib/agentResumeAvailability.ts。useAgentWorkspace から使う
 
@@ -61,6 +62,7 @@ export function useAgentResume({
   // 「同じ ID が動いている」理由は取り直しではなく、描画ごとのタブの状態から求める(getResumeLastDisabledReason)
   const lastSession = useAgentLastSession({
     folderPath,
+    cliKind: appCliKind,
     enabled: mode === 'agent-cli',
     refreshKey: String(sessions.startConfirmedCount)
   })
@@ -79,7 +81,8 @@ export function useAgentResume({
       if (reason !== null || current.kind !== 'found') return
       const launch: AgentLaunchRequest = {
         kind: 'resume',
-        claudeSessionId: current.claudeSessionId
+        claudeSessionId: current.claudeSessionId,
+        cliKind: current.cliKind
       }
       void startAgentSession(slotId, launch)
     },
@@ -105,7 +108,12 @@ export function useAgentResume({
     if (entry.agent === null) return
     // 押した時点の条件で求め直し、押せないときは何もしない(ボタンは押せないが、処理の側でも同じ条件で守る。L-058)
     if (resumeEntryReasonOf(entry.agent) !== null) return
-    const slotId = sessions.resumeInNewTab(entry.agent.claudeSessionId)
+    // 送り先の種類をこの版の種類として読む。知らない種類(新しい版の種類)・設定と違う種類は、上の押せない理由
+    // (agentResumeAvailability.ts)で止まっている。ここでは種類を型として絞るために読み直し、知らない種類は何もしない。
+    // 設定と同じ種類をそのまま渡し、押した後に別のウィンドウで設定が変わっていれば main が resume-cli-mismatch で断る
+    const entryCliKind = knownAgentCliKindOf(entry.agent)
+    if (entryCliKind === null) return
+    const slotId = sessions.resumeInNewTab(entry.agent.claudeSessionId, entryCliKind)
     // タブを足せなかった(押してから条件が変わった)ら何もしない。起動の失敗は足したタブのエラーとして出る
     if (slotId !== null) activateTab(slotId)
   }

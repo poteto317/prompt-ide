@@ -20,12 +20,12 @@ export const AGENT_SLOT_ID_MAX_LENGTH = 64
 /** renderer が発行するタブ(枠)の id の形式(英数字とハイフンの 1〜AGENT_SLOT_ID_MAX_LENGTH 文字) */
 export const AGENT_SLOT_ID_PATTERN = new RegExp(`^[A-Za-z0-9-]{1,${AGENT_SLOT_ID_MAX_LENGTH}}$`)
 
-/** claude の会話の ID の形式(小文字の UUID v4 の厳密な形式)。main は新しい ID を crypto.randomUUID() で作り、再開の依頼の ID も
- *  この形式で検証する(`-` 始まりの値が claude のオプションとして解釈される経路を断つ。L-034) */
+/** エージェント CLI(claude・copilot)の会話の ID の形式(小文字の UUID v4 の厳密な形式)。main は新しい ID を crypto.randomUUID() で作り、
+ *  再開の依頼の ID もこの形式で検証する(`-` 始まりの値が CLI のオプションとして解釈される経路を断つ。L-034) */
 export const CLAUDE_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
-/** claude の会話の ID の形式に当たる文字列か */
+/** エージェント CLI の会話の ID の形式に当たる文字列か */
 export function isClaudeSessionId(value: unknown): value is string {
   return typeof value === 'string' && CLAUDE_SESSION_ID_PATTERN.test(value)
 }
@@ -42,13 +42,19 @@ export type AgentTerminalErrorKind =
   | 'too-many-sessions'
   /** 再開の ID が許可のフォルダの起動の記録に無い(main が振った ID でない・ほかのフォルダの ID・古くなって記録から落ちた) */
   | 'unknown-session'
-  /** 同じ ID の claude がほかのタブかウィンドウで起動中・実行中・止まりきる前 */
+  /** 同じ ID のエージェント CLI がほかのタブかウィンドウで起動中・実行中・止まりきる前 */
   | 'session-in-use'
   /** 再開の依頼だが、使う CLI が再開に対応していない(main の能力の表) */
   | 'resume-unsupported'
+  /** 再開の依頼の種類が、main が起動のたびに読んだ設定の種類と違う(別のウィンドウで設定を変えた。起動しない) */
+  | 'resume-cli-mismatch'
 
-/** 起動の指定。renderer は列挙型だけを渡し、コマンドと引数の並び(--session-id / --resume)は main が決める(L-019) */
-export type AgentLaunchRequest = { kind: 'new' } | { kind: 'resume'; claudeSessionId: string }
+/** 起動の指定。renderer は列挙型だけを渡し、コマンドと引数の並び(--session-id / --resume)は main が決める(L-019)。
+ *  resume の cliKind は押した時点の設定の種類で、main は読んだ設定の種類との照らし合わせにだけ使う(起動の種類は main の値。L-018)。
+ *  省略させない(L-060) */
+export type AgentLaunchRequest =
+  | { kind: 'new' }
+  | { kind: 'resume'; claudeSessionId: string; cliKind: AgentCliKind }
 
 export interface AgentStartRequest {
   /** renderer が発行するタブ(枠)の id。1 つの枠に 1 つのセッション */
@@ -57,7 +63,7 @@ export interface AgentStartRequest {
   folderPath: string
   cols: number
   rows: number
-  /** 新しく起動するか、起動の記録にある claude のセッションを再開するか(省略できない。既定の new に流さない。L-044) */
+  /** 新しく起動するか、起動の記録にあるセッションを再開するか(省略できない。既定の new に流さない。L-044) */
   launch: AgentLaunchRequest
 }
 
@@ -67,7 +73,7 @@ export type AgentStartResult =
       sessionId: string
       /** main がこの起動に使った CLI の種類(already-running は動いているセッションの種類) */
       cliKind: AgentCliKind
-      /** claude の会話の ID。sessionResume が true の種類では必ず文字列、false の種類では null。already-running は動いているセッションの ID(依頼の launch は使わない) */
+      /** エージェント CLI の会話の ID(claude・copilot)。sessionResume が true の種類では必ず文字列、false の種類では null。already-running は動いているセッションの ID(依頼の launch は使わない) */
       claudeSessionId: string | null
     }
   | {
@@ -127,12 +133,14 @@ export interface AgentSessionSnapshotEntry {
   sessionId: string
   /** そのセッションの CLI の種類(作り直しの後の合わせ込みで、タブの種類を合わせる) */
   cliKind: AgentCliKind
-  /** そのセッションの claude の会話の ID。再開に対応しない種類では null */
+  /** そのセッションのエージェント CLI の会話の ID。再開に対応しない種類では null */
   claudeSessionId: string | null
 }
 
-/** このフォルダで最後に起動が確定した claude のセッション(「前回の続きから」の再開の相手) */
+/** このフォルダで最後に起動が確定した、依頼した種類のセッション(「前回の続きから」の再開の相手) */
 export interface AgentLastSession {
+  /** 依頼した種類(renderer は依頼と違う種類の結果を捨てる。L-037) */
+  cliKind: AgentCliKind
   claudeSessionId: string
 }
 

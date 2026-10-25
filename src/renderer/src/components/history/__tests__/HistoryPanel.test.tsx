@@ -208,6 +208,7 @@ describe('HistoryPanel: エントリごとの操作', () => {
       resultText: null,
       agent: {
         claudeSessionId: '11111111-1111-4111-8111-111111111111',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/w'
       }
@@ -240,6 +241,7 @@ describe('HistoryPanel: エントリごとの操作', () => {
       resultText: null,
       agent: {
         claudeSessionId: '22222222-2222-4222-8222-222222222222',
+        cliKind: 'claude',
         tabLabel: 'claude 1',
         folderPath: '/w'
       }

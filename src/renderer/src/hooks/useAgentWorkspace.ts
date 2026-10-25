@@ -162,6 +162,14 @@ export function useAgentWorkspace({
   const activities = useAgentActivity({ tabs: agentSessions.tabs })
   // タブの活動が作業中に変わったら、main へ知らせる(hooks が効いているかの確かめ。画面・一覧は変えない)
   useAgentHooksWorkingReport({ tabs: agentSessions.tabs, activities })
+  // 再開の失敗の見分け(設計書 2026-10-23「再開の失敗の見分け方と伝え方」): 活動が unknown 以外になったタブを、そのタブの今の起動に控える。
+  // 活動は useAgentSessions の後で判定するため、effect で渡す(noteScreenActivity は参照が安定)
+  const { noteScreenActivity } = agentSessions
+  useEffect(() => {
+    for (const [slotId, activity] of activities) {
+      if (activity !== 'unknown') noteScreenActivity(slotId)
+    }
+  }, [activities, noteScreenActivity])
   // sender は中断の hook より先に作る(中断の押せる条件が送信中を使う)ため、押した時点の「そのタブが中断の流れの間か」は ref から引く。
   // ref は下の effect で useAgentInterrupt の isInterrupting(参照が安定)を入れる(描画の中で ref を書かない。最初の effect の前は
   // 中断の流れの外〈false〉。送信はマウントの後にしか起きない)
@@ -194,7 +202,7 @@ export function useAgentWorkspace({
   const focusPromptRun = usePromptRunFocus({ isBlocked: agentSender.isSending })
   // 送信前の確認(設計書「流れ」)。送り先は確認を開いた時点の選択中のタブ。確認は送信を押した時点で閉じるが、フォーカスは送信が
   // 終わるまで移さない(送信の前の準備〈変更の記録。最大 10 秒〉の間は sender がキー入力を保留しないため、先にターミナルへ移すと
-  // 打った文字が claude へ直接届く)。送れたらそのタブのターミナルへ、失敗したら確認を開いた時点の要素(履歴の詳細の再実行 など。
+  // 打った文字がタブの CLI へ直接届く)。送れたらそのタブのターミナルへ、失敗したら確認を開いた時点の要素(履歴の詳細の再実行 など。
   // 一覧は隠れていることがある)へ、それが無ければ同じプロンプトの実行へ戻す。
   // ただし、フォーカスが閉じたダイアログから body へ落ちたままのときだけ移す。送信中に利用者が別の場所(エディタ・
   // クイックオープン・通知で選んだ別のタブ など)へ移していれば、送れてもタブの選択を戻さず、フォーカスも奪わない
@@ -208,7 +216,7 @@ export function useAgentWorkspace({
     },
     [activateAgentTab, focusPromptRun]
   )
-  // 送り先の claude のセッションを控える関数(設計書「履歴への記録」)。slotId のタブの今の状態と開いているフォルダを ref から引き、
+  // 送り先のエージェント CLI のセッションを控える関数(設計書「履歴への記録」)。slotId のタブの今の状態と開いているフォルダを ref から引き、
   // sender が送信の手順を始める時点(beginSending の直前)に呼ぶ(L-037)。タブの状態(useAgentSessions)は送信の手段を知らないままにする
   const describeSourceRef = useLatestRef({ tabs: agentSessions.tabs, folderPath })
   const describeSessionOf = useCallback(
@@ -327,7 +335,7 @@ export function useAgentWorkspace({
     activateTab: activateAgentTab
   })
   // 通知を押したときのタブへの移動。送信前の確認が開いていれば、送らずに先に閉じる(利用者が別の作業へ移ったため。L-405)。
-  // 確認はモーダルで背後を覆うので、開いたままターミナルへフォーカスを移すと、閉じるつもりの Esc・Enter が claude へ届く。
+  // 確認はモーダルで背後を覆うので、開いたままターミナルへフォーカスを移すと、閉じるつもりの Esc・Enter がタブの CLI へ届く。
   // ステータスバーのまとめは、確認の背景に覆われて押せないため包まない
   const activateAgentTabFromNotification = useCallback(
     (slotId: string): void => {
