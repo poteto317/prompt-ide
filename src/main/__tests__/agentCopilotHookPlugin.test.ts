@@ -167,6 +167,44 @@ describe('createCopilotHookPluginSlots(書き直し。実 fs)', () => {
   )
 
   it.skipIf(!POSIX)(
+    'hooks のフォルダがシンボリックリンクなら、リンクだけを消して実体のフォルダに hooks.json を書く(リンク先には書かない。L-016)',
+    async () => {
+      const slots = slotsOf()
+      const slot = slots.acquire()
+      if (slot === null) throw new Error('枠が無い')
+      await slots.write(slot, buildCopilotHookConfig({ baseUrl: BASE, token: TOKEN }))
+      const hooksDir = join(slot.dir, 'hooks')
+      const target = join(dir, 'elsewhere-hooks')
+      mkdirSync(target, { mode: 0o700 })
+      writeFileSync(join(target, 'keep.txt'), 'keep')
+      removeTempPathSync(hooksDir)
+      symlinkSync(target, hooksDir)
+      await slots.write(slot, buildCopilotHookConfig({ baseUrl: BASE, token: OTHER_TOKEN }))
+      expect(lstatSync(hooksDir).isSymbolicLink()).toBe(false)
+      expect(modeOf(hooksDir)).toBe(0o700)
+      expect(readFileSync(hooksFileOf(slot.dir), 'utf8')).toContain(OTHER_TOKEN)
+      expect(readdirSync(target)).toEqual(['keep.txt'])
+    }
+  )
+
+  it.skipIf(!POSIX)(
+    'グループ・他人も書ける(0777)hooks のフォルダは使わず、消して 0700 で作り直す(L-437)',
+    async () => {
+      const slots = slotsOf()
+      const slot = slots.acquire()
+      if (slot === null) throw new Error('枠が無い')
+      await slots.write(slot, buildCopilotHookConfig({ baseUrl: BASE, token: TOKEN }))
+      const hooksDir = join(slot.dir, 'hooks')
+      chmodSync(hooksDir, 0o777)
+      writeFileSync(join(hooksDir, 'planted.txt'), 'x')
+      await slots.write(slot, buildCopilotHookConfig({ baseUrl: BASE, token: OTHER_TOKEN }))
+      expect(modeOf(hooksDir)).toBe(0o700)
+      expect(readdirSync(hooksDir)).toEqual(['hooks.json'])
+      expect(readFileSync(hooksFileOf(slot.dir), 'utf8')).toContain(OTHER_TOKEN)
+    }
+  )
+
+  it.skipIf(!POSIX)(
     '親のフォルダ(agent-hooks-copilot)の確かめに外れたら、作り直さずに reject する(ほかの枠の hooks.json を消さない。L-004)',
     async () => {
       const slots = slotsOf()
