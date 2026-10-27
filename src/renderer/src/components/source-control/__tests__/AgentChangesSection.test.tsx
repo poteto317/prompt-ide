@@ -739,6 +739,18 @@ describe('AgentChangesSection の利用者の変更との区別(区別の状態�
     '利用者の変更の区別は 10:50 からです（それより前の変更には印を付けません）。アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
   const excludedNote = formatAgentChangesExcludedNote(1)
 
+  it('設定の種類(cliKind)の名前で区別の文言を出し、copilot では区別している記録に精度の注記を足す', () => {
+    renderSection(
+      recordingView([makeAgentChangeEntry('a.txt')], { attribution: lateAndUnassigned }),
+      { cliKind: 'copilot' }
+    )
+    expect(
+      within(section()).getByText(
+        '利用者の変更の区別は 10:50 からです（それより前の変更には印を付けません）。アプリの中で copilot が動いていなかった間などの変更には、印を付けていません。copilot では、利用者の変更との区別が claude より粗くなります（許可の確認で断ったツールの後は、そのターンが終わるまでのあなたの編集もエージェントの変更として扱います）'
+      )
+    ).toBeInTheDocument()
+  })
+
   it('累積の一覧の上に区別の状態の 1 行を出す(読み上げの要素にしない)', () => {
     renderSection(
       recordingView([makeAgentChangeEntry('a.txt')], { attribution: lateAndUnassigned })

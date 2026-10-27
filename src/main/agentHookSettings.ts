@@ -5,11 +5,10 @@ import { tmpdir as osTmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   AGENT_HOOK_EVENT_NAMES,
-  AGENT_HOOK_TIMEOUT_SECONDS,
   AGENT_HOOK_TOOL_EVENTS,
   AGENT_HOOK_TOOL_MATCHER,
-  AGENT_PRE_TOOL_USE_HOOK_TIMEOUT_SECONDS,
-  agentHookPathOf
+  agentHookPathOf,
+  agentHookTimeoutSecondsOf
 } from './agentHookProtocol'
 import type { AgentHookEventName } from './agentHookProtocol'
 
@@ -46,10 +45,7 @@ export function buildAgentHookSettings({
         type: 'http',
         url: baseUrl + agentHookPathOf(event),
         headers: { Authorization: `Bearer ${token}` },
-        timeout:
-          event === 'PreToolUse'
-            ? AGENT_PRE_TOOL_USE_HOOK_TIMEOUT_SECONDS
-            : AGENT_HOOK_TIMEOUT_SECONDS
+        timeout: agentHookTimeoutSecondsOf(event)
       }
       const group: AgentHookMatcherGroup = AGENT_HOOK_TOOL_EVENTS.includes(event)
         ? { matcher: AGENT_HOOK_TOOL_MATCHER, hooks: [hook] }
@@ -127,7 +123,8 @@ export interface AgentHookSettingsDirOwner {
   uid: number | null
 }
 
-const currentOwner = (): AgentHookSettingsDirOwner => ({
+/** 今のプロセスの持ち主(isOwnPrivateDirStat に渡す。copilot のプラグインのフォルダの確かめにも使う) */
+export const currentAgentHookDirOwner = (): AgentHookSettingsDirOwner => ({
   platform: process.platform,
   uid: typeof process.getuid === 'function' ? process.getuid() : null
 })
@@ -156,7 +153,7 @@ export function createAgentHookSettingsDir({
   mkdtemp = (prefix) => fsMkdtemp(prefix),
   isPrivateDir = (path) =>
     lstat(path).then(
-      (stat) => isOwnPrivateDirStat(stat, currentOwner()),
+      (stat) => isOwnPrivateDirStat(stat, currentAgentHookDirOwner()),
       () => false
     ),
   rmSync = fsRmSync,

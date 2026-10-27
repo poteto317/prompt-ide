@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import type { ReactNode } from 'react'
 import { renderHook } from '@testing-library/react'
 import type { RenderHookResult } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentActivity } from '../../lib/agentActivity'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 
@@ -12,6 +12,35 @@ vi.mock('../../lib/agentTerminalApi', () => ({
   reportAgentSessionWorking: mockReport,
   reportAgentSessionWorkingEnded: mockReportEnded
 }))
+
+import type { AgentCliCapabilityOverrides } from '../../__tests__/agentCliCapabilityOverrides'
+
+// 区別をしない種類のタブを知らせない絞り込みを確かめるため、能力の表の changeAttribution を種類ごとに偽にできるようにする
+// (段階 3b で copilot も区別に対応し、今の表には該当する種類が無い)
+const capabilityOverrides = vi.hoisted(
+  (): AgentCliCapabilityOverrides => ({
+    unsupportedKinds: new Set<AgentCliKind>(),
+    promptSendUnsupportedKinds: new Set<AgentCliKind>(),
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>(),
+    changeAttributionUnsupportedKinds: new Set<AgentCliKind>()
+  })
+)
+vi.mock('@shared/agentCliKinds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@shared/agentCliKinds')>()
+  const { overrideAgentCliCapabilities } =
+    await import('../../__tests__/agentCliCapabilityOverrides')
+  return {
+    ...actual,
+    agentCliCapabilities: overrideAgentCliCapabilities(
+      actual.agentCliCapabilities,
+      capabilityOverrides
+    )
+  }
+})
+
+afterEach(() => {
+  capabilityOverrides.changeAttributionUnsupportedKinds.clear()
+})
 
 import { useAgentHooksWorkingReport } from '../useAgentHooksWorkingReport'
 import type {
@@ -178,8 +207,17 @@ describe('useAgentHooksWorkingReport(作業の終わり)', () => {
   })
 })
 
-describe('useAgentHooksWorkingReport(変更の区別をしない種類)', () => {
-  it('copilot のタブは、作業中・作業の終わりを知らせない(main の hooks は cli-unsupported で使わない)', () => {
+describe('useAgentHooksWorkingReport(変更の区別をする種類・しない種類)', () => {
+  it('copilot のタブも、作業中・作業の終わりを知らせる(段階 3b で copilot も区別に対応した)', () => {
+    const tabs = [tab('a', 'sid-a', 'copilot')]
+    const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
+    rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
+    expect(mockReport).toHaveBeenCalledExactlyOnceWith('sid-a')
+    expect(mockReportEnded).toHaveBeenCalledExactlyOnceWith('sid-a')
+  })
+
+  it('能力の表で区別をしない種類(差し替えた copilot)のタブは、作業中・作業の終わりを知らせない', () => {
+    capabilityOverrides.changeAttributionUnsupportedKinds.add('copilot')
     const tabs = [tab('a', 'sid-a', 'copilot')]
     const { rerender } = render({ tabs, activities: activitiesOf([['a', 'working']]) })
     rerender({ tabs, activities: activitiesOf([['a', 'idle']]) })
@@ -187,7 +225,8 @@ describe('useAgentHooksWorkingReport(変更の区別をしない種類)', () => 
     expect(mockReportEnded).not.toHaveBeenCalled()
   })
 
-  it('claude と copilot のタブが並んでいても、claude のタブだけを今までどおり知らせる', () => {
+  it('claude と区別をしない種類のタブが並んでいても、claude のタブだけを今までどおり知らせる', () => {
+    capabilityOverrides.changeAttributionUnsupportedKinds.add('copilot')
     const tabs = [tab('a', 'sid-a'), tab('b', 'sid-b', 'copilot')]
     const { rerender } = render({
       tabs,

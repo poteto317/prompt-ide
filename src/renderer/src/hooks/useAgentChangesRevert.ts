@@ -4,6 +4,7 @@ import type {
   AgentRevertAllResult,
   AgentRevertResult
 } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentChangesRunningOperation, Announcement } from '../types'
 import * as agentChangesApi from '../lib/agentChangesApi'
 import {
@@ -58,6 +59,8 @@ export interface AgentChangesRevertOptions {
   onConfirm?: (message: string) => boolean
   /** 戻す操作と取り消しで共有する実行(useAgentChangesWriteRunner) */
   runner: AgentChangesWriteRunner
+  /** 設定の種類。すべて戻すの確認の CLI の名前と精度の注記に使う(省略できない。L-060) */
+  cliKind: AgentCliKind
 }
 
 export interface AgentChangesRevertState {
@@ -105,6 +108,7 @@ export function useAgentChangesRevert({
   reloadOpenFiles,
   refreshAfterWrite,
   runner,
+  cliKind,
   onConfirm = confirm
 }: AgentChangesRevertOptions): AgentChangesRevertState {
   const {
@@ -238,7 +242,8 @@ export function useAgentChangesRevert({
       agentRunning,
       attribution: recording.attribution,
       startedAt: recording.startedAt,
-      excludedCount
+      excludedCount,
+      cliKind
     })
     if (!onConfirm(message)) return
     // 未保存の編集の破棄は、既存の「すべて取り消す」と同じく別の確認で承諾させる

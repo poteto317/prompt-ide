@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AgentChangesScope, GitStatusResult } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentChangesReviewAction, AgentDiffActions } from '../types'
 import type { AgentActivity } from '../lib/agentActivity'
 import type { AgentNotificationTab } from '../lib/agentNotificationEvents'
@@ -70,6 +71,8 @@ export interface AgentChangesPanelState {
   folderPath: string | null
   /** エージェント CLI 方式か。従来の方式では記録がある間だけ出す */
   isAgentMode: boolean
+  /** 設定の種類(useAgentWorkspace の appCliKind)。区別の文言の CLI の名前と精度の注記に使う(省略できない。L-060) */
+  cliKind: AgentCliKind
   onOpenDiff: (path: string) => void
 }
 
@@ -88,6 +91,8 @@ export interface AgentChangesWiringOptions {
   agentActivities: ReadonlyMap<string, AgentActivity>
   /** エージェント CLI 方式か(従来の方式ではセクションは記録がある間だけ出る) */
   isAgentMode: boolean
+  /** 設定の種類(useAgentWorkspace の appCliKind)。区別の文言の CLI の名前と精度の注記に使う(省略できない。L-060) */
+  cliKind: AgentCliKind
   diffTabs: Pick<DiffTabsState, 'diffTabs' | 'activeDiffTab' | 'openDiffTab' | 'closeDiffTab'>
   /** 開いている diff タブを取り直す(useDiffOperations.refreshDiff。quiet なら前の内容を出したまま取り直す) */
   refreshDiff: (options?: DiffRefreshOptions) => void
@@ -126,6 +131,7 @@ export function useAgentChangesWiring({
   agentTabs,
   agentActivities,
   isAgentMode,
+  cliKind,
   diffTabs,
   refreshDiff,
   agentDiffScope,
@@ -211,7 +217,8 @@ export function useAgentChangesWiring({
     confirmDiscardAnyDirty: fileSystem.confirmDiscardAnyDirty,
     reloadOpenFiles: fileSystem.reloadOpenFiles,
     refreshAfterWrite,
-    runner
+    runner,
+    cliKind
   })
   // 直前の戻す操作の取り消し(戻す操作と同じ runner で、同じ実行中の印・失敗の表示・全体ロックを共有する)
   const undo = useAgentChangesUndo({
@@ -273,6 +280,7 @@ export function useAgentChangesWiring({
     undo,
     folderPath,
     isAgentMode,
+    cliKind,
     onOpenDiff: (path) => diffTabs.openDiffTab({ path, kind: 'agent' })
   }
   return { agentChangesPanel, agentDiffActions, agentChangesReview }

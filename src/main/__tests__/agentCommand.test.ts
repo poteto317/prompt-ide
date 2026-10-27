@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -9,6 +9,7 @@ import {
   resolveAgentLaunch
 } from '../agentCommand'
 import type { ExecutableProbe } from '../agentCommand'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 
 const probeOf = (executables: string[]): ExecutableProbe =>
   vi.fn<ExecutableProbe>(async (path) => executables.includes(path))
@@ -325,7 +326,7 @@ describe('resolveAgentLaunch', () => {
 describe.skipIf(process.platform === 'win32')('isExecutableRegularFile(実 fs)', () => {
   let dir: string | null = null
   afterEach(async () => {
-    if (dir !== null) await rm(dir, { recursive: true, force: true })
+    if (dir !== null) removeTempPathSync(dir)
     dir = null
   })
 
@@ -418,7 +419,7 @@ describe('resolveAgentLaunch(CLI の種類)', () => {
     expect(claude.plan.env).not.toHaveProperty('CLAUDECODE')
   })
 
-  it('copilot の計画の環境変数には COPILOT_DISABLE_RESUME_AUTO_CD=1 を足し(利用者の 0 を上書き)、claude の計画は利用者の値のまま', async () => {
+  it('copilot の計画の環境変数には COPILOT_DISABLE_RESUME_AUTO_CD=1(利用者の 0 を上書き)と COPILOT_HOOK_ALLOW_LOCALHOST=1 を足し、claude の計画は利用者の値のまま', async () => {
     const env = { HOME: '/home/u', PATH: '/usr/bin', COPILOT_DISABLE_RESUME_AUTO_CD: '0' }
     const copilot = await resolveAgentLaunch({
       ...deps,
@@ -435,6 +436,8 @@ describe('resolveAgentLaunch(CLI の種類)', () => {
     if (copilot.kind !== 'ok' || claude.kind !== 'ok') throw new Error('not ok')
     expect(copilot.plan.env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('1')
     expect(claude.plan.env.COPILOT_DISABLE_RESUME_AUTO_CD).toBe('0')
+    expect(copilot.plan.env.COPILOT_HOOK_ALLOW_LOCALHOST).toBe('1')
+    expect(claude.plan.env).not.toHaveProperty('COPILOT_HOOK_ALLOW_LOCALHOST')
     // 計画の引数は空のまま(会話の指定は starter が起動の表の buildArgs で足す)
     expect(copilot.plan.args).toEqual([])
   })

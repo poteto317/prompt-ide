@@ -46,6 +46,17 @@ const mockHookSessions = vi.hoisted(() => ({
 }))
 const mockCreateAgentHookSessions = vi.hoisted(() => vi.fn(() => mockHookSessions))
 vi.mock('../agentHookSessions', () => ({ createAgentHookSessions: mockCreateAgentHookSessions }))
+const mockCopilotPlugins = vi.hoisted(() => ({
+  acquire: vi.fn(),
+  release: vi.fn(),
+  write: vi.fn(),
+  removeTokenFilesSync: vi.fn()
+}))
+const mockCreateCopilotHookPluginSlots = vi.hoisted(() => vi.fn(() => mockCopilotPlugins))
+vi.mock('../agentCopilotHookPlugin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agentCopilotHookPlugin')>()),
+  createCopilotHookPluginSlots: mockCreateCopilotHookPluginSlots
+}))
 
 import { createAgentHooksRuntime, nodeExecFile } from '../agentHooksRuntime'
 import type { AgentHooksRuntimeOptions } from '../agentHooksRuntime'
@@ -59,7 +70,8 @@ function createOptions(): AgentHooksRuntimeOptions {
     onPhaseChange: vi.fn(),
     onToolStart: vi.fn(async () => undefined),
     onToolStartTimedOut: vi.fn(),
-    devLog: vi.fn()
+    devLog: vi.fn(),
+    userDataDir: '/u/data'
   }
 }
 
@@ -132,7 +144,7 @@ describe('createAgentHooksRuntime', () => {
     }
   })
 
-  it('hooks の準備は同じ受け口・設定のディレクトリ・追跡・版の確認と、実物のファイルの書き込み・削除を使う', () => {
+  it('hooks の準備は同じ受け口・設定のディレクトリ・追跡・版の確認・copilot のプラグインのフォルダの枠と、実物のファイルの書き込み・削除を使う', () => {
     const runtime = createAgentHooksRuntime(createOptions())
     expect(mockCreateAgentHookSessions).toHaveBeenCalledOnce()
     const deps = firstArg(mockCreateAgentHookSessions)
@@ -142,19 +154,29 @@ describe('createAgentHooksRuntime', () => {
     expect(deps.versions).toBe(mockVersionReader)
     expect(deps.writeSettingsFile).toBe(writeAgentHookSettingsFile)
     expect(deps.removeSettingsFile).toBe(removeAgentHookSettingsFile)
+    expect(deps.copilotPlugins).toBe(mockCopilotPlugins)
     expect(runtime.sessions).toBe(mockHookSessions)
   })
 
-  it('追跡と、will-quit で片付ける同じ受け口・設定のディレクトリ・追跡を返す', () => {
+  it('copilot のプラグインのフォルダは <userData>/agent-hooks-copilot に置く(userData は渡された値。L-019)', () => {
+    createAgentHooksRuntime(createOptions())
+    expect(mockCreateCopilotHookPluginSlots).toHaveBeenCalledExactlyOnceWith({
+      rootDir: join('/u/data', 'agent-hooks-copilot')
+    })
+  })
+
+  it('追跡と、will-quit で片付ける同じ受け口・設定のディレクトリ・copilot のプラグインのフォルダの枠・追跡を返す', () => {
     const runtime = createAgentHooksRuntime(createOptions())
     expect(runtime.tracker).toBe(mockToolActivity)
     expect(runtime.lifecycleParts).toEqual({
       receiver: mockHookReceiver,
       settingsDir: mockHookSettingsDir,
+      copilotPlugins: mockCopilotPlugins,
       tracker: mockToolActivity
     })
     expect(runtime.lifecycleParts.receiver).toBe(mockHookReceiver)
     expect(runtime.lifecycleParts.settingsDir).toBe(mockHookSettingsDir)
+    expect(runtime.lifecycleParts.copilotPlugins).toBe(mockCopilotPlugins)
     expect(runtime.lifecycleParts.tracker).toBe(mockToolActivity)
   })
 })

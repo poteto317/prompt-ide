@@ -1,11 +1,13 @@
+import { isAbsolute } from 'node:path'
 import type { AgentLaunchRequest } from '@shared/types'
 import { isClaudeSessionId } from '@shared/types'
 import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 
 // CLI の種類ごとの起動の表(設計書 2026-10-20「起動の表」、2026-10-23「起動の引数と環境変数」)。コマンドの名前・引数・追加で取り除く・
-// 足す環境変数は main だけが決め、renderer からは受け取らない(L-019)。引数に入れるのは、main が振った・記録と照合した会話の ID と
-// main が作った設定のファイルの絶対パスだけ(L-034)。能力の表(sessionResume・changeAttribution)に合わない値が渡ったら投げる
+// 足す環境変数は main だけが決め、renderer からは受け取らない(L-019)。引数に入れるのは、main が振った・記録と照合した会話の ID と、
+// main が作った hooks の設定のファイル(claude)・プラグインのフォルダ(copilot)の絶対パスだけ(L-034)。能力の表(sessionResume)に
+// 合わない値が渡ったら投げる
 // (呼び出し側の取り違えを黙って捨てない。L-044)
 
 export interface AgentCliLaunchSpec {
@@ -17,13 +19,14 @@ export interface AgentCliLaunchSpec {
    *  名前は大文字で書く */
   extraEnv: Readonly<Record<string, string>>
   /**
-   * 起動の引数。claudeSessionId と hookSettingsPath は、能力の表で sessionResume・changeAttribution が true の種類だけが受け取り、
-   * false の種類に値が渡ったら投げる(呼び出し側の取り違えを黙って捨てない。L-044)
+   * 起動の引数。claudeSessionId は能力の表で sessionResume が true の種類だけが受け取り、false の種類に値が渡ったら投げる
+   * (呼び出し側の取り違えを黙って捨てない。L-044)。hookConfigPath は claude では設定のファイル(--settings)、copilot では
+   * プラグインのフォルダ(--plugin-dir)。hooks なしなら null
    */
   buildArgs(
     launch: AgentLaunchRequest,
     claudeSessionId: string | null,
-    hookSettingsPath: string | null
+    hookConfigPath: string | null
   ): string[]
 }
 
@@ -34,15 +37,15 @@ function throwUnknownLaunch(launch: never): never {
 
 /**
  * claude の起動の引数(MVP からの起動の引数と同じ中身。hooks の設計書「起動の引数」)。新しく起動するときは main が振った
- * ID を --session-id で、再開は記録と照合した ID を --resume で渡す。hookSettingsPath があれば後ろに --settings を足す
+ * ID を --session-id で、再開は記録と照合した ID を --resume で渡す。hookConfigPath があれば後ろに --settings を足す
  */
 function buildClaudeArgs(
   launch: AgentLaunchRequest,
   claudeSessionId: string | null,
-  hookSettingsPath: string | null
+  hookConfigPath: string | null
 ): string[] {
   if (claudeSessionId === null) throw new Error('claude の起動には会話の ID が要ります')
-  const settings = hookSettingsPath === null ? [] : ['--settings', hookSettingsPath]
+  const settings = hookConfigPath === null ? [] : ['--settings', hookConfigPath]
   switch (launch.kind) {
     case 'new':
       return ['--session-id', claudeSessionId, ...settings]
@@ -57,12 +60,13 @@ function buildClaudeArgs(
  * copilot の起動の引数(GitHub Copilot CLI 1.0.87 の記録。段階 3a)。新しく起動するときは main が振った ID を --session-id で、
  * 再開は記録と照合した ID を --resume=<ID> の 1 つの引数で渡す(--resume は値を省ける形なので、2 つに分けると ID が値として
  * 読まれない恐れがある)。再開に --session-id は使わない(copilot 側に無い ID は黙って新しい会話になる)。作業ディレクトリは
- * pty の cwd で決め、-C・--allow-*・--yolo などは付けない(保存先への自動の移動は extraEnv で止める)
+ * pty の cwd で決め、-C・--allow-*・--yolo などは付けない(保存先への自動の移動は extraEnv で止める)。hookConfigPath があれば
+ * 後ろに --plugin-dir を足す(段階 3b)
  */
 function buildCopilotArgs(
   launch: AgentLaunchRequest,
   claudeSessionId: string | null,
-  hookSettingsPath: string | null
+  hookConfigPath: string | null
 ): string[] {
   if (claudeSessionId === null) throw new Error('copilot の起動には会話の ID が要ります')
   // copilot の --resume は大文字小文字を区別せず、前方一致・名前でも照合し、UUID でない値は新しいセッションに落ちるので、
@@ -71,13 +75,16 @@ function buildCopilotArgs(
   if (!isClaudeSessionId(claudeSessionId)) {
     throw new Error('copilot の起動の会話の ID の形が正しくありません')
   }
-  if (hookSettingsPath !== null)
-    throw new Error('copilot の起動に hooks の設定のファイルは渡せません')
+  // main が作ったプラグインのフォルダの絶対パスしか来ない想定の最後の守り(L-034)。値を文言に入れない(L-017)
+  if (hookConfigPath !== null && !isAbsolute(hookConfigPath)) {
+    throw new Error('copilot の起動の hooks のフォルダのパスが正しくありません')
+  }
+  const pluginDir = hookConfigPath === null ? [] : ['--plugin-dir', hookConfigPath]
   switch (launch.kind) {
     case 'new':
-      return ['--session-id', claudeSessionId]
+      return ['--session-id', claudeSessionId, ...pluginDir]
     case 'resume':
-      return [`--resume=${claudeSessionId}`]
+      return [`--resume=${claudeSessionId}`, ...pluginDir]
     default:
       return throwUnknownLaunch(launch)
   }
@@ -94,10 +101,11 @@ export const AGENT_CLI_LAUNCH_SPECS: Record<AgentCliKind, AgentCliLaunchSpec> = 
     commandName: AGENT_CLI_PROFILES.copilot.commandName,
     // アプリが起動した CLI の許可を自動で全部にしない(claude に --dangerously-skip-permissions を付けないのと同じ方針)
     extraRemovedEnvKeys: ['COPILOT_ALLOW_ALL'],
-    // 再開したときに copilot の中の作業フォルダが保存先へ移るのを止める(許可のフォルダの外で動き出さない。-C と違い copilot の
-    // 保存先〈workspace.yaml の cwd〉を書き換えない。設計書 2026-10-23「-C ではなく環境変数にした理由」)。new では効かないが、
-    // 起動の計画を起動の指定に依存させないため常に足す
-    extraEnv: { COPILOT_DISABLE_RESUME_AUTO_CD: '1' },
+    // COPILOT_DISABLE_RESUME_AUTO_CD: 再開したときに copilot の中の作業フォルダが保存先へ移るのを止める(許可のフォルダの外で動き出さない。
+    // -C と違い copilot の保存先〈workspace.yaml の cwd〉を書き換えない。設計書 2026-10-23「-C ではなく環境変数にした理由」)。
+    // COPILOT_HOOK_ALLOW_LOCALHOST: 127.0.0.1 の受け口への http の hook を読ませる(無いと preToolUse を含む hooks のファイルが丸ごと
+    // 捨てられる。設計書 2026-10-26)。どちらも起動の計画を起動の指定・hooks の準備の結果に依存させないため常に足す
+    extraEnv: { COPILOT_DISABLE_RESUME_AUTO_CD: '1', COPILOT_HOOK_ALLOW_LOCALHOST: '1' },
     buildArgs: buildCopilotArgs
   }
 }

@@ -8,7 +8,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   symlinkSync,
   writeFileSync
@@ -25,6 +24,7 @@ import {
   writeAgentHookSettingsFile
 } from '../agentHookSettings'
 import type { AgentHookSettingsDirStat } from '../agentHookSettings'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 
 const TOKEN = 'ab'.repeat(32)
 const BASE = 'http://127.0.0.1:43210'
@@ -54,7 +54,8 @@ function useTempDir(): () => string {
     dir = mkdtempSync(join(tmpdir(), 'agent-hook-settings-'))
   })
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true })
+    // 準備が失敗して空のままなら消さない
+    if (dir !== '') removeTempPathSync(dir)
   })
   return () => dir
 }
@@ -155,7 +156,7 @@ describe('createAgentHookSettingsDir(実 fs)', () => {
   it('作ったディレクトリが外から消されていたら、次の ensure で作り直して新しいパスを返す', async () => {
     const settingsDir = createAgentHookSettingsDir({ tmpdir: tempDir })
     const first = await settingsDir.ensure()
-    rmSync(first, { recursive: true, force: true })
+    removeTempPathSync(first)
     const [second, concurrent] = await Promise.all([settingsDir.ensure(), settingsDir.ensure()])
     expect(second).not.toBe(first)
     expect(concurrent).toBe(second)
@@ -174,7 +175,7 @@ describe('createAgentHookSettingsDir(実 fs)', () => {
       const second = await settingsDir.ensure()
       expect(second).not.toBe(first)
       expect(statSync(second).mode & 0o777).toBe(0o700)
-      rmSync(first, { recursive: true, force: true })
+      removeTempPathSync(first)
     }
   )
 
@@ -185,7 +186,7 @@ describe('createAgentHookSettingsDir(実 fs)', () => {
       const first = await settingsDir.ensure()
       const elsewhere = mkdtempSync(join(tempDir(), 'elsewhere-'))
       chmodSync(elsewhere, 0o700)
-      rmSync(first, { recursive: true, force: true })
+      removeTempPathSync(first)
       symlinkSync(elsewhere, first)
       const second = await settingsDir.ensure()
       expect(second).not.toBe(first)

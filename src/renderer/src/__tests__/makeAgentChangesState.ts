@@ -343,7 +343,7 @@ export function makeAgentChangesUndoState(
 
 /**
  * セクション「エージェントの変更」へ渡す状態(isNotRepository を除く props)。changes・revert・undo は上のファクトリで作る。
- * 既定はエージェント CLI 方式・フォルダ '/repo'・フォーカスの依頼なし
+ * 既定はエージェント CLI 方式・フォルダ '/repo'・フォーカスの依頼なし・設定の種類 claude
  */
 export function makeAgentChangesPanelState(
   overrides: Partial<AgentChangesPanelState> = {}
@@ -353,6 +353,7 @@ export function makeAgentChangesPanelState(
     focusRequest: { isRequested: false, consume: vi.fn<() => void>() },
     revert: makeAgentChangesRevertState(),
     undo: makeAgentChangesUndoState(),
+    cliKind: 'claude',
     folderPath: '/repo',
     isAgentMode: true,
     onOpenDiff: vi.fn<AgentChangesPanelState['onOpenDiff']>(),

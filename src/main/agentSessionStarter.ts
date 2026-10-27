@@ -33,8 +33,8 @@ import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
 // 一致の確認にだけ使う。ここは起動の手順(照合・取り消しの確認・ID の選択・予約・spawn を await を挟まずに行う順序)と、起動の記録への
 // 書き込みの契機を持つ。各段の規則は別のモジュールにある: CLI の種類ごとの能力(再開の拒否・会話の ID と予約と記録の有無を分ける)は
 // shared/agentCliKinds.ts の agentCliCapabilities、起動に使う会話の ID の選択(新規は振る・再開は記録と照合)は
-// claudeSessionIdSelection.ts、引数(--session-id / --resume と --settings)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
-// 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts(種類ごとに 1 つ。起動の計画の種類の記録だけを使う)、claude の hooks の準備・結び付け・解放は
+// claudeSessionIdSelection.ts、引数(--session-id / --resume と、claude の --settings・copilot の --plugin-dir)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
+// 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts(種類ごとに 1 つ。起動の計画の種類の記録だけを使う)、hooks の準備・結び付け・解放は
 // agentHookSessions.ts
 
 /** 起動したセッションの出力の送り先(所有者の webContents。破棄済みかを確かめられる) */
@@ -61,7 +61,7 @@ export interface AgentSessionStarterDeps {
   >
   /** 全ウィンドウで共有する会話の ID の予約(種類をまたいで 1 つ。ID は main が振る UUID なので種類をまたいで重ならない) */
   reservations: Pick<ClaudeSessionReservations, 'tryReserve'>
-  /** claude の hooks の準備(prepare)・spawn の後の結び付け(activate)・終了での解放(release)。組み立ては agentHooksRuntime.ts
+  /** hooks の準備(prepare)・spawn の後の結び付け(activate)・終了での解放(release)。組み立ては agentHooksRuntime.ts
    *  (agentHookSessions)で、ipcHandlers.ts が渡す。省略できない(渡し忘れで hooks なしの起動に黙って倒れないように。L-060) */
   hooks: Pick<AgentHookSessions, 'prepare' | 'activate' | 'release'>
   /** 新しい会話の ID(再開に対応する種類〈claude・copilot〉の new で振る。既定は crypto.randomUUID) */
@@ -332,14 +332,14 @@ export function createAgentSessionStarter({
         id: sessionId,
         spawn: spawnPty,
         file: plan.file,
-        // 検証を通った ID と、main が作った設定のファイルの絶対パスをそのまま引数にする(L-018・L-034)。区別に対応しない種類には
-        // 設定のファイルを渡さない(起動の表が投げる)
+        // 検証を通った ID と、main が作った hooks の設定のファイル(claude)・プラグインのフォルダ(copilot)の絶対パスをそのまま引数にする
+        // (L-018・L-034)。区別に対応しない種類には hooks の値を渡さない
         args: [
           ...plan.args,
           ...AGENT_CLI_LAUNCH_SPECS[plan.cliKind].buildArgs(
             request.launch,
             claudeSessionId,
-            capabilities.changeAttribution ? (prepared.hooks?.settingsPath ?? null) : null
+            capabilities.changeAttribution ? (prepared.hooks?.configPath ?? null) : null
           )
         ],
         env: plan.env,
@@ -370,10 +370,10 @@ export function createAgentSessionStarter({
       cleanUpQuietly('予約', releaseReservation)
       cleanUpQuietly('hooks', () => hooks.release(prepared, sessionId))
     })
-    // spawn の直後(await を挟まず)にトークンを表へ足し、追跡にセッションを足す。claude の最初の知らせより先に済む。
+    // spawn の直後(await を挟まず)にトークンを表へ足し、追跡にセッションを足す。copilot の主の会話の ID は、ここで渡す起動に使った ID から始める。CLI の最初の知らせより先に済む。
     // 失敗しても起動は続ける(hooks の知らせが届かないだけで、追跡は pending か無いまま。終了で release が呼ばれる)
     try {
-      hooks.activate(prepared, sessionId)
+      hooks.activate(prepared, sessionId, claudeSessionId)
     } catch (err) {
       console.error('[agentSessionStarter] hooks の結び付けに失敗しました:', err)
     }

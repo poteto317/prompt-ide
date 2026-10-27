@@ -85,6 +85,7 @@ function makeOptions(
     agentTabs: [],
     agentActivities: new Map(),
     isAgentMode: true,
+    cliKind: 'claude',
     diffTabs: {
       diffTabs: [],
       activeDiffTab: null,
@@ -370,6 +371,14 @@ describe('useAgentChangesWiring', () => {
     })
   })
 
+  it('設定の種類(cliKind)をセクションの状態と戻す操作に渡す(省略できない。L-060)', () => {
+    const { result } = setup(makeOptions({ cliKind: 'copilot' }))
+    expect(result.current.agentChangesPanel.cliKind).toBe('copilot')
+    expect(mockUseAgentChangesRevert).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cliKind: 'copilot' })
+    )
+  })
+
   it('戻す操作(useAgentChangesRevert)に、記録の写し・ロック・タブとツリーの同期の操作を渡す', () => {
     const { options } = setup(makeOptions({ agentRunning: true }))
     const o = options()
@@ -384,7 +393,8 @@ describe('useAgentChangesWiring', () => {
       confirmDiscardAnyDirty: o.fileSystem.confirmDiscardAnyDirty,
       reloadOpenFiles: o.fileSystem.reloadOpenFiles,
       refreshAfterWrite: expect.any(Function),
-      runner: expect.objectContaining({ run: expect.any(Function), runningOperation: null })
+      runner: expect.objectContaining({ run: expect.any(Function), runningOperation: null }),
+      cliKind: 'claude'
     })
   })
 

@@ -13,10 +13,14 @@ import {
 import { createClaudeVersionReader } from './agentClaudeVersion'
 import type { ExecFileLike } from './agentClaudeVersion'
 import { createAgentHookSessions } from './agentHookSessions'
+import {
+  COPILOT_HOOK_PLUGIN_ROOT_DIR_NAME,
+  createCopilotHookPluginSlots
+} from './agentCopilotHookPlugin'
 import type { AgentHookSessions } from './agentHookSessions'
 import type { AgentHooksLifecycleParts } from './agentHooksLifecycle'
 
-// claude の hooks の実物の依存(子プロセス・ファイル・HTTP の受け口)の組み立て(agentRuntime.ts と同じく、ipcHandlers.ts から使い、
+// claude・copilot の hooks の実物の依存(子プロセス・ファイル・HTTP の受け口)の組み立て(agentRuntime.ts と同じく、ipcHandlers.ts から使い、
 // テストではこのモジュールごと差し替える)。Electron に依存しない。追跡・受け口のつなぎ先(合図の変化の通知・PreToolUse の待ち・
 // 待ちの打ち切り)と開発版のログの有無は ipcHandlers.ts が決めて渡す
 
@@ -40,6 +44,9 @@ export interface AgentHooksRuntimeOptions {
   onToolStartTimedOut: AgentHookReceiverDeps['onToolStartTimedOut']
   /** 開発版のログ(1 行ずつ)。null なら出さない */
   devLog: AgentToolActivityDeps['devLog']
+  /** アプリのデータのフォルダ(copilot のプラグインのフォルダ <userData>/agent-hooks-copilot の置き場)。ipcHandlers.ts が
+   *  app.getPath('userData') を渡す(このモジュールは Electron に依存しない) */
+  userDataDir: string
 }
 
 export interface AgentHooksRuntime {
@@ -55,7 +62,8 @@ export function createAgentHooksRuntime({
   onPhaseChange,
   onToolStart,
   onToolStartTimedOut,
-  devLog
+  devLog,
+  userDataDir
 }: AgentHooksRuntimeOptions): AgentHooksRuntime {
   const warn = (message: string): void => console.warn(message)
   const tracker = createAgentToolActivity({ onPhaseChange, devLog, warn })
@@ -67,7 +75,10 @@ export function createAgentHooksRuntime({
     log: warn
   })
   const settingsDir = createAgentHookSettingsDir()
-  // 起動ごとの hooks の準備(claude の版の確認 → 受け口 → 設定のファイル)・結び付け・解放
+  const copilotPlugins = createCopilotHookPluginSlots({
+    rootDir: join(userDataDir, COPILOT_HOOK_PLUGIN_ROOT_DIR_NAME)
+  })
+  // 起動ごとの hooks の準備(claude は版の確認 → 受け口 → 設定のファイル、copilot は受け口 → 枠 → プラグインのフォルダ)・結び付け・解放
   const sessions = createAgentHookSessions({
     receiver,
     settingsDir,
@@ -81,7 +92,8 @@ export function createAgentHooksRuntime({
     }),
     writeSettingsFile: writeAgentHookSettingsFile,
     removeSettingsFile: removeAgentHookSettingsFile,
+    copilotPlugins,
     log: warn
   })
-  return { tracker, sessions, lifecycleParts: { receiver, settingsDir, tracker } }
+  return { tracker, sessions, lifecycleParts: { receiver, settingsDir, copilotPlugins, tracker } }
 }

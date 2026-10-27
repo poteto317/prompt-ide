@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AgentChangesListResult, GitStatusResult } from '@shared/types'
 import type { Panel } from '../../types'
 
@@ -21,6 +21,7 @@ import {
   makeAgentChangeEntry,
   makeAgentChangesListResult,
   makeAgentChangesRecordingState,
+  makeAgentChangesTrackingSummary,
   makeAgentRevertResult
 } from '../../__tests__/makeAgentChangesState'
 
@@ -62,7 +63,14 @@ async function openRepository(): Promise<void> {
   )
 }
 
+// 設定の種類を書き換えるテストの後に、setup.ts の既定(claude)へ戻す
+const originalGetAgentCliKind = window.api.getAgentCliKind
+
 describe('App: エージェントの変更の配線', () => {
+  afterEach(() => {
+    window.api.getAgentCliKind = originalGetAgentCliKind
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     window.api.getPromptExecutionMode = vi.fn().mockResolvedValue('agent-cli')
@@ -120,6 +128,31 @@ describe('App: エージェントの変更の配線', () => {
       'new.txt をゴミ箱へ移動しますか？（記録を始めた後に作られたファイルです）戻した直後なら「戻した操作を取り消す」で取り消せます（内容が大きすぎるときを除く）。'
     )
     expect(window.api.revertAgentChange).toHaveBeenCalledWith('new.txt', { kind: 'all' })
+  })
+
+  it('設定の種類が copilot なら、区別の状態の 1 行に精度の注記が、すべて戻すの確認に copilot の文言と精度の注記が出る(配線)', async () => {
+    const PRECISION =
+      'copilot では、利用者の変更との区別が claude より粗くなります（許可の確認で断ったツールの後は、そのターンが終わるまでのあなたの編集もエージェントの変更として扱います）'
+    window.api.getAgentCliKind = vi.fn().mockResolvedValue({ kind: 'copilot', fallback: null })
+    window.api.listAgentChanges = vi.fn().mockResolvedValue(
+      makeAgentChangesListResult([makeAgentChangeEntry('a.txt')], {
+        startedAt: listedStartedAt,
+        attribution: makeAgentChangesTrackingSummary({ since: listedStartedAt })
+      })
+    )
+    window.confirm = vi.fn().mockReturnValue(false)
+    await openRepository()
+    await userEvent.click(panelButton('source-control'))
+    await userEvent.click(
+      await within(section()).findByRole('button', { name: 'いまから記録する' })
+    )
+    expect(await within(section()).findByText(PRECISION)).toBeInTheDocument()
+    await userEvent.click(within(section()).getByRole('button', { name: 'すべて戻す' }))
+    expect(window.confirm).toHaveBeenLastCalledWith(
+      expect.stringContaining(
+        `copilot を起動してから最初のプロンプトを送るまで・中断（Esc）の後にあなたが編集した内容は、エージェントの変更として戻ります。${PRECISION}。`
+      )
+    )
   })
 
   // 自動の取り直し(ウィンドウの focus)は静かに取る(review 第 4 周の 1・2)。一覧が同じなら diff を作り直さず、スクロールとフォーカスを保つ。

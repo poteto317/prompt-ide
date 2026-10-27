@@ -17,7 +17,8 @@ const capabilityOverrides = vi.hoisted(
   (): AgentCliCapabilityOverrides => ({
     unsupportedKinds: new Set<AgentCliKind>(),
     promptSendUnsupportedKinds: new Set<AgentCliKind>(),
-    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>(),
+    changeAttributionUnsupportedKinds: new Set<AgentCliKind>()
   })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {

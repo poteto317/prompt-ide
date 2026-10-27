@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
 import {
   mkdtempSync,
-  rmSync,
   readdirSync,
   readFileSync,
   writeFileSync,
@@ -97,6 +96,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import { readSettingsFile, writeSettingsFile, SettingsFileError } from '../settingsFileStore'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 
 const settingsPath = (): string => join(userDataDir.current, 'settings.json')
 
@@ -153,7 +153,8 @@ beforeEach(() => {
 afterEach(() => {
   consoleErrorSpy?.mockRestore()
   consoleErrorSpy = null
-  rmSync(userDataDir.current, { recursive: true, force: true })
+  // 準備が失敗して空のままなら消さない
+  if (userDataDir.current !== '') removeTempPathSync(userDataDir.current)
 })
 
 describe('writeSettingsFile の原子的な書き込み', () => {
@@ -267,7 +268,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
         expect(readdirSync(linkTargetDir)).toEqual(['real-settings.json'])
         expect(readFileSync(linkTarget, 'utf-8')).toBe(original)
       } finally {
-        rmSync(linkTargetDir, { recursive: true, force: true })
+        removeTempPathSync(linkTargetDir)
       }
     }
   )
@@ -410,7 +411,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
         expect(readdirSync(linkTargetDir)).toEqual(['real-settings.json'])
         expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
       } finally {
-        rmSync(linkTargetDir, { recursive: true, force: true })
+        removeTempPathSync(linkTargetDir)
       }
     }
   )
@@ -430,7 +431,7 @@ describe('writeSettingsFile の原子的な書き込み', () => {
         expect(readdirSync(linkTargetDir)).toEqual([])
         expect(readdirSync(userDataDir.current)).toEqual(['settings.json'])
       } finally {
-        rmSync(linkTargetDir, { recursive: true, force: true })
+        removeTempPathSync(linkTargetDir)
       }
     }
   )

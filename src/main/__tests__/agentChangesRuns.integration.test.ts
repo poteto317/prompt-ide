@@ -1,13 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import {
-  existsSync,
-  mkdirSync,
-  rmSync,
-  truncateSync,
-  unlinkSync,
-  utimesSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, truncateSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { AGENT_BASELINE_BLOB_MISSING_MESSAGE } from '../agentBaselineCoverage'
 import type { BaselineSnapshot } from '../agentBaselineSnapshot'
@@ -18,6 +10,7 @@ import {
 } from '../agentChangeDiff'
 import { listAgentChanges, listAgentChangesBetween } from '../agentChangesQuery'
 import { commitAll, initRepo, runGit, writeRepoFile } from './helpers/realGitRepo'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 import {
   createAgentBaselineRepo,
   createAgentNonGitFolder,
@@ -328,7 +321,8 @@ describe('Git 管理外のフォルダの実行ごとの一覧と diff(隠れた
     const base = await recordBaseline(folder, folderTemp)
     put('a.txt', 'a\nrun1\n')
     const second = await recordBaselineFrom(folder, folderTemp, base)
-    rmSync(base.gitDir ?? '', { recursive: true, force: true })
+    if (base.gitDir === null) throw new Error('隠れた git の記録ではない')
+    removeTempPathSync(base.gitDir)
     await expect(listAgentChangesBetween(base, second)).rejects.toThrow('記録が見つかりません')
     await expect(getAgentChangeDiffBetween(base, second, 'a.txt')).rejects.toThrow(
       '記録が見つかりません'

@@ -304,6 +304,8 @@ export function createAgentToolActivity({
   }
 
   const detailOf = (sessionId: string, event: AgentHookEvent): LogDetail => {
+    // id= は ID を読めたときだけ あり。読めない(unreadable)と、その CLI が ID を持たない(none。copilot)は なし。
+    // agent= は agent_id(copilot ではサブエージェントのグループ)があれば あり
     const hasId =
       event.kind === 'tool-start' || event.kind === 'tool-end'
         ? event.toolId.kind === 'read'

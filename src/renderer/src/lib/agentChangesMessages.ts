@@ -10,9 +10,13 @@ import type {
   AgentRevertUndoOutcome,
   AgentRevertUndoUnavailableReason
 } from '@shared/types'
+import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import { AGENT_CLI_ATTRIBUTION_PRECISION_NOTES } from './agentCliMessages'
 
 // エージェントの変更のセクション・確認のダイアログの文言(設計書「A の詳細」「確認ダイアログの文言」と、2026-10-13 の設計書の利用者の変更との区別の「確認の文言」)。
-// 純粋関数だけを置く。押せる条件(どの理由を選ぶかの優先順位)は agentChangesAvailability.ts に置く
+// 純粋関数だけを置く。押せる条件(どの理由を選ぶかの優先順位)は agentChangesAvailability.ts に置く。
+// 区別の文言の CLI の名前は、そのウィンドウの設定の種類(appCliKind)のコマンド名で作る(段階 3b。claude では今と 1 文字も変わらない)。
 
 export const AGENT_CHANGES_HEADING = 'エージェントの変更'
 export const AGENT_CHANGES_NONE_HINT = 'プロンプトの「実行」で、実行の前の状態の記録を始めます'
@@ -46,17 +50,24 @@ export function formatAgentChangesExcludedNote(count: number): string {
   return `すべて戻すは、利用者の変更（${count} 件）を除いて戻します`
 }
 
-/** 区別をやめた理由の文言(理由の型ごとに分ける。L-439) */
-export const AGENT_CHANGES_ATTRIBUTION_LOST_REASONS: Record<
-  AgentChangesAttributionLostReason,
-  string
-> = {
-  'hooks-not-confirmed': 'claude の hooks から知らせが届きません',
-  'receiver-unavailable': 'hooks の知らせの受け口を用意できませんでした',
-  'claude-version-unsupported': 'claude の版が古いか、版を確かめられませんでした',
-  'checkpoint-failed': '作業ツリーの記録に失敗しました',
-  'cli-unsupported':
-    '使っているエージェント CLI が区別に対応していません（claude だけが対応しています）'
+/** 区別をやめた理由の文言(理由の型ごとに分ける。L-439)。commandName は設定の種類のコマンド名 */
+export function agentChangesAttributionLostReason(
+  reason: AgentChangesAttributionLostReason,
+  commandName: string
+): string {
+  switch (reason) {
+    case 'hooks-not-confirmed':
+      return `${commandName} の hooks から知らせが届きません`
+    case 'receiver-unavailable':
+      return 'hooks の知らせの受け口を用意できませんでした'
+    case 'claude-version-unsupported':
+      return 'claude の版が古いか、版を確かめられませんでした'
+    case 'checkpoint-failed':
+      return '作業ツリーの記録に失敗しました'
+    case 'cli-unsupported':
+      // 今の能力の表では届かない(claude・copilot とも区別に対応している)。将来の種類の守り
+      return '使っているエージェント CLI が区別に対応していません'
+  }
 }
 
 /**
@@ -70,34 +81,55 @@ export function isAgentChangesAttributionDistinguishing(
 }
 
 /** 区別の状態の 1 行の、印を付けていない間があった旨(tracking・lost の hadUnassignedSince) */
-export const AGENT_CHANGES_UNASSIGNED_NOTE =
-  'アプリの中で claude が動いていなかった間などの変更には、印を付けていません'
+export function agentChangesUnassignedNote(commandName: string): string {
+  return `アプリの中で ${commandName} が動いていなかった間などの変更には、印を付けていません`
+}
 
-/**
- * 累積の一覧の上の区別の状態の 1 行(出さないなら null)。区別をやめた理由、区別を始めたのが記録の開始より後であること、
- * 印を付けていない間があったことを見える文字で伝える(L-057)
- */
-export function describeAgentChangesAttribution(
+/** 区別の状態の 1 行の、精度の注記を足す前の文(出さないなら null) */
+function describeAttributionState(
   attribution: AgentChangesAttributionSummary,
-  startedAt: number
+  startedAt: number,
+  commandName: string
 ): string | null {
   if (attribution.kind === 'lost') {
-    const reason = AGENT_CHANGES_ATTRIBUTION_LOST_REASONS[attribution.reason]
+    const reason = agentChangesAttributionLostReason(attribution.reason, commandName)
     if (!attribution.hadMarks) {
       return `利用者の変更を区別できません（${reason}）。すべてエージェントの変更として表示します`
     }
     // やめた時点で開いていた区間(最後の区切りから lostAt まで)は印が付かないため、lostAt より前にも印の無い間があることを伝える
     const lost = `${formatAgentChangesStartedAt(attribution.lostAt)} から利用者の変更を区別できなくなりました（${reason}）。それ以降の変更には印を付けません`
-    return attribution.hadUnassignedSince ? `${lost}。${AGENT_CHANGES_UNASSIGNED_NOTE}` : lost
+    return attribution.hadUnassignedSince
+      ? `${lost}。${agentChangesUnassignedNote(commandName)}`
+      : lost
   }
   if (attribution.since === null) return null
   const parts = [
     attribution.since > startedAt
       ? `利用者の変更の区別は ${formatAgentChangesStartedAt(attribution.since)} からです（それより前の変更には印を付けません）`
       : null,
-    attribution.hadUnassignedSince ? AGENT_CHANGES_UNASSIGNED_NOTE : null
+    attribution.hadUnassignedSince ? agentChangesUnassignedNote(commandName) : null
   ].filter((text): text is string => text !== null)
   return parts.length === 0 ? null : parts.join('。')
+}
+
+/**
+ * 累積の一覧の上の区別の状態の 1 行(出さないなら null)。区別をやめた理由、区別を始めたのが記録の開始より後であること、
+ * 印を付けていない間があったことを見える文字で伝える(L-057)。cliKind は設定の種類で、文言の CLI の名前と精度の注記に使う。
+ * 精度の注記は区別している記録(isAgentChangesAttributionDistinguishing)だけに、今の文の後に 。でつないで足す(今の文が無ければ注記だけ)
+ */
+export function describeAgentChangesAttribution(
+  attribution: AgentChangesAttributionSummary,
+  startedAt: number,
+  cliKind: AgentCliKind
+): string | null {
+  const base = describeAttributionState(
+    attribution,
+    startedAt,
+    AGENT_CLI_PROFILES[cliKind].commandName
+  )
+  const precision = AGENT_CLI_ATTRIBUTION_PRECISION_NOTES[cliKind]
+  if (precision === null || !isAgentChangesAttributionDistinguishing(attribution)) return base
+  return base === null ? precision : `${base}。${precision}`
 }
 
 export const AGENT_CHANGES_UNAVAILABLE_MESSAGES: Record<AgentChangesUnavailableReason, string> = {
@@ -409,10 +441,11 @@ const appendices = ({ savedInApp, hasUnsavedEdits, agentRunning }: RevertAppendi
 
 /**
  * 区別している記録のすべて戻すの確認の順 1(エージェントの変更として戻る利用者の編集〈ツールの実行中・猶予・許可の確認の待ち・
- * claude の起動から最初のプロンプトまで・中断の後〉をすべて言う。L-152)
+ * CLI の起動から最初のプロンプトまで・中断の後〉をすべて言う。L-152)。commandName は設定の種類のコマンド名
  */
-export const AGENT_REVERT_ALL_DISTINGUISHING_NOTE =
-  'エージェントのツールが動いている間（終わってから 2 秒・許可の確認を待つ間を含む）と、claude を起動してから最初のプロンプトを送るまで・中断（Esc）の後にあなたが編集した内容は、エージェントの変更として戻ります。'
+export function agentRevertAllDistinguishingNote(commandName: string): string {
+  return `エージェントのツールが動いている間（終わってから 2 秒・許可の確認を待つ間を含む）と、${commandName} を起動してから最初のプロンプトを送るまで・中断（Esc）の後にあなたが編集した内容は、エージェントの変更として戻ります。`
+}
 
 /** 利用者の変更の行(user・mixed)を行の ↶ で戻す確認の追記(user も言い切らず mixed と同じ文。L-006) */
 const AGENT_REVERT_FILE_USER_NOTE =
@@ -422,20 +455,25 @@ const AGENT_REVERT_FILE_USER_NOTE =
 function revertAllUserEditsNote(
   attribution: AgentChangesAttributionSummary,
   startedAt: number,
-  excludedCount: number
+  excludedCount: number,
+  cliKind: AgentCliKind
 ): string {
   const parts: string[] = []
   if (!isAgentChangesAttributionDistinguishing(attribution)) {
     parts.push('記録を始めた後にあなたが編集した内容も戻ります。')
   } else {
-    parts.push(AGENT_REVERT_ALL_DISTINGUISHING_NOTE)
+    const commandName = AGENT_CLI_PROFILES[cliKind].commandName
+    parts.push(agentRevertAllDistinguishingNote(commandName))
+    // 精度の注記は順 1 の直後(句点で終わらないので 。を足す)
+    const precision = AGENT_CLI_ATTRIBUTION_PRECISION_NOTES[cliKind]
+    if (precision !== null) parts.push(`${precision}。`)
     if (attribution.since !== null && attribution.since > startedAt) {
       parts.push(
         `${formatAgentChangesStartedAt(attribution.since)} より前のあなたの編集も戻ります。`
       )
     }
     if (attribution.hadUnassignedSince) {
-      parts.push('アプリの中で claude が動いていなかった間などのあなたの編集も戻ります。')
+      parts.push(`アプリの中で ${commandName} が動いていなかった間などのあなたの編集も戻ります。`)
     }
     if (attribution.kind === 'lost') {
       parts.push(
@@ -501,7 +539,8 @@ export function buildAgentRevertAllConfirmMessage({
   agentRunning,
   attribution,
   startedAt,
-  excludedCount
+  excludedCount,
+  cliKind
 }: {
   count: number
   /** そのうちゴミ箱へ移す(追加された)ファイル・フォルダの数 */
@@ -516,6 +555,8 @@ export function buildAgentRevertAllConfirmMessage({
   startedAt: number
   /** 除く行(利用者の変更・利用者の変更を含む)の件数 */
   excludedCount: number
+  /** 設定の種類(文言の CLI の名前と精度の注記。必須。L-060) */
+  cliKind: AgentCliKind
 }): string {
   const trash =
     trashCount > 0 ? `\nうち ${trashCount} 件の新しいファイル・フォルダはゴミ箱へ移動します。` : ''
@@ -524,7 +565,7 @@ export function buildAgentRevertAllConfirmMessage({
     ? '\n\nエージェントが動いている間は、戻した後に同じファイルが書き換えられることがあります。'
     : ''
   return (
-    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？${revertAllUserEditsNote(attribution, startedAt, excludedCount)}${hasDirectory ? AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE : AGENT_REVERT_UNDOABLE_NOTE}` +
+    `エージェントの変更 ${count} 件を実行前の状態に戻しますか？${revertAllUserEditsNote(attribution, startedAt, excludedCount, cliKind)}${hasDirectory ? AGENT_REVERT_DIRECTORY_NOT_UNDOABLE_NOTE : AGENT_REVERT_UNDOABLE_NOTE}` +
     trash +
     '\nステージ（index）・コミット・ブランチは戻しません。' +
     saved +

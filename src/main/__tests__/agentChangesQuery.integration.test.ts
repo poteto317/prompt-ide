@@ -20,6 +20,7 @@ import {
 } from '../agentChangeDiff'
 import { listAgentChanges } from '../agentChangesQuery'
 import { commitAll, initRepo, runGit, writeRepoFile } from './helpers/realGitRepo'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 import {
   createAgentBaselineRepo,
   createAgentNonGitFolder,
@@ -439,7 +440,8 @@ describe('Git 管理外のフォルダの一覧と diff(隠れた git)(実 git)'
     put('a.txt', 'a\n')
     const snapshot = await recordBaseline(folder, folderTemp)
     put('a.txt', 'a\nb\n')
-    rmSync(snapshot.gitDir ?? '', { recursive: true, force: true })
+    if (snapshot.gitDir === null) throw new Error('隠れた git の記録ではない')
+    removeTempPathSync(snapshot.gitDir)
     await expect(listAgentChanges(snapshot)).rejects.toThrow('記録が見つかりません')
     await expect(getAgentChangeDiff(snapshot, 'a.txt')).rejects.toThrow('記録が見つかりません')
   })

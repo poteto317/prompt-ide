@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -42,6 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
+import { removeTempPathSync } from '../helpers/tempDirGuard'
 
 const SECRET_CONTENT = 'djEwSECRET{'
 
@@ -70,7 +71,8 @@ beforeEach(() => {
 afterEach(() => {
   consoleErrorSpy?.mockRestore()
   consoleErrorSpy = null
-  rmSync(userDataDir.current, { recursive: true, force: true })
+  // 準備が失敗して空のままなら消さない
+  if (userDataDir.current !== '') removeTempPathSync(userDataDir.current)
 })
 
 describe('settings:hasApiKey と API キーの読み込みの失敗', () => {

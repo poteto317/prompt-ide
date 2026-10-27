@@ -55,21 +55,16 @@ describe('AGENT_CLI_PROFILES', () => {
     })
   })
 
-  it('claude の能力はすべて真、copilot は changeAttribution だけ偽(段階 3a で sessionResume も真にした)', () => {
-    expect(agentCliCapabilities('claude')).toEqual({
-      promptSend: true,
-      screenActivity: true,
-      interrupt: true,
-      changeAttribution: true,
-      sessionResume: true
-    })
-    expect(agentCliCapabilities('copilot')).toEqual({
-      promptSend: true,
-      screenActivity: true,
-      interrupt: true,
-      changeAttribution: false,
-      sessionResume: true
-    })
+  it('claude・copilot の能力はすべて真(段階 3a で sessionResume、段階 3b で changeAttribution も真にした)', () => {
+    for (const kind of ['claude', 'copilot'] as const) {
+      expect(agentCliCapabilities(kind)).toEqual({
+        promptSend: true,
+        screenActivity: true,
+        interrupt: true,
+        changeAttribution: true,
+        sessionResume: true
+      })
+    }
   })
 
   it.each(AGENT_CLI_KINDS)('%s の能力の項目は 5 つ', (kind) => {

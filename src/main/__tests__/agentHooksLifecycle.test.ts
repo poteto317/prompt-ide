@@ -16,14 +16,21 @@ function setup(): {
   app: EventEmitter
   receiver: { close: ReturnType<typeof vi.fn> }
   settingsDir: { removeSync: ReturnType<typeof vi.fn> }
+  copilotPlugins: { removeTokenFilesSync: ReturnType<typeof vi.fn> }
   tracker: { close: ReturnType<typeof vi.fn> }
 } {
   const app = new EventEmitter()
   const receiver = { close: vi.fn() }
   const settingsDir = { removeSync: vi.fn() }
+  const copilotPlugins = { removeTokenFilesSync: vi.fn() }
   const tracker = { close: vi.fn() }
-  setupAgentHooksLifecycle(app as unknown as App, { receiver, settingsDir, tracker })
-  return { app, receiver, settingsDir, tracker }
+  setupAgentHooksLifecycle(app as unknown as App, {
+    receiver,
+    settingsDir,
+    copilotPlugins,
+    tracker
+  })
+  return { app, receiver, settingsDir, copilotPlugins, tracker }
 }
 
 describe('setupAgentHooksLifecycle', () => {
@@ -34,23 +41,25 @@ describe('setupAgentHooksLifecycle', () => {
     expect(receiver.close).not.toHaveBeenCalled()
   })
 
-  it('will-quit で受け口・設定のディレクトリ・追跡を 1 回ずつ片付け、終了を止めない', () => {
-    const { app, receiver, settingsDir, tracker } = setup()
+  it('will-quit で受け口・設定のディレクトリ・copilot の hooks の設定のファイル・追跡を 1 回ずつ片付け、終了を止めない', () => {
+    const { app, receiver, settingsDir, copilotPlugins, tracker } = setup()
     const event = { preventDefault: vi.fn() }
     app.emit('will-quit', event)
     expect(receiver.close).toHaveBeenCalledOnce()
     expect(settingsDir.removeSync).toHaveBeenCalledOnce()
+    expect(copilotPlugins.removeTokenFilesSync).toHaveBeenCalledOnce()
     expect(tracker.close).toHaveBeenCalledOnce()
     expect(event.preventDefault).not.toHaveBeenCalled()
   })
 
   it('1 つが投げても残りを呼ぶ(L-010)', () => {
-    const { app, receiver, settingsDir, tracker } = setup()
+    const { app, receiver, settingsDir, copilotPlugins, tracker } = setup()
     receiver.close.mockImplementation(() => {
       throw new Error('close failed')
     })
     expect(() => app.emit('will-quit', { preventDefault: vi.fn() })).not.toThrow()
     expect(settingsDir.removeSync).toHaveBeenCalledOnce()
+    expect(copilotPlugins.removeTokenFilesSync).toHaveBeenCalledOnce()
     expect(tracker.close).toHaveBeenCalledOnce()
     expect(errorSpy).toHaveBeenCalledWith(
       '[agent-hooks] 終了の後始末に失敗しました:',

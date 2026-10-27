@@ -1,4 +1,5 @@
 import type { AgentChangesScope } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentChangesView } from '../types'
 import {
   AGENT_CHANGES_APP_STORAGE_HINT,
@@ -46,15 +47,16 @@ export function describeAgentChangesListUnavailable(view: AgentChangesView): str
 
 /**
  * 区別の状態の 1 行。記録中で、選んでいる範囲が累積で、表示中の一覧が実行の範囲でないときだけ出す(出さないなら null)。
- * 文言は describeAgentChangesAttribution が決める
+ * 文言は describeAgentChangesAttribution が決める。cliKind は設定の種類(文言の CLI の名前と精度の注記)
  */
 export function describeAgentChangesSectionAttribution(
   view: AgentChangesView,
-  scope: AgentChangesScope
+  scope: AgentChangesScope,
+  cliKind: AgentCliKind
 ): string | null {
   if (view.kind !== 'recording' || scope.kind !== 'all') return null
   if (getListedAgentChanges(view)?.scope.kind === 'run') return null
-  return describeAgentChangesAttribution(view.attribution, view.startedAt)
+  return describeAgentChangesAttribution(view.attribution, view.startedAt, cliKind)
 }
 
 /**

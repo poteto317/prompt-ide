@@ -4,8 +4,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync
 } from 'node:fs'
@@ -28,6 +28,24 @@ import { createAgentSessionRecordStore, toAgentFolderKey } from '../agentSession
 import { createClaudeSessionReservations } from '../claudeSessionReservations'
 import { makeFakeRecordIo } from './helpers/fakeAgentSessionRecordIo'
 import { makeFakeAgentHookSessions } from './helpers/fakeAgentHookSessions'
+import { createAgentToolActivity } from '../agentToolActivity'
+import type { AgentToolActivity } from '../agentToolActivity'
+import { createAgentHookReceiver } from '../agentHookReceiver'
+import type { AgentHookReceiver } from '../agentHookReceiver'
+import {
+  AGENT_HOOK_SETTINGS_DIR_PREFIX,
+  createAgentHookSettingsDir,
+  removeAgentHookSettingsFile,
+  writeAgentHookSettingsFile
+} from '../agentHookSettings'
+import type { AgentHookSettingsDir } from '../agentHookSettings'
+import { createAgentHookSessions } from '../agentHookSessions'
+import {
+  COPILOT_HOOK_PLUGIN_ROOT_DIR_NAME,
+  createCopilotHookPluginSlots
+} from '../agentCopilotHookPlugin'
+import type { CopilotHookPluginSlots } from '../agentCopilotHookPlugin'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 
 // 実物の node-pty と偽の copilot(`#!/usr/bin/env node` のスクリプト)で、選んだ CLI の解決と起動・会話の指定の引数と環境変数の届き方を確かめる(設計書「テスト方針」。
 // L-059)。本物の copilot は起動しない。HOME は一時ディレクトリで、利用者の ~/.copilot・~/.gitconfig・~/.claude に書かない。
@@ -54,7 +72,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const session of started.splice(0)) await session.stop('stopped')
   timers.clearAll()
-  rmSync(dir, { recursive: true, force: true })
+  removeTempPathSync(dir)
 })
 
 /** binDir の下に copilot という名の実行ファイルを書く(warm-up はしない。本文を引数なしで 1 回だけ動かすため) */
@@ -259,6 +277,159 @@ describe.skipIf(process.platform === 'win32')(
         { args: ['--session-id', NEW_ID], autoCd: '1' },
         { args: [`--resume=${NEW_ID}`], autoCd: '1' }
       ])
+    }, 30_000)
+  }
+)
+
+describe.skipIf(process.platform === 'win32')(
+  'copilot の hooks のプラグインのフォルダ(実物の starter・hooks の組み立て・pty と偽の copilot。段階 3b)',
+  () => {
+    const NEW_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+    let registry: AgentSessionRegistry
+    let tracker: AgentToolActivity
+    let receiver: AgentHookReceiver
+    let settingsDir: AgentHookSettingsDir
+    let copilotPlugins: CopilotHookPluginSlots
+
+    beforeEach(() => {
+      registry = new AgentSessionRegistry()
+      tracker = createAgentToolActivity({
+        onPhaseChange: () => undefined,
+        devLog: null,
+        warn: () => undefined
+      })
+      receiver = createAgentHookReceiver({
+        deliver: (ownerId, sessionId, event) => tracker.deliver(ownerId, sessionId, event),
+        onToolStart: async () => undefined,
+        onToolStartTimedOut: () => undefined,
+        log: () => undefined
+      })
+      // claude の hooks の設定のフォルダは、作られても一時ディレクトリ(dir)の下に置く(外側の afterEach が消す)
+      settingsDir = createAgentHookSettingsDir({ tmpdir: () => dir })
+      // userData は一時ディレクトリ(外側の beforeEach が作る dir)の下。利用者の userData に書かない
+      copilotPlugins = createCopilotHookPluginSlots({
+        rootDir: join(dir, 'userData', COPILOT_HOOK_PLUGIN_ROOT_DIR_NAME)
+      })
+    })
+
+    afterEach(async () => {
+      await registry.stopAll('stopped')
+      receiver.close()
+      tracker.close()
+      copilotPlugins.removeTokenFilesSync()
+    })
+
+    it('--plugin-dir <userData>/agent-hooks-copilot/slot-1 と COPILOT_HOOK_ALLOW_LOCALHOST=1 が届き、偽の copilot が hooks.json の URL・トークンで送った UserPromptSubmit で追跡が confirmed(idle)になる', async () => {
+      const binDir = join(dir, 'bin-hooks')
+      const work = join(dir, 'work-hooks')
+      const userDataDir = join(dir, 'userData')
+      mkdirSync(work)
+      mkdirSync(userDataDir)
+      const report = join(dir, 'report-hooks.json')
+      // 受け取った --plugin-dir の hooks.json を読み、UserPromptSubmit の URL へヘッダー付きで POST し、結果を記録してから待つ
+      // (追跡を確かめる間に終わって release されないよう、止められるまで生きている)
+      writeFakeCopilot(binDir, [
+        '#!/usr/bin/env node',
+        "const fs = require('node:fs')",
+        "const path = require('node:path')",
+        "const http = require('node:http')",
+        'const args = process.argv.slice(2)',
+        "const pluginDir = args[args.indexOf('--plugin-dir') + 1]",
+        "const sessionId = args[args.indexOf('--session-id') + 1]",
+        "const hooksFile = path.join(pluginDir, 'hooks', 'hooks.json')",
+        "const config = JSON.parse(fs.readFileSync(hooksFile, 'utf8'))",
+        "const manifest = JSON.parse(fs.readFileSync(path.join(pluginDir, 'plugin.json'), 'utf8'))",
+        'const hook = config.hooks.UserPromptSubmit[0]',
+        'const url = new URL(hook.url)',
+        "const body = JSON.stringify({ hook_event_name: 'UserPromptSubmit', session_id: sessionId, prompt: 'hi' })",
+        "const req = http.request({ host: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers: { Authorization: hook.headers.Authorization, 'Content-Type': 'application/json' } }, (res) => {",
+        '  res.resume()',
+        "  res.on('end', () => {",
+        `    fs.writeFileSync(${JSON.stringify(`${report}.tmp`)}, JSON.stringify({`,
+        '      args,',
+        '      allowLocalhost: process.env.COPILOT_HOOK_ALLOW_LOCALHOST ?? null,',
+        '      manifestName: manifest.name,',
+        '      events: Object.keys(config.hooks),',
+        '      status: res.statusCode,',
+        '      pluginDirMode: fs.statSync(pluginDir).mode & 0o777,',
+        '      hooksFileMode: fs.statSync(hooksFile).mode & 0o777',
+        '    }))',
+        `    fs.renameSync(${JSON.stringify(`${report}.tmp`)}, ${JSON.stringify(report)})`,
+        '  })',
+        '})',
+        'req.end(body)',
+        'setInterval(() => undefined, 1000)'
+      ])
+      // 利用者の環境の 0 は、起動の表の値(1)で上書きされる
+      const plan = await resolveCopilot(binDir, { COPILOT_HOOK_ALLOW_LOCALHOST: '0' })
+      const folderAccess = new FolderAccessManager()
+      folderAccess.set(1, realpathSync(work))
+      const hooks = createAgentHookSessions({
+        receiver,
+        settingsDir,
+        tracker,
+        // copilot の準備は claude の版を確かめない(呼ばれたら失敗させて分かるようにする)
+        versions: {
+          readClaudeVersion: async () => {
+            throw new Error('copilot の準備で claude の版を確かめた')
+          }
+        },
+        writeSettingsFile: writeAgentHookSettingsFile,
+        removeSettingsFile: removeAgentHookSettingsFile,
+        copilotPlugins,
+        log: () => undefined
+      })
+      const { start } = createAgentSessionStarter({
+        folderAccess,
+        registry,
+        resolveLaunch: async () => ({ kind: 'ok', plan }),
+        spawnPty: spawn,
+        stopTree: (pty, exited) => stopProcessTree({ pid: pty.pid, exited }),
+        createSessionId: () => 'it-hooks-1',
+        records: {
+          claude: createAgentSessionRecordStore(makeFakeRecordIo()),
+          copilot: createAgentSessionRecordStore(makeFakeRecordIo())
+        },
+        reservations: createClaudeSessionReservations(),
+        createClaudeSessionId: () => NEW_ID,
+        hooks
+      })
+      const result = await start(
+        1,
+        { slotId: 'slot-1', folderPath: work, cols: 80, rows: 24, launch: { kind: 'new' } },
+        { isGone: () => false, onData: () => undefined, onExit: () => undefined }
+      )
+      expect(result).toMatchObject({ kind: 'started', cliKind: 'copilot', claudeSessionId: NEW_ID })
+      // 起動の直後の段階(hooks を確かめる前の agent)は、偽の copilot の送信と競うので確かめない。届いた後の confirmed(idle)を下で確かめる
+      const pluginDir = join(userDataDir, 'agent-hooks-copilot', 'slot-1')
+      expect(JSON.parse(await waitForFile(report, timers))).toEqual({
+        args: ['--session-id', NEW_ID, '--plugin-dir', pluginDir],
+        allowLocalhost: '1',
+        manifestName: 'prompt-ide-agent-hooks',
+        events: [
+          'UserPromptSubmit',
+          'PreToolUse',
+          'PostToolUse',
+          'PostToolUseFailure',
+          'SubagentStop',
+          'Stop',
+          'SessionEnd'
+        ],
+        status: 200,
+        pluginDirMode: 0o700,
+        hooksFileMode: 0o600
+      })
+      // 照合の通った知らせで confirmed(開いた区間が無いので idle)。追跡の deliver は応答より前に済んでいる
+      expect(tracker.activityOf(1).phase).toBe('idle')
+      // 起動の引数にトークンは無い(プラグインのフォルダの中の 0600 のファイルにだけある)
+      const hooksText = readFileSync(join(pluginDir, 'hooks', 'hooks.json'), 'utf8')
+      const token = /Bearer ([0-9a-f]{64})/.exec(hooksText)?.[1]
+      expect(token).toBeDefined()
+      expect(JSON.parse(readFileSync(report, 'utf8')).args.join(' ')).not.toContain(token)
+      // copilot の準備は claude の hooks の設定のフォルダを作らない
+      expect(
+        readdirSync(dir).filter((name) => name.startsWith(AGENT_HOOK_SETTINGS_DIR_PREFIX))
+      ).toEqual([])
     }, 30_000)
   }
 )

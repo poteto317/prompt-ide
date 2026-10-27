@@ -301,3 +301,26 @@ describe('parseAgentHookRequest(PostToolBatch)', () => {
     }
   )
 })
+
+describe('parseAgentHookRequest(none を作らない。段階 3b)', () => {
+  const EVENTS: AgentHookEventName[] = ['PreToolUse', 'PostToolUse', 'PostToolUseFailure']
+  it.each(EVENTS)(
+    '%s: 本文を読めても読めなくても、ツールの ID は read か unreadable(none は copilot だけ)',
+    (event) => {
+      const bodies: AgentHookBody[] = [
+        json({ hook_event_name: event, tool_name: 'Edit', tool_use_id: 't1' }),
+        json({ hook_event_name: event, tool_name: 'Edit' }),
+        { kind: 'too-large' },
+        { kind: 'unreadable' }
+      ]
+      const expectedKind = event === 'PreToolUse' ? 'tool-start' : 'tool-end'
+      for (const body of bodies) {
+        const { event: parsed } = parseAgentHookRequest(event, body)
+        // どの本文もツールの知らせになることを先に確かめる(ツール以外になると toolId を確かめずに空振りで通るため)
+        expect(parsed.kind).toBe(expectedKind)
+        if (parsed.kind !== 'tool-start' && parsed.kind !== 'tool-end') continue
+        expect(['read', 'unreadable']).toContain(parsed.toolId.kind)
+      }
+    }
+  )
+})

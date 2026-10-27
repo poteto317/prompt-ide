@@ -1,13 +1,5 @@
 import { vi } from 'vitest'
-import {
-  lstatSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  statSync
-} from 'node:fs'
+import { lstatSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import type {
@@ -35,6 +27,7 @@ import type { AgentToolActivity, AgentToolActivitySignal } from '../../agentTool
 import type { AgentRevertContext } from '../../agentChangesRevert'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
 import { initRepo, runGit, stubGitCeiling, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
+import { removeTempPathSync } from './tempDirGuard'
 
 // エージェントの変更の記録(agentBaselineSnapshot)を実 git で試すテストの準備と偽物を 1 か所から作る。
 // 「記録のインデックスの git を開発者の設定から切り離す方法」や「記録を取る関数の呼び方」が変わったときに、
@@ -70,7 +63,7 @@ export function createAgentBaselineRepo(prefix: string): AgentBaselineRepo {
 export function disposeAgentBaselineRepo(dirs: AgentBaselineRepo): void {
   vi.unstubAllEnvs()
   for (const dir of [dirs.repo, dirs.home, dirs.tempRoot]) {
-    rmSync(dir, { recursive: true, force: true })
+    removeTempPathSync(dir)
   }
 }
 
@@ -179,7 +172,8 @@ export function createFakeTrash(): FakeTrash {
     trashed,
     trash: async (absolutePath) => {
       trashed.push(absolutePath)
-      rmSync(absolutePath, { recursive: true, force: true })
+      // テストのリポジトリ(一時ディレクトリの中)だけを消す。空・相対のパスや外のパスは投げる
+      removeTempPathSync(absolutePath)
     }
   }
 }

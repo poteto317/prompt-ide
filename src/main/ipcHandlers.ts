@@ -94,16 +94,18 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     claude: recordStoreOf('claude'),
     copilot: recordStoreOf('copilot')
   }
-  // claude の hooks(ツールの区間の追跡・127.0.0.1 の受け口・起動ごとの準備)。実物の依存の組み立ては agentHooksRuntime.ts。
+  // claude・copilot の hooks(ツールの区間の追跡・127.0.0.1 の受け口・起動ごとの準備・copilot のプラグインのフォルダ〈userData の下〉)。実物の依存の組み立ては agentHooksRuntime.ts。
   // 追跡の合図の変化・PreToolUse の待ち・待ちの打ち切りを記録の registry につなぐ(設計書「registry へのつなぎ方」)。runtime は生成の中で
   // これらを呼ばず、最初に呼ぶのは組み立てが終わった後の IPC(起動の activate・hooks の知らせ)なので、後で作る registry を参照してよい
   const agentHooks = createAgentHooksRuntime({
     onPhaseChange: (ownerId) => agentBaselineRegistry.notifyAttributionSignal(ownerId),
     onToolStart: (ownerId, signal) => agentBaselineRegistry.waitForAgentPhase(ownerId, signal),
     onToolStartTimedOut: (ownerId) => agentBaselineRegistry.markToolStartTimedOut(ownerId),
-    devLog: app.isPackaged ? null : (line) => console.log(line)
+    devLog: app.isPackaged ? null : (line) => console.log(line),
+    userDataDir
   })
-  // 受け口・設定のディレクトリ・追跡のタイマーは will-quit で片付ける(before-quit の停止の待ちの間も知らせを受ける)
+  // 受け口・設定のディレクトリ・copilot の hooks の設定のファイル(hooks.json)・追跡のタイマーは will-quit で片付ける(before-quit の
+  // 停止の待ちの間も知らせを受ける)
   setupAgentHooksLifecycle(app, agentHooks.lifecycleParts)
   // 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線は
   // agentSessionStarter.ts。IPC の受け口は registry(書き込み・リサイズ・停止・状態の取得)と、組み立てた starter の起動・ID の

@@ -289,7 +289,7 @@ describe('registerIpcHandlers', () => {
     expect(deps.reportWorkingEnded).toBe(mockToolActivity.reportWorkingEnded)
   })
 
-  it('claude の hooks のつなぎ先を、記録の registry の notifyAttributionSignal・waitForAgentPhase・markToolStartTimedOut にする(生成の順は hooks の runtime → registry のまま)', async () => {
+  it('hooks のつなぎ先を、記録の registry の notifyAttributionSignal・waitForAgentPhase・markToolStartTimedOut にする(生成の順は hooks の runtime → registry のまま)', async () => {
     const notify = vi.spyOn(AgentBaselineRegistry.prototype, 'notifyAttributionSignal')
     const wait = vi.spyOn(AgentBaselineRegistry.prototype, 'waitForAgentPhase')
     const mark = vi.spyOn(AgentBaselineRegistry.prototype, 'markToolStartTimedOut')
@@ -346,6 +346,13 @@ describe('registerIpcHandlers', () => {
       expect.any(Object),
       mockHooksLifecycleParts
     )
+  })
+
+  it('copilot の hooks のフォルダの置き場として userData のパスを hooks の組み立てに渡す', () => {
+    registerIpcHandlers(mockIpcMain)
+    expect((mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0]).toMatchObject({
+      userDataDir: '/mock/userData'
+    })
   })
 
   it('通知の center を寿命の後始末と IPC の受け口に渡し、送信元のウィンドウは BrowserWindow.fromWebContents で引く', () => {

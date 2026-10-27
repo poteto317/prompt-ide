@@ -25,7 +25,7 @@ import {
   AGENT_CHANGES_ONLY_USER_REASON,
   AGENT_CHANGES_REVERT_DISABLED_RUN_SCOPE,
   AGENT_CHANGES_TRUNCATED_REASON,
-  AGENT_REVERT_ALL_DISTINGUISHING_NOTE
+  agentRevertAllDistinguishingNote
 } from '../../lib/agentChangesMessages'
 import {
   makeAgentChangeEntry,
@@ -68,6 +68,7 @@ function makeOptions(
 ): RevertTestOptions {
   return {
     folderPath: '/repo',
+    cliKind: 'claude',
     changes: makeAgentChangesController({
       view:
         list === null
@@ -1017,9 +1018,21 @@ describe('useAgentChangesRevert — 利用者の変更の区別(すべて戻す�
     })
     const message = vi.mocked(options.onConfirm!).mock.calls[0][0]
     expect(message).toContain(
-      `？${AGENT_REVERT_ALL_DISTINGUISHING_NOTE}利用者の変更 2 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。戻した直後なら`
+      `？${agentRevertAllDistinguishingNote('claude')}利用者の変更 2 件（印の付いた行）は戻しません。行の ↶ で個別に戻せます。戻した直後なら`
     )
     expect(message).not.toContain('記録を始めた後にあなたが編集した内容も戻ります。')
+  })
+
+  it('すべて戻すの確認は、渡した種類(cliKind)の文言と精度の注記で作る(copilot)', async () => {
+    const options = { ...optionsWith(entries), cliKind: 'copilot' as const }
+    const { result } = renderHook(() => useRevertWithRunner(options))
+    await act(async () => {
+      await result.current.revertAll()
+    })
+    const message = vi.mocked(options.onConfirm!).mock.calls[0][0]
+    expect(message).toContain(
+      `？${agentRevertAllDistinguishingNote('copilot')}copilot では、利用者の変更との区別が claude より粗くなります（`
+    )
   })
 
   it('除く件数(revertAllExcludedCount)を返す。打ち切った一覧・実行の範囲の一覧では 0', () => {

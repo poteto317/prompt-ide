@@ -7,6 +7,7 @@ const ID = '11111111-1111-4111-8111-111111111111'
 // 英字を含む ID(大文字にすると値が変わる)
 const LETTER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const HOOKS = '/tmp/prompt-ide-agent-hooks-x/a.json'
+const PLUGIN_DIR = '/u/agent-hooks-copilot/slot-1'
 const NEW: AgentLaunchRequest = { kind: 'new' }
 const RESUME: AgentLaunchRequest = { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
 const UNKNOWN = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
@@ -31,9 +32,12 @@ describe('AGENT_CLI_LAUNCH_SPECS(表)', () => {
     expect(AGENT_CLI_LAUNCH_SPECS.copilot.extraRemovedEnvKeys).toEqual(['COPILOT_ALLOW_ALL'])
   })
 
-  it('足す環境変数は copilot の COPILOT_DISABLE_RESUME_AUTO_CD=1 だけ(保存先への自動の移動を止める)', () => {
+  it('足す環境変数は copilot の COPILOT_DISABLE_RESUME_AUTO_CD=1 と COPILOT_HOOK_ALLOW_LOCALHOST=1(保存先への自動の移動を止める・127.0.0.1 の http の hook を読ませる)', () => {
     expect(AGENT_CLI_LAUNCH_SPECS.claude.extraEnv).toEqual({})
-    expect(AGENT_CLI_LAUNCH_SPECS.copilot.extraEnv).toEqual({ COPILOT_DISABLE_RESUME_AUTO_CD: '1' })
+    expect(AGENT_CLI_LAUNCH_SPECS.copilot.extraEnv).toEqual({
+      COPILOT_DISABLE_RESUME_AUTO_CD: '1',
+      COPILOT_HOOK_ALLOW_LOCALHOST: '1'
+    })
   })
 
   // win32 では環境変数の名前を大文字にそろえて比べるため、表の名前は大文字で書く(小文字だと取りこぼす)
@@ -54,15 +58,6 @@ describe('AGENT_CLI_LAUNCH_SPECS(表)', () => {
         ? (): string[] => buildArgs(NEW, null, null)
         : (): string[] => buildArgs(NEW, ID, null)
       expect(call).toThrow()
-    }
-  )
-
-  it.each(AGENT_CLI_KINDS.filter((kind) => !agentCliCapabilities(kind).changeAttribution))(
-    '%s: hooks に対応しない種類に設定のファイルが渡ったら投げる(会話の ID は正しい値を渡す)',
-    (kind) => {
-      expect(() => AGENT_CLI_LAUNCH_SPECS[kind].buildArgs(NEW, ID, HOOKS)).toThrow(
-        'hooks の設定のファイルは渡せません'
-      )
     }
   )
 })
@@ -121,11 +116,29 @@ describe('AGENT_CLI_LAUNCH_SPECS.copilot.buildArgs(段階 3a)', () => {
     }
   )
 
-  it('hooks の設定のファイルが渡ったら投げる(changeAttribution は偽のまま)', () => {
-    expect(() => buildArgs(NEW, ID, HOOKS)).toThrow(
-      'copilot の起動に hooks の設定のファイルは渡せません'
-    )
+  it('hooks のフォルダのパスがあれば、後ろに --plugin-dir <パス> を足す(new・resume とも。ほかの引数は足さない)', () => {
+    expect(buildArgs(NEW, ID, PLUGIN_DIR)).toEqual(['--session-id', ID, '--plugin-dir', PLUGIN_DIR])
+    expect(buildArgs(RESUME, ID, PLUGIN_DIR)).toEqual([
+      `--resume=${ID}`,
+      '--plugin-dir',
+      PLUGIN_DIR
+    ])
   })
+
+  it.each<[string, string]>([
+    ['相対パス', 'agent-hooks-copilot/slot-1'],
+    ['- 始まり', '--yolo'],
+    ['空文字', '']
+  ])(
+    'hooks のフォルダのパスが絶対パスでなければ(%s)、値を文言に入れずに投げる(L-017・L-034)',
+    (_label, value) => {
+      for (const launch of [NEW, RESUME]) {
+        const message = thrownMessage(() => buildArgs(launch, ID, value))
+        expect(message).toBe('copilot の起動の hooks のフォルダのパスが正しくありません')
+        if (value !== '') expect(message).not.toContain(value)
+      }
+    }
+  )
 
   it('未知の kind は投げる', () => {
     expect(() => buildArgs(UNKNOWN, ID, null)).toThrow('未知の起動の指定です')

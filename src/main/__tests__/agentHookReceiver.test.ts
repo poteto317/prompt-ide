@@ -74,7 +74,7 @@ async function start(overrides: Partial<AgentHookReceiverDeps> = {}): Promise<vo
   const { baseUrl } = await receiver.ensureListening()
   expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
   port = Number(new URL(baseUrl).port)
-  receiver.addToken(TOKEN, { ownerId: 7, sessionId: 'sid-1' })
+  receiver.addToken(TOKEN, { ownerId: 7, sessionId: 'sid-1', cli: { kind: 'claude' } })
 }
 
 const HEADERS = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
@@ -267,7 +267,7 @@ describe('createAgentHookReceiver(拒む要求)', () => {
 
   it('activate の前(addToken の前)と release の後(removeToken の後)のトークンは 401', async () => {
     await start()
-    receiver?.addToken(OTHER_TOKEN, { ownerId: 8, sessionId: 'sid-2' })
+    receiver?.addToken(OTHER_TOKEN, { ownerId: 8, sessionId: 'sid-2', cli: { kind: 'claude' } })
     receiver?.removeToken(OTHER_TOKEN)
     const other = { Authorization: `Bearer ${OTHER_TOKEN}`, 'Content-Type': 'application/json' }
     expect((await post('stop', { hook_event_name: 'Stop' }, other)).status).toBe(401)
@@ -563,5 +563,237 @@ describe('createAgentHookReceiver(待ち受けの後の error。頑健性の 1)'
     expect(createdServers[1].listening).toBe(true)
     expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
     expect(log).not.toHaveBeenCalled()
+  })
+})
+
+describe('createAgentHookReceiver(copilot の経路。段階 3b)', () => {
+  const COPILOT_TOKEN = 'ef'.repeat(32)
+  const MAIN = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const NEW = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const COPILOT_HEADERS = {
+    Authorization: `Bearer ${COPILOT_TOKEN}`,
+    'Content-Type': 'application/json'
+  }
+
+  async function startCopilot(overrides: Partial<AgentHookReceiverDeps> = {}): Promise<void> {
+    await start(overrides)
+    receiver?.addToken(COPILOT_TOKEN, {
+      ownerId: 9,
+      sessionId: 'sid-c',
+      cli: { kind: 'copilot', main: { kind: 'known', id: MAIN } }
+    })
+  }
+
+  const postCopilot = (
+    segment: string,
+    body: unknown,
+    headers: Record<string, string> = COPILOT_HEADERS
+  ): Promise<HookResponse> =>
+    sendHookRequest(port, {
+      path: `/prompt-ide/agent-hooks/copilot/v1/${segment}`,
+      headers,
+      body: typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)
+    })
+
+  it('主の会話の UserPromptSubmit は 200 の空の本文で、prompt-submit を deliver する', async () => {
+    await startCopilot()
+    const response = await postCopilot('user-prompt-submit', {
+      hook_event_name: 'UserPromptSubmit',
+      session_id: MAIN,
+      prompt: 'hi'
+    })
+    expect(response.status).toBe(200)
+    expect(response.body).toBe('')
+    expect(delivered).toEqual([
+      [
+        9,
+        'sid-c',
+        {
+          kind: 'confirm-only',
+          reason: 'prompt-submit',
+          hookEventName: 'UserPromptSubmit',
+          toolName: null
+        }
+      ]
+    ])
+  })
+
+  it('PreToolUse は ID を持たない区間(主のグループ)を deliver してから onToolStart を待ち、200 を返す', async () => {
+    await startCopilot()
+    const response = await postCopilot('pre-tool-use', {
+      hook_event_name: 'PreToolUse',
+      session_id: MAIN,
+      tool_name: 'Edit'
+    })
+    expect(response.status).toBe(200)
+    expect(delivered.map(([, , event]) => event)).toEqual([
+      {
+        kind: 'tool-start',
+        hookEventName: 'PreToolUse',
+        toolName: 'Edit',
+        toolId: { kind: 'none' },
+        agentId: null
+      }
+    ])
+    expect(calls).toEqual(['deliver:tool-start', 'onToolStart'])
+  })
+
+  it('PreToolUse の待ちが上限で打ち切られても 200 を返す(onToolStartTimedOut を 1 回呼ぶ)', async () => {
+    await startCopilot({ onToolStart: vi.fn(() => new Promise<void>(() => undefined)) })
+    const response = await postCopilot('pre-tool-use', {
+      hook_event_name: 'PreToolUse',
+      session_id: MAIN,
+      tool_name: 'Edit'
+    })
+    expect(response.status).toBe(200)
+    expect(deps.onToolStartTimedOut).toHaveBeenCalledExactlyOnceWith(9)
+  })
+
+  it('表の持ち主をそのまま解釈に渡し、主の会話の ID の状態が要求をまたいで残る: /clear の SessionEnd → 新しい ID の prompt → その ID の PreToolUse は主のグループ', async () => {
+    await startCopilot()
+    await postCopilot('session-end', { hook_event_name: 'SessionEnd', session_id: MAIN })
+    await postCopilot('user-prompt-submit', {
+      hook_event_name: 'UserPromptSubmit',
+      session_id: NEW
+    })
+    await postCopilot('pre-tool-use', {
+      hook_event_name: 'PreToolUse',
+      session_id: NEW,
+      tool_name: 'Edit'
+    })
+    expect(delivered.map(([, , event]) => event)).toEqual([
+      { kind: 'session-end', hookEventName: 'SessionEnd', toolName: null },
+      {
+        kind: 'confirm-only',
+        reason: 'prompt-submit',
+        hookEventName: 'UserPromptSubmit',
+        toolName: null
+      },
+      {
+        kind: 'tool-start',
+        hookEventName: 'PreToolUse',
+        toolName: 'Edit',
+        toolId: { kind: 'none' },
+        agentId: null
+      }
+    ])
+  })
+
+  it('16 MiB を超える本文は主のグループの tool-start として deliver し、拒んだ要求（copilot）の too-large を数える', async () => {
+    await startCopilot()
+    const response = await postCopilot(
+      'pre-tool-use',
+      Buffer.alloc(AGENT_HOOK_MAX_BODY_BYTES + 1, 0x20)
+    )
+    expect(response.status).toBe(200)
+    expect(delivered.map(([, , event]) => event)).toEqual([
+      {
+        kind: 'tool-start',
+        hookEventName: 'PreToolUse',
+        toolName: null,
+        toolId: { kind: 'none' },
+        agentId: null
+      }
+    ])
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 拒んだ要求（copilot）: too-large 1 件')
+  })
+
+  const body = JSON.stringify({ hook_event_name: 'Stop', session_id: MAIN })
+  it.each<[string, () => Promise<HookResponse>, string]>([
+    [
+      'GET',
+      () =>
+        sendHookRequest(port, {
+          method: 'GET',
+          path: '/prompt-ide/agent-hooks/copilot/v1/stop',
+          headers: COPILOT_HEADERS
+        }),
+      'method'
+    ],
+    ['知らないパス', () => postCopilot('session-start', body), 'path'],
+    [
+      'Host が localhost',
+      () => postCopilot('stop', body, { ...COPILOT_HEADERS, Host: `localhost:${port}` }),
+      'host'
+    ],
+    [
+      'Origin がある',
+      () => postCopilot('stop', body, { ...COPILOT_HEADERS, Origin: 'http://evil.example' }),
+      'origin'
+    ],
+    [
+      'Authorization が無い',
+      () => postCopilot('stop', body, { 'Content-Type': 'application/json' }),
+      'token'
+    ],
+    [
+      '表に無いトークン',
+      () =>
+        postCopilot('stop', body, { ...COPILOT_HEADERS, Authorization: `Bearer ${OTHER_TOKEN}` }),
+      'token'
+    ],
+    [
+      'claude の持ち主のトークン(経路と持ち主の種類の食い違い)',
+      () => postCopilot('stop', body, HEADERS),
+      'token'
+    ],
+    [
+      'Content-Type が text/plain',
+      () => postCopilot('stop', body, { ...COPILOT_HEADERS, 'Content-Type': 'text/plain' }),
+      'content-type'
+    ]
+  ])(
+    '%s は 200 の空の本文を返し、deliver せず、拒んだ要求（copilot）の件数をログに出す(トークン・本文は出さない)',
+    async (_label, send, reason) => {
+      await startCopilot()
+      const response = await send()
+      expect(response.status).toBe(200)
+      expect(response.body).toBe('')
+      expect(deps.deliver).not.toHaveBeenCalled()
+      expect(deps.log).toHaveBeenCalledWith(`[agent-hooks] 拒んだ要求（copilot）: ${reason} 1 件`)
+      for (const [message] of deps.log.mock.calls) {
+        expect(message).not.toContain(COPILOT_TOKEN)
+        expect(message).not.toContain(MAIN)
+      }
+    }
+  )
+
+  it('copilot の持ち主のトークンで claude のパスに送ると 401(claude の経路の応答は変えない)', async () => {
+    await startCopilot()
+    const response = await post('stop', { hook_event_name: 'Stop' }, COPILOT_HEADERS)
+    expect(response.status).toBe(401)
+    expect(deps.deliver).not.toHaveBeenCalled()
+  })
+
+  it('処理の例外は、copilot の経路では 200、claude の経路では今どおり 500', async () => {
+    await startCopilot({
+      deliver: vi.fn(() => {
+        throw new Error('boom')
+      })
+    })
+    expect((await postCopilot('stop', body)).status).toBe(200)
+    expect((await post('stop', { hook_event_name: 'Stop' })).status).toBe(500)
+    expect(deps.log).toHaveBeenCalledWith('[agent-hooks] 要求の処理に失敗しました: boom')
+  })
+
+  it('閉じた後に残った接続から届いた要求は、copilot の経路では 200、claude の経路では今どおり 503 で返し、deliver しない', async () => {
+    await startCopilot()
+    const server = createdServers[0]
+    receiver?.close()
+    receiver = null
+    const respondTo = async (url: string): Promise<ReturnType<typeof vi.fn>> => {
+      const res = { destroyed: false, writableEnded: false, writeHead: vi.fn(), end: vi.fn() }
+      const req = { url, method: 'POST', headers: {}, resume: vi.fn() }
+      server.emit('request', req, res)
+      await vi.waitFor(() => expect(res.end).toHaveBeenCalled())
+      return res.writeHead
+    }
+    expect(await respondTo('/prompt-ide/agent-hooks/copilot/v1/stop')).toHaveBeenCalledWith(200, {
+      'Content-Length': '0'
+    })
+    expect(await respondTo('/prompt-ide/agent-hooks/v1/stop')).toHaveBeenCalledWith(503, {
+      'Content-Length': '0'
+    })
+    expect(deps.deliver).not.toHaveBeenCalled()
   })
 })

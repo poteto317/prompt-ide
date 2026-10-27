@@ -48,6 +48,7 @@ export default function AgentChangesSection({
   folderPath,
   isNotRepository,
   isAgentMode,
+  cliKind,
   onOpenDiff
 }: AgentChangesSectionProps): React.JSX.Element | null {
   const headingId = useId()
@@ -93,7 +94,7 @@ export default function AgentChangesSection({
   // ファイル単位の理由を先に評価する(行が押せないときは必ず同じ文言になる)という評価の順序に依存している
   const shownReason = hasEntries ? revert.revertAllDisabledReason : null
   // 区別の状態の 1 行(累積の範囲で、表示中の一覧が実行の範囲でないときだけ。出さないなら null)。読み上げない(aria-live にしない)
-  const attributionNote = describeAgentChangesSectionAttribution(view, changes.scope)
+  const attributionNote = describeAgentChangesSectionAttribution(view, changes.scope, cliKind)
   // すべて戻すから除く行の旨(行があり、累積の一覧で、除く件数が 1 以上のとき)。すべて戻すの aria-describedby で結ぶ(L-413)
   const excludedNote = describeAgentChangesSectionExcluded(view, revert.revertAllExcludedCount)
   // すべて戻すが結ぶ要素(押せない理由と除く旨のうちあるもの。どちらも無ければ付けない)

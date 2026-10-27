@@ -533,6 +533,8 @@ export function useAppState(): AppState {
     agentTabs: agentWorkspace.agentTerminal.sessions.tabs,
     agentActivities: agentWorkspace.agentTerminal.activities,
     isAgentMode: agentWorkspace.executionModePanel.mode === 'agent-cli',
+    // 区別の文言の CLI の名前は設定の種類(使う CLI の切り替えは動いているタブをすべて止めるので、区別している間のタブと同じ)
+    cliKind: agentWorkspace.agentTerminal.appCliKind,
     diffTabs,
     refreshDiff: diffOperations.refreshDiff,
     agentDiffScope: diffOperations.agentDiffScope,

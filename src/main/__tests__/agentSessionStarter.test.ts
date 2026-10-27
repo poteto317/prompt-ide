@@ -842,9 +842,25 @@ describe('createAgentSessionStarter(hooks)', () => {
 
   const PREPARED: PreparedAgentHooks = {
     ownerId: 1,
-    hooks: { settingsPath: '/tmp/prompt-ide-agent-hooks-x/abc.json', token: 'ab'.repeat(32) },
+    cliKind: 'claude',
+    hooks: {
+      configPath: '/tmp/prompt-ide-agent-hooks-x/abc.json',
+      token: 'ab'.repeat(32),
+      discard: () => undefined
+    },
     unavailableReason: null
   }
+
+  it('activate には起動に使った会話の ID を渡す(再開は記録と照合した ID)', async () => {
+    const RESUME_ID = '33333333-3333-4333-8333-333333333333'
+    claudeRecords.record('/work', RESUME_ID)
+    await makeStarter()(
+      1,
+      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: RESUME_ID, cliKind: 'claude' } },
+      makeSink()
+    )
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 'sid-1', RESUME_ID)
+  })
 
   it('prepare は resolveLaunch の後・records.whenLoaded の前に、所有者と起動の計画で呼ぶ', async () => {
     const order: string[] = []
@@ -854,7 +870,12 @@ describe('createAgentSessionStarter(hooks)', () => {
     })
     hooks.prepare.mockImplementation(async (ownerId) => {
       order.push('prepare')
-      return { ownerId, hooks: null, unavailableReason: 'claude-version-unsupported' }
+      return {
+        ownerId,
+        cliKind: 'claude',
+        hooks: null,
+        unavailableReason: 'claude-version-unsupported'
+      }
     })
     const start = makeStarter({
       records: recordsWithWhenLoaded(async () => {
@@ -876,7 +897,7 @@ describe('createAgentSessionStarter(hooks)', () => {
       ['--x', '--session-id', NEW_IDS[0], '--settings', '/tmp/prompt-ide-agent-hooks-x/abc.json'],
       expect.any(Object)
     )
-    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(PREPARED, 'sid-1')
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(PREPARED, 'sid-1', NEW_IDS[0])
     expect(hooks.release).not.toHaveBeenCalled()
     pty.emitExit(0, 0)
     await vi.waitFor(() => expect(hooks.release).toHaveBeenCalledExactlyOnceWith(PREPARED, 'sid-1'))
@@ -892,8 +913,14 @@ describe('createAgentSessionStarter(hooks)', () => {
       expect.any(Object)
     )
     expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(
-      { ownerId: 1, hooks: null, unavailableReason: 'claude-version-unsupported' },
-      'sid-1'
+      {
+        ownerId: 1,
+        cliKind: 'claude',
+        hooks: null,
+        unavailableReason: 'claude-version-unsupported'
+      },
+      'sid-1',
+      NEW_IDS[0]
     )
   })
 
@@ -907,7 +934,12 @@ describe('createAgentSessionStarter(hooks)', () => {
     loaded.resolve()
     await expect(pending).resolves.toEqual(CANCELED)
     expect(hooks.release).toHaveBeenCalledExactlyOnceWith(
-      { ownerId: 1, hooks: null, unavailableReason: 'claude-version-unsupported' },
+      {
+        ownerId: 1,
+        cliKind: 'claude',
+        hooks: null,
+        unavailableReason: 'claude-version-unsupported'
+      },
       null
     )
     expect(hooks.activate).not.toHaveBeenCalled()
@@ -1212,18 +1244,50 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     )
   })
 
-  it('hooks が設定のファイルを返しても(copilot では本来返さない)、copilot の引数には --settings を足さない', async () => {
+  it('hooks がプラグインのフォルダを返したら、copilot の引数の後ろに --plugin-dir <パス> を足す', async () => {
     hooks = makeFakeAgentHookSessions((ownerId) => ({
       ownerId,
-      hooks: { settingsPath: '/tmp/prompt-ide-agent-hooks-x/abc.json', token: 'ab'.repeat(32) },
+      cliKind: 'copilot',
+      hooks: {
+        configPath: '/u/agent-hooks-copilot/slot-1',
+        token: 'ab'.repeat(32),
+        discard: () => undefined
+      },
       unavailableReason: null
     }))
     await makeStarter({ hooks })(1, REQUEST, makeSink())
     expect(spawnPty).toHaveBeenCalledWith(
       '/bin/copilot',
-      ['--session-id', NEW_IDS[0]],
+      ['--session-id', NEW_IDS[0], '--plugin-dir', '/u/agent-hooks-copilot/slot-1'],
       expect.any(Object)
     )
+  })
+
+  it('copilot の起動でも activate に起動に使った会話の ID を渡し、pty が終わるまで release しない(枠を持ち続ける。Task 3・4 の持ち越し)', async () => {
+    const prepared: PreparedAgentHooks = {
+      ownerId: 1,
+      cliKind: 'copilot',
+      hooks: {
+        configPath: '/u/agent-hooks-copilot/slot-1',
+        token: 'ab'.repeat(32),
+        discard: () => undefined
+      },
+      unavailableReason: null
+    }
+    hooks = makeFakeAgentHookSessions(() => prepared)
+    await expect(makeStarter({ hooks })(1, REQUEST, makeSink())).resolves.toMatchObject({
+      kind: 'started'
+    })
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(prepared, 'sid-1', NEW_IDS[0])
+    expect(hooks.release).not.toHaveBeenCalled()
+    pty.emitExit(0)
+    await vi.waitFor(() => expect(hooks.release).toHaveBeenCalledExactlyOnceWith(prepared, 'sid-1'))
+  })
+
+  it('copilot の再開でも activate に記録と照合した会話の ID を渡す', async () => {
+    copilotRecords.record('/work', ID)
+    await makeStarter()(1, copilotResume(ID), makeSink())
+    expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 'sid-1', ID)
   })
 
   it('lastSessionOf は copilot の依頼に copilot の記録の先頭を種類付きで返す', async () => {

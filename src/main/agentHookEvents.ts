@@ -1,13 +1,17 @@
 import { AGENT_HOOK_TOOL_NAMES } from './agentHookProtocol'
 import type { AgentHookEventName } from './agentHookProtocol'
 
-// hook の要求の本文の解釈(設計書「入力の解釈」。純粋な関数)。パスから決めたイベント(パスとの対応は agentHookProtocol.ts)と
+// claude の hook の要求の本文の解釈(設計書「入力の解釈」。純粋な関数)。本文の読み方(readAgentHookBodyObject など)と知らせの型は
+// copilot の解釈(agentCopilotHookEvents.ts)と共有する。パスから決めたイベント(パスとの対応は agentHookProtocol.ts)と
 // 本文を受け取り、本文を読めなければパスのイベントだけで扱う。使う欄は hook_event_name・tool_name・tool_use_id・agent_id だけで、
 // tool_input・cwd・transcript_path などは読まない(区別は git の差分で行う。L-009・L-018)。どの結果も照合の通った知らせで、
 // 追跡は受け取ったら確かめた状態を更新する
 
-/** 読めた ID と、読めない(本文が大きすぎる・読めない・形が違う)を型で区別する */
-export type ToolIdRead = { kind: 'read'; id: string } | { kind: 'unreadable' }
+/**
+ * 読めた ID と、読めない(本文が大きすぎる・読めない・形が違う)と、その CLI がツールの呼び出しの ID を持たない(copilot。
+ * 段階 3b)を型で区別する。claude の解釈は none を作らない
+ */
+export type ToolIdRead = { kind: 'read'; id: string } | { kind: 'unreadable' } | { kind: 'none' }
 
 export type AgentHookConfirmOnlyReason =
   | 'prompt-submit'
@@ -18,8 +22,29 @@ export type AgentHookConfirmOnlyReason =
   | 'batch-end-unreadable'
   /** agent_id のある PostToolBatch(サブエージェントのバッチの終わりでメインの区間を閉じない) */
   | 'subagent-batch-end'
+  /** copilot: 主の会話の ID と違う会話(サブエージェント)の UserPromptSubmit。確かめにだけ使う */
+  | 'subagent-prompt'
+  /** copilot: 主の会話ではない会話の SessionEnd(--resume の直後の別の ID など)。区間を閉じない */
+  | 'other-session-end'
+  /** copilot: 本文の session_id を読めない(区間を閉じる根拠・主の会話の ID の採り直しの根拠にしない。L-044) */
+  | 'session-id-unreadable'
+  /** copilot: 主の会話の ID を待っている間(/clear などの後)の Stop */
+  | 'stop-while-awaiting'
+  /** copilot: PreToolUse 以外の本文を読めない(大きすぎる・JSON でない・イベント名がパスと違う) */
+  | 'copilot-body-unreadable'
+  /** copilot: サブエージェントのものと確かめられない SubagentStop(主の会話の ID を待っている間) */
+  | 'subagent-stop-unmatched'
+  /**
+   * copilot: agent_id が主として採っていた会話の ID と同じ SubagentStop。主のプロンプトの知らせが届かずにサブエージェントの ID を
+   * 採っていたと分かったので、本文の session_id(親の会話の ID)を主にする。読めない・agent_id と同じなら主の会話の ID を待ち直す
+   * (区間は閉じない)
+   */
+  | 'main-was-subagent'
 
-/** hookEventName はパスから決めたイベント名。toolName は検証済みの名前(ツール以外のイベントは null。ログにだけ使う) */
+/**
+ * hookEventName はパスから決めたイベント名。toolName は検証済みの名前(ツール以外のイベントは null。ログにだけ使う)。
+ * toolId が none の知らせの agentId は会話のグループ(null は主、文字列はサブエージェントの会話の ID)
+ */
 export type AgentHookEvent = { hookEventName: AgentHookEventName; toolName: string | null } & (
   | { kind: 'confirm-only'; reason: AgentHookConfirmOnlyReason }
   | { kind: 'tool-start'; toolId: ToolIdRead; agentId: string | null }
@@ -48,19 +73,25 @@ export interface AgentHookParseResult {
 }
 
 const ID_MAX_LENGTH = 256
-const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+/** ツールの名前の形(ログに出してよい名前) */
+export const AGENT_HOOK_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
-type AgentIdRead = { kind: 'absent' } | { kind: 'read'; id: string } | { kind: 'bad' }
+export type AgentHookAgentIdRead =
+  | { kind: 'absent' }
+  | { kind: 'read'; id: string }
+  | { kind: 'bad' }
 
-const isId = (value: unknown): value is string =>
+/** 1〜256 文字の文字列だけを ID として読む(L-044) */
+export const isAgentHookId = (value: unknown): value is string =>
   typeof value === 'string' && value.length >= 1 && value.length <= ID_MAX_LENGTH
 
-function readAgentId(body: Record<string, unknown>): AgentIdRead {
+export function readAgentHookAgentId(body: Record<string, unknown>): AgentHookAgentIdRead {
   if (!('agent_id' in body) || body.agent_id === undefined) return { kind: 'absent' }
-  return isId(body.agent_id) ? { kind: 'read', id: body.agent_id } : { kind: 'bad' }
+  return isAgentHookId(body.agent_id) ? { kind: 'read', id: body.agent_id } : { kind: 'bad' }
 }
 
-function readBody(
+/** 本文を JSON のオブジェクトとして読み、hook_event_name をパスのイベントと照らし合わせる(L-023)。copilot の解釈も同じ規則で読む */
+export function readAgentHookBodyObject(
   pathEvent: AgentHookEventName,
   body: AgentHookBody
 ): { value: Record<string, unknown> | null; notes: AgentHookParseNote[] } {
@@ -109,7 +140,7 @@ export function parseAgentHookRequest(
   pathEvent: AgentHookEventName,
   body: AgentHookBody
 ): AgentHookParseResult {
-  const { value, notes } = readBody(pathEvent, body)
+  const { value, notes } = readAgentHookBodyObject(pathEvent, body)
   if (value === null) return { event: eventWithoutBody(pathEvent), notes }
   const base = { hookEventName: pathEvent, toolName: null }
   switch (pathEvent) {
@@ -119,7 +150,7 @@ export function parseAgentHookRequest(
     case 'SessionEnd':
       return { event: eventWithoutBody(pathEvent), notes: [] }
     case 'SubagentStop': {
-      const agent = readAgentId(value)
+      const agent = readAgentHookAgentId(value)
       if (agent.kind === 'absent') {
         return {
           event: { ...base, kind: 'confirm-only', reason: 'subagent-stop-without-agent' },
@@ -136,7 +167,7 @@ export function parseAgentHookRequest(
     }
     case 'PostToolBatch': {
       // 本文を読めて agent_id が無いときだけ、メインのエージェントのバッチの終わり(区間を閉じる)にする
-      const agent = readAgentId(value)
+      const agent = readAgentHookAgentId(value)
       if (agent.kind === 'absent') {
         return { event: { ...base, kind: 'batch-end' }, notes: [] }
       }
@@ -164,12 +195,14 @@ function parseToolEvent(
 ): AgentHookParseResult {
   const rawToolName = value.tool_name
   const toolName =
-    typeof rawToolName === 'string' && TOOL_NAME_PATTERN.test(rawToolName) ? rawToolName : null
+    typeof rawToolName === 'string' && AGENT_HOOK_TOOL_NAME_PATTERN.test(rawToolName)
+      ? rawToolName
+      : null
   const known = typeof rawToolName === 'string' && AGENT_HOOK_TOOL_NAMES.includes(rawToolName)
-  const toolId: ToolIdRead = isId(value.tool_use_id)
+  const toolId: ToolIdRead = isAgentHookId(value.tool_use_id)
     ? { kind: 'read', id: value.tool_use_id }
     : { kind: 'unreadable' }
-  const agent = readAgentId(value)
+  const agent = readAgentHookAgentId(value)
   const base = { hookEventName: pathEvent, toolName }
   if (pathEvent === 'PreToolUse') {
     const notes: AgentHookParseNote[] = []

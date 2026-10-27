@@ -139,18 +139,26 @@ describe('AgentCliKindSection', () => {
     }
   })
 
-  it('copilot を選んでいると、使えない機能の注記に能力の表で使えない機能(区別)を出す', () => {
+  it('copilot を選んでも、使えない機能の注記を出さない(段階 3b ですべての機能に対応した)', () => {
     render(<AgentCliKindSection {...props({ kind: 'copilot' })} />)
-    expect(
-      screen.getByText(
-        'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別'
-      )
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/では次の機能を使えません/)).toBeNull()
   })
 
   it('claude では使えない機能の注記を出さない', () => {
     render(<AgentCliKindSection {...props()} />)
     expect(screen.queryByText(/では次の機能を使えません/)).toBeNull()
+  })
+
+  it('copilot を選んでいると、選択肢の下に区別の精度の注記を出す(claude では出さない)', () => {
+    const { unmount } = render(<AgentCliKindSection {...props({ kind: 'copilot' })} />)
+    expect(
+      screen.getByText(
+        'copilot では、利用者の変更との区別が claude より粗くなります（許可の確認で断ったツールの後は、そのターンが終わるまでのあなたの編集もエージェントの変更として扱います）'
+      )
+    ).toHaveClass('settings-panel__note')
+    unmount()
+    render(<AgentCliKindSection {...props()} />)
+    expect(screen.queryByText(/より粗くなります/)).toBeNull()
   })
 
   it.each([

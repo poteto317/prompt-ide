@@ -19,7 +19,8 @@ export interface AgentCliCapabilities {
   /** 帯の中断(送り方は main の agentCliInterruptSpecs.ts。claude は Esc を 1 回、copilot は 2 回)。押せる条件が screenActivity の
    *  working なので、true なら screenActivity も true */
   interrupt: boolean
-  /** hooks によるエージェントの変更と利用者の変更の区別と、画面の作業中・作業の終わりを main の区間の追跡へ知らせること */
+  /** hooks によるエージェントの変更と利用者の変更の区別と、画面の作業中・作業の終わりを main の区間の追跡へ知らせること(claude は --settings、
+   *  copilot は --plugin-dir で 1 回の起動だけに効く hooks を渡す。copilot はツールの呼び出しの ID が無いため区別が粗い。段階 3b) */
   changeAttribution: boolean
   /** 前回の続きから・このセッションで再開・種類ごとの起動の記録(main の agentSessionRecordFileIo.ts の表)・会話の ID の予約 */
   sessionResume: boolean
@@ -52,7 +53,7 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
       promptSend: true,
       screenActivity: true,
       interrupt: true,
-      changeAttribution: false,
+      changeAttribution: true,
       sessionResume: true
     }
   }

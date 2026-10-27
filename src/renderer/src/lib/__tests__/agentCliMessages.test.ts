@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { AGENT_CLI_KINDS, agentCliCapabilities } from '@shared/agentCliKinds'
 import {
+  AGENT_CLI_ATTRIBUTION_PRECISION_NOTES,
   AGENT_CLI_CAPABILITY_NAMES,
   AGENT_CLI_KIND_LOCKED_WHILE_STARTING,
   AGENT_CLI_KIND_SAVE_ERROR_PREFIX,
@@ -20,7 +21,8 @@ const capabilityOverrides = vi.hoisted(
   (): AgentCliCapabilityOverrides => ({
     unsupportedKinds: new Set<AgentCliKind>(),
     promptSendUnsupportedKinds: new Set<AgentCliKind>(),
-    sessionResumeUnsupportedKinds: new Set<AgentCliKind>()
+    sessionResumeUnsupportedKinds: new Set<AgentCliKind>(),
+    changeAttributionUnsupportedKinds: new Set<AgentCliKind>()
   })
 )
 vi.mock('@shared/agentCliKinds', async (importOriginal) => {
@@ -40,6 +42,7 @@ afterEach(() => {
   capabilityOverrides.unsupportedKinds.clear()
   capabilityOverrides.promptSendUnsupportedKinds.clear()
   capabilityOverrides.sessionResumeUnsupportedKinds.clear()
+  capabilityOverrides.changeAttributionUnsupportedKinds.clear()
 })
 
 describe('agentCliMessages(設定の画面)', () => {
@@ -69,31 +72,36 @@ describe('agentCliMessages(設定の画面)', () => {
     )
   })
 
-  it('使えない機能の注記: copilot は区別だけを並べ(段階 2a で画面の判定と中断、段階 2b で送信、段階 3a で再開に対応した)、claude は出さない', () => {
-    expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別'
-    )
+  it('使えない機能の注記: copilot も claude もすべての機能を使えるので出さない(段階 2a〜3b で対応した)', () => {
+    expect(agentCliUnsupportedFeaturesNote('copilot')).toBeNull()
     expect(agentCliUnsupportedFeaturesNote('claude')).toBeNull()
   })
 
-  it('使えない機能の注記: 画面の判定と中断が無い種類(能力の表を差し替えた copilot)は、その 2 つの名前も並べる', () => {
+  it('使えない機能の注記: 区別が無い種類(能力の表を差し替えた copilot)は、区別の名前を並べる', () => {
+    capabilityOverrides.changeAttributionUnsupportedKinds.add('copilot')
+    expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別'
+    )
+  })
+
+  it('使えない機能の注記: 画面の判定と中断が無い種類(能力の表を差し替えた copilot)は、その 2 つの名前を並べる', () => {
     capabilityOverrides.unsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断、利用者の変更との区別'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断'
     )
   })
 
-  it('使えない機能の注記: 送信が無い種類(能力の表を差し替えた copilot)は、送信の名前も並べる', () => {
+  it('使えない機能の注記: 送信が無い種類(能力の表を差し替えた copilot)は、送信の名前を並べる', () => {
     capabilityOverrides.promptSendUnsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）、利用者の変更との区別'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: プロンプトの送信（実行・再実行）'
     )
   })
 
-  it('使えない機能の注記: 再開が無い種類(能力の表を差し替えた copilot)は、再開の名前も並べる', () => {
+  it('使えない機能の注記: 再開が無い種類(能力の表を差し替えた copilot)は、再開の名前を並べる', () => {
     capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 利用者の変更との区別、前回の続きから・このセッションで再開'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 前回の続きから・このセッションで再開'
     )
   })
 
@@ -134,5 +142,15 @@ describe('isAgentCliKindResaveAllowed', () => {
     expect(isAgentCliKindResaveAllowed('invalid-value')).toBe(true)
     expect(isAgentCliKindResaveAllowed('read-failed')).toBe(false)
     expect(isAgentCliKindResaveAllowed(null)).toBe(false)
+  })
+})
+
+describe('AGENT_CLI_ATTRIBUTION_PRECISION_NOTES(区別の精度の注記。段階 3b)', () => {
+  it('claude は null、copilot は区別が粗い旨', () => {
+    expect(AGENT_CLI_ATTRIBUTION_PRECISION_NOTES).toEqual({
+      claude: null,
+      copilot:
+        'copilot では、利用者の変更との区別が claude より粗くなります（許可の確認で断ったツールの後は、そのターンが終わるまでのあなたの編集もエージェントの変更として扱います）'
+    })
   })
 })

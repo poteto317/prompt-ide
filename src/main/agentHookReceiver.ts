@@ -1,12 +1,19 @@
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
-import { parseAgentHookRequest } from './agentHookEvents'
 import type { AgentHookEvent, AgentHookParseNote } from './agentHookEvents'
-import { checkAgentHookRequest, readAgentHookBody } from './agentHookReceiverRequest'
+import { interpretAgentHookRequest } from './agentHookInterpretation'
+import { isCopilotHookPath } from './agentHookProtocol'
+import {
+  agentHookResponseStatus,
+  checkAgentHookRequest,
+  readAgentHookBody
+} from './agentHookReceiverRequest'
 import type { AgentHookOwner, AgentHookRejectReason } from './agentHookReceiverRequest'
 
-// claude の http の hook の受け口(設計書「受け口」)。127.0.0.1 のランダムなポートだけで待ち受け、セッションごとのトークンの
+// claude・copilot の http の hook の受け口(設計書「受け口」、段階 3b の設計書「受け口」)。copilot の経路は、照合の失敗・閉じた後・処理の
+// 例外でも常に 200 の空の本文を返す(状態コードの規則は agentHookResponseStatus)。本文を経路ごとに知らせにする規則(copilot の主の
+// 会話の ID の振り分けを含む)は agentHookInterpretation.ts。127.0.0.1 のランダムなポートだけで待ち受け、セッションごとのトークンの
 // SHA-256 で照合する(文字列の比較の時間で推測させない)。トークン・本文はログ・応答に出さない(L-017)。拒んだ要求は理由ごとの
 // 件数だけを出す。PreToolUse は deliver(追跡の更新と段階の通知)を終えてから onToolStart を待ち、上限で打ち切る(L-052)。
 // 本文を読む前の検査(checkAgentHookRequest)と本文の読み込み(readAgentHookBody)の規則は agentHookReceiverRequest.ts
@@ -66,7 +73,7 @@ export function createAgentHookReceiver({
 
   /** 最初の 1 件と 100 件ごとにだけログに出す */
   const count = (
-    label: '拒んだ要求' | '読めない知らせ',
+    label: '拒んだ要求' | '拒んだ要求（copilot）' | '読めない知らせ',
     reason: AgentHookRejectReason | AgentHookParseNote
   ): void => {
     const key = `${label}\u0000${reason}`
@@ -119,33 +126,38 @@ export function createAgentHookReceiver({
     onToolStartTimedOut(ownerId)
   }
 
+  /** 拒んだ要求の件数のラベル(copilot の経路は分けて数える。claude のラベルと件数は今のまま) */
+  const rejectLabelOf = (path: string): '拒んだ要求' | '拒んだ要求（copilot）' =>
+    isCopilotHookPath(path) ? '拒んだ要求（copilot）' : '拒んだ要求'
+
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    // close の後に残った接続から届いた要求は、追跡に渡さない(L-435)
+    const path = req.url ?? ''
+    // close の後に残った接続から届いた要求は、追跡に渡さない(L-435)。copilot の経路は 200(ツールを拒否させない)
     if (closed) {
       req.resume()
-      respond(res, 503)
+      respond(res, agentHookResponseStatus(path, 503))
       return
     }
     const check = checkAgentHookRequest(req, port, ownerOf)
     if (check.kind === 'rejected') {
-      count('拒んだ要求', check.reason)
+      count(rejectLabelOf(path), check.reason)
       req.resume()
       respond(res, check.status)
       return
     }
-    const { event, owner } = check
+    const { route, owner } = check
     const body = await readAgentHookBody(req)
     // 本文を読んでいる間に close した(接続が切れて unreadable になった)要求も渡さない
     if (closed) {
-      respond(res, 503)
+      respond(res, agentHookResponseStatus(path, 503))
       return
     }
-    if (body.kind === 'too-large') count('拒んだ要求', 'too-large')
-    const { event: parsed, notes } = parseAgentHookRequest(event, body)
+    if (body.kind === 'too-large') count(rejectLabelOf(path), 'too-large')
+    const { event, notes } = interpretAgentHookRequest(route, owner, body)
     for (const note of notes) count('読めない知らせ', note)
     // 知らせ 1 件につき 1 回。追跡はこの中で段階の通知まで同期的に済ませる
-    deliver(owner.ownerId, owner.sessionId, parsed)
-    if (event === 'PreToolUse') await waitForToolStart(owner.ownerId)
+    deliver(owner.ownerId, owner.sessionId, event)
+    if (route.event === 'PreToolUse') await waitForToolStart(owner.ownerId)
     respond(res, 200)
   }
 
@@ -157,7 +169,8 @@ export function createAgentHookReceiver({
           const created = createServer((req, res) => {
             void handle(req, res).catch((err: unknown) => {
               log(`[agent-hooks] 要求の処理に失敗しました: ${messageOf(err)}`)
-              respond(res, 500)
+              // copilot の経路は 200(copilot は 5xx をツールの拒否にする)。claude の経路は今どおり 500
+              respond(res, agentHookResponseStatus(req.url ?? '', 500))
             })
           })
           created.headersTimeout = AGENT_HOOK_HEADERS_TIMEOUT_MS

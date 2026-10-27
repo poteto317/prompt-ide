@@ -12,6 +12,8 @@ import type { AgentHookEvent } from '../agentHookEvents'
 import type { AgentToolActivity, AgentToolActivityDeps } from '../agentToolActivity'
 import {
   batchEnd,
+  idlessToolEnd,
+  idlessToolStart,
   promptSubmit,
   sessionEnd,
   subagentStop,
@@ -35,6 +37,7 @@ beforeEach(() => {
 
 afterEach(() => {
   tracker.close()
+  vi.clearAllTimers()
   vi.useRealTimers()
 })
 
@@ -778,5 +781,40 @@ describe('shouldAwaitTurnEnd(作業の終わりで待ちを張るかの規則)',
     ['保留している', { overdue: true }]
   ] as const)('%s なら張らない', (_label, change) => {
     expect(shouldAwaitTurnEnd({ ...ready, ...change })).toBe(false)
+  })
+})
+
+describe('createAgentToolActivity(ID を持たない CLI の区間。段階 3b)', () => {
+  it('ID を持たない区間でも段階が agent になり、すべて閉じた 2 秒後に idle に戻る', () => {
+    confirmed()
+    tracker.deliver(1, 's1', idlessToolStart())
+    expect(phase()).toBe('agent')
+    tracker.deliver(1, 's1', idlessToolEnd())
+    expect(phase()).toBe('agent')
+    passGrace()
+    expect(phase()).toBe('idle')
+  })
+
+  it('中断の後: 次のプロンプトの後のツールの終わりでは idle に戻らず、Stop の 2 秒後に戻る', () => {
+    confirmed()
+    tracker.deliver(1, 's1', idlessToolStart())
+    tracker.deliver(1, 's1', promptSubmit())
+    tracker.deliver(1, 's1', idlessToolStart())
+    tracker.deliver(1, 's1', idlessToolEnd())
+    passGrace()
+    expect(phase()).toBe('agent')
+    tracker.deliver(1, 's1', turnEnd())
+    passGrace()
+    expect(phase()).toBe('idle')
+  })
+
+  it('ログの id= は none で なし、agent= はサブエージェントのグループで あり・主で なし', () => {
+    tracker.addSession(1, 'abcdefgh-1', { kind: 'pending' })
+    tracker.deliver(1, 'abcdefgh-1', idlessToolStart('sub-1'))
+    tracker.deliver(1, 'abcdefgh-1', idlessToolStart())
+    expect(devLog.mock.calls.slice(-2).map(([line]) => line)).toEqual([
+      '[agent-hooks] owner=1 session=abcdefgh event=PreToolUse tool=Edit id=なし agent=あり hooks=confirmed phase=agent→agent unassignable=なし',
+      '[agent-hooks] owner=1 session=abcdefgh event=PreToolUse tool=Edit id=なし agent=なし hooks=confirmed phase=agent→agent unassignable=なし'
+    ])
   })
 })

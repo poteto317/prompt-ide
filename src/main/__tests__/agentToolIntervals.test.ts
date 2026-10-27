@@ -10,8 +10,13 @@ import {
   openCountOf,
   openIntervalsOf
 } from '../agentToolIntervals'
+import type { ToolIntervals } from '../agentToolIntervals'
+import type { AgentHookEvent } from '../agentHookEvents'
 import {
   batchEnd,
+  confirmOnly,
+  idlessToolEnd,
+  idlessToolStart,
   promptSubmit,
   sessionEnd,
   subagentStop,
@@ -321,5 +326,289 @@ describe('あふれと控え(頑健性の 4)', () => {
     const overflowed = createToolIntervals()
     overflowed.overflowed = true
     expect(hasUnassignableInterval(overflowed)).toBe(true)
+  })
+})
+
+describe('applyToolIntervalEvent(ID を持たない CLI の区間。段階 3b)', () => {
+  /** 知らせを順に当てる(openedAt は start から 1 ずつ進める) */
+  function run(intervals: ToolIntervals, events: AgentHookEvent[], start = 0): void {
+    events.forEach((event, index) => applyToolIntervalEvent(intervals, event, start + index))
+  }
+  /** 開いた ID を持たない区間の [グループ, 持ち越し] の並び(開いた順) */
+  const groupsOf = (intervals: ToolIntervals): Array<[string | null, boolean]> =>
+    intervals.idlessOpen.map((interval) => [interval.group, interval.carried])
+
+  it('createToolIntervals は空の idlessOpen・idlessEndedGroups から始める', () => {
+    const intervals = createToolIntervals()
+    expect(intervals.idlessOpen).toEqual([])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
+  })
+
+  it('tool-start(none)はグループ付きの持ち越しでない区間を now で開き、開いた区間の数と openIntervalsOf に入る(ID のある区間・ID なしの区間は変えない)', () => {
+    const intervals = createToolIntervals()
+    // 先に ID のある区間と ID なしの区間を 1 つずつ開いておく
+    applyToolIntervalEvent(intervals, toolStart('a'), 1)
+    applyToolIntervalEvent(intervals, toolStart(null), 2)
+    applyToolIntervalEvent(intervals, idlessToolStart(), 10)
+    applyToolIntervalEvent(intervals, idlessToolStart('sub-1'), 11)
+    expect(intervals.idlessOpen).toEqual([
+      { openedAt: 10, expired: false, group: null, carried: false },
+      { openedAt: 11, expired: false, group: 'sub-1', carried: false }
+    ])
+    expect(openCountOf(intervals)).toBe(4)
+    expect(openIntervalsOf(intervals)).toHaveLength(4)
+    expect([...intervals.openTools]).toEqual([
+      ['a', { agentId: null, openedAt: 1, expired: false, ended: false }]
+    ])
+    expect(intervals.anonymousOpen).toEqual([{ openedAt: 2, expired: false }])
+  })
+
+  it('並列のバッチ(記録 02): pre A・pre B・post B・post A で 0 に戻り、主が集合に入る', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), idlessToolStart(), idlessToolEnd()])
+    expect(openCountOf(intervals)).toBe(1)
+    expect([...intervals.idlessEndedGroups]).toEqual([null])
+    applyToolIntervalEvent(intervals, idlessToolEnd(), 3)
+    expect(openCountOf(intervals)).toBe(0)
+  })
+
+  it('次のバッチの tool-start は主を集合から外す(閉じる区間が無ければ何も閉じない)', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), idlessToolEnd(), idlessToolStart()])
+    expect(groupsOf(intervals)).toEqual([[null, false]])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
+  })
+
+  it('断った・同じバッチ: tool-end の後の tool-start は、そのグループの前のバッチの残りを閉じてから開く', () => {
+    const intervals = createToolIntervals()
+    // pre A・pre B(断る)・post A で 1 つ残る
+    run(intervals, [idlessToolStart(), idlessToolStart(), idlessToolEnd()])
+    expect(openCountOf(intervals)).toBe(1)
+    // 次のバッチの pre C で残り(B)を閉じる
+    applyToolIntervalEvent(intervals, idlessToolStart(), 3)
+    expect(intervals.idlessOpen).toEqual([
+      { openedAt: 3, expired: false, group: null, carried: false }
+    ])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
+  })
+
+  it('断った・続けて呼ぶ(記録 60・36・50): 間に tool-end の無い tool-start では閉じず、残りは turn-end で閉じる', () => {
+    const intervals = createToolIntervals()
+    // pre A(断る)・pre B・post B
+    run(intervals, [idlessToolStart(), idlessToolStart(), idlessToolEnd()])
+    expect(openCountOf(intervals)).toBe(1)
+    applyToolIntervalEvent(intervals, turnEnd(), 3)
+    expect(openCountOf(intervals)).toBe(0)
+    expect(intervals.idlessEndedGroups.has(null)).toBe(false)
+  })
+
+  it('中断の後の持ち越し(記録 61・62): pre B → prompt-submit → pre C → post C → pre D → post D で B が残り、turn-end で閉じる', () => {
+    const intervals = createToolIntervals()
+    applyToolIntervalEvent(intervals, idlessToolStart(), 0)
+    applyToolIntervalEvent(intervals, promptSubmit(), 1)
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    run(intervals, [idlessToolStart(), idlessToolEnd()], 2)
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    expect(intervals.idlessEndedGroups.has(null)).toBe(true)
+    run(intervals, [idlessToolStart(), idlessToolEnd()], 4)
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    applyToolIntervalEvent(intervals, turnEnd(), 6)
+    expect(openCountOf(intervals)).toBe(0)
+  })
+
+  it('並列の途中の中断: pre A・pre B・post A → prompt-submit → pre C → post C → pre D でも、残りは turn-end まで開いたまま', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), idlessToolStart(), idlessToolEnd()])
+    applyToolIntervalEvent(intervals, promptSubmit(), 3)
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
+    run(intervals, [idlessToolStart(), idlessToolEnd(), idlessToolStart()], 4)
+    expect(groupsOf(intervals)).toEqual([
+      [null, true],
+      [null, false]
+    ])
+    applyToolIntervalEvent(intervals, turnEnd(), 7)
+    expect(openCountOf(intervals)).toBe(0)
+  })
+
+  it('prompt-submit を受けないと、中断したツールの区間は post C の数の消費と pre D の区切りで閉じる(既知の制約)', () => {
+    const intervals = createToolIntervals()
+    // B(中断)・C
+    run(intervals, [idlessToolStart(), idlessToolStart()])
+    // post C は一番古い区間(B)を閉じる
+    applyToolIntervalEvent(intervals, idlessToolEnd(), 2)
+    expect(intervals.idlessOpen.map((interval) => interval.openedAt)).toEqual([1])
+    // pre D は前のバッチの残り(C の分)を閉じる
+    applyToolIntervalEvent(intervals, idlessToolStart(), 3)
+    expect(intervals.idlessOpen.map((interval) => interval.openedAt)).toEqual([3])
+  })
+
+  it('tool-end は持ち越しの区間を閉じず、持ち越しでない一番古い区間を閉じる。持ち越しでない区間が無くても集合には入れる', () => {
+    const intervals = createToolIntervals()
+    applyToolIntervalEvent(intervals, idlessToolStart(), 0)
+    applyToolIntervalEvent(intervals, promptSubmit(), 1)
+    run(intervals, [idlessToolStart(), idlessToolStart()], 2)
+    applyToolIntervalEvent(intervals, idlessToolEnd(), 4)
+    expect(intervals.idlessOpen.map((interval) => [interval.openedAt, interval.carried])).toEqual([
+      [0, true],
+      [3, false]
+    ])
+    applyToolIntervalEvent(intervals, idlessToolEnd(), 5)
+    expect(intervals.idlessOpen.map((interval) => [interval.openedAt, interval.carried])).toEqual([
+      [0, true]
+    ])
+    // 次のプロンプトで主を集合から外してから(前の tool-end で入った主が残っていると、入れたかを区別できないため)、
+    // 持ち越しの区間しか無い主の tool-end を当てる
+    applyToolIntervalEvent(intervals, promptSubmit(), 6)
+    expect(intervals.idlessEndedGroups.has(null)).toBe(false)
+    applyToolIntervalEvent(intervals, idlessToolEnd(), 7)
+    expect(intervals.idlessOpen.map((interval) => [interval.openedAt, interval.carried])).toEqual([
+      [0, true]
+    ])
+    expect(intervals.idlessEndedGroups.has(null)).toBe(true)
+  })
+
+  it('prompt-submit は主のグループだけに持ち越しの印を付ける(サブエージェントのグループと集合のサブエージェントの ID は変えない)', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [
+      idlessToolStart(),
+      idlessToolStart('sub-1'),
+      idlessToolStart('sub-1'),
+      idlessToolEnd('sub-1'),
+      promptSubmit()
+    ])
+    expect(groupsOf(intervals)).toEqual([
+      [null, true],
+      ['sub-1', false]
+    ])
+    expect([...intervals.idlessEndedGroups]).toEqual(['sub-1'])
+  })
+
+  it('prompt-submit 以外の confirm-only は、印も集合も変えない', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), idlessToolStart(), idlessToolEnd()])
+    run(
+      intervals,
+      [
+        confirmOnly('subagent-prompt'),
+        confirmOnly('other-session-end'),
+        confirmOnly('session-id-unreadable'),
+        confirmOnly('stop-while-awaiting'),
+        confirmOnly('copilot-body-unreadable'),
+        confirmOnly('subagent-stop-unmatched'),
+        confirmOnly('main-was-subagent'),
+        confirmOnly('unknown-tool-end')
+      ],
+      3
+    )
+    expect(groupsOf(intervals)).toEqual([[null, false]])
+    expect([...intervals.idlessEndedGroups]).toEqual([null])
+  })
+
+  it('サブエージェントのグループ(記録 70)は主の turn-end で閉じず、自分の subagent-stop で閉じて集合からも外れる', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart('sub-1'), idlessToolStart('sub-1'), idlessToolEnd('sub-1')])
+    applyToolIntervalEvent(intervals, turnEnd(), 3)
+    expect(groupsOf(intervals)).toEqual([['sub-1', false]])
+    expect(intervals.idlessEndedGroups.has('sub-1')).toBe(true)
+    applyToolIntervalEvent(intervals, subagentStop('sub-1'), 4)
+    expect(intervals.idlessOpen).toEqual([])
+    expect(intervals.idlessEndedGroups.has('sub-1')).toBe(false)
+  })
+
+  it('tool-end はほかのグループの区間を閉じない(自分のグループを集合に入れるだけ)', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), idlessToolEnd('sub-1')])
+    expect(groupsOf(intervals)).toEqual([[null, false]])
+    expect([...intervals.idlessEndedGroups]).toEqual(['sub-1'])
+  })
+
+  it('グループの中の新しいバッチは、そのグループの残りだけを閉じる(主の区間は閉じない)', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [
+      idlessToolStart(),
+      idlessToolStart('sub-1'),
+      idlessToolStart('sub-1'),
+      idlessToolEnd('sub-1'),
+      idlessToolStart('sub-1')
+    ])
+    expect(intervals.idlessOpen.map((interval) => [interval.group, interval.openedAt])).toEqual([
+      [null, 0],
+      ['sub-1', 4]
+    ])
+  })
+
+  it('turn-end の後の最初のバッチは、前のターンの区間を閉じない(主は集合から外れている。サブエージェントの区間も残る)', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart('sub-1'), idlessToolStart(), idlessToolEnd(), turnEnd()])
+    expect(groupsOf(intervals)).toEqual([['sub-1', false]])
+    expect(intervals.idlessEndedGroups.has(null)).toBe(false)
+    applyToolIntervalEvent(intervals, idlessToolStart(), 4)
+    expect(groupsOf(intervals)).toEqual([
+      ['sub-1', false],
+      [null, false]
+    ])
+  })
+
+  it('作業中に送ったプロンプト: 動いているツールに持ち越しの印が付き、そのツールの tool-end では閉じず、turn-end で閉じる', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [idlessToolStart(), promptSubmit(), idlessToolEnd()])
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    run(intervals, [idlessToolStart(), idlessToolEnd()], 3)
+    expect(groupsOf(intervals)).toEqual([[null, true]])
+    applyToolIntervalEvent(intervals, turnEnd(), 5)
+    expect(openCountOf(intervals)).toBe(0)
+  })
+
+  it('/clear(記録 91): session-end はすべてのグループの区間(持ち越しを含む)を閉じ、集合を空にする', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [
+      idlessToolStart(),
+      idlessToolStart('sub-1'),
+      idlessToolEnd('sub-1'),
+      promptSubmit()
+    ])
+    applyToolIntervalEvent(intervals, sessionEnd(), 4)
+    expect(intervals.idlessOpen).toEqual([])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
+  })
+
+  it(`ID を持たない区間が ${AGENT_TOOL_OPEN_MAX} 件ある間の tool-start は足さず(一番古い区間も捨てない)、overflowed を立てる`, () => {
+    const intervals = createToolIntervals()
+    for (let i = 0; i < AGENT_TOOL_OPEN_MAX; i++)
+      applyToolIntervalEvent(intervals, idlessToolStart(), i)
+    applyToolIntervalEvent(intervals, idlessToolStart(), 999)
+    expect(intervals.idlessOpen).toHaveLength(AGENT_TOOL_OPEN_MAX)
+    expect(intervals.idlessOpen[0].openedAt).toBe(0)
+    expect(intervals.overflowed).toBe(true)
+    expect(hasUnassignableInterval(intervals)).toBe(true)
+  })
+
+  it('ID を持たない区間も期限切れになり、earliestUnexpiredOpenedAt と hasUnassignableInterval に入る', () => {
+    const intervals = createToolIntervals()
+    applyToolIntervalEvent(intervals, idlessToolStart(), 100)
+    applyToolIntervalEvent(intervals, idlessToolStart('sub-1'), 200)
+    expect(earliestUnexpiredOpenedAt(intervals)).toBe(100)
+    markExpiredIntervals(intervals, 150, 50)
+    expect(intervals.idlessOpen.map((interval) => interval.expired)).toEqual([true, false])
+    expect(earliestUnexpiredOpenedAt(intervals)).toBe(200)
+    expect(hasUnassignableInterval(intervals)).toBe(true)
+  })
+
+  it('claude の知らせ(none を作らない)では idlessOpen・idlessEndedGroups は空のまま', () => {
+    const intervals = createToolIntervals()
+    run(intervals, [
+      promptSubmit(),
+      toolStart('a'),
+      toolEnd('a'),
+      batchEnd(),
+      toolStart(null),
+      toolEnd('x'),
+      subagentStop('agent-1'),
+      turnEnd(),
+      sessionEnd()
+    ])
+    expect(intervals.idlessOpen).toEqual([])
+    expect(intervals.idlessEndedGroups.size).toBe(0)
   })
 })

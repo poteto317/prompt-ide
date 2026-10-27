@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readLoginShellPath } from '../agentShellEnv'
+import { removeTempPathSync } from './helpers/tempDirGuard'
 
 // 実物の /bin/sh で、印の間の取り出しと終了の検知を確かめる(macOS・Linux の開発者のローカルで走らせる。パターン 41)
 // rc を読む対話シェル(zsh があれば zsh、無ければ bash)
@@ -25,7 +26,8 @@ describe('readLoginShellPath(実物のシェル)', () => {
     home = mkdtempSync(join(tmpdir(), 'agent-shell-env-'))
   })
   afterAll(() => {
-    rmSync(home, { recursive: true, force: true })
+    // 準備が失敗して空のままなら消さない
+    if (home !== '') removeTempPathSync(home)
   })
 
   it.skipIf(process.platform === 'win32')(
