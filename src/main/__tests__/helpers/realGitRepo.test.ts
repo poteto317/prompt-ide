@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { initRepo, runGit, runGitWithEnv, stubIsolatedGitEnv } from './realGitRepo'
@@ -21,7 +22,7 @@ const workDirs: string[] = []
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  for (const dir of workDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of workDirs.splice(0)) removeTempPathSync(dir)
 })
 
 describe('stubIsolatedGitEnv', () => {

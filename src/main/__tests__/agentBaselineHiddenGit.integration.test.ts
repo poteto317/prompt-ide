@@ -1,13 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { join } from 'node:path'
 import { createHiddenGit, hiddenGitExcludeContent } from '../agentBaselineHiddenGit'
 import { isGitTimeoutError } from '../gitStepErrors'
@@ -81,7 +74,7 @@ describe('createHiddenGit(実 git)', () => {
       } catch {
         return fallback
       } finally {
-        rmSync(probe, { recursive: true, force: true })
+        removeTempPathSync(probe)
       }
     }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -34,7 +35,7 @@ afterEach(() => {
       // 既に終わっている
     }
   }
-  for (const dir of workDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of workDirs.splice(0)) removeTempPathSync(dir)
 })
 
 describe('createTestTimers', () => {

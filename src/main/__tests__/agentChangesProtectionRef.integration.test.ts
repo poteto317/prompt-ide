@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { commitAll, runGit, writeRepoFile } from './helpers/realGitRepo'
@@ -64,7 +65,7 @@ beforeEach(() => {
 
 afterEach(() => {
   disposeAgentBaselineRepo(dirs)
-  for (const dir of [noHooksDir, ...extraDirs]) rmSync(dir, { recursive: true, force: true })
+  for (const dir of [noHooksDir, ...extraDirs]) removeTempPathSync(dir)
 })
 
 describe('保護の ref の作成(確認の結果 1・2)', () => {

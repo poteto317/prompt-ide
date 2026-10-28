@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getDiff } from '../gitService'
@@ -34,7 +35,7 @@ describe('getDiff と利用者の diff.suppressBlankEmpty(実 git)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(root, { recursive: true, force: true })
+    removeTempPathSync(root)
   })
 
   it.each([

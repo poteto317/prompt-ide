@@ -8,7 +8,6 @@ import {
   readdirSync,
   realpathSync,
   renameSync,
-  rmSync,
   statSync,
   symlinkSync,
   truncateSync,
@@ -16,6 +15,7 @@ import {
   utimesSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { execFileSync } from 'node:child_process'
 import { basename, dirname, join } from 'node:path'
 import { takeBaselineSnapshot } from '../agentBaselineSnapshot'
@@ -498,7 +498,7 @@ describe('takeBaselineSnapshot の tree と区切り(base)(実 git)', () => {
     write('a.txt', 'a\n')
     commitAll(repo, 'init')
     const first = await takeFrom()
-    rmSync(first.tempDir, { recursive: true, force: true })
+    removeTempPathSync(first.tempDir)
     const result = await takeBaselineSnapshot(repo, {
       tempRoot,
       instanceId: FAKE_INSTANCE_ID,
@@ -813,7 +813,7 @@ describe('takeBaselineSnapshot の tree と区切り(base)(実 git)', () => {
     const first = await takeFrom()
     // .git を消した後に上のフォルダのリポジトリ(TMPDIR がリポジトリの中にある環境など)を拾わない
     stubGitCeiling(dirname(repo))
-    rmSync(join(repo, '.git'), { recursive: true, force: true })
+    removeTempPathSync(join(repo, '.git'))
     expect(
       await takeBaselineSnapshot(repo, {
         tempRoot,
@@ -1045,7 +1045,7 @@ describe('Git 管理外のフォルダ(隠れた git)(実 git)', () => {
     put('a.txt', 'a\n')
     const first = recordedSnapshot(await take())
     const gitDir = gitDirOf(first)
-    rmSync(gitDir, { recursive: true, force: true })
+    removeTempPathSync(gitDir)
     expect(await take({ base: snapshotBase(first) })).toEqual({
       kind: 'unavailable',
       state: { kind: 'unavailable', reason: 'git-failed' }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -128,7 +129,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(folder, { recursive: true, force: true })
+  removeTempPathSync(folder)
 })
 
 describe('registerAgentChangesHandlers', () => {

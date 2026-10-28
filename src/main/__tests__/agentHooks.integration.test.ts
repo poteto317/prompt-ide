@@ -22,7 +22,7 @@ import type { CopilotHookConfigJson } from '../agentCopilotHookConfig'
 import type { CopilotHookPluginSlots } from '../agentCopilotHookPlugin'
 import type { CopilotHookEventName } from '../agentHookProtocol'
 import { sendHookRequest } from './helpers/agentHookHttp'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import type { HookResponse } from './helpers/agentHookHttp'
 
 // 受け口・追跡・agentHookSessions を実物で組み立て、claude・copilot が送る形の要求を送る(claude・copilot は起動しない)。

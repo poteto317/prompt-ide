@@ -16,6 +16,7 @@ import {
   unlinkSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { link } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -58,7 +59,7 @@ afterEach(() => {
   for (const dir of [folder, join(folder, 'sub')]) {
     if (existsSync(dir)) chmodSync(dir, 0o755)
   }
-  rmSync(root, { recursive: true, force: true })
+  removeTempPathSync(root)
 })
 
 // 戻す操作の流れ(控えの準備 → 適用 → 1 件ごとの after → 結果)を再現する
@@ -461,7 +462,7 @@ describe('executeAgentChangesUndo(取り消し)', () => {
         '親が無い',
         async () => {
           const undo = await captureRecreate('sub/z.txt')
-          rmSync(join(folder, 'sub'), { recursive: true })
+          removeTempPathSync(join(folder, 'sub'))
           return { undo, path: 'sub/z.txt' }
         }
       ]

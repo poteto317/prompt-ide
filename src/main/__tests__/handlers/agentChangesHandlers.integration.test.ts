@@ -11,6 +11,7 @@ import {
   statSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { FolderAccessManager } from '../../folderAccessManager'
@@ -364,7 +365,7 @@ describe('記録の gc からの保護(実 git)', () => {
       )
     } finally {
       registry.close()
-      rmSync(shaRepo, { recursive: true, force: true })
+      removeTempPathSync(shaRepo)
     }
   })
 

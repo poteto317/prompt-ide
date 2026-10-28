@@ -1,8 +1,9 @@
 import { realpathSync, rmSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, relative, resolve } from 'node:path'
 
-// テストの再帰削除の安全装置。空・相対・一時ディレクトリ(os.tmpdir())の外のパスは消さずに投げる。
+// テストの再帰削除の安全装置(同期の removeTempPathSync・非同期の removeTempPath)。空・相対・一時ディレクトリ(os.tmpdir())の外のパスは消さずに投げる。
 // 2026-10-26 に、テストの rmSync(dirname(''), { recursive: true }) が「.」(リポジトリのフォルダ)を消した事故の再発防止
 
 const tempRoots = (): string[] => {
@@ -33,4 +34,9 @@ export function assertInsideTempDir(target: string | null | undefined): string {
 /** 一時ディレクトリの中であることを確かめてから、再帰で消す */
 export function removeTempPathSync(target: string | null | undefined): void {
   rmSync(assertInsideTempDir(target), { recursive: true, force: true })
+}
+
+/** 一時ディレクトリの中であることを確かめてから、再帰で消す(非同期)。確かめの失敗も、同期の throw ではなく reject で返す */
+export async function removeTempPath(target: string | null | undefined): Promise<void> {
+  await rm(assertInsideTempDir(target), { recursive: true, force: true })
 }

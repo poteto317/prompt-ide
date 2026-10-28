@@ -8,6 +8,7 @@ import {
   rmSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -66,7 +67,7 @@ beforeEach(() => {
 afterEach(() => {
   hooks.beforeLstat = null
   hooks.failChmodFor = null
-  rmSync(root, { recursive: true, force: true })
+  removeTempPathSync(root)
 })
 
 // a.txt の書き戻しの控え(agent → 戻して base)

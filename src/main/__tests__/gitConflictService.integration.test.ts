@@ -9,6 +9,7 @@ import {
   symlinkSync,
   writeFileSync
 } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -82,7 +83,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  rmSync(repo, { recursive: true, force: true })
+  removeTempPathSync(repo)
 })
 
 // 解決ビュー(ConflictResolver)と同じ順序: バイナリは「相手をすべて採用」→「解決済みにする」で解決する。
@@ -636,7 +637,7 @@ describe('サブモジュール(gitlink)のコンフリクト(実 git)', () => {
   }
 
   afterEach(() => {
-    rmSync(subSource, { recursive: true, force: true })
+    removeTempPathSync(subSource)
   })
 
   it('前提: sub は UU で、すべてのステージが mode 160000', () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { devNull } from 'node:os'
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -149,7 +150,7 @@ describe('makeAttributionOffDeps', () => {
 describe('createFakeTrash', () => {
   const dirs: string[] = []
   afterEach(() => {
-    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+    for (const dir of dirs.splice(0)) removeTempPathSync(dir)
   })
 
   it('渡されたパスを順に控え、作業ツリーから取り除く(ファイルとフォルダ)', async () => {

@@ -45,7 +45,7 @@ import {
   createCopilotHookPluginSlots
 } from '../agentCopilotHookPlugin'
 import type { CopilotHookPluginSlots } from '../agentCopilotHookPlugin'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 // 実物の node-pty と偽の copilot(`#!/usr/bin/env node` のスクリプト)で、選んだ CLI の解決と起動・会話の指定の引数と環境変数の届き方を確かめる(設計書「テスト方針」。
 // L-059)。本物の copilot は起動しない。HOME は一時ディレクトリで、利用者の ~/.copilot・~/.gitconfig・~/.claude に書かない。

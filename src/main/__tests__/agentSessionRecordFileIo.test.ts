@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile } from 'node:fs/promises'
+import { removeTempPath } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AGENT_CLI_KINDS } from '@shared/agentCliKinds'
@@ -13,7 +14,7 @@ const CLAUDE_FILE = 'agent-sessions.json'
 let tempDir: string | null = null
 
 afterEach(async () => {
-  if (tempDir !== null) await rm(tempDir, { recursive: true, force: true })
+  if (tempDir !== null) await removeTempPath(tempDir)
   tempDir = null
 })
 

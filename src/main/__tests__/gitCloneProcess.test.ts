@@ -5,9 +5,9 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { MAX_CLONE_STDERR_BYTES, runGitCloneProcess } from '../gitCloneProcess'
@@ -68,7 +68,7 @@ afterEach(() => {
     }
   }
   vi.unstubAllEnvs()
-  rmSync(work, { recursive: true, force: true })
+  removeTempPathSync(work)
 })
 
 describe.skipIf(isWindows)('runGitCloneProcess', () => {

@@ -20,7 +20,7 @@ import {
 } from '../agentChangeDiff'
 import { listAgentChanges } from '../agentChangesQuery'
 import { commitAll, initRepo, runGit, writeRepoFile } from './helpers/realGitRepo'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import {
   createAgentBaselineRepo,
   createAgentNonGitFolder,

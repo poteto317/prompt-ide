@@ -5,10 +5,10 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
-  rmSync,
   symlinkSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { FolderAccessManager } from '../../folderAccessManager'
@@ -40,7 +40,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+  removeTempPathSync(root)
 })
 
 const writeChecked = (path: string, content: string, base: string | null): Promise<unknown> =>

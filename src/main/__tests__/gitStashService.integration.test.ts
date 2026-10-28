@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getStashes, stashDrop, stashPop, stashPush } from '../gitStashService'
@@ -29,7 +30,7 @@ describe('gitStashService(実 git)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(repo, { recursive: true, force: true })
+    removeTempPathSync(repo)
   })
 
   it('追跡済み・ステージ済み・未追跡を退避して作業ツリーを HEAD に戻し、ignored は残す', async () => {
@@ -210,7 +211,7 @@ describe('gitStashService(実 git)', () => {
     }
 
     afterEach(() => {
-      rmSync(subSource, { recursive: true, force: true })
+      removeTempPathSync(subSource)
     })
 
     it('サブモジュールの中だけの変更は変更なしとして拒否する', async () => {
@@ -370,7 +371,7 @@ describe('gitStashService(実 git)', () => {
       expect(read('sub/s.txt')).toBe('changed')
       expect(await getStashes(repo)).toEqual([])
     } finally {
-      rmSync(subSource, { recursive: true, force: true })
+      removeTempPathSync(subSource)
     }
   })
 
@@ -446,7 +447,7 @@ describe('gitStashService(実 git)', () => {
       expect(read('sub/s.txt')).toBe('LOCAL')
       expect(await getStashes(repo)).toHaveLength(1)
     } finally {
-      rmSync(subSource, { recursive: true, force: true })
+      removeTempPathSync(subSource)
     }
   })
 })

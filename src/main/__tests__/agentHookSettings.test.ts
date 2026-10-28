@@ -24,7 +24,7 @@ import {
   writeAgentHookSettingsFile
 } from '../agentHookSettings'
 import type { AgentHookSettingsDirStat } from '../agentHookSettings'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 const TOKEN = 'ab'.repeat(32)
 const BASE = 'http://127.0.0.1:43210'

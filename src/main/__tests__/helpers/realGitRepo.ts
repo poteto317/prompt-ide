@@ -1,15 +1,8 @@
 import { execFileSync } from 'child_process'
 import { vi } from 'vitest'
 import { devNull, tmpdir } from 'os'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync
-} from 'fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { dirname, join } from 'path'
 
 // 開発者のグローバル・システムの git 設定(commit.gpgsign、core.hooksPath 等)に左右されない
@@ -123,7 +116,7 @@ export function findTranslatedGitBinDir(): string | null {
     }
     return null
   } finally {
-    rmSync(probe, { recursive: true, force: true })
+    removeTempPathSync(probe)
   }
 }
 
@@ -143,7 +136,7 @@ export function isCaseInsensitiveFs(): boolean {
     writeFileSync(join(probe, 'a'), '')
     return existsSync(join(probe, 'A'))
   } finally {
-    rmSync(probe, { recursive: true, force: true })
+    removeTempPathSync(probe)
   }
 }
 

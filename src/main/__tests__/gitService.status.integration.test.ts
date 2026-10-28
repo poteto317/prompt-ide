@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getGitStatus } from '../gitService'
@@ -33,7 +34,7 @@ describe('getGitStatus の hasOrigin・hasRemote・upstream・detached(実 git)'
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(root, { recursive: true, force: true })
+    removeTempPathSync(root)
   })
 
   it('origin が無ければ hasOrigin: false・upstream: null・detached: false', async () => {

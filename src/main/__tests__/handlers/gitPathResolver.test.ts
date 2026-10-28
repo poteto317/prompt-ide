@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { FolderAccessManager } from '../../folderAccessManager'
@@ -35,7 +36,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(tempRoot, { recursive: true, force: true })
+  removeTempPathSync(tempRoot)
 })
 
 describe('resolveAndAssertRelativePath', () => {

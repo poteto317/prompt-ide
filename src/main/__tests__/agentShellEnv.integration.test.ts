@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readLoginShellPath } from '../agentShellEnv'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 // 実物の /bin/sh で、印の間の取り出しと終了の検知を確かめる(macOS・Linux の開発者のローカルで走らせる。パターン 41)
 // rc を読む対話シェル(zsh があれば zsh、無ければ bash)

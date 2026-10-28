@@ -1,6 +1,7 @@
 import { describe, it, expect, expectTypeOf, afterEach, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SimpleGit } from 'simple-git'
@@ -31,7 +32,7 @@ describe('記録の上限', () => {
 describe('copyIndexPreservingTimes', () => {
   let dir: string | null = null
   afterEach(() => {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true })
+    if (dir !== null) removeTempPathSync(dir)
     dir = null
   })
   const makeDir = (): string => {
@@ -132,7 +133,7 @@ describe('forceRemoveStdinInput', () => {
 describe('inspectUntracked(未追跡の一覧の問い合わせと解釈の 1 か所)', () => {
   let dir: string | null = null
   afterEach(() => {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true })
+    if (dir !== null) removeTempPathSync(dir)
     dir = null
   })
 

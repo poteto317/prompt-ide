@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, existsSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, existsSync, symlinkSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn as ptySpawn } from 'node-pty'
@@ -51,7 +52,7 @@ afterEach(async () => {
     }
   }
   timers.clearAll()
-  rmSync(dir, { recursive: true, force: true })
+  removeTempPathSync(dir)
 })
 
 function start(

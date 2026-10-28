@@ -10,6 +10,7 @@ import {
   chmodSync,
   statSync
 } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { discardAllChanges, discardFileChanges, discardHunk } from '../gitDiscardService'
@@ -43,8 +44,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
-  rmSync(repo, { recursive: true, force: true })
-  rmSync(home, { recursive: true, force: true })
+  removeTempPathSync(repo)
+  removeTempPathSync(home)
 })
 
 // gitDiscardService.test.ts は simple-git をモックするため、「実際の git がこの pathspec で何を出力し、
@@ -99,7 +100,7 @@ describe('discardFileChanges(実 git)', () => {
     '%s と重なる場合は拒否し、未追跡のファイルを消さない',
     async (_label, tracked, untracked, precious) => {
       commitFiles({ [tracked]: 'tracked' })
-      rmSync(join(repo, tracked.split('/')[0]), { recursive: true, force: true })
+      removeTempPathSync(join(repo, tracked.split('/')[0]))
       write(untracked, 'PRECIOUS')
       await expect(discardFileChanges(repo, tracked, vi.fn())).rejects.toThrow(
         `未追跡のファイルと重なるため取り消せません: ${tracked}`
@@ -147,7 +148,7 @@ describe('discardFileChanges(実 git)', () => {
 
   it('ignored のファイルと重なる場合も拒否する', async () => {
     commitFiles({ 'foo/a.ts': 'tracked' })
-    rmSync(join(repo, 'foo'), { recursive: true, force: true })
+    removeTempPathSync(join(repo, 'foo'))
     write('.git/info/exclude', 'foo\n')
     write('foo', 'PRECIOUS')
     await expect(discardFileChanges(repo, 'foo/a.ts', vi.fn())).rejects.toThrow(

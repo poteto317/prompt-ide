@@ -23,7 +23,7 @@ import {
 } from '../agentCopilotHookPlugin'
 import { buildCopilotHookConfig } from '../agentCopilotHookConfig'
 import type { CopilotHookPluginSlots, CopilotHookPluginSlotsDeps } from '../agentCopilotHookPlugin'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 // copilot に --plugin-dir で渡すプラグインのフォルダ(設計書 2026-10-26「プラグインのフォルダ」)。マニフェスト・枠の割り当て・
 // 実 fs での権限・原子的な書き直し・作り直し・終了の後始末を確かめる(設定の JSON の形は agentCopilotHookConfig.test.ts)。

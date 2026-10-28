@@ -5,10 +5,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  rmSync,
   symlinkSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { sweepStaleBaselineTempDirs } from '../agentBaselineTempSweep'
@@ -34,7 +34,7 @@ describe('sweepStaleBaselineTempDirs(実 fs)', () => {
 
   afterEach(() => {
     for (const dir of lockedDirs.splice(0)) chmodSync(dir, 0o700)
-    for (const dir of [tempRoot, outside]) rmSync(dir, { recursive: true, force: true })
+    for (const dir of [tempRoot, outside]) removeTempPathSync(dir)
   })
 
   // 自分の形の名前の 0700 のディレクトリ(中に隠れた git の代わりのファイルを置く)

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, statSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -84,7 +85,7 @@ describe('prepareAgentChangesNoHooksDir', () => {
       // 2 回目(起動のたび)も例外にしない
       expect(prepareAgentChangesNoHooksDir(root)).toBe(dir)
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTempPathSync(root)
     }
   })
   it('作れなくても例外にせずパスを返す(存在しない hooksPath でも hook は動かない。確認の結果 5)', () => {
@@ -94,7 +95,7 @@ describe('prepareAgentChangesNoHooksDir', () => {
       writeFileSync(file, 'x')
       expect(prepareAgentChangesNoHooksDir(file)).toBe(join(file, 'agent-changes-no-hooks'))
     } finally {
-      rmSync(root, { recursive: true, force: true })
+      removeTempPathSync(root)
     }
   })
 })

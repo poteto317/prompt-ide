@@ -42,7 +42,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import { registerSettingsHandlers } from '../../handlers/settingsHandlers'
-import { removeTempPathSync } from '../helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 const SECRET_CONTENT = 'djEwSECRET{'
 

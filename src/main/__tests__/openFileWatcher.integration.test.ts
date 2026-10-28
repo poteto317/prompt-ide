@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync, renameSync, unlinkSync, realpathSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, renameSync, unlinkSync, realpathSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { watch } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +27,7 @@ beforeEach(() => {
 afterEach(() => {
   watcher.clear(1)
   timers.clearAll()
-  rmSync(dir, { recursive: true, force: true })
+  removeTempPathSync(dir)
 })
 
 async function waitForNotification(path: string): Promise<boolean> {

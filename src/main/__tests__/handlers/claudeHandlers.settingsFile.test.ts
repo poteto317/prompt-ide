@@ -44,7 +44,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
 import { registerClaudeHandlers } from '../../handlers/claudeHandlers'
-import { removeTempPathSync } from '../helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 const SECRET_CONTENT = 'djEwSECRET{'
 

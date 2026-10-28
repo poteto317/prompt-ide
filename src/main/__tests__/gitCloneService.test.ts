@@ -6,9 +6,9 @@ import {
   mkdtempSync,
   readdirSync,
   realpathSync,
-  rmSync,
   writeFileSync
 } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GitCloneProcessOptions, GitCloneProcessResult } from '../gitCloneProcess'
@@ -75,7 +75,7 @@ beforeEach(() => {
 
 afterEach(() => {
   if (existsSync(parent)) chmodSync(parent, 0o755)
-  rmSync(work, { recursive: true, force: true })
+  removeTempPathSync(work)
 })
 
 describe('cloneRepository(子プロセスの結果の扱い)', () => {

@@ -8,6 +8,7 @@ import {
   writeFileSync,
   existsSync
 } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
@@ -70,7 +71,7 @@ describe('mergeBranch(実 git)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(repo, { recursive: true, force: true })
+    removeTempPathSync(repo)
   })
 
   it('早送りできるときは早送りする(マージコミットを作らない)', async () => {

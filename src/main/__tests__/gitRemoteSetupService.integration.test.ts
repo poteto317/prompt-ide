@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { REMOTE_OPERATION_TIMEOUT_MESSAGE } from '../gitRemoteTimeout'
@@ -54,7 +47,7 @@ describe('gitRemoteSetupService(実 git)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(root, { recursive: true, force: true })
+    removeTempPathSync(root)
   })
 
   const dir = (name: string): string => {

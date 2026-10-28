@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import type { Mock } from 'vitest'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { GitPluginError } from 'simple-git'
@@ -13,7 +14,7 @@ import { AGENT_BASELINE_RECORD_MISSING_MESSAGE } from '../agentBaselineCoverage'
 describe('resolveBaselineMode', () => {
   let dir: string | null = null
   afterEach(() => {
-    if (dir !== null) rmSync(dir, { recursive: true, force: true })
+    if (dir !== null) removeTempPathSync(dir)
     dir = null
   })
   const makeDir = (): string => {

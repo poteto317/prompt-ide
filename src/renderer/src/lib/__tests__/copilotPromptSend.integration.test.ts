@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -103,7 +104,7 @@ afterEach(() => {
   pty = null
   terminal?.dispose()
   terminal = null
-  if (dir !== null) rmSync(dir, { recursive: true, force: true })
+  if (dir !== null) removeTempPathSync(dir)
   dir = null
 })
 

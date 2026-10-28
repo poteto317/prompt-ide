@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { SimpleGit } from 'simple-git'
@@ -179,7 +180,7 @@ describe('assertBaselineRecord・assertBaselineGitDir', () => {
   })
 
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true })
+    removeTempPathSync(dir)
   })
 
   const indexAt = (): string => {

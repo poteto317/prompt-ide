@@ -96,7 +96,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 })
 
 import { readSettingsFile, writeSettingsFile, SettingsFileError } from '../settingsFileStore'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 const settingsPath = (): string => join(userDataDir.current, 'settings.json')
 

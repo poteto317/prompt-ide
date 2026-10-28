@@ -9,7 +9,7 @@ import {
   resolveAgentLaunch
 } from '../agentCommand'
 import type { ExecutableProbe } from '../agentCommand'
-import { removeTempPathSync } from './helpers/tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 const probeOf = (executables: string[]): ExecutableProbe =>
   vi.fn<ExecutableProbe>(async (path) => executables.includes(path))

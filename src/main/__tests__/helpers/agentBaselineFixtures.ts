@@ -27,7 +27,7 @@ import type { AgentToolActivity, AgentToolActivitySignal } from '../../agentTool
 import type { AgentRevertContext } from '../../agentChangesRevert'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../../agentChangesUndo'
 import { initRepo, runGit, stubGitCeiling, stubGitHome, stubIsolatedGitEnv } from './realGitRepo'
-import { removeTempPathSync } from './tempDirGuard'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 
 // エージェントの変更の記録(agentBaselineSnapshot)を実 git で試すテストの準備と偽物を 1 か所から作る。
 // 「記録のインデックスの git を開発者の設定から切り離す方法」や「記録を取る関数の呼び方」が変わったときに、

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,7 +26,7 @@ describe('copyIndexPreservingTimes(写しの最中に写しの元が書き直さ
   afterEach(() => {
     copyHooks.before = null
     copyHooks.after = null
-    if (dir !== null) rmSync(dir, { recursive: true, force: true })
+    if (dir !== null) removeTempPathSync(dir)
     dir = null
   })
 

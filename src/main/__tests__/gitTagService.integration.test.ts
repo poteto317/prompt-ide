@@ -1,13 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync
-} from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs'
+import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import type { CreateTagRequest } from '@shared/types'
@@ -34,7 +27,7 @@ function supportsReftable(): boolean {
   } catch {
     return false
   } finally {
-    rmSync(probe, { recursive: true, force: true })
+    removeTempPathSync(probe)
   }
 }
 
@@ -75,7 +68,7 @@ describe('gitTagService(実 git)', () => {
 
   afterEach(() => {
     vi.unstubAllEnvs()
-    rmSync(repo, { recursive: true, force: true })
+    removeTempPathSync(repo)
   })
 
   it('軽量タグを現在の HEAD に作る(オブジェクトの種類は commit)', async () => {
@@ -233,7 +226,7 @@ describe('gitTagService(実 git)', () => {
     it.skipIf(!supportsReftable())(
       'reftable のリポジトリでも NFD の要求を NFC のタグとして作成する',
       async () => {
-        rmSync(repo, { recursive: true, force: true })
+        removeTempPathSync(repo)
         mkdirSync(repo)
         runGit(repo, 'init', '-q', '-b', 'main', '--ref-format=reftable')
         runGit(repo, 'config', 'user.email', 'test@example.com')
@@ -402,7 +395,7 @@ describe('gitTagService(実 git)', () => {
     afterEach(async () => {
       // git が打ち切られた後も署名プログラムは孤児として残る(既知の制約)。テストの後始末として止める
       await killRecordedProcess(pidFile)
-      rmSync(scriptDir, { recursive: true, force: true })
+      removeTempPathSync(scriptDir)
     })
 
     it('注釈付きタグは時間内に終わらなければ日本語で失敗し、git を止め、タグもロックも残さない', async () => {
