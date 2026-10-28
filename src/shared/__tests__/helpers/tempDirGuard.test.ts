@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import { assertInsideTempDir, removeTempPath, removeTempPathSync } from './tempDirGuard'
 
 // テストの再帰削除の安全装置。消してよいのは一時ディレクトリの中の絶対パスだけで、それ以外は消さずに投げる
@@ -36,14 +36,16 @@ describe('assertInsideTempDir', () => {
     ['一時ディレクトリそのもの', tmpdir()],
     ['一時ディレクトリの外(作業ディレクトリ)', process.cwd()],
     ['ルート', resolve('/')],
-    ['.. で一時ディレクトリの外に出るパス', join(tmpdir(), '..', 'outside')]
+    // join は .. を畳んでしまうので、文字列で組み立てて .. を残したままガードへ渡す
+    ['.. で一時ディレクトリの外に出るパス', `${tmpdir()}${sep}..${sep}outside`]
   ])('%s は投げる', (_label, target) => {
     expect(() => assertInsideTempDir(target)).toThrow('一時ディレクトリの外なので消しません')
   })
 
   it('一時ディレクトリの中の絶対パスは、正規化したパスを返す', () => {
     const dir = makeWorkDir()
-    expect(assertInsideTempDir(join(dir, 'a', '..', 'b'))).toBe(join(dir, 'b'))
+    // join は .. を畳んでしまうので、文字列で組み立てて .. を残したままガードへ渡す
+    expect(assertInsideTempDir(`${dir}${sep}a${sep}..${sep}b`)).toBe(join(dir, 'b'))
   })
 
   it('一時ディレクトリの realpath の下のパスも中として扱う', () => {
@@ -102,6 +104,7 @@ describe('removeTempPath', () => {
       resolve('/', 'prompt-ide-temp-dir-guard-test-missing')
     ],
     [
+      // .. を残したままの文字列は、消す関数には渡さず assertInsideTempDir のテストで確かめる(L-618)
       '.. で一時ディレクトリの外に出るパス(存在しないパス)',
       join(tmpdir(), '..', 'prompt-ide-temp-dir-guard-test-missing')
     ]
