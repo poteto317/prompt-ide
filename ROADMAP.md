@@ -720,7 +720,7 @@ MVP で「エージェント CLI をアプリ内ターミナルで動かし、�
       - 実装済み（2026-10-21。段階 2a。設計書 `docs/superpowers/specs/2026-10-21-agent-cli-copilot-screen-design.md`）: copilot の画面の判定（作業中・入力待ち・許可待ち・確認待ち）と、それに基づく帯・タブ・ステータスバーの表示、完了・許可待ちの通知、帯の中断（Esc を 2 回）、変更の一覧の自動の取り直し。実装済み機能の「copilot の画面の判定と中断（段階 2a）」を参照
       - 実装済み（2026-10-22。段階 2b。設計書 `docs/superpowers/specs/2026-10-22-agent-cli-copilot-send-design.md`）: copilot へのプロンプトの送信（実行・再実行・送信前の確認）。入力待ちのときだけ送り、書きかけ・先頭の ! と / は断り、末尾の @ の語（参照の添付）は末尾に空白を足して送り、Enter の後に送れたことを画面で確かめる。実装済み機能の「copilot へのプロンプトの送信（段階 2b）」を参照
       - 実装済み（2026-10-25。段階 3a。設計書 `docs/superpowers/specs/2026-10-23-agent-cli-copilot-resume-design.md`）: copilot のセッションの再開（前回の続きから・このセッションで再開。新しい起動は --session-id、再開は --resume=）と、起動の記録の種類ごとのファイル、実行履歴への CLI の種類の記録（copilot へ送ったプロンプトも記録する）。実装済み機能の「copilot のセッションの再開と履歴への CLI の種類（段階 3a）」を参照
-      - 実装済み（2026-10-27。段階 3b。設計書 `docs/superpowers/specs/2026-10-26-agent-cli-copilot-hooks-design.md`）: copilot の hooks による利用者の変更との区別（アプリが起動する copilot に --plugin-dir で http の hooks を渡す）。実装済み機能の「copilot の hooks による利用者の変更との区別（段階 3b）」を参照
+      - 実装済み（2026-10-28。段階 3b。設計書 `docs/superpowers/specs/2026-10-26-agent-cli-copilot-hooks-design.md`）: copilot の hooks による利用者の変更との区別（アプリが起動する copilot に --plugin-dir で http の hooks を渡す）。実装済み機能の「copilot の hooks による利用者の変更との区別（段階 3b）」を参照
 - [ ] エージェント向けの指示ファイル（`CLAUDE.md` など）の編集支援
 
 ### AI エージェント / 自律実行
