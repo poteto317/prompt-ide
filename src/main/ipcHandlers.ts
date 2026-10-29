@@ -28,7 +28,7 @@ import {
   AGENT_SESSION_RECORD_FILE_NAMES,
   createAgentSessionRecordFileIo
 } from './agentSessionRecordFileIo'
-import { createClaudeSessionReservations } from './claudeSessionReservations'
+import { createCliSessionReservations } from './cliSessionReservations'
 import { createAgentHooksRuntime } from './agentHooksRuntime'
 import { setupAgentHooksLifecycle } from './agentHooksLifecycle'
 import { resolveAgentLaunchFromSystem, spawnAgentPty, stopAgentPtyTree } from './agentRuntime'
@@ -119,8 +119,8 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     createSessionId: randomUUID,
     records: agentSessionRecords,
     // 全ウィンドウで共有する(別のウィンドウで同じ会話を同時に開かせない)
-    reservations: createClaudeSessionReservations(),
-    createClaudeSessionId: randomUUID,
+    reservations: createCliSessionReservations(),
+    createCliSessionId: randomUUID,
     hooks: agentHooks.sessions
   })
   registerAgentTerminalHandlers(ipcMain, {

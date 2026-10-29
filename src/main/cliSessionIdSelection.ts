@@ -6,25 +6,25 @@ import type { AgentSessionRecordStore } from './agentSessionRecordStore'
 // 許可のフォルダの記録にある ID だけを受け付ける(renderer が乗っ取られても、ほかのプロジェクトの会話や任意の ID を再開させない。
 // L-019)。同期で判定する(starter の spawn までの await を挟まない区間から呼ぶため)。Electron に依存しない
 
-export type ClaudeSessionIdSelection =
-  | { kind: 'selected'; claudeSessionId: string }
+export type CliSessionIdSelection =
+  | { kind: 'selected'; cliSessionId: string }
   | { kind: 'rejected'; result: Extract<AgentStartResult, { kind: 'error' }> }
 
-export function selectClaudeSessionId(
+export function selectCliSessionId(
   launch: AgentLaunchRequest,
   folderKey: string,
   records: Pick<AgentSessionRecordStore, 'has'>,
-  createClaudeSessionId: () => string
-): ClaudeSessionIdSelection {
+  createCliSessionId: () => string
+): CliSessionIdSelection {
   // 起動の種類を足したときに、記録との照合を通っただけで受け付けないよう、kind ごとに分けて未知の kind は投げる(L-044)
   switch (launch.kind) {
     case 'new':
-      return { kind: 'selected', claudeSessionId: createClaudeSessionId() }
+      return { kind: 'selected', cliSessionId: createCliSessionId() }
     case 'resume':
-      if (!records.has(folderKey, launch.claudeSessionId)) {
+      if (!records.has(folderKey, launch.cliSessionId)) {
         return { kind: 'rejected', result: { kind: 'error', error: 'unknown-session' } }
       }
-      return { kind: 'selected', claudeSessionId: launch.claudeSessionId }
+      return { kind: 'selected', cliSessionId: launch.cliSessionId }
     default: {
       const unknownLaunch: never = launch
       throw new Error(`未知の起動の指定です: ${JSON.stringify(unknownLaunch)}`)

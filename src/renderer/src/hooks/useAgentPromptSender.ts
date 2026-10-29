@@ -46,7 +46,7 @@ export interface AgentSendTarget {
   /** 送り先のタブの CLI の種類(押した時点の値。送信に対応しない種類には書き込まない。実行ボタンと同じ判定。L-058) */
   cliKind: AgentCliKind
   /**
-   * 送り先のタブの今の claude の会話の ID・名前・フォルダ(履歴の HistoryEntry.agent と同じ形)。送信の手順を始める時点
+   * 送り先のタブの今の会話の ID・名前・フォルダ(履歴の HistoryEntry.agent と同じ形)。送信の手順を始める時点
    * (beginSending の直前)に呼んで控える(送信の後で読むと、その間にタブが起動し直した・閉じた・フォルダが変わったときに、
    * 届いた先と違う ID を記録するため。L-037)
    */

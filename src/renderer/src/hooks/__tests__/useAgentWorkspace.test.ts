@@ -2367,12 +2367,12 @@ describe('useAgentWorkspace', () => {
       mockUseAgentSessions.mockReturnValue(
         makeAgentSessionsState({
           tabs: [
-            makeAgentSessionTabView({ status: 'running', claudeSessionId: ID }),
+            makeAgentSessionTabView({ status: 'running', cliSessionId: ID }),
             makeAgentSessionTabView({
               slotId: 'slot-2',
               label: 'claude 2',
               status: 'starting',
-              claudeSessionId: 'x'
+              cliSessionId: 'x'
             })
           ],
           startConfirmedCount: 3
@@ -2403,7 +2403,7 @@ describe('useAgentWorkspace', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const sessions = makeAgentSessionsState()
       mockUseAgentSessions.mockReturnValue(sessions)
@@ -2411,7 +2411,7 @@ describe('useAgentWorkspace', () => {
       act(() => result.current.agentTerminal.resumeLast.onResume('slot-1'))
       expect(sessions.start).toHaveBeenCalledExactlyOnceWith('slot-1', {
         kind: 'resume',
-        claudeSessionId: ID,
+        cliSessionId: ID,
         cliKind: 'claude'
       })
     })
@@ -2420,12 +2420,12 @@ describe('useAgentWorkspace', () => {
   describe('送り先の控え(describeSession)', () => {
     const ID = '11111111-1111-4111-8111-111111111111'
 
-    it('送り先の describeSession は、呼んだ時点のタブの claude の会話の ID・名前・開いているフォルダを返す', async () => {
+    it('送り先の describeSession は、呼んだ時点のタブの会話の ID・名前・開いているフォルダを返す', async () => {
       setMode('agent-cli')
       setSendConfirmEnabled(false)
       const sender = makeSender()
       mockUseAgentPromptSender.mockReturnValue(sender)
-      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      const tab = makeAgentSessionTabView({ status: 'running', cliSessionId: ID })
       mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
       const { result, rerender } = renderWorkspace({ folderPath: '/p' })
       await act(async () => {
@@ -2439,7 +2439,7 @@ describe('useAgentWorkspace', () => {
         folderPath: '/p'
       })
       // タブが起動し直した後に呼ぶと、その時点の ID を返す(控えるのは sender が送信の手順を始める時点)
-      const restarted = { ...tab, claudeSessionId: '22222222-2222-4222-9222-222222222222' }
+      const restarted = { ...tab, cliSessionId: '22222222-2222-4222-9222-222222222222' }
       mockUseAgentSessions.mockReturnValue(
         makeAgentSessionsState({ tabs: [restarted], selected: restarted })
       )
@@ -2447,12 +2447,12 @@ describe('useAgentWorkspace', () => {
       expect(describeSession()?.claudeSessionId).toBe('22222222-2222-4222-9222-222222222222')
     })
 
-    it('タブに claude の会話の ID が無い・タブが閉じられたら null', async () => {
+    it('タブに会話の ID が無い・タブが閉じられたら null', async () => {
       setMode('agent-cli')
       setSendConfirmEnabled(false)
       const sender = makeSender()
       mockUseAgentPromptSender.mockReturnValue(sender)
-      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: null })
+      const tab = makeAgentSessionTabView({ status: 'running', cliSessionId: null })
       mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
       const { result, rerender } = renderWorkspace({ folderPath: '/p' })
       await act(async () => {
@@ -2463,7 +2463,7 @@ describe('useAgentWorkspace', () => {
       const other = makeAgentSessionTabView({
         slotId: 'slot-9',
         status: 'running',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       mockUseAgentSessions.mockReturnValue(
         makeAgentSessionsState({ tabs: [other], selected: other })
@@ -2476,7 +2476,7 @@ describe('useAgentWorkspace', () => {
       setMode('agent-cli')
       const sender = makeSender()
       mockUseAgentPromptSender.mockReturnValue(sender)
-      const tab = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      const tab = makeAgentSessionTabView({ status: 'running', cliSessionId: ID })
       mockUseAgentSessions.mockReturnValue(makeAgentSessionsState({ tabs: [tab], selected: tab }))
       const { result } = renderWorkspace({ folderPath: '/p' })
       await act(async () => {
@@ -2553,7 +2553,7 @@ describe('useAgentWorkspace', () => {
 
     it('エージェント CLI 方式では、再実行は選択中のタブの状態で、再開はフォルダ・動いているタブ・タブの上限で決まる', () => {
       setMode('agent-cli')
-      const running = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      const running = makeAgentSessionTabView({ status: 'running', cliSessionId: ID })
       mockUseAgentSessions.mockReturnValue(
         makeAgentSessionsState({ tabs: [running], selected: running })
       )
@@ -2583,7 +2583,7 @@ describe('useAgentWorkspace', () => {
       mockUseAgentPromptSender.mockReturnValue(
         makeSender({ isSending: true, sendingSlotId: 'slot-1' })
       )
-      const running = makeAgentSessionTabView({ status: 'running', claudeSessionId: ID })
+      const running = makeAgentSessionTabView({ status: 'running', cliSessionId: ID })
       mockUseAgentSessions.mockReturnValue(
         makeAgentSessionsState({ tabs: [running], selected: running })
       )
@@ -2632,7 +2632,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-wire',
         cliKind: 'claude',
-        claudeSessionId: CLAUDE_ID
+        cliSessionId: CLAUDE_ID
       })
       interruptSpy = vi
         .spyOn(window.api, 'interruptAgentSession')
@@ -2755,7 +2755,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-cli',
         cliKind,
-        claudeSessionId: ID_OF[cliKind]
+        cliSessionId: ID_OF[cliKind]
       })
       await act(async () => {
         await result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
@@ -2824,13 +2824,13 @@ describe('useAgentWorkspace', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'copilot',
-        claudeSessionId: COPILOT_ID
+        cliSessionId: COPILOT_ID
       })
       startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
         kind: 'started',
         sessionId: 'sid-cli',
         cliKind: 'copilot',
-        claudeSessionId: COPILOT_ID
+        cliSessionId: COPILOT_ID
       })
       const { result } = renderWorkspace({ folderPath: '/p' })
       expect(mockUseAgentLastSession).toHaveBeenLastCalledWith(
@@ -2843,7 +2843,7 @@ describe('useAgentWorkspace', () => {
       expect(startSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           slotId,
-          launch: { kind: 'resume', claudeSessionId: COPILOT_ID, cliKind: 'copilot' }
+          launch: { kind: 'resume', cliSessionId: COPILOT_ID, cliKind: 'copilot' }
         })
       )
     })
@@ -2896,7 +2896,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot',
         cliKind: 'copilot',
-        claudeSessionId: COPILOT_ID
+        cliSessionId: COPILOT_ID
       })
       interruptSpy = vi
         .spyOn(window.api, 'interruptAgentSession')
@@ -2950,7 +2950,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.agentTerminal.sessions.start(slotId, {
           kind: 'resume',
-          claudeSessionId: COPILOT_ID,
+          cliSessionId: COPILOT_ID,
           cliKind: 'copilot'
         })
       })
@@ -2965,7 +2965,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.agentTerminal.sessions.start(slotId, {
           kind: 'resume',
-          claudeSessionId: COPILOT_ID,
+          cliSessionId: COPILOT_ID,
           cliKind: 'copilot'
         })
       })
@@ -3062,7 +3062,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot-2',
         cliKind: 'copilot',
-        claudeSessionId: COPILOT_ID_2
+        cliSessionId: COPILOT_ID_2
       })
       const onConfirm = vi.fn(() => true)
       // 閉じられるように 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
@@ -3113,7 +3113,7 @@ describe('useAgentWorkspace', () => {
         kind: 'started',
         sessionId: 'sid-copilot-2',
         cliKind: 'copilot',
-        claudeSessionId: COPILOT_ID_2
+        cliSessionId: COPILOT_ID_2
       })
       // 2 つ目のタブを足し(足したタブが選択される)、そのタブで中断する
       const tabsStore = getAgentSessionTabs()

@@ -13,10 +13,10 @@ describe('attachSessionInfo', () => {
     warnSpy = null
   })
 
-  it('各セッションに種類と claude の会話の ID(再開に対応しない種類は null)を足し、順序を保つ', () => {
+  it('各セッションに種類と会話の ID(再開に対応しない種類は null)を足し、順序を保つ', () => {
     const infos = new Map<string, AgentSessionInfo>([
-      ['s1', { cliKind: 'claude', claudeSessionId: ID_A }],
-      ['s2', { cliKind: 'copilot', claudeSessionId: null }]
+      ['s1', { cliKind: 'claude', cliSessionId: ID_A }],
+      ['s2', { cliKind: 'copilot', cliSessionId: null }]
     ])
     expect(
       attachSessionInfo(
@@ -27,8 +27,8 @@ describe('attachSessionInfo', () => {
         (sessionId) => infos.get(sessionId)
       )
     ).toEqual([
-      { slotId: 'tab-1', sessionId: 's1', cliKind: 'claude', claudeSessionId: ID_A },
-      { slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', claudeSessionId: null }
+      { slotId: 'tab-1', sessionId: 's1', cliKind: 'claude', cliSessionId: ID_A },
+      { slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', cliSessionId: null }
     ])
   })
 
@@ -40,10 +40,9 @@ describe('attachSessionInfo', () => {
           { slotId: 'tab-1', sessionId: 'gone' },
           { slotId: 'tab-2', sessionId: 's2' }
         ],
-        (sessionId) =>
-          sessionId === 's2' ? { cliKind: 'copilot', claudeSessionId: null } : undefined
+        (sessionId) => (sessionId === 's2' ? { cliKind: 'copilot', cliSessionId: null } : undefined)
       )
-    ).toEqual([{ slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', claudeSessionId: null }])
+    ).toEqual([{ slotId: 'tab-2', sessionId: 's2', cliKind: 'copilot', cliSessionId: null }])
     expect(warnSpy).toHaveBeenCalledWith(
       '[agentTerminal:getState] セッションの種類と会話の ID が見つからないセッションを一覧から外します:',
       'gone'
@@ -51,6 +50,6 @@ describe('attachSessionInfo', () => {
   })
 
   it('空の一覧は空', () => {
-    expect(attachSessionInfo([], () => ({ cliKind: 'claude', claudeSessionId: ID_A }))).toEqual([])
+    expect(attachSessionInfo([], () => ({ cliKind: 'claude', cliSessionId: ID_A }))).toEqual([])
   })
 })

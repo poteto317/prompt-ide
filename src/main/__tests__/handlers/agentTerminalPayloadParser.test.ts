@@ -156,15 +156,15 @@ describe('parseAgentLaunchRequest', () => {
   it('new と、小文字の UUID v4 の resume を返す(余分なものを持たない新しいオブジェクト)', () => {
     expect(parseAgentLaunchRequest({ kind: 'new' })).toEqual({ kind: 'new' })
     expect(
-      parseAgentLaunchRequest({ kind: 'resume', claudeSessionId: ID, cliKind: 'claude' })
+      parseAgentLaunchRequest({ kind: 'resume', cliSessionId: ID, cliKind: 'claude' })
     ).toEqual({
       kind: 'resume',
-      claudeSessionId: ID,
+      cliSessionId: ID,
       cliKind: 'claude'
     })
     expect(
-      parseAgentLaunchRequest({ kind: 'resume', claudeSessionId: ID, cliKind: 'copilot' })
-    ).toEqual({ kind: 'resume', claudeSessionId: ID, cliKind: 'copilot' })
+      parseAgentLaunchRequest({ kind: 'resume', cliSessionId: ID, cliKind: 'copilot' })
+    ).toEqual({ kind: 'resume', cliSessionId: ID, cliKind: 'copilot' })
   })
 
   it.each([
@@ -174,31 +174,31 @@ describe('parseAgentLaunchRequest', () => {
     ['配列', [{ kind: 'new' }]],
     ['kind が無い', {}],
     ['未知の kind', { kind: 'continue' }],
-    ['new に余分なキー', { kind: 'new', claudeSessionId: ID }],
-    ['resume に余分なキー', { kind: 'resume', claudeSessionId: ID, cliKind: 'claude', fork: true }],
+    ['new に余分なキー', { kind: 'new', cliSessionId: ID }],
+    ['resume に余分なキー', { kind: 'resume', cliSessionId: ID, cliKind: 'claude', fork: true }],
     ['resume の ID が無い', { kind: 'resume', cliKind: 'claude' }],
-    ['resume の ID が文字列でない', { kind: 'resume', claudeSessionId: 1, cliKind: 'claude' }],
+    ['resume の ID が文字列でない', { kind: 'resume', cliSessionId: 1, cliKind: 'claude' }],
     // ID は数字だけで大文字にしても変わらないため、英字を含む ID で確かめる
     [
       'resume の ID が大文字',
       {
         kind: 'resume',
-        claudeSessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'.toUpperCase(),
+        cliSessionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'.toUpperCase(),
         cliKind: 'claude'
       }
     ],
     [
       'resume の ID が v4 以外',
-      { kind: 'resume', claudeSessionId: '11111111-1111-1111-8111-111111111111', cliKind: 'claude' }
+      { kind: 'resume', cliSessionId: '11111111-1111-1111-8111-111111111111', cliKind: 'claude' }
     ],
     [
       'resume の ID が - 始まり',
-      { kind: 'resume', claudeSessionId: '--dangerously-skip-permissions', cliKind: 'claude' }
+      { kind: 'resume', cliSessionId: '--dangerously-skip-permissions', cliKind: 'claude' }
     ],
-    ['resume の cliKind が無い', { kind: 'resume', claudeSessionId: ID }],
-    ['resume の cliKind が知らない値', { kind: 'resume', claudeSessionId: ID, cliKind: 'gemini' }],
-    ['resume の cliKind が大文字', { kind: 'resume', claudeSessionId: ID, cliKind: 'Claude' }],
-    ['resume の cliKind が文字列でない', { kind: 'resume', claudeSessionId: ID, cliKind: 1 }]
+    ['resume の cliKind が無い', { kind: 'resume', cliSessionId: ID }],
+    ['resume の cliKind が知らない値', { kind: 'resume', cliSessionId: ID, cliKind: 'gemini' }],
+    ['resume の cliKind が大文字', { kind: 'resume', cliSessionId: ID, cliKind: 'Claude' }],
+    ['resume の cliKind が文字列でない', { kind: 'resume', cliSessionId: ID, cliKind: 1 }]
   ])('%s なら投げる(既定の new に流さない。L-034・L-044)', (_label, value) => {
     expect(() => parseAgentLaunchRequest(value)).toThrow()
   })
@@ -212,9 +212,9 @@ describe('parseAgentStartRequest: launch', () => {
         folderPath: '/p',
         cols: 80,
         rows: 24,
-        launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+        launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' }
       }).launch
-    ).toEqual({ kind: 'resume', claudeSessionId: ID, cliKind: 'claude' })
+    ).toEqual({ kind: 'resume', cliSessionId: ID, cliKind: 'claude' })
   })
 
   it('launch が無い・不正なら投げる', () => {
@@ -227,7 +227,7 @@ describe('parseAgentStartRequest: launch', () => {
         folderPath: '/p',
         cols: 80,
         rows: 24,
-        launch: { kind: 'resume', claudeSessionId: 'x', cliKind: 'claude' }
+        launch: { kind: 'resume', cliSessionId: 'x', cliKind: 'claude' }
       })
     ).toThrow()
   })

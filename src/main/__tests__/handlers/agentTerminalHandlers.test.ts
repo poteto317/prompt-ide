@@ -27,10 +27,10 @@ import { createAgentSessionRecordStore } from '../../agentSessionRecordStore'
 import type { AgentSessionRecordStore } from '../../agentSessionRecordStore'
 import { makeFakeRecordIo } from '../helpers/fakeAgentSessionRecordIo'
 import { makeFakeAgentHookSessions } from '../helpers/fakeAgentHookSessions'
-import { createClaudeSessionReservations } from '../../claudeSessionReservations'
+import { createCliSessionReservations } from '../../cliSessionReservations'
 
 const NEW = { kind: 'new' } as const
-const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
+const CLI_ID = '11111111-1111-4111-8111-111111111111'
 
 type Listener = (...args: unknown[]) => unknown
 const handles = new Map<string, Listener>()
@@ -77,8 +77,8 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
     stopTree,
     createSessionId: () => 'sid-1',
     records: { claude: records, copilot: copilotRecords },
-    reservations: createClaudeSessionReservations(),
-    createClaudeSessionId: () => CLAUDE_ID,
+    reservations: createCliSessionReservations(),
+    createCliSessionId: () => CLI_ID,
     platform: 'linux',
     hooks: makeFakeAgentHookSessions()
   })
@@ -143,9 +143,9 @@ describe('agentTerminal:start', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: CLAUDE_ID
+      cliSessionId: CLI_ID
     })
-    expect(spawnPty).toHaveBeenCalledWith('/bin/claude', ['--session-id', CLAUDE_ID], {
+    expect(spawnPty).toHaveBeenCalledWith('/bin/claude', ['--session-id', CLI_ID], {
       name: 'xterm-256color',
       cols: 90,
       rows: 20,
@@ -240,7 +240,7 @@ describe('agentTerminal:start', () => {
       kind: 'already-running',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: CLAUDE_ID
+      cliSessionId: CLI_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -473,7 +473,7 @@ describe('agentTerminal:start', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: CLAUDE_ID
+      cliSessionId: CLI_ID
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -500,7 +500,7 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
     kind: 'started',
     sessionId: 'sid-x',
     cliKind: 'claude',
-    claudeSessionId: CLAUDE_ID
+    cliSessionId: CLI_ID
   }
   let startSession: ReturnType<typeof vi.fn<AgentSessionStarter>>
 
@@ -615,7 +615,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
   it('getState は枠ごとの一覧を返し、stop は止め終わってから解決して一覧から消す', async () => {
     const event = await started()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', cliSessionId: CLI_ID }
     ])
     await handles.get('agentTerminal:stop')?.(event, 'sid-1')
     expect(stopTree).toHaveBeenCalledOnce()
@@ -639,7 +639,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(pty.resize).not.toHaveBeenCalled()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', cliSessionId: CLI_ID }
     ])
   })
 
@@ -658,7 +658,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     expect(() => handles.get('agentTerminal:getState')?.(sub)).toThrow()
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', cliSessionId: CLI_ID }
     ])
   })
 
@@ -668,7 +668,7 @@ describe('agentTerminal:write・resize・stop・getState', () => {
     await handles.get('agentTerminal:stop')?.(event, 'stale')
     expect(stopTree).not.toHaveBeenCalled()
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'claude', cliSessionId: CLI_ID }
     ])
   })
 })
@@ -761,12 +761,12 @@ describe('agentTerminal:getLastSession', () => {
     folderAccess.set(1, '/work')
     await records.whenLoaded()
     await copilotRecords.whenLoaded()
-    records.record('/work', CLAUDE_ID)
+    records.record('/work', CLI_ID)
     await expect(getLast(makeEvent(), '/work', 'copilot')).resolves.toBeNull()
     copilotRecords.record('/work', '22222222-2222-4222-9222-222222222222')
     await expect(getLast(makeEvent(), '/work', 'copilot')).resolves.toEqual({
       cliKind: 'copilot',
-      claudeSessionId: '22222222-2222-4222-9222-222222222222'
+      cliSessionId: '22222222-2222-4222-9222-222222222222'
     })
   })
 
@@ -791,10 +791,10 @@ describe('agentTerminal:getLastSession', () => {
     register()
     folderAccess.set(1, '/work')
     await records.whenLoaded()
-    records.record('/work', CLAUDE_ID)
+    records.record('/work', CLI_ID)
     await expect(getLast(makeEvent(), '/work/.')).resolves.toEqual({
       cliKind: 'claude',
-      claudeSessionId: CLAUDE_ID
+      cliSessionId: CLI_ID
     })
     await expect(getLast(makeEvent(), '/other')).resolves.toBeNull()
     // 別のウィンドウ(許可のフォルダが無い)
@@ -851,15 +851,15 @@ describe('agentTerminal:getState(種類と会話の ID)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: CLAUDE_ID
+      cliSessionId: CLI_ID
     })
     expect(spawnPty).toHaveBeenCalledWith(
       '/bin/copilot',
-      ['--session-id', CLAUDE_ID],
+      ['--session-id', CLI_ID],
       expect.any(Object)
     )
     expect(handles.get('agentTerminal:getState')?.(event)).toEqual([
-      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'copilot', claudeSessionId: CLAUDE_ID }
+      { slotId: 'slot-1', sessionId: 'sid-1', cliKind: 'copilot', cliSessionId: CLI_ID }
     ])
   })
 })

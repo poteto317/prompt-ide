@@ -41,7 +41,7 @@ const ID = '11111111-1111-4111-8111-111111111111'
 const tab = (overrides: Partial<AgentResumeTab> = {}): AgentResumeTab => ({
   label: 'claude 1',
   status: 'none',
-  claudeSessionId: null,
+  cliSessionId: null,
   ...overrides
 })
 
@@ -51,7 +51,7 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
       getResumeLastDisabledReason({
         appCliKind: 'claude',
         startDisabledReason: 'フォルダを開いてください',
-        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'claude', cliSessionId: ID },
         tabs: [tab()]
       })
     ).toBe('フォルダを開いてください')
@@ -83,8 +83,8 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
         getResumeLastDisabledReason({
           appCliKind: 'claude',
           startDisabledReason: null,
-          lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
-          tabs: [tab(), tab({ label: 'claude 2', status, claudeSessionId: ID })]
+          lastSession: { kind: 'found', cliKind: 'claude', cliSessionId: ID },
+          tabs: [tab(), tab({ label: 'claude 2', status, cliSessionId: ID })]
         })
       ).toBe('前回のセッションは claude 2 で動いています')
     }
@@ -95,8 +95,8 @@ describe('getResumeLastDisabledReason(前回の続きから)', () => {
       getResumeLastDisabledReason({
         appCliKind: 'claude',
         startDisabledReason: null,
-        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
-        tabs: [tab({ status: 'exited', claudeSessionId: null })]
+        lastSession: { kind: 'found', cliKind: 'claude', cliSessionId: ID },
+        tabs: [tab({ status: 'exited', cliSessionId: null })]
       })
     ).toBeNull()
   })
@@ -129,7 +129,7 @@ describe('getResumeEntryDisabledReason(このセッションで再開)', () => {
       folderPath: '/other',
       startDisabledReason: '実行方式を切り替えています',
       addDisabledReason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）',
-      tabs: [tab({ label: 'claude 2', status: 'running' as const, claudeSessionId: ID })]
+      tabs: [tab({ label: 'claude 2', status: 'running' as const, cliSessionId: ID })]
     }
     expect(getResumeEntryDisabledReason({ ...all, mode: null })).toBe('設定を読み込んでいます')
     expect(getResumeEntryDisabledReason({ ...all, mode: 'legacy' })).toBe(
@@ -201,14 +201,14 @@ describe('再開の入口の CLI の種類(設定の種類が再開に対応し�
     for (const lastSession of [
       { kind: 'loading' as const },
       { kind: 'none' as const },
-      { kind: 'found' as const, cliKind: 'claude' as const, claudeSessionId: ID }
+      { kind: 'found' as const, cliKind: 'claude' as const, cliSessionId: ID }
     ]) {
       expect(
         getResumeLastDisabledReason({
           startDisabledReason: null,
           appCliKind: 'copilot',
           lastSession,
-          tabs: [tab({ status: 'running', claudeSessionId: ID })]
+          tabs: [tab({ status: 'running', cliSessionId: ID })]
         })
       ).toBe(LAST)
     }
@@ -219,7 +219,7 @@ describe('再開の入口の CLI の種類(設定の種類が再開に対応し�
       getResumeLastDisabledReason({
         startDisabledReason: '使うエージェント CLI を切り替えています',
         appCliKind: 'copilot',
-        lastSession: { kind: 'found', cliKind: 'claude', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'claude', cliSessionId: ID },
         tabs: []
       })
     ).toBe('使うエージェント CLI を切り替えています')
@@ -234,7 +234,7 @@ describe('再開の入口の CLI の種類(設定の種類が再開に対応し�
         recorded,
         startDisabledReason: 'フォルダを開いてください',
         addDisabledReason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）',
-        tabs: [tab({ status: 'running', claudeSessionId: ID })]
+        tabs: [tab({ status: 'running', cliSessionId: ID })]
       })
     ).toBe(ENTRY)
   })
@@ -261,7 +261,7 @@ describe('再開の入口の CLI の種類(copilot も再開に対応する。�
       getResumeLastDisabledReason({
         startDisabledReason: null,
         appCliKind: 'copilot',
-        lastSession: { kind: 'found', cliKind: 'copilot', claudeSessionId: ID },
+        lastSession: { kind: 'found', cliKind: 'copilot', cliSessionId: ID },
         tabs: [tab({ label: 'copilot 1' })]
       })
     ).toBeNull()
@@ -315,7 +315,7 @@ describe('getResumeEntryDisabledReason: エントリの種類(段階 3a)', () =>
       folderPath: '/other',
       startDisabledReason: '実行方式を切り替えています',
       addDisabledReason: 'タブは 4 つまでです（使わないタブを閉じると追加できます）',
-      tabs: [tab({ label: 'copilot 2', status: 'running', claudeSessionId: ID })]
+      tabs: [tab({ label: 'copilot 2', status: 'running', cliSessionId: ID })]
     }
     expect(getResumeEntryDisabledReason({ ...blocked, recorded: recordedOf('gemini') })).toBe(
       agentResumeEntryUnknownCli('gemini')

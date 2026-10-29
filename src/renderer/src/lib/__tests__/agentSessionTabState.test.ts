@@ -11,7 +11,7 @@ import {
   agentCapabilityCliKindOf,
   agentStartDisabledReason,
   agentTabSessionFieldsOf,
-  findActiveAgentTabByClaudeSessionId,
+  findActiveAgentTabByCliSessionId,
   findAgentSlotBySessionId,
   isActiveAgentSessionStatus,
   isAgentExitedSoon,
@@ -69,7 +69,7 @@ describe('agentTabSessionFieldsOf', () => {
       exit: null,
       error: null,
       cliKind: null,
-      claudeSessionId: null
+      cliSessionId: null
     }
     expect(agentTabSessionFieldsOf(new Map([['a', fields]]), 'a')).toBe(fields)
   })
@@ -163,32 +163,32 @@ describe('findAgentSlotBySessionId', () => {
   })
 })
 
-describe('findActiveAgentTabByClaudeSessionId', () => {
+describe('findActiveAgentTabByCliSessionId', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
   const tab = (
     slotId: string,
     status: 'none' | 'starting' | 'running' | 'exited',
-    claudeSessionId: string | null
-  ): { slotId: string; status: typeof status; claudeSessionId: string | null } => ({
+    cliSessionId: string | null
+  ): { slotId: string; status: typeof status; cliSessionId: string | null } => ({
     slotId,
     status,
-    claudeSessionId
+    cliSessionId
   })
 
   it('同じ ID の起動中・実行中のタブを返す', () => {
-    expect(findActiveAgentTabByClaudeSessionId([tab('a', 'running', ID)], ID)?.slotId).toBe('a')
-    expect(findActiveAgentTabByClaudeSessionId([tab('b', 'starting', ID)], ID)?.slotId).toBe('b')
+    expect(findActiveAgentTabByCliSessionId([tab('a', 'running', ID)], ID)?.slotId).toBe('a')
+    expect(findActiveAgentTabByCliSessionId([tab('b', 'starting', ID)], ID)?.slotId).toBe('b')
   })
 
   it('動いていない・ID が違う・ID が無いタブは返さない', () => {
     expect(
-      findActiveAgentTabByClaudeSessionId(
+      findActiveAgentTabByCliSessionId(
         [tab('a', 'exited', ID), tab('b', 'none', ID), tab('c', 'running', null)],
         ID
       )
     ).toBeUndefined()
     expect(
-      findActiveAgentTabByClaudeSessionId(
+      findActiveAgentTabByCliSessionId(
         [tab('a', 'running', '22222222-2222-4222-9222-222222222222')],
         ID
       )

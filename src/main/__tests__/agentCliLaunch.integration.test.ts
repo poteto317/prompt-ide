@@ -25,7 +25,7 @@ import { FolderAccessManager } from '../folderAccessManager'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { createAgentSessionStarter } from '../agentSessionStarter'
 import { createAgentSessionRecordStore, toAgentFolderKey } from '../agentSessionRecordStore'
-import { createClaudeSessionReservations } from '../claudeSessionReservations'
+import { createCliSessionReservations } from '../cliSessionReservations'
 import { makeFakeRecordIo } from './helpers/fakeAgentSessionRecordIo'
 import { makeFakeAgentHookSessions } from './helpers/fakeAgentHookSessions'
 import { createAgentToolActivity } from '../agentToolActivity'
@@ -210,7 +210,7 @@ describe.skipIf(process.platform === 'win32')(
       const claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo())
       const copilotRecords = createAgentSessionRecordStore(makeFakeRecordIo())
       // 終了の後に予約が外れるのを待つため、予約を手元に持つ
-      const reservations = createClaudeSessionReservations()
+      const reservations = createCliSessionReservations()
       let sessionCount = 0
       const { start } = createAgentSessionStarter({
         folderAccess,
@@ -221,7 +221,7 @@ describe.skipIf(process.platform === 'win32')(
         createSessionId: () => `it-${++sessionCount}`,
         records: { claude: claudeRecords, copilot: copilotRecords },
         reservations,
-        createClaudeSessionId: () => NEW_ID,
+        createCliSessionId: () => NEW_ID,
         hooks: makeFakeAgentHookSessions()
       })
       /** 起動して、そのセッションの終了を待つ(起動に失敗したら終了を待たずに投げる) */
@@ -248,7 +248,7 @@ describe.skipIf(process.platform === 'win32')(
         kind: 'started',
         sessionId: 'it-1',
         cliKind: 'copilot',
-        claudeSessionId: NEW_ID
+        cliSessionId: NEW_ID
       })
       expect(first.exit).toMatchObject({ exitCode: 0, reason: 'exited' })
       const folderKey = toAgentFolderKey(allowedFolder, process.platform)
@@ -259,13 +259,13 @@ describe.skipIf(process.platform === 'win32')(
 
       const second = await startAndWaitForExit('slot-2', {
         kind: 'resume',
-        claudeSessionId: NEW_ID,
+        cliSessionId: NEW_ID,
         cliKind: 'copilot'
       })
       expect(second.result).toMatchObject({
         kind: 'started',
         cliKind: 'copilot',
-        claudeSessionId: NEW_ID
+        cliSessionId: NEW_ID
       })
       expect(second.exit).toMatchObject({ exitCode: 1, reason: 'exited' })
 
@@ -390,8 +390,8 @@ describe.skipIf(process.platform === 'win32')(
           claude: createAgentSessionRecordStore(makeFakeRecordIo()),
           copilot: createAgentSessionRecordStore(makeFakeRecordIo())
         },
-        reservations: createClaudeSessionReservations(),
-        createClaudeSessionId: () => NEW_ID,
+        reservations: createCliSessionReservations(),
+        createCliSessionId: () => NEW_ID,
         hooks
       })
       const result = await start(
@@ -399,7 +399,7 @@ describe.skipIf(process.platform === 'win32')(
         { slotId: 'slot-1', folderPath: work, cols: 80, rows: 24, launch: { kind: 'new' } },
         { isGone: () => false, onData: () => undefined, onExit: () => undefined }
       )
-      expect(result).toMatchObject({ kind: 'started', cliKind: 'copilot', claudeSessionId: NEW_ID })
+      expect(result).toMatchObject({ kind: 'started', cliKind: 'copilot', cliSessionId: NEW_ID })
       // 起動の直後の段階(hooks を確かめる前の agent)は、偽の copilot の送信と競うので確かめない。届いた後の confirmed(idle)を下で確かめる
       const pluginDir = join(userDataDir, 'agent-hooks-copilot', 'slot-1')
       expect(JSON.parse(await waitForFile(report, timers))).toEqual({

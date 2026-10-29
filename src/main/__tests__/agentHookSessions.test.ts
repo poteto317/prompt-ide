@@ -7,7 +7,7 @@ import type { ClaudeVersionCheck } from '../agentClaudeVersion'
 import type { AgentLaunchPlan } from '../agentCommand'
 
 const TOKEN = 'ab'.repeat(32)
-const CLAUDE_SESSION_ID = '11111111-1111-4111-8111-111111111111'
+const CLI_SESSION_ID = '11111111-1111-4111-8111-111111111111'
 const PLAN: AgentLaunchPlan = {
   cliKind: 'claude',
   file: '/bin/claude',
@@ -162,11 +162,11 @@ describe('createAgentHookSessions: prepare', () => {
 
 describe('createAgentHookSessions: activate・release', () => {
   it('copilot の prepared なら、トークンの持ち主に起動に使った会話の ID を主の ID(known)として持たせる(L-018)', () => {
-    sessions().activate({ ...WITH_HOOKS, cliKind: 'copilot' }, 'sid-1', CLAUDE_SESSION_ID)
+    sessions().activate({ ...WITH_HOOKS, cliKind: 'copilot' }, 'sid-1', CLI_SESSION_ID)
     expect(deps.receiver.addToken).toHaveBeenCalledExactlyOnceWith(TOKEN, {
       ownerId: 7,
       sessionId: 'sid-1',
-      cli: { kind: 'copilot', main: { kind: 'known', id: CLAUDE_SESSION_ID } }
+      cli: { kind: 'copilot', main: { kind: 'known', id: CLI_SESSION_ID } }
     })
   })
 
@@ -180,12 +180,12 @@ describe('createAgentHookSessions: activate・release', () => {
   })
 
   it('hooks があれば、追跡に足してから(addSession)トークンを表に足す(addToken。addToken が投げても追跡は pending〈agent〉で残る)', () => {
-    sessions().activate(WITH_HOOKS, 'sid-1', CLAUDE_SESSION_ID)
+    sessions().activate(WITH_HOOKS, 'sid-1', CLI_SESSION_ID)
     expect(calls.map((call) => call.split('(')[0])).toEqual(['addSession', 'addToken'])
   })
 
   it('hooks があれば、トークンを { ownerId, sessionId, cli }(claude の cli は種類だけ)として表に足し、追跡に pending で足す', () => {
-    sessions().activate(WITH_HOOKS, 'sid-1', CLAUDE_SESSION_ID)
+    sessions().activate(WITH_HOOKS, 'sid-1', CLI_SESSION_ID)
     expect(deps.receiver.addToken).toHaveBeenCalledExactlyOnceWith(TOKEN, {
       ownerId: 7,
       sessionId: 'sid-1',
@@ -198,7 +198,7 @@ describe('createAgentHookSessions: activate・release', () => {
     sessions().activate(
       { ownerId: 7, cliKind: 'claude', hooks: null, unavailableReason: 'receiver-unavailable' },
       'sid-1',
-      CLAUDE_SESSION_ID
+      CLI_SESSION_ID
     )
     expect(deps.receiver.addToken).not.toHaveBeenCalled()
     expect(deps.tracker.addSession).toHaveBeenCalledExactlyOnceWith(7, 'sid-1', {
@@ -255,7 +255,7 @@ describe('createAgentHookSessions: activate・release', () => {
     sessions().activate(
       { ownerId: 7, cliKind: 'claude', hooks: null, unavailableReason: 'cli-unsupported' },
       'sid-1',
-      CLAUDE_SESSION_ID
+      CLI_SESSION_ID
     )
     expect(deps.tracker.addSession).toHaveBeenCalledExactlyOnceWith(7, 'sid-1', {
       kind: 'unconfirmed',

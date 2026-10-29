@@ -36,12 +36,9 @@ import type {
 const CSID = '11111111-1111-4111-8111-111111111111'
 const CSID2 = '22222222-2222-4222-9222-222222222222'
 const NEW: AgentLaunchRequest = { kind: 'new' }
-const resumeOf = (
-  claudeSessionId: string,
-  cliKind: AgentCliKind = 'claude'
-): AgentLaunchRequest => ({
+const resumeOf = (cliSessionId: string, cliKind: AgentCliKind = 'claude'): AgentLaunchRequest => ({
   kind: 'resume',
-  claudeSessionId,
+  cliSessionId,
   cliKind
 })
 
@@ -129,13 +126,13 @@ const runTwoTabs = async (result: Rendered['result']): Promise<void> => {
       kind: 'started',
       sessionId: 's-1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     .mockResolvedValueOnce({
       kind: 'started',
       sessionId: 's-2',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
   await startSelected(result)
   await act(async () => {
@@ -167,7 +164,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await startSelected(result)
@@ -229,7 +226,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       await result.current.start('slot-1', NEW)
     })
     await act(async () => {
-      resolve({ kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID })
+      resolve({ kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
     await act(async () => {
@@ -249,7 +246,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await startSelected(result)
@@ -268,7 +265,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await startSelected(result)
@@ -291,7 +288,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
     await act(async () => {
@@ -307,7 +304,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
     mockStop.mockRejectedValueOnce(new Error('ipc down'))
@@ -321,7 +318,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
 
   it('部品の作り直しの後、main のセッションに合わせる', async () => {
     mockGetState.mockResolvedValueOnce([
-      { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', claudeSessionId: CSID }
+      { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', cliSessionId: CSID }
     ])
     const { result } = render()
     await waitFor(() => expect(result.current.selected.status).toBe('running'))
@@ -348,7 +345,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     }
     mockStart.mockImplementationOnce(async () => {
       calls.push('start')
-      return { kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID }
+      return { kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID }
     })
     const { result } = render()
     await startSelected(result)
@@ -367,7 +364,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'already-running',
       sessionId: 's7',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await startSelected(result)
@@ -410,7 +407,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await startSelected(result)
@@ -420,7 +417,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's2',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
     expect(mockStart).toHaveBeenCalledTimes(2)
@@ -434,7 +431,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
   it('終了の通知が起動の結果より先に届いても exited にする', async () => {
     mockStart.mockImplementationOnce(async () => {
       emitExit({ sessionId: 's1', exitCode: 1, signal: null, reason: 'exited' })
-      return { kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID }
+      return { kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID }
     })
     const { result } = render()
     await startSelected(result)
@@ -451,7 +448,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     expect(result.current.startConfirmedCount).toBe(0)
     mockStart.mockImplementationOnce(async () => {
       emitExit({ sessionId: 's1', exitCode: 1, signal: null, reason: 'exited' })
-      return { kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID }
+      return { kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID }
     })
     await startSelected(result)
     expect(result.current.selected.status).toBe('exited')
@@ -460,7 +457,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'already-running',
       sessionId: 's2',
       cliKind: 'claude',
-      claudeSessionId: CSID2
+      cliSessionId: CSID2
     })
     await startSelected(result)
     expect(result.current.startConfirmedCount).toBe(2)
@@ -485,7 +482,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     })
     await act(async () => {
       resolveSnapshot([
-        { slotId: 'slot-1', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID }
+        { slotId: 'slot-1', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID }
       ])
     })
     expect(result.current.selected.status).toBe('starting')
@@ -502,7 +499,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result, unmount } = renderStrict()
     await waitFor(() => expect(mockGetState).toHaveBeenCalled())
@@ -517,7 +514,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
 
   it('StrictMode でも main のセッションに 1 回だけ合わせる', async () => {
     mockGetState.mockResolvedValue([
-      { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', claudeSessionId: CSID }
+      { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', cliSessionId: CSID }
     ])
     const controller = controllerOf('slot-1')
     const setSession = vi.fn(controller.setSession)
@@ -549,7 +546,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     rerender({ enabled: false })
     await act(async () => {
       resolveSnapshot([
-        { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', claudeSessionId: CSID }
+        { slotId: 'slot-1', sessionId: 's9', cliKind: 'claude', cliSessionId: CSID }
       ])
     })
     expect(result.current.selected.status).toBe('none')
@@ -567,7 +564,7 @@ describe('useAgentSessions — タブ 1 つの場合', () => {
     })
     unmount()
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
     expect(controllerOf('slot-1').sessionId).toBe('s1')
@@ -608,13 +605,13 @@ describe('useAgentSessions — 複数のタブ', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
       .mockResolvedValueOnce({
         kind: 'started',
         sessionId: 's-2',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
     now = 10_000
     await startSelected(result)
@@ -647,7 +644,7 @@ describe('useAgentSessions — 複数のタブ', () => {
       kind: 'started',
       sessionId: 's-2',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await act(async () => {
@@ -705,7 +702,7 @@ describe('useAgentSessions — 複数のタブ', () => {
     })
     expect(result.current.isAnyActive).toBe(true)
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's-1', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's-1', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
     expect(result.current.isAnyActive).toBe(true)
@@ -722,7 +719,7 @@ describe('useAgentSessions — 複数のタブ', () => {
     })
     expect(result.current.isAnyStarting).toBe(true)
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's-1', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's-1', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
     expect(result.current.isAnyStarting).toBe(false)
@@ -807,7 +804,7 @@ describe('useAgentSessions — 複数のタブ', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
       const { result } = render({ onConfirm })
       await startSelected(result)
@@ -827,7 +824,7 @@ describe('useAgentSessions — 複数のタブ', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
       const { result } = render({ onConfirm })
       await startSelected(result)
@@ -855,7 +852,7 @@ describe('useAgentSessions — 複数のタブ', () => {
           kind: 'started',
           sessionId: 's-2',
           cliKind: 'claude',
-          claudeSessionId: CSID
+          cliSessionId: CSID
         })
         await adding
         closed = await closing
@@ -871,7 +868,7 @@ describe('useAgentSessions — 複数のタブ', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
       const { result } = render({ onConfirm })
       await startSelected(result)
@@ -1141,7 +1138,7 @@ describe('useAgentSessions — 複数のタブ', () => {
           kind: 'started',
           sessionId: 's-2',
           cliKind: 'claude',
-          claudeSessionId: CSID
+          cliSessionId: CSID
         } as AgentStartResult
       ],
       ['起動中の', null]
@@ -1154,7 +1151,7 @@ describe('useAgentSessions — 複数のタブ', () => {
             kind: 'started',
             sessionId: 's-1',
             cliKind: 'claude',
-            claudeSessionId: CSID
+            cliSessionId: CSID
           })
           .mockResolvedValueOnce({ kind: 'error', error: 'no-folder' })
         await startSelected(result)
@@ -1221,8 +1218,8 @@ describe('useAgentSessions — 複数のタブ', () => {
   describe('マウント時の同期', () => {
     it('一覧の slotId のタブに合わせ、置き場に無い slotId はタブを作って合わせる', async () => {
       mockGetState.mockResolvedValueOnce([
-        { slotId: 'slot-1', sessionId: 's-1', cliKind: 'claude', claudeSessionId: CSID },
-        { slotId: 'restored', sessionId: 's-9', cliKind: 'claude', claudeSessionId: CSID }
+        { slotId: 'slot-1', sessionId: 's-1', cliKind: 'claude', cliSessionId: CSID },
+        { slotId: 'restored', sessionId: 's-9', cliKind: 'claude', cliSessionId: CSID }
       ])
       const { result } = render()
       await waitFor(() => expect(result.current.tabs).toHaveLength(2))
@@ -1252,7 +1249,7 @@ describe('useAgentSessions — 複数のタブ', () => {
 
     it('復元したタブのセッションの終了も、そのタブへ振り分ける', async () => {
       mockGetState.mockResolvedValueOnce([
-        { slotId: 'restored', sessionId: 's-9', cliKind: 'claude', claudeSessionId: CSID }
+        { slotId: 'restored', sessionId: 's-9', cliKind: 'claude', cliSessionId: CSID }
       ])
       const { result } = render()
       await waitFor(() => expect(result.current.tabs).toHaveLength(2))
@@ -1264,13 +1261,13 @@ describe('useAgentSessions — 複数のタブ', () => {
   })
 })
 
-describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
+describe('useAgentSessions — 会話の ID(cliSessionId)', () => {
   it('start は起動の指定(launch)をそのまま main へ渡す', async () => {
     mockStart.mockResolvedValueOnce({
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await act(async () => {
@@ -1281,7 +1278,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     )
   })
 
-  it('new は結果が届いてから、resume は起動中から、タブに claudeSessionId を持つ', async () => {
+  it('new は結果が届いてから、resume は起動中から、タブに cliSessionId を持つ', async () => {
     let resolveStart: (value: AgentStartResult) => void = () => undefined
     mockStart.mockImplementationOnce(() => new Promise((r) => (resolveStart = r)))
     const { result } = render()
@@ -1289,23 +1286,23 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     act(() => {
       first = result.current.start('slot-1', NEW)
     })
-    expect(result.current.selected).toMatchObject({ status: 'starting', claudeSessionId: null })
+    expect(result.current.selected).toMatchObject({ status: 'starting', cliSessionId: null })
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's1', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's1', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
-    expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID })
+    expect(result.current.selected).toMatchObject({ status: 'running', cliSessionId: CSID })
     act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
     mockStart.mockImplementationOnce(() => new Promise((r) => (resolveStart = r)))
     act(() => {
       first = result.current.start('slot-1', resumeOf(CSID))
     })
-    expect(result.current.selected).toMatchObject({ status: 'starting', claudeSessionId: CSID })
+    expect(result.current.selected).toMatchObject({ status: 'starting', cliSessionId: CSID })
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's2', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's2', cliKind: 'claude', cliSessionId: CSID })
       await first
     })
-    expect(result.current.selected.claudeSessionId).toBe(CSID)
+    expect(result.current.selected.cliSessionId).toBe(CSID)
   })
 
   it('resume に already-running が返り、ID が依頼と違えば結果の ID で上書きする(そのタブで動いているのは結果のセッション)', async () => {
@@ -1313,13 +1310,13 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
       kind: 'already-running',
       sessionId: 's7',
       cliKind: 'claude',
-      claudeSessionId: CSID2
+      cliSessionId: CSID2
     })
     const { result } = render()
     await act(async () => {
       await result.current.start('slot-1', resumeOf(CSID))
     })
-    expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID2 })
+    expect(result.current.selected).toMatchObject({ status: 'running', cliSessionId: CSID2 })
   })
 
   it.each([
@@ -1327,13 +1324,13 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     ['起動の失敗', 'error'],
     ['起動の取り消し', 'canceled'],
     ['起動の依頼の例外', 'throw']
-  ])('%s で claudeSessionId を null に戻す', async (_label, kind) => {
+  ])('%s で cliSessionId を null に戻す', async (_label, kind) => {
     if (kind === 'exit')
       mockStart.mockResolvedValueOnce({
         kind: 'started',
         sessionId: 's1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
     else if (kind === 'error')
       mockStart.mockResolvedValueOnce({ kind: 'error', error: 'unknown-session' })
@@ -1350,7 +1347,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     })
     if (kind === 'exit')
       act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
-    expect(result.current.selected.claudeSessionId).toBeNull()
+    expect(result.current.selected.cliSessionId).toBeNull()
   })
 
   it('unknown-session・session-in-use は、そのタブのエラーとして文言を出す', async () => {
@@ -1370,7 +1367,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await act(async () => {
@@ -1393,7 +1390,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     let slotId: string | null = null
@@ -1408,7 +1405,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     await waitFor(() =>
       expect(tabOf(result.current, 'slot-2')).toMatchObject({
         status: 'running',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
     )
   })
@@ -1452,7 +1449,7 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render()
     await act(async () => {
@@ -1466,13 +1463,13 @@ describe('useAgentSessions — 会話の ID(claudeSessionId)', () => {
     expect(tabs.getSnapshot().tabs).toHaveLength(1)
   })
 
-  it('作り直しの後の合わせ込みで、タブの claudeSessionId も合わせる', async () => {
+  it('作り直しの後の合わせ込みで、タブの cliSessionId も合わせる', async () => {
     mockGetState.mockResolvedValueOnce([
-      { slotId: 'slot-1', sessionId: 's-1', cliKind: 'claude', claudeSessionId: CSID2 }
+      { slotId: 'slot-1', sessionId: 's-1', cliKind: 'claude', cliSessionId: CSID2 }
     ])
     const { result } = render()
     await waitFor(() =>
-      expect(result.current.selected).toMatchObject({ status: 'running', claudeSessionId: CSID2 })
+      expect(result.current.selected).toMatchObject({ status: 'running', cliSessionId: CSID2 })
     )
   })
 })
@@ -1506,7 +1503,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
   }
@@ -1569,7 +1566,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       kind: 'started',
       sessionId: 's2',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
     let settled: AgentInterruptOutcome | undefined
@@ -1600,7 +1597,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       kind: 'started',
       sessionId: 's2',
       cliKind: 'claude',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     await startSelected(result)
     let settled: AgentInterruptOutcome | undefined
@@ -1681,7 +1678,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     await startSelected(result)
     mockInterrupt.mockResolvedValueOnce({ kind: 'no-session' })
@@ -1700,7 +1697,7 @@ describe('useAgentSessions — 中断の 2 回目(interruptFollowUp)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     await startSelected(result)
   }
@@ -1774,7 +1771,7 @@ describe('useAgentSessions — 中断の 2 回目(interruptFollowUp)', () => {
       kind: 'started',
       sessionId: 's2',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     await startSelected(result)
     let settled: AgentInterruptFollowUpOutcome | undefined
@@ -1890,7 +1887,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     const { result, rerender } = renderKind('claude')
     await startSelected(result)
@@ -1898,7 +1895,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       status: 'running',
       cliKind: 'copilot',
       label: 'copilot 1',
-      claudeSessionId: null
+      cliSessionId: null
     })
     rerender({ appCliKind: 'claude' })
     expect(result.current.selected.cliKind).toBe('copilot')
@@ -1909,7 +1906,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     const { result, rerender } = renderKind('copilot')
     await startSelected(result)
@@ -1929,7 +1926,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     const { result, rerender } = renderKind('copilot')
     await startSelected(result)
@@ -1947,7 +1944,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     const { result, rerender } = renderKind('copilot')
     await startSelected(result)
@@ -1965,7 +1962,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
       label: 'claude 1'
     })
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's2', cliKind: 'claude', claudeSessionId: CSID })
+      resolveStart({ kind: 'started', sessionId: 's2', cliKind: 'claude', cliSessionId: CSID })
       await starting
     })
     expect(result.current.selected).toMatchObject({ status: 'running', cliKind: 'claude' })
@@ -1982,7 +1979,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
 
   it('作り直しの後の状態の取得で種類を入れる', async () => {
     mockGetState.mockResolvedValue([
-      { slotId: 'slot-1', sessionId: 's9', cliKind: 'copilot', claudeSessionId: null }
+      { slotId: 'slot-1', sessionId: 's9', cliKind: 'copilot', cliSessionId: null }
     ])
     const { result } = renderKind('claude')
     await waitFor(() =>
@@ -2001,13 +1998,13 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'copilot',
-        claudeSessionId: null
+        cliSessionId: null
       })
       .mockResolvedValueOnce({
         kind: 'started',
         sessionId: 's-2',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
     const { result } = renderKind('claude', { onConfirm })
     await startSelected(result)
@@ -2028,7 +2025,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
         kind: 'started',
         sessionId: 's-1',
         cliKind: 'claude',
-        claudeSessionId: CSID
+        cliSessionId: CSID
       })
       .mockImplementationOnce(() => new Promise((r) => (resolveStart = r)))
     const { result, rerender } = renderKind('claude', { onConfirm })
@@ -2046,7 +2043,7 @@ describe('useAgentSessions: CLI の種類(タブの cliKind と名前)', () => {
     })
     expect(onConfirm).toHaveBeenCalledExactlyOnceWith(agentCloseTabConfirm('copilot 2'))
     await act(async () => {
-      resolveStart({ kind: 'started', sessionId: 's-2', cliKind: 'copilot', claudeSessionId: null })
+      resolveStart({ kind: 'started', sessionId: 's-2', cliKind: 'copilot', cliSessionId: null })
       await adding
     })
   })
@@ -2058,7 +2055,7 @@ describe('useAgentSessions — 再開の失敗(起動の控えと活動。段階
     kind: 'started',
     sessionId,
     cliKind,
-    claudeSessionId: CSID
+    cliSessionId: CSID
   })
   const exitWith = (exitCode: number, sessionId = 's1'): AgentSessionExit => ({
     sessionId,
@@ -2175,7 +2172,7 @@ describe('useAgentSessions — 再開の失敗(起動の控えと活動。段階
 
   it('作り直しの後に合わせ込んだタブは、起動の指定が分からないので new として扱う(copilot の文言を出さない)', async () => {
     mockGetState.mockResolvedValueOnce([
-      { slotId: 'slot-1', sessionId: 's-9', cliKind: 'copilot', claudeSessionId: CSID }
+      { slotId: 'slot-1', sessionId: 's-9', cliKind: 'copilot', cliSessionId: CSID }
     ])
     const { result } = render({ appCliKind: 'copilot' })
     await waitFor(() => expect(result.current.selected.status).toBe('running'))
@@ -2188,7 +2185,7 @@ describe('useAgentSessions — 再開の失敗(起動の控えと活動。段階
       kind: 'already-running',
       sessionId: 's1',
       cliKind: 'copilot',
-      claudeSessionId: CSID
+      cliSessionId: CSID
     })
     const { result } = render({ appCliKind: 'copilot' })
     await act(async () => {

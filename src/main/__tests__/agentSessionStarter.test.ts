@@ -14,8 +14,8 @@ import type {
 } from '../agentSessionStarter'
 import { createAgentSessionRecordStore } from '../agentSessionRecordStore'
 import type { AgentSessionRecordStore } from '../agentSessionRecordStore'
-import { createClaudeSessionReservations } from '../claudeSessionReservations'
-import type { ClaudeSessionReservations } from '../claudeSessionReservations'
+import { createCliSessionReservations } from '../cliSessionReservations'
+import type { CliSessionReservations } from '../cliSessionReservations'
 import type { MockInstance } from 'vitest'
 import type { PtySpawn, StopTree } from '../agentSession'
 import type { AgentLaunchResolution } from '../agentCommand'
@@ -82,9 +82,9 @@ let canonicalize: ReturnType<typeof vi.fn<(path: string) => Promise<string>>>
 let isDirectory: ReturnType<typeof vi.fn<(path: string) => Promise<boolean>>>
 let claudeRecords: AgentSessionRecordStore
 let copilotRecords: AgentSessionRecordStore
-let reservations: ClaudeSessionReservations
+let reservations: CliSessionReservations
 let hooks: FakeAgentHookSessions
-let claudeIdCount: number
+let cliIdCount: number
 let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 const stopTree = vi.fn<StopTree>(async (target, exited) => {
   ;(target as FakePty).emitExit(0, 15)
@@ -103,7 +103,7 @@ function makeStarterService(
     createSessionId: () => 'sid-1',
     records: { claude: claudeRecords, copilot: copilotRecords },
     reservations,
-    createClaudeSessionId: () => NEW_IDS[claudeIdCount++],
+    createCliSessionId: () => NEW_IDS[cliIdCount++],
     platform: 'linux',
     canonicalize,
     isDirectory,
@@ -128,9 +128,9 @@ beforeEach(() => {
   isDirectory = vi.fn(async () => true)
   claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo())
   copilotRecords = createAgentSessionRecordStore(makeFakeRecordIo())
-  reservations = createClaudeSessionReservations()
+  reservations = createCliSessionReservations()
   hooks = makeFakeAgentHookSessions()
-  claudeIdCount = 0
+  cliIdCount = 0
   consoleErrorSpy = null
 })
 
@@ -145,7 +145,7 @@ describe('createAgentSessionStarter(起動の可否)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledWith('/bin/claude', ['--x', '--session-id', NEW_IDS[0]], {
       name: 'xterm-256color',
@@ -337,7 +337,7 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     const pending = deferred<AgentLaunchResolution>()
     resolveLaunch.mockReturnValueOnce(pending.promise)
@@ -354,7 +354,7 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     const pending = deferred<string>()
     canonicalize.mockReturnValueOnce(pending.promise)
@@ -373,17 +373,17 @@ describe('createAgentSessionStarter(起動の途中の取り消し)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
   })
 })
 
-describe('createAgentSessionStarter(claude のセッション ID・記録・予約)', () => {
+describe('createAgentSessionStarter(会話の ID・記録・予約)', () => {
   const ID = '11111111-1111-4111-8111-111111111111'
   const OTHER = '22222222-2222-4222-9222-222222222222'
   const RESUME: AgentStartRequest = {
     ...REQUEST,
-    launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+    launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' }
   }
   let ptys: FakePty[]
   let sessionCount: number
@@ -418,7 +418,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledWith(
       '/bin/claude',
@@ -428,10 +428,10 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
     expect(claudeRecords.has('/work', NEW_IDS[0])).toBe(true)
     expect(reservations.tryReserve(NEW_IDS[0])).toBeNull()
-    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'claude', claudeSessionId: NEW_IDS[0] })
+    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'claude', cliSessionId: NEW_IDS[0] })
   })
 
-  it('sessionInfoOf のキーは pty の sessionId で、claude の会話の ID や知らない sessionId では引けない', async () => {
+  it('sessionInfoOf のキーは pty の sessionId で、会話の ID や知らない sessionId では引けない', async () => {
     const { start, sessionInfoOf } = service()
     await start(1, REQUEST, makeSink())
     expect(sessionInfoOf(NEW_IDS[0])).toBeUndefined()
@@ -446,7 +446,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     expect(spawnPty).toHaveBeenCalledWith(
       '/bin/claude',
@@ -455,7 +455,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     )
     expect(claudeRecords.last('/work')).toBe(ID)
     // 新しい ID は振らない
-    expect(claudeIdCount).toBe(0)
+    expect(cliIdCount).toBe(0)
   })
 
   it.each([
@@ -492,7 +492,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     await vi.waitFor(() => expect(resolveLaunch).toHaveBeenCalledOnce())
     expect(spawnPty).not.toHaveBeenCalled()
     read.resolve(recordFileOf([{ key: '/work', ids: [ID] }]))
-    await expect(result).resolves.toMatchObject({ kind: 'started', claudeSessionId: ID })
+    await expect(result).resolves.toMatchObject({ kind: 'started', cliSessionId: ID })
   })
 
   it('already-running は動いているセッションの ID を返し、依頼の ID は使わない(新しく振らない)', async () => {
@@ -502,17 +502,17 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     await expect(
       start(
         1,
-        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: OTHER, cliKind: 'claude' } },
+        { ...REQUEST, launch: { kind: 'resume', cliSessionId: OTHER, cliKind: 'claude' } },
         makeSink()
       )
     ).resolves.toEqual({
       kind: 'already-running',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledOnce()
-    expect(claudeIdCount).toBe(1)
+    expect(cliIdCount).toBe(1)
     // already-running は create を通らないため、依頼の ID を予約しない
     expect(reservations.tryReserve(OTHER)).not.toBeNull()
   })
@@ -584,7 +584,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       }
     })
     await svc.start(1, REQUEST, makeSink())
-    expect(svc.sessionInfoOf('sid-1')).toEqual({ cliKind: 'claude', claudeSessionId: NEW_IDS[0] })
+    expect(svc.sessionInfoOf('sid-1')).toEqual({ cliKind: 'claude', cliSessionId: NEW_IDS[0] })
     ptys[0].emitExit(0)
     await vi.waitFor(() => expect(observed).toEqual([undefined]))
     expect(svc.sessionInfoOf('sid-1')).toBeUndefined()
@@ -594,7 +594,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       kind: 'started',
       sessionId: 'sid-2',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[1]
+      cliSessionId: NEW_IDS[1]
     })
   })
 
@@ -643,7 +643,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     await stopping
     await expect(start(1, { ...RESUME, slotId: 'slot-3' }, makeSink())).resolves.toMatchObject({
       kind: 'started',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
   })
 
@@ -670,7 +670,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     expect(claudeRecords.last('/work')).toBe(OTHER)
     await expect(start(1, { ...RESUME, slotId: 'slot-3' }, makeSink())).resolves.toMatchObject({
       kind: 'started',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
   })
 
@@ -685,7 +685,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     expect(claudeRecords.last('/work')).toBe(OTHER)
     await expect(start(1, RESUME, makeSink())).resolves.toMatchObject({
       kind: 'started',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
   })
 
@@ -708,7 +708,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       '[agentSessionStarter] 起動の記録に失敗しました:',
@@ -723,7 +723,7 @@ describe('createAgentSessionStarter(claude のセッション ID・記録・予�
     const { start } = service({ platform: 'win32' })
     await expect(
       start(1, { ...RESUME, folderPath: 'C:\\Work' }, makeSink())
-    ).resolves.toMatchObject({ kind: 'started', claudeSessionId: ID })
+    ).resolves.toMatchObject({ kind: 'started', cliSessionId: ID })
     expect(claudeRecords.last('c:\\work')).toBe(ID)
   })
 })
@@ -740,11 +740,11 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     const { lastSessionOf } = makeStarterService()
     await expect(lastSessionOf(1, '/work', 'claude')).resolves.toEqual({
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     await expect(lastSessionOf(1, '/work', 'copilot')).resolves.toEqual({
       cliKind: 'copilot',
-      claudeSessionId: OTHER
+      cliSessionId: OTHER
     })
   })
 
@@ -760,7 +760,7 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     const { lastSessionOf } = makeStarterService()
     await expect(lastSessionOf(1, '/work/.', 'claude')).resolves.toEqual({
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     await expect(lastSessionOf(1, '/other', 'claude')).resolves.toBeNull()
     await expect(lastSessionOf(2, '/work', 'claude')).resolves.toBeNull()
@@ -774,7 +774,7 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     const { lastSessionOf } = makeStarterService({ platform: 'win32' })
     await expect(lastSessionOf(1, 'C:\\Work', 'claude')).resolves.toEqual({
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
   })
 
@@ -795,7 +795,7 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     const service = makeStarterService()
     await expect(service.lastSessionOf(1, '/work/.', 'claude')).resolves.toEqual({
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     await expect(
       service.start(1, { ...REQUEST, folderPath: '/work/.' }, makeSink())
@@ -811,7 +811,7 @@ describe('createAgentSessionStarter: lastSessionOf(前回)', () => {
     claudeRecords = createAgentSessionRecordStore(makeFakeRecordIo(read.promise))
     const result = makeStarterService().lastSessionOf(1, '/work', 'claude')
     read.resolve(recordFileOf([{ key: '/work', ids: [ID] }]))
-    await expect(result).resolves.toEqual({ cliKind: 'claude', claudeSessionId: ID })
+    await expect(result).resolves.toEqual({ cliKind: 'claude', cliSessionId: ID })
   })
 
   it('正規化を待つ間に許可のフォルダが切り替わったら null(切り替え前のフォルダの記録を返さない)', async () => {
@@ -856,7 +856,7 @@ describe('createAgentSessionStarter(hooks)', () => {
     claudeRecords.record('/work', RESUME_ID)
     await makeStarter()(
       1,
-      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: RESUME_ID, cliKind: 'claude' } },
+      { ...REQUEST, launch: { kind: 'resume', cliSessionId: RESUME_ID, cliKind: 'claude' } },
       makeSink()
     )
     expect(hooks.activate).toHaveBeenCalledExactlyOnceWith(expect.any(Object), 'sid-1', RESUME_ID)
@@ -949,7 +949,7 @@ describe('createAgentSessionStarter(hooks)', () => {
     const start = makeStarter()
     await start(
       1,
-      { ...REQUEST, launch: { kind: 'resume', claudeSessionId: NEW_IDS[4], cliKind: 'claude' } },
+      { ...REQUEST, launch: { kind: 'resume', cliSessionId: NEW_IDS[4], cliKind: 'claude' } },
       makeSink()
     )
     expect(hooks.release).toHaveBeenCalledExactlyOnceWith(expect.any(Object), null)
@@ -1086,9 +1086,9 @@ describe('createAgentSessionStarter(hooks)', () => {
       }
     ],
     [
-      'selectClaudeSessionId の例外(新しい ID の採番の失敗)',
+      'selectCliSessionId の例外(新しい ID の採番の失敗)',
       {
-        createClaudeSessionId: () => {
+        createCliSessionId: () => {
           throw new Error('uuid failed')
         }
       }
@@ -1127,10 +1127,10 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     kind: 'ok',
     plan: { cliKind: 'copilot', file: '/bin/copilot', args: [], env: { PATH: '/p' } }
   }
-  const copilotResume = (claudeSessionId: string, slotId = 'slot-1'): AgentStartRequest => ({
+  const copilotResume = (cliSessionId: string, slotId = 'slot-1'): AgentStartRequest => ({
     ...REQUEST,
     slotId,
-    launch: { kind: 'resume', claudeSessionId, cliKind: 'copilot' }
+    launch: { kind: 'resume', cliSessionId, cliKind: 'copilot' }
   })
 
   beforeEach(async () => {
@@ -1147,7 +1147,7 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', ['--session-id', NEW_IDS[0]], {
       name: 'xterm-256color',
@@ -1160,7 +1160,7 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     expect(copilotRecords.last('/work')).toBe(NEW_IDS[0])
     expect(claudeRecordSpy).not.toHaveBeenCalled()
     expect(claudeRecords.last('/work')).toBeNull()
-    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', claudeSessionId: NEW_IDS[0] })
+    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', cliSessionId: NEW_IDS[0] })
   })
 
   it('copilot の resume は copilot の記録にある ID を --resume=<ID>(1 つの引数)で起動し、記録の先頭へ移す(新しく振らない)', async () => {
@@ -1170,11 +1170,11 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [`--resume=${ID}`], expect.any(Object))
     expect(copilotRecords.last('/work')).toBe(ID)
-    expect(claudeIdCount).toBe(0)
+    expect(cliIdCount).toBe(0)
   })
 
   it('claude の記録にだけある ID の copilot の再開は unknown-session で、spawn しない(claude の ID を copilot で再開する経路は無い)', async () => {
@@ -1210,10 +1210,10 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     await expect(
       start(
         1,
-        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' } },
+        { ...REQUEST, launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' } },
         makeSink()
       )
-    ).resolves.toMatchObject({ kind: 'started', cliKind: 'claude', claudeSessionId: ID })
+    ).resolves.toMatchObject({ kind: 'started', cliKind: 'claude', cliSessionId: ID })
     await expect(start(1, copilotResume(ID, 'slot-2'), makeSink())).resolves.toEqual({
       kind: 'error',
       error: 'session-in-use'
@@ -1228,7 +1228,7 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
       kind: 'already-running',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(spawnPty).toHaveBeenCalledOnce()
   })
@@ -1294,7 +1294,7 @@ describe('createAgentSessionStarter(CLI の種類)', () => {
     copilotRecords.record('/work', ID)
     await expect(makeStarterService().lastSessionOf(1, '/work', 'copilot')).resolves.toEqual({
       cliKind: 'copilot',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
   })
 
@@ -1341,7 +1341,7 @@ describe('createAgentSessionStarter(種類ごとの起動の記録と種類の�
     await expect(
       start(
         1,
-        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'copilot' } },
+        { ...REQUEST, launch: { kind: 'resume', cliSessionId: ID, cliKind: 'copilot' } },
         makeSink()
       )
     ).resolves.toEqual({ kind: 'error', error: 'resume-cli-mismatch' })
@@ -1357,14 +1357,14 @@ describe('createAgentSessionStarter(種類ごとの起動の記録と種類の�
     await expect(
       makeStarter()(
         1,
-        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' } },
+        { ...REQUEST, launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' } },
         makeSink()
       )
     ).resolves.toEqual({
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'claude',
-      claudeSessionId: ID
+      cliSessionId: ID
     })
     expect(spawnPty).toHaveBeenCalledWith(
       '/bin/claude',
@@ -1378,7 +1378,7 @@ describe('createAgentSessionStarter(種類ごとの起動の記録と種類の�
     const copilotHasSpy = vi.spyOn(copilotRecords, 'has')
     await expect(makeStarter()(1, REQUEST, makeSink())).resolves.toMatchObject({
       kind: 'started',
-      claudeSessionId: NEW_IDS[0]
+      cliSessionId: NEW_IDS[0]
     })
     expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
     expect(copilotRecords.last('/work')).toBeNull()
@@ -1404,7 +1404,7 @@ describe('createAgentSessionStarter(種類ごとの起動の記録と種類の�
         kind: 'started',
         sessionId: 'sid-1',
         cliKind: 'claude',
-        claudeSessionId: NEW_IDS[0]
+        cliSessionId: NEW_IDS[0]
       })
       expect(claudeRecords.last('/work')).toBe(NEW_IDS[0])
     }

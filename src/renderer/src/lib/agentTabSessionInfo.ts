@@ -12,7 +12,7 @@ export interface AgentTabSessionSource {
   status: AgentSessionStatus
   /** タブの種類(起動の結果の種類。無ければ設定の種類。AgentSessionTabView.cliKind) */
   cliKind: AgentCliKind
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 /**
@@ -25,9 +25,9 @@ export function describeAgentTabSession(
   folderPath: string | null
 ): AgentHistoryInfo | null {
   const tab = tabs.find((t) => t.slotId === slotId)
-  if (tab === undefined || tab.claudeSessionId === null || folderPath === null) return null
+  if (tab === undefined || tab.cliSessionId === null || folderPath === null) return null
   return {
-    claudeSessionId: tab.claudeSessionId,
+    claudeSessionId: tab.cliSessionId,
     cliKind: tab.cliKind,
     tabLabel: tab.label,
     folderPath

@@ -16,14 +16,14 @@ export type AgentSessionCreation =
   | { kind: 'failed'; result: Extract<AgentStartResult, { kind: 'error' }> }
 
 /**
- * registry の起動の結果。registry は pty の sessionId しか知らないため、成功は sessionId だけを返す(claude の会話の ID は
+ * registry の起動の結果。registry は pty の sessionId しか知らないため、成功は sessionId だけを返す(会話の ID は
  * starter が足して共有の AgentStartResult にする)。エラーは共有の型と同じ
  */
 export type AgentRegistryStartResult =
   | { kind: 'started' | 'already-running'; sessionId: string }
   | Extract<AgentStartResult, { kind: 'error' }>
 
-/** registry の snapshot の要素(pty の sessionId だけ。claude の会話の ID は IPC の受け口が starter から足す) */
+/** registry の snapshot の要素(pty の sessionId だけ。会話の ID は IPC の受け口が starter から足す) */
 export interface AgentRegistrySnapshotEntry {
   slotId: string
   sessionId: string

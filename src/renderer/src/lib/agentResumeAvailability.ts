@@ -3,7 +3,7 @@ import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentHistoryInfo, PromptExecutionMode } from '@shared/types'
 import { knownAgentCliKindOf } from '@shared/historyAgentCliKind'
 import type { AgentSessionStatus } from './agentSessionTabState'
-import { findActiveAgentTabByClaudeSessionId } from './agentSessionTabState'
+import { findActiveAgentTabByCliSessionId } from './agentSessionTabState'
 import { isSamePath } from './pathUtils'
 import { RUN_DISABLED_LOADING_MODE } from './agentSendMessages'
 import {
@@ -28,13 +28,13 @@ import {
 export type AgentLastSessionLookup =
   | { kind: 'loading' }
   | { kind: 'none' }
-  | { kind: 'found'; cliKind: AgentCliKind; claudeSessionId: string }
+  | { kind: 'found'; cliKind: AgentCliKind; cliSessionId: string }
 
 /** 押せない理由の判定に使うタブの値(AgentSessionTabView の一部) */
 export interface AgentResumeTab {
   label: string
   status: AgentSessionStatus
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 /**
@@ -60,7 +60,7 @@ export function getResumeLastDisabledReason({
   }
   if (lastSession.kind === 'loading') return AGENT_RESUME_LAST_LOADING
   if (lastSession.kind === 'none') return AGENT_RESUME_LAST_NO_RECORD
-  const running = findActiveAgentTabByClaudeSessionId(tabs, lastSession.claudeSessionId)
+  const running = findActiveAgentTabByCliSessionId(tabs, lastSession.cliSessionId)
   return running === undefined ? null : agentResumeLastInUse(running.label)
 }
 
@@ -108,7 +108,7 @@ export function getResumeEntryDisabledReason({
     return agentResumeEntryFolderMismatch(recorded.folderPath)
   }
   if (startDisabledReason !== null) return startDisabledReason
-  const running = findActiveAgentTabByClaudeSessionId(tabs, recorded.claudeSessionId)
+  const running = findActiveAgentTabByCliSessionId(tabs, recorded.claudeSessionId)
   if (running !== undefined) return agentResumeEntryInUse(running.label)
   return addDisabledReason
 }

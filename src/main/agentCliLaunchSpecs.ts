@@ -1,6 +1,6 @@
 import { isAbsolute } from 'node:path'
 import type { AgentLaunchRequest } from '@shared/types'
-import { isClaudeSessionId } from '@shared/types'
+import { isCliSessionId } from '@shared/types'
 import { AGENT_CLI_PROFILES } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 
@@ -19,13 +19,13 @@ export interface AgentCliLaunchSpec {
    *  名前は大文字で書く */
   extraEnv: Readonly<Record<string, string>>
   /**
-   * 起動の引数。claudeSessionId は能力の表で sessionResume が true の種類だけが受け取り、false の種類に値が渡ったら投げる
+   * 起動の引数。cliSessionId は能力の表で sessionResume が true の種類だけが受け取り、false の種類に値が渡ったら投げる
    * (呼び出し側の取り違えを黙って捨てない。L-044)。hookConfigPath は claude では設定のファイル(--settings)、copilot では
    * プラグインのフォルダ(--plugin-dir)。hooks なしなら null
    */
   buildArgs(
     launch: AgentLaunchRequest,
-    claudeSessionId: string | null,
+    cliSessionId: string | null,
     hookConfigPath: string | null
   ): string[]
 }
@@ -41,16 +41,16 @@ function throwUnknownLaunch(launch: never): never {
  */
 function buildClaudeArgs(
   launch: AgentLaunchRequest,
-  claudeSessionId: string | null,
+  cliSessionId: string | null,
   hookConfigPath: string | null
 ): string[] {
-  if (claudeSessionId === null) throw new Error('claude の起動には会話の ID が要ります')
+  if (cliSessionId === null) throw new Error('claude の起動には会話の ID が要ります')
   const settings = hookConfigPath === null ? [] : ['--settings', hookConfigPath]
   switch (launch.kind) {
     case 'new':
-      return ['--session-id', claudeSessionId, ...settings]
+      return ['--session-id', cliSessionId, ...settings]
     case 'resume':
-      return ['--resume', claudeSessionId, ...settings]
+      return ['--resume', cliSessionId, ...settings]
     default:
       return throwUnknownLaunch(launch)
   }
@@ -65,14 +65,14 @@ function buildClaudeArgs(
  */
 function buildCopilotArgs(
   launch: AgentLaunchRequest,
-  claudeSessionId: string | null,
+  cliSessionId: string | null,
   hookConfigPath: string | null
 ): string[] {
-  if (claudeSessionId === null) throw new Error('copilot の起動には会話の ID が要ります')
+  if (cliSessionId === null) throw new Error('copilot の起動には会話の ID が要ります')
   // copilot の --resume は大文字小文字を区別せず、前方一致・名前でも照合し、UUID でない値は新しいセッションに落ちるので、
   // 完全な小文字の UUID v4 だけを渡す(入り口の検証に加えた最後の守り。L-007・L-034)。例外の文言は spawn-failed の detail として
   // 画面に出るので、渡された値を入れない(L-017)
-  if (!isClaudeSessionId(claudeSessionId)) {
+  if (!isCliSessionId(cliSessionId)) {
     throw new Error('copilot の起動の会話の ID の形が正しくありません')
   }
   // main が作ったプラグインのフォルダの絶対パスしか来ない想定の最後の守り(L-034)。値を文言に入れない(L-017)
@@ -82,9 +82,9 @@ function buildCopilotArgs(
   const pluginDir = hookConfigPath === null ? [] : ['--plugin-dir', hookConfigPath]
   switch (launch.kind) {
     case 'new':
-      return ['--session-id', claudeSessionId, ...pluginDir]
+      return ['--session-id', cliSessionId, ...pluginDir]
     case 'resume':
-      return [`--resume=${claudeSessionId}`, ...pluginDir]
+      return [`--resume=${cliSessionId}`, ...pluginDir]
     default:
       return throwUnknownLaunch(launch)
   }

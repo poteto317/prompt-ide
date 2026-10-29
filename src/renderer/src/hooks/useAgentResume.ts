@@ -81,7 +81,7 @@ export function useAgentResume({
       if (reason !== null || current.kind !== 'found') return
       const launch: AgentLaunchRequest = {
         kind: 'resume',
-        claudeSessionId: current.claudeSessionId,
+        cliSessionId: current.cliSessionId,
         cliKind: current.cliKind
       }
       void startAgentSession(slotId, launch)

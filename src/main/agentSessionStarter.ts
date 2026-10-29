@@ -23,8 +23,8 @@ import { AGENT_CLI_INTERRUPT_SPECS } from './agentCliInterruptSpecs'
 import type { AgentLaunchPlan, AgentLaunchResolution } from './agentCommand'
 import { toAgentFolderKey } from './agentSessionRecordStore'
 import type { AgentSessionRecordStore } from './agentSessionRecordStore'
-import type { ClaudeSessionReservations } from './claudeSessionReservations'
-import { selectClaudeSessionId } from './claudeSessionIdSelection'
+import type { CliSessionReservations } from './cliSessionReservations'
+import { selectCliSessionId } from './cliSessionIdSelection'
 import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
 
 // エージェントのセッションの起動の規則と pty の配線(設計書「IPC」「停止の契機」、セッションの再開の設計書「起動の流れ」)。
@@ -33,8 +33,8 @@ import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
 // 一致の確認にだけ使う。ここは起動の手順(照合・取り消しの確認・ID の選択・予約・spawn を await を挟まずに行う順序)と、起動の記録への
 // 書き込みの契機を持つ。各段の規則は別のモジュールにある: CLI の種類ごとの能力(再開の拒否・会話の ID と予約と記録の有無を分ける)は
 // shared/agentCliKinds.ts の agentCliCapabilities、起動に使う会話の ID の選択(新規は振る・再開は記録と照合)は
-// claudeSessionIdSelection.ts、引数(--session-id / --resume と、claude の --settings・copilot の --plugin-dir)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
-// 起動の拒否は claudeSessionReservations.ts、記録の規則は agentSessionRecordStore.ts(種類ごとに 1 つ。起動の計画の種類の記録だけを使う)、hooks の準備・結び付け・解放は
+// cliSessionIdSelection.ts、引数(--session-id / --resume と、claude の --settings・copilot の --plugin-dir)は agentCliLaunchSpecs の種類ごとの buildArgs、同じ ID の二重の
+// 起動の拒否は cliSessionReservations.ts、記録の規則は agentSessionRecordStore.ts(種類ごとに 1 つ。起動の計画の種類の記録だけを使う)、hooks の準備・結び付け・解放は
 // agentHookSessions.ts
 
 /** 起動したセッションの出力の送り先(所有者の webContents。破棄済みかを確かめられる) */
@@ -60,12 +60,12 @@ export interface AgentSessionStarterDeps {
     Record<AgentCliKind, Pick<AgentSessionRecordStore, 'whenLoaded' | 'has' | 'last' | 'record'>>
   >
   /** 全ウィンドウで共有する会話の ID の予約(種類をまたいで 1 つ。ID は main が振る UUID なので種類をまたいで重ならない) */
-  reservations: Pick<ClaudeSessionReservations, 'tryReserve'>
+  reservations: Pick<CliSessionReservations, 'tryReserve'>
   /** hooks の準備(prepare)・spawn の後の結び付け(activate)・終了での解放(release)。組み立ては agentHooksRuntime.ts
    *  (agentHookSessions)で、ipcHandlers.ts が渡す。省略できない(渡し忘れで hooks なしの起動に黙って倒れないように。L-060) */
   hooks: Pick<AgentHookSessions, 'prepare' | 'activate' | 'release'>
   /** 新しい会話の ID(再開に対応する種類〈claude・copilot〉の new で振る。既定は crypto.randomUUID) */
-  createClaudeSessionId?: () => string
+  createCliSessionId?: () => string
   /** 記録のフォルダのキーの作り方を決める(既定は process.platform) */
   platform?: NodeJS.Platform
   /** 依頼のフォルダの正規化(既定は realpath。失敗したらそのまま) */
@@ -80,16 +80,16 @@ export type AgentSessionStarter = (
   sink: AgentSessionSink
 ) => Promise<AgentStartResult>
 
-/** pty のセッションの CLI の種類と claude の会話の ID(再開に対応しない種類は null)。already-running と状態の取得で返す */
+/** pty のセッションの CLI の種類と会話の ID(再開に対応しない種類は null)。already-running と状態の取得で返す */
 export interface AgentSessionInfo {
   cliKind: AgentCliKind
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 export interface AgentSessionStarterService {
   start: AgentSessionStarter
   /**
-   * pty の sessionId → 種類と claude の会話の ID。作ったセッションの exited の解決で消す(消す購読はセッションを registry へ返す前に
+   * pty の sessionId → 種類と会話の ID。作ったセッションの exited の解決で消す(消す購読はセッションを registry へ返す前に
    * 付けるため、registry が枠からセッションを外すより先に消える)。無ければ undefined
    */
   sessionInfoOf(sessionId: string): AgentSessionInfo | undefined
@@ -121,11 +121,11 @@ interface StartContext {
   folderKey: string
 }
 
-/** この依頼の create で作ったセッションの種類と claude の会話の ID の受け渡し(registry が started を返したときに記録する)。
+/** この依頼の create で作ったセッションの種類と会話の ID の受け渡し(registry が started を返したときに記録する)。
  *  cliKind の null は「まだ入っていない」(spawnSession が created を返す直前に入れる) */
 interface CreatedAgentSession {
   cliKind: AgentCliKind | null
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 async function canonicalOrSelf(path: string): Promise<string> {
@@ -154,12 +154,12 @@ export function createAgentSessionStarter({
   records,
   reservations,
   hooks,
-  createClaudeSessionId = randomUUID,
+  createCliSessionId = randomUUID,
   platform = process.platform,
   canonicalize = canonicalOrSelf,
   isDirectory = isDirectoryOnDisk
 }: AgentSessionStarterDeps): AgentSessionStarterService {
-  // pty の sessionId → 種類と claude の会話の ID(already-running・作り直しの後の合わせ込みで返す)
+  // pty の sessionId → 種類と会話の ID(already-running・作り直しの後の合わせ込みで返す)
   const sessionInfoBySessionId = new Map<string, AgentSessionInfo>()
 
   /**
@@ -207,8 +207,8 @@ export function createAgentSessionStarter({
       allowedFolder,
       folderKey
     }
-    // この依頼の create で作ったセッションの種類と claude の会話の ID(registry が started を返したときに記録して返す)
-    const createdAgentSession: CreatedAgentSession = { cliKind: null, claudeSessionId: null }
+    // この依頼の create で作ったセッションの種類と会話の ID(registry が started を返したときに記録して返す)
+    const createdAgentSession: CreatedAgentSession = { cliKind: null, cliSessionId: null }
     const result = await registry.start(ownerId, request.slotId, () =>
       createSession(context, createdAgentSession)
     )
@@ -304,23 +304,23 @@ export function createAgentSessionStarter({
   ): AgentSessionCreation {
     const capabilities = agentCliCapabilities(plan.cliKind)
     // 会話の ID の選択・予約は能力の表で再開に対応する種類だけ(段階 3a で claude・copilot の両方。対応しない種類は ID を選ばず予約もしない)
-    let claudeSessionId: string | null = null
+    let cliSessionId: string | null = null
     if (capabilities.sessionResume) {
-      const selection = selectClaudeSessionId(
+      const selection = selectCliSessionId(
         request.launch,
         folderKey,
         records[plan.cliKind],
-        createClaudeSessionId
+        createCliSessionId
       )
       if (selection.kind === 'rejected') return { kind: 'failed', result: selection.result }
-      claudeSessionId = selection.claudeSessionId
+      cliSessionId = selection.cliSessionId
     }
     // 予約の後で投げて予約が残らないよう、ID は予約の前に振る
     const sessionId = createSessionId()
     // 新しい ID も予約する(UUID の衝突は起きない前提だが、外す経路を 1 つにそろえるため)
     let releaseReservation: () => void = () => undefined
-    if (claudeSessionId !== null) {
-      const release = reservations.tryReserve(claudeSessionId)
+    if (cliSessionId !== null) {
+      const release = reservations.tryReserve(cliSessionId)
       if (release === null) {
         return { kind: 'failed', result: { kind: 'error', error: 'session-in-use' } }
       }
@@ -338,7 +338,7 @@ export function createAgentSessionStarter({
           ...plan.args,
           ...AGENT_CLI_LAUNCH_SPECS[plan.cliKind].buildArgs(
             request.launch,
-            claudeSessionId,
+            cliSessionId,
             capabilities.changeAttribution ? (prepared.hooks?.configPath ?? null) : null
           )
         ],
@@ -364,7 +364,7 @@ export function createAgentSessionStarter({
     // 解決になる(AgentSession.stop は止まりきると exited を解決する)。止める操作の間(stoppingSessions)は予約が残る。
     // registry へ返す前に購読するので、registry が枠からセッションを外すより先に Map から消える。activate より前に購読し、
     // activate が投げても後始末が漏れない(頑健性の 5)
-    sessionInfoBySessionId.set(sessionId, { cliKind: plan.cliKind, claudeSessionId })
+    sessionInfoBySessionId.set(sessionId, { cliKind: plan.cliKind, cliSessionId })
     void session.exited.then(() => {
       cleanUpQuietly('Map', () => sessionInfoBySessionId.delete(sessionId))
       cleanUpQuietly('予約', releaseReservation)
@@ -373,16 +373,16 @@ export function createAgentSessionStarter({
     // spawn の直後(await を挟まず)にトークンを表へ足し、追跡にセッションを足す。copilot の主の会話の ID は、ここで渡す起動に使った ID から始める。CLI の最初の知らせより先に済む。
     // 失敗しても起動は続ける(hooks の知らせが届かないだけで、追跡は pending か無いまま。終了で release が呼ばれる)
     try {
-      hooks.activate(prepared, sessionId, claudeSessionId)
+      hooks.activate(prepared, sessionId, cliSessionId)
     } catch (err) {
       console.error('[agentSessionStarter] hooks の結び付けに失敗しました:', err)
     }
     createdAgentSession.cliKind = plan.cliKind
-    createdAgentSession.claudeSessionId = claudeSessionId
+    createdAgentSession.cliSessionId = cliSessionId
     return { kind: 'created', session }
   }
 
-  /** registry の結果に種類と claude の会話の ID を足す。起動が確定した(started)ときだけ記録する */
+  /** registry の結果に種類と会話の ID を足す。起動が確定した(started)ときだけ記録する */
   function finishStart(
     result: AgentRegistryStartResult,
     folderKey: string,
@@ -411,25 +411,25 @@ export function createAgentSessionStarter({
   function recordStarted(
     sessionId: string,
     folderKey: string,
-    { cliKind, claudeSessionId }: CreatedAgentSession
+    { cliKind, cliSessionId }: CreatedAgentSession
   ): AgentStartResult {
     if (cliKind === null) {
       throw new Error('起動したセッションの CLI の種類がありません')
     }
     if (agentCliCapabilities(cliKind).sessionResume) {
-      if (claudeSessionId === null) {
-        throw new Error('起動したセッションの claude のセッション ID がありません')
+      if (cliSessionId === null) {
+        throw new Error('起動したセッションの会話の ID がありません')
       }
       // 起動は成功しているため、記録の失敗はログだけにする(次の 前回の続きから が古い記録を使うことがある。L-001)
       try {
-        records[cliKind].record(folderKey, claudeSessionId)
+        records[cliKind].record(folderKey, cliSessionId)
       } catch (err) {
         console.error('[agentSessionStarter] 起動の記録に失敗しました:', err)
       }
-    } else if (claudeSessionId !== null) {
-      throw new Error('再開に対応しない CLI のセッションに claude のセッション ID があります')
+    } else if (cliSessionId !== null) {
+      throw new Error('再開に対応しない CLI のセッションに会話の ID があります')
     }
-    return { kind: 'started', sessionId, cliKind, claudeSessionId }
+    return { kind: 'started', sessionId, cliKind, cliSessionId }
   }
 
   /** already-running(StrictMode の二重の依頼など)は、動いているセッションの種類と ID を返す(依頼の launch は使わない) */
@@ -437,10 +437,10 @@ export function createAgentSessionStarter({
     const info = sessionInfoBySessionId.get(sessionId)
     if (info === undefined) {
       console.error(
-        '[agentSessionStarter] 動いているセッションの種類と claude のセッション ID が見つかりません:',
+        '[agentSessionStarter] 動いているセッションの種類と会話の ID が見つかりません:',
         sessionId
       )
-      throw new Error('動いているセッションの種類と claude のセッション ID が見つかりません')
+      throw new Error('動いているセッションの種類と会話の ID が見つかりません')
     }
     return { kind: 'already-running', sessionId, ...info }
   }
@@ -457,8 +457,8 @@ export function createAgentSessionStarter({
     await kindRecords.whenLoaded()
     // await の間にフォルダが切り替わっていたら、切り替え前のフォルダの記録を返さない
     if (folderAccess.get(ownerId) !== allowedFolder) return null
-    const claudeSessionId = kindRecords.last(toAgentFolderKey(allowedFolder, platform))
-    return claudeSessionId === null ? null : { cliKind, claudeSessionId }
+    const cliSessionId = kindRecords.last(toAgentFolderKey(allowedFolder, platform))
+    return cliSessionId === null ? null : { cliKind, cliSessionId }
   }
 
   return {

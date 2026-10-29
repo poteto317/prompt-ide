@@ -10,13 +10,13 @@ const tab = (overrides: Partial<AgentTabSessionSource>): AgentTabSessionSource =
   label: 'claude',
   status: 'running',
   cliKind: 'claude',
-  claudeSessionId: ID_A,
+  cliSessionId: ID_A,
   ...overrides
 })
 
 describe('describeAgentTabSession', () => {
   it('slotId のタブの ID・名前と開いているフォルダを返す', () => {
-    const tabs = [tab({}), tab({ slotId: 'tab-2', label: 'claude 2', claudeSessionId: ID_B })]
+    const tabs = [tab({}), tab({ slotId: 'tab-2', label: 'claude 2', cliSessionId: ID_B })]
     expect(describeAgentTabSession(tabs, 'tab-2', '/work')).toEqual({
       claudeSessionId: ID_B,
       cliKind: 'claude',
@@ -27,7 +27,7 @@ describe('describeAgentTabSession', () => {
 
   it('送り先の種類はタブの種類(起動の結果の種類)', () => {
     const tabs = [
-      tab({ slotId: 'tab-2', label: 'copilot 2', cliKind: 'copilot', claudeSessionId: ID_B })
+      tab({ slotId: 'tab-2', label: 'copilot 2', cliKind: 'copilot', cliSessionId: ID_B })
     ]
     expect(describeAgentTabSession(tabs, 'tab-2', '/work')).toEqual({
       claudeSessionId: ID_B,
@@ -39,7 +39,7 @@ describe('describeAgentTabSession', () => {
 
   it('タブが無い・ID が無い・フォルダを開いていなければ null', () => {
     expect(describeAgentTabSession([tab({})], 'missing', '/work')).toBeNull()
-    expect(describeAgentTabSession([tab({ claudeSessionId: null })], 'tab-1', '/work')).toBeNull()
+    expect(describeAgentTabSession([tab({ cliSessionId: null })], 'tab-1', '/work')).toBeNull()
     expect(describeAgentTabSession([tab({})], 'tab-1', null)).toBeNull()
   })
 })

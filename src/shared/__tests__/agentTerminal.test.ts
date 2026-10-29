@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   AGENT_EXIT_REASONS,
-  CLAUDE_SESSION_ID_PATTERN,
+  CLI_SESSION_ID_PATTERN,
   AGENT_START_CANCELED_DETAIL,
   agentStartCanceled,
   isAgentExitReason,
   isAgentStartCanceled,
-  isClaudeSessionId
+  isCliSessionId
 } from '../types/agentTerminal'
 import type { AgentStartResult } from '../types/agentTerminal'
 
@@ -42,7 +42,7 @@ describe('agentStartCanceled / isAgentStartCanceled', () => {
         kind: 'started',
         sessionId: 's',
         cliKind: 'claude',
-        claudeSessionId: '11111111-1111-4111-8111-111111111111'
+        cliSessionId: '11111111-1111-4111-8111-111111111111'
       },
       false
     ],
@@ -52,7 +52,7 @@ describe('agentStartCanceled / isAgentStartCanceled', () => {
         kind: 'already-running',
         sessionId: 's',
         cliKind: 'claude',
-        claudeSessionId: '11111111-1111-4111-8111-111111111111'
+        cliSessionId: '11111111-1111-4111-8111-111111111111'
       },
       false
     ]
@@ -81,14 +81,14 @@ describe('AGENT_EXIT_REASONS / isAgentExitReason', () => {
   })
 })
 
-describe('isClaudeSessionId', () => {
+describe('isCliSessionId', () => {
   it.each([
     '11111111-1111-4111-8111-111111111111',
     'abcdef01-2345-4678-9abc-def012345678',
     '00000000-0000-4000-b000-000000000000'
   ])('小文字の UUID v4 は通す: %s', (value) => {
-    expect(isClaudeSessionId(value)).toBe(true)
-    expect(CLAUDE_SESSION_ID_PATTERN.test(value)).toBe(true)
+    expect(isCliSessionId(value)).toBe(true)
+    expect(CLI_SESSION_ID_PATTERN.test(value)).toBe(true)
   })
 
   it.each([
@@ -103,6 +103,6 @@ describe('isClaudeSessionId', () => {
     ['文字列以外', 1],
     ['null', null]
   ])('%s は通さない', (_label, value) => {
-    expect(isClaudeSessionId(value)).toBe(false)
+    expect(isCliSessionId(value)).toBe(false)
   })
 })

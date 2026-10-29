@@ -126,3 +126,23 @@ describe('saveHistory', () => {
     expect(mockMkdir).toHaveBeenCalledWith('/mock/userData', { recursive: true })
   })
 })
+
+describe('保存の欄名(古い版のアプリとの互換)', () => {
+  // HistoryEntry の型を通さず、ディスクの形を文字列で書く。型の欄名を変えても、ディスクのキーが変わればここで落ちる(L-459)
+  const DISK_JSON =
+    '[{"id":"h1","promptId":"p1","promptTitle":"タイトル","promptContent":"全文","fileContent":null,' +
+    '"toolId":"claude","status":"sent","resultText":null,"errorMessage":null,"executedAt":1,' +
+    '"agent":{"claudeSessionId":"11111111-1111-4111-8111-111111111111","cliKind":"claude","tabLabel":"claude 1","folderPath":"/w"}}]'
+
+  it('古い版が書いた agent.claudeSessionId を捨てずに読み、書き戻しても同じキーで書く', async () => {
+    mockReadFile.mockResolvedValue(DISK_JSON)
+    const loaded = await loadHistory()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0].agent).not.toBeNull()
+    await saveHistory(loaded)
+    const written: unknown = mockWriteFile.mock.calls[0][1]
+    expect(written).toContain('"claudeSessionId":"11111111-1111-4111-8111-111111111111"')
+    expect(written).not.toContain('"cliSessionId"')
+    expect(written).toBe(DISK_JSON)
+  })
+})

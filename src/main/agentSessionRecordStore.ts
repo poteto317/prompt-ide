@@ -1,4 +1,4 @@
-import { isClaudeSessionId } from '@shared/types'
+import { isCliSessionId } from '@shared/types'
 import { isEnoentError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
@@ -28,7 +28,7 @@ export interface AgentSessionRecordIo {
 export interface AgentSessionRecordStore {
   /** 読み込みの完了(失敗しても解決する)。has・last・record の同期の区間に入る前に待つ */
   whenLoaded(): Promise<void>
-  has(folderKey: string, claudeSessionId: string): boolean
+  has(folderKey: string, cliSessionId: string): boolean
   /** フォルダの記録の先頭(前回)。無ければ null */
   last(folderKey: string): string | null
   /**
@@ -36,7 +36,7 @@ export interface AgentSessionRecordStore {
    * 読み込みが ENOENT 以外で失敗していたら、書く前に読み直し、読めたら(または ENOENT なら)ファイルの記録とメモリを
    * 合わせて書く。読めないままならファイルへ書かない(メモリだけで記録する)
    */
-  record(folderKey: string, claudeSessionId: string): void
+  record(folderKey: string, cliSessionId: string): void
 }
 
 /** フォルダの記録(キーと、新しい順の ID) */
@@ -61,7 +61,7 @@ function parseRecords(raw: string): FolderRecord[] {
     if (!Array.isArray(item.ids)) continue
     const key = item.key
     if (folders.some((folder) => folder.key === key)) continue
-    const ids = [...new Set(item.ids.filter(isClaudeSessionId))].slice(
+    const ids = [...new Set(item.ids.filter(isCliSessionId))].slice(
       0,
       AGENT_SESSION_RECORDS_PER_FOLDER
     )
@@ -90,10 +90,10 @@ function mergeRecords(current: FolderRecord[], loaded: FolderRecord[]): FolderRe
 export function prependRecord(
   folders: readonly FolderRecord[],
   folderKey: string,
-  claudeSessionId: string
+  cliSessionId: string
 ): FolderRecord[] {
   const previous = folders.find((folder) => folder.key === folderKey)?.ids ?? []
-  const ids = [claudeSessionId, ...previous.filter((id) => id !== claudeSessionId)].slice(
+  const ids = [cliSessionId, ...previous.filter((id) => id !== cliSessionId)].slice(
     0,
     AGENT_SESSION_RECORDS_PER_FOLDER
   )
@@ -151,10 +151,10 @@ export function createAgentSessionRecordStore(io: AgentSessionRecordIo): AgentSe
 
   return {
     whenLoaded: () => loaded,
-    has: (folderKey, claudeSessionId) => find(folderKey)?.ids.includes(claudeSessionId) ?? false,
+    has: (folderKey, cliSessionId) => find(folderKey)?.ids.includes(cliSessionId) ?? false,
     last: (folderKey) => find(folderKey)?.ids[0] ?? null,
-    record(folderKey, claudeSessionId) {
-      folders = prependRecord(folders, folderKey, claudeSessionId)
+    record(folderKey, cliSessionId) {
+      folders = prependRecord(folders, folderKey, cliSessionId)
       // 書き込みは直列にし(L-040)、読み込む前の空の記録でファイルを上書きしないよう読み込みの完了を待つ。書く中身は書く時点のメモリ。
       // 読み込みが ENOENT 以外で失敗していたら、同じ直列の中で読み直し(一時的な EBUSY・EPERM・EMFILE から書き込みについて回復する。
       // has・last を引く再開の入口では読み直さないので、読めなかった間は次に起動を確定するまで再開できない。既知の制約)、読めたら

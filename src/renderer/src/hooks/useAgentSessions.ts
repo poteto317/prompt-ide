@@ -60,8 +60,8 @@ export interface AgentSessionTabView {
    *  名前はこの値で引く。能力は動いているタブ(中断・送信)ならこの値、未起動・終了したタブの送信の入口は次に起動する設定の種類
    *  (agentCapabilityCliKindOf) */
   cliKind: AgentCliKind
-  /** 起動中・実行中のセッションの claude の会話の ID(AgentTabSessionFields.claudeSessionId)。それ以外は null */
-  claudeSessionId: string | null
+  /** 起動中・実行中のセッションの会話の ID(AgentTabSessionFields.cliSessionId)。それ以外は null */
+  cliSessionId: string | null
   /** 閉じる途中(確認の後、停止を待つ間)。送信・閉じる・終了・起動を押せない */
   isClosing: boolean
   controller: AgentTerminalController
@@ -112,10 +112,10 @@ export interface AgentSessionsState {
   interruptFollowUp: (slotId: string, sessionId: string) => Promise<AgentInterruptFollowUpOutcome>
   /** タブを作って選択し、起動する */
   addTab: () => Promise<void>
-  /** 新しいタブを足して選択し、そのタブで claudeSessionId を再開する(+ と同じ検査の後。同じ ID のタブが起動中・実行中なら
+  /** 新しいタブを足して選択し、そのタブで cliSessionId を再開する(+ と同じ検査の後。同じ ID のタブが起動中・実行中なら
    *  何もしない)。cliKind は再開するセッションの種類(押せる理由を通った後は設定の種類と同じ。違えば main が resume-cli-mismatch
    *  で断る)。足したタブの slotId、足さなかったら null。起動の完了は待たない(失敗は足したタブのエラーとして出す) */
-  resumeInNewTab: (claudeSessionId: string, cliKind: AgentCliKind) => string | null
+  resumeInNewTab: (cliSessionId: string, cliKind: AgentCliKind) => string | null
   /** 動いていれば確認して止め、止まったらタブを消す。消したら true。取りやめ・停止の失敗・最後の 1 つ・閉じる途中なら
    *  消さず false(フォーカスの移し先を呼び出し元が決めるため) */
   closeTab: (slotId: string) => Promise<boolean>
@@ -169,9 +169,9 @@ export function useAgentSessions({
   // 手順から最新の値を同期的に読むためにここに持つ(描画には使わないため state には持たない)。2 つは adoptSession でまとめて
   // 更新する(閉じたタブは forgetTab で消す)
   const sessionIdBySlotRef = useRef(new Map<string, string>())
-  // 起動中・実行中のタブの claude の会話の ID(タブ → ID)。同じ ID の再開を同期で止める判定に使う(描画は states の claudeSessionId)。
-  // states の claudeSessionId と同じ値を、setTabClaudeSessionId でまとめて更新する
-  const claudeSessionIdBySlotRef = useRef(new Map<string, string>())
+  // 起動中・実行中のタブの会話の ID(タブ → ID)。同じ ID の再開を同期で止める判定に使う(描画は states の cliSessionId)。
+  // states の cliSessionId と同じ値を、setTabCliSessionId でまとめて更新する
+  const cliSessionIdBySlotRef = useRef(new Map<string, string>())
   // 起動の結果の種類(タブ → 種類)。閉じる前の確認・中断の失敗の文言の名前を同期的に引くのに使う(描画は states の cliKind)。
   // setTabCliKind でまとめて更新する
   const cliKindBySlotRef = useRef(new Map<string, AgentCliKind>())
@@ -230,7 +230,7 @@ export function useAgentSessions({
     sessionIdBySlotRef.current.delete(slotId)
     startedAtRef.current.delete(slotId)
     launchWatchesRef.current.forget(slotId)
-    claudeSessionIdBySlotRef.current.delete(slotId)
+    cliSessionIdBySlotRef.current.delete(slotId)
     cliKindBySlotRef.current.delete(slotId)
     if (!mountedRef.current) return
     setStates((prev) => {
@@ -256,12 +256,12 @@ export function useAgentSessions({
     [findTab]
   )
 
-  // タブの claude の会話の ID を、同期の判定用の ref と描画用の状態の両方に置く
-  const setTabClaudeSessionId = useCallback(
-    (slotId: string, claudeSessionId: string | null): void => {
-      if (claudeSessionId === null) claudeSessionIdBySlotRef.current.delete(slotId)
-      else claudeSessionIdBySlotRef.current.set(slotId, claudeSessionId)
-      patchTab(slotId, { claudeSessionId })
+  // タブの会話の ID を、同期の判定用の ref と描画用の状態の両方に置く
+  const setTabCliSessionId = useCallback(
+    (slotId: string, cliSessionId: string | null): void => {
+      if (cliSessionId === null) cliSessionIdBySlotRef.current.delete(slotId)
+      else cliSessionIdBySlotRef.current.set(slotId, cliSessionId)
+      patchTab(slotId, { cliSessionId })
     },
     [patchTab]
   )
@@ -276,11 +276,11 @@ export function useAgentSessions({
     [patchTab]
   )
 
-  // except 以外のタブで、claudeSessionId のセッションが起動中・実行中か
-  const isClaudeSessionIdActiveElsewhere = useCallback(
-    (claudeSessionId: string, except: string | null): boolean => {
-      for (const [slotId, id] of claudeSessionIdBySlotRef.current) {
-        if (id === claudeSessionId && slotId !== except) return true
+  // except 以外のタブで、cliSessionId のセッションが起動中・実行中か
+  const isCliSessionIdActiveElsewhere = useCallback(
+    (cliSessionId: string, except: string | null): boolean => {
+      for (const [slotId, id] of cliSessionIdBySlotRef.current) {
+        if (id === cliSessionId && slotId !== except) return true
       }
       return false
     },
@@ -296,14 +296,14 @@ export function useAgentSessions({
         : null
       const note = resumeFailureNote ?? (exitedSoon ? AGENT_EXITED_SOON_NOTE : null)
       adoptSession(slotId, null)
-      setTabClaudeSessionId(slotId, null)
+      setTabCliSessionId(slotId, null)
       patchTab(slotId, {
         exit: { exitCode: event.exitCode, reason: event.reason },
         status: 'exited',
         ...(note !== null ? { error: note } : {})
       })
     },
-    [adoptSession, setTabClaudeSessionId, patchTab, now, cliKindOf]
+    [adoptSession, setTabCliSessionId, patchTab, now, cliKindOf]
   )
 
   const noteScreenActivity = useCallback((slotId: string): void => {
@@ -325,10 +325,10 @@ export function useAgentSessions({
   const failStart = useCallback(
     (slotId: string, error: string | null): void => {
       adoptSession(slotId, null)
-      setTabClaudeSessionId(slotId, null)
+      setTabCliSessionId(slotId, null)
       patchTab(slotId, { error, status: 'none' })
     },
-    [adoptSession, setTabClaudeSessionId, patchTab]
+    [adoptSession, setTabCliSessionId, patchTab]
   )
 
   // 部品の作り直しの後に、main のセッションに合わせる(リロードではセッションは止まるため、通常は空)。
@@ -347,7 +347,7 @@ export function useAgentSessions({
           if (hasSessionOrStarting(tab.slotId)) continue
           adoptSession(tab.slotId, entry.sessionId)
           launchWatchesRef.current.begin(tab.slotId, 'new')
-          setTabClaudeSessionId(tab.slotId, entry.claudeSessionId)
+          setTabCliSessionId(tab.slotId, entry.cliSessionId)
           setTabCliKind(tab.slotId, entry.cliKind)
           patchTab(tab.slotId, { status: 'running' })
         }
@@ -361,7 +361,7 @@ export function useAgentSessions({
     tabs,
     hasSessionOrStarting,
     adoptSession,
-    setTabClaudeSessionId,
+    setTabCliSessionId,
     setTabCliKind,
     patchTab
   ])
@@ -406,10 +406,7 @@ export function useAgentSessions({
       // 閉じる途中のタブで起動すると、直後の削除で controller が捨てられ、main に持ち主のいないセッションが残る
       if (closingRef.current.has(slotId)) return
       // ほかのタブで同じ ID が起動中・実行中なら再開しない(入口のボタンは押せないが、処理の側でも同じ条件で守る。L-058)
-      if (
-        launch.kind === 'resume' &&
-        isClaudeSessionIdActiveElsewhere(launch.claudeSessionId, slotId)
-      )
+      if (launch.kind === 'resume' && isCliSessionIdActiveElsewhere(launch.cliSessionId, slotId))
         return
       const tab = findTab(slotId)
       if (tab === undefined) return
@@ -420,7 +417,7 @@ export function useAgentSessions({
       launchWatchesRef.current.begin(slotId, launch.kind)
       patchTab(slotId, { status: 'starting', error: null, exit: null })
       // resume は依頼した ID を起動中から持つ(同じ ID の二重の起動を renderer でも押せなくする)。new は結果が届いてから
-      setTabClaudeSessionId(slotId, launch.kind === 'resume' ? launch.claudeSessionId : null)
+      setTabCliSessionId(slotId, launch.kind === 'resume' ? launch.cliSessionId : null)
       // 起動の結果の種類は結果が届いてから入れる(起動中は設定の種類で出す。前の起動の種類を残さない)
       setTabCliKind(slotId, null)
       try {
@@ -450,7 +447,7 @@ export function useAgentSessions({
         }
         if (mountedRef.current) setStartConfirmedCount((count) => count + 1)
         adoptSession(slotId, result.sessionId)
-        setTabClaudeSessionId(slotId, result.claudeSessionId)
+        setTabCliSessionId(slotId, result.cliSessionId)
         setTabCliKind(slotId, result.cliKind)
         patchTab(slotId, { status: 'running' })
         const earlyExit = exitsWhileStartingRef.current.get(result.sessionId)
@@ -465,11 +462,11 @@ export function useAgentSessions({
       folderPath,
       startDisabledReason,
       hasSessionOrStarting,
-      isClaudeSessionIdActiveElsewhere,
+      isCliSessionIdActiveElsewhere,
       findTab,
       beginStarting,
       patchTab,
-      setTabClaudeSessionId,
+      setTabCliSessionId,
       setTabCliKind,
       failStart,
       adoptSession,
@@ -612,17 +609,17 @@ export function useAgentSessions({
   }, [addDisabledReason, tabs, start])
 
   const resumeInNewTab = useCallback(
-    (claudeSessionId: string, cliKind: AgentCliKind): string | null => {
+    (cliSessionId: string, cliKind: AgentCliKind): string | null => {
       // + と同じ検査(フォルダ無し・起動を受け付けない間・上限)。押してから条件が変わったら何もしない
       if (addDisabledReason !== null) return null
-      if (isClaudeSessionIdActiveElsewhere(claudeSessionId, null)) return null
+      if (isCliSessionIdActiveElsewhere(cliSessionId, null)) return null
       const tab = tabs.add()
       if (tab === null) return null
       // start は拒否しない(失敗は足したタブのエラーとして出す)
-      void start(tab.slotId, { kind: 'resume', claudeSessionId, cliKind })
+      void start(tab.slotId, { kind: 'resume', cliSessionId, cliKind })
       return tab.slotId
     },
-    [addDisabledReason, isClaudeSessionIdActiveElsewhere, tabs, start]
+    [addDisabledReason, isCliSessionIdActiveElsewhere, tabs, start]
   )
 
   const stopAll = useCallback(async (): Promise<boolean> => {

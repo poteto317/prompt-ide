@@ -184,7 +184,7 @@ vi.mock('../handlers/claudeHandlers', () => ({
 }))
 
 import { registerIpcHandlers } from '../ipcHandlers'
-import { isClaudeSessionId } from '@shared/types'
+import { isCliSessionId } from '@shared/types'
 import { CloneRegistry } from '../cloneRegistry'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
@@ -477,10 +477,10 @@ describe('registerIpcHandlers', () => {
     expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).not.toBeNull()
     expect(reservations.tryReserve('11111111-1111-4111-8111-111111111111')).toBeNull()
     // 新しい会話の ID(再開に対応する種類で共通)は呼ぶたびに別の小文字の UUID v4
-    const createClaudeSessionId = starterDeps.createClaudeSessionId as () => string
-    const claudeId = createClaudeSessionId()
-    expect(isClaudeSessionId(claudeId)).toBe(true)
-    expect(createClaudeSessionId()).not.toBe(claudeId)
+    const createCliSessionId = starterDeps.createCliSessionId as () => string
+    const cliId = createCliSessionId()
+    expect(isCliSessionId(cliId)).toBe(true)
+    expect(createCliSessionId()).not.toBe(cliId)
   })
 
   it('外部変更の IPC と監視の寿命に、同じ FolderAccessManager と同じ OpenFileWatcher を渡す', () => {

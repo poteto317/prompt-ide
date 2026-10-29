@@ -73,13 +73,13 @@ describe('App: セッションの再開と履歴の配線', () => {
         kind: 'started',
         sessionId: 's1',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       .mockResolvedValue({
         kind: 'started',
         sessionId: 's2',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
     window.api.onAgentExit = vi.fn((listener: (exit: AgentSessionExit) => void) => {
       emitExit = listener
@@ -148,7 +148,7 @@ describe('App: セッションの再開と履歴の配線', () => {
     await waitFor(() =>
       expect(window.api.startAgentSession).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+          launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' }
         })
       )
     )
@@ -260,7 +260,7 @@ describe('App: セッションの再開と履歴の配線', () => {
   it('前回の続きから: 開いたフォルダの前回のセッションを本物の useAgentLastSession で取り、押すと resume を依頼し、動いている間は理由を見える文字で結ぶ', async () => {
     window.api.getLastAgentSession = vi
       .fn()
-      .mockResolvedValue({ cliKind: 'claude', claudeSessionId: ID })
+      .mockResolvedValue({ cliKind: 'claude', cliSessionId: ID })
     // + で足すタブ(claude 2)は起動に失敗させ、起動していないタブとして 前回の続きから を出す
     window.api.startAgentSession = vi
       .fn()
@@ -268,7 +268,7 @@ describe('App: セッションの再開と履歴の配線', () => {
         kind: 'started',
         sessionId: 's1',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       .mockResolvedValue({ kind: 'error', error: 'spawn-failed' })
     render(<App />)
@@ -282,7 +282,7 @@ describe('App: セッションの再開と履歴の配線', () => {
     await waitFor(() =>
       expect(window.api.startAgentSession).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
+          launch: { kind: 'resume', cliSessionId: ID, cliKind: 'claude' }
         })
       )
     )

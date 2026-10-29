@@ -32,7 +32,7 @@ export interface AgentTerminalHandlerDeps {
   /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
    *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
   startSession: AgentSessionStarter
-  /** pty の sessionId → 種類と claude の会話の ID(starter の Map)。作り直しの後の合わせ込み(getState)で足す */
+  /** pty の sessionId → 種類と会話の ID(starter の Map)。作り直しの後の合わせ込み(getState)で足す */
   sessionInfoOf: AgentSessionStarterService['sessionInfoOf']
   /** 「前回」の取得(starter の lastSessionOf。許可のフォルダとの照合は starter が行う) */
   getLastSession: AgentSessionStarterService['lastSessionOf']

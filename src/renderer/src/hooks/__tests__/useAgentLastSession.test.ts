@@ -59,7 +59,7 @@ describe('useAgentLastSession', () => {
   })
 
   it('取得中の後、記録の先頭を返す。記録が無ければ none', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result } = renderLast({
       folderPath: '/w',
       enabled: true,
@@ -69,7 +69,7 @@ describe('useAgentLastSession', () => {
     expect(result.current).toEqual({ kind: 'loading' })
     expect(mockGetLast).toHaveBeenCalledExactlyOnceWith('/w', 'claude')
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
     mockGetLast.mockResolvedValueOnce(null)
     const other = renderLast({ folderPath: '/x', enabled: true, cliKind: 'claude', refreshKey: '' })
@@ -102,19 +102,19 @@ describe('useAgentLastSession', () => {
     rerender({ folderPath: '/x', enabled: true, cliKind: 'claude', refreshKey: '' })
     expect(mockGetLast).toHaveBeenLastCalledWith('/x', 'claude')
     await act(async () => {
-      first.resolve({ cliKind: 'claude', claudeSessionId: A })
+      first.resolve({ cliKind: 'claude', cliSessionId: A })
       await Promise.resolve()
     })
     expect(result.current).toEqual({ kind: 'loading' })
     await act(async () => {
-      second.resolve({ cliKind: 'claude', claudeSessionId: B })
+      second.resolve({ cliKind: 'claude', cliSessionId: B })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: B })
   })
 
   it('ほかのフォルダから戻ったときは、前に取った結果を出さず取り直す', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result, rerender } = renderLast({
       folderPath: '/w',
       enabled: true,
@@ -122,7 +122,7 @@ describe('useAgentLastSession', () => {
       refreshKey: ''
     })
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
     const back = deferred<AgentLastSession | null>()
     mockGetLast.mockReturnValueOnce(new Promise(() => undefined)).mockReturnValueOnce(back.promise)
@@ -130,14 +130,14 @@ describe('useAgentLastSession', () => {
     rerender({ folderPath: '/w', enabled: true, cliKind: 'claude', refreshKey: '' })
     expect(result.current).toEqual({ kind: 'loading' })
     await act(async () => {
-      back.resolve({ cliKind: 'claude', claudeSessionId: B })
+      back.resolve({ cliKind: 'claude', cliSessionId: B })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: B })
   })
 
   it('取り直しの契機(起動の成功)で取り直し、取り直す間は前の結果を出し続ける。古い依頼の結果は捨てる(L-040)', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result, rerender } = renderLast({
       folderPath: '/w',
       enabled: true,
@@ -145,7 +145,7 @@ describe('useAgentLastSession', () => {
       refreshKey: ''
     })
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
     const older = deferred<AgentLastSession | null>()
     const newer = deferred<AgentLastSession | null>()
@@ -153,21 +153,21 @@ describe('useAgentLastSession', () => {
     rerender({ folderPath: '/w', enabled: true, cliKind: 'claude', refreshKey: A })
     rerender({ folderPath: '/w', enabled: true, cliKind: 'claude', refreshKey: `${A},${B}` })
     expect(mockGetLast).toHaveBeenCalledTimes(3)
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     await act(async () => {
-      newer.resolve({ cliKind: 'claude', claudeSessionId: B })
+      newer.resolve({ cliKind: 'claude', cliSessionId: B })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: B })
     await act(async () => {
-      older.resolve({ cliKind: 'claude', claudeSessionId: A })
+      older.resolve({ cliKind: 'claude', cliSessionId: A })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: B })
   })
 
   it('取りに行く種類(設定の種類)を依頼に載せ、種類が変わったら取り直す', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result, rerender } = renderLast({
       folderPath: '/w',
       cliKind: 'claude',
@@ -175,18 +175,18 @@ describe('useAgentLastSession', () => {
       refreshKey: ''
     })
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'copilot', claudeSessionId: B })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'copilot', cliSessionId: B })
     rerender({ folderPath: '/w', cliKind: 'copilot', enabled: true, refreshKey: '' })
     expect(mockGetLast).toHaveBeenLastCalledWith('/w', 'copilot')
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'copilot', claudeSessionId: B })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'copilot', cliSessionId: B })
     )
   })
 
   it('種類が変わったら、新しい種類の結果が届くまで取得中に戻し、前の種類の結果を出さない(L-037)', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result, rerender } = renderLast({
       folderPath: '/w',
       cliKind: 'claude',
@@ -194,21 +194,21 @@ describe('useAgentLastSession', () => {
       refreshKey: ''
     })
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
     const pending = deferred<AgentLastSession | null>()
     mockGetLast.mockReturnValueOnce(pending.promise)
     rerender({ folderPath: '/w', cliKind: 'copilot', enabled: true, refreshKey: '' })
     expect(result.current).toEqual({ kind: 'loading' })
     await act(async () => {
-      pending.resolve({ cliKind: 'copilot', claudeSessionId: B })
+      pending.resolve({ cliKind: 'copilot', cliSessionId: B })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'copilot', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'copilot', cliSessionId: B })
   })
 
   it('種類を戻したときは、前に取った結果を出さず取り直す', async () => {
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result, rerender } = renderLast({
       folderPath: '/w',
       cliKind: 'claude',
@@ -216,7 +216,7 @@ describe('useAgentLastSession', () => {
       refreshKey: ''
     })
     await waitFor(() =>
-      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: A })
+      expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: A })
     )
     const back = deferred<AgentLastSession | null>()
     mockGetLast.mockReturnValueOnce(new Promise(() => undefined)).mockReturnValueOnce(back.promise)
@@ -224,15 +224,15 @@ describe('useAgentLastSession', () => {
     rerender({ folderPath: '/w', cliKind: 'claude', enabled: true, refreshKey: '' })
     expect(result.current).toEqual({ kind: 'loading' })
     await act(async () => {
-      back.resolve({ cliKind: 'claude', claudeSessionId: B })
+      back.resolve({ cliKind: 'claude', cliSessionId: B })
       await Promise.resolve()
     })
-    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', claudeSessionId: B })
+    expect(result.current).toEqual({ kind: 'found', cliKind: 'claude', cliSessionId: B })
   })
 
   it('依頼と違う種類の結果は記録なしとして扱い、ログに残す(起きない想定)', async () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', claudeSessionId: A })
+    mockGetLast.mockResolvedValueOnce({ cliKind: 'claude', cliSessionId: A })
     const { result } = renderLast({
       folderPath: '/w',
       cliKind: 'copilot',

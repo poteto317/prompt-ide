@@ -2,7 +2,7 @@ import type { AgentSessionSnapshotEntry } from '@shared/types'
 import type { AgentRegistrySnapshotEntry } from './agentSessionRegistry'
 import type { AgentSessionInfo } from './agentSessionStarter'
 
-// registry の snapshot(pty の sessionId だけ)に、starter が持つ CLI の種類と claude の会話の ID を足して、IPC で返す形にする
+// registry の snapshot(pty の sessionId だけ)に、starter が持つ CLI の種類と会話の ID を足して、IPC で返す形にする
 // (agentTerminal:getState の作り直しの後の合わせ込み)。Electron に依存しない
 
 /**

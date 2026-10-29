@@ -29,13 +29,13 @@ export {
   AGENT_MAX_SESSIONS_PER_WINDOW,
   AGENT_SLOT_ID_MAX_LENGTH,
   AGENT_SLOT_ID_PATTERN,
-  CLAUDE_SESSION_ID_PATTERN,
+  CLI_SESSION_ID_PATTERN,
   AGENT_START_CANCELED_DETAIL,
   AGENT_EXIT_REASONS,
   agentStartCanceled,
   isAgentStartCanceled,
   isAgentExitReason,
-  isClaudeSessionId
+  isCliSessionId
 } from './types/agentTerminal'
 export {
   AGENT_CHANGES_LIST_LIMIT,

@@ -25,9 +25,9 @@ export interface AgentTabSessionFields {
   /** 起動の結果(started・already-running)・状態の取得の CLI の種類。起動を始めると null に戻し、終了しても消さない(終了したタブの
    *  名前と画面の中身が合うように)。null の間は設定の種類で名前と能力を引く(useAgentSessions の AgentSessionTabView.cliKind) */
   cliKind: AgentCliKind | null
-  /** 起動中(resume は依頼した ID、new は結果が届いてから)・実行中のセッションの claude の会話の ID。終了・起動の失敗・取り消しで
+  /** 起動中(resume は依頼した ID、new は結果が届いてから)・実行中のセッションの会話の ID。終了・起動の失敗・取り消しで
    *  null に戻す(送信の時点の送り先の控えと、同じ ID が動いているかの判定に使う。終了した後の ID はどこにも使わない) */
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 export const INITIAL_AGENT_TAB_SESSION_FIELDS: AgentTabSessionFields = {
@@ -35,7 +35,7 @@ export const INITIAL_AGENT_TAB_SESSION_FIELDS: AgentTabSessionFields = {
   exit: null,
   error: null,
   cliKind: null,
-  claudeSessionId: null
+  cliSessionId: null
 }
 
 /** タブの状態。まだ状態の無いタブは初期値 */
@@ -68,12 +68,12 @@ export const isAnyAgentSessionStarting = (
   tabs: readonly { status: AgentSessionStatus }[]
 ): boolean => tabs.some((tab) => tab.status === 'starting')
 
-/** claudeSessionId のセッションが起動中・実行中のタブ(前回の続きから・このセッションで再開 の押せない理由)。無ければ undefined */
-export function findActiveAgentTabByClaudeSessionId<
-  T extends { status: AgentSessionStatus; claudeSessionId: string | null }
->(tabs: readonly T[], claudeSessionId: string): T | undefined {
+/** cliSessionId のセッションが起動中・実行中のタブ(前回の続きから・このセッションで再開 の押せない理由)。無ければ undefined */
+export function findActiveAgentTabByCliSessionId<
+  T extends { status: AgentSessionStatus; cliSessionId: string | null }
+>(tabs: readonly T[], cliSessionId: string): T | undefined {
   return tabs.find(
-    (tab) => tab.claudeSessionId === claudeSessionId && isActiveAgentSessionStatus(tab.status)
+    (tab) => tab.cliSessionId === cliSessionId && isActiveAgentSessionStatus(tab.status)
   )
 }
 

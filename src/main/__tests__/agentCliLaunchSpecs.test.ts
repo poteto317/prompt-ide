@@ -9,8 +9,8 @@ const LETTER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const HOOKS = '/tmp/prompt-ide-agent-hooks-x/a.json'
 const PLUGIN_DIR = '/u/agent-hooks-copilot/slot-1'
 const NEW: AgentLaunchRequest = { kind: 'new' }
-const RESUME: AgentLaunchRequest = { kind: 'resume', claudeSessionId: ID, cliKind: 'claude' }
-const UNKNOWN = { kind: 'fork', claudeSessionId: ID } as unknown as AgentLaunchRequest
+const RESUME: AgentLaunchRequest = { kind: 'resume', cliSessionId: ID, cliKind: 'claude' }
+const UNKNOWN = { kind: 'fork', cliSessionId: ID } as unknown as AgentLaunchRequest
 
 /** fn が投げた例外の文言(投げなければ空文字) */
 function thrownMessage(fn: () => unknown): string {

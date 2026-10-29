@@ -27,8 +27,8 @@ import { createAgentSessionStarter } from '../agentSessionStarter'
 import type { AgentSessionSink, AgentSessionStarterService } from '../agentSessionStarter'
 import { createAgentSessionRecordStore } from '../agentSessionRecordStore'
 import type { AgentSessionRecordStore } from '../agentSessionRecordStore'
-import { createClaudeSessionReservations } from '../claudeSessionReservations'
-import type { ClaudeSessionReservations } from '../claudeSessionReservations'
+import { createCliSessionReservations } from '../cliSessionReservations'
+import type { CliSessionReservations } from '../cliSessionReservations'
 import { AGENT_CLI_LAUNCH_SPECS } from '../agentCliLaunchSpecs'
 import type { PtySpawn, StopTree } from '../agentSession'
 import type { AgentLaunchResolution } from '../agentCommand'
@@ -57,9 +57,9 @@ let registry: AgentSessionRegistry
 let spawnPty: ReturnType<typeof vi.fn<PtySpawn>>
 let claudeRecords: AgentSessionRecordStore
 let copilotRecords: AgentSessionRecordStore
-let reservations: ClaudeSessionReservations
+let reservations: CliSessionReservations
 let hooks: FakeAgentHookSessions
-let createClaudeSessionId: ReturnType<typeof vi.fn<() => string>>
+let createCliSessionId: ReturnType<typeof vi.fn<() => string>>
 const stopTree = vi.fn<StopTree>(async (target, exited) => {
   ;(target as FakePty).emitExit(0, 15)
   await exited
@@ -81,7 +81,7 @@ function makeService(): AgentSessionStarterService {
     createSessionId: () => 'sid-1',
     records: { claude: claudeRecords, copilot: copilotRecords },
     reservations,
-    createClaudeSessionId,
+    createCliSessionId,
     platform: 'linux',
     canonicalize: async (folderPath) => folderPath,
     isDirectory: async () => true,
@@ -99,9 +99,9 @@ beforeEach(async () => {
   copilotRecords = createAgentSessionRecordStore(makeFakeRecordIo())
   await claudeRecords.whenLoaded()
   await copilotRecords.whenLoaded()
-  reservations = createClaudeSessionReservations()
+  reservations = createCliSessionReservations()
   hooks = makeFakeAgentHookSessions()
-  createClaudeSessionId = vi.fn<() => string>(() => NEW_ID)
+  createCliSessionId = vi.fn<() => string>(() => NEW_ID)
 })
 
 afterEach(() => {
@@ -116,7 +116,7 @@ describe('createAgentSessionStarter(再開に対応しない種類。能力の�
     await expect(
       makeService().start(
         1,
-        { ...REQUEST, launch: { kind: 'resume', claudeSessionId: ID, cliKind: 'copilot' } },
+        { ...REQUEST, launch: { kind: 'resume', cliSessionId: ID, cliKind: 'copilot' } },
         makeSink()
       )
     ).resolves.toEqual({ kind: 'error', error: 'resume-unsupported' })
@@ -136,15 +136,15 @@ describe('createAgentSessionStarter(再開に対応しない種類。能力の�
       kind: 'started',
       sessionId: 'sid-1',
       cliKind: 'copilot',
-      claudeSessionId: null
+      cliSessionId: null
     })
     expect(buildArgs).toHaveBeenCalledExactlyOnceWith({ kind: 'new' }, null, null)
     expect(spawnPty).toHaveBeenCalledWith('/bin/copilot', [], expect.any(Object))
-    expect(createClaudeSessionId).not.toHaveBeenCalled()
+    expect(createCliSessionId).not.toHaveBeenCalled()
     expect(reserveSpy).not.toHaveBeenCalled()
     expect(recordSpy).not.toHaveBeenCalled()
     expect(copilotRecords.last('/work')).toBeNull()
     expect(claudeRecords.last('/work')).toBeNull()
-    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', claudeSessionId: null })
+    expect(sessionInfoOf('sid-1')).toEqual({ cliKind: 'copilot', cliSessionId: null })
   })
 })

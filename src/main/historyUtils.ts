@@ -1,5 +1,5 @@
 import type { AgentHistoryInfo, HistoryEntry, HistoryStatus, PromptToolId } from '@shared/types'
-import { EXECUTION_TOOLS, isClaudeSessionId } from '@shared/types'
+import { EXECUTION_TOOLS, isCliSessionId } from '@shared/types'
 import {
   LEGACY_AGENT_HISTORY_CLI_KIND,
   isHistoryAgentCliKindValue
@@ -22,7 +22,7 @@ function isAgentHistoryInfo(value: unknown): value is AgentHistoryInfo {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
   const a = value as Record<string, unknown>
   return (
-    isClaudeSessionId(a.claudeSessionId) &&
+    isCliSessionId(a.claudeSessionId) &&
     // 段階 3a より前のエントリは cliKind が無い(正規化で claude を補う)。形の不正な値は既定に流さず不正とする(L-044)
     (a.cliKind === undefined || isHistoryAgentCliKindValue(a.cliKind)) &&
     isNonEmptyString(a.tabLabel) &&

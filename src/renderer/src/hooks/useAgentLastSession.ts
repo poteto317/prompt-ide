@@ -57,7 +57,7 @@ export function useAgentLastSession({
           console.error('[useAgentLastSession] 依頼と違う種類の前回が返りました:', last.cliKind)
           return NONE
         }
-        return { kind: 'found', cliKind: last.cliKind, claudeSessionId: last.claudeSessionId }
+        return { kind: 'found', cliKind: last.cliKind, cliSessionId: last.cliSessionId }
       })
       .catch((err: unknown): AgentLastSessionLookup => {
         // 取得の失敗は記録なしとして扱う(前回の続きから は押せない)

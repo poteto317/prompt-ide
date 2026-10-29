@@ -55,7 +55,7 @@ const ID = '11111111-1111-4111-8111-111111111111'
 const OTHER = '22222222-2222-4222-9222-222222222222'
 const FOLDER = '/work/project'
 
-const agentEntry = (claudeSessionId = ID): HistoryEntry => ({
+const agentEntry = (cliSessionId = ID): HistoryEntry => ({
   id: 'h1',
   promptId: 'p1',
   promptTitle: 'タイトル',
@@ -66,14 +66,19 @@ const agentEntry = (claudeSessionId = ID): HistoryEntry => ({
   resultText: null,
   errorMessage: null,
   executedAt: 1,
-  agent: { claudeSessionId, cliKind: 'claude', tabLabel: 'claude 1', folderPath: FOLDER }
+  agent: {
+    claudeSessionId: cliSessionId,
+    cliKind: 'claude',
+    tabLabel: 'claude 1',
+    folderPath: FOLDER
+  }
 })
 
 const legacyEntry: HistoryEntry = { ...agentEntry(), status: 'success', agent: null }
 
 /** 送り先の種類を cliKind にしたエージェントのエントリ */
-const agentEntryOf = (cliKind: string, claudeSessionId = ID): HistoryEntry => {
-  const entry = agentEntry(claudeSessionId)
+const agentEntryOf = (cliKind: string, cliSessionId = ID): HistoryEntry => {
+  const entry = agentEntry(cliSessionId)
   return { ...entry, agent: entry.agent === null ? null : { ...entry.agent, cliKind } }
 }
 
@@ -100,7 +105,7 @@ describe('useAgentResume', () => {
   describe('前回の続きから', () => {
     it('起動の確定の回数だけを取り直しの契機にし、エージェント CLI 方式のときだけ取りに行く', () => {
       const tabs = [
-        makeAgentSessionTabView({ slotId: 'a', status: 'running', claudeSessionId: ID }),
+        makeAgentSessionTabView({ slotId: 'a', status: 'running', cliSessionId: ID }),
         makeAgentSessionTabView({ slotId: 'b', status: 'none' })
       ]
       renderResume({ mode: 'legacy', sessions: makeAgentSessionsState({ tabs }) })
@@ -118,7 +123,7 @@ describe('useAgentResume', () => {
         mode: 'agent-cli',
         appCliKind: 'claude',
         sessions: makeAgentSessionsState({
-          tabs: [makeAgentSessionTabView({ slotId: 'a', status: 'running', claudeSessionId: ID })],
+          tabs: [makeAgentSessionTabView({ slotId: 'a', status: 'running', cliSessionId: ID })],
           startConfirmedCount: 1
         }),
         activateTab: vi.fn()
@@ -126,7 +131,7 @@ describe('useAgentResume', () => {
       const { rerender } = renderHook(() => useAgentResume(options))
       const before = mockUseAgentLastSession.mock.lastCall?.[0] as { refreshKey: string }
       options.sessions = makeAgentSessionsState({
-        tabs: [makeAgentSessionTabView({ slotId: 'a', status: 'exited', claudeSessionId: null })],
+        tabs: [makeAgentSessionTabView({ slotId: 'a', status: 'exited', cliSessionId: null })],
         startConfirmedCount: 1
       })
       rerender()
@@ -163,7 +168,7 @@ describe('useAgentResume', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ sessions })
@@ -171,7 +176,7 @@ describe('useAgentResume', () => {
       act(() => result.current.resumeLast.onResume('slot-1'))
       expect(sessions.start).toHaveBeenCalledWith('slot-1', {
         kind: 'resume',
-        claudeSessionId: ID,
+        cliSessionId: ID,
         cliKind: 'claude'
       })
     })
@@ -180,14 +185,14 @@ describe('useAgentResume', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const tabs = [
         makeAgentSessionTabView({
           slotId: 'a',
           label: 'claude 2',
           status: 'running',
-          claudeSessionId: ID
+          cliSessionId: ID
         })
       ]
       const blocked = renderResume({
@@ -214,7 +219,7 @@ describe('useAgentResume', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ appCliKind: 'copilot', sessions })
@@ -224,7 +229,7 @@ describe('useAgentResume', () => {
       act(() => result.current.resumeLast.onResume('slot-1'))
       expect(sessions.start).toHaveBeenCalledWith('slot-1', {
         kind: 'resume',
-        claudeSessionId: ID,
+        cliSessionId: ID,
         cliKind: 'claude'
       })
     })
@@ -233,7 +238,7 @@ describe('useAgentResume', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'copilot',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ appCliKind: 'copilot', sessions })
@@ -244,7 +249,7 @@ describe('useAgentResume', () => {
       act(() => result.current.resumeLast.onResume('slot-1'))
       expect(sessions.start).toHaveBeenCalledWith('slot-1', {
         kind: 'resume',
-        claudeSessionId: ID,
+        cliSessionId: ID,
         cliKind: 'copilot'
       })
     })
@@ -306,7 +311,7 @@ describe('useAgentResume', () => {
           slotId: 'a',
           label: 'claude 3',
           status: 'running',
-          claudeSessionId: OTHER
+          cliSessionId: OTHER
         })
       ]
       const { result } = renderResume({ sessions: makeAgentSessionsState({ tabs }) })
@@ -390,7 +395,7 @@ describe('useAgentResume', () => {
       mockUseAgentLastSession.mockReturnValue({
         kind: 'found',
         cliKind: 'claude',
-        claudeSessionId: ID
+        cliSessionId: ID
       })
       const sessions = makeAgentSessionsState()
       const { result } = renderResume({ appCliKind: 'copilot', sessions })

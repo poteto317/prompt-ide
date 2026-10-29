@@ -82,7 +82,7 @@ describe('App: 参照の配線', () => {
       kind: 'started',
       sessionId: 's1',
       cliKind: 'claude',
-      claudeSessionId: '11111111-1111-4111-8111-111111111111'
+      cliSessionId: '11111111-1111-4111-8111-111111111111'
     })
     window.api.getPromptExecutionMode = vi.fn().mockResolvedValue('agent-cli')
     window.api.loadPrompts = vi.fn().mockResolvedValue([])

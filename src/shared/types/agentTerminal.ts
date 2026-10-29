@@ -22,12 +22,12 @@ export const AGENT_SLOT_ID_PATTERN = new RegExp(`^[A-Za-z0-9-]{1,${AGENT_SLOT_ID
 
 /** エージェント CLI(claude・copilot)の会話の ID の形式(小文字の UUID v4 の厳密な形式)。main は新しい ID を crypto.randomUUID() で作り、
  *  再開の依頼の ID もこの形式で検証する(`-` 始まりの値が CLI のオプションとして解釈される経路を断つ。L-034) */
-export const CLAUDE_SESSION_ID_PATTERN =
+export const CLI_SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 /** エージェント CLI の会話の ID の形式に当たる文字列か */
-export function isClaudeSessionId(value: unknown): value is string {
-  return typeof value === 'string' && CLAUDE_SESSION_ID_PATTERN.test(value)
+export function isCliSessionId(value: unknown): value is string {
+  return typeof value === 'string' && CLI_SESSION_ID_PATTERN.test(value)
 }
 
 /** 起動の途中で停止された(フォルダの切り替え・実行方式の切り替え・リロード)ときの spawn-failed の detail。renderer はエラーとして出さない */
@@ -54,7 +54,7 @@ export type AgentTerminalErrorKind =
  *  省略させない(L-060) */
 export type AgentLaunchRequest =
   | { kind: 'new' }
-  | { kind: 'resume'; claudeSessionId: string; cliKind: AgentCliKind }
+  | { kind: 'resume'; cliSessionId: string; cliKind: AgentCliKind }
 
 export interface AgentStartRequest {
   /** renderer が発行するタブ(枠)の id。1 つの枠に 1 つのセッション */
@@ -74,7 +74,7 @@ export type AgentStartResult =
       /** main がこの起動に使った CLI の種類(already-running は動いているセッションの種類) */
       cliKind: AgentCliKind
       /** エージェント CLI の会話の ID(claude・copilot)。sessionResume が true の種類では必ず文字列、false の種類では null。already-running は動いているセッションの ID(依頼の launch は使わない) */
-      claudeSessionId: string | null
+      cliSessionId: string | null
     }
   | {
       kind: 'error'
@@ -134,14 +134,14 @@ export interface AgentSessionSnapshotEntry {
   /** そのセッションの CLI の種類(作り直しの後の合わせ込みで、タブの種類を合わせる) */
   cliKind: AgentCliKind
   /** そのセッションのエージェント CLI の会話の ID。再開に対応しない種類では null */
-  claudeSessionId: string | null
+  cliSessionId: string | null
 }
 
 /** このフォルダで最後に起動が確定した、依頼した種類のセッション(「前回の続きから」の再開の相手) */
 export interface AgentLastSession {
   /** 依頼した種類(renderer は依頼と違う種類の結果を捨てる。L-037) */
   cliKind: AgentCliKind
-  claudeSessionId: string
+  cliSessionId: string
 }
 
 /** 中断の 2 回目の案内(main の種類ごとの表で決める。renderer は回数・間隔を決めない) */

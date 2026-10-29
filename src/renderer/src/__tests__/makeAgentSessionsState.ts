@@ -20,7 +20,7 @@ export function makeAgentSessionTabView(
     exit: null,
     error: null,
     cliKind,
-    claudeSessionId: null,
+    cliSessionId: null,
     isClosing: false,
     controller: makeFakeController(),
     ...overrides

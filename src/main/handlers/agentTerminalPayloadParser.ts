@@ -9,13 +9,13 @@ import {
   AGENT_TERMINAL_MIN_COLS,
   AGENT_TERMINAL_MIN_ROWS,
   AGENT_WRITE_MAX_LENGTH,
-  isClaudeSessionId
+  isCliSessionId
 } from '@shared/types'
 import { assertPlainObject, IPC_PATH_MAX_LENGTH, isIntegerInRange } from './payloadValidators'
 
 // agentTerminal:* の入力の検証(設計書「入力の検証」)。invoke は例外で拒否し、send(write・resize・focus)は null を返して捨てる
 // (send の listener で投げると main の例外の出力になるだけで、renderer には届かない)
-// 起動の指定(launch)の claudeSessionId は形式を検証した値だけを starter へ渡し、starter はそのまま引数に使う(L-018)
+// 起動の指定(launch)の cliSessionId は形式を検証した値だけを starter へ渡し、starter はそのまま引数に使う(L-018)
 
 const isSessionId = (value: unknown): value is string => typeof value === 'string' && value !== ''
 
@@ -65,15 +65,15 @@ export function parseAgentLaunchRequest(value: unknown): AgentLaunchRequest {
     return { kind: 'new' }
   }
   if (launch.kind === 'resume') {
-    if (!hasOnlyKeys(launch, ['kind', 'claudeSessionId', 'cliKind'])) {
+    if (!hasOnlyKeys(launch, ['kind', 'cliSessionId', 'cliKind'])) {
       throw new Error('launch に余分なキーがあります')
     }
-    if (!isClaudeSessionId(launch.claudeSessionId)) {
-      throw new Error('claudeSessionId は小文字の UUID v4 である必要があります')
+    if (!isCliSessionId(launch.cliSessionId)) {
+      throw new Error('cliSessionId は小文字の UUID v4 である必要があります')
     }
     return {
       kind: 'resume',
-      claudeSessionId: launch.claudeSessionId,
+      cliSessionId: launch.cliSessionId,
       cliKind: parseAgentCliKind(launch.cliKind)
     }
   }
