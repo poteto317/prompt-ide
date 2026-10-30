@@ -389,6 +389,12 @@ const fallback = (() => {
 })()
 ```
 
+2026-10-30 のリファクタで、この計算は `useFileSystem.ts` の中から純粋な関数 `lib/openTabs.ts` の
+`pickFallbackActivePath(prev, next, activePath)` に移した(`findFile` も `findOpenFile` として同じファイルへ移した)。
+現在の実装は要素数の比較を `prevIndex === -1` の判定より先に行うが、要素数が同じで `prevIndex` が `-1` の場合も
+`computeAdjacentItem` が `next[0]` を返すため、結果は上の例と変わらない。複数のタブが同時に消えるケースは
+`lib/__tests__/openTabs.test.ts` で直接固定している。
+
 ### 汎用的な対策
 
 - 「配列の要素が1つ変化する」ことを前提にしたヘルパー関数を書いたら、そのヘルパーの
