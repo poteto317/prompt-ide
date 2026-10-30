@@ -1,4 +1,4 @@
-import type { ViewportLine } from './agentViewport'
+import type { ViewportCell, ViewportLine } from './agentViewport'
 import { lineText } from './agentViewport'
 
 // claude の入力欄を画面から特定し、空か・貼り付けた本文が現れたかを判定する純粋関数(設計書「プロンプトの送信」5・6・10)。
@@ -78,6 +78,8 @@ export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
  * 入力欄が空か: 1 行で、記号が ❯(! はシェルのモードなので空ではない)、記号の後ろの文字がすべて空白か dim
  * (送信待ちの案内 `Press up to edit queued messages` など)で、反転表示のカーソルが記号の直後にある(確認の結果 21)。
  * カーソルのセルが空白でなければ、直後のセルが dim であること(案内の文字の先頭にカーソルが乗っている形)を求める。
+ * 端末のフォーカスが外れると claude はカーソルを描かない(?1004h。実行のボタンを押すとターミナルからフォーカスが外れる)ので、
+ * 行のどこにも反転が無いときは、カーソルの位置を問わず、記号の後ろの文字だけで判定する。
  *
  * 前提: この関数が true でも、書きかけを区別できない場合がある。カーソルが書きかけの 1 文字の上にあり続きが dim の
  * 候補・案内の形(`a` + dim の候補 + ←)は送信待ちの案内(queuedEmpty)とセルの属性が同じで、空白 1 文字 + ← は空の入力欄と
@@ -86,6 +88,9 @@ export function findInputBox(lines: readonly ViewportLine[]): InputBox | null {
 export function isInputBoxEmpty(box: InputBox): boolean {
   if (box.symbol !== 'prompt' || box.lines.length !== 1) return false
   const cells = box.lines[0]
+  const isBlankOrDim = (cell: ViewportCell): boolean =>
+    cell.char === ' ' || cell.char === '\xa0' || cell.dim
+  if (!cells.some((cell) => cell.inverse)) return cells.slice(TEXT_START).every(isBlankOrDim)
   if (cells[TEXT_START]?.inverse !== true) return false
   // カーソルが文字の上にあるのは、案内の文字の先頭に乗っている形(直後が dim)だけを空とみなす。1 文字の書きかけで
   // カーソルを先頭に戻した入力欄(`a` + ←)もカーソルがその文字の反転で描かれるので、それ以外は空ではない(送らない側に倒す)
@@ -93,10 +98,7 @@ export function isInputBoxEmpty(box: InputBox): boolean {
   if (cursorChar !== ' ' && cursorChar !== '\xa0' && cells[TEXT_START + 1]?.dim !== true) {
     return false
   }
-  return cells.slice(TEXT_START).every((cell, index) => {
-    if (index === 0) return true
-    return cell.char === ' ' || cell.char === '\xa0' || cell.dim
-  })
+  return cells.slice(TEXT_START + 1).every(isBlankOrDim)
 }
 
 // 全角の文字の幅(2 桁)の範囲。厳密な East Asian Width ではなく、ハングル・CJK・全角の記号・絵文字を 2 桁とみなす

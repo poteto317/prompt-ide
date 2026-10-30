@@ -186,7 +186,12 @@ describe('isInputBoxEmpty(@xterm/headless に SGR 付きで書いて合成した
     ['案内の先頭にカーソル・続きが dim', true, `❯${NBSP}\x1b[7mP\x1b[27m\x1b[2mress up\x1b[22m`],
     ['a を打って ←', false, `❯${NBSP}\x1b[7ma\x1b[27m`],
     ['全角 1 文字を打って ←', false, `❯${NBSP}\x1b[7m日\x1b[27m`],
-    ['案内の先頭にカーソル・続きが dim でない', false, `❯${NBSP}\x1b[7mP\x1b[27mress up`]
+    ['案内の先頭にカーソル・続きが dim でない', false, `❯${NBSP}\x1b[7mP\x1b[27mress up`],
+    // claude は端末のフォーカスが外れるとカーソルを描かない(?1004h。実行のボタンを押すとターミナルからフォーカスが外れる)
+    ['フォーカスが外れた空(カーソルなし)', true, `❯${NBSP}`],
+    ['フォーカスが外れた空(案内はすべて dim)', true, `❯${NBSP}\x1b[2mTry "fix lint"\x1b[22m`],
+    ['フォーカスが外れた書きかけ', false, `❯${NBSP}hello`],
+    ['フォーカスが外れた、dim でない案内', false, `❯${NBSP}Try "fix lint"`]
   ])('%s → %s', async (_label, expected, symbolLine) => {
     const box = await boxOfWritten(symbolLine)
     expect(box?.symbol).toBe('prompt')
