@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import ModelSettingsSection from '../ModelSettingsSection'
@@ -73,5 +73,24 @@ describe('ModelSettingsSection', () => {
     await user.clear(input)
     await user.type(input, '999999')
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled()
+  })
+
+  it('保存された modelId が一覧に無いとき、先頭のモデルの上限(128000)を使う', () => {
+    render(
+      <ModelSettingsSection
+        {...defaultProps}
+        initialSettings={{ modelId: 'unknown-model' as never, maxTokens: 4096 }}
+      />
+    )
+    expect(screen.getByText('max_tokens（1〜128000）')).toBeInTheDocument()
+  })
+
+  it('一覧に無い値が select に送られても、モデルも max_tokens も変えない', () => {
+    render(<ModelSettingsSection {...defaultProps} />)
+    const select = screen.getByLabelText('モデル')
+    fireEvent.change(select, { target: { value: 'no-such-model' } })
+    expect(select).toHaveValue('claude-haiku-4-5')
+    expect(screen.getByLabelText('max_tokens')).toHaveValue(4096)
+    expect(screen.getByText('max_tokens（1〜64000）')).toBeInTheDocument()
   })
 })

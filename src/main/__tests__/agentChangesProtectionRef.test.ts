@@ -3,13 +3,29 @@ import { mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { ProtectionGitContext } from '../agentChangesProtectionRef'
 import {
+  createProtectionRef,
+  deleteProtectionRef,
+  deleteProtectionRefSync,
+  filterExistingProtectionTrees,
   isOwnProtectionTreeListing,
   isProcessAliveOnThisMachine,
   parseBatchCheckOutput,
   parseProtectionRefListing,
-  prepareAgentChangesNoHooksDir
+  makeProtectionTree,
+  prepareAgentChangesNoHooksDir,
+  readProtectionRef,
+  sweepStaleProtectionRefs,
+  updateProtectionRef
 } from '../agentChangesProtectionRef'
+import { runBaselineGitWithInput, runBaselineGitWithInputSync } from '../agentBaselineGit'
+
+// git の実行はモックにして、入力の検証(git を呼ぶ前に弾く)と出力の解釈だけを確かめる
+vi.mock('../agentBaselineGit', () => ({
+  runBaselineGitWithInput: vi.fn(),
+  runBaselineGitWithInputSync: vi.fn()
+}))
 
 const T1 = 'a'.repeat(40)
 const T2 = 'b'.repeat(40)
@@ -17,7 +33,14 @@ const T2 = 'b'.repeat(40)
 const lsEntry = (type: string, name: string, sha = T1): string =>
   `${type === 'tree' ? '040000' : '100644'} ${type} ${sha}\t${name}\0`
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.mocked(runBaselineGitWithInput).mockReset()
+  vi.mocked(runBaselineGitWithInputSync).mockReset()
+})
+
+const ctx: ProtectionGitContext = { folderPath: '/repo', indexPath: '/idx', noHooksDir: '/hooks' }
+const REF = 'refs/prompt-ide/agent-changes/123-0abcdef1/4'
 
 describe('parseBatchCheckOutput', () => {
   const entries = [
@@ -41,6 +64,101 @@ describe('parseProtectionRefListing', () => {
       { refName: 'refs/prompt-ide/agent-changes/1-00000000/1', value: T1, objectType: 'tree' }
     ])
     expect(parseProtectionRefListing('')).toEqual([])
+  })
+})
+
+describe('isOwnProtectionTreeListing(形の崩れ)', () => {
+  it('タブが無い行は、git の出力の形が違うものとして false(後ろに正しい行があっても)', () => {
+    expect(
+      isOwnProtectionTreeListing(`040000 tree ${T1}baseline\0${lsEntry('tree', 'run-1')}`)
+    ).toBe(false)
+  })
+})
+
+describe('保護の ref の操作の入力検証(git を呼ぶ前に弾く)', () => {
+  const git = vi.mocked(runBaselineGitWithInput)
+  const gitSync = vi.mocked(runBaselineGitWithInputSync)
+
+  it('filterExistingProtectionTrees: 項目が空なら git を呼ばず空配列を返す', async () => {
+    await expect(filterExistingProtectionTrees(ctx, [])).resolves.toEqual([])
+    expect(git).not.toHaveBeenCalled()
+  })
+
+  it('形の違う名前(自分が作った形でない)の ref は create・update・delete・read のどれも拒否する', async () => {
+    const bad = 'refs/heads/main'
+    await expect(createProtectionRef(ctx, bad, T1)).rejects.toThrow('保護の ref の名前が不正です')
+    await expect(updateProtectionRef(ctx, bad, T1, T2)).rejects.toThrow('名前が不正')
+    await expect(deleteProtectionRef(ctx, bad, T1)).rejects.toThrow('名前が不正')
+    await expect(readProtectionRef(ctx, bad)).rejects.toThrow('名前が不正')
+    expect(git).not.toHaveBeenCalled()
+  })
+
+  it('object の ID の形でない値は create・update・delete・tree の作成・存在確認で拒否する', async () => {
+    await expect(createProtectionRef(ctx, REF, 'zzz')).rejects.toThrow(
+      'object の ID が不正です: zzz'
+    )
+    await expect(updateProtectionRef(ctx, REF, 'zzz', T2)).rejects.toThrow('ID が不正')
+    await expect(updateProtectionRef(ctx, REF, T1, 'zzz')).rejects.toThrow('ID が不正')
+    await expect(deleteProtectionRef(ctx, REF, 'zzz')).rejects.toThrow('ID が不正')
+    await expect(makeProtectionTree(ctx, [{ name: 'baseline', tree: 'zzz' }])).rejects.toThrow(
+      'ID が不正'
+    )
+    await expect(
+      filterExistingProtectionTrees(ctx, [{ name: 'baseline', tree: 'zzz' }])
+    ).rejects.toThrow('ID が不正')
+    expect(git).not.toHaveBeenCalled()
+  })
+
+  it('makeProtectionTree: git の出力が object の ID でなければ例外にする', async () => {
+    git.mockResolvedValueOnce('not-an-id\n')
+    await expect(makeProtectionTree(ctx, [{ name: 'baseline', tree: T1 }])).rejects.toThrow(
+      'ID が不正'
+    )
+  })
+
+  describe('deleteProtectionRefSync', () => {
+    it('名前の形が違う・expected が object の ID でないときは、git を呼ばず false', () => {
+      expect(deleteProtectionRefSync(ctx, 'refs/heads/main', T1)).toBe(false)
+      expect(deleteProtectionRefSync(ctx, REF, 'zzz')).toBe(false)
+      expect(gitSync).not.toHaveBeenCalled()
+    })
+    it('正しい入力なら同期の git の結果をそのまま返す', () => {
+      gitSync.mockReturnValueOnce(true)
+      expect(deleteProtectionRefSync(ctx, REF, T1)).toBe(true)
+      expect(gitSync).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('sweepStaleProtectionRefs: 一覧を取れなければ握って何も消さずに終わる(keepSerials も呼ばない)', async () => {
+    git.mockRejectedValueOnce(new Error('git 失敗'))
+    const keepSerials = vi.fn(() => new Set<number>())
+    await expect(
+      sweepStaleProtectionRefs(ctx, {
+        instanceId: '1-00000000',
+        keepSerials,
+        isProcessAlive: () => false
+      })
+    ).resolves.toBeUndefined()
+    expect(keepSerials).not.toHaveBeenCalled()
+    expect(git).toHaveBeenCalledTimes(1)
+  })
+
+  describe('readProtectionRef', () => {
+    it('出力が空なら null(無い)', async () => {
+      git.mockResolvedValueOnce('')
+      await expect(readProtectionRef(ctx, REF)).resolves.toBeNull()
+    })
+    it('1 行で object の ID ならその値', async () => {
+      git.mockResolvedValueOnce(`${T1}\n`)
+      await expect(readProtectionRef(ctx, REF)).resolves.toBe(T1)
+    })
+    it.each([
+      ['2 行以上', `${T1}\n${T2}\n`],
+      ['1 行だが ID の形でない', 'garbage\n']
+    ])('%s なら読めなかったとして reject する(空と区別する。L-002)', async (_label, output) => {
+      git.mockResolvedValueOnce(output)
+      await expect(readProtectionRef(ctx, REF)).rejects.toThrow('保護の ref の値を読めませんでした')
+    })
   })
 })
 

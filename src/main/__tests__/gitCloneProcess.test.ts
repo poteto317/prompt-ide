@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +18,14 @@ import {
   waitUntilDead,
   writeFakeExecutable
 } from './helpers/processProbe'
+
+// 既定では本物の spawn を呼ぶ。偽の子プロセスを返したいテストだけ mockImplementationOnce で差し替える
+const spawnMock = vi.hoisted(() => vi.fn())
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>()
+  spawnMock.mockImplementation(actual.spawn)
+  return { ...actual, default: { ...actual, spawn: spawnMock }, spawn: spawnMock }
+})
 
 // 実際の子プロセス(PATH の先頭に置いた偽の git = sh のスクリプト)で、打ち切り・中止の後に子孫まで止まることを
 // 確かめる(モックでは孤児が残るかを確かめられない。パターン 41・84)。プロセスグループは POSIX だけ
@@ -370,4 +379,154 @@ describe.skipIf(isWindows)('runGitCloneProcess', () => {
     },
     SLOW_TEST_TIMEOUT_MS
   )
+})
+
+// 偽の子プロセス(spawn のモック)で、実プロセスでは作れない状況(win32・pid 無し・文字列の throw)を確かめる
+describe('runGitCloneProcess(偽の子プロセス)', () => {
+  const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')
+
+  interface FakeChild extends EventEmitter {
+    pid: number | undefined
+    stdout: EventEmitter
+    stderr: EventEmitter
+  }
+  function fakeChild(pid: number | undefined): FakeChild {
+    const child = new EventEmitter() as FakeChild
+    child.pid = pid
+    child.stdout = new EventEmitter()
+    child.stderr = new EventEmitter()
+    return child
+  }
+  const queueSpawn = (...children: Array<FakeChild | Error | string>): void => {
+    for (const child of children) {
+      spawnMock.mockImplementationOnce((() => {
+        if (child instanceof EventEmitter) return child
+        throw child
+      }) as unknown as typeof import('node:child_process').spawn)
+    }
+  }
+  const setPlatform = (platform: NodeJS.Platform): void => {
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true })
+  }
+
+  beforeEach(() => {
+    // 先頭のテストの呼び出しの記録を持ち込まない
+    spawnMock.mockClear()
+  })
+
+  afterEach(async () => {
+    // process.platform とタイマーは必ず戻す
+    if (platformDescriptor !== undefined)
+      Object.defineProperty(process, 'platform', platformDescriptor)
+    vi.useRealTimers()
+    // 途中で失敗したテストが使い切らなかった mockImplementationOnce を次のテストへ残さない。mockReset は既定の本物の
+    // spawn も消すので入れ直す
+    spawnMock.mockReset()
+    const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+    spawnMock.mockImplementation(actual.spawn)
+  })
+
+  it('win32 では中止すると taskkill で子孫ごと止め、taskkill の error でも例外にせず aborted で解決する', async () => {
+    setPlatform('win32')
+    const child = fakeChild(4321)
+    const killer = fakeChild(undefined)
+    queueSpawn(child, killer)
+    const controller = new AbortController()
+    const running = runGitCloneProcess({
+      args: ['clone'],
+      cwd: work,
+      signal: controller.signal,
+      idleTimeoutMs: 10_000
+    })
+    controller.abort()
+    // 2 回目の spawn が taskkill(win32 ではプロセスグループを使わない)
+    expect(spawnMock.mock.calls[0][2]).toMatchObject({ detached: false })
+    expect(spawnMock.mock.calls[1]).toEqual([
+      'taskkill',
+      ['/pid', '4321', '/T', '/F'],
+      { stdio: 'ignore', windowsHide: true }
+    ])
+    expect(() => killer.emit('error', new Error('taskkill が無い'))).not.toThrow()
+    child.emit('close', 1)
+    expect(await running).toEqual({ kind: 'aborted' })
+  })
+
+  it('spawn が Error でない値を同期で投げても、文字列化した Error の spawn-failed で解決する', async () => {
+    queueSpawn('boom')
+    const result = await runGitCloneProcess({
+      args: ['clone'],
+      cwd: work,
+      signal: new AbortController().signal,
+      idleTimeoutMs: 1000
+    })
+    expect(result.kind).toBe('spawn-failed')
+    if (result.kind !== 'spawn-failed') return
+    expect(result.error).toBeInstanceOf(Error)
+    expect(result.error.message).toBe('boom')
+  })
+
+  describe('stop の早期 return(process.kill はモックで、本物のプロセスには何も送らない)', () => {
+    it('無出力で打ち切った後に中止が来ても、2 回目は止める処理を繰り返さない(timed-out のまま解決する)', async () => {
+      vi.useFakeTimers()
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      const child = fakeChild(4321)
+      queueSpawn(child)
+      const controller = new AbortController()
+      const running = runGitCloneProcess({
+        args: ['clone'],
+        cwd: work,
+        signal: controller.signal,
+        idleTimeoutMs: 100
+      })
+      vi.advanceTimersByTime(100)
+      expect(kill).toHaveBeenCalledTimes(1)
+      controller.abort()
+      expect(kill).toHaveBeenCalledTimes(1)
+      child.emit('close', null)
+      expect(await running).toEqual({ kind: 'timed-out' })
+    })
+
+    it('pid が無い子プロセスは(起動に失敗した)打ち切りでも kill を送らず、error で spawn-failed になる', async () => {
+      vi.useFakeTimers()
+      const kill = vi.spyOn(process, 'kill').mockImplementation(() => true)
+      const child = fakeChild(undefined)
+      queueSpawn(child)
+      const running = runGitCloneProcess({
+        args: ['clone'],
+        cwd: work,
+        signal: new AbortController().signal,
+        idleTimeoutMs: 100
+      })
+      vi.advanceTimersByTime(100)
+      expect(kill).not.toHaveBeenCalled()
+      const failure = new Error('spawn git ENOENT')
+      child.emit('error', failure)
+      expect(await running).toEqual({ kind: 'spawn-failed', error: failure })
+    })
+  })
+
+  it('止める理由が決まった後の出力は、無出力のタイマーを張り直さない', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(process, 'kill').mockImplementation(() => true)
+    const child = fakeChild(4321)
+    queueSpawn(child)
+    const controller = new AbortController()
+    const running = runGitCloneProcess({
+      args: ['clone'],
+      cwd: work,
+      signal: controller.signal,
+      idleTimeoutMs: 10_000
+    })
+    // 中止の前: 無出力のタイマー 1 つ
+    expect(vi.getTimerCount()).toBe(1)
+    controller.abort()
+    // 中止の後: 無出力のタイマーは外れ、SIGKILL の猶予のタイマーだけが残る
+    expect(vi.getTimerCount()).toBe(1)
+    child.stdout.emit('data', Buffer.from('late'))
+    child.stderr.emit('data', Buffer.from('late'))
+    expect(vi.getTimerCount()).toBe(1)
+    child.emit('close', null)
+    expect(await running).toEqual({ kind: 'aborted' })
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })

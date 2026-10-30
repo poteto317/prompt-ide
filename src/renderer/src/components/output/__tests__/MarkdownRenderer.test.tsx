@@ -201,3 +201,26 @@ describe('MarkdownRenderer — codeBlockActions を渡さないとき', () => {
     )
   })
 })
+
+describe('MarkdownRenderer — href・src・alt の省略時', () => {
+  it('alt の無い画像(![](https://...))は alt 空のまま img として描画される', () => {
+    const { container } = render(<MarkdownRenderer content="![](https://example.com/a.png)" />)
+    const img = container.querySelector('img')
+    expect(img).toBeInTheDocument()
+    expect(img).toHaveAttribute('src', 'https://example.com/a.png')
+    expect(img).toHaveAttribute('alt', '')
+  })
+
+  it('src が空の画像は安全でないので空の span になる', () => {
+    const { container } = render(<MarkdownRenderer content="![]()" />)
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('p > span')).toBeInTheDocument()
+    expect(container.querySelector('p > span')?.textContent).toBe('')
+  })
+
+  it('href が空のリンクは安全でないのでリンクにならず、文字だけが残る', () => {
+    const { container } = render(<MarkdownRenderer content="[文字]()" />)
+    expect(container.querySelector('a')).toBeNull()
+    expect(screen.getByText('文字').tagName.toLowerCase()).toBe('span')
+  })
+})
