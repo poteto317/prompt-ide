@@ -61,4 +61,23 @@ describe('useModelSettingsState', () => {
     })
     expect(result.current.modelSettings).toEqual({ modelId: 'claude-sonnet-5', maxTokens: 8192 })
   })
+
+  it('setModelSettings が reject したら、その拒否を呼び出し元へ返し、modelSettings は保存前のまま', async () => {
+    mockGetModelSettings.mockResolvedValue({ modelId: 'claude-opus-4-8', maxTokens: 8000 })
+    const { result } = renderHook(() => useModelSettingsState())
+    await waitFor(() => expect(result.current.modelSettingsLoaded).toBe(true))
+
+    const failure = new Error('保存できませんでした')
+    mockSetModelSettings.mockRejectedValueOnce(failure)
+    let caught: unknown = null
+    await act(async () => {
+      try {
+        await result.current.saveModelSettings({ modelId: 'claude-sonnet-5', maxTokens: 8192 })
+      } catch (err) {
+        caught = err
+      }
+    })
+    expect(caught).toBe(failure)
+    expect(result.current.modelSettings).toEqual({ modelId: 'claude-opus-4-8', maxTokens: 8000 })
+  })
 })

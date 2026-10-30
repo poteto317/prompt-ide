@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { Task } from '../../types'
+import type { Stage, Task } from '../../types'
 import { createTask } from '../taskFactory'
 import { createStageEvent } from '../stageEventFactory'
 import { recordStageEvent, completeStage, skipStage } from '../stageTransitions'
@@ -8,7 +8,7 @@ function baseTask(): Task {
   return createTask('テストタスク')
 }
 
-function stageOf(task: Task, id: string) {
+function stageOf(task: Task, id: string): Stage {
   const stage = task.stages.find((s) => s.id === id)
   if (!stage) throw new Error(`stage not found: ${id}`)
   return stage

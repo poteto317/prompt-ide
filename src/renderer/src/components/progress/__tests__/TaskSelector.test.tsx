@@ -35,4 +35,12 @@ describe('TaskSelector', () => {
     render(<TaskSelector tasks={[a, b]} selectedId={null} onSelect={vi.fn()} />)
     expect(screen.getByLabelText('タスクを選択')).toHaveValue(a.id)
   })
+
+  it('タスクが無く selectedId も null なら、option を持たない空の select になる(例外にしない)', () => {
+    render(<TaskSelector tasks={[]} selectedId={null} onSelect={vi.fn()} />)
+    const select = screen.getByLabelText<HTMLSelectElement>('タスクを選択')
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    // option が無い select は jest-dom の toHaveValue では「値なし」になるため、DOM の value を直接見る
+    expect(select.value).toBe('')
+  })
 })

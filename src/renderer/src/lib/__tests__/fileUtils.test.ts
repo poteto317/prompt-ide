@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { FileNode } from '../../types'
-import { createOpenFile } from '../fileUtils'
+import type { FileNode, FileTreeNode } from '../../types'
+import { createOpenFile, isFileNode } from '../fileUtils'
 
 describe('createOpenFile', () => {
   const node: FileNode = {
@@ -37,5 +37,19 @@ describe('createOpenFile', () => {
   it('空コンテンツでも正しく構築される', () => {
     const result = createOpenFile(node, '')
     expect(result.content).toBe('')
+  })
+})
+
+describe('isFileNode', () => {
+  it('type が file のノードは true', () => {
+    const fileNode: FileTreeNode = { name: 'a.ts', path: '/p/a.ts', type: 'file' }
+    expect(isFileNode(fileNode)).toBe(true)
+  })
+
+  it('type が directory のノードは false(子を持たない空のフォルダも)', () => {
+    const dir: FileTreeNode = { name: 'src', path: '/p/src', type: 'directory', children: [] }
+    const emptyDir: FileTreeNode = { name: 'empty', path: '/p/empty', type: 'directory' }
+    expect(isFileNode(dir)).toBe(false)
+    expect(isFileNode(emptyDir)).toBe(false)
   })
 })

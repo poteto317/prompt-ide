@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
+import type { AgentCliKindSetting } from '@shared/types'
 
 vi.mock('../../lib/settingsApi')
 
@@ -127,5 +128,76 @@ describe('useAgentCliKind', () => {
       await result.current.changeKind('copilot')
     })
     expect(result.current).toMatchObject({ kind: 'copilot', saveError: null })
+  })
+
+  // StrictMode では effect が「実行 → 後始末 → 実行」と 2 回走る。最初の実行の読み込みは後始末で取り消され、遅れて届いても反映しない
+  describe('取り消した読み込み(StrictMode の 1 回目の effect)', () => {
+    function deferredSetting(): {
+      promise: Promise<AgentCliKindSetting>
+      resolve: (value: AgentCliKindSetting) => void
+      reject: (err: Error) => void
+    } {
+      let resolve!: (value: AgentCliKindSetting) => void
+      let reject!: (err: Error) => void
+      const promise = new Promise<AgentCliKindSetting>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    it('遅れて届いた結果で、後の読み込みの種類と理由を上書きしない', async () => {
+      const first = deferredSetting()
+      mockGet
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce({ kind: 'copilot', fallback: null })
+      const { result } = renderHook(() => useAgentCliKind(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.kind).toBe('copilot'))
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        first.resolve({ kind: 'claude', fallback: 'invalid-value' })
+      })
+
+      expect(result.current).toMatchObject({ kind: 'copilot', fallback: null })
+    })
+
+    it('遅れて届いた失敗で、claude・read-failed に戻さない(失敗の記録だけはする)', async () => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const first = deferredSetting()
+      mockGet
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce({ kind: 'copilot', fallback: null })
+      const { result } = renderHook(() => useAgentCliKind(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.kind).toBe('copilot'))
+
+      const err = new Error('ipc')
+      await act(async () => {
+        first.reject(err)
+      })
+
+      expect(result.current).toMatchObject({ kind: 'copilot', fallback: null })
+      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.any(String), err)
+    })
+
+    it('取り消した読み込みの種類を、保存の失敗の戻し先にしない', async () => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const first = deferredSetting()
+      mockGet
+        .mockReturnValueOnce(first.promise)
+        .mockResolvedValueOnce({ kind: 'copilot', fallback: null })
+      mockSet.mockRejectedValueOnce(new Error('x'))
+      const { result } = renderHook(() => useAgentCliKind(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.kind).toBe('copilot'))
+      await act(async () => {
+        first.resolve({ kind: 'claude', fallback: null })
+      })
+
+      await act(async () => {
+        await expect(result.current.changeKind('claude')).resolves.toBe(false)
+      })
+
+      expect(result.current.kind).toBe('copilot')
+    })
   })
 })

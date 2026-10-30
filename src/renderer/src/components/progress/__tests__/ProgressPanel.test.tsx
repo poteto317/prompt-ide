@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import ProgressPanel from '../ProgressPanel'
@@ -15,7 +16,7 @@ const handlers = {
   onAdvanceStage: vi.fn()
 }
 
-function renderPanel(tasks: Task[]) {
+function renderPanel(tasks: Task[]): RenderResult {
   return render(<ProgressPanel tasks={tasks} {...handlers} />)
 }
 

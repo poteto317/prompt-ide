@@ -1,4 +1,5 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
+import type { RenderHookResult } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useBufferedPersistence } from '../useBufferedPersistence'
 
@@ -15,11 +16,13 @@ beforeEach(() => {
   mockSave.mockImplementation(() => {})
 })
 
-function mount() {
+type MountedPersistence = RenderHookResult<ReturnType<typeof useBufferedPersistence<Item>>, unknown>
+
+function mount(): MountedPersistence {
   return renderHook(() => useBufferedPersistence<Item>({ load: mockLoad, save: mockSave }))
 }
 
-async function mountLoaded() {
+async function mountLoaded(): Promise<MountedPersistence> {
   const hook = mount()
   await waitFor(() => expect(hook.result.current.loaded).toBe(true))
   return hook
@@ -194,9 +197,7 @@ describe('load 失敗', () => {
 
   it('load 失敗後もロード前のミューテーションが items に反映されている', async () => {
     let rejectLoad!: (err: Error) => void
-    mockLoad.mockReturnValue(
-      new Promise<Item[]>((_, reject) => (rejectLoad = reject))
-    )
+    mockLoad.mockReturnValue(new Promise<Item[]>((_, reject) => (rejectLoad = reject)))
     const { result } = mount()
     act(() => result.current.apply((items) => [...items, { id: 'pending' }]))
 
@@ -211,9 +212,7 @@ describe('load 失敗', () => {
 
   it('load 失敗時にロード前ミューテーションがあれば save される（データロス防止）', async () => {
     let rejectLoad!: (err: Error) => void
-    mockLoad.mockReturnValue(
-      new Promise<Item[]>((_, reject) => (rejectLoad = reject))
-    )
+    mockLoad.mockReturnValue(new Promise<Item[]>((_, reject) => (rejectLoad = reject)))
     const { result } = mount()
     act(() => result.current.apply((items) => [...items, { id: 'pending' }]))
     expect(mockSave).not.toHaveBeenCalled()
@@ -235,9 +234,7 @@ describe('load 失敗', () => {
 
   it('load 失敗後にアンマウントされても状態更新しない', async () => {
     let rejectLoad!: (err: Error) => void
-    mockLoad.mockReturnValue(
-      new Promise<Item[]>((_, reject) => (rejectLoad = reject))
-    )
+    mockLoad.mockReturnValue(new Promise<Item[]>((_, reject) => (rejectLoad = reject)))
     const { result, unmount } = mount()
     unmount()
     await act(async () => {

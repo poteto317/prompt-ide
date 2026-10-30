@@ -142,4 +142,52 @@ describe('getCodeBlockSource', () => {
       })
     ).toEqual({ code: 'const a', language: 'js' })
   })
+
+  it('code の中のテキスト・要素以外の子(コメント)は、原文に含めない', () => {
+    expect(
+      getCodeBlockSource({
+        type: 'element',
+        tagName: 'pre',
+        properties: {},
+        children: [
+          {
+            type: 'element',
+            tagName: 'code',
+            properties: {},
+            children: [
+              { type: 'text', value: 'a' },
+              { type: 'comment', value: 'ignored' },
+              { type: 'text', value: 'b\n' }
+            ]
+          }
+        ]
+      })
+    ).toEqual({ code: 'ab', language: null })
+  })
+
+  it.each<[string, unknown, string | null]>([
+    [
+      '名前が空の language- は言語名にせず、後ろの class を見る',
+      ['language-', 'language-ts'],
+      'ts'
+    ],
+    ['名前が空の language- だけなら言語なし', ['language-'], null],
+    ['className が配列でなければ言語なし', 'language-ts', null],
+    ['文字列でない class は飛ばす', [1, 'language-go'], 'go']
+  ])('%s', (_name, className, expected) => {
+    const source = getCodeBlockSource({
+      type: 'element',
+      tagName: 'pre',
+      properties: {},
+      children: [
+        {
+          type: 'element',
+          tagName: 'code',
+          properties: { className: className as never },
+          children: [{ type: 'text', value: 'x\n' }]
+        }
+      ]
+    })
+    expect(source).toEqual({ code: 'x', language: expected })
+  })
 })

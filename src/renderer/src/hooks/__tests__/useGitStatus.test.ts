@@ -203,4 +203,71 @@ describe('useGitStatus', () => {
     // 古い結果で上書きされていないこと
     expect(result.current.gitStatus).toEqual(secondResult)
   })
+
+  it('取得中は gitLoading が true になり、gitError を消す', async () => {
+    mockGetGitStatus.mockRejectedValueOnce(new Error('first failure'))
+    const { result } = renderHook(() => useGitStatus('/project'))
+    await waitFor(() => expect(result.current.gitError).toBeInstanceOf(Error))
+
+    mockGetGitStatus.mockImplementation(() => new Promise<GitStatusResult>(() => {}))
+    act(() => {
+      void result.current.refreshGitStatus()
+    })
+
+    expect(result.current.gitLoading).toBe(true)
+    expect(result.current.gitError).toBeNull()
+  })
+
+  it('後から始まった取得があれば、古い取得の失敗は gitError に反映しない', async () => {
+    let rejectFirst!: (err: Error) => void
+    mockGetGitStatus
+      .mockImplementationOnce(
+        () =>
+          new Promise<GitStatusResult>((_resolve, reject) => {
+            rejectFirst = reject
+          })
+      )
+      .mockResolvedValueOnce(mockResult)
+
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string | null }) => useGitStatus(path),
+      { initialProps: { path: '/project-a' as string | null } }
+    )
+    rerender({ path: '/project-b' })
+    await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
+
+    await act(async () => {
+      rejectFirst(new Error('stale failure'))
+    })
+
+    expect(result.current.gitError).toBeNull()
+    expect(result.current.gitStatus).toEqual(mockResult)
+  })
+
+  it('古い取得が先に終わっても、新しい取得の読み込み中(gitLoading)を解除しない', async () => {
+    let resolveFirst!: (v: GitStatusResult) => void
+    mockGetGitStatus
+      .mockImplementationOnce(
+        () =>
+          new Promise<GitStatusResult>((resolve) => {
+            resolveFirst = resolve
+          })
+      )
+      // 新しい取得は終わらないまま止める
+      .mockImplementationOnce(() => new Promise<GitStatusResult>(() => {}))
+
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string | null }) => useGitStatus(path),
+      { initialProps: { path: '/project-a' as string | null } }
+    )
+    rerender({ path: '/project-b' })
+    expect(result.current.gitLoading).toBe(true)
+
+    await act(async () => {
+      resolveFirst({ ...mockResult, branch: 'old' })
+    })
+
+    expect(result.current.gitLoading).toBe(true)
+    expect(result.current.gitStatus).toBeNull()
+  })
 })

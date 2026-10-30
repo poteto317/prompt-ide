@@ -24,7 +24,7 @@ function makeOpenFile(path: string, name: string): OpenFile {
   return { path, name, content: 'content', savedContent: 'content', language: 'typescript' }
 }
 
-function renderOperations(config?: {
+interface RenderOperationsConfig {
   folderPath?: string | null
   initialOpenFiles?: OpenFile[]
   initialActiveFilePath?: string | null
@@ -37,7 +37,20 @@ function renderOperations(config?: {
   ) => Promise<() => void>
   invalidatePendingReads?: (affectedPath: string) => void
   beginTreeWrite?: () => (() => boolean) | null
-}) {
+}
+
+type FileTreeOperations = ReturnType<typeof useFileTreeOperations>
+
+interface RenderedOperations {
+  result: { current: FileTreeOperations & { openFiles: OpenFile[] } }
+  resetForFileChange: NonNullable<RenderOperationsConfig['resetForFileChange']>
+  invalidatePath: NonNullable<RenderOperationsConfig['invalidatePath']>
+  onConfirm: NonNullable<RenderOperationsConfig['onConfirm']>
+  invalidatePendingReads: NonNullable<RenderOperationsConfig['invalidatePendingReads']>
+  lockPathForFileOperation: NonNullable<RenderOperationsConfig['lockPathForFileOperation']>
+}
+
+function renderOperations(config?: RenderOperationsConfig): RenderedOperations {
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePath = config?.invalidatePath ?? vi.fn()
   const lockPathForFileOperation = config?.lockPathForFileOperation ?? (async () => () => {})
@@ -74,7 +87,9 @@ function renderOperations(config?: {
   }
 }
 
-function renderOperationsWithFolder(getFolderPath: () => string | null) {
+function renderOperationsWithFolder(getFolderPath: () => string | null): {
+  result: { current: FileTreeOperations }
+} {
   const { result } = renderHook(() =>
     useFileTreeOperations({
       getFolderPath,

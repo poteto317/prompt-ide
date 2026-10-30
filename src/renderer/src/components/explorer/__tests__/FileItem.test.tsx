@@ -166,4 +166,22 @@ describe('FileItem', () => {
     await user.keyboard(' ')
     expect(onSelectFile).toHaveBeenCalledWith(fileNode)
   })
+
+  it('Enter・Space 以外のキー(矢印・文字・Escape)では onSelectFile を呼ばない', async () => {
+    const user = userEvent.setup()
+    const onSelectFile = vi.fn()
+    render(
+      <FileItem
+        node={fileNode}
+        openFilePath={null}
+        onSelectFile={onSelectFile}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
+    const item = screen.getByRole('treeitem')
+    item.focus()
+    await user.keyboard('{ArrowDown}a{Escape}')
+    expect(onSelectFile).not.toHaveBeenCalled()
+  })
 })

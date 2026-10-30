@@ -57,6 +57,15 @@ describe('ExplorerContextMenu', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('Escape 以外のキーでは onClose を呼ばない', () => {
+    const onClose = vi.fn()
+    render(<ExplorerContextMenu {...defaultProps} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    fireEvent.keyDown(document, { key: 'ArrowDown' })
+    fireEvent.keyDown(document, { key: 'a' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it('別の場所での右クリックで onClose が呼ばれる', () => {
     const onClose = vi.fn()
     render(<ExplorerContextMenu {...defaultProps} onClose={onClose} />)

@@ -36,7 +36,7 @@ describe('useAddTaskForm', () => {
   })
 
   describe('handleSubmit', () => {
-    function makeEvent() {
+    function makeEvent(): React.FormEvent {
       return { preventDefault: vi.fn() } as unknown as React.FormEvent
     }
 

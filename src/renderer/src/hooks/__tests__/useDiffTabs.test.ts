@@ -174,4 +174,51 @@ describe('useDiffTabs', () => {
       { path: 'b.ts', kind: 'unstaged' }
     ])
   })
+
+  describe('closeDiffTab(境界値)', () => {
+    it('開いていないキーを閉じても、diffTabs は同じ参照のままで、アクティブも変わらない', () => {
+      const { result } = renderHook(() => useDiffTabs())
+      act(() => {
+        result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      })
+      const tabsBefore = result.current.diffTabs
+      const activeBefore = result.current.activeDiffTab
+      act(() => {
+        // 同じ path でも kind が違えば別のタブ
+        result.current.closeDiffTab({ path: 'a.ts', kind: 'staged' })
+      })
+      expect(result.current.diffTabs).toBe(tabsBefore)
+      expect(result.current.activeDiffTab).toBe(activeBefore)
+    })
+
+    it('アクティブでないタブを閉じても、アクティブのタブ(参照)は変えない', () => {
+      const { result } = renderHook(() => useDiffTabs())
+      act(() => {
+        result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+        result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      })
+      const activeBefore = result.current.activeDiffTab
+      act(() => {
+        result.current.closeDiffTab({ path: 'a.ts', kind: 'unstaged' })
+      })
+      expect(result.current.diffTabs).toEqual([{ path: 'b.ts', kind: 'unstaged' }])
+      expect(result.current.activeDiffTab).toBe(activeBefore)
+    })
+
+    it('どの diff タブもアクティブでないときに閉じても、null のまま(残りのタブをアクティブにしない)', () => {
+      const { result } = renderHook(() => useDiffTabs())
+      act(() => {
+        result.current.openDiffTab({ path: 'a.ts', kind: 'unstaged' })
+        result.current.openDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      })
+      act(() => {
+        result.current.deactivateDiffTab()
+      })
+      act(() => {
+        result.current.closeDiffTab({ path: 'b.ts', kind: 'unstaged' })
+      })
+      expect(result.current.diffTabs).toEqual([{ path: 'a.ts', kind: 'unstaged' }])
+      expect(result.current.activeDiffTab).toBeNull()
+    })
+  })
 })

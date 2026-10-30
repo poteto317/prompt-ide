@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import StageRowHeader from '../StageRowHeader'
@@ -17,7 +18,7 @@ function renderHeader(
   definition: StageDefinition,
   expanded = false,
   onToggle = vi.fn()
-) {
+): RenderResult {
   return render(
     <StageRowHeader
       stage={stage}
@@ -72,7 +73,12 @@ describe('StageRowHeader', () => {
 
   it('トグルボタンのクリックで onToggle が呼ばれる', async () => {
     const onToggle = vi.fn()
-    renderHeader({ id: 'refactor', status: 'in_progress', events: [] }, repeatableDef, false, onToggle)
+    renderHeader(
+      { id: 'refactor', status: 'in_progress', events: [] },
+      repeatableDef,
+      false,
+      onToggle
+    )
     await userEvent.click(screen.getByRole('button', { name: '履歴を開く' }))
     expect(onToggle).toHaveBeenCalledOnce()
   })

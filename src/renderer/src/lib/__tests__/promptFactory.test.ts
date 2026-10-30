@@ -51,7 +51,7 @@ describe('cloneAsNewPrompt', () => {
     title: 'タイトル',
     content: '内容',
     createdAt: 1234567890,
-    pinned: true,
+    pinned: true
   }
 
   it('id を新しい UUID に再生成する', () => {
@@ -69,8 +69,7 @@ describe('cloneAsNewPrompt', () => {
   })
 
   it('pinned が無いプロンプトでも複製できる', () => {
-    const { id: _id, ...rest } = source
-    const without: Prompt = { ...rest, id: 'x', pinned: undefined }
+    const without: Prompt = { ...source, id: 'x', pinned: undefined }
     const cloned = cloneAsNewPrompt(without)
     expect(cloned.pinned).toBeUndefined()
     expect(cloned.id).not.toBe('x')

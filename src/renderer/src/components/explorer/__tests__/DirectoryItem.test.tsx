@@ -195,4 +195,22 @@ describe('DirectoryItem', () => {
     await user.keyboard(' ')
     expect(screen.queryByText('index.ts')).not.toBeInTheDocument()
   })
+
+  it('Enter・Space 以外のキー(矢印・文字・Escape)では開閉しない', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
+    const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
+    dirItem.focus()
+    await user.keyboard('{ArrowRight}a{Escape}')
+    expect(dirItem).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('index.ts')).toBeInTheDocument()
+  })
 })

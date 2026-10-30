@@ -411,7 +411,9 @@ describe('onPromptStreamChunk', () => {
 
   it.each([
     ['payload が null', null],
+    ['payload が undefined', undefined],
     ['payload がオブジェクトでない', 'not-an-object'],
+    ['payload が配列', ['req-1', 'hello']],
     ['requestId が文字列でない', { requestId: 1, chunk: 'hello' }],
     ['chunk が文字列でない', { requestId: 'req-1', chunk: 1 }]
   ])('%s の場合コールバックを呼び出さない', (_label, payload) => {
@@ -629,6 +631,21 @@ describe.each([
     expect(listener.mock.calls).toEqual([[valid]])
     unsubscribe()
     expect(mockRemoveListener).toHaveBeenCalledWith(channel, wrapped)
+  })
+
+  it.each<[string, unknown]>([
+    ['undefined', undefined],
+    ['文字列', 'payload'],
+    ['数', 0],
+    ['真偽値', true],
+    ['空の配列', []],
+    ['正しい payload を包んだ配列', [valid]]
+  ])(`${channel} の payload がオブジェクトでない(%s)ならリスナーを呼ばない`, (_label, invalid) => {
+    const listener = vi.fn()
+    subscribe(listener)
+    const wrapped = mockOn.mock.calls.find(([ch]) => ch === channel)?.[1]
+    expect(() => wrapped({}, invalid)).not.toThrow()
+    expect(listener).not.toHaveBeenCalled()
   })
 })
 

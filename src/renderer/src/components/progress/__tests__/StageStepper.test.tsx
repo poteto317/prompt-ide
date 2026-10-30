@@ -20,6 +20,16 @@ describe('StageStepper', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(STAGES.length)
   })
 
+  it('タスクに無いステージ(保存データの欠け)は行を描画せず、残りのステージだけを並べる', () => {
+    const task = createTask('a')
+    const missing = STAGES[1].id
+    const partial = { ...task, stages: task.stages.filter((s) => s.id !== missing) }
+    render(<StageStepper task={partial} {...handlers} />)
+    expect(screen.getAllByRole('listitem')).toHaveLength(STAGES.length - 1)
+    expect(screen.queryByText(new RegExp(STAGES[1].label))).not.toBeInTheDocument()
+    expect(screen.getByText(new RegExp(STAGES[0].label))).toBeInTheDocument()
+  })
+
   it('現在ステージで onAdvance を委譲する', async () => {
     const onAdvance = vi.fn()
     render(<StageStepper task={createTask('a')} {...handlers} onAdvance={onAdvance} />)

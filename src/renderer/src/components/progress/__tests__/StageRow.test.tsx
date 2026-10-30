@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import StageRow from '../StageRow'
@@ -20,7 +21,7 @@ const handlers = {
   onAdvance: vi.fn()
 }
 
-function renderRow(stage: Stage, definition: StageDefinition, isCurrent = false) {
+function renderRow(stage: Stage, definition: StageDefinition, isCurrent = false): RenderResult {
   return render(
     <StageRow
       stage={stage}

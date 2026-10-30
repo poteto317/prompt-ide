@@ -1,4 +1,5 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
+import type { RenderHookResult } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Task } from '../../types'
 
@@ -17,7 +18,9 @@ beforeEach(() => {
   mockSave.mockImplementation(() => {})
 })
 
-async function mountLoaded() {
+async function mountLoaded(): Promise<
+  RenderHookResult<ReturnType<typeof useProgressTasks>, unknown>
+> {
   const hook = renderHook(() => useProgressTasks())
   await waitFor(() => expect(hook.result.current.tasksLoaded).toBe(true))
   return hook
@@ -66,6 +69,34 @@ describe('ステージ操作の統合（useStageOperations との連携）', () 
     const id = result.current.tasks[0].id
     act(() => result.current.advanceStage(id))
     expect(result.current.tasks[0].currentStageId).toBe('implement')
+  })
+
+  it('ステージ操作は指定したタスクだけを変え、ほかのタスクは同じ参照のまま残す', async () => {
+    const { result } = await mountLoaded()
+    act(() => result.current.addTask('a'))
+    act(() => result.current.addTask('b'))
+    const [a, b] = result.current.tasks
+    act(() => result.current.advanceStage(b.id))
+    expect(result.current.tasks[0]).toBe(a)
+    expect(result.current.tasks[1].currentStageId).toBe('implement')
+  })
+
+  it('存在しない ID へのステージ操作では、どのタスクも変わらない', async () => {
+    const { result } = await mountLoaded()
+    act(() => result.current.addTask('a'))
+    const before = result.current.tasks[0]
+    act(() => result.current.advanceStage('no-such-task'))
+    expect(result.current.tasks).toEqual([before])
+    expect(result.current.tasks[0]).toBe(before)
+  })
+})
+
+describe('deleteTask(境界値)', () => {
+  it('存在しない ID を消しても、ほかのタスクは残る', async () => {
+    const { result } = await mountLoaded()
+    act(() => result.current.addTask('a'))
+    act(() => result.current.deleteTask('no-such-task'))
+    expect(result.current.tasks.map((t) => t.title)).toEqual(['a'])
   })
 })
 

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import type { RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import EditorTab from '../EditorTab'
@@ -19,7 +20,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 }))
 
 // useSortable はモックされているため、DndContext/SortableContext は不要
-function renderTab(props: Partial<React.ComponentProps<typeof EditorTab>> = {}) {
+function renderTab(props: Partial<React.ComponentProps<typeof EditorTab>> = {}): RenderResult {
   const defaultProps: React.ComponentProps<typeof EditorTab> = {
     path: '/project/index.ts',
     fileName: 'index.ts',

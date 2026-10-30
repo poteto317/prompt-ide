@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { MockInstance } from 'vitest'
+import type { PromptExecutionMode } from '@shared/types'
 
 vi.mock('../../lib/settingsApi')
 
@@ -72,5 +73,70 @@ describe('useExecutionMode', () => {
 
   it('保存の失敗の接頭辞', () => {
     expect(EXECUTION_MODE_SAVE_ERROR_PREFIX).toBe('実行方式を保存できませんでした: ')
+  })
+
+  // StrictMode では effect が「実行 → 後始末 → 実行」と 2 回走る。最初の実行の読み込みは後始末で取り消され、遅れて届いても反映しない
+  describe('取り消した読み込み(StrictMode の 1 回目の effect)', () => {
+    function deferredMode(): {
+      promise: Promise<PromptExecutionMode>
+      resolve: (value: PromptExecutionMode) => void
+      reject: (err: Error) => void
+    } {
+      let resolve!: (value: PromptExecutionMode) => void
+      let reject!: (err: Error) => void
+      const promise = new Promise<PromptExecutionMode>((res, rej) => {
+        resolve = res
+        reject = rej
+      })
+      return { promise, resolve, reject }
+    }
+
+    it('遅れて届いた結果で、後の読み込みの方式を上書きしない', async () => {
+      const first = deferredMode()
+      mockGet.mockReturnValueOnce(first.promise).mockResolvedValueOnce('legacy')
+      const { result } = renderHook(() => useExecutionMode(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.mode).toBe('legacy'))
+      expect(mockGet).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        first.resolve('agent-cli')
+      })
+
+      expect(result.current.mode).toBe('legacy')
+    })
+
+    it('遅れて届いた失敗で、既定の方式に戻さない(失敗の記録だけはする)', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const first = deferredMode()
+      mockGet.mockReturnValueOnce(first.promise).mockResolvedValueOnce('legacy')
+      const { result } = renderHook(() => useExecutionMode(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.mode).toBe('legacy'))
+
+      const err = new Error('broken')
+      await act(async () => {
+        first.reject(err)
+      })
+
+      expect(result.current.mode).toBe('legacy')
+      expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
+    })
+
+    it('取り消した読み込みの方式を、保存の失敗の戻し先にしない', async () => {
+      consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const first = deferredMode()
+      mockGet.mockReturnValueOnce(first.promise).mockResolvedValueOnce('legacy')
+      mockSet.mockRejectedValueOnce(new Error('EACCES'))
+      const { result } = renderHook(() => useExecutionMode(), { reactStrictMode: true })
+      await waitFor(() => expect(result.current.mode).toBe('legacy'))
+      await act(async () => {
+        first.resolve('agent-cli')
+      })
+
+      await act(async () => {
+        await expect(result.current.changeMode('agent-cli')).resolves.toBe(false)
+      })
+
+      expect(result.current.mode).toBe('legacy')
+    })
   })
 })
