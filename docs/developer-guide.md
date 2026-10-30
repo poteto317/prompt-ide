@@ -71,7 +71,8 @@ src/
 
 Git の受け口(`handlers/gitHandlers.ts`)は、領域ごとの `registerGit*Handlers`(作業ツリー・コンフリクト・履歴・ブランチ・stash・リモート)に
 分かれており、`registerGitHandlers` がそれらをまとめて登録する。renderer から受ける引数の検証は `handlers/gitPayloadParser.ts` の
-`assert*Arg` 関数にまとめてあり、受け口は検証を通してから Git の操作へ渡す。
+`assert*Arg` 関数にまとめてあり、検証が要る受け口はこれを通してから Git の操作へ渡す。一部の受け口(`git:commit`・`git:amendCommit`・
+`git:getLog`・`git:checkoutBranch` など)は引数を型注釈だけで受けており、`assert*Arg` を通らない。
 
 ### 3.2 main → renderer の通知
 

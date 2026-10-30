@@ -36,8 +36,8 @@ export interface AgentChangesRecordRun {
 
 /**
  * 保護の ref の状態(設計書「ref の名前と指す先」)。value は最後に書けた ref の値(無ければ null)、swept は残った ref の掃除を
- * 済ませた印。保護をやめたか(利用者が ref を消した・書き換えた)は、記録が消えた後も掃除で残すために registry が番号で持つ
- * (AgentBaselineRegistry の abandonedSerials。記録の側に同じ印を持たない)
+ * 済ませた印。保護をやめたか(利用者が ref を消した・書き換えた)は、記録が消えた後も掃除で残すために AgentBaselineProtectionSync が
+ * 番号で持つ(その abandonedSerials。記録の側に同じ印を持たない)
  */
 export interface AgentChangesProtectionState {
   refName: string
