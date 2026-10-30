@@ -181,6 +181,44 @@ describe('getApiKey', () => {
     expect(result).toBe('')
     expect(mockWriteFile).not.toHaveBeenCalled()
   })
+
+  describe('settings.json の不正なデータ', () => {
+    it('encryptedApiKey が文字列でない(数)なら、復号できないキーとして削除し ApiKeyDecryptError を投げる', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify({ encryptedApiKey: 12345 }))
+      await expect(getApiKey()).rejects.toBeInstanceOf(ApiKeyDecryptError)
+      expect(mockDecrypt).not.toHaveBeenCalled()
+      const written = JSON.parse(mockWriteFile.mock.calls[0][1] as string)
+      expect(written).not.toHaveProperty('encryptedApiKey')
+    })
+
+    it('encryptedApiKey が空文字なら暗号文として扱わず、レガシー平文 apiKey を読む', async () => {
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({ encryptedApiKey: '', apiKey: 'sk-ant-legacy' })
+      )
+      await expect(getApiKey()).resolves.toBe('sk-ant-legacy')
+      expect(mockDecrypt).not.toHaveBeenCalled()
+      expect(mockEncrypt).toHaveBeenCalledWith('sk-ant-legacy')
+    })
+  })
+
+  describe('書き込みの失敗', () => {
+    let consoleErrorSpy: MockInstance<typeof console.error> | null = null
+
+    beforeEach(() => {
+      consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+      consoleErrorSpy?.mockRestore()
+      consoleErrorSpy = null
+    })
+
+    it('レガシー平文 apiKey の暗号化しての再保存に失敗したら、キーを返さずに SettingsFileError で失敗する', async () => {
+      mockReadFile.mockResolvedValue(JSON.stringify({ apiKey: 'sk-ant-legacy' }))
+      mockRename.mockRejectedValueOnce(Object.assign(new Error('EPERM'), { code: 'EPERM' }))
+      await expect(getApiKey()).rejects.toBeInstanceOf(SettingsFileError)
+    })
+  })
 })
 
 describe('setApiKey', () => {
@@ -238,5 +276,30 @@ describe('setApiKey', () => {
     const renameOrder = mockRename.mock.invocationCallOrder[0]
     expect(chmodOrder).toBeGreaterThan(writeOrder)
     expect(renameOrder).toBeGreaterThan(chmodOrder)
+  })
+
+  it('暗号化(encryptString)が例外を投げたら、そのまま伝え、何も書き込まない', async () => {
+    mockEncrypt.mockImplementationOnce(() => {
+      throw new Error('encryption failed')
+    })
+    await expect(setApiKey('sk-ant-abc')).rejects.toThrow('encryption failed')
+    expect(mockWriteFile).not.toHaveBeenCalled()
+  })
+
+  it('settings.json への書き込みに失敗したら、固定の文言の SettingsFileError で失敗する(L-017)', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      mockEncrypt.mockReturnValue(Buffer.from('sk-ant-abc'))
+      mockRename.mockRejectedValueOnce(
+        Object.assign(new Error("EPERM: operation not permitted, rename '/mock/userData'"), {
+          code: 'EPERM'
+        })
+      )
+      const rejection = setApiKey('sk-ant-abc')
+      await expect(rejection).rejects.toBeInstanceOf(SettingsFileError)
+      await expect(rejection).rejects.toThrow(SETTINGS_FILE_ERROR_REASON)
+    } finally {
+      consoleErrorSpy.mockRestore()
+    }
   })
 })

@@ -94,10 +94,18 @@ describe('loadTasks', () => {
       const result = await loadTasks()
       expect(result).toHaveLength(1)
       const stageIds = result[0].stages.map((s) => s.id)
-      expect(stageIds).toEqual(expect.arrayContaining([
-        'plan', 'implement', 'refactor', 'localReview',
-        'commit', 'prCreate', 'prReview', 'prMerge'
-      ]))
+      expect(stageIds).toEqual(
+        expect.arrayContaining([
+          'plan',
+          'implement',
+          'refactor',
+          'localReview',
+          'commit',
+          'prCreate',
+          'prReview',
+          'prMerge'
+        ])
+      )
     })
 
     it('一部ステージが欠落しているタスクに不足分を補完する', async () => {
@@ -134,6 +142,33 @@ describe('loadTasks', () => {
       mockReadFile.mockResolvedValue(JSON.stringify([sampleTask]))
       const result = await loadTasks()
       expect(result[0].stages).toHaveLength(8)
+    })
+
+    it('stages にオブジェクトでない要素が混ざっていると、補完しても検証で除外される(壊れた要素を捨てて読み替えない)', async () => {
+      const brokenTask = { ...sampleTask, stages: [null, 'plan', 1, ...sampleTask.stages] }
+      mockReadFile.mockResolvedValue(JSON.stringify([brokenTask, { ...sampleTask, id: 't2' }]))
+      const result = await loadTasks()
+      expect(result.map((t) => t.id)).toEqual(['t2'])
+    })
+
+    it('stages の id が文字列でない要素は「ある」とみなさず補完するが、その要素で検証に落ちる', async () => {
+      const brokenTask = {
+        ...sampleTask,
+        stages: [{ id: 1, status: 'done', events: [] }, ...sampleTask.stages.slice(1)]
+      }
+      mockReadFile.mockResolvedValue(JSON.stringify([brokenTask]))
+      expect(await loadTasks()).toEqual([])
+    })
+
+    it.each<[string, unknown]>([
+      ['stages が無い', { ...sampleTask, stages: undefined }],
+      ['stages がオブジェクト', { ...sampleTask, stages: { plan: {} } }],
+      ['要素が null', null],
+      ['要素が文字列', 'task']
+    ])('%s 要素は補完せずに検証で除外する', async (_label, item) => {
+      mockReadFile.mockResolvedValue(JSON.stringify([item, sampleTask]))
+      const result = await loadTasks()
+      expect(result.map((t) => t.id)).toEqual(['t1'])
     })
   })
 })

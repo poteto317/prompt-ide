@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { Mock } from 'vitest'
 
 const mockRegisterCancellation = vi.hoisted(() => vi.fn())
 const mockUnregisterCancellation = vi.hoisted(() => vi.fn())
@@ -14,7 +15,12 @@ import { registerCLIHandlers } from '../../handlers/cliHandlers'
 
 const mockRunCLIPrompt = vi.mocked(cliService.runCLIPrompt)
 
-function buildIpcMain() {
+interface FakeIpcMain {
+  handle: Mock<(channel: string, fn: (...args: unknown[]) => unknown) => void>
+  getHandler: (channel: string) => (...args: unknown[]) => unknown
+}
+
+function buildIpcMain(): FakeIpcMain {
   const handlers = new Map<string, (...args: unknown[]) => unknown>()
   return {
     handle: vi.fn((channel: string, fn: (...args: unknown[]) => unknown) => {

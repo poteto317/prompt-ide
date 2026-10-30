@@ -6,7 +6,7 @@ const validPrompt: Prompt = {
   id: 'p1',
   title: 'タイトル',
   content: 'コンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 describe('isValidPrompt', () => {
@@ -56,7 +56,8 @@ describe('isValidPrompt', () => {
   })
 
   it('フィールドが欠落している場合は無効', () => {
-    const { title: _t, ...withoutTitle } = validPrompt
+    const withoutTitle: Partial<Prompt> = { ...validPrompt }
+    delete withoutTitle.title
     expect(isValidPrompt(withoutTitle)).toBe(false)
   })
 
@@ -129,7 +130,7 @@ describe('sanitizePrompt', () => {
   it('tags が有効な string[] のとき保持する', () => {
     expect(sanitizePrompt({ ...validPrompt, tags: ['React', 'TypeScript'] })).toEqual({
       ...validPrompt,
-      tags: ['React', 'TypeScript'],
+      tags: ['React', 'TypeScript']
     })
   })
 
@@ -146,7 +147,7 @@ describe('sanitizePrompt', () => {
   it('tags の前後スペースをトリムする', () => {
     expect(sanitizePrompt({ ...validPrompt, tags: [' React ', ' TypeScript '] })).toEqual({
       ...validPrompt,
-      tags: ['React', 'TypeScript'],
+      tags: ['React', 'TypeScript']
     })
   })
 
@@ -158,7 +159,7 @@ describe('sanitizePrompt', () => {
   it('tags の重複を除去する', () => {
     expect(sanitizePrompt({ ...validPrompt, tags: ['React', 'TypeScript', 'React'] })).toEqual({
       ...validPrompt,
-      tags: ['React', 'TypeScript'],
+      tags: ['React', 'TypeScript']
     })
   })
 

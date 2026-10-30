@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { EventEmitter } from 'node:events'
 import {
   AGENT_PS_TIMEOUT_MS,
   collectDescendants,
@@ -12,12 +13,15 @@ import type { KillFn, ProcessEntry } from '../agentProcessTree'
 
 // ps は偽物に差し替える(実プロセスへシグナルを送るテストは書かない。送信は偽の kill で列ごと固定する)
 const mockExecFile = vi.hoisted(() => vi.fn())
+// Windows の既定の taskkill の起動も偽物にする(実際には起動しない)
+const mockSpawn = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>()
   return {
     ...actual,
-    default: { ...actual, execFile: mockExecFile },
-    execFile: mockExecFile
+    default: { ...actual, execFile: mockExecFile, spawn: mockSpawn },
+    execFile: mockExecFile,
+    spawn: mockSpawn
   }
 })
 
@@ -35,6 +39,7 @@ function mockExecFileOnce(err: Error | null, stdout: string): void {
 afterEach(() => {
   vi.useRealTimers()
   mockExecFile.mockReset()
+  mockSpawn.mockReset()
 })
 
 describe('parsePsPidPpid', () => {
@@ -412,5 +417,27 @@ describe('stopProcessTree(Windows)', () => {
     ).resolves.toBeUndefined()
     expect(killPty).toHaveBeenCalledOnce()
     expect(spawnTaskkill).toHaveBeenCalledExactlyOnceWith(55)
+  })
+
+  it('spawnTaskkill・killPty を渡さなければ、taskkill /pid <pid> /T /F を窓を出さずに起動し、起動の失敗(error)は握りつぶす', async () => {
+    const killer = new EventEmitter()
+    mockSpawn.mockReturnValueOnce(killer)
+    await expect(
+      stopProcessTree({ pid: 77, exited: Promise.resolve(), platform: 'win32' })
+    ).resolves.toBeUndefined()
+    expect(mockSpawn).toHaveBeenCalledExactlyOnceWith('taskkill', ['/pid', '77', '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true
+    })
+    // taskkill が無い環境などの起動の失敗は、error を聞いていないと未処理の例外になる
+    expect(killer.listenerCount('error')).toBe(1)
+    expect(() => killer.emit('error', new Error('spawn taskkill ENOENT'))).not.toThrow()
+  })
+
+  it('Windows でも、送ってよくない pid(0・1)なら taskkill を起動しない', async () => {
+    for (const pid of [0, 1]) {
+      await stopProcessTree({ pid, exited: Promise.resolve(), platform: 'win32' })
+    }
+    expect(mockSpawn).not.toHaveBeenCalled()
   })
 })

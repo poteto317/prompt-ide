@@ -2,11 +2,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { setupFolderAccessLifecycle } from '../folderAccessLifecycle'
 import type { FolderAccessManager } from '../folderAccessManager'
 
-function makeApp() {
+function makeApp(): Electron.App {
   return { on: vi.fn() } as unknown as Electron.App
 }
 
-function makeFolderAccess() {
+function makeFolderAccess(): FolderAccessManager {
   return { delete: vi.fn() } as unknown as FolderAccessManager
 }
 

@@ -33,7 +33,7 @@ function makeStream(chunks: string[], finalMessage: unknown): MockStream {
   }
 }
 
-const makeTextResponse = (text: string) => ({
+const makeTextResponse = (text: string): { content: { type: string; text: string }[] } => ({
   content: [{ type: 'text', text }]
 })
 

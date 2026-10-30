@@ -112,6 +112,17 @@ async function captureSymlink(path: string): Promise<AgentChangesUndo> {
   )
 }
 
+// 5 の形: エージェントが変えたファイルを実行前のリンクへ書き戻した(戻した直後の指紋がリンク)
+async function captureToSymlink(path: string, target = 'base'): Promise<AgentChangesUndo> {
+  write(path, 'agent')
+  return undoOf(
+    await capture([fileTarget(path)], () => {
+      unlinkSync(abs(path))
+      symlinkSync(target, abs(path))
+    })
+  )
+}
+
 // パスの今の状態(取り消しが何も書かなかったことを確かめる)
 function stateOf(path: string): string {
   if (!existsSync(abs(path)) && !isSymlink(path)) return 'absent'
@@ -359,6 +370,19 @@ describe('executeAgentChangesUndo(取り消し)', () => {
     expect(leftoverTemps()).toEqual([])
   })
 
+  it('リンクへ戻したファイルを、指す先が戻した直後のままなら書き戻す', async () => {
+    const undo = await captureToSymlink('m')
+    expect(undo.items[0].after).toEqual({ kind: 'symlink', target: 'base' })
+    const { trash } = createFakeTrash()
+    expect(await executeAgentChangesUndo({ folderPath: folder, undo, trash })).toEqual({
+      kind: 'done',
+      restoredPaths: ['m'],
+      trashedPaths: []
+    })
+    expect(stateOf('m')).toBe('file:644:agent')
+    expect(leftoverTemps()).toEqual([])
+  })
+
   it('リンクを作り直す', async () => {
     const { trash } = createFakeTrash()
     symlinkSync('x', abs('k'))
@@ -433,12 +457,30 @@ describe('executeAgentChangesUndo(取り消し)', () => {
         }
       ],
       [
-        'リンクの指す先が変わった',
+        'リンクからファイルへ戻したパスが、別の指す先のリンクに置き換わった',
         async () => {
           const undo = await captureSymlink('l')
           unlinkSync(abs('l'))
           symlinkSync('y', abs('l'))
           return { undo, path: 'l' }
+        }
+      ],
+      [
+        '戻した直後のリンクの指す先が変わった',
+        async () => {
+          const undo = await captureToSymlink('m')
+          unlinkSync(abs('m'))
+          symlinkSync('other', abs('m'))
+          return { undo, path: 'm' }
+        }
+      ],
+      [
+        '戻した直後のリンクがファイルに置き換わった',
+        async () => {
+          const undo = await captureToSymlink('m')
+          unlinkSync(abs('m'))
+          writeFileSync(abs('m'), 'base')
+          return { undo, path: 'm' }
         }
       ],
       [

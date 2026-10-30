@@ -9,12 +9,12 @@ const mockImportPromptsFromFile = vi.hoisted(() => vi.fn())
 
 vi.mock('../../promptStore', () => ({
   loadPrompts: mockLoadPrompts,
-  savePrompts: mockSavePrompts,
+  savePrompts: mockSavePrompts
 }))
 
 vi.mock('../../promptTransferService', () => ({
   exportPromptsToFile: mockExportPromptsToFile,
-  importPromptsFromFile: mockImportPromptsFromFile,
+  importPromptsFromFile: mockImportPromptsFromFile
 }))
 
 import { registerPromptsHandlers } from '../../handlers/promptsHandlers'
@@ -27,7 +27,7 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
   return call[1] as (...args: unknown[]) => unknown
 }
 
-function makeEvent(senderId: number) {
+function makeEvent(senderId: number): { sender: { id: number } } {
   return { sender: { id: senderId } }
 }
 
@@ -35,7 +35,7 @@ const samplePrompt: Prompt = {
   id: 'p1',
   title: 'タイトル',
   content: 'コンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 beforeEach(() => {
@@ -80,15 +80,15 @@ describe('registerPromptsHandlers', () => {
     })
 
     it('payload が null のとき "引数は配列である必要があります" エラーをスロー', async () => {
-      await expect(
-        getRegisteredHandler('prompts:save')(makeEvent(1), null)
-      ).rejects.toThrow('引数は配列である必要があります')
+      await expect(getRegisteredHandler('prompts:save')(makeEvent(1), null)).rejects.toThrow(
+        '引数は配列である必要があります'
+      )
     })
 
     it('id が string でない要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
       await expect(
         getRegisteredHandler('prompts:save')(makeEvent(1), [
-          { id: 123, title: 'T', content: 'C', createdAt: 1 },
+          { id: 123, title: 'T', content: 'C', createdAt: 1 }
         ])
       ).rejects.toThrow('プロンプトの形式が不正です')
       expect(mockSavePrompts).not.toHaveBeenCalled()
@@ -97,7 +97,7 @@ describe('registerPromptsHandlers', () => {
     it('title が欠落している要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
       await expect(
         getRegisteredHandler('prompts:save')(makeEvent(1), [
-          { id: 'p1', content: 'C', createdAt: 1 },
+          { id: 'p1', content: 'C', createdAt: 1 }
         ])
       ).rejects.toThrow('プロンプトの形式が不正です')
     })
@@ -105,7 +105,7 @@ describe('registerPromptsHandlers', () => {
     it('createdAt が number でない要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
       await expect(
         getRegisteredHandler('prompts:save')(makeEvent(1), [
-          { id: 'p1', title: 'T', content: 'C', createdAt: '2024' },
+          { id: 'p1', title: 'T', content: 'C', createdAt: '2024' }
         ])
       ).rejects.toThrow('プロンプトの形式が不正です')
     })
@@ -139,9 +139,9 @@ describe('registerPromptsHandlers', () => {
     })
 
     it('配列内の null 要素があると "プロンプトの形式が不正です" エラーをスロー', async () => {
-      await expect(
-        getRegisteredHandler('prompts:save')(makeEvent(1), [null])
-      ).rejects.toThrow('プロンプトの形式が不正です')
+      await expect(getRegisteredHandler('prompts:save')(makeEvent(1), [null])).rejects.toThrow(
+        'プロンプトの形式が不正です'
+      )
     })
   })
 

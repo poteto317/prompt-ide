@@ -115,11 +115,24 @@ vi.mock('../agentNotificationLifecycle', () => ({
 vi.mock('../handlers/agentNotificationHandlers', () => ({
   registerAgentNotificationHandlers: mockRegisterAgentNotificationHandlers
 }))
+// app.isPackaged・app.dock はテストごとに差し替える(beforeEach で開発版・Dock 無しに戻す)
+const mockApp = vi.hoisted(() => ({
+  getPath: vi.fn(() => '/mock/userData'),
+  isPackaged: false,
+  dock: undefined as { setBadge: (text: string) => void } | undefined
+}))
+const mockNotificationIsSupported = vi.hoisted(() => vi.fn(() => true))
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/mock/userData') },
+  app: mockApp,
   shell: { openExternal: vi.fn() },
   BrowserWindow: { fromWebContents: mockFromWebContents },
-  Notification: vi.fn()
+  Notification: Object.assign(vi.fn(), { isSupported: mockNotificationIsSupported })
+}))
+// 取り消しの実行は差し替え、組み立てが渡す引数だけを見る(上限の定数は本物を使う)
+const mockExecuteAgentChangesUndo = vi.hoisted(() => vi.fn())
+vi.mock('../agentChangesUndo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../agentChangesUndo')>()),
+  executeAgentChangesUndo: mockExecuteAgentChangesUndo
 }))
 vi.mock('../agentSessionLifecycle', () => ({
   setupAgentSessionLifecycle: mockSetupAgentSessionLifecycle
@@ -198,7 +211,17 @@ const mockIpcMain = { handle: mockHandle } as never
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockApp.isPackaged = false
+  mockApp.dock = undefined
 })
+
+// 通知の center の組み立てに渡した依存
+function notificationCenterDeps(): {
+  isSupported: () => boolean
+  setDockBadge: (text: string) => void
+} {
+  return mockCreateAgentNotificationCenter.mock.calls[0][0] as never
+}
 
 afterEach(() => {
   vi.useRealTimers()
@@ -371,6 +394,79 @@ describe('registerIpcHandlers', () => {
       // 通知の実物は agentNotificationRuntime.ts のものを注入する
       createNotification: mockCreateElectronAgentNotification
     })
+  })
+
+  it('通知の対応の有無は、呼ばれたときに Notification.isSupported で調べる', () => {
+    registerIpcHandlers(mockIpcMain)
+    expect(mockNotificationIsSupported).not.toHaveBeenCalled()
+    mockNotificationIsSupported.mockReturnValueOnce(false)
+    expect(notificationCenterDeps().isSupported()).toBe(false)
+    expect(mockNotificationIsSupported).toHaveBeenCalledOnce()
+  })
+
+  it('Dock があればバッジを app.dock.setBadge で付け、Dock が無い環境(macOS 以外)では何もしない', () => {
+    registerIpcHandlers(mockIpcMain)
+    const { setDockBadge } = notificationCenterDeps()
+    expect(() => setDockBadge('1')).not.toThrow()
+    const setBadge = vi.fn()
+    mockApp.dock = { setBadge }
+    setDockBadge('2')
+    expect(setBadge).toHaveBeenCalledExactlyOnceWith('2')
+  })
+
+  it('開発版(app.isPackaged でない)では、hooks と区別のログを console.log へ出す', () => {
+    registerIpcHandlers(mockIpcMain)
+    const hooksOptions = (mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0] as {
+      devLog: ((line: string) => void) | null
+    }
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
+    const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    try {
+      hooksOptions.devLog?.('hooks line')
+      deps.attributionDevLog?.('attribution line')
+      expect(logSpy.mock.calls).toEqual([['hooks line'], ['attribution line']])
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
+  it('配布版(app.isPackaged)では、hooks と区別のログを出さない(null を渡す)', () => {
+    mockApp.isPackaged = true
+    registerIpcHandlers(mockIpcMain)
+    expect((mockCreateAgentHooksRuntime.mock.calls[0] as unknown[])[0]).toMatchObject({
+      devLog: null
+    })
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
+    const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
+    expect(deps.attributionDevLog).toBeNull()
+  })
+
+  it('記録の registry の取り消しは、許可のフォルダ・控え・ゴミ箱(moveToTrash)で executeAgentChangesUndo を呼ぶ', async () => {
+    registerIpcHandlers(mockIpcMain)
+    const registry = mockSetupAgentBaselineLifecycle.mock.calls[0][1] as AgentBaselineRegistry
+    const deps = (registry as unknown as { deps: AgentBaselineRegistryDeps }).deps
+    const execution = { kind: 'done', restoredPaths: [], trashedPaths: [] }
+    mockExecuteAgentChangesUndo.mockResolvedValueOnce(execution)
+    const undo = { undoId: 1, operation: 'file', dir: '/tmp/undo', items: [] } as never
+    await expect(deps.executeUndo('/folder', undo)).resolves.toBe(execution)
+    expect(mockExecuteAgentChangesUndo).toHaveBeenCalledExactlyOnceWith({
+      folderPath: '/folder',
+      undo,
+      trash: mockMoveToTrash
+    })
+  })
+
+  it('起動時の掃除が失敗しても、組み立ては続き、失敗を握りつぶす(未処理の拒否にしない)', async () => {
+    // vi.fn は戻り値の Promise に結果の追跡の then を付けるため、unhandledRejection では検出できない。
+    // 返す Promise に catch が付けられ、その catch が拒否を解決に変えることを直接確かめる
+    const rejected = Promise.reject(new Error('sweep failed'))
+    const catchSpy = vi.spyOn(rejected, 'catch')
+    mockSweepStaleBaselineTempDirs.mockReturnValueOnce(rejected)
+    expect(() => registerIpcHandlers(mockIpcMain)).not.toThrow()
+    expect(catchSpy).toHaveBeenCalledOnce()
+    await expect(catchSpy.mock.results[0].value).resolves.toBeUndefined()
+    expect(mockRegisterAgentChangesHandlers).toHaveBeenCalledOnce()
   })
 
   it('エージェントの変更の記録の寿命と IPC に、ファイル操作と同じ FolderAccessManager・同じ記録の registry・ゴミ箱・取り消しの控えの置き場所と上限を渡し、userData の下に hook の無いディレクトリを用意する', () => {

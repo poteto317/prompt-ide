@@ -20,7 +20,7 @@ function getRegisteredHandler(channel: string): (...args: unknown[]) => unknown 
   return call[1] as (...args: unknown[]) => unknown
 }
 
-function makeEvent() {
+function makeEvent(): { sender: { id: number } } {
   return { sender: { id: 1 } }
 }
 
@@ -78,14 +78,16 @@ describe('registerProgressHandlers', () => {
     })
 
     it('不正な形式の要素があると saveTasks は呼ばれない', async () => {
-      await expect(getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])).rejects.toThrow()
+      await expect(
+        getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])
+      ).rejects.toThrow()
       expect(mockSaveTasks).not.toHaveBeenCalled()
     })
 
     it('不正な形式の要素があると "タスクデータの形式が不正です" を含むエラーをスロー', async () => {
-      await expect(
-        getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])
-      ).rejects.toThrow('タスクデータの形式が不正です')
+      await expect(getRegisteredHandler('progress:save')(makeEvent(), [{ id: 1 }])).rejects.toThrow(
+        'タスクデータの形式が不正です'
+      )
       expect(mockSaveTasks).not.toHaveBeenCalled()
     })
   })

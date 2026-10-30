@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import type { Mock } from 'vitest'
 
 const mockSpawn = vi.hoisted(() => vi.fn())
 
@@ -10,7 +11,16 @@ vi.mock('node:child_process', () => ({
 
 import { runCLIPrompt } from '../cliService'
 
-function makeChild() {
+type FakeStream = EventEmitter & { setEncoding: Mock }
+
+interface FakeChild extends EventEmitter {
+  stdout: FakeStream
+  stderr: FakeStream
+  stdin: { write: Mock; end: Mock; on: Mock }
+  kill: Mock
+}
+
+function makeChild(): FakeChild {
   const stdout = Object.assign(new EventEmitter(), { setEncoding: vi.fn() })
   const stderr = Object.assign(new EventEmitter(), { setEncoding: vi.fn() })
   const stdin = { write: vi.fn(), end: vi.fn(), on: vi.fn() }

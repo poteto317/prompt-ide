@@ -115,6 +115,18 @@ describe('createAgentHooksRuntime', () => {
     expect(deps.platform).toBe(process.platform)
   })
 
+  it('版の確認に渡す stat は、実物のファイルの情報を返し、無いパスでは失敗する(ファイルの下のパスは ENOENT か ENOTDIR)', async () => {
+    createAgentHooksRuntime(createOptions())
+    const { stat } = firstArg(mockCreateClaudeVersionReader) as {
+      stat: (path: string) => Promise<{ isFile(): boolean }>
+    }
+    // 実行中の node 本体は必ずあるファイル
+    expect((await stat(process.execPath)).isFile()).toBe(true)
+    await expect(stat(join(process.execPath, 'no-such-child'))).rejects.toMatchObject({
+      code: expect.stringMatching(/^(ENOENT|ENOTDIR)$/)
+    })
+  })
+
   it('版の確認の cmd.exe は ComSpec の絶対パス(無ければ SystemRoot の System32)を渡す', () => {
     const saved = { ComSpec: process.env.ComSpec, SystemRoot: process.env.SystemRoot }
     try {
