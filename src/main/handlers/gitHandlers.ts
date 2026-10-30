@@ -1,7 +1,4 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
-import { CONFLICT_CHOICES, TAG_KINDS } from '@shared/types'
-import type { ConflictChoice, CreateTagRequest, DiscardAllEntry } from '@shared/types'
-import { isOneOf, isPlainObject } from '@shared/typeGuards'
 import {
   getGitStatus,
   stageFile,
@@ -31,97 +28,21 @@ import { moveToTrash } from '../trash'
 import type { FolderAccessManager } from '../folderAccessManager'
 import { getAllowedFolder } from './fileAccessGuard'
 import { resolveAndAssertRelativePath, resolveAndAssertStatusRelativePath } from './gitPathResolver'
+import {
+  assertBranchNameArg,
+  assertConflictChoicesArg,
+  assertConflictDigestsArg,
+  assertConflictSideArg,
+  assertCreateTagArg,
+  assertDiscardEntriesArg,
+  assertForceFlagArg,
+  assertPatchArg,
+  assertRemoteUrlArg,
+  assertStashIdArg,
+  assertStashMessageArg
+} from './gitPayloadParser'
 
-// IPC 境界は任意の値を受け付けるため、service 層(startsWith 等)が TypeError で落ちる
-// 前に引数の型を検証する。値の中身(実在するブランチか等)の検証は service 層が行う
-function assertBranchNameArg(value: unknown): asserts value is string {
-  if (typeof value !== 'string') throw new Error('Invalid branch name')
-}
-
-// force は厳密に boolean だけを受け付ける('true' 等の truthy な値で強制削除されないため)
-function assertForceFlagArg(value: unknown): asserts value is boolean {
-  if (typeof value !== 'boolean') throw new Error('Invalid force flag')
-}
-
-function assertStashMessageArg(value: unknown): asserts value is string {
-  if (typeof value !== 'string') throw new Error('Invalid stash message')
-}
-
-// 値の形式(40 桁の 16 進数)と、現在の一覧にあるかの検証は service 層が行う
-function assertStashIdArg(value: unknown): asserts value is string {
-  if (typeof value !== 'string') throw new Error('Invalid stash id')
-}
-
-// パッチの中身(対象ファイルが 1 件だけか等)の検証は service 層が行う
-function assertPatchArg(value: unknown): asserts value is string {
-  if (typeof value !== 'string') throw new Error('Invalid patch')
-}
-
-// 実行時の status との一致は service 層が確かめる。ここでは {path: string, status: 2 文字の文字列} の
-// 配列であることだけを検証する
-function assertDiscardEntriesArg(value: unknown): asserts value is DiscardAllEntry[] {
-  const valid =
-    Array.isArray(value) &&
-    value.every(
-      (entry) =>
-        typeof entry === 'object' &&
-        entry !== null &&
-        typeof entry.path === 'string' &&
-        typeof entry.status === 'string' &&
-        entry.status.length === 2
-    )
-  if (!valid) throw new Error('Invalid entries')
-}
-
-const MAX_CONFLICT_ENTRIES = 1000
-
-// 値の一致(現在のブロックの構成と同じか)は service 層が確かめる。ここでは 40 桁の 16 進の
-// 文字列の配列(最大 1000 件)であることだけを検証する
-function assertConflictDigestsArg(value: unknown): asserts value is string[] {
-  const valid =
-    Array.isArray(value) &&
-    value.length <= MAX_CONFLICT_ENTRIES &&
-    value.every((v) => typeof v === 'string' && /^[0-9a-f]{40}$/i.test(v))
-  if (!valid) throw new Error('Invalid digests')
-}
-
-// 整数の番号(文字列キー)→ 'ours' | 'theirs' | 'both' のオブジェクト(最大 1000 件)。
-// 番号がブロック数の範囲内かは service 層が確かめる。キーは Object.keys で調べるため、
-// __proto__ / constructor / prototype などの特殊キーは整数でないものとして拒否される。
-// 値は Object.keys で得たキーから読むので、prototype チェーン上の値は見ない
-function assertConflictChoicesArg(value: unknown): asserts value is Record<number, ConflictChoice> {
-  if (!isPlainObject(value)) {
-    throw new Error('Invalid choices')
-  }
-  const keys = Object.keys(value)
-  const valid =
-    keys.length <= MAX_CONFLICT_ENTRIES &&
-    keys.every((key) => /^(0|[1-9]\d{0,8})$/.test(key) && isOneOf(CONFLICT_CHOICES, value[key]))
-  if (!valid) throw new Error('Invalid choices')
-}
-
-function assertConflictSideArg(value: unknown): asserts value is 'ours' | 'theirs' {
-  if (value !== 'ours' && value !== 'theirs') throw new Error('Invalid side')
-}
-
-// { name: string, kind: 'lightweight' | 'annotated', message: string } のオブジェクトであることだけを検証する。
-// 値の中身(名前の規則・重複・メッセージの空)は service 層が検証する。余分なキーは呼び出し側で
-// 詰め直して service に渡さない
-function assertCreateTagArg(value: unknown): asserts value is CreateTagRequest {
-  if (!isPlainObject(value)) {
-    throw new Error('Invalid tag request')
-  }
-  const { name, kind, message } = value
-  const valid = typeof name === 'string' && typeof message === 'string' && isOneOf(TAG_KINDS, kind)
-  if (!valid) throw new Error('Invalid tag request')
-}
-
-// 文字列であることだけを検証する。値の中身(許可リスト・長さ・制御文字)は service 層が検証する
-function assertRemoteUrlArg(value: unknown): asserts value is string {
-  if (typeof value !== 'string') throw new Error('Invalid remote url')
-}
-
-export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
+function registerGitWorkingTreeHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:getStatus', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     return getGitStatus(allowedFolder)
@@ -136,6 +57,23 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
     await stageFile(allowedFolder, relativePath)
   })
+
+  ipcMain.handle(
+    'git:unstage',
+    async (event: IpcMainInvokeEvent, filePath: string, renamedFrom?: string) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
+      // 新パスだけを reset すると、旧パスの削除だけが index に残ったまま
+      // (D old.txt / ?? new.txt)になり、アンステージのつもりが壊れた状態を
+      // 作ってしまう(実機で再現確認済み)。旧パスも境界チェック・相対パス化
+      // した上で unstageFile へ渡し、リネーム全体を正しく取り消す
+      const relativeRenamedFrom =
+        renamedFrom === undefined
+          ? undefined
+          : await resolveAndAssertRelativePath(folderAccess, allowedFolder, renamedFrom)
+      await unstageFile(allowedFolder, relativePath, relativeRenamedFrom)
+    }
+  )
 
   ipcMain.handle('git:discardChanges', async (event: IpcMainInvokeEvent, filePath: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
@@ -170,6 +108,58 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     return discardAllChanges(allowedFolder, expected, moveToTrash)
   })
 
+  ipcMain.handle(
+    'git:getDiff',
+    async (
+      event: IpcMainInvokeEvent,
+      filePath: string,
+      staged: boolean,
+      isUntracked: boolean,
+      renamedFrom?: string
+    ) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      // gitService.getDiff は isStagedRenameDiff(staged, renamedFrom) が true の
+      // ときだけ renamedFrom を実際に使う。renderer(useDiffOperations.ts)は
+      // staged の値に関わらず gitStatusFiles の from を常に渡すため、staged: false
+      // でも律儀に境界チェックすると、gitService 側では使われもしない値の
+      // チェック失敗によって、本来成功するはずの未ステージ diff の取得ごと
+      // 失敗しうる。旧パスの境界チェック自体は必要(renderer 由来の値をそのまま
+      // pathspec へ渡すと、許可フォルダ外を指す文字列で diff を取られる余地が
+      // 残るため)だが、実際に使われる場合に限る。gitService.ts 側の判定と
+      // 同じ条件を独立に書くと、片方だけ見直されたときに認識がずれるため、
+      // 同じ関数を共有する。
+      // filePath/renamedFrom の境界チェックは互いに依存しない独立した非同期処理
+      // (realpath ベースの fs アクセス)のため、直列に await せず並行して開始する
+      const [relativePath, relativeRenamedFrom] = await Promise.all([
+        resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath),
+        isStagedRenameDiff(staged, renamedFrom)
+          ? resolveAndAssertRelativePath(folderAccess, allowedFolder, renamedFrom)
+          : Promise.resolve(undefined)
+      ])
+      return getDiff(allowedFolder, relativePath, staged, isUntracked, relativeRenamedFrom)
+    }
+  )
+
+  ipcMain.handle(
+    'git:stageHunk',
+    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
+      await stageHunk(allowedFolder, relativePath, patch)
+    }
+  )
+
+  ipcMain.handle(
+    'git:unstageHunk',
+    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
+      const allowedFolder = getAllowedFolder(folderAccess, event)
+      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
+      await unstageHunk(allowedFolder, relativePath, patch)
+    }
+  )
+}
+
+function registerGitConflictHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   // コンフリクトの解決。順序は discard 系と同じ(許可フォルダ → 引数の型 → 相対パス化 → service)
   ipcMain.handle('git:getConflictFile', async (event: IpcMainInvokeEvent, filePath: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
@@ -260,77 +250,17 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:abortMerge', async (event: IpcMainInvokeEvent) => {
     await conflictService.abortMerge(getAllowedFolder(folderAccess, event))
   })
+}
 
-  ipcMain.handle(
-    'git:unstage',
-    async (event: IpcMainInvokeEvent, filePath: string, renamedFrom?: string) => {
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
-      // 新パスだけを reset すると、旧パスの削除だけが index に残ったまま
-      // (D old.txt / ?? new.txt)になり、アンステージのつもりが壊れた状態を
-      // 作ってしまう(実機で再現確認済み)。旧パスも境界チェック・相対パス化
-      // した上で unstageFile へ渡し、リネーム全体を正しく取り消す
-      const relativeRenamedFrom =
-        renamedFrom === undefined
-          ? undefined
-          : await resolveAndAssertRelativePath(folderAccess, allowedFolder, renamedFrom)
-      await unstageFile(allowedFolder, relativePath, relativeRenamedFrom)
-    }
-  )
-
-  ipcMain.handle(
-    'git:getDiff',
-    async (
-      event: IpcMainInvokeEvent,
-      filePath: string,
-      staged: boolean,
-      isUntracked: boolean,
-      renamedFrom?: string
-    ) => {
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      // gitService.getDiff は isStagedRenameDiff(staged, renamedFrom) が true の
-      // ときだけ renamedFrom を実際に使う。renderer(useDiffOperations.ts)は
-      // staged の値に関わらず gitStatusFiles の from を常に渡すため、staged: false
-      // でも律儀に境界チェックすると、gitService 側では使われもしない値の
-      // チェック失敗によって、本来成功するはずの未ステージ diff の取得ごと
-      // 失敗しうる。旧パスの境界チェック自体は必要(renderer 由来の値をそのまま
-      // pathspec へ渡すと、許可フォルダ外を指す文字列で diff を取られる余地が
-      // 残るため)だが、実際に使われる場合に限る。gitService.ts 側の判定と
-      // 同じ条件を独立に書くと、片方だけ見直されたときに認識がずれるため、
-      // 同じ関数を共有する。
-      // filePath/renamedFrom の境界チェックは互いに依存しない独立した非同期処理
-      // (realpath ベースの fs アクセス)のため、直列に await せず並行して開始する
-      const [relativePath, relativeRenamedFrom] = await Promise.all([
-        resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath),
-        isStagedRenameDiff(staged, renamedFrom)
-          ? resolveAndAssertRelativePath(folderAccess, allowedFolder, renamedFrom)
-          : Promise.resolve(undefined)
-      ])
-      return getDiff(allowedFolder, relativePath, staged, isUntracked, relativeRenamedFrom)
-    }
-  )
-
-  ipcMain.handle(
-    'git:stageHunk',
-    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
-      await stageHunk(allowedFolder, relativePath, patch)
-    }
-  )
-
-  ipcMain.handle(
-    'git:unstageHunk',
-    async (event: IpcMainInvokeEvent, filePath: string, patch: string) => {
-      const allowedFolder = getAllowedFolder(folderAccess, event)
-      const relativePath = await resolveAndAssertRelativePath(folderAccess, allowedFolder, filePath)
-      await unstageHunk(allowedFolder, relativePath, patch)
-    }
-  )
-
+function registerGitHistoryHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:commit', async (event: IpcMainInvokeEvent, message: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await commit(allowedFolder, message)
+  })
+
+  ipcMain.handle('git:amendCommit', async (event: IpcMainInvokeEvent, message: string) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await amendCommit(allowedFolder, message)
   })
 
   ipcMain.handle('git:getLog', async (event: IpcMainInvokeEvent, limit: number, skip: number) => {
@@ -348,26 +278,18 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     return getTags(allowedFolder)
   })
 
-  ipcMain.handle('git:amendCommit', async (event: IpcMainInvokeEvent, message: string) => {
+  ipcMain.handle('git:createTag', async (event: IpcMainInvokeEvent, request: unknown) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    await amendCommit(allowedFolder, message)
+    assertCreateTagArg(request)
+    await createTag(allowedFolder, {
+      name: request.name,
+      kind: request.kind,
+      message: request.message
+    })
   })
+}
 
-  ipcMain.handle('git:push', async (event: IpcMainInvokeEvent) => {
-    const allowedFolder = getAllowedFolder(folderAccess, event)
-    await push(allowedFolder)
-  })
-
-  ipcMain.handle('git:pull', async (event: IpcMainInvokeEvent) => {
-    const allowedFolder = getAllowedFolder(folderAccess, event)
-    await pull(allowedFolder)
-  })
-
-  ipcMain.handle('git:fetch', async (event: IpcMainInvokeEvent) => {
-    const allowedFolder = getAllowedFolder(folderAccess, event)
-    await fetchRemote(allowedFolder)
-  })
-
+function registerGitBranchHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:checkoutBranch', async (event: IpcMainInvokeEvent, branchName: string) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await checkoutBranch(allowedFolder, branchName)
@@ -394,7 +316,9 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     assertBranchNameArg(branchName)
     return mergeBranch(allowedFolder, branchName)
   })
+}
 
+function registerGitStashHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
   ipcMain.handle('git:getStashes', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     return getStashes(allowedFolder)
@@ -417,15 +341,22 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     assertStashIdArg(sha)
     await stashDrop(allowedFolder, sha)
   })
+}
 
-  ipcMain.handle('git:createTag', async (event: IpcMainInvokeEvent, request: unknown) => {
+function registerGitRemoteHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
+  ipcMain.handle('git:push', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    assertCreateTagArg(request)
-    await createTag(allowedFolder, {
-      name: request.name,
-      kind: request.kind,
-      message: request.message
-    })
+    await push(allowedFolder)
+  })
+
+  ipcMain.handle('git:pull', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await pull(allowedFolder)
+  })
+
+  ipcMain.handle('git:fetch', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    await fetchRemote(allowedFolder)
   })
 
   // service の第 3 引数以降(打ち切りの時間・windowsPaths)はテスト用。renderer から届いた余分な引数は渡さない
@@ -445,4 +376,13 @@ export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
     const allowedFolder = getAllowedFolder(folderAccess, event)
     await pushSetUpstream(allowedFolder)
   })
+}
+
+export function registerGitHandlers(ipcMain: IpcMain, folderAccess: FolderAccessManager): void {
+  registerGitWorkingTreeHandlers(ipcMain, folderAccess)
+  registerGitConflictHandlers(ipcMain, folderAccess)
+  registerGitHistoryHandlers(ipcMain, folderAccess)
+  registerGitBranchHandlers(ipcMain, folderAccess)
+  registerGitStashHandlers(ipcMain, folderAccess)
+  registerGitRemoteHandlers(ipcMain, folderAccess)
 }

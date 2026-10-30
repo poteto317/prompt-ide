@@ -144,7 +144,54 @@ beforeEach(() => {
   mockRealpath.mockImplementation((p: string) => Promise.resolve(p))
 })
 
+const GIT_CHANNELS = [
+  'git:abortMerge',
+  'git:addOrigin',
+  'git:amendCommit',
+  'git:checkoutBranch',
+  'git:commit',
+  'git:completeMerge',
+  'git:createBranch',
+  'git:createTag',
+  'git:deleteBranch',
+  'git:discardAll',
+  'git:discardChanges',
+  'git:discardHunk',
+  'git:fetch',
+  'git:getBranches',
+  'git:getConflictFile',
+  'git:getDiff',
+  'git:getLog',
+  'git:getStashes',
+  'git:getStatus',
+  'git:getTags',
+  'git:init',
+  'git:keepConflictFile',
+  'git:markConflictResolved',
+  'git:mergeBranch',
+  'git:pull',
+  'git:push',
+  'git:pushSetUpstream',
+  'git:removeConflictFile',
+  'git:resolveConflictBlocks',
+  'git:resolveConflictWholeFile',
+  'git:stage',
+  'git:stageHunk',
+  'git:stashDrop',
+  'git:stashPop',
+  'git:stashPush',
+  'git:unstage',
+  'git:unstageHunk'
+]
+
 describe('registerGitHandlers', () => {
+  it('登録されるチャンネルが 37 件の一覧と過不足なく一致し、重複しない', () => {
+    registerGitHandlers(mockIpcMain, makeFolderAccess())
+    const channels = mockHandle.mock.calls.map(([ch]) => ch as string)
+    expect(new Set(channels).size).toBe(channels.length)
+    expect([...channels].sort()).toEqual([...GIT_CHANNELS].sort())
+  })
+
   describe('git:getStatus', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })

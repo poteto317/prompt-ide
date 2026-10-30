@@ -6,7 +6,7 @@ import { chooseCloneParentDialog } from '../dialogService'
 import type { FolderAccessManager } from '../folderAccessManager'
 import { assertValidCloneRequest, cloneRepository } from '../gitCloneService'
 
-// IPC 境界は任意の値を受け付けるため、service が TypeError で落ちる前に引数の型を検証する(gitHandlers の
+// IPC 境界は任意の値を受け付けるため、service が TypeError で落ちる前に引数の型を検証する(gitPayloadParser の
 // assertRemoteUrlArg と同じ流儀)。値の中身(URL の許可リスト・フォルダ名の規則)は service が検証する
 function assertCloneUrlArg(value: unknown): asserts value is string {
   if (typeof value !== 'string') throw new Error('Invalid remote url')

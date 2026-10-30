@@ -120,7 +120,7 @@ export type DiscardAllResult = { status: 'done' } | { status: 'partial'; message
 // message は `コンフリクトしました（<ファイル一覧>）。解決するか、マージを中止してください`
 export type MergeBranchResult = { status: 'merged' } | { status: 'conflict'; message: string }
 
-// タグの種類。IPC 境界(gitHandlers の assertCreateTagArg)が値の検証に使うため、配列としても公開する
+// タグの種類。IPC 境界(gitPayloadParser の assertCreateTagArg)が値の検証に使うため、配列としても公開する
 export const TAG_KINDS = ['lightweight', 'annotated'] as const
 export type TagKind = (typeof TAG_KINDS)[number]
 
