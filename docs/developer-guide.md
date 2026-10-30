@@ -107,11 +107,13 @@ CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/age
 
 ### 3.5 設定の読み書きのフック
 
-設定画面の値は、読み込みと保存の形に応じて 2 つのフックを使い分ける。どちらも変更を楽観的に反映して保存し、
+設定の値(設定画面の値と、プロンプト一覧のモードのようにパネルの上に置く値)は、読み込みと保存の形に応じて 2 つのフックを使い分ける。どちらも変更を楽観的に反映して保存し、
 保存に失敗したときは固定の文言(`SETTINGS_FILE_ERROR_REASON`)を `saveError` に入れる。例外の文言は画面に出さず、`console.error` にだけ残す。
 
-- **選択式**(実行方式・エージェント CLI): `hooks/useSavedSetting.ts`。保存に失敗したら、その変更の直前の値へ戻す。
-  `useExecutionMode`・`useAgentCliKind` が使う。
+- **選択式**(実行方式・エージェント CLI・プロンプト一覧のモード): `hooks/useSavedSetting.ts`。保存に失敗したら、その変更の直前の値へ戻す。
+  `useExecutionMode`・`useAgentCliKind`・`usePromptListMode` が使う。保存の途中の変更を止める仕組みは持たない
+  (実行方式・CLI は `hooks/useAgentWorkspaceSwitching.ts` の `runSwitching`〈`useAgentWorkspace` が使う〉で止める)。`usePromptListMode` は `useRef` と `isSaving` で、保存の途中の変更を無視してから使う
+  (止めないと、連打の両方が失敗したときに画面と保存の値が食い違う)。
 - **真偽値**(エージェントの通知・送信前の確認): `hooks/useBooleanSetting.ts`。最後に保存できた値へ戻す。
   続けて変更したときに、後の変更がすでに始まっていれば、前の変更の失敗では戻さず後の変更の結果に任せる(変更の通し番号で判定する)。
 
