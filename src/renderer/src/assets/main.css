@@ -185,6 +185,57 @@ body {
   cursor: not-allowed;
 }
 
+/* プロンプト一覧の編集モード / 表示モードのトグルの行(パネルの最上部。インポート / エクスポートの行の上) */
+.prompts-panel__mode {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2d2d2d;
+  flex-shrink: 0;
+}
+
+/* 誤タップの防止が目的なので 32px 四方以上にする。見た目は .prompts-panel__toolbar-button と同じ値(あちらは変えない) */
+.prompts-panel__mode-toggle {
+  min-width: 32px;
+  min-height: 32px;
+  background: #3c3c3c;
+  border: 1px solid #555555;
+  border-radius: 3px;
+  color: #cccccc;
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.prompts-panel__mode-toggle:hover:not(:disabled):not([aria-disabled='true']) {
+  background: #4a4a4a;
+}
+
+.prompts-panel__mode-toggle:focus {
+  border-color: #007acc;
+}
+
+/* 保存の途中は aria-disabled(押したボタンのフォーカスを残すため disabled にしない。L-157)。:disabled と同じ見た目にする */
+.prompts-panel__mode-toggle:disabled,
+.prompts-panel__mode-toggle[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 保存の失敗の文言。空の段落も DOM に残す(常設の aria-live の領域。L-153)ので、空のときは余白を消す */
+.prompts-panel__mode-error {
+  margin: 0;
+  padding-top: 2px;
+  color: #f48771;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.prompts-panel__mode-error:empty {
+  padding: 0;
+}
+
 .prompts-panel__search {
   padding: 6px 8px;
   border-bottom: 1px solid #2d2d2d;

@@ -15,6 +15,7 @@ import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
 import { makeAgentReferencesPanelState } from '../../__tests__/makeAgentReferencesState'
+import { makePromptListModePanelState } from '../../__tests__/makePromptListModePanelState'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -141,7 +142,8 @@ const defaultProps = {
     lockedReason: null,
     onSelect: vi.fn()
   },
-  agentReferences: null as AgentReferencesPanelState | null
+  agentReferences: null as AgentReferencesPanelState | null,
+  promptListMode: makePromptListModePanelState()
 }
 
 describe('Sidebar', () => {
@@ -456,5 +458,30 @@ describe('Sidebar: 履歴のエントリごとの操作の受け渡し', () => {
     await userEvent.click(screen.getByRole('button', { name: 'このセッションで再開' }))
     expect(onResumeHistoryEntry).toHaveBeenCalledExactlyOnceWith(entry)
     expect(onRerunHistoryEntry).not.toHaveBeenCalled()
+  })
+})
+
+describe('Sidebar: 一覧の編集モード / 表示モードの受け渡し', () => {
+  it('promptListMode をプロンプトパネルのトグルと一覧へ渡す(渡し忘れ・取り違えを確かめる。L-060)', async () => {
+    const onChange = vi.fn()
+    render(
+      <Sidebar
+        activePanel="prompts"
+        {...defaultProps}
+        prompts={[{ id: 'p1', title: 'プロンプト1', content: '内容1', createdAt: 1000000 }]}
+        promptListMode={makePromptListModePanelState({
+          mode: 'view',
+          saveError: 'モードの設定を保存できませんでした: 理由',
+          onChange
+        })}
+      />
+    )
+    const toggle = screen.getByRole('button', { name: '編集モード' })
+    expect(toggle).toHaveTextContent('編集モード: オフ')
+    expect(screen.queryByRole('button', { name: 'プロンプトを編集' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'プロンプトを削除' })).not.toBeInTheDocument()
+    expect(screen.getByText('モードの設定を保存できませんでした: 理由')).toBeInTheDocument()
+    await userEvent.click(toggle)
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('edit')
   })
 })

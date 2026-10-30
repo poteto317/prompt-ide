@@ -6,6 +6,7 @@ import { toAnnouncementText } from '../lib/announcementText'
 import type { EditorSelectionRangeState } from './useEditorSelectionRange'
 import { useFileSystem } from './useFileSystem'
 import { usePrompts } from './usePrompts'
+import { usePromptListMode } from './usePromptListMode'
 import { useProgressTasks } from './useProgressTasks'
 import { useGitStatus } from './useGitStatus'
 import { useGitOperations } from './useGitOperations'
@@ -40,6 +41,7 @@ import type {
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
+  PromptListModePanelState,
   RemoteSetupPanelState,
   StashPanelState
 } from '../types'
@@ -105,6 +107,8 @@ type AppState = {
   agentReferences: AgentReferencesPanelState | null
   /** エクスプローラから参照を足したとき・すでに足してあったときの読み上げの文言(App が常設の aria-live の領域に出す) */
   agentReferenceAnnouncement: string
+  /** プロンプト一覧の編集モード / 表示モード(usePromptListMode)。Sidebar → PromptsPanel へ渡す */
+  promptListMode: PromptListModePanelState
 } & AgentChangesWiring &
   Omit<AgentWorkspaceState, 'confirmStopAgent' | 'sendToAgent'> &
   ReturnType<typeof usePanelState> &
@@ -147,6 +151,7 @@ export function useAppState(): AppState {
     savedPathListenerRef.current = markAgentChangesSaved
   }, [markAgentChangesSaved])
   const prompts = usePrompts()
+  const promptListMode = usePromptListMode()
   const progress = useProgressTasks()
   const git = useGitStatus(fileSystem.folderPath)
   // ファイル全体の stage/unstage(useGitOperations)とハンク単位の stage/unstage
@@ -609,6 +614,7 @@ export function useAppState(): AppState {
     attachEditorSelection: editorSelection.attachEditor,
     agentReferences: references.panel,
     agentReferenceAnnouncement: toAnnouncementText(references.announcement),
+    promptListMode,
     ...agentChangesWiring
   }
 }

@@ -7,6 +7,7 @@ import type { ApplyOpenedFolderOptions } from '../useFileSystem'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
+import { makePromptListModePanelState } from '../../__tests__/makePromptListModePanelState'
 
 const mockUsePanelState = vi.hoisted(() =>
   vi.fn(() => ({
@@ -276,6 +277,11 @@ const mockUseExternalFileChanges = vi.hoisted(() => vi.fn((_options?: unknown) =
 const mockUseAgentWorkspace = vi.hoisted(() =>
   vi.fn<typeof import('../useAgentWorkspace').useAgentWorkspace>()
 )
+// 一覧のモードの読み書きは usePromptListMode.test.ts で確かめる。ここでは戻り値をそのまま返すこと(素通し)だけを見る
+const mockUsePromptListMode = vi.hoisted(() =>
+  vi.fn<typeof import('../usePromptListMode').usePromptListMode>()
+)
+vi.mock('../usePromptListMode', () => ({ usePromptListMode: mockUsePromptListMode }))
 vi.mock('../useAgentWorkspace', () => ({ useAgentWorkspace: mockUseAgentWorkspace }))
 vi.mock('../useExternalFileChanges', () => ({ useExternalFileChanges: mockUseExternalFileChanges }))
 
@@ -295,6 +301,7 @@ beforeEach(() => {
   // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
   mockUseStashPanel.mockReturnValue(mockStashPanel)
   mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState())
+  mockUsePromptListMode.mockReturnValue(makePromptListModePanelState())
   mockUseFileSystem.mockImplementation(defaultUseFileSystem)
   mockUsePromptExecution.mockImplementation(defaultUsePromptExecution)
 })
@@ -313,6 +320,14 @@ describe('useAppState', () => {
   it('usePrompts を呼び出す', () => {
     renderHook(() => useAppState())
     expect(mockUsePrompts).toHaveBeenCalledOnce()
+  })
+
+  it('usePromptListMode の戻り値を promptListMode としてそのまま返す', () => {
+    const state = makePromptListModePanelState({ mode: 'view', saveError: '失敗' })
+    mockUsePromptListMode.mockReturnValue(state)
+    const { result } = renderHook(() => useAppState())
+    expect(mockUsePromptListMode).toHaveBeenCalled()
+    expect(result.current.promptListMode).toBe(state)
   })
 
   it('useGitStatus を呼び出す（folderPath を引数に）', () => {

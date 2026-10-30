@@ -13,6 +13,8 @@ interface Props {
     listeners: DraggableSyntheticListeners
   }
   isRunDisabled: boolean
+  /** `編集`・`削除` を出すか(一覧の編集モードのときだけ true。false なら DOM に出さない)。省略できない(L-060) */
+  canEdit: boolean
   /** 押せない理由の要素の id(押せないときだけ渡す) */
   runDisabledReasonId?: string
   /** 実行ボタンの aria-label。省略時は「プロンプトを実行」 */
@@ -28,6 +30,7 @@ export default function PromptItemView({
   isSortable,
   dragHandleProps,
   isRunDisabled,
+  canEdit,
   runDisabledReasonId,
   runAriaLabel = PROMPT_RUN_ARIA_LABEL_LEGACY,
   onRun,
@@ -88,22 +91,27 @@ export default function PromptItemView({
         >
           実行
         </button>
-        <button
-          type="button"
-          className="prompt-item__edit-btn"
-          aria-label="プロンプトを編集"
-          onClick={onEditStart}
-        >
-          編集
-        </button>
-        <button
-          type="button"
-          className="prompt-item__delete"
-          aria-label="プロンプトを削除"
-          onClick={onDelete}
-        >
-          削除
-        </button>
+        {/* 表示モード(と読み込み中)では出さない(押せないのではなく描かない。誤タップの防止) */}
+        {canEdit && (
+          <>
+            <button
+              type="button"
+              className="prompt-item__edit-btn"
+              aria-label="プロンプトを編集"
+              onClick={onEditStart}
+            >
+              編集
+            </button>
+            <button
+              type="button"
+              className="prompt-item__delete"
+              aria-label="プロンプトを削除"
+              onClick={onDelete}
+            >
+              削除
+            </button>
+          </>
+        )}
       </div>
     </>
   )

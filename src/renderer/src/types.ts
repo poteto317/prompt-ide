@@ -11,7 +11,8 @@ import type {
   CreateTagRequest,
   FileTreeNode,
   GitStashEntry,
-  PromptExecutionMode
+  PromptExecutionMode,
+  PromptListMode
 } from '@shared/types'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 
@@ -253,6 +254,18 @@ export interface ExecutionModePanelState {
   /** 選べない理由(従来の方式の実行中・実行方式か CLI の切り替えの途中。実行中を優先)。無ければ null・省略 */
   lockedReason?: string | null
   onSelect: (mode: PromptExecutionMode) => void
+}
+
+// プロンプト一覧の編集モード / 表示モード(usePromptListMode が組み立て、useAppState → App → Sidebar → PromptsPanel へ渡す)
+export interface PromptListModePanelState {
+  /** 読み込みが終わるまでは null(トグルを押せず、`編集`・`削除` を出さない) */
+  mode: PromptListMode | null
+  /** 保存の失敗の文言(固定。トグルの下に出す)。次の保存で消える */
+  saveError: string | null
+  /** 保存の途中(押した結果)。トグルは aria-disabled にし、押しても onChange は働かない(disabled にしない。L-157) */
+  isSaving: boolean
+  /** 選んですぐ保存する。保存の途中は何もしない。失敗したら直前の値に戻し、saveError に出す(部品は完了を待たない) */
+  onChange: (mode: PromptListMode) => void
 }
 
 // 設定パネルの真偽値の設定の節(BooleanSettingSection)へ渡す値と操作(useBooleanSetting の値から組み立てる)

@@ -17,6 +17,7 @@ const defaultProps = {
   isSortable: false,
   dragHandleProps: { attributes: {} as never, listeners: {} },
   isRunDisabled: false,
+  canEdit: true,
   onRun: vi.fn(),
   onEditStart: vi.fn(),
   onDelete: vi.fn(),
@@ -111,6 +112,29 @@ describe('PromptItemView', () => {
     render(<PromptItemView {...defaultProps} onDelete={onDelete} />)
     await userEvent.click(screen.getByRole('button', { name: 'プロンプトを削除' }))
     expect(onDelete).toHaveBeenCalledOnce()
+  })
+
+  describe('canEdit(一覧の編集モード / 表示モード)', () => {
+    it('canEdit=true のとき 編集・削除 のボタンを出す', () => {
+      render(<PromptItemView {...defaultProps} canEdit />)
+      expect(screen.getByRole('button', { name: 'プロンプトを編集' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'プロンプトを削除' })).toBeInTheDocument()
+    })
+
+    it('canEdit=false のとき 編集・削除 のボタンを DOM に出さない(disabled にもしない)', () => {
+      const { container } = render(<PromptItemView {...defaultProps} canEdit={false} />)
+      expect(screen.queryByRole('button', { name: 'プロンプトを編集' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'プロンプトを削除' })).not.toBeInTheDocument()
+      expect(container.querySelector('.prompt-item__edit-btn')).toBeNull()
+      expect(container.querySelector('.prompt-item__delete')).toBeNull()
+    })
+
+    it('canEdit=false でも 実行・ピン留め・並び替えのハンドルは出す', () => {
+      render(<PromptItemView {...defaultProps} canEdit={false} isSortable />)
+      expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeEnabled()
+      expect(screen.getByRole('button', { name: 'ピン留め' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    })
   })
 
   describe('タグ表示', () => {

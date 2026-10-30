@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SETTINGS_FILE_ERROR_REASON } from '../lib/settingsMessages'
 
-// 選択式の設定(実行方式・エージェント CLI)の読み込みと保存。変更は楽観的に反映して保存し、失敗したら変更の前の値へ戻す。
+// 選択式の設定(実行方式・エージェント CLI・プロンプト一覧のモード)の読み込みと保存。変更は楽観的に反映して保存し、失敗したら変更の前の値へ戻す。
 // useBooleanSetting とは別にしている: あちらは最後に保存できた値へ戻し、後の変更が始まっていれば戻さない(L-406)ので、
-// 続けて変更したときの結果が異なる
+// 続けて変更したときの結果が異なる。保存の途中の変更は止めない: 連打が起こる使い手は自分で止める(usePromptListMode。docs/developer-guide.md 3.5)
 
 export interface UseSavedSettingOptions<TValue, TLoaded> {
   /** 保存された値を読む(描画をまたいで同じ参照を渡す) */

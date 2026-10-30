@@ -22,7 +22,8 @@ import type {
   AgentNotificationPanelState,
   AgentSendConfirmPanelState,
   AgentCliKindPanelState,
-  AgentReferencesPanelState
+  AgentReferencesPanelState,
+  PromptListModePanelState
 } from '../types'
 import type { ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
@@ -94,6 +95,8 @@ interface Props
   /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
    *  フォルダを開いているときだけで、それ以外は null。省略できない(L-060) */
   agentReferences: AgentReferencesPanelState | null
+  /** プロンプト一覧の編集モード / 表示モード(プロンプトパネルのトグルの行と、`編集`・`削除` の出し分け)。省略できない(L-060) */
+  promptListMode: PromptListModePanelState
 }
 
 export default function Sidebar({
@@ -193,7 +196,8 @@ export default function Sidebar({
   agentNotification,
   agentSendConfirm,
   agentCliKind,
-  agentReferences
+  agentReferences,
+  promptListMode
 }: Props): React.JSX.Element {
   // 送信の結果の見える文字は、見えているパネル(プロンプト・実行履歴)の 1 か所だけに出す。読み上げはパネルの外に常に置いた
   // 1 か所(AgentSendFeedbackAnnouncer)だけが担う。パネルの中に置くと、隠れたパネル(display: none)では読まれず、
@@ -243,6 +247,7 @@ export default function Sidebar({
           runAriaLabel={promptRun?.runAriaLabel}
           isActive={activePanel === 'prompts'}
           agentReferences={agentReferences}
+          promptListMode={promptListMode}
         />
       </PanelContainer>
       <PanelContainer isActive={activePanel === 'progress'}>

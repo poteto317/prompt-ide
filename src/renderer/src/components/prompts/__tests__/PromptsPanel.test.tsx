@@ -2,7 +2,9 @@ import { render, screen, act, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { AgentReferencesPanelState, Prompt } from '../../../types'
+import type { PromptListMode } from '@shared/types'
 import { makeAgentReferencesPanelState } from '../../../__tests__/makeAgentReferencesState'
+import { makePromptListModePanelState } from '../../../__tests__/makePromptListModePanelState'
 import PromptsPanel from '../PromptsPanel'
 
 // DndContext に渡された onDragEnd を捕捉し、テストから直接起動できるようにする
@@ -60,7 +62,8 @@ const defaultProps = {
   onTogglePin: vi.fn(),
   onExport: vi.fn(),
   onImport: vi.fn(),
-  agentReferences: null as AgentReferencesPanelState | null
+  agentReferences: null as AgentReferencesPanelState | null,
+  promptListMode: makePromptListModePanelState()
 }
 
 const samplePrompt: Prompt = {
@@ -546,5 +549,129 @@ describe('PromptsPanel: 参照の行', () => {
       group.compareDocumentPosition(screen.getByText('テストタイトル')) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+})
+
+describe('PromptsPanel: 一覧の編集モード / 表示モード', () => {
+  it('トグルをパネルの先頭(インポート / エクスポートの行より前)に出す', () => {
+    const { container } = render(<PromptsPanel {...defaultProps} />)
+    const toggle = screen.getByRole('button', { name: '編集モード' })
+    expect(container.querySelector('.prompts-panel')?.firstElementChild).toContainElement(toggle)
+    expect(
+      toggle.compareDocumentPosition(
+        screen.getByRole('button', { name: 'プロンプトをインポート' })
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('編集モードでは 編集・削除 を出す', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        promptListMode={makePromptListModePanelState({ mode: 'edit' })}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'プロンプトを編集' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'プロンプトを削除' })).toBeInTheDocument()
+  })
+
+  it.each<[PromptListMode | null]>([['view'], [null]])(
+    'mode が %s のときは 編集・削除 を出さず、実行・ピン留めは出す(canEdit の渡し忘れを落とす)',
+    (mode) => {
+      render(
+        <PromptsPanel
+          {...defaultProps}
+          prompts={[samplePrompt, anotherPrompt]}
+          promptListMode={makePromptListModePanelState({ mode })}
+        />
+      )
+      expect(screen.queryByRole('button', { name: 'プロンプトを編集' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'プロンプトを削除' })).not.toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: 'プロンプトを実行' })).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: 'ピン留め' })).toHaveLength(2)
+    }
+  )
+
+  it('表示モードでも 追加・インポート・エクスポート・並び替えのハンドルは出る', async () => {
+    const onAdd = vi.fn()
+    const onImport = vi.fn()
+    const onExport = vi.fn()
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        onAdd={onAdd}
+        onImport={onImport}
+        onExport={onExport}
+        promptListMode={makePromptListModePanelState({ mode: 'view' })}
+      />
+    )
+    expect(screen.getByRole('button', { name: '並び替え' })).toBeInTheDocument()
+    await userEvent.type(screen.getByRole('textbox', { name: 'タイトル' }), '新しいタイトル')
+    await userEvent.type(screen.getByRole('textbox', { name: 'プロンプト内容' }), '新しい内容')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    expect(onAdd).toHaveBeenCalledExactlyOnceWith('新しいタイトル', '新しい内容')
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトをインポート' }))
+    expect(onImport).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトをエクスポート' }))
+    expect(onExport).toHaveBeenCalledOnce()
+  })
+
+  it('プロンプトが 0 件でもトグルを出し、押せる(L-475)', () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[]}
+        promptListMode={makePromptListModePanelState({ mode: 'view' })}
+      />
+    )
+    expect(screen.getByText('プロンプトがありません')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '編集モード' })).toBeEnabled()
+  })
+
+  it('検索で 0 件になってもトグルを出し、押せる(L-475)', async () => {
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        promptListMode={makePromptListModePanelState({ mode: 'view' })}
+      />
+    )
+    await userEvent.type(screen.getByRole('searchbox', { name: 'プロンプトを検索' }), 'zzzz')
+    expect(screen.getByText('条件に一致するプロンプトはありません')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '編集モード' })).toBeEnabled()
+  })
+
+  it('トグルを押すと onChange に逆のモードを渡し、保存の失敗の文言を出す', async () => {
+    const onChange = vi.fn()
+    render(
+      <PromptsPanel
+        {...defaultProps}
+        promptListMode={makePromptListModePanelState({
+          mode: 'edit',
+          saveError: 'モードの設定を保存できませんでした: 理由',
+          onChange
+        })}
+      />
+    )
+    expect(screen.getByText('モードの設定を保存できませんでした: 理由')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '編集モード' }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('view')
+  })
+
+  it('編集フォームを開いたまま表示モードへ切り替えるとフォームを閉じる', async () => {
+    const { rerender } = render(<PromptsPanel {...defaultProps} prompts={[samplePrompt]} />)
+    await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+    expect(screen.getByRole('textbox', { name: 'タイトルを編集' })).toBeInTheDocument()
+    rerender(
+      <PromptsPanel
+        {...defaultProps}
+        prompts={[samplePrompt]}
+        promptListMode={makePromptListModePanelState({ mode: 'view' })}
+      />
+    )
+    expect(screen.queryByRole('textbox', { name: 'タイトルを編集' })).not.toBeInTheDocument()
+    expect(screen.getByText('テストタイトル')).toBeInTheDocument()
   })
 })

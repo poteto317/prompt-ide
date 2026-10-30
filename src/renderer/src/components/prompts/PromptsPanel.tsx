@@ -17,6 +17,7 @@ import {
 import type {
   AgentReferencesPanelState,
   AgentSendFeedback,
+  PromptListModePanelState,
   PromptToolId,
   Prompt
 } from '../../types'
@@ -26,6 +27,7 @@ import PromptsToolbar from './PromptsToolbar'
 import ExecutionToolSelector from './ExecutionToolSelector'
 import PromptsTagFilter from './PromptsTagFilter'
 import AgentReferenceChips from './AgentReferenceChips'
+import PromptListModeToggle from './PromptListModeToggle'
 import AgentSendFeedbackMessages from '../agent/AgentSendFeedbackMessages'
 import { usePromptFilter } from '../../hooks/usePromptFilter'
 import { useAllTags } from '../../hooks/useAllTags'
@@ -54,6 +56,8 @@ interface Props {
   runAriaLabel?: string
   /** 参照の行(エージェント CLI 方式でフォルダを開いているときだけ。それ以外は null で行を出さない)。省略できない(L-060) */
   agentReferences: AgentReferencesPanelState | null
+  /** 一覧の編集モード / 表示モード(先頭のトグルの行と、`編集`・`削除` の出し分け)。省略できない(L-060) */
+  promptListMode: PromptListModePanelState
 }
 
 export default function PromptsPanel({
@@ -72,7 +76,8 @@ export default function PromptsPanel({
   agentSend = null,
   showToolSelector = true,
   runAriaLabel,
-  agentReferences
+  agentReferences,
+  promptListMode
 }: Props): React.JSX.Element {
   const runReasonId = useId()
   const { selectedTool, selectTool } = useSelectedTool()
@@ -94,6 +99,9 @@ export default function PromptsPanel({
   // テキスト検索中またはタグ絞り込み中は並び替えを無効化
   const isSortable = !isFiltered
 
+  // 表示モードと読み込み中(null)では `編集`・`削除` を出さない(読み込み中に出すと、保存が表示モードのとき一瞬だけ削除を押せてしまう)
+  const canEdit = promptListMode.mode === 'edit'
+
   const handleRunWithTool = useCallback(
     (content: string, prompt: Prompt) => onRun(content, selectedTool, prompt),
     [onRun, selectedTool]
@@ -113,6 +121,8 @@ export default function PromptsPanel({
 
   return (
     <div className="prompts-panel">
+      {/* 一覧の編集モード / 表示モード。0 件・検索中でも常に出す(隠すとモードを戻せなくなる。L-475) */}
+      <PromptListModeToggle state={promptListMode} />
       <PromptsToolbar
         onImport={onImport}
         onExport={onExport}
@@ -160,6 +170,7 @@ export default function PromptsPanel({
                   key={prompt.id}
                   prompt={prompt}
                   isSortable={isSortable}
+                  canEdit={canEdit}
                   onDelete={onDelete}
                   onRun={handleRunWithTool}
                   onEdit={onEdit}

@@ -10,6 +10,8 @@ import PromptVariablesForm from './PromptVariablesForm'
 
 interface Props {
   prompt: Prompt
+  /** `編集`・`削除` を出すか(一覧の編集モードのときだけ true)。false になったら編集中のフォームを閉じる。省略できない(L-060) */
+  canEdit: boolean
   onDelete: (id: string) => void
   onRun: (content: string, prompt: Prompt) => void
   onEdit: (id: string, title: string, content: string, tags: string[]) => void
@@ -23,6 +25,7 @@ interface Props {
 
 export default function PromptItem({
   prompt,
+  canEdit,
   onDelete,
   onRun,
   onEdit,
@@ -34,6 +37,11 @@ export default function PromptItem({
 }: Props): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false)
   const [isFillingVariables, setIsFillingVariables] = useState(false)
+
+  // 表示モード(canEdit が false)になったら、編集中のフォームを閉じて入力を破棄する(確認は出さない)。isEditing を残したまま
+  // 隠すと、編集モードへ戻したときに初期値のフォームが突然開く隠れた状態になる(L-475)。描画の最中に戻すので、閉じる前の
+  // フォームは画面に出ない。変数の入力フォーム(isFillingVariables)は実行の操作なので閉じない
+  if (!canEdit && isEditing) setIsEditing(false)
 
   const variables = useMemo(() => extractVariables(prompt.content), [prompt.content])
 
@@ -93,6 +101,7 @@ export default function PromptItem({
         <PromptItemView
           prompt={prompt}
           isSortable={isSortable}
+          canEdit={canEdit}
           dragHandleProps={{ attributes, listeners }}
           isRunDisabled={isRunDisabled}
           runDisabledReasonId={runDisabledReasonId}

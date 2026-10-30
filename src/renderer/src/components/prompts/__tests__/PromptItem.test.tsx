@@ -29,6 +29,7 @@ const basePrompt: Prompt = {
 
 const defaultProps = {
   prompt: basePrompt,
+  canEdit: true,
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
@@ -225,6 +226,56 @@ describe('PromptItem', () => {
         await userEvent.click(screen.getByRole('button', { name: '変更を保存' }))
         expect(onEdit).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('canEdit(一覧の編集モード / 表示モード)', () => {
+    it('canEdit=false のとき 編集・削除 を出さず、実行 は出す', () => {
+      render(<PromptItem {...defaultProps} canEdit={false} />)
+      expect(screen.queryByRole('button', { name: 'プロンプトを編集' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'プロンプトを削除' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeInTheDocument()
+    })
+
+    it('編集中に canEdit が false になるとフォームを閉じ、onEdit は呼ばない', async () => {
+      const onEdit = vi.fn()
+      const { rerender } = render(<PromptItem {...defaultProps} onEdit={onEdit} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+      await userEvent.type(screen.getByRole('textbox', { name: 'タイトルを編集' }), '追記')
+      rerender(<PromptItem {...defaultProps} onEdit={onEdit} canEdit={false} />)
+      expect(screen.queryByRole('textbox', { name: 'タイトルを編集' })).not.toBeInTheDocument()
+      expect(screen.getByText('テストタイトル')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'プロンプトを実行' })).toBeInTheDocument()
+      expect(onEdit).not.toHaveBeenCalled()
+    })
+
+    it('閉じた後に canEdit を true に戻してもフォームは開かず、開き直すと入力は破棄されている(L-475)', async () => {
+      const { rerender } = render(<PromptItem {...defaultProps} />)
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+      const titleInput = screen.getByRole('textbox', { name: 'タイトルを編集' })
+      await userEvent.clear(titleInput)
+      await userEvent.type(titleInput, '破棄される変更')
+      rerender(<PromptItem {...defaultProps} canEdit={false} />)
+      rerender(<PromptItem {...defaultProps} canEdit />)
+      expect(screen.queryByRole('textbox', { name: 'タイトルを編集' })).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを編集' }))
+      expect(screen.getByRole('textbox', { name: 'タイトルを編集' })).toHaveValue('テストタイトル')
+    })
+
+    it('変数の入力フォームは canEdit が false になっても閉じない', async () => {
+      const { rerender } = render(
+        <PromptItem {...defaultProps} prompt={{ ...basePrompt, content: '{{name}} さんへ' }} />
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'プロンプトを実行' }))
+      expect(screen.getByRole('textbox', { name: '変数 name の値' })).toBeInTheDocument()
+      rerender(
+        <PromptItem
+          {...defaultProps}
+          prompt={{ ...basePrompt, content: '{{name}} さんへ' }}
+          canEdit={false}
+        />
+      )
+      expect(screen.getByRole('textbox', { name: '変数 name の値' })).toBeInTheDocument()
     })
   })
 

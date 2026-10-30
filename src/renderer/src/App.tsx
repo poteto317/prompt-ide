@@ -154,6 +154,7 @@ export default function App(): React.JSX.Element {
     attachEditorSelection,
     agentReferences,
     agentReferenceAnnouncement,
+    promptListMode,
     agentChangesPanel,
     agentDiffActions,
     agentChangesReview
@@ -289,6 +290,7 @@ export default function App(): React.JSX.Element {
               onTogglePromptPin={togglePromptPin}
               onExportPrompts={exportPrompts}
               onImportPrompts={importPrompts}
+              promptListMode={promptListMode}
               onRunPrompt={runPrompt}
               isExecuting={isExecuting}
               tasks={tasks}
