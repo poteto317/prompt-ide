@@ -113,13 +113,12 @@ export function useGitRemoteOperations(
   // それらの間も待たせる。fetch とは非排他(fetch はリモート追跡ref のみ更新
   // するため、fetchRemote() のコメントと同じ理由で待たせない。ref ロック競合
   // による一時的な失敗はあり得るが、既知のトレードオフとして許容する)
+  const isPushUnavailable = (): boolean =>
+    isPushingRef.current || isPullingRef.current || lock.isAnyLocked() || isRemoteOperationDisabled
+
   const push = (): Promise<void> =>
     runRemoteOperation({
-      isBusy: () =>
-        isPushingRef.current ||
-        isPullingRef.current ||
-        lock.isAnyLocked() ||
-        isRemoteOperationDisabled,
+      isBusy: isPushUnavailable,
       setBusy: (busy) => {
         isPushingRef.current = busy
         setIsPushing(busy)
@@ -146,11 +145,7 @@ export function useGitRemoteOperations(
   // isSettingUpstream を別に持つ。開始時(onStart)にパネル上部の前回のエラーを消す(パターン 87)
   const pushSetUpstream = (): Promise<boolean> =>
     runSetUpstreamOperation({
-      isBusy: () =>
-        isPushingRef.current ||
-        isPullingRef.current ||
-        lock.isAnyLocked() ||
-        isRemoteOperationDisabled,
+      isBusy: isPushUnavailable,
       setBusy: (busy) => {
         isPushingRef.current = busy
         setIsPushing(busy)

@@ -27,11 +27,8 @@ export interface PromptRunAvailability {
   reason: string | null
 }
 
-/** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
- *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため)。
- *  送り先の CLI が送信に対応していなければ押せない。送り先の種類の手順が requiresIdle(copilot)なら、加えて「送り先のタブが
- *  中断の流れの外」で「画面の活動が入力待ち」のときだけ押せる(設計書 2026-10-22「押せる条件」。claude は活動を見ない) */
-export function getPromptRunAvailability(params: {
+/** 実行ボタンを押せるかの判定に使う状態 */
+export interface AgentRunConditions {
   mode: PromptExecutionMode | null
   isExecuting: boolean
   /** 能力の判定に使う CLI の種類。実行ボタンでは agentCapabilityCliKindOf で選ぶ(動いているタブはタブの種類〈起動の結果の種類〉、
@@ -44,7 +41,13 @@ export function getPromptRunAvailability(params: {
   activity: AgentActivity
   /** 送り先のタブが中断の流れの間か(useAgentInterrupt の isInterruptPending)。requiresIdle の種類だけが見る */
   isInterrupting: boolean
-}): PromptRunAvailability {
+}
+
+/** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
+ *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため)。
+ *  送り先の CLI が送信に対応していなければ押せない。送り先の種類の手順が requiresIdle(copilot)なら、加えて「送り先のタブが
+ *  中断の流れの外」で「画面の活動が入力待ち」のときだけ押せる(設計書 2026-10-22「押せる条件」。claude は活動を見ない) */
+export function getPromptRunAvailability(params: AgentRunConditions): PromptRunAvailability {
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   if (params.mode === 'legacy') return { disabled: params.isExecuting, reason: null }
   const { commandName } = AGENT_CLI_PROFILES[params.cliKind]
@@ -86,22 +89,14 @@ export function getRerunAvailability(params: {
  * 記録したフォルダを開いていない(isSamePath。このセッションで再開 と同じ判定・同じ順)ときは押せず、それ以外は一覧の 実行 と
  * 同じ条件(選択中のタブへ送るため。L-048)
  */
-export function getHistoryRerunAvailability(params: {
-  /** エージェントのエントリの記録したフォルダ(entry.agent.folderPath)。従来のエントリ(agent が null)は null */
-  recordedFolderPath: string | null
-  /** 今開いているフォルダ。開いていなければ null */
-  folderPath: string | null
-  mode: PromptExecutionMode | null
-  isExecuting: boolean
-  /** 能力の判定に使う CLI の種類(getPromptRunAvailability と同じ。agentCapabilityCliKindOf) */
-  cliKind: AgentCliKind
-  isSessionRunning: boolean
-  isSessionClosing: boolean
-  isSending: boolean
-  /** 送り先(選択中のタブ)の活動と中断の流れ(getPromptRunAvailability と同じ) */
-  activity: AgentActivity
-  isInterrupting: boolean
-}): PromptRunAvailability {
+export function getHistoryRerunAvailability(
+  params: AgentRunConditions & {
+    /** エージェントのエントリの記録したフォルダ(entry.agent.folderPath)。従来のエントリ(agent が null)は null */
+    recordedFolderPath: string | null
+    /** 今開いているフォルダ。開いていなければ null */
+    folderPath: string | null
+  }
+): PromptRunAvailability {
   const { recordedFolderPath, folderPath } = params
   if (recordedFolderPath === null) {
     return getRerunAvailability({ mode: params.mode, isExecuting: params.isExecuting })

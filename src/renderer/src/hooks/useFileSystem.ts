@@ -376,6 +376,46 @@ export function useFileSystem(options?: Options): FileSystemState {
     resetForFolderChange(pathsBeingCleared)
   }
 
+  // 走査に失敗しても、選択済みのフォルダは確定させる
+  const commitFolderAfterScanFailure = (
+    selectedPath: string,
+    committedOpenAtStart: number | null,
+    dirtyBaseline: DirtyBaseline | null
+  ): void => {
+    folderPathMirrorRef.current = selectedPath
+    setFolderPath(selectedPath)
+    setFileTree([])
+    // 成功経路と同様、走査中に始まった読み込みは旧フォルダのものなので捨てる
+    latestReadRef.current += 1
+    // 旧フォルダのファイルを開いたままにすると、アクセス範囲は選択先なのに
+    // 保存・再読込が不整合になる。成功経路と同じ判定で閉じる
+    if (
+      committedOpenAtStart !== null &&
+      committedOpenRef.current === committedOpenAtStart &&
+      dirtyBaseline !== null &&
+      confirmDiscardChangedSinceOpenFolder(dirtyBaseline)
+    ) {
+      closeAllTabsForFolderChange()
+    }
+  }
+
+  // 走査中に抑止した再読込をやり直す。ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
+  const retryRefreshSkippedDuringScan = async (): Promise<void> => {
+    refreshSkippedRef.current = false
+    try {
+      // 実際に現在のツリーへ反映した場合だけエラーを消す。stale で何も
+      // 反映しなかった取り直しで、後発のフォルダのエラーを消してしまわない
+      const applied = await refreshTree()
+      if (applied) setError(null)
+    } catch (err) {
+      const failure = toError(err)
+      setError(failure)
+      // ツリーが空のままになるため、クイックオープン等が理由を案内できるよう
+      // 走査エラーとしても扱う
+      setFolderLoadError(failure)
+    }
+  }
+
   // フォルダを選び(selectPath)、そのフォルダを走査して開く。openFolder(OS のダイアログで選ぶ)と
   // applyOpenedFolder(既に選ばれたパス)が共有する。dirtySnapshotAtConfirm は呼び出し側が未保存を確認した時点の
   // 状態(captureDirtySnapshot)で、省略時は選択が返った時点の未保存の有無を使う(openFolder の従来の挙動。
@@ -460,21 +500,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 残すと、アクセス範囲は新しいフォルダなのに表示だけ古いという不一致になり、
       // 以降の保存・再読込・CRUD がすべてアクセス拒否になる
       if (selectedPath !== null) {
-        folderPathMirrorRef.current = selectedPath
-        setFolderPath(selectedPath)
-        setFileTree([])
-        // 成功経路と同様、走査中に始まった読み込みは旧フォルダのものなので捨てる
-        latestReadRef.current += 1
-        // 旧フォルダのファイルを開いたままにすると、アクセス範囲は選択先なのに
-        // 保存・再読込が不整合になる。成功経路と同じ判定で閉じる
-        if (
-          committedOpenAtStart !== null &&
-          committedOpenRef.current === committedOpenAtStart &&
-          dirtyBaseline !== null &&
-          confirmDiscardChangedSinceOpenFolder(dirtyBaseline)
-        ) {
-          closeAllTabsForFolderChange()
-        }
+        commitFolderAfterScanFailure(selectedPath, committedOpenAtStart, dirtyBaseline)
       }
       const failure = toError(err)
       setError(failure)
@@ -484,22 +510,9 @@ export function useFileSystem(options?: Options): FileSystemState {
       if (scanning) pendingFolderOpenRef.current -= 1
       // 走査中に抑止した再読込を、すべての走査が終わった時点でやり直す。
       // 走査が失敗・キャンセルした経路でも必要。並行する走査があるうちは
-      // まだ抑止されるため、最後の 1 本が終わったときにだけ実行する。
-      // ここでの失敗は openFolder を reject させず、同じエラー表示へ流す
+      // まだ抑止されるため、最後の 1 本が終わったときにだけ実行する
       if (pendingFolderOpenRef.current === 0 && refreshSkippedRef.current) {
-        refreshSkippedRef.current = false
-        try {
-          // 実際に現在のツリーへ反映した場合だけエラーを消す。stale で何も
-          // 反映しなかった取り直しで、後発のフォルダのエラーを消してしまわない
-          const applied = await refreshTree()
-          if (applied) setError(null)
-        } catch (err) {
-          const failure = toError(err)
-          setError(failure)
-          // ツリーが空のままになるため、クイックオープン等が理由を案内できるよう
-          // 走査エラーとしても扱う
-          setFolderLoadError(failure)
-        }
+        await retryRefreshSkippedDuringScan()
       }
     }
   }

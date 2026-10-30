@@ -7,7 +7,7 @@ import ExplorerContextMenu from './ExplorerContextMenu'
 import NameInputDialog from './NameInputDialog'
 import CloneRepositoryEntry from './CloneRepositoryEntry'
 
-interface Props {
+export interface ExplorerPanelProps {
   folderPath: string | null
   fileTree: FileTreeNode[]
   openFilePath: string | null
@@ -53,7 +53,7 @@ export default function ExplorerPanel({
   onAddToGitignore,
   clone,
   onAddReference
-}: Props): React.JSX.Element {
+}: ExplorerPanelProps): React.JSX.Element {
   const { menu, openMenu, closeMenu } = useContextMenu()
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const handleDialogSubmit = (name: string): void => {

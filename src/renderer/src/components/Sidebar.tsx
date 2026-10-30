@@ -2,8 +2,9 @@ import PromptsPanel from './prompts/PromptsPanel'
 import ProgressPanel from './progress/ProgressPanel'
 import HistoryPanel from './history/HistoryPanel'
 import ExplorerPanel from './explorer/ExplorerPanel'
+import type { ExplorerPanelProps } from './explorer/ExplorerPanel'
 import SourceControlPanel from './source-control/SourceControlPanel'
-import type { AgentChangesPanelState } from '../hooks/useAgentChangesWiring'
+import type { SourceControlPanelProps } from './source-control/SourceControlPanel'
 import SettingsPanel from './settings/SettingsPanel'
 import PanelContainer from './PanelContainer'
 import AgentSendFeedbackAnnouncer from './agent/AgentSendFeedbackAnnouncer'
@@ -11,19 +12,11 @@ import { sidebarTitles } from '../config/sidebarTitles'
 import type {
   PromptToolId,
   Panel,
-  FileTreeNode,
   Prompt,
   Task,
   StageId,
   HistoryEntry,
   HistoryEntryActions,
-  BranchOperationKind,
-  StashPanelState,
-  DiscardAllState,
-  MergeStatePanelState,
-  GitTagPanelState,
-  RemoteSetupPanelState,
-  CloneRepositoryPanelState,
   PromptRunPanelState,
   ExecutionModePanelState,
   AgentNotificationPanelState,
@@ -31,24 +24,23 @@ import type {
   AgentCliKindPanelState,
   AgentReferencesPanelState
 } from '../types'
-import type { GitBranch, GitLogEntry, GitStatusResult, ModelSettings } from '@shared/types'
+import type { ModelSettings } from '@shared/types'
 import { alwaysUnlocked } from '../hooks/useFileOperationLock'
 
-interface Props {
+interface Props
+  extends
+    Omit<ExplorerPanelProps, 'onAddReference'>,
+    Omit<
+      SourceControlPanelProps,
+      | 'branchOperationError'
+      | 'onDiscard'
+      | 'onRefresh'
+      | 'onStage'
+      | 'onUnstage'
+      | 'operationError'
+      | 'remoteOperationError'
+    > {
   activePanel: Panel
-  folderPath: string | null
-  fileTree: FileTreeNode[]
-  openFilePath: string | null
-  onOpenFolder: () => void
-  onSelectFile: (node: FileTreeNode) => void
-  error: Error | null
-  gitignoreError: Error | null
-  onCreateFile: (parentPath: string, name: string) => void
-  onCreateDirectory: (parentPath: string, name: string) => void
-  onRenameEntry: (node: FileTreeNode, newName: string) => void
-  onDeleteEntry: (node: FileTreeNode) => void
-  /** リポジトリの clone の状態と操作(ExplorerPanel へそのまま渡す) */
-  clone: CloneRepositoryPanelState
   prompts: Prompt[]
   onAddPrompt: (title: string, content: string) => void
   onDeletePrompt: (id: string) => void
@@ -75,55 +67,13 @@ interface Props {
   getHistoryActions: (entry: HistoryEntry) => HistoryEntryActions
   /** 履歴の このセッションで再開(useAgentWorkspace の onResume。省略できない。L-060) */
   onResumeHistoryEntry: (entry: HistoryEntry) => void
-  gitStatus: GitStatusResult | null
-  gitLoading: boolean
-  gitError: Error | null
   onRefreshGitStatus: () => void
-  stagingPaths: ReadonlySet<string>
-  isLocked?: (path: string) => boolean
-  isAnyLocked?: () => boolean
   onStageFile: (path: string) => void
   onDiscardFile: (path: string) => void
   onUnstageFile: (path: string, renamedFrom?: string) => void
-  isCommitting: boolean
-  onCommit: (message: string) => Promise<boolean>
   gitOperationError: Error | null
-  isPushing: boolean
-  isPulling: boolean
-  isFetching: boolean
-  isPushBlocked: boolean
-  isPullBlocked: boolean
-  isRemoteOperationDisabled: boolean
-  onPush: () => Promise<void>
-  onPull: () => Promise<void>
-  onFetch: () => Promise<void>
   gitRemoteOperationError: Error | null
-  pendingBranchOperation: BranchOperationKind | null
-  onCheckoutBranch: (branchName: string) => Promise<void>
-  onCreateBranch: (branchName: string) => Promise<boolean>
-  onDeleteBranch: (branchName: string) => Promise<boolean>
-  onMergeBranch: (branchName: string) => Promise<void>
-  stash: StashPanelState
-  discardAll: DiscardAllState
-  mergeState: MergeStatePanelState
-  gitTag: GitTagPanelState
-  /** リモートの管理の状態と操作(SourceControlPanel へそのまま渡す) */
-  remoteSetup: RemoteSetupPanelState
-  /** セクション「エージェントの変更」の状態と操作(SourceControlPanel へそのまま渡す) */
-  agentChanges?: AgentChangesPanelState
   gitBranchOperationError: Error | null
-  onOpenDiff: (path: string, staged: boolean) => void
-  onAmend: (message: string) => Promise<boolean>
-  lastCommitMessage: string | null
-  log: GitLogEntry[]
-  branches: GitBranch[]
-  tags: string[]
-  hasMoreLog: boolean
-  isLoadingLog: boolean
-  isLoadingFolder: boolean
-  historyError: Error | null
-  onLoadMoreLog: () => void
-  onAddToGitignore: (node: FileTreeNode) => void
   hasKey: boolean
   apiKeyLoaded: boolean
   keyStoreError: string | null

@@ -1,5 +1,5 @@
 import type { OpenFile } from '../types'
-import { computeAdjacentItem } from '../hooks/computeAdjacentItem'
+import { computeAdjacentItem } from './computeAdjacentItem'
 import { isSamePath } from './pathUtils'
 
 // 開いているタブの配列(useFileSystem の openFiles)を扱う純粋な関数。React の状態・ref には触れない

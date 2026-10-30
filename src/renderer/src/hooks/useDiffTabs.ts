@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { computeAdjacentItem } from './computeAdjacentItem'
+import { computeAdjacentItem } from '../lib/computeAdjacentItem'
 import { isSamePath } from '../lib/pathUtils'
 
 /**

@@ -32,6 +32,30 @@ import AgentChangesFileItem from './AgentChangesFileItem'
 import AgentChangesScopeSelect from './AgentChangesScopeSelect'
 import AgentChangesUndoBand from './AgentChangesUndoBand'
 
+/** 「いまから記録する」「もう一度試す」の記録開始ボタン(記録中は押せず、文言が変わる) */
+function BeginRecordingButton({
+  isBeginning,
+  label,
+  onBegin
+}: {
+  isBeginning: boolean
+  label: string
+  onBegin: () => void
+}): React.JSX.Element {
+  return (
+    <div className="agent-changes__actions">
+      <button
+        type="button"
+        className="agent-changes__button"
+        disabled={isBeginning}
+        onClick={onBegin}
+      >
+        {isBeginning ? '記録しています…' : label}
+      </button>
+    </div>
+  )
+}
+
 /** セクションの props。Git 管理外かは SourceControlPanel が決め、それ以外は useAgentChangesWiring が組み立てる */
 export type AgentChangesSectionProps = AgentChangesPanelState & {
   /** Git 管理外のフォルダか(記録の前に、記録をアプリの一時領域に置く旨の 1 行を出す) */
@@ -67,6 +91,10 @@ export default function AgentChangesSection({
     consumeFocusRequest: focusRequest.consume,
     openSection
   })
+  const beginRecording = (): void => {
+    reserveFocusRestore()
+    void changes.begin()
+  }
 
   // 読み上げの要素はセクションの直前に常設する(Fragment の 1 番目の子に固定)。表示しないときも残し、表示の切り替えで
   // 作り直さない(文言ごと挿入し直したライブリージョンは読み上げられない。従来の方式で確認を終えた通知のため。パターン 151)
@@ -147,38 +175,22 @@ export default function AgentChangesSection({
           {isNoneShown && (
             <>
               <p className="agent-changes__note">{AGENT_CHANGES_NONE_HINT}</p>
-              <div className="agent-changes__actions">
-                <button
-                  type="button"
-                  className="agent-changes__button"
-                  disabled={changes.isBeginning}
-                  onClick={() => {
-                    reserveFocusRestore()
-                    void changes.begin()
-                  }}
-                >
-                  {changes.isBeginning ? '記録しています…' : 'いまから記録する'}
-                </button>
-              </div>
+              <BeginRecordingButton
+                isBeginning={changes.isBeginning}
+                label="いまから記録する"
+                onBegin={beginRecording}
+              />
             </>
           )}
           {view.kind === 'unavailable' && (
             <>
               <p className="agent-changes__note">{describeAgentChangesUnavailable(view.state)}</p>
               {canRetryAgentChanges(view.state.reason) && (
-                <div className="agent-changes__actions">
-                  <button
-                    type="button"
-                    className="agent-changes__button"
-                    disabled={changes.isBeginning}
-                    onClick={() => {
-                      reserveFocusRestore()
-                      void changes.begin()
-                    }}
-                  >
-                    {changes.isBeginning ? '記録しています…' : 'もう一度試す'}
-                  </button>
-                </div>
+                <BeginRecordingButton
+                  isBeginning={changes.isBeginning}
+                  label="もう一度試す"
+                  onBegin={beginRecording}
+                />
               )}
             </>
           )}

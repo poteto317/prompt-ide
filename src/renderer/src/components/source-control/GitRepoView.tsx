@@ -21,7 +21,7 @@ import type {
 import type { RemoteSetupFocusTarget, RemoteSetupKind } from '../../lib/remoteSetupState'
 import { isStagedFile } from '../../lib/gitUtils'
 
-interface Props {
+export interface GitRepoViewProps {
   branch: string | null
   ahead: number
   behind: number
@@ -60,11 +60,11 @@ interface Props {
   gitTag: GitTagPanelState
   /** リモートの状態バナーの種類(getRemoteSetupState(gitStatus)。SourceControlPanel が導出する) */
   remoteSetupKind: RemoteSetupKind | null
-  /** リモートの管理の状態と操作(状態バナーの「リモートを追加」「初回 push」とダイアログ) */
+  /** リモートの管理の状態と操作(状態バナーの「リモートを追加」「初回 push」とダイアログ。Git 管理外の初期化にも使う) */
   remoteSetup: RemoteSetupPanelState
   /** 追加・初回 push の成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
   requestRemoteSetupFocus: (target: RemoteSetupFocusTarget) => void
-  /** セクション「エージェントの変更」(バナーの直後・コミットの欄の上に置く) */
+  /** セクション「エージェントの変更」(バナーの直後・コミットの欄の上に置く)の状態と操作。Git 管理外かは SourceControlPanel が決める(ここでは常に Git 管理下) */
   agentChanges?: AgentChangesPanelState
 }
 
@@ -105,7 +105,7 @@ export default function GitRepoView({
   remoteSetup,
   requestRemoteSetupFocus,
   agentChanges
-}: Props): React.JSX.Element {
+}: GitRepoViewProps): React.JSX.Element {
   const stagedCount = files.filter(isStagedFile).length
   // stage/unstage(useGitOperations)実行中、ハンク操作(useDiffOperations の
   // git apply --cached)実行中、または pull(useGitRemoteOperations が working
