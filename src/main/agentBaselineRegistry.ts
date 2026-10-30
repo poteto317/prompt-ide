@@ -31,22 +31,17 @@ import type {
   AttributionSyncResult
 } from './agentChangesAttributionSync'
 import type { AgentChangesRecord, AgentChangesRunStart } from './agentChangesRecord'
-import type { AgentChangesProtectionGit, ProtectionGitContext } from './agentChangesProtectionRef'
-import type { ProtectionRefWrite } from './agentChangesProtectionRules'
-import {
-  classifyProtectionReread,
-  protectionRefName,
-  protectionRefWriteOf
-} from './agentChangesProtectionRules'
+import { protectionRefName } from './agentChangesProtectionRules'
 import {
   agentChangesRecordTempDirs,
   createAgentChangesRecord,
   dropRunsOverLimit,
   checkpointBaseOf,
-  protectionTreeEntries,
   runStartFromSnapshotResult,
   summarizeAgentChangesRecord
 } from './agentChangesRecord'
+import { AgentBaselineProtectionSync } from './agentBaselineProtectionSync'
+import type { AgentBaselineProtectionDeps } from './agentBaselineProtectionSync'
 import type {
   AgentChangesUndo,
   AgentChangesUndoCapture,
@@ -74,17 +69,11 @@ import type { AgentToolActivity, AgentToolPhase } from './agentToolActivity'
 //   列に同期を並べ、判定の区切りの差分を段階に割り当てる。戻す操作・取り消しは同じ列の中で吸収し(withAttributionAbsorbed)、
 //   PreToolUse は記録の段階が agent になるまで待たせる(waitForAgentPhase。打ち切りは markToolStartTimedOut)。手順は agentChangesAttributionSync.ts。
 //   累積の一覧・すべて戻すの行の author は attributeEntries(列の中で呼ぶ)が今の区間を比べて付ける
+// - 保護の 1 回の同期(あるべき値の算出・ref の書き込み・読み直しの分類・掃除)は agentBaselineProtectionSync.ts に分けている。
+//   ここはいつ同期を並べるかだけを決める
 
-/** 記録の tree を gc から守る ref の依存(設計書「保護の ref の名前」「残った ref の掃除」) */
-export interface AgentBaselineProtectionDeps {
-  /** main の起動ごとの ID(<pid>-<乱数 8 桁の 16 進>) */
-  instanceId: string
-  /** hook の無いディレクトリ(core.hooksPath に渡す) */
-  noHooksDir: string
-  git: AgentChangesProtectionGit
-  /** その pid のプロセスがこのマシンにあるか(掃除で使う) */
-  isProcessAlive: (pid: number) => boolean
-}
+// 公開する型の置き場は agentBaselineProtectionSync.ts に移した(従来どおりこのモジュールからも import できる)
+export type { AgentBaselineProtectionDeps } from './agentBaselineProtectionSync'
 
 export interface AgentBaselineRegistryDeps {
   /**
@@ -165,13 +154,8 @@ export class AgentBaselineRegistry {
   private readonly queue = new KeyedSerialQueue()
   // インスタンスの中で記録を取るたびに増える番号(保護の ref の名前)
   private nextRecordSerial = 1
-  // ref を作れた記録(今の記録と、捨てて削除を待っている記録)。close と掃除はこの集合だけを見る
-  private readonly protectedRecords = new Set<AgentChangesRecord>()
-  // 記録の所有者(捨てた記録の削除を、その所有者の列の同期で試し直すため)
-  private readonly recordOwners = new WeakMap<AgentChangesRecord, number>()
-  // 保護をやめた記録の番号(利用者が消した・書き換えた ref を掃除で消さない)。保護をやめたかの唯一の持ち主で、記録の側には
-  // 持たない(記録を捨てた後も掃除で残すため、番号で持つ)
-  private readonly abandonedSerials = new Set<number>()
+  // 保護の ref の同期(ref を作れた記録・保護をやめた番号・記録の所有者はこちらが持つ)
+  private readonly protection: AgentBaselineProtectionSync
   // 区別の同期(設計書「同期」)。待っている(まだ走り始めていない)同期と、並べた時点の記録(L-101・L-434)
   private readonly waitingSyncs = new Map<
     number,
@@ -181,7 +165,13 @@ export class AgentBaselineRegistry {
   private readonly runningSyncs = new Map<number, Promise<AttributionSyncResult>>()
   private closed = false
 
-  constructor(private readonly deps: AgentBaselineRegistryDeps) {}
+  constructor(private readonly deps: AgentBaselineRegistryDeps) {
+    this.protection = new AgentBaselineProtectionSync(deps.protection, {
+      isClosed: () => this.closed,
+      currentRecordOf: (ownerId) => this.records.get(ownerId),
+      currentRecords: () => this.records.values()
+    })
+  }
 
   generationOf(ownerId: number): number {
     return this.generations.get(ownerId) ?? 0
@@ -251,7 +241,7 @@ export class AgentBaselineRegistry {
       )
       if (trigger === 'send') this.appendRun(ownerId, record, { kind: 'baseline' })
       this.records.set(ownerId, record)
-      this.recordOwners.set(record, ownerId)
+      this.protection.registerOwner(record, ownerId)
       this.logAttribution(ownerId, '開始', null, record)
       // 始点を取っている間にツールが動いた・合図が下りたなら、最初の区間を片付ける同期を 1 回並べる
       if (syncNow) this.enqueueAttributionSync(ownerId)
@@ -448,7 +438,7 @@ export class AgentBaselineRegistry {
     this.records.delete(ownerId)
     // 捨てた記録の ref を消してから一時ディレクトリを消す(同じ列の中で直列。実行中の操作は最後まで行う)
     await this.queue.enqueue(ownerId, async () => {
-      await this.syncProtection(ownerId, record).catch(() => undefined)
+      await this.protection.sync(ownerId, record).catch(() => undefined)
       await this.removeDirs(agentChangesRecordTempDirs(record))
     })
   }
@@ -533,7 +523,7 @@ export class AgentBaselineRegistry {
   close(): void {
     this.closed = true
     // ref を作れた記録の ref を同期で消す(1 つが失敗しても残りを試す。L-010)。消せなかったものは次の記録の掃除で消える
-    for (const record of [...this.protectedRecords]) this.removeProtectionRefSync(record)
+    this.protection.removeAllSync()
     for (const record of this.records.values()) {
       for (const dir of agentChangesRecordTempDirs(record)) {
         try {
@@ -588,183 +578,8 @@ export class AgentBaselineRegistry {
   // 保護の同期を所有者の列の後ろに並べる(待たない)。失敗は握り、次の同期で試し直す
   private enqueueProtectionSync(ownerId: number, record: AgentChangesRecord): void {
     void this.queue
-      .enqueue(ownerId, () => this.syncProtection(ownerId, record))
+      .enqueue(ownerId, () => this.protection.sync(ownerId, record))
       .catch(() => undefined)
-  }
-
-  private protectionContextOf(record: AgentChangesRecord): ProtectionGitContext {
-    return {
-      folderPath: record.baseline.folderPath,
-      indexPath: record.baseline.indexPath,
-      noHooksDir: this.deps.protection.noHooksDir
-    }
-  }
-
-  /**
-   * 保護の同期(設計書「同期」)。先に、同じ所有者の捨てた記録で ref の削除が残っているもの(一時的な失敗で消せなかった)の削除を
-   * 試し直し、その後に record を同期する。試すのは捨てた記録の数だけで、失敗は握る(読み直しの分類は通常の同期と同じ)
-   */
-  private async syncProtection(ownerId: number, record: AgentChangesRecord): Promise<void> {
-    for (const discarded of this.discardedProtectedRecords(ownerId, record)) {
-      await this.syncProtectionValue(ownerId, discarded).catch(() => undefined)
-    }
-    await this.syncProtectionValue(ownerId, record)
-  }
-
-  // ref を作れたまま捨てた所有者の記録(今の記録でも、これから同期する記録でもないもの)。一覧は呼んだ時点で作る
-  private discardedProtectedRecords(
-    ownerId: number,
-    except: AgentChangesRecord
-  ): AgentChangesRecord[] {
-    const current = this.records.get(ownerId)
-    return [...this.protectedRecords].filter(
-      (record) =>
-        record !== except && record !== current && this.recordOwners.get(record) === ownerId
-    )
-  }
-
-  /**
-   * 1 つの記録の保護の同期。列の番が来た時点の記録から ref のあるべき値を求め、前に書けた値(record.protection.value)と
-   * 違えば作る・更新する・消す。終了中・保護をやめた記録・あるべき値を作れない(項目の tree が 1 つも無い)なら何もしない。
-   * cat-file・mktree の失敗は投げる(呼び出し側が握り、次の同期で試し直す)。ref の書き込みの失敗は読み直しで分類する。
-   * 隠れた git の記録(gitDir が文字列)は ref を作らず何もしない(設計書「保護の ref」。protectedRecords に入らないため、close・
-   * 捨てた記録の削除の試し直しの対象にもならない)
-   */
-  private async syncProtectionValue(ownerId: number, record: AgentChangesRecord): Promise<void> {
-    // 隠れた git の記録は保護の ref を作らない(隠れた git の命令は自動の gc を起こさず、gc.auto=0 も書いてある。ref を通すと、
-    // 前の記録の一時ディレクトリを消した後に並ぶ ref の削除が消えた場所に対して失敗し続ける。L-403・L-428)
-    if (record.baseline.gitDir !== null) return
-    const state = record.protection
-    if (this.closed || this.isProtectionAbandoned(record)) return
-    const ctx = this.protectionContextOf(record)
-    const desired = await this.desiredProtectionValue(ownerId, record, ctx)
-    if (desired === null || this.closed || this.isProtectionAbandoned(record)) return
-    const write = protectionRefWriteOf(state.value, desired.value)
-    if (write.kind === 'none') return
-    try {
-      await this.writeProtectionRef(record, ctx, write)
-    } catch {
-      await this.reconcileProtection(record, desired.value)
-      return
-    }
-    this.applyProtectionValue(record, desired.value)
-  }
-
-  /**
-   * ref のあるべき値。今の記録なら、項目のうち object の DB にあるものだけで作った tree(1 つも無ければ null: 何もしない)。
-   * 捨てた記録なら値は null(消す)
-   */
-  private async desiredProtectionValue(
-    ownerId: number,
-    record: AgentChangesRecord,
-    ctx: ProtectionGitContext
-  ): Promise<{ value: string | null } | null> {
-    if (this.records.get(ownerId) !== record) return { value: null }
-    const { git } = this.deps.protection
-    const entries = await git.filterExistingTrees(ctx, protectionTreeEntries(record))
-    if (entries.length === 0) return null
-    return { value: await git.makeTree(ctx, entries) }
-  }
-
-  // ref への書き込みを 1 つ行う(初めて作る前に残った ref を掃除する)。失敗は投げる
-  private async writeProtectionRef(
-    record: AgentChangesRecord,
-    ctx: ProtectionGitContext,
-    write: Exclude<ProtectionRefWrite, { kind: 'none' }>
-  ): Promise<void> {
-    const { git } = this.deps.protection
-    const { refName } = record.protection
-    switch (write.kind) {
-      case 'create':
-        await this.sweepOnce(record, ctx)
-        await git.create(ctx, refName, write.value)
-        return
-      case 'update':
-        await git.update(ctx, refName, write.value, write.expected)
-        return
-      case 'remove':
-        await git.remove(ctx, refName, write.expected)
-        return
-    }
-  }
-
-  // 記録の ref を初めて作る前に 1 回だけ、残った ref を掃除する(失敗は握る)
-  private async sweepOnce(record: AgentChangesRecord, ctx: ProtectionGitContext): Promise<void> {
-    if (record.protection.swept) return
-    record.protection.swept = true
-    await this.deps.protection.git
-      .sweep(ctx, {
-        instanceId: this.deps.protection.instanceId,
-        keepSerials: () => this.keptSerials(),
-        isProcessAlive: this.deps.protection.isProcessAlive
-      })
-      .catch(() => undefined)
-  }
-
-  // 書き込みの失敗の後に ref の今の値を読み直して分類する。読み直し自体の失敗は何も変えない(空を「無い」と読まない。L-002)
-  private async reconcileProtection(
-    record: AgentChangesRecord,
-    desired: string | null
-  ): Promise<void> {
-    const state = record.protection
-    let current: string | null
-    try {
-      current = await this.deps.protection.git.read(this.protectionContextOf(record), state.refName)
-    } catch {
-      return
-    }
-    switch (classifyProtectionReread(current, desired, state.value)) {
-      case 'applied':
-        this.applyProtectionValue(record, desired)
-        return
-      case 'retry':
-        // 前に書いた値のまま(作るときは「無い」まま)なら次の同期で試し直す
-        return
-      case 'abandoned':
-        break
-    }
-    // 利用者が消した・書き換えた。以後は作り直さず、消さない(掃除でも残す)
-    this.abandonedSerials.add(record.recordSerial)
-    this.protectedRecords.delete(record)
-  }
-
-  // 書けた値を記録に反映する。作れた・更新できた時点で終了中なら、新しい値でその場で同期で消す(close の後に残さない)
-  private applyProtectionValue(record: AgentChangesRecord, value: string | null): void {
-    record.protection.value = value
-    if (value === null) {
-      this.protectedRecords.delete(record)
-      return
-    }
-    this.protectedRecords.add(record)
-    if (this.closed) this.removeProtectionRefSync(record)
-  }
-
-  // アプリの終了の同期の削除。消せたら value を null にして集合から外す
-  private removeProtectionRefSync(record: AgentChangesRecord): void {
-    const { refName, value } = record.protection
-    if (value === null) return
-    try {
-      if (this.deps.protection.git.removeSync(this.protectionContextOf(record), refName, value)) {
-        record.protection.value = null
-        this.protectedRecords.delete(record)
-      }
-    } catch {
-      // 消せなかった ref は、次にそのリポジトリで記録を取るときの掃除で消える
-    }
-  }
-
-  // 保護をやめた記録か(利用者が ref を消した・書き換えた。以後は作り直さず消さない)
-  private isProtectionAbandoned(record: AgentChangesRecord): boolean {
-    return this.abandonedSerials.has(record.recordSerial)
-  }
-
-  // 掃除で残す番号: すべての所有者の今の記録・ref を作れた記録(削除待ちを含む)・保護をやめた番号
-  private keptSerials(): ReadonlySet<number> {
-    return new Set([
-      ...[...this.records.values()].map((record) => record.recordSerial),
-      ...[...this.protectedRecords].map((record) => record.recordSerial),
-      ...this.abandonedSerials
-    ])
   }
 
   // 同期の 1 回(列の中)。記録・世代はこの時点で読む(並べた時点ではない。L-040)。失敗は lost にして reject しない

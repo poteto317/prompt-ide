@@ -1,5 +1,6 @@
 import type { AgentCliKindSetting } from '@shared/types'
 import { DEFAULT_AGENT_CLI_KIND, isAgentCliKind } from '@shared/agentCliKinds'
+import { isPlainObject } from '@shared/typeGuards'
 import { readSettingsFile, writeSettingsFile } from './settingsFileStore'
 
 // 使うエージェント CLI の読み書き(userData/settings.json の agentCliKind。executionModeStore と同じ形で、API キー・モデルと同じ
@@ -12,10 +13,6 @@ export const AGENT_CLI_KIND_LOG_VALUE_MAX_LENGTH = 80
 /** 保存の拒否の文言(値を入れない。L-017) */
 const AGENT_CLI_KIND_INVALID_ERROR = '使うエージェント CLI が不正です'
 const READ_FAILED_LOG = '[agentCliKind] 設定ファイルを読めないため claude を使います'
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
 
 /** 設定ファイルから読んだ値を、ログに出せる長さの JSON にする(JSON から読んだ値なので JSON.stringify は投げない) */
 function describeStoredValue(value: unknown): string {

@@ -1,6 +1,7 @@
 import { isValidPrompt, sanitizePrompt } from './promptUtils'
 import { PROMPT_EXPORT_KIND } from '@shared/types'
 import type { Prompt, PromptExport } from '@shared/types'
+import { isObjectLike } from '@shared/typeGuards'
 
 /** プロンプト配列をエクスポート用エンベロープに包む（sanitize 済みで格納）。 */
 export function buildExport(prompts: Prompt[]): PromptExport {
@@ -8,7 +9,7 @@ export function buildExport(prompts: Prompt[]): PromptExport {
     kind: PROMPT_EXPORT_KIND,
     version: 1,
     exportedAt: Date.now(),
-    prompts: prompts.map(sanitizePrompt),
+    prompts: prompts.map(sanitizePrompt)
   }
 }
 
@@ -28,13 +29,13 @@ export function parseImport(raw: string): Prompt[] {
 function extractPromptList(parsed: unknown): unknown[] {
   if (Array.isArray(parsed)) return parsed
   if (
-    typeof parsed === 'object' &&
-    parsed !== null &&
-    (parsed as Record<string, unknown>).kind === PROMPT_EXPORT_KIND &&
-    (parsed as Record<string, unknown>).version === 1 &&
-    Array.isArray((parsed as Record<string, unknown>).prompts)
+    isObjectLike(parsed) &&
+    parsed.kind === PROMPT_EXPORT_KIND &&
+    parsed.version === 1 &&
+    Array.isArray(parsed.prompts)
   ) {
-    return (parsed as { prompts: unknown[] }).prompts
+    const prompts: unknown[] = parsed.prompts
+    return prompts
   }
   return []
 }

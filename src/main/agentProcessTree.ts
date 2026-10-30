@@ -38,8 +38,7 @@ export function collectDescendants(rootPid: number, table: readonly ProcessEntry
   const result: number[] = []
   const seen = new Set<number>([rootPid])
   const queue = [rootPid]
-  while (queue.length > 0) {
-    const current = queue.shift() as number
+  for (let current = queue.shift(); current !== undefined; current = queue.shift()) {
     for (const child of children.get(current) ?? []) {
       if (seen.has(child)) continue
       seen.add(child)

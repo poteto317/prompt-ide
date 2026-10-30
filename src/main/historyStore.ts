@@ -1,8 +1,9 @@
 import { createJsonCollectionStore } from './jsonCollectionStore'
 import { isValidHistoryEntry, sanitizeHistoryEntry } from './historyUtils'
+import type { StoredHistoryEntry } from './historyUtils'
 import type { HistoryEntry } from '@shared/types'
 
-const store = createJsonCollectionStore<HistoryEntry>({
+const store = createJsonCollectionStore<HistoryEntry, StoredHistoryEntry>({
   fileName: 'history.json',
   isValid: isValidHistoryEntry,
   sanitize: sanitizeHistoryEntry

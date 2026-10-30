@@ -1,3 +1,4 @@
+import { isPlainObject } from '@shared/typeGuards'
 import { AGENT_HOOK_TOOL_NAMES } from './agentHookProtocol'
 import type { AgentHookEventName } from './agentHookProtocol'
 
@@ -103,10 +104,10 @@ export function readAgentHookBodyObject(
   } catch {
     return { value: null, notes: ['unreadable-body'] }
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+  if (!isPlainObject(parsed)) {
     return { value: null, notes: ['unreadable-body'] }
   }
-  const value = parsed as Record<string, unknown>
+  const value = parsed
   // 本文のイベント名とパスのイベントを照らし合わせる(L-023)。違えばパスのイベントだけで扱う
   if (value.hook_event_name !== pathEvent) return { value: null, notes: ['event-name-mismatch'] }
   return { value, notes: [] }

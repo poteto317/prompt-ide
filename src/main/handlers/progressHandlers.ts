@@ -1,6 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { loadTasks, saveTasks } from '../progressStore'
 import { toTask } from '../taskTransformer'
+import { errorMessageOf } from '../errorMessage'
 
 export function registerProgressHandlers(ipcMain: IpcMain): void {
   ipcMain.handle('progress:load', async () => loadTasks())
@@ -11,9 +12,7 @@ export function registerProgressHandlers(ipcMain: IpcMain): void {
     try {
       tasks = payload.map(toTask)
     } catch (err) {
-      throw new Error(
-        `タスクデータの形式が不正です: ${err instanceof Error ? err.message : String(err)}`
-      )
+      throw new Error(`タスクデータの形式が不正です: ${errorMessageOf(err)}`)
     }
     return saveTasks(tasks)
   })

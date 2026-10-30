@@ -1,6 +1,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CONFLICT_CHOICES, TAG_KINDS } from '@shared/types'
 import type { ConflictChoice, CreateTagRequest, DiscardAllEntry } from '@shared/types'
+import { isOneOf, isPlainObject } from '@shared/typeGuards'
 import {
   getGitStatus,
   stageFile,
@@ -89,19 +90,13 @@ function assertConflictDigestsArg(value: unknown): asserts value is string[] {
 // __proto__ / constructor / prototype などの特殊キーは整数でないものとして拒否される。
 // 値は Object.keys で得たキーから読むので、prototype チェーン上の値は見ない
 function assertConflictChoicesArg(value: unknown): asserts value is Record<number, ConflictChoice> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('Invalid choices')
   }
   const keys = Object.keys(value)
-  const record = value as Record<string, unknown>
   const valid =
     keys.length <= MAX_CONFLICT_ENTRIES &&
-    keys.every(
-      (key) =>
-        /^(0|[1-9]\d{0,8})$/.test(key) &&
-        typeof record[key] === 'string' &&
-        (CONFLICT_CHOICES as readonly string[]).includes(record[key] as string)
-    )
+    keys.every((key) => /^(0|[1-9]\d{0,8})$/.test(key) && isOneOf(CONFLICT_CHOICES, value[key]))
   if (!valid) throw new Error('Invalid choices')
 }
 
@@ -113,15 +108,11 @@ function assertConflictSideArg(value: unknown): asserts value is 'ours' | 'their
 // 値の中身(名前の規則・重複・メッセージの空)は service 層が検証する。余分なキーは呼び出し側で
 // 詰め直して service に渡さない
 function assertCreateTagArg(value: unknown): asserts value is CreateTagRequest {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('Invalid tag request')
   }
-  const { name, kind, message } = value as Record<string, unknown>
-  const valid =
-    typeof name === 'string' &&
-    typeof message === 'string' &&
-    typeof kind === 'string' &&
-    (TAG_KINDS as readonly string[]).includes(kind)
+  const { name, kind, message } = value
+  const valid = typeof name === 'string' && typeof message === 'string' && isOneOf(TAG_KINDS, kind)
   if (!valid) throw new Error('Invalid tag request')
 }
 

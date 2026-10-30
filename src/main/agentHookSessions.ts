@@ -10,6 +10,7 @@ import type { AgentHookOwnerCli } from './agentHookReceiverRequest'
 import type { AgentHooksUnavailableReason, AgentToolActivity } from './agentToolActivity'
 import type { ClaudeVersionReader } from './agentClaudeVersion'
 import type { AgentLaunchPlan } from './agentCommand'
+import { errorMessageOf } from './errorMessage'
 
 // starter に注入する hooks の準備・結び付け・解放(設計書「起動への組み込み」、段階 3b の設計書「プラグインのフォルダ」)。prepare は
 // pty の sessionId を使わない(sessionId は spawn の直前の await を挟まない区間で振るため)。準備は種類ごとの表で決める(claude は版の確認 →
@@ -61,7 +62,6 @@ export interface AgentHookSessionsDeps {
 }
 
 const createRandomToken = (): string => randomBytes(32).toString('hex')
-const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 /** 種類ごとの準備。成功なら hooks の値、失敗なら hooks なしで起動する理由を返す(例外にしない) */
 type KindPreparer = (
@@ -103,7 +103,7 @@ export function createAgentHookSessions({
       const check = await versions.readClaudeVersion(plan)
       if (check.kind !== 'supported') return 'claude-version-unsupported'
     } catch (err) {
-      log(`[agent-hooks] claude の版を確かめられませんでした: ${messageOf(err)}`)
+      log(`[agent-hooks] claude の版を確かめられませんでした: ${errorMessageOf(err)}`)
       return 'claude-version-unsupported'
     }
     try {
@@ -113,7 +113,9 @@ export function createAgentHookSessions({
       return { configPath, token, discard: () => void removeSettingsFile(configPath) }
     } catch (err) {
       // 例外の文言にトークンは含まれない(トークンは JSON の中身だけで、パス・URL に入れない)
-      log(`[agent-hooks] hooks の受け口・設定のファイルを用意できませんでした: ${messageOf(err)}`)
+      log(
+        `[agent-hooks] hooks の受け口・設定のファイルを用意できませんでした: ${errorMessageOf(err)}`
+      )
       return 'receiver-unavailable'
     }
   }
@@ -125,7 +127,7 @@ export function createAgentHookSessions({
     try {
       ;({ baseUrl } = await receiver.ensureListening())
     } catch (err) {
-      log(`[agent-hooks] hooks の受け口を用意できませんでした: ${messageOf(err)}`)
+      log(`[agent-hooks] hooks の受け口を用意できませんでした: ${errorMessageOf(err)}`)
       return 'receiver-unavailable'
     }
     const slot = copilotPlugins.acquire()
@@ -138,7 +140,7 @@ export function createAgentHookSessions({
     } catch (err) {
       copilotPlugins.release(slot)
       // fs の例外にはパス(利用者名)が入りうるので、ログにだけ出す(画面に出さない。L-017)
-      log(`[agent-hooks] copilot の hooks のフォルダを用意できませんでした: ${messageOf(err)}`)
+      log(`[agent-hooks] copilot の hooks のフォルダを用意できませんでした: ${errorMessageOf(err)}`)
       return 'receiver-unavailable'
     }
     return { configPath: slot.dir, token, discard: () => copilotPlugins.release(slot) }
@@ -185,12 +187,12 @@ export function createAgentHookSessions({
         try {
           receiver.removeToken(token)
         } catch (err) {
-          log(`[agent-hooks] hooks のトークンを外せませんでした: ${messageOf(err)}`)
+          log(`[agent-hooks] hooks のトークンを外せませんでした: ${errorMessageOf(err)}`)
         }
         try {
           discard()
         } catch (err) {
-          log(`[agent-hooks] hooks の後始末に失敗しました: ${messageOf(err)}`)
+          log(`[agent-hooks] hooks の後始末に失敗しました: ${errorMessageOf(err)}`)
         }
       }
       if (sessionId !== null) tracker.removeSession(prepared.ownerId, sessionId)

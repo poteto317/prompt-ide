@@ -1,8 +1,9 @@
 import type { Prompt } from '@shared/types'
+import { isObjectLike } from '@shared/typeGuards'
 
 export function isValidPrompt(item: unknown): item is Prompt {
-  if (typeof item !== 'object' || item === null) return false
-  const p = item as Record<string, unknown>
+  if (!isObjectLike(item)) return false
+  const p = item
   return (
     typeof p.id === 'string' &&
     typeof p.title === 'string' &&
@@ -12,8 +13,7 @@ export function isValidPrompt(item: unknown): item is Prompt {
     // pinned は任意。存在する場合は boolean のみ許可
     (p.pinned === undefined || typeof p.pinned === 'boolean') &&
     // tags は任意。存在する場合は全要素が string の配列のみ許可
-    (p.tags === undefined ||
-      (Array.isArray(p.tags) && p.tags.every((t) => typeof t === 'string')))
+    (p.tags === undefined || (Array.isArray(p.tags) && p.tags.every((t) => typeof t === 'string')))
   )
 }
 

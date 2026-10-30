@@ -1,9 +1,10 @@
 // IPC ペイロードの共通バリデーション。各ペイロードパーサー
 // (claudePayloadParser / cliPayloadParser / settingsPayloadParser /
 // promptCancelHandlers)で同一のガードとエラーメッセージを重複させないための共有層。
+import { isPlainObject } from '@shared/typeGuards'
 
 export function assertPlainObject(payload: unknown): asserts payload is Record<string, unknown> {
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+  if (!isPlainObject(payload)) {
     throw new Error('引数はオブジェクトである必要があります')
   }
 }

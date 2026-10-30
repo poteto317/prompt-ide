@@ -26,6 +26,7 @@ import type { AgentSessionRecordStore } from './agentSessionRecordStore'
 import type { CliSessionReservations } from './cliSessionReservations'
 import { selectCliSessionId } from './cliSessionIdSelection'
 import type { AgentHookSessions, PreparedAgentHooks } from './agentHookSessions'
+import { errorMessageOf } from './errorMessage'
 
 // エージェントのセッションの起動の規則と pty の配線(設計書「IPC」「停止の契機」、セッションの再開の設計書「起動の流れ」)。
 // Electron に依存しない。IPC の受け口(送信元・ペイロードの検証、送信先の webContents への送信)は handlers/agentTerminalHandlers.ts。
@@ -357,7 +358,7 @@ export function createAgentSessionStarter({
       })
     } catch (err) {
       releaseReservation()
-      const detail = err instanceof Error ? err.message : String(err)
+      const detail = errorMessageOf(err)
       return { kind: 'failed', result: { kind: 'error', error: 'spawn-failed', detail } }
     }
     // 予約・Map・hooks は exited の解決で外す。registry が取り消した起動の停止の完了・終了・止める操作の完了は、どれも exited の

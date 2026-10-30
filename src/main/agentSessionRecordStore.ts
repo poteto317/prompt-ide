@@ -1,4 +1,5 @@
 import { isCliSessionId } from '@shared/types'
+import { isPlainObject } from '@shared/typeGuards'
 import { isEnoentError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
@@ -44,9 +45,6 @@ export interface FolderRecord {
   key: string
   ids: string[]
 }
-
-const isPlainObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /** ファイルの中身を記録にする。不正な要素(キーの無いフォルダ・UUID でない ID・重複)だけを捨て、上限に切りそろえる */
 function parseRecords(raw: string): FolderRecord[] {

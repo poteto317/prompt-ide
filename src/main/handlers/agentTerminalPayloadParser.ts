@@ -1,6 +1,7 @@
 import type { AgentLaunchRequest, AgentStartRequest } from '@shared/types'
 import { AGENT_CLI_KINDS, isAgentCliKind } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
+import { isPlainObject } from '@shared/typeGuards'
 import {
   AGENT_SLOT_ID_MAX_LENGTH,
   AGENT_SLOT_ID_PATTERN,
@@ -56,10 +57,10 @@ const hasOnlyKeys = (value: Record<string, unknown>, keys: readonly string[]): b
  * (既定の new に流さない。L-044。`-` 始まりの値が claude のオプションとして解釈される経路を断つ。L-034)
  */
 export function parseAgentLaunchRequest(value: unknown): AgentLaunchRequest {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+  if (!isPlainObject(value)) {
     throw new Error('launch はオブジェクトである必要があります')
   }
-  const launch = value as Record<string, unknown>
+  const launch = value
   if (launch.kind === 'new') {
     if (!hasOnlyKeys(launch, ['kind'])) throw new Error('launch に余分なキーがあります')
     return { kind: 'new' }

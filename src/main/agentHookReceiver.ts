@@ -10,6 +10,7 @@ import {
   readAgentHookBody
 } from './agentHookReceiverRequest'
 import type { AgentHookOwner, AgentHookRejectReason } from './agentHookReceiverRequest'
+import { errorMessageOf } from './errorMessage'
 
 // claude・copilot の http の hook の受け口(設計書「受け口」、段階 3b の設計書「受け口」)。copilot の経路は、照合の失敗・閉じた後・処理の
 // 例外でも常に 200 の空の本文を返す(状態コードの規則は agentHookResponseStatus)。本文を経路ごとに知らせにする規則(copilot の主の
@@ -54,7 +55,6 @@ interface ToolStartWait {
 
 const BEARER_PATTERN = /^Bearer ([0-9a-f]{64})$/
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex')
-const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
 
 export function createAgentHookReceiver({
   deliver,
@@ -112,7 +112,7 @@ export function createAgentHookReceiver({
       .then(
         () => 'started' as const,
         (err: unknown) => {
-          log(`[agent-hooks] ツールの開始の待ちに失敗しました: ${messageOf(err)}`)
+          log(`[agent-hooks] ツールの開始の待ちに失敗しました: ${errorMessageOf(err)}`)
           return 'failed' as const
         }
       )
@@ -168,7 +168,7 @@ export function createAgentHookReceiver({
         const attempt = new Promise<{ baseUrl: string }>((resolve, rejectListen) => {
           const created = createServer((req, res) => {
             void handle(req, res).catch((err: unknown) => {
-              log(`[agent-hooks] 要求の処理に失敗しました: ${messageOf(err)}`)
+              log(`[agent-hooks] 要求の処理に失敗しました: ${errorMessageOf(err)}`)
               // copilot の経路は 200(copilot は 5xx をツールの拒否にする)。claude の経路は今どおり 500
               respond(res, agentHookResponseStatus(req.url ?? '', 500))
             })
@@ -184,7 +184,7 @@ export function createAgentHookReceiver({
               rejectListen(err)
               return
             }
-            log(`[agent-hooks] 受け口が止まりました: ${messageOf(err)}`)
+            log(`[agent-hooks] 受け口が止まりました: ${errorMessageOf(err)}`)
             if (server === created) {
               server = null
               listening = null

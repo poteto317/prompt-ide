@@ -1,4 +1,5 @@
 import type { DiscardAllResult } from '@shared/types'
+import { errorMessageOf } from './errorMessage'
 
 // 一括の操作(「変更」セクションの「すべて取り消す」と、エージェントの変更の「すべて戻す」)に共通の手順。
 // どちらもデータを失いうるため、確認のときに見せた一覧との完全一致の照合(パターン 62)と、
@@ -53,7 +54,7 @@ export async function applyInOrder<T>(
     try {
       await apply(target)
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error)
+      const reason = errorMessageOf(error)
       const message = formatFailure(done, targets.length, reason)
       if (done > 0) return { status: 'partial', message }
       throw new Error(message, { cause: error })

@@ -4,6 +4,7 @@ import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { CONFLICT_CHOICES } from '@shared/types'
 import type { ConflictChoice, ConflictFile, ConflictUnparsableReason } from '@shared/types'
+import { isOneOf } from '@shared/typeGuards'
 import {
   DEFAULT_CONFLICT_MARKER_SIZE,
   applyConflictChoices,
@@ -209,7 +210,7 @@ async function writeFileAtomically(absolutePath: string, text: string): Promise<
 // 選択の値の検査だけを行う。ブロックの番号(キー)の範囲検査は applyConflictChoices が担う
 function assertValidChoiceValues(choices: Record<number, ConflictChoice>): void {
   for (const value of Object.values(choices)) {
-    if (!(CONFLICT_CHOICES as readonly unknown[]).includes(value)) {
+    if (!isOneOf(CONFLICT_CHOICES, value)) {
       throw new Error('Invalid choices')
     }
   }

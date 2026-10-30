@@ -1,4 +1,4 @@
-import type { ModelId, ModelSettings } from '@shared/types'
+import type { ModelSettings } from '@shared/types'
 import { AVAILABLE_MODELS } from '@shared/types'
 import { assertPlainObject } from './payloadValidators'
 
@@ -9,8 +9,8 @@ export function parseModelSettingsPayload(payload: unknown): ModelSettings {
   if (typeof modelId !== 'string') {
     throw new Error('modelId は文字列である必要があります')
   }
-  const modelIds = AVAILABLE_MODELS.map((m) => m.id) as readonly string[]
-  if (!modelIds.includes(modelId)) {
+  const model = AVAILABLE_MODELS.find((m) => m.id === modelId)
+  if (model === undefined) {
     const allowed = AVAILABLE_MODELS.map((m) => `'${m.id}'`).join(' または ')
     throw new Error(`modelId は ${allowed} である必要があります（受け取った値: ${modelId}）`)
   }
@@ -19,5 +19,5 @@ export function parseModelSettingsPayload(payload: unknown): ModelSettings {
     throw new Error('maxTokens は整数である必要があります')
   }
 
-  return { modelId: modelId as ModelId, maxTokens }
+  return { modelId: model.id, maxTokens }
 }

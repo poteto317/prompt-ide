@@ -1,3 +1,4 @@
+import { isObjectLike } from '@shared/typeGuards'
 import { createJsonCollectionStore } from './jsonCollectionStore'
 import { isValidTask } from './progressValidation'
 import { sanitizeTask } from './progressSanitize'
@@ -5,13 +6,14 @@ import { STAGE_IDS } from './progressConstants'
 import type { Stage, Task } from '@shared/types'
 
 function migrateRawTask(item: unknown): unknown {
-  if (typeof item !== 'object' || item === null) return item
-  const t = item as Record<string, unknown>
-  if (!Array.isArray(t.stages)) return item
+  if (!isObjectLike(item)) return item
+  if (!Array.isArray(item.stages)) return item
+  // Array.isArray は any[] に絞り込むため、要素を unknown として受け直す
+  const stages: readonly unknown[] = item.stages
 
   const existingIds = new Set(
-    (t.stages as unknown[])
-      .filter((s): s is Record<string, unknown> => typeof s === 'object' && s !== null)
+    stages
+      .filter(isObjectLike)
       .map((s) => s.id)
       .filter((id): id is string => typeof id === 'string')
   )
@@ -23,7 +25,7 @@ function migrateRawTask(item: unknown): unknown {
   }))
 
   if (missingStages.length === 0) return item
-  return { ...t, stages: [...(t.stages as unknown[]), ...missingStages] }
+  return { ...item, stages: [...stages, ...missingStages] }
 }
 
 const store = createJsonCollectionStore<Task>({

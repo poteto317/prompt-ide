@@ -14,6 +14,7 @@ import {
 } from 'node:fs/promises'
 import type { FileHandle } from 'node:fs/promises'
 import { SETTINGS_FILE_ERROR_REASON } from '@shared/settingsFileMessages'
+import { isPlainObject } from '@shared/typeGuards'
 import { isEnoentError, isFsError } from './fsErrors'
 import { WriteQueue } from './writeQueue'
 
@@ -44,10 +45,6 @@ export class SettingsFileError extends Error {
     super(SETTINGS_FILE_ERROR_REASON)
     this.name = 'SettingsFileError'
   }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 // 読み込みは書き込みのキューを通さない。書き込みを「一時ファイル → rename」の原子的な置き換えにしたので、

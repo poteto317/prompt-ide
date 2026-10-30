@@ -8,6 +8,7 @@ import {
   openCountOf
 } from './agentToolIntervals'
 import type { ToolIntervals } from './agentToolIntervals'
+import { errorMessageOf } from './errorMessage'
 
 // エージェントのツールの区間の追跡(設計書「ツールの区間の追跡」)。セッションごとに hooks が効いているか(pending・confirmed・
 // unconfirmed)と開いた区間を持ち、ウィンドウ(所有者)ごとのあるべき段階(idle・agent・paused)と、区別をやめる合図(lost)・
@@ -159,8 +160,6 @@ const hooksLabel = (session: SessionState | undefined): string => {
     : session.hooks.kind
 }
 
-const messageOf = (err: unknown): string => (err instanceof Error ? err.message : String(err))
-
 const flag = (value: boolean | undefined): string =>
   value === undefined ? '-' : value ? 'あり' : 'なし'
 
@@ -199,7 +198,7 @@ export function createAgentToolActivity({
     try {
       onPhaseChange(ownerId)
     } catch (err) {
-      warn(`[agent-hooks] 段階の通知に失敗しました: ${messageOf(err)}`)
+      warn(`[agent-hooks] 段階の通知に失敗しました: ${errorMessageOf(err)}`)
     }
   }
 

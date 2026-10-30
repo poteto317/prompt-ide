@@ -4,6 +4,7 @@ import type {
   AgentRevertAllEntry
 } from '@shared/types'
 import { AGENT_CHANGES_LIST_LIMIT, isAgentChangeStatus } from '@shared/types'
+import { isPlainObject } from '@shared/typeGuards'
 import { IPC_PATH_MAX_LENGTH } from './payloadValidators'
 
 // agentChanges:* の入力の型の検証(設計書「セキュリティ」)。値の中身(許可のフォルダの中か・いまの一覧に含まれるか・パッチの
@@ -37,10 +38,10 @@ export function parseAgentRevertAllEntries(value: unknown): AgentRevertAllEntry[
     throw new Error('確認の一覧が不正です')
   }
   return value.map((entry: unknown) => {
-    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+    if (!isPlainObject(entry)) {
       throw new Error('確認の一覧が不正です')
     }
-    const { path, status } = entry as Record<string, unknown>
+    const { path, status } = entry
     if (typeof path !== 'string' || path === '' || path.length > IPC_PATH_MAX_LENGTH) {
       throw new Error('確認の一覧が不正です')
     }
@@ -68,15 +69,10 @@ export function parseAgentChangesBeginTrigger(value: unknown): AgentChangesBegin
  * どれかが外れたら例外(省略を all に流さない。L-044)。値は詰め直して返す
  */
 export function parseAgentChangesScope(value: unknown): AgentChangesScope {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
+  if (!isPlainObject(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new Error(SCOPE_INVALID_MESSAGE)
   }
-  const record = value as Record<string, unknown>
+  const record = value
   const keys = Object.keys(record)
   if (record.kind === 'all' && keys.length === 1) return { kind: 'all' }
   if (

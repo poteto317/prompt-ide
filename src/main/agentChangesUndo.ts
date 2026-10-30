@@ -31,6 +31,7 @@ import {
   undoPrepareFailedMessage,
   undoStopExecution
 } from './agentChangesUndoModel'
+import { errorMessageOf } from './errorMessage'
 
 // 戻した操作の取り消し(設計書「戻した操作の取り消し(main)」)。戻す操作が書き換える各パスについて、戻す直前の状態
 // (無い・ファイルのバイト列と権限・リンクの指す先)を記録と同じアプリの一時ディレクトリへ控え、戻した直後の指紋(大きさ・SHA-256・
@@ -68,8 +69,6 @@ export interface AgentChangesUndoRecorder {
 
 const errorCode = (error: unknown): string | undefined =>
   (error as NodeJS.ErrnoException | null)?.code
-const messageOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 const removeDir = (dir: string): Promise<void> =>
   rm(dir, { recursive: true, force: true }).catch(() => undefined)
 const comparePaths = (a: { path: string }, b: { path: string }): number =>
@@ -276,7 +275,7 @@ async function checkParents(folderPath: string, path: string): Promise<ItemCheck
     } catch (error) {
       const code = errorCode(error)
       if (code === 'ENOENT' || code === 'ENOTDIR') return MISMATCH
-      return { kind: 'unreadable', reason: messageOf(error) }
+      return { kind: 'unreadable', reason: errorMessageOf(error) }
     }
   }
   return MATCH
@@ -292,7 +291,7 @@ async function checkItem(folderPath: string, item: AgentChangesUndoItem): Promis
     stat = await lstat(absolutePath)
   } catch (error) {
     if (errorCode(error) === 'ENOENT') return item.after.kind === 'absent' ? MATCH : MISMATCH
-    return { kind: 'unreadable', reason: messageOf(error) }
+    return { kind: 'unreadable', reason: errorMessageOf(error) }
   }
   const after = item.after
   try {
@@ -312,7 +311,7 @@ async function checkItem(folderPath: string, item: AgentChangesUndoItem): Promis
         return (await hashFileSha256(absolutePath)) === after.sha256 ? MATCH : MISMATCH
     }
   } catch (error) {
-    return { kind: 'unreadable', reason: messageOf(error) }
+    return { kind: 'unreadable', reason: errorMessageOf(error) }
   }
 }
 
@@ -485,7 +484,7 @@ export async function executeAgentChangesUndo(
       return undoStopExecution(progress, {
         kind: 'write-failed',
         path: item.path,
-        reason: messageOf(error)
+        reason: errorMessageOf(error)
       })
     }
     if (action === 'trash') progress.trashedPaths.push(item.path)
