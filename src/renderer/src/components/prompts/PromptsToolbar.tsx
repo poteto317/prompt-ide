@@ -6,7 +6,11 @@ interface Props {
   isExportDisabled: boolean
 }
 
-export default function PromptsToolbar({ onImport, onExport, isExportDisabled }: Props) {
+export default function PromptsToolbar({
+  onImport,
+  onExport,
+  isExportDisabled
+}: Props): React.JSX.Element {
   return (
     <div className="prompts-panel__toolbar">
       <button

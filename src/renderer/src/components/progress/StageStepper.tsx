@@ -19,7 +19,7 @@ export default function StageStepper({
   onReopen,
   onSkip,
   onAdvance
-}: Props) {
+}: Props): React.JSX.Element {
   return (
     <ul className="stage-stepper" role="list">
       {STAGES.map((definition, index) => {

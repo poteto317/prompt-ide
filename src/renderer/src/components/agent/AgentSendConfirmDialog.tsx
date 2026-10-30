@@ -6,6 +6,7 @@ import type { AgentSendConfirmDialogState, AgentSendConfirmPending } from '../..
 import { buildAgentSendPreview } from '../../lib/agentSendPreview'
 import { formatAgentUnsavedNotice } from '../../lib/agentReferenceMessages'
 import { findSendConfirmReturnTarget } from '../../lib/promptRunButton'
+import { isActivationKey } from '../../lib/activationKey'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
@@ -137,11 +138,7 @@ function AgentSendConfirmDialogBody({
         // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の送信を押し、全文を読む前に
         // 送られる。ボタンの Enter・Space の既定の動作(押す)をリピートでは止める(本文の領域の Space のスクロールは止めない)
         onKeyDownCapture={(e) => {
-          if (
-            e.repeat &&
-            (e.key === 'Enter' || e.key === ' ') &&
-            e.target instanceof HTMLButtonElement
-          ) {
+          if (e.repeat && isActivationKey(e.key) && e.target instanceof HTMLButtonElement) {
             e.preventDefault()
           }
         }}

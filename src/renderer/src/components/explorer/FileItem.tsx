@@ -1,4 +1,5 @@
 import type { FileTreeNode } from '../../types'
+import { isActivationKey } from '../../lib/activationKey'
 
 interface Props {
   node: FileTreeNode
@@ -17,11 +18,11 @@ export default function FileItem({
   onSelectFile,
   onContextMenu,
   depth
-}: Props) {
+}: Props): React.JSX.Element {
   const isActive = node.path === openFilePath
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if (isActivationKey(e.key)) {
       e.preventDefault()
       onSelectFile(node)
     }

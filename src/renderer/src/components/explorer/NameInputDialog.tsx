@@ -59,8 +59,8 @@ export default function NameInputDialog({
       >
         <p className="name-input-dialog__title">{title}</p>
         <input
-          // ダイアログを開いた直後に入力を始められるようにする(モーダルの慣例)
-          // eslint-disable-next-line jsx-a11y/no-autofocus
+          // ダイアログを開いた直後に入力を始められるようにする(モーダルの慣例)。
+          // jsx-a11y は導入していないため、no-autofocus の無効化コメントは書かない(未定義の規則への参照は lint のエラーになる)
           autoFocus
           type="text"
           className="name-input-dialog__input"

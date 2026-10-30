@@ -1,4 +1,5 @@
 import type { AgentCliKind } from '../agentCliKinds'
+import { isOneOf } from '../typeGuards'
 
 export interface ModelOption {
   id: string
@@ -31,7 +32,7 @@ export type PromptExecutionMode = (typeof PROMPT_EXECUTION_MODES)[number]
 export const DEFAULT_PROMPT_EXECUTION_MODE: PromptExecutionMode = 'agent-cli'
 
 export function isPromptExecutionMode(value: unknown): value is PromptExecutionMode {
-  return typeof value === 'string' && (PROMPT_EXECUTION_MODES as readonly string[]).includes(value)
+  return isOneOf(PROMPT_EXECUTION_MODES, value)
 }
 
 /** エージェントの完了・許可待ちの通知(OS の通知と Dock のバッジ)の既定。オン */

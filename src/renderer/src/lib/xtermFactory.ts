@@ -12,7 +12,8 @@ import type { AgentSessionTabs } from './agentSessionTabs'
 import { AGENT_MAX_SESSIONS_PER_WINDOW } from '@shared/types'
 
 // 実物の xterm で controller を作る(タブごとに 1 つ。呼ぶたびに新しい xterm を作る)。jsdom では xterm を開けない(matchMedia・canvas が無い)ため、
-// テストはこのモジュールを読まずに createAgentTerminalController へ偽物を渡す
+// テストはこのモジュールを読まずに createAgentTerminalController へ偽物を渡す(このモジュールの組み立て自体は、xterm を差し替えた
+// lib/__tests__/xtermFactory.test.ts で確かめる)
 
 // タブの置き場(getAgentSessionTabs)だけが呼ぶ。controller の持ち主は置き場で、タブを消すときに dispose する
 function createXtermAgentTerminalController(): AgentTerminalController {

@@ -61,7 +61,9 @@ export default function AgentTerminalView({
   // Windows・Linux でメニューのショートカットを止める・戻す(main が判断する)
   const handleFocus = (): void => agentTerminalApi.setAgentTerminalFocused(true)
   const handleBlur = (event: React.FocusEvent<HTMLDivElement>): void => {
-    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    // relatedTarget の型は EventTarget | null。要素どうしのフォーカスの移動では Node か null なので、Node のときだけ比べる
+    const next = event.relatedTarget
+    if (next instanceof Node && event.currentTarget.contains(next)) return
     agentTerminalApi.setAgentTerminalFocused(false)
   }
 

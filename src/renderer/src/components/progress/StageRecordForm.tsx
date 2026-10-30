@@ -5,7 +5,7 @@ interface Props {
   onRecord: (note?: string) => void
 }
 
-export default function StageRecordForm({ onRecord }: Props) {
+export default function StageRecordForm({ onRecord }: Props): React.JSX.Element {
   const { note, setNote, handleRecord } = useStageRecordForm(onRecord)
 
   return (

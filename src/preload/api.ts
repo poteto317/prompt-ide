@@ -47,6 +47,7 @@ import type {
 } from '@shared/types'
 import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 import { AGENT_SLOT_ID_PATTERN, isAgentExitReason } from '@shared/types'
+import { isObjectLike } from '@shared/typeGuards'
 
 export const api = {
   openFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
@@ -162,8 +163,8 @@ export const api = {
   // (contextBridge 越しでは removeListener が正しく機能しないリスナーリークを防ぐ)
   onPromptStreamChunk: (listener: (requestId: string, chunk: string) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      if (typeof payload !== 'object' || payload === null) return
-      const { requestId, chunk } = payload as Record<string, unknown>
+      if (!isObjectLike(payload)) return
+      const { requestId, chunk } = payload
       if (typeof requestId !== 'string' || typeof chunk !== 'string') return
       listener(requestId, chunk)
     }
@@ -217,8 +218,8 @@ export const api = {
     ipcRenderer.invoke('agentTerminal:getLastSession', folderPath, cliKind),
   onAgentData: (listener: (payload: AgentSessionData) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      if (typeof payload !== 'object' || payload === null) return
-      const { sessionId, data } = payload as Record<string, unknown>
+      if (!isObjectLike(payload)) return
+      const { sessionId, data } = payload
       if (typeof sessionId !== 'string' || typeof data !== 'string') return
       listener({ sessionId, data })
     }
@@ -229,8 +230,8 @@ export const api = {
   },
   onAgentExit: (listener: (payload: AgentSessionExit) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      if (typeof payload !== 'object' || payload === null) return
-      const { sessionId, exitCode, signal, reason } = payload as Record<string, unknown>
+      if (!isObjectLike(payload)) return
+      const { sessionId, exitCode, signal, reason } = payload
       if (typeof sessionId !== 'string') return
       if (!isAgentExitReason(reason)) return
       listener({
@@ -267,8 +268,8 @@ export const api = {
     listener: (payload: AgentNotificationActivated) => void
   ): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      if (typeof payload !== 'object' || payload === null) return
-      const { slotId } = payload as Record<string, unknown>
+      if (!isObjectLike(payload)) return
+      const { slotId } = payload
       if (typeof slotId !== 'string' || !AGENT_SLOT_ID_PATTERN.test(slotId)) return
       listener({ slotId })
     }
@@ -288,8 +289,8 @@ export const api = {
     ipcRenderer.invoke('fs:setWatchedFiles', paths),
   onExternalFileChange: (listener: (event: ExternalFileChangeEvent) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-      if (typeof payload !== 'object' || payload === null) return
-      const { paths } = payload as Record<string, unknown>
+      if (!isObjectLike(payload)) return
+      const { paths } = payload
       if (!Array.isArray(paths) || !paths.every((path) => typeof path === 'string')) return
       listener({ paths })
     }

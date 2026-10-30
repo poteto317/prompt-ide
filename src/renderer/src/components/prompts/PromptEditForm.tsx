@@ -9,7 +9,7 @@ interface Props {
   onCancel: () => void
 }
 
-export default function PromptEditForm({ prompt, onSubmit, onCancel }: Props) {
+export default function PromptEditForm({ prompt, onSubmit, onCancel }: Props): React.JSX.Element {
   const {
     title,
     content,
@@ -21,7 +21,7 @@ export default function PromptEditForm({ prompt, onSubmit, onCancel }: Props) {
     handleTagInputChange,
     handleTagInputKeyDown,
     handleRemoveTag,
-    handleSave,
+    handleSave
   } = usePromptEditForm(prompt, onSubmit)
 
   return (

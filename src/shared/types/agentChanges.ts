@@ -1,5 +1,6 @@
 // エージェントの変更の確認(記録・一覧・diff・戻す・戻した操作の取り消し)の IPC の型と、一覧の行数の上限。main・preload・renderer が共有する
 import type { DiscardAllResult } from './git'
+import { isOneOf } from '../typeGuards'
 
 /** 一覧の行数の上限。超えた分は打ち切り、「すべて戻す」を使えなくする */
 export const AGENT_CHANGES_LIST_LIMIT = 500
@@ -80,7 +81,7 @@ export const AGENT_CHANGE_STATUSES = ['A', 'M', 'D', 'T'] as const
 export type AgentChangeStatus = (typeof AGENT_CHANGE_STATUSES)[number]
 
 export function isAgentChangeStatus(value: unknown): value is AgentChangeStatus {
-  return typeof value === 'string' && (AGENT_CHANGE_STATUSES as readonly string[]).includes(value)
+  return isOneOf(AGENT_CHANGE_STATUSES, value)
 }
 
 /**

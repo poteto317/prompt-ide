@@ -13,8 +13,8 @@ export default function TagInput({
   tagInput,
   onTagInputChange,
   onTagInputKeyDown,
-  onRemoveTag,
-}: Props) {
+  onRemoveTag
+}: Props): React.JSX.Element {
   return (
     <div className="prompt-edit-form__tags" role="group" aria-label="タグ">
       {tags.map((tag) => (

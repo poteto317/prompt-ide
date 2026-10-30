@@ -10,6 +10,6 @@ interface Props {
   depth: number
 }
 
-export default function FileTreeItem(props: Props) {
+export default function FileTreeItem(props: Props): React.JSX.Element {
   return props.node.type === 'directory' ? <DirectoryItem {...props} /> : <FileItem {...props} />
 }

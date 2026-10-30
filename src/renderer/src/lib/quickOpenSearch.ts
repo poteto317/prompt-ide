@@ -1,4 +1,5 @@
 import type { FileTreeNode, FileNode } from '../types'
+import { isFileNode } from './fileUtils'
 import { fuzzyMatch } from './fuzzyMatch'
 import {
   isPathAtOrInside,
@@ -46,8 +47,8 @@ export const flattenFileTree = (nodes: FileTreeNode[]): FileNode[] => {
   const files: FileNode[] = []
   const walk = (currentNodes: FileTreeNode[]): void => {
     for (const node of currentNodes) {
-      if (node.type === 'file') {
-        files.push(node as FileNode)
+      if (isFileNode(node)) {
+        files.push(node)
         continue
       }
       // main 側の readDirRecursive は深さ上限を超えると children を返さないため、

@@ -7,7 +7,11 @@ interface Props {
   onPanelChange: (panel: Panel) => void
 }
 
-export default function ActivityBar({ activePanel, sidebarOpen, onPanelChange }: Props) {
+export default function ActivityBar({
+  activePanel,
+  sidebarOpen,
+  onPanelChange
+}: Props): React.JSX.Element {
   return (
     <div className="activity-bar">
       {activityBarPanels.map(({ panel, Icon, title }) => (

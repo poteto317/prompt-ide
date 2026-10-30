@@ -6,7 +6,7 @@ interface Props {
   stage: Stage
 }
 
-export default function StageEventList({ stage }: Props) {
+export default function StageEventList({ stage }: Props): React.JSX.Element {
   if (stage.events.length === 0) {
     return <p className="stage-history__empty">履歴はありません</p>
   }

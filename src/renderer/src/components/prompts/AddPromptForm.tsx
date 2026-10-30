@@ -5,7 +5,7 @@ interface Props {
   onAdd: (title: string, content: string) => void
 }
 
-export default function AddPromptForm({ onAdd }: Props) {
+export default function AddPromptForm({ onAdd }: Props): React.JSX.Element {
   const { title, content, isDisabled, handleTitleChange, handleContentChange, handleSubmit } =
     usePromptForm(onAdd)
 
@@ -27,11 +27,7 @@ export default function AddPromptForm({ onAdd }: Props) {
         onChange={handleContentChange}
         rows={3}
       />
-      <button
-        type="submit"
-        className="add-prompt-form__button"
-        disabled={isDisabled}
-      >
+      <button type="submit" className="add-prompt-form__button" disabled={isDisabled}>
         追加
       </button>
     </form>

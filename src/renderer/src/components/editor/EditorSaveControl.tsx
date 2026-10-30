@@ -5,7 +5,12 @@ interface Props {
   onSave: () => void
 }
 
-export default function EditorSaveControl({ isDirty, isSaving, saveError, onSave }: Props) {
+export default function EditorSaveControl({
+  isDirty,
+  isSaving,
+  saveError,
+  onSave
+}: Props): React.JSX.Element {
   return (
     <>
       {saveError && (

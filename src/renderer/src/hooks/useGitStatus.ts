@@ -11,37 +11,56 @@ interface GitStatusState {
   refreshGitStatus: () => Promise<void>
 }
 
+interface GitStatusSetters {
+  setGitStatus: (status: GitStatusResult | null) => void
+  setGitLoading: (loading: boolean) => void
+  setGitError: (error: Error | null) => void
+}
+
+// status を取り直す。後から始まった取得があれば、古い取得の結果・失敗・読み込み中の解除は反映しない
+// (latestRequestId で判定する)。useGitHistory の fetchGitHistoryData と同じく、setState を呼ぶ処理を
+// フック本体の外に置く(react-hooks/set-state-in-effect に、effect 内から呼ぶ関数を正しく認識させる)
+async function fetchGitStatus(
+  folderPath: string | null,
+  setters: GitStatusSetters,
+  latestRequestId: { current: number }
+): Promise<void> {
+  const requestId = ++latestRequestId.current
+  if (folderPath === null) {
+    setters.setGitStatus(null)
+    setters.setGitLoading(false)
+    setters.setGitError(null)
+    return
+  }
+  setters.setGitLoading(true)
+  setters.setGitError(null)
+  try {
+    const result = await gitApi.getGitStatus()
+    if (requestId === latestRequestId.current) {
+      setters.setGitStatus(result)
+    }
+  } catch (err) {
+    if (requestId === latestRequestId.current) {
+      setters.setGitError(toError(err))
+    }
+  } finally {
+    if (requestId === latestRequestId.current) {
+      setters.setGitLoading(false)
+    }
+  }
+}
+
 export function useGitStatus(folderPath: string | null): GitStatusState {
   const [gitStatus, setGitStatus] = useState<GitStatusResult | null>(null)
   const [gitLoading, setGitLoading] = useState(false)
   const [gitError, setGitError] = useState<Error | null>(null)
   const latestRequestId = useRef(0)
 
-  const refreshGitStatus = useCallback(async (): Promise<void> => {
-    const requestId = ++latestRequestId.current
-    if (folderPath === null) {
-      setGitStatus(null)
-      setGitLoading(false)
-      setGitError(null)
-      return
-    }
-    setGitLoading(true)
-    setGitError(null)
-    try {
-      const result = await gitApi.getGitStatus()
-      if (requestId === latestRequestId.current) {
-        setGitStatus(result)
-      }
-    } catch (err) {
-      if (requestId === latestRequestId.current) {
-        setGitError(toError(err))
-      }
-    } finally {
-      if (requestId === latestRequestId.current) {
-        setGitLoading(false)
-      }
-    }
-  }, [folderPath])
+  const refreshGitStatus = useCallback(
+    (): Promise<void> =>
+      fetchGitStatus(folderPath, { setGitStatus, setGitLoading, setGitError }, latestRequestId),
+    [folderPath]
+  )
 
   // フォルダが切り替わった時点で、前のフォルダの status を捨てる。
   // 残したままにすると、新しいフォルダの取得が終わるまでの間、ソース管理パネルに
@@ -55,9 +74,10 @@ export function useGitStatus(folderPath: string | null): GitStatusState {
     setGitStatus(null)
   })
 
+  // フォルダが変わるたび(初回を含む)に取り直す。refreshGitStatus と同じ取得を、effect からは直接呼ぶ
   useEffect(() => {
-    refreshGitStatus()
-  }, [refreshGitStatus])
+    void fetchGitStatus(folderPath, { setGitStatus, setGitLoading, setGitError }, latestRequestId)
+  }, [folderPath])
 
   return { gitStatus, gitLoading, gitError, refreshGitStatus }
 }

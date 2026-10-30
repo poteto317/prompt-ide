@@ -1,6 +1,7 @@
 // エージェント CLI(claude・copilot など。種類は agentCliKinds)のセッションの IPC の型と上限。main・preload・renderer が共有する
 
 import type { AgentCliKind } from '../agentCliKinds'
+import { isOneOf } from '../typeGuards'
 
 /** 桁数・行数の範囲(main の入力検証と renderer の fit の結果の丸めで使う) */
 export const AGENT_TERMINAL_MIN_COLS = 2
@@ -110,7 +111,7 @@ export const AGENT_EXIT_REASONS = ['exited', 'stopped', 'folder-changed'] as con
 export type AgentExitReason = (typeof AGENT_EXIT_REASONS)[number]
 
 export function isAgentExitReason(value: unknown): value is AgentExitReason {
-  return typeof value === 'string' && (AGENT_EXIT_REASONS as readonly string[]).includes(value)
+  return isOneOf(AGENT_EXIT_REASONS, value)
 }
 
 export interface AgentSessionData {

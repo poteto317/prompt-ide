@@ -30,7 +30,7 @@ export default function StageRow({
   onReopen,
   onSkip,
   onAdvance
-}: Props) {
+}: Props): React.JSX.Element {
   const [expanded, setExpanded] = useState(false)
 
   return (

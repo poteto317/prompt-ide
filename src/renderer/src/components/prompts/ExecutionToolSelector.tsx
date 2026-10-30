@@ -7,7 +7,10 @@ interface Props {
   onSelectTool: (tool: PromptToolId) => void
 }
 
-export default function ExecutionToolSelector({ selectedTool, onSelectTool }: Props) {
+export default function ExecutionToolSelector({
+  selectedTool,
+  onSelectTool
+}: Props): React.JSX.Element {
   return (
     <select
       className="prompts-panel__tool-select"

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { FileTreeNode } from '../../types'
+import { isActivationKey } from '../../lib/activationKey'
 import FileTreeItem from './FileTreeItem'
 
 interface Props {
@@ -18,11 +19,11 @@ export default function DirectoryItem({
   onSelectFile,
   onContextMenu,
   depth
-}: Props) {
+}: Props): React.JSX.Element {
   const [expanded, setExpanded] = useState(true)
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if (isActivationKey(e.key)) {
       e.preventDefault()
       setExpanded((prev) => !prev)
     }

@@ -7,7 +7,7 @@ interface Props {
   onDelete: (id: string) => void
 }
 
-export default function TaskHeader({ task, onDelete }: Props) {
+export default function TaskHeader({ task, onDelete }: Props): React.JSX.Element {
   const doneCount = task.stages.filter((s) => s.status === 'done').length
 
   return (

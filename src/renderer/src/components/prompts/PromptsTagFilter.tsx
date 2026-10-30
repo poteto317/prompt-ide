@@ -6,7 +6,11 @@ interface Props {
   onToggle: (tag: string) => void
 }
 
-export default function PromptsTagFilter({ tags, selectedTags, onToggle }: Props) {
+export default function PromptsTagFilter({
+  tags,
+  selectedTags,
+  onToggle
+}: Props): React.JSX.Element | null {
   if (tags.length === 0) return null
   return (
     <div className="prompts-panel__tag-filter" role="group" aria-label="タグで絞り込み">

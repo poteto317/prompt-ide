@@ -6,25 +6,35 @@ interface Options {
   isActive?: boolean
 }
 
-export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}) {
+export interface PromptFilterState {
+  filteredPrompts: Prompt[]
+  query: string
+  setQuery: (query: string) => void
+  selectedTags: string[]
+  toggleTag: (tag: string) => void
+  isFiltered: boolean
+}
+
+// キーワードとタグの絞り込みを解除する。プロンプトが 0 件になったときと、パネルが非表示になったときの 2 か所で使う。
+// useGitStashes の loadStashes と同じく、setState を呼ぶ処理をフック本体の外に置く(react-hooks/set-state-in-effect 対策)
+function clearFilter(setQuery: (query: string) => void, resetTags: () => void): void {
+  setQuery('')
+  resetTags()
+}
+
+export function usePromptFilter(prompts: Prompt[], { isActive }: Options = {}): PromptFilterState {
   const [query, setQuery] = useState('')
   const { selectedTags, toggleTag, resetTags } = useTagFilter()
   const prevIsActiveRef = useRef(isActive)
 
   useEffect(() => {
-    if (prompts.length === 0) {
-      setQuery('')
-      resetTags()
-    }
+    if (prompts.length === 0) clearFilter(setQuery, resetTags)
   }, [prompts.length, resetTags])
 
   useEffect(() => {
     const wasActive = prevIsActiveRef.current
     prevIsActiveRef.current = isActive
-    if (wasActive && isActive === false) {
-      setQuery('')
-      resetTags()
-    }
+    if (wasActive && isActive === false) clearFilter(setQuery, resetTags)
   }, [isActive, resetTags])
 
   const filteredPrompts = useMemo(() => {

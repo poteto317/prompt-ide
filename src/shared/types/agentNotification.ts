@@ -1,14 +1,13 @@
 // エージェントの完了・許可待ちの通知の IPC の型。main・preload・renderer が共有する
 import type { AgentCliKind } from '../agentCliKinds'
+import { isOneOf } from '../typeGuards'
 
 /** 知らせる出来事(許可待ち・確認待ち・作業の完了) */
 export const AGENT_NOTIFICATION_KINDS = ['permission', 'confirm', 'done'] as const
 export type AgentNotificationKind = (typeof AGENT_NOTIFICATION_KINDS)[number]
 
 export function isAgentNotificationKind(value: unknown): value is AgentNotificationKind {
-  return (
-    typeof value === 'string' && (AGENT_NOTIFICATION_KINDS as readonly string[]).includes(value)
-  )
+  return isOneOf(AGENT_NOTIFICATION_KINDS, value)
 }
 
 /** agentNotification:show の入力。題・本文は main が固定の表から作る(renderer の文字列を通知に出さない) */

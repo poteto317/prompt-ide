@@ -1,5 +1,6 @@
 // エージェント CLI 方式で起動する CLI の種類と、CLI ごとに使えるアプリの機能の表(設計書 2026-10-20「型と能力の表」)。
 // main(起動・hooks・再開の拒否)と renderer(入口の判定・文言)が同じ表を読む。従来の方式の PromptToolId とは別の型
+import { isOneOf } from './typeGuards'
 
 /** エージェント CLI 方式で起動する CLI の種類。main の起動の表と renderer の入口の判定が同じ値を使う */
 export const AGENT_CLI_KINDS = ['claude', 'copilot'] as const
@@ -7,7 +8,7 @@ export type AgentCliKind = (typeof AGENT_CLI_KINDS)[number]
 export const DEFAULT_AGENT_CLI_KIND: AgentCliKind = 'claude'
 
 export function isAgentCliKind(value: unknown): value is AgentCliKind {
-  return typeof value === 'string' && (AGENT_CLI_KINDS as readonly string[]).includes(value)
+  return isOneOf(AGENT_CLI_KINDS, value)
 }
 
 /** CLI ごとに、アプリの機能が使えるか(CLI ごとの画面・引数・hooks に依存する機能) */

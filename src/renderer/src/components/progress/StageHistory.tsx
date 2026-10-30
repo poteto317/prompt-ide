@@ -9,7 +9,7 @@ interface Props {
   onRecord: (note?: string) => void
 }
 
-export default function StageHistory({ stage, kind, onRecord }: Props) {
+export default function StageHistory({ stage, kind, onRecord }: Props): React.JSX.Element {
   return (
     <div className="stage-history">
       <StageEventList stage={stage} />

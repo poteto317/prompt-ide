@@ -1,5 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { isActivationKey } from '../../lib/activationKey'
 
 interface Props {
   path: string
@@ -40,7 +41,7 @@ export default function EditorTab({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>): void => {
-    if (e.key === 'Enter' || e.key === ' ') {
+    if (isActivationKey(e.key)) {
       if (e.key === ' ') {
         e.preventDefault()
       }

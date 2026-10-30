@@ -3,7 +3,7 @@
 // (右優先はエディタタブの一般的な挙動に合わせる)。
 // useFileSystem.ts(実ファイルタブ)と useDiffTabs.ts(diff タブ)の両方が
 // 同じ「閉じた後どちらへ移るか」のロジックを必要とするため、ここに切り出して共有する
-export function computeAdjacentItem<T>(next: T[], removedIndex: number): T | null {
+export function computeAdjacentItem<T>(next: readonly T[], removedIndex: number): T | null {
   if (removedIndex === -1) return next[0] ?? null
   if (removedIndex < next.length) return next[removedIndex]
   if (removedIndex - 1 >= 0 && removedIndex - 1 < next.length) return next[removedIndex - 1]

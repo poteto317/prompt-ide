@@ -22,7 +22,7 @@ export default function StageActions({
   onReopen,
   onSkip,
   onAdvance
-}: Props) {
+}: Props): React.JSX.Element {
   const handlers: Record<StageActionType, () => void> = {
     complete: onComplete,
     reopen: onReopen,

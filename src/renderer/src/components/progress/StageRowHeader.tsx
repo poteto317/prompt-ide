@@ -11,7 +11,13 @@ interface Props {
   onToggle: () => void
 }
 
-export default function StageRowHeader({ stage, definition, index, expanded, onToggle }: Props) {
+export default function StageRowHeader({
+  stage,
+  definition,
+  index,
+  expanded,
+  onToggle
+}: Props): React.JSX.Element {
   const { kind, label } = definition
   const showBadge = kind !== 'once' && stage.events.length > 0
 

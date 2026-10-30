@@ -17,4 +17,4 @@ export const STAGES = [
   { id: 'prMerge', label: 'PR マージ', kind: 'once' }
 ] as const satisfies readonly StageDefinition[]
 
-export const STAGE_IDS = STAGES.map((s) => s.id) as StageId[]
+export const STAGE_IDS: StageId[] = STAGES.map((s) => s.id)

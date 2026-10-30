@@ -10,6 +10,8 @@ if (process.contextIsolated) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
+  // Window.api の型は renderer 向けの index.d.ts にあり、preload の型チェック(tsconfig.node.json)には入らない。
+  // ts-ignore ではなく ts-expect-error にして、型が見えるようになったら(抑止が要らなくなったら)型エラーで気付けるようにする
+  // @ts-expect-error Window.api は index.d.ts で宣言している
   window.api = api
 }

@@ -27,17 +27,13 @@ export default function ProgressPanel({
   onReopenStage,
   onSkipStage,
   onAdvanceStage
-}: Props) {
+}: Props): React.JSX.Element {
   const { selectedTask, selectedId, setSelectedId } = useSelectedTask(tasks)
 
   return (
     <div className="progress-panel">
       {tasks.length > 1 && (
-        <TaskSelector
-          tasks={tasks}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-        />
+        <TaskSelector tasks={tasks} selectedId={selectedId} onSelect={setSelectedId} />
       )}
 
       <div className="progress-panel__body">

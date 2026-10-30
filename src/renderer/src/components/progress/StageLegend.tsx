@@ -4,7 +4,7 @@ import type { StageStatus } from '../../types'
 
 const LEGEND_STATUSES: StageStatus[] = ['done', 'in_progress', 'not_started', 'skipped']
 
-export default function StageLegend() {
+export default function StageLegend(): React.JSX.Element {
   return (
     <dl className="stage-legend" aria-label="凡例">
       {LEGEND_STATUSES.map((status) => (

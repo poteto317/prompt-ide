@@ -5,7 +5,7 @@ interface Props {
   onAdd: (title: string) => void
 }
 
-export default function AddTaskForm({ onAdd }: Props) {
+export default function AddTaskForm({ onAdd }: Props): React.JSX.Element {
   const { title, setTitle, isDisabled, handleSubmit } = useAddTaskForm(onAdd)
 
   return (

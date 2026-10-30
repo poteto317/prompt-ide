@@ -7,7 +7,7 @@ interface Props {
   onSelect: (id: string) => void
 }
 
-export default function TaskSelector({ tasks, selectedId, onSelect }: Props) {
+export default function TaskSelector({ tasks, selectedId, onSelect }: Props): React.JSX.Element {
   return (
     <div className="progress-panel__selector">
       <select
