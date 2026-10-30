@@ -92,6 +92,30 @@ const repoStatus: GitStatusResult = {
 }
 
 describe('SourceControlPanel', () => {
+  it('gitStatus.upstream を履歴へ渡す(上流のコミットの円が紫になる)', () => {
+    const { container } = render(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        log={[
+          {
+            hash: 'a'.repeat(40),
+            parents: [],
+            refs: [{ kind: 'remote', name: 'origin/main' }],
+            isHead: false,
+            message: 'feat: 新機能',
+            date: '2026-09-03T10:00:00+09:00',
+            authorName: 'Alice'
+          }
+        ]}
+      />
+    )
+    expect(container.querySelector('.history-section__graph circle')).toHaveAttribute(
+      'fill',
+      '#B180D7'
+    )
+  })
+
   it('gitStatus が null のとき「フォルダを開いてください」が表示される', () => {
     render(<SourceControlPanel {...baseProps} />)
     expect(screen.getByText('フォルダを開いてください')).toBeInTheDocument()

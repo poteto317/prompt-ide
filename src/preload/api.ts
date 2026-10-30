@@ -105,6 +105,8 @@ export const api = {
     ipcRenderer.invoke('git:unstageHunk', filePath, patch),
   getLog: (limit: number, skip: number): Promise<GitLogEntry[]> =>
     ipcRenderer.invoke('git:getLog', limit, skip),
+  getHeadCommitMessage: (): Promise<string | null> =>
+    ipcRenderer.invoke('git:getHeadCommitMessage'),
   getBranches: (): Promise<GitBranch[]> => ipcRenderer.invoke('git:getBranches'),
   getTags: (): Promise<string[]> => ipcRenderer.invoke('git:getTags'),
   amendCommit: (message: string): Promise<void> => ipcRenderer.invoke('git:amendCommit', message),

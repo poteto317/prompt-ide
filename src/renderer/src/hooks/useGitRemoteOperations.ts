@@ -51,7 +51,18 @@ export function useGitRemoteOperations(
   const [remoteOperationError, setRemoteOperationError] = useState<Error | null>(null)
   const localFileLock = useFileOperationLock()
   const lock = fileLock ?? localFileLock
-  const runRemoteOperation = useRunExclusiveGitOperation(refreshGitStatus, setRemoteOperationError)
+  // fetch・pull・push・初回 push の後は、↑/↓ と履歴の上流のコミット・リモートの ref が変わるため、
+  // ステータスと履歴を取り直す(refreshHistory を渡さない呼び出しではステータスだけ。差分 3)。
+  // 両方の完了を待つ(allSettled): Promise.all では履歴が先に失敗した時点で実行中フラグが下り、ステータスの
+  // 取り直し前の upstream 未設定の表示のまま初回 push を押せてしまう(パターン 73)。失敗はどちらも呼び出し側へ
+  // 伝えない(共有ランナーと同じ。取り直しの失敗で成功を失敗にしない。パターン 52)
+  const refreshAfterRemoteOperation = async (): Promise<void> => {
+    await Promise.allSettled([refreshGitStatus(), refreshHistory?.()])
+  }
+  const runRemoteOperation = useRunExclusiveGitOperation(
+    refreshAfterRemoteOperation,
+    setRemoteOperationError
+  )
   // 「リポジトリが無ければ Git 操作は実行不可」という業務ルールは
   // useGitBranchOperations.ts(ブランチ切替)とも共有するため gitUtils.ts の
   // isGitOperationDisabled に一元化してある(片方だけ判定基準を変えると
@@ -126,25 +137,12 @@ export function useGitRemoteOperations(
       execute: gitApi.push
     }).then(() => undefined)
 
-  // 初回 push(upstream の設定)。成功すると upstream が設定され ↑/↓ と履歴のリモートの ref が変わるため、
-  // ステータスと履歴を取り直す(refreshHistory を渡さない呼び出しではステータスだけ。差分 3)。
-  // 両方の完了を待つ(allSettled): Promise.all では履歴が先に失敗した時点で実行中フラグが下り、ステータスの
-  // 取り直し前の upstream 未設定の表示のまま初回 push を押せてしまう(パターン 73)。失敗はどちらも呼び出し側へ
-  // 伝えない(共有ランナーと同じ。取り直しの失敗で成功を失敗にしない。パターン 52)
-  const refreshAfterSetUpstream = async (): Promise<void> => {
-    await Promise.allSettled([refreshGitStatus(), refreshHistory?.()])
-  }
-  const runSetUpstreamOperation = useRunExclusiveGitOperation(
-    refreshAfterSetUpstream,
-    setRemoteOperationError
-  )
-
-  // 開始条件と実行中フラグは push と共有する: push と初回 push は同じ ref と branch.<b> の設定を書くため
+  // 初回 push(upstream の設定)。開始条件と実行中フラグは push と共有する: push と初回 push は同じ ref と branch.<b> の設定を書くため
   // 同時に走らせず、commit・checkout の途中に古い HEAD を送らないようロック中は待つ(push のコメントと同じ理由)。
   // lockGlobal は取らない(既存の push と同じ。設計書の排他の表)。どちらの push かをバナーの表示に使うため、
   // isSettingUpstream を別に持つ。開始時(onStart)にパネル上部の前回のエラーを消す(パターン 87)
   const pushSetUpstream = (): Promise<boolean> =>
-    runSetUpstreamOperation({
+    runRemoteOperation({
       isBusy: isPushUnavailable,
       setBusy: (busy) => {
         isPushingRef.current = busy

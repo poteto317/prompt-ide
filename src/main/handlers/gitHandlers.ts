@@ -6,6 +6,7 @@ import {
   commit,
   getDiff,
   getLog,
+  getHeadCommitMessage,
   getBranches,
   getTags,
   amendCommit,
@@ -266,6 +267,11 @@ function registerGitHistoryHandlers(ipcMain: IpcMain, folderAccess: FolderAccess
   ipcMain.handle('git:getLog', async (event: IpcMainInvokeEvent, limit: number, skip: number) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
     return getLog(allowedFolder, limit, skip)
+  })
+
+  ipcMain.handle('git:getHeadCommitMessage', async (event: IpcMainInvokeEvent) => {
+    const allowedFolder = getAllowedFolder(folderAccess, event)
+    return getHeadCommitMessage(allowedFolder)
   })
 
   ipcMain.handle('git:getBranches', async (event: IpcMainInvokeEvent) => {

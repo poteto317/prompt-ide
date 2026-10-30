@@ -78,6 +78,7 @@ describe('App: エージェントの変更の配線', () => {
     window.api.readDirectory = vi.fn().mockResolvedValue([])
     window.api.getGitStatus = vi.fn().mockResolvedValue(repoStatus)
     window.api.getLog = vi.fn().mockResolvedValue([])
+    window.api.getHeadCommitMessage = vi.fn().mockResolvedValue(null)
     window.api.getBranches = vi.fn().mockResolvedValue([])
     window.api.getTags = vi.fn().mockResolvedValue([])
     window.api.getStashes = vi.fn().mockResolvedValue([])

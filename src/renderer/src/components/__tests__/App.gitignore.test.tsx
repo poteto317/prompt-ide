@@ -12,6 +12,7 @@ vi.mock('../../lib/gitApi', () => ({
   stageHunk: vi.fn(),
   unstageHunk: vi.fn(),
   getLog: vi.fn(),
+  getHeadCommitMessage: vi.fn(() => Promise.resolve(null)),
   getBranches: vi.fn(),
   getTags: vi.fn(),
   amendCommit: vi.fn()

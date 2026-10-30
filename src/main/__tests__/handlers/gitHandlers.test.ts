@@ -15,6 +15,7 @@ const mockGetDiff = vi.hoisted(() => vi.fn())
 const mockStageHunk = vi.hoisted(() => vi.fn())
 const mockUnstageHunk = vi.hoisted(() => vi.fn())
 const mockGetLog = vi.hoisted(() => vi.fn())
+const mockGetHeadCommitMessage = vi.hoisted(() => vi.fn())
 const mockGetBranches = vi.hoisted(() => vi.fn())
 const mockGetTags = vi.hoisted(() => vi.fn())
 const mockAmendCommit = vi.hoisted(() => vi.fn())
@@ -53,6 +54,7 @@ vi.mock('../../gitService', () => ({
   commit: mockCommit,
   getDiff: mockGetDiff,
   getLog: mockGetLog,
+  getHeadCommitMessage: mockGetHeadCommitMessage,
   getBranches: mockGetBranches,
   getTags: mockGetTags,
   amendCommit: mockAmendCommit,
@@ -161,6 +163,7 @@ const GIT_CHANNELS = [
   'git:getBranches',
   'git:getConflictFile',
   'git:getDiff',
+  'git:getHeadCommitMessage',
   'git:getLog',
   'git:getStashes',
   'git:getStatus',
@@ -1167,6 +1170,26 @@ describe('registerGitHandlers', () => {
       mockGetLog.mockResolvedValue([])
       await getRegisteredHandler('git:getLog')(makeEvent(1), 20, 0)
       expect(mockGetLog).toHaveBeenCalledWith('/project', 20, 0)
+    })
+  })
+
+  describe('git:getHeadCommitMessage', () => {
+    it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      await expect(getRegisteredHandler('git:getHeadCommitMessage')(makeEvent(1))).rejects.toThrow(
+        'No folder open'
+      )
+    })
+
+    it('folderAccess の allowedFolder を引数に getHeadCommitMessage を呼び、結果を返す', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockGetHeadCommitMessage.mockResolvedValue('feat: x')
+      await expect(getRegisteredHandler('git:getHeadCommitMessage')(makeEvent(1))).resolves.toBe(
+        'feat: x'
+      )
+      expect(mockGetHeadCommitMessage).toHaveBeenCalledWith('/project')
     })
   })
 

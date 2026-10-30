@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync } from 'fs'
 import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { getBranches, getGitStatus } from '../gitService'
+import { getBranches, getGitStatus, getHeadCommitMessage, getLog } from '../gitService'
 import {
   commitAll,
   initRepo,
@@ -237,5 +237,203 @@ describe('getBranches の isDetachedHead(実 git)', () => {
     runGit(repo, 'bisect', 'good', 'HEAD~2')
     await expect(detachedHeadNames()).resolves.toEqual(['(no'])
     await expect(getBranches(repo)).resolves.toContainEqual({ name: 'main', current: false })
+  })
+})
+
+describe('getLog・getHeadCommitMessage(実 git)', () => {
+  const PAGE = 20
+  let root: string
+  let repo: string
+  let bare: string
+
+  const messages = async (): Promise<string[]> =>
+    (await getLog(repo, PAGE, 0)).map((entry) => entry.message)
+
+  // origin/main を main と同じ位置に作る
+  const pushToOrigin = (): void => {
+    runGit(repo, 'remote', 'add', 'origin', bare)
+    runGit(repo, 'push', '-q', '-u', 'origin', 'main')
+  }
+
+  // origin/main を main より 1 コミット進める
+  const putUpstreamAhead = (): void => {
+    pushToOrigin()
+    writeRepoFile(repo, 'a.txt', '2\n')
+    commitAll(repo, 'second')
+    runGit(repo, 'push', '-q', 'origin', 'main')
+    runGit(repo, 'reset', '-q', '--hard', 'HEAD~1')
+  }
+
+  beforeEach(() => {
+    stubIsolatedGitEnv()
+    root = mkdtempSync(join(tmpdir(), 'log-graph-'))
+    repo = join(root, 'repo')
+    bare = join(root, 'remote.git')
+    mkdirSync(repo)
+    initRepo(repo)
+    writeRepoFile(repo, 'a.txt', '1\n')
+    commitAll(repo, 'first')
+    runGit(root, 'init', '-q', '--bare', bare)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    removeTempPathSync(root)
+  })
+
+  it('上流と同じ位置なら、現在のブランチとリモートの ref が付き、origin/HEAD は出ない', async () => {
+    pushToOrigin()
+    runGit(repo, 'remote', 'set-head', 'origin', 'main')
+    const log = await getLog(repo, PAGE, 0)
+    expect(log).toHaveLength(1)
+    expect(log[0]).toMatchObject({
+      parents: [],
+      isHead: true,
+      refs: [
+        { kind: 'current', name: 'main' },
+        { kind: 'remote', name: 'origin/main' }
+      ]
+    })
+  })
+
+  it('上流が先行していると、上流のコミットも出て先頭が HEAD でなくなり、getHeadCommitMessage は HEAD のメッセージを返す', async () => {
+    putUpstreamAhead()
+    const log = await getLog(repo, PAGE, 0)
+    expect(log.map((entry) => entry.message)).toEqual(['second', 'first'])
+    expect(log[0]).toMatchObject({ isHead: false, refs: [{ kind: 'remote', name: 'origin/main' }] })
+    expect(log[1]).toMatchObject({ isHead: true, refs: [{ kind: 'current', name: 'main' }] })
+    expect(log[0].parents).toEqual([log[1].hash])
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('first')
+  })
+
+  it('上流が無ければ HEAD だけを辿り、ほかのブランチのコミットは出ない', async () => {
+    runGit(repo, 'switch', '-q', '-c', 'other')
+    writeRepoFile(repo, 'b.txt', '1\n')
+    commitAll(repo, 'on other')
+    runGit(repo, 'switch', '-q', 'main')
+    await expect(messages()).resolves.toEqual(['first'])
+  })
+
+  it('上流の ref が消えていても(gone)、HEAD だけを表示する', async () => {
+    pushToOrigin()
+    runGit(bare, 'update-ref', '-d', 'refs/heads/main')
+    runGit(repo, 'fetch', '-q', '--prune', 'origin')
+    await expect(messages()).resolves.toEqual(['first'])
+  })
+
+  // 上流の設定はあるがその ref が無いとき、作業ツリーに同名のファイルがあると、rev-parse は引数をファイルと解釈して終了コード 0 でその名前を出す(実機で確認)
+  it('上流が消えていて作業ツリーに @{upstream} というファイルがあっても、HEAD だけを表示する', async () => {
+    pushToOrigin()
+    runGit(bare, 'update-ref', '-d', 'refs/heads/main')
+    runGit(repo, 'fetch', '-q', '--prune', 'origin')
+    writeRepoFile(repo, '@{upstream}', '1\n')
+    await expect(messages()).resolves.toEqual(['first'])
+  })
+
+  it('ローカルのブランチが上流でも、そのコミットを辿る', async () => {
+    runGit(repo, 'switch', '-q', '-c', 'feature')
+    runGit(repo, 'branch', '--set-upstream-to=main')
+    runGit(repo, 'switch', '-q', 'main')
+    writeRepoFile(repo, 'a.txt', '2\n')
+    commitAll(repo, 'second')
+    runGit(repo, 'switch', '-q', 'feature')
+    await expect(messages()).resolves.toEqual(['second', 'first'])
+  })
+
+  it('detached では HEAD のコミットに isHead が付き、現在のブランチは付かない', async () => {
+    pushToOrigin()
+    runGit(repo, 'switch', '-q', '--detach')
+    const [entry] = await getLog(repo, PAGE, 0)
+    expect(entry.isHead).toBe(true)
+    // %D の中の並びは git の実装に任せる(detached ではリモートが先に出る)
+    expect(entry.refs).toHaveLength(2)
+    expect(entry.refs).toEqual(
+      expect.arrayContaining([
+        { kind: 'branch', name: 'main' },
+        { kind: 'remote', name: 'origin/main' }
+      ])
+    )
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('first')
+  })
+
+  it('コミットが無ければ空配列と null', async () => {
+    const empty = join(root, 'empty')
+    mkdirSync(empty)
+    initRepo(empty)
+    await expect(getLog(empty, PAGE, 0)).resolves.toEqual([])
+    await expect(getHeadCommitMessage(empty)).resolves.toBeNull()
+  })
+
+  it('リポジトリでなければ空配列と null', async () => {
+    const plain = join(root, 'plain')
+    mkdirSync(plain)
+    stubGitCeiling(root)
+    await expect(getLog(plain, PAGE, 0)).resolves.toEqual([])
+    await expect(getHeadCommitMessage(plain)).resolves.toBeNull()
+  })
+
+  it('マージコミットの親と、タグの ref を返す', async () => {
+    runGit(repo, 'switch', '-q', '-c', 'side')
+    writeRepoFile(repo, 'b.txt', '1\n')
+    commitAll(repo, 'on side')
+    runGit(repo, 'switch', '-q', 'main')
+    writeRepoFile(repo, 'c.txt', '1\n')
+    commitAll(repo, 'on main')
+    runGit(repo, 'merge', '-q', '--no-edit', 'side')
+    runGit(repo, 'tag', 'v1')
+    const [merge, ...rest] = await getLog(repo, PAGE, 0)
+    expect(merge.parents).toHaveLength(2)
+    expect(merge.refs).toContainEqual({ kind: 'tag', name: 'v1' })
+    expect(rest.map((entry) => entry.message).sort()).toEqual(['first', 'on main', 'on side'])
+  })
+
+  it('limit と skip でページを分けられる', async () => {
+    writeRepoFile(repo, 'a.txt', '2\n')
+    commitAll(repo, 'second')
+    const [page2] = await getLog(repo, 1, 1)
+    expect(page2.message).toBe('first')
+  })
+
+  it('log.showSignature=true でもレコードが壊れない', async () => {
+    runGit(repo, 'config', 'log.showSignature', 'true')
+    await expect(messages()).resolves.toEqual(['first'])
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('first')
+  })
+
+  it('log.excludeDecoration を設定していても、HEAD とリモートの ref が出る', async () => {
+    pushToOrigin()
+    runGit(repo, 'config', '--add', 'log.excludeDecoration', 'refs/remotes/*')
+    runGit(repo, 'config', '--add', 'log.excludeDecoration', 'HEAD')
+    const [entry] = await getLog(repo, PAGE, 0)
+    expect(entry.isHead).toBe(true)
+    expect(entry.refs).toContainEqual({ kind: 'remote', name: 'origin/main' })
+  })
+
+  it('log.decorate=short でも、ref の種類を取り違えない', async () => {
+    runGit(repo, 'config', 'log.decorate', 'short')
+    runGit(repo, 'branch', 'origin/main')
+    const [entry] = await getLog(repo, PAGE, 0)
+    expect(entry.refs).toContainEqual({ kind: 'branch', name: 'origin/main' })
+  })
+
+  it('作業ツリーに HEAD というファイルがあっても取得できる', async () => {
+    writeRepoFile(repo, 'HEAD', '1\n')
+    await expect(messages()).resolves.toEqual(['first'])
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('first')
+  })
+
+  it('空のメッセージのコミットは、getLog の message も getHeadCommitMessage も空文字', async () => {
+    writeRepoFile(repo, 'a.txt', '2\n')
+    runGit(repo, 'add', '-A')
+    runGit(repo, 'commit', '-q', '--allow-empty-message', '-m', '')
+    await expect(messages()).resolves.toEqual(['', 'first'])
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('')
+  })
+
+  it('getHeadCommitMessage は複数行の本文を保つ', async () => {
+    writeRepoFile(repo, 'a.txt', '2\n')
+    runGit(repo, 'add', '-A')
+    runGit(repo, 'commit', '-q', '-m', 'subject', '-m', 'body line')
+    await expect(getHeadCommitMessage(repo)).resolves.toBe('subject\n\nbody line')
   })
 })

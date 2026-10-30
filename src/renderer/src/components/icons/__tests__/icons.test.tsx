@@ -5,13 +5,17 @@ import GitIcon from '../GitIcon'
 import PromptIcon from '../PromptIcon'
 import SettingsIcon from '../SettingsIcon'
 import BranchIcon from '../BranchIcon'
+import CloudIcon from '../CloudIcon'
+import TagIcon from '../TagIcon'
 
 const iconComponents = [
   { name: 'ExplorerIcon', Component: ExplorerIcon },
   { name: 'GitIcon', Component: GitIcon },
   { name: 'PromptIcon', Component: PromptIcon },
   { name: 'SettingsIcon', Component: SettingsIcon },
-  { name: 'BranchIcon', Component: BranchIcon }
+  { name: 'BranchIcon', Component: BranchIcon },
+  { name: 'CloudIcon', Component: CloudIcon },
+  { name: 'TagIcon', Component: TagIcon }
 ]
 
 describe('Icons', () => {

@@ -1,13 +1,20 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import type { CreateTagRequest, GitBranch, GitLogEntry } from '@shared/types'
 import type { GitTagPanelState } from '../../types'
 import { formatRelativeDate } from '../../lib/dateFormat'
+import { buildGitGraphRows } from '../../lib/gitGraph'
 import { useDialogFocusReturn } from '../../hooks/useDialogFocusReturn'
 import CreateTagDialog from './CreateTagDialog'
+import GitGraphCell from './GitGraphCell'
+import GitLogRefLabels from './GitLogRefLabels'
 
 interface Props {
   log: GitLogEntry[]
+  /** 現在のブランチの上流の短い名前(gitStatus.upstream)。グラフの上流のレーンの色に使う */
+  upstream: string | null
+  /** タグの作成の検証に使う(履歴には出さない) */
   branches: GitBranch[]
+  /** タグの作成の検証に使う(タグはコミットの行のラベルに出す) */
   tags: string[]
   hasMore: boolean
   isLoading: boolean
@@ -20,8 +27,22 @@ interface Props {
   isBlocked: boolean
 }
 
+// entry.message は %B(コミット本文全体)由来で複数行を含み得るため、1 行目だけを件名として扱う
+const getCommitSubject = (entry: GitLogEntry): string => entry.message.split('\n')[0]
+
+const getShortHash = (entry: GitLogEntry): string => entry.hash.slice(0, 7)
+
+const buildCommitTitle = (entry: GitLogEntry): string =>
+  [
+    getCommitSubject(entry),
+    getShortHash(entry),
+    entry.authorName,
+    formatRelativeDate(entry.date)
+  ].join('\n')
+
 export default function HistorySection({
   log,
+  upstream,
   branches,
   tags,
   hasMore,
@@ -31,6 +52,8 @@ export default function HistorySection({
   gitTag,
   isBlocked
 }: Props): React.JSX.Element {
+  const rows = useMemo(() => buildGitGraphRows(log, upstream), [log, upstream])
+
   // 開くときに前回の失敗の表示を消す(キャンセルしたダイアログのエラーを持ち越さない)。ダイアログを閉じたら
   // (成功・キャンセル・Escape・オーバーレイのクリック)ボタンへフォーカスを戻す(パターン 22)。戻すのは閉じて
   // 作成中でもなくなった描画の後で、フォーカスが body のときだけ(useDialogFocusReturn。パターン 73・86)。
@@ -69,23 +92,23 @@ export default function HistorySection({
           {error.message}
         </p>
       )}
-      {tags.length > 0 && (
-        <div className="history-section__badges">
-          {tags.map((tag) => (
-            <span key={tag} className="history-section__badge history-section__badge--tag">
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
       <ul className="history-section__log-list">
-        {log.map((entry) => (
-          <li key={entry.hash} className="history-section__log-item">
-            <span className="history-section__log-hash">{entry.hash.slice(0, 7)}</span>
-            {/* entry.message は %B（コミット本文全体）由来で複数行を含み得るため、
-                一覧には subject に相当する最初の行だけを表示する */}
-            <span className="history-section__log-message">{entry.message.split('\n')[0]}</span>
-            <span className="history-section__log-date">{formatRelativeDate(entry.date)}</span>
+        {rows.map((row) => (
+          <li
+            key={row.entry.hash}
+            className="history-section__log-item"
+            title={buildCommitTitle(row.entry)}
+          >
+            <GitGraphCell row={row} />
+            <span className="history-section__log-text">
+              <span className="history-section__log-message">{getCommitSubject(row.entry)}</span>
+              <span className="history-section__log-author">{row.entry.authorName}</span>
+              {/* title は li に付くため、スクリーンリーダーとキーボードでは読めない */}
+              <span className="history-section__visually-hidden">
+                {`${getShortHash(row.entry)} ${formatRelativeDate(row.entry.date)}`}
+              </span>
+            </span>
+            <GitLogRefLabels refs={row.entry.refs} />
           </li>
         ))}
       </ul>

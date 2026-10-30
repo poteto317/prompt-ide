@@ -99,6 +99,10 @@ export function getLog(limit: number, skip: number): Promise<GitLogEntry[]> {
   return window.api.getLog(limit, skip)
 }
 
+export function getHeadCommitMessage(): Promise<string | null> {
+  return window.api.getHeadCommitMessage()
+}
+
 export function getBranches(): Promise<GitBranch[]> {
   return window.api.getBranches()
 }

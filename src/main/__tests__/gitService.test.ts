@@ -84,6 +84,7 @@ import {
   commit,
   getDiff,
   getLog,
+  getHeadCommitMessage,
   getBranches,
   getTags,
   amendCommit,
@@ -686,33 +687,83 @@ describe('getDiff', () => {
 })
 
 describe('getLog', () => {
-  it('git log を --max-count/--skip/--pretty オプションで呼び、レコードをパースして返す（%B で単一行 subject も取得できる）', async () => {
+  const HASH_1 = 'a'.repeat(40)
+  const HASH_2 = 'b'.repeat(40)
+  const LOG_ARGS = [
+    'log',
+    '--topo-order',
+    '--no-show-signature',
+    '--decorate=full',
+    '--decorate-refs=refs/heads/',
+    '--decorate-refs=refs/remotes/',
+    '--decorate-refs=refs/tags/',
+    '--decorate-refs=HEAD',
+    '--max-count=20',
+    '--skip=0',
+    '--pretty=format:%H%x1f%P%x1f%D%x1f%B%x1f%aI%x1f%an%x1e'
+  ]
+  const UPSTREAM_ARGS = ['rev-parse', '--symbolic-full-name', '@{upstream}']
+
+  // 上流の取得は upstream を返すか、上流が無いときの GitError で失敗する。log は logOutput を返す
+  function mockRepoWith(logOutput: string, upstream: string | null = null): void {
     mockCheckIsRepo.mockResolvedValue(true)
-    const record =
-      'abc123\x1ffeat: 新機能\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e' +
-      'def456\x1ffix: バグ修正\x1f2026-09-02T10:00:00+09:00\x1fBob\x1e'
-    mockRaw.mockResolvedValue(record)
+    mockRaw.mockImplementation((args: string[]) => {
+      if (args[0] !== 'rev-parse') return Promise.resolve(logOutput)
+      if (upstream === null) return Promise.reject(new MockGitError('fatal: no upstream'))
+      return Promise.resolve(`${upstream}\n`)
+    })
+  }
+
+  it('上流が無いときは HEAD だけを指定して git log を呼び、レコードをパースして返す(%B で単一行 subject も取得できる)', async () => {
+    mockRepoWith(
+      `${HASH_1}\x1f${HASH_2}\x1fHEAD -> refs/heads/main\x1ffeat: 新機能\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e` +
+        `${HASH_2}\x1f\x1f\x1ffix: バグ修正\x1f2026-09-02T10:00:00+09:00\x1fBob\x1e`
+    )
     const result = await getLog('/project', 20, 0)
-    expect(mockRaw).toHaveBeenCalledWith([
-      'log',
-      '--max-count=20',
-      '--skip=0',
-      '--pretty=format:%H%x1f%B%x1f%aI%x1f%an%x1e'
-    ])
+    expect(mockRaw).toHaveBeenCalledWith(UPSTREAM_ARGS)
+    expect(mockRaw).toHaveBeenCalledWith([...LOG_ARGS, 'HEAD', '--'])
     expect(result).toEqual([
       {
-        hash: 'abc123',
+        hash: HASH_1,
+        parents: [HASH_2],
+        refs: [{ kind: 'current', name: 'main' }],
+        isHead: true,
         message: 'feat: 新機能',
         date: '2026-09-03T10:00:00+09:00',
         authorName: 'Alice'
       },
       {
-        hash: 'def456',
+        hash: HASH_2,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'fix: バグ修正',
         date: '2026-09-02T10:00:00+09:00',
         authorName: 'Bob'
       }
     ])
+  })
+
+  it('上流があるときは HEAD と上流の完全な ref 名を指定する', async () => {
+    mockRepoWith('', 'refs/remotes/origin/main')
+    await getLog('/project', 20, 0)
+    expect(mockRaw).toHaveBeenCalledWith([...LOG_ARGS, 'HEAD', 'refs/remotes/origin/main', '--'])
+  })
+
+  it('--max-count と --skip に limit と skip を渡す', async () => {
+    mockRepoWith('')
+    await getLog('/project', 5, 40)
+    const logArgs = mockRaw.mock.calls.map(([args]) => args).find((args) => args[0] === 'log')
+    expect(logArgs).toEqual(expect.arrayContaining(['--max-count=5', '--skip=40']))
+  })
+
+  it('上流の取得が GitError 以外で失敗したら、上流なしと誤判定せず投げ直す', async () => {
+    // git バイナリ不在などを「上流が無い」にすると、原因が分からないまま上流のコミットが消える
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockImplementation((args: string[]) =>
+      args[0] === 'rev-parse' ? Promise.reject(new Error('spawn git ENOENT')) : Promise.resolve('')
+    )
+    await expect(getLog('/project', 20, 0)).rejects.toThrow('spawn git ENOENT')
   })
 
   it('env() を使わない(simple-git の安全ガードに弾かれて履歴が常に壊れるため)', async () => {
@@ -723,8 +774,7 @@ describe('getLog', () => {
     // main プロセスがそのまま継承するため、履歴パネルは常にエラー表示+空になり、
     // lastCommitMessage が null のままで amend チェックボックスも永久に disabled
     // になってしまう
-    mockCheckIsRepo.mockResolvedValue(true)
-    mockRaw.mockResolvedValue('')
+    mockRepoWith('')
     await getLog('/project', 20, 0)
     expect(mockEnv).not.toHaveBeenCalled()
   })
@@ -757,19 +807,11 @@ describe('getLog', () => {
   it('%B で取得した複数行のコミット本文を、内部の改行を保ったまま message として返す', async () => {
     // amend 時にこの message をそのままメッセージ欄へ入れるため、%s（subject 1行のみ）
     // ではなく %B（本文全体）で取得できていることを検証する
-    mockCheckIsRepo.mockResolvedValue(true)
-    const record =
-      'abc123\x1ffeat: 新機能\n\n詳細な説明文\n2行目\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e'
-    mockRaw.mockResolvedValue(record)
-    const result = await getLog('/project', 20, 0)
-    expect(result).toEqual([
-      {
-        hash: 'abc123',
-        message: 'feat: 新機能\n\n詳細な説明文\n2行目',
-        date: '2026-09-03T10:00:00+09:00',
-        authorName: 'Alice'
-      }
-    ])
+    mockRepoWith(
+      `${HASH_1}\x1f\x1f\x1ffeat: 新機能\n\n詳細な説明文\n2行目\x1f2026-09-03T10:00:00+09:00\x1fAlice\x1e`
+    )
+    const [entry] = await getLog('/project', 20, 0)
+    expect(entry.message).toBe('feat: 新機能\n\n詳細な説明文\n2行目')
   })
 
   it('コミットが無いリポジトリで raw が throw した場合、空配列を返す', async () => {
@@ -808,6 +850,56 @@ describe('getLog', () => {
     const result = await getLog('/not-a-repo', 20, 0)
     expect(mockRaw).not.toHaveBeenCalled()
     expect(result).toEqual([])
+  })
+})
+
+describe('getHeadCommitMessage', () => {
+  const LOG_ARGS = ['log', '-1', '--no-show-signature', '--pretty=format:%B', 'HEAD', '--']
+
+  it('HEAD の %B を trim して返す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockResolvedValue('feat: 新機能\n\n本文\n\n')
+    await expect(getHeadCommitMessage('/project')).resolves.toBe('feat: 新機能\n\n本文')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockRaw).toHaveBeenCalledWith(LOG_ARGS)
+  })
+
+  it('空のメッセージのコミットは null ではなく空文字を返す(amend できる)', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockResolvedValue('\n')
+    await expect(getHeadCommitMessage('/project')).resolves.toBe('')
+  })
+
+  it('リポジトリでなければ log を呼ばず null を返す', async () => {
+    mockCheckIsRepo.mockResolvedValue(false)
+    mockRaw.mockClear()
+    await expect(getHeadCommitMessage('/not-a-repo')).resolves.toBeNull()
+    expect(mockRaw).not.toHaveBeenCalled()
+  })
+
+  it('コミットが無いときは rev-parse の失敗で判定して null を返す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockRejectedValue(new MockGitError('fatal: Needed a single revision'))
+    await expect(getHeadCommitMessage('/project')).resolves.toBeNull()
+    expect(mockRaw).toHaveBeenCalledWith(['rev-parse', '--verify', 'HEAD'])
+  })
+
+  it('コミットがあるのに log が失敗したら投げ直す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockImplementation((args: string[]) =>
+      args[0] === 'rev-parse'
+        ? Promise.resolve('abc123')
+        : Promise.reject(new MockGitError('fatal: bad object HEAD'))
+    )
+    await expect(getHeadCommitMessage('/project')).rejects.toThrow('fatal: bad object HEAD')
+  })
+
+  it('rev-parse が GitError 以外で失敗したら、コミット無しと誤判定せず log の失敗を投げ直す', async () => {
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockRaw.mockImplementation((args: string[]) =>
+      Promise.reject(new Error(args[0] === 'rev-parse' ? 'rev-parse failed' : 'spawn git ENOENT'))
+    )
+    await expect(getHeadCommitMessage('/project')).rejects.toThrow('spawn git ENOENT')
   })
 })
 

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../../lib/gitApi', () => ({
   getGitStatus: vi.fn(),
   getLog: vi.fn(),
+  getHeadCommitMessage: vi.fn(() => Promise.resolve(null)),
   getBranches: vi.fn(),
   getTags: vi.fn(),
   checkoutBranch: vi.fn()

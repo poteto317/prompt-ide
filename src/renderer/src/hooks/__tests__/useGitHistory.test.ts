@@ -10,20 +10,47 @@ import { useGitHistory } from '../useGitHistory'
 const mockGetLog = vi.mocked(gitApi.getLog)
 const mockGetBranches = vi.mocked(gitApi.getBranches)
 const mockGetTags = vi.mocked(gitApi.getTags)
+const mockGetHeadCommitMessage = vi.mocked(gitApi.getHeadCommitMessage)
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
+const makeEntry = (hash: string, message = 'm'): GitLogEntry => ({
+  hash,
+  parents: [],
+  refs: [],
+  isHead: false,
+  message,
+  date: 'd',
+  authorName: 'x'
+})
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 自動モックは undefined を返し、useGitHistory の .catch で落ちるため既定値を入れる。
+  // 前のテストの実装が残らないよう、実装ごと差し替える
+  mockGetHeadCommitMessage.mockReset()
+  mockGetHeadCommitMessage.mockResolvedValue(null)
 })
 
 describe('useGitHistory', () => {
   it('folderPath が設定されるとマウント時に log/branches/tags を取得する', async () => {
-    mockGetLog.mockResolvedValue([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValue([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([{ name: 'main', current: true }])
     mockGetTags.mockResolvedValue(['v1.0.0'])
     const { result } = renderHook(() => useGitHistory('/project'))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(mockGetLog).toHaveBeenCalledWith(20, 0)
-    expect(result.current.log).toEqual([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    expect(result.current.log).toEqual([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     expect(result.current.branches).toEqual([{ name: 'main', current: true }])
     expect(result.current.tags).toEqual(['v1.0.0'])
   })
@@ -38,6 +65,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValue(
       Array.from({ length: 20 }, (_, i) => ({
         hash: String(i),
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -51,7 +81,9 @@ describe('useGitHistory', () => {
   })
 
   it('取得件数が20件未満のとき hasMore は false になる', async () => {
-    mockGetLog.mockResolvedValue([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValue([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
     const { result } = renderHook(() => useGitHistory('/project'))
@@ -63,6 +95,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -73,7 +108,17 @@ describe('useGitHistory', () => {
     const { result } = renderHook(() => useGitHistory('/project'))
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
-    mockGetLog.mockResolvedValueOnce([{ hash: 'b0', message: 'm2', date: 'd2', authorName: 'y' }])
+    mockGetLog.mockResolvedValueOnce([
+      {
+        hash: 'b0',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'm2',
+        date: 'd2',
+        authorName: 'y'
+      }
+    ])
     await result.current.loadMore()
     await waitFor(() => expect(result.current.log).toHaveLength(21))
     expect(mockGetLog).toHaveBeenLastCalledWith(20, 20)
@@ -81,7 +126,9 @@ describe('useGitHistory', () => {
   })
 
   it('refresh で log/branches/tags を最初から再取得する', async () => {
-    mockGetLog.mockResolvedValue([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValue([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
     const { result } = renderHook(() => useGitHistory('/project'))
@@ -92,7 +139,9 @@ describe('useGitHistory', () => {
   })
 
   it('マウント時(フォルダ切替時)は isLoadingFolder が true になる', async () => {
-    mockGetLog.mockResolvedValue([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValue([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
     const { result } = renderHook(() => useGitHistory('/project'))
@@ -106,7 +155,9 @@ describe('useGitHistory', () => {
     // 履歴再取得(App.tsx の refreshHistory)によって、まだユーザーに見せている
     // はずの amend 実行結果(チェック状態・メッセージ)を同一フォルダ内なのに
     // 誤ってリセットしてしまう
-    mockGetLog.mockResolvedValue([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValue([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
     const { result } = renderHook(() => useGitHistory('/project'))
@@ -119,10 +170,36 @@ describe('useGitHistory', () => {
   })
 
   it('folderPath が素早く変更されたとき、古いフォルダの結果で状態が上書きされない', async () => {
-    const projectALog = [{ hash: 'a1', message: 'commit A', date: 'd', authorName: 'x' }]
+    const projectALog = [
+      {
+        hash: 'a1',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit A',
+        date: 'd',
+        authorName: 'x'
+      }
+    ]
     const projectBLog = [
-      { hash: 'b1', message: 'commit B1', date: 'd', authorName: 'y' },
-      { hash: 'b2', message: 'commit B2', date: 'd', authorName: 'y' }
+      {
+        hash: 'b1',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit B1',
+        date: 'd',
+        authorName: 'y'
+      },
+      {
+        hash: 'b2',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit B2',
+        date: 'd',
+        authorName: 'y'
+      }
     ]
 
     // 最初のフェッチは遅延させておく
@@ -159,6 +236,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -186,7 +266,17 @@ describe('useGitHistory', () => {
     const promise2 = result.current.loadMore()
 
     // 両方を完了させる
-    resolveLoadMore!([{ hash: 'b0', message: 'm2', date: 'd2', authorName: 'y' }])
+    resolveLoadMore!([
+      {
+        hash: 'b0',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'm2',
+        date: 'd2',
+        authorName: 'y'
+      }
+    ])
     await promise1
     await promise2
 
@@ -199,6 +289,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -224,14 +317,34 @@ describe('useGitHistory', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(true))
 
     // loadMore が完了する前に別フォルダへ切り替える
-    const projectBLog = [{ hash: 'b1', message: 'commit B', date: 'd', authorName: 'y' }]
+    const projectBLog = [
+      {
+        hash: 'b1',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit B',
+        date: 'd',
+        authorName: 'y'
+      }
+    ]
     mockGetLog.mockResolvedValueOnce(projectBLog)
     rerender({ path: '/projectB' })
     await waitFor(() => expect(result.current.log).toEqual(projectBLog))
 
     // 古いフォルダ(A)向けの loadMore ページが遅れて解決しても、
     // 現在表示中のフォルダ(B)の log を汚染してはいけない
-    resolveLoadMore!([{ hash: 'stale', message: 'stale', date: 'd', authorName: 'x' }])
+    resolveLoadMore!([
+      {
+        hash: 'stale',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'stale',
+        date: 'd',
+        authorName: 'x'
+      }
+    ])
     await new Promise((r) => setTimeout(r, 20))
     expect(result.current.log).toEqual(projectBLog)
   })
@@ -240,6 +353,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -272,13 +388,33 @@ describe('useGitHistory', () => {
     rerender({ path: '/projectB' })
 
     // 古いフォルダ(A)向けの loadMore が(Bのfetchより先に)解決する
-    resolveLoadMore!([{ hash: 'stale', message: 'stale', date: 'd', authorName: 'x' }])
+    resolveLoadMore!([
+      {
+        hash: 'stale',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'stale',
+        date: 'd',
+        authorName: 'x'
+      }
+    ])
     await new Promise((r) => setTimeout(r, 20))
 
     // Bのfetchがまだ進行中なので、isLoading は true のままのはず
     expect(result.current.isLoading).toBe(true)
 
-    resolveProjectBFetch!([{ hash: 'b1', message: 'commit B', date: 'd', authorName: 'y' }])
+    resolveProjectBFetch!([
+      {
+        hash: 'b1',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit B',
+        date: 'd',
+        authorName: 'y'
+      }
+    ])
     await waitFor(() => expect(result.current.isLoading).toBe(false))
   })
 
@@ -291,6 +427,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -314,7 +453,17 @@ describe('useGitHistory', () => {
     await waitFor(() => expect(mockGetLog).toHaveBeenCalledWith(20, 20))
 
     // loadMore がまだ未解決の間に、refresh(新しいコミットを含む先頭ページ)が割り込む
-    const refreshedLog = [{ hash: 'new-commit', message: 'new', date: 'd', authorName: 'x' }]
+    const refreshedLog = [
+      {
+        hash: 'new-commit',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'new',
+        date: 'd',
+        authorName: 'x'
+      }
+    ]
     mockGetLog.mockResolvedValueOnce(refreshedLog)
     await act(async () => {
       await result.current.refresh()
@@ -327,6 +476,9 @@ describe('useGitHistory', () => {
       resolveLoadMore!(
         Array.from({ length: 20 }, (_, i) => ({
           hash: `a${20 + i}`,
+          parents: [],
+          refs: [],
+          isHead: false,
           message: 'm',
           date: 'd',
           authorName: 'x'
@@ -346,6 +498,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -370,7 +525,15 @@ describe('useGitHistory', () => {
 
     // refresh が先に完了し、isLoading は false に戻る
     mockGetLog.mockResolvedValueOnce([
-      { hash: 'new-commit', message: 'new', date: 'd', authorName: 'x' }
+      {
+        hash: 'new-commit',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'new',
+        date: 'd',
+        authorName: 'x'
+      }
     ])
     await act(async () => {
       await result.current.refresh()
@@ -399,6 +562,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -411,8 +577,16 @@ describe('useGitHistory', () => {
 
     // 外部コミットでページ境界がずれ、既出の a19 を含むページが返る
     mockGetLog.mockResolvedValueOnce([
-      { hash: 'a19', message: 'm', date: 'd', authorName: 'x' },
-      { hash: 'b0', message: 'm', date: 'd', authorName: 'x' }
+      {
+        hash: 'a19',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'm',
+        date: 'd',
+        authorName: 'x'
+      },
+      { hash: 'b0', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
     ])
     await act(async () => {
       await result.current.loadMore()
@@ -430,6 +604,9 @@ describe('useGitHistory', () => {
     // 前進しなくなる。skip は「取得済みページ数 × PAGE_SIZE」で管理する必要がある
     const firstPage = Array.from({ length: 20 }, (_, i) => ({
       hash: `a${i}`,
+      parents: [],
+      refs: [],
+      isHead: false,
       message: 'm',
       date: 'd',
       authorName: 'x'
@@ -449,7 +626,9 @@ describe('useGitHistory', () => {
     expect(result.current.log).toHaveLength(20)
 
     // 2回目の loadMore: skip が前進していないと同じ skip=20 を取り直して停滞する
-    mockGetLog.mockResolvedValueOnce([{ hash: 'b0', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValueOnce([
+      { hash: 'b0', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     await act(async () => {
       await result.current.loadMore()
     })
@@ -466,6 +645,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -489,7 +671,17 @@ describe('useGitHistory', () => {
     await waitFor(() => expect(mockGetLog).toHaveBeenCalledWith(20, 20))
 
     // refresh が割り込み、続きの無い短い先頭ページ(PAGE_SIZE 未満)に置き換える
-    const refreshedLog = [{ hash: 'new-commit', message: 'new', date: 'd', authorName: 'x' }]
+    const refreshedLog = [
+      {
+        hash: 'new-commit',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'new',
+        date: 'd',
+        authorName: 'x'
+      }
+    ]
     mockGetLog.mockResolvedValueOnce(refreshedLog)
     await act(async () => {
       await result.current.refresh()
@@ -502,6 +694,9 @@ describe('useGitHistory', () => {
       resolveLoadMore!(
         Array.from({ length: 20 }, (_, i) => ({
           hash: `a${20 + i}`,
+          parents: [],
+          refs: [],
+          isHead: false,
           message: 'm',
           date: 'd',
           authorName: 'x'
@@ -513,7 +708,9 @@ describe('useGitHistory', () => {
   })
 
   it('refresh 実行中に folderPath が変わった場合、古いフォルダの再取得結果で新しいフォルダの状態を上書きしない', async () => {
-    mockGetLog.mockResolvedValueOnce([{ hash: 'a0', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValueOnce([
+      { hash: 'a0', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
     const { result, rerender } = renderHook(
@@ -531,14 +728,34 @@ describe('useGitHistory', () => {
     const refreshCall = result.current.refresh()
 
     // refresh が完了する前に別フォルダへ切り替える(こちらのマウント fetch は先に完了する)
-    const projectBLog = [{ hash: 'b1', message: 'commit B', date: 'd', authorName: 'y' }]
+    const projectBLog = [
+      {
+        hash: 'b1',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'commit B',
+        date: 'd',
+        authorName: 'y'
+      }
+    ]
     mockGetLog.mockResolvedValueOnce(projectBLog)
     rerender({ path: '/projectB' })
     await waitFor(() => expect(result.current.log).toEqual(projectBLog))
 
     // 古いフォルダ(A)向けの refresh が遅れて解決しても、
     // 現在表示中のフォルダ(B)の log を汚染してはいけない
-    resolveRefresh!([{ hash: 'stale', message: 'stale', date: 'd', authorName: 'x' }])
+    resolveRefresh!([
+      {
+        hash: 'stale',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'stale',
+        date: 'd',
+        authorName: 'x'
+      }
+    ])
     await refreshCall
     await new Promise((r) => setTimeout(r, 20))
     expect(result.current.log).toEqual(projectBLog)
@@ -565,7 +782,17 @@ describe('useGitHistory', () => {
 
     // マウント時の取得がまだ解決していない間に、コミット後の refresh が実行され、
     // 先に解決する
-    const freshLog = [{ hash: 'fresh', message: 'new commit', date: 'd', authorName: 'x' }]
+    const freshLog = [
+      {
+        hash: 'fresh',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'new commit',
+        date: 'd',
+        authorName: 'x'
+      }
+    ]
     mockGetLog.mockResolvedValueOnce(freshLog)
     await act(async () => {
       await result.current.refresh()
@@ -573,7 +800,17 @@ describe('useGitHistory', () => {
     expect(result.current.log).toEqual(freshLog)
 
     // マウント時の初回取得(古いデータ)が今になって解決する
-    resolveMountLoad!([{ hash: 'stale', message: 'old', date: 'd', authorName: 'x' }])
+    resolveMountLoad!([
+      {
+        hash: 'stale',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'old',
+        date: 'd',
+        authorName: 'x'
+      }
+    ])
     await new Promise((r) => setTimeout(r, 20))
 
     // refresh が反映した最新の log が、後から解決したマウント側の
@@ -593,14 +830,22 @@ describe('useGitHistory', () => {
     expect(result.current.historyError?.message).toBe('spawn git ENOENT')
   })
 
-  it('別フォルダに切り替えた後 getLog が失敗した場合、historyError だけでなく log(lastCommitMessage の元)もクリアする', async () => {
+  it('別フォルダに切り替えた後 getLog が失敗した場合、historyError だけでなく log もクリアする', async () => {
     // catch で historyError だけをセットし log を前フォルダの値のまま残すと、
     // isLoadingLog が false に戻った時点で CommitSection の amend チェックボックスが
     // 「isCommitting=false, lastCommitMessage=前フォルダの非null値, isLoadingLog=false」
     // という条件を満たしてしまい、無関係な別リポジトリの直前コミットメッセージで
     // 誤って amend できてしまう
     mockGetLog.mockResolvedValueOnce([
-      { hash: 'a', message: 'フォルダAの直前コミット', date: 'd', authorName: 'x' }
+      {
+        hash: 'a',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'フォルダAの直前コミット',
+        date: 'd',
+        authorName: 'x'
+      }
     ])
     mockGetBranches.mockResolvedValue([])
     mockGetTags.mockResolvedValue([])
@@ -623,10 +868,14 @@ describe('useGitHistory', () => {
     const { result } = renderHook(() => useGitHistory('/project'))
     await waitFor(() => expect(result.current.historyError).not.toBeNull())
 
-    mockGetLog.mockResolvedValueOnce([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    mockGetLog.mockResolvedValueOnce([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
     await result.current.refresh()
     await waitFor(() => expect(result.current.historyError).toBeNull())
-    expect(result.current.log).toEqual([{ hash: 'a', message: 'm', date: 'd', authorName: 'x' }])
+    expect(result.current.log).toEqual([
+      { hash: 'a', parents: [], refs: [], isHead: false, message: 'm', date: 'd', authorName: 'x' }
+    ])
   })
 
   it('git 管理外のフォルダ(getBranches/getTags が throw する)では historyError をセットしない', async () => {
@@ -700,7 +949,17 @@ describe('useGitHistory', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false))
 
     // 古い fetch が後から完了しても、state は更新されない（canceled済み）
-    resolveFetch!([{ hash: 'old', message: 'm', date: 'd', authorName: 'x' }])
+    resolveFetch!([
+      {
+        hash: 'old',
+        parents: [],
+        refs: [],
+        isHead: false,
+        message: 'm',
+        date: 'd',
+        authorName: 'x'
+      }
+    ])
 
     // isLoading は false のまま、log は空のまま
     expect(result.current.isLoading).toBe(false)
@@ -711,6 +970,9 @@ describe('useGitHistory', () => {
     mockGetLog.mockResolvedValueOnce(
       Array.from({ length: 20 }, (_, i) => ({
         hash: `a${i}`,
+        parents: [],
+        refs: [],
+        isHead: false,
         message: 'm',
         date: 'd',
         authorName: 'x'
@@ -728,5 +990,182 @@ describe('useGitHistory', () => {
 
     expect(result.current.historyError?.message).toBe('failed to load more commits')
     expect(result.current.isLoading).toBe(false)
+  })
+})
+
+describe('useGitHistory: headCommitMessage', () => {
+  beforeEach(() => {
+    mockGetLog.mockReset()
+    mockGetBranches.mockReset()
+    mockGetTags.mockReset()
+    mockGetLog.mockResolvedValue([])
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+  })
+
+  it('履歴と同時に HEAD のメッセージを取得する(log の先頭が HEAD でなくても HEAD のものを持つ)', async () => {
+    mockGetLog.mockResolvedValue([makeEntry('upstream', '上流のコミット'), makeEntry('head')])
+    mockGetHeadCommitMessage.mockResolvedValue('HEAD のコミット')
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('HEAD のコミット'))
+    expect(mockGetHeadCommitMessage).toHaveBeenCalledOnce()
+  })
+
+  it("空のメッセージのコミットは '' のまま持つ(null にしない)", async () => {
+    mockGetHeadCommitMessage.mockResolvedValue('')
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    await waitFor(() => expect(result.current.headCommitMessage).toBe(''))
+  })
+
+  it('refresh で HEAD のメッセージも取り直す', async () => {
+    mockGetHeadCommitMessage.mockResolvedValue('amend 前')
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('amend 前'))
+
+    mockGetHeadCommitMessage.mockResolvedValue('amend 後')
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(result.current.headCommitMessage).toBe('amend 後')
+  })
+
+  it('getHeadCommitMessage が失敗しても履歴は表示でき、null になる', async () => {
+    mockGetLog.mockResolvedValue([makeEntry('a')])
+    mockGetHeadCommitMessage.mockResolvedValue('前のメッセージ')
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('前のメッセージ'))
+
+    mockGetLog.mockResolvedValue([makeEntry('b')])
+    mockGetHeadCommitMessage.mockRejectedValue(new Error('失敗'))
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(result.current.log).toEqual([makeEntry('b')])
+    expect(result.current.historyError).toBeNull()
+    expect(result.current.headCommitMessage).toBeNull()
+  })
+
+  it('履歴の取得に失敗すると null に戻る', async () => {
+    mockGetHeadCommitMessage.mockResolvedValue('前のメッセージ')
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('前のメッセージ'))
+
+    mockGetLog.mockRejectedValue(new Error('git が見つからない'))
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(result.current.historyError?.message).toBe('git が見つからない')
+    expect(result.current.headCommitMessage).toBeNull()
+  })
+
+  it('フォルダなしになると null に戻る', async () => {
+    mockGetHeadCommitMessage.mockResolvedValue('前のメッセージ')
+    const { result, rerender } = renderHook(({ path }) => useGitHistory(path), {
+      initialProps: { path: '/project' as string | null }
+    })
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('前のメッセージ'))
+
+    rerender({ path: null })
+
+    await waitFor(() => expect(result.current.headCommitMessage).toBeNull())
+  })
+
+  it('古い応答が新しい値を上書きしない', async () => {
+    const { result } = renderHook(() => useGitHistory('/project'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    const olderResponse = createDeferred<string | null>()
+    mockGetHeadCommitMessage.mockImplementationOnce(() => olderResponse.promise)
+    let olderRefresh!: Promise<void>
+    await act(async () => {
+      olderRefresh = result.current.refresh()
+    })
+
+    mockGetHeadCommitMessage.mockResolvedValueOnce('新しいメッセージ')
+    await act(async () => {
+      await result.current.refresh()
+    })
+    expect(result.current.headCommitMessage).toBe('新しいメッセージ')
+
+    await act(async () => {
+      olderResponse.resolve('古いメッセージ')
+      await olderRefresh
+    })
+
+    expect(result.current.headCommitMessage).toBe('新しいメッセージ')
+  })
+})
+
+// 古いフォルダの操作の完了が、切り替え前のレンダーの refresh を呼ぶ場合(要件 22)
+describe('useGitHistory: フォルダの切り替えの後の古い refresh', () => {
+  beforeEach(() => {
+    mockGetLog.mockReset()
+    mockGetBranches.mockReset()
+    mockGetTags.mockReset()
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+  })
+
+  it('新しいフォルダの読み込み中に呼んでも、読み込みと isLoading と headCommitMessage を壊さない', async () => {
+    mockGetLog.mockResolvedValueOnce([makeEntry('a')])
+    mockGetHeadCommitMessage.mockResolvedValueOnce('A のメッセージ')
+    const { result, rerender } = renderHook(({ path }) => useGitHistory(path), {
+      initialProps: { path: '/a' }
+    })
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('A のメッセージ'))
+    const staleRefresh = result.current.refresh
+
+    const newFolderLog = createDeferred<GitLogEntry[]>()
+    const newFolderMessage = createDeferred<string | null>()
+    mockGetLog.mockImplementationOnce(() => newFolderLog.promise)
+    mockGetHeadCommitMessage.mockImplementationOnce(() => newFolderMessage.promise)
+    rerender({ path: '/b' })
+    await waitFor(() => expect(mockGetLog).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      await staleRefresh()
+    })
+    // 古いフォルダの取得は始まらない
+    expect(mockGetLog).toHaveBeenCalledTimes(2)
+    expect(result.current.isLoading).toBe(true)
+
+    await act(async () => {
+      newFolderLog.resolve([makeEntry('b')])
+      newFolderMessage.resolve('B のメッセージ')
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isLoadingFolder).toBe(false)
+    expect(result.current.log).toEqual([makeEntry('b')])
+    expect(result.current.headCommitMessage).toBe('B のメッセージ')
+  })
+
+  it('新しいフォルダの読み込みの完了後に呼んでも、isLoading と headCommitMessage を壊さない', async () => {
+    mockGetLog.mockResolvedValueOnce([makeEntry('a')])
+    mockGetHeadCommitMessage.mockResolvedValueOnce('A のメッセージ')
+    const { result, rerender } = renderHook(({ path }) => useGitHistory(path), {
+      initialProps: { path: '/a' }
+    })
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('A のメッセージ'))
+    const staleRefresh = result.current.refresh
+
+    mockGetLog.mockResolvedValueOnce([makeEntry('b')])
+    mockGetHeadCommitMessage.mockResolvedValueOnce('B のメッセージ')
+    rerender({ path: '/b' })
+    await waitFor(() => expect(result.current.headCommitMessage).toBe('B のメッセージ'))
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    await act(async () => {
+      await staleRefresh()
+    })
+
+    expect(mockGetLog).toHaveBeenCalledTimes(2)
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.log).toEqual([makeEntry('b')])
+    expect(result.current.headCommitMessage).toBe('B のメッセージ')
   })
 })

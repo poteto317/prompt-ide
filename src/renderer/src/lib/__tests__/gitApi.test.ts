@@ -10,6 +10,7 @@ import {
   stageHunk,
   unstageHunk,
   getLog,
+  getHeadCommitMessage,
   getBranches,
   getTags,
   amendCommit,
@@ -52,6 +53,7 @@ const mockApi = {
   stageHunk: vi.fn(),
   unstageHunk: vi.fn(),
   getLog: vi.fn(),
+  getHeadCommitMessage: vi.fn(),
   getBranches: vi.fn(),
   getTags: vi.fn(),
   amendCommit: vi.fn(),
@@ -196,6 +198,14 @@ describe('getLog', () => {
     const result = await getLog(20, 0)
     expect(mockApi.getLog).toHaveBeenCalledWith(20, 0)
     expect(result).toEqual([])
+  })
+})
+
+describe('getHeadCommitMessage', () => {
+  it('window.api.getHeadCommitMessage を呼ぶ', async () => {
+    ;(mockApi.getHeadCommitMessage as ReturnType<typeof vi.fn>).mockResolvedValue('feat: x')
+    await expect(getHeadCommitMessage()).resolves.toBe('feat: x')
+    expect(mockApi.getHeadCommitMessage).toHaveBeenCalledWith()
   })
 })
 

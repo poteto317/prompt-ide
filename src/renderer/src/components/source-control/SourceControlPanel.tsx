@@ -11,7 +11,13 @@ import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 
 export interface SourceControlPanelProps extends Omit<
   GitRepoViewProps,
-  'branch' | 'ahead' | 'behind' | 'files' | 'remoteSetupKind' | 'requestRemoteSetupFocus'
+  | 'branch'
+  | 'ahead'
+  | 'behind'
+  | 'files'
+  | 'upstream'
+  | 'remoteSetupKind'
+  | 'requestRemoteSetupFocus'
 > {
   gitStatus: GitStatusResult | null
   gitLoading: boolean
@@ -141,6 +147,7 @@ export default function SourceControlPanel({
             lastCommitMessage={lastCommitMessage}
             onAmend={onAmend}
             log={log}
+            upstream={gitStatus.upstream}
             branches={branches}
             tags={tags}
             hasMoreLog={hasMoreLog}

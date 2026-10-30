@@ -70,8 +70,22 @@ export type ConflictFile =
     }
   | { status: 'unparsable'; reason: ConflictUnparsableReason; stages: ConflictStages }
 
+export type GitLogRefKind = 'current' | 'branch' | 'remote' | 'tag'
+
+export interface GitLogRef {
+  kind: GitLogRefKind
+  /** refs/heads/ などを除いた短い名前(origin/main) */
+  name: string
+}
+
 export type GitLogEntry = {
   hash: string
+  /** 親のハッシュ。ルートコミットは空 */
+  parents: string[]
+  /** このコミットを指す ref */
+  refs: GitLogRef[]
+  /** HEAD が指すコミットか(detached を含む) */
+  isHead: boolean
   message: string
   date: string
   authorName: string

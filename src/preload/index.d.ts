@@ -85,6 +85,7 @@ declare global {
       stageHunk(filePath: string, patch: string): Promise<void>
       unstageHunk(filePath: string, patch: string): Promise<void>
       getLog(limit: number, skip: number): Promise<GitLogEntry[]>
+      getHeadCommitMessage(): Promise<string | null>
       getBranches(): Promise<GitBranch[]>
       getTags(): Promise<string[]>
       amendCommit(message: string): Promise<void>

@@ -999,3 +999,146 @@ describe('pushSetUpstream(初回 push)', () => {
     })
   })
 })
+
+// fetch・pull・push の後は履歴も取り直す(上流のコミットと origin/main のラベルが変わるため)
+describe('fetch・pull・push の後の履歴の取り直し', () => {
+  type Operation = 'fetchRemote' | 'pull' | 'push'
+  const operations: Array<{
+    name: Operation
+    mockExecute: typeof mockFetchRemote
+    busyFlag: 'isFetching' | 'isPulling' | 'isPushing'
+  }> = [
+    { name: 'fetchRemote', mockExecute: mockFetchRemote, busyFlag: 'isFetching' },
+    { name: 'pull', mockExecute: mockPull, busyFlag: 'isPulling' },
+    { name: 'push', mockExecute: mockPush, busyFlag: 'isPushing' }
+  ]
+
+  const makeRefreshes = (): {
+    refreshGitStatus: ReturnType<typeof vi.fn<() => Promise<void>>>
+    refreshHistory: ReturnType<typeof vi.fn<() => Promise<void>>>
+  } => ({
+    refreshGitStatus: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    refreshHistory: vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+  })
+
+  it.each(operations)('$name の成功の後に、ステータスと履歴を取り直す', async (operation) => {
+    operation.mockExecute.mockResolvedValue(undefined)
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+    )
+
+    await act(async () => {
+      await result.current[operation.name]()
+    })
+
+    expect(refreshGitStatus).toHaveBeenCalledOnce()
+    expect(refreshHistory).toHaveBeenCalledOnce()
+  })
+
+  it.each(operations)(
+    '$name が失敗してもステータスと履歴を取り直し、エラーの表示は保つ',
+    async (operation) => {
+      operation.mockExecute.mockRejectedValue(new Error('操作に失敗'))
+      const { refreshGitStatus, refreshHistory } = makeRefreshes()
+      const { result } = renderHook(() =>
+        useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+      )
+
+      await act(async () => {
+        await result.current[operation.name]()
+      })
+
+      expect(refreshGitStatus).toHaveBeenCalledOnce()
+      expect(refreshHistory).toHaveBeenCalledOnce()
+      expect(result.current.remoteOperationError?.message).toBe('操作に失敗')
+      expect(result.current[operation.busyFlag]).toBe(false)
+    }
+  )
+
+  it.each(operations)(
+    '$name の履歴の取り直しが失敗しても、操作のエラーにはせず実行中フラグを下ろす',
+    async (operation) => {
+      operation.mockExecute.mockResolvedValue(undefined)
+      const { refreshGitStatus, refreshHistory } = makeRefreshes()
+      refreshHistory.mockRejectedValueOnce(new Error('履歴の取得に失敗'))
+      const { result } = renderHook(() =>
+        useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+      )
+
+      await act(async () => {
+        await result.current[operation.name]()
+      })
+
+      expect(result.current.remoteOperationError).toBeNull()
+      expect(result.current[operation.busyFlag]).toBe(false)
+    }
+  )
+
+  it.each(operations)(
+    '$name は履歴が先に失敗しても、ステータスの取り直しが終わるまで実行中フラグを保つ',
+    async (operation) => {
+      operation.mockExecute.mockResolvedValue(undefined)
+      const { refreshGitStatus, refreshHistory } = makeRefreshes()
+      let resolveStatus: () => void = () => {}
+      refreshGitStatus.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveStatus = resolve
+          })
+      )
+      refreshHistory.mockRejectedValueOnce(new Error('履歴の取得に失敗'))
+      const { result } = renderHook(() =>
+        useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
+      )
+
+      let operationPromise!: Promise<void>
+      await act(async () => {
+        operationPromise = result.current[operation.name]()
+        await Promise.resolve()
+      })
+      await waitFor(() => expect(refreshHistory).toHaveBeenCalled())
+      // Promise.all だと、履歴の失敗の時点で実行中フラグが下りる
+      await act(async () => {
+        await new Promise((resolve) => setImmediate(resolve))
+      })
+      expect(result.current[operation.busyFlag]).toBe(true)
+
+      await act(async () => {
+        resolveStatus()
+        await operationPromise
+      })
+      expect(result.current[operation.busyFlag]).toBe(false)
+    }
+  )
+
+  it('pull の共有ロックは、履歴の取り直しが終わるまで解放しない', async () => {
+    mockPull.mockResolvedValue(undefined)
+    const fileLock = makeFileLock()
+    const { refreshGitStatus, refreshHistory } = makeRefreshes()
+    let resolveHistory: () => void = () => {}
+    refreshHistory.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveHistory = resolve
+        })
+    )
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(repoStatus, refreshGitStatus, fileLock, refreshHistory)
+    )
+
+    let pullPromise!: Promise<void>
+    await act(async () => {
+      pullPromise = result.current.pull()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(refreshHistory).toHaveBeenCalled())
+    expect(fileLock.unlockGlobal).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveHistory()
+      await pullPromise
+    })
+    expect(fileLock.unlockGlobal).toHaveBeenCalledOnce()
+  })
+})

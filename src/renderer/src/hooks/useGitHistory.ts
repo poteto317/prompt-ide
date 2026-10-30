@@ -10,6 +10,10 @@ export interface GitHistoryState {
   log: GitLogEntry[]
   branches: GitBranch[]
   tags: string[]
+  /** HEAD のコミットメッセージ(amend の欄に入れる)。上流が HEAD より進んでいると log の
+   *  先頭は HEAD ではなくなるため、log からは取らない。null はコミットが無い・
+   *  取得に失敗したとき・フォルダなしのときで、空のメッセージのコミットは '' になる */
+  headCommitMessage: string | null
   hasMore: boolean
   isLoading: boolean
   /** フォルダ切替による初回取得中のみ true になる。同一フォルダ内の refresh
@@ -28,6 +32,7 @@ interface HistorySetters {
   setLog: (log: GitLogEntry[]) => void
   setBranches: (branches: GitBranch[]) => void
   setTags: (tags: string[]) => void
+  setHeadCommitMessage: (message: string | null) => void
   setHasMore: (hasMore: boolean) => void
   setIsLoading: (isLoading: boolean) => void
   setHistoryError: (error: Error | null) => void
@@ -54,6 +59,7 @@ async function fetchGitHistoryData(
     setters.setLog([])
     setters.setBranches([])
     setters.setTags([])
+    setters.setHeadCommitMessage(null)
     setters.setHasMore(false)
     setters.setIsLoading(false)
     setters.setHistoryError(null)
@@ -65,16 +71,19 @@ async function fetchGitHistoryData(
     // getLog/getBranches/getTags は互いに依存しない独立した IPC 呼び出しのため、
     // 直列に待たず並行して開始する。git 管理外のフォルダでは getBranches/getTags
     // が throw するが、呼び出し元は isRepo を見て履歴セクションの描画有無を決めるため、
-    // ここでは個別に握りつぶし空配列にフォールバックする(getLog の結果まで巻き込んで捨てない)
-    const [logResult, branchesResult, tagsResult] = await Promise.all([
+    // ここでは個別に握りつぶし空配列にフォールバックする(getLog の結果まで巻き込んで捨てない)。
+    // HEAD のメッセージの失敗も同じ: amend が押せなくなるだけで、履歴の表示は止めない
+    const [logResult, branchesResult, tagsResult, headCommitMessageResult] = await Promise.all([
       gitApi.getLog(PAGE_SIZE, 0),
       gitApi.getBranches().catch(() => []),
-      gitApi.getTags().catch(() => [])
+      gitApi.getTags().catch(() => []),
+      gitApi.getHeadCommitMessage().catch(() => null)
     ])
     if (isCancelled()) return
     setters.setLog(logResult)
     setters.setBranches(branchesResult)
     setters.setTags(tagsResult)
+    setters.setHeadCommitMessage(headCommitMessageResult)
     setters.setHasMore(logResult.length === PAGE_SIZE)
     setters.setHistoryError(null)
     // 先頭 1 ページを取り直したので、次の loadMore は skip=PAGE_SIZE から始める
@@ -86,14 +95,15 @@ async function fetchGitHistoryData(
     // historyError に反映する
     if (isCancelled()) return
     setters.setHistoryError(toError(err))
-    // log を前フォルダの値のまま残すと、isLoading が false に戻った時点で
-    // CommitSection の amend チェックボックスが「isCommitting=false,
-    // lastCommitMessage(log[0]由来)=前フォルダの非null値, isLoadingLog=false」
+    // headCommitMessage を前フォルダの値のまま残すと、isLoadingFolder が false に
+    // 戻った時点で CommitSection の amend チェックボックスが「isCommitting=false,
+    // lastCommitMessage(headCommitMessage)=前フォルダの非null値, isLoadingFolder=false」
     // という条件を満たしてしまい、無関係な別リポジトリの直前コミットメッセージで
     // 誤って amend できてしまう
     setters.setLog([])
     setters.setBranches([])
     setters.setTags([])
+    setters.setHeadCommitMessage(null)
     setters.setHasMore(false)
     setters.setLoadedPageCount(0)
   } finally {
@@ -105,6 +115,7 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
   const [log, setLog] = useState<GitLogEntry[]>([])
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [tags, setTags] = useState<string[]>([])
+  const [headCommitMessage, setHeadCommitMessage] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingFolder, setIsLoadingFolder] = useState(false)
@@ -146,12 +157,22 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
       setLog,
       setBranches,
       setTags,
+      setHeadCommitMessage,
       setHasMore,
       setIsLoading,
       setHistoryError,
       setLoadedPageCount
     }),
-    [setLog, setBranches, setTags, setHasMore, setIsLoading, setHistoryError, setLoadedPageCount]
+    [
+      setLog,
+      setBranches,
+      setTags,
+      setHeadCommitMessage,
+      setHasMore,
+      setIsLoading,
+      setHistoryError,
+      setLoadedPageCount
+    ]
   )
 
   useEffect(() => {
@@ -174,6 +195,10 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
   }, [folderPath, setters])
 
   const refresh = useCallback(async (): Promise<void> => {
+    // 古いフォルダの操作(fetch など)の完了が、切り替え前のレンダーの refresh を呼ぶ場合は
+    // 何もしない。世代番号を進めると新しいフォルダの読み込みが破棄され、isCancelled が
+    // 最初から true のまま進むと setIsLoading(true) が下りなくなる
+    if (folderPathRef.current !== folderPath) return
     const requestedFolderPath = folderPath
     const requestId = ++latestRequestIdRef.current
     // 取得中に folderPath が切り替わっていたら、古いフォルダの再取得結果で
@@ -251,6 +276,7 @@ export function useGitHistory(folderPath: string | null): GitHistoryState {
     log,
     branches,
     tags,
+    headCommitMessage,
     hasMore,
     isLoading,
     isLoadingFolder,

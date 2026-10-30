@@ -239,6 +239,42 @@ export async function getDiff(
   return git.diff(args)
 }
 
+// 今のブランチの上流の完全な ref 名(refs/remotes/origin/main)。上流が無ければ null。
+// GitError は上流が無い(未設定・消えている・detached・コミットが無い)ときの失敗で、それ以外(git が PATH に無い等)は
+// 上流が無いことにせず投げ直す。上流の ref が消えていて作業ツリーに `@{upstream}` というファイルがあると、rev-parse は
+// それをパスと解釈し、終了コード 0 でその名前を出す(実機で確認)ため、refs/ で始まるものだけを受け入れる
+async function getUpstreamRef(git: SimpleGit): Promise<string | null> {
+  try {
+    const ref = (await git.raw(['rev-parse', '--symbolic-full-name', '@{upstream}'])).trim()
+    return ref.startsWith('refs/') ? ref : null
+  } catch (err) {
+    if (err instanceof GitError) return null
+    throw err
+  }
+}
+
+// log の失敗が「コミットがまだ無い」ことによるものかどうかを、git の生エラーメッセージへの
+// 英語部分文字列一致ではなく rev-parse の成否で判定する。文字列一致は
+// ローカライズされた git で通常の新規リポジトリをエラー扱いにしてしまう。
+// rev-parse も失敗する = HEAD が指すコミットが無い(unborn HEAD)ので false。
+// 呼び出し元は true のとき(git が PATH に無い、リポジトリ破損等)log の失敗を握りつぶさず
+// 伝播させる。握りつぶすと履歴パネルが静かに「コミットなし」と表示され、ユーザーに
+// 実際の問題が伝わらない
+async function hasHeadCommit(git: SimpleGit, logError: unknown): Promise<boolean> {
+  return git
+    .raw(['rev-parse', '--verify', 'HEAD'])
+    .then(() => true)
+    .catch((revParseErr) => {
+      // rev-parse 自体が GitError(git プロセスは起動できたが exit code 非0)
+      // 以外の理由で失敗した場合(git バイナリ不在等の spawn レベルの異常)、
+      // それは log の失敗と同じ根本原因である可能性が高い。unborn HEAD と
+      // 誤判定して元の log 失敗のエラーを握りつぶさないよう、
+      // GitError 以外はここで rethrow する
+      if (!(revParseErr instanceof GitError)) throw logError
+      return false
+    })
+}
+
 export async function getLog(
   folderPath: string,
   limit: number,
@@ -256,7 +292,8 @@ export async function getLog(
   // %s(subject 1行のみ)ではなく %B(生のコミットメッセージ全体、複数行本文を含む)を使う。
   // amend 時にこの message をそのままメッセージ欄へ入れるため、%s のままだと複数行の
   // コミット本文が amend のたびに1行に切り詰められてしまう
-  const format = '%H%x1f%B%x1f%aI%x1f%an%x1e'
+  const format = '%H%x1f%P%x1f%D%x1f%B%x1f%aI%x1f%an%x1e'
+  const upstream = await getUpstreamRef(git)
   let output: string
   try {
     // env() は使わない。環境変数を明示的に渡すと simple-git の
@@ -270,34 +307,52 @@ export async function getLog(
     // ロケールに依存する必要自体が無くなった
     output = await git.raw([
       'log',
+      '--topo-order',
+      // log.showSignature=true だと署名の検証結果がレコードの前に付き、%H と本文が汚れる
+      '--no-show-signature',
+      // %D を完全な ref 名にする(log.decorate の設定に影響されず、origin/main とローカルの foo/bar を区別できる)
+      '--decorate=full',
+      // log.excludeDecoration の設定を打ち消す。無いと HEAD やリモートの装飾が消える
+      '--decorate-refs=refs/heads/',
+      '--decorate-refs=refs/remotes/',
+      '--decorate-refs=refs/tags/',
+      '--decorate-refs=HEAD',
       `--max-count=${limit}`,
       `--skip=${skip}`,
-      `--pretty=format:${format}`
+      `--pretty=format:${format}`,
+      'HEAD',
+      ...(upstream === null ? [] : [upstream]),
+      // 作業ツリーに HEAD というファイルがあると、引数が曖昧で失敗するのを防ぐ(macOS では小文字の head でも起きる)
+      '--'
     ])
   } catch (err) {
-    // 「コミットがまだ無い」ケースかどうかを、git の生エラーメッセージへの
-    // 英語部分文字列一致ではなく rev-parse の成否で判定する。文字列一致は
-    // ローカライズされた git で通常の新規リポジトリをエラー扱いにしてしまう。
-    // rev-parse も失敗する = HEAD が指すコミットが無い(unborn HEAD)ので空配列。
-    // それ以外(git が PATH に無い、リポジトリ破損等)は握りつぶさず伝播させる。
-    // 握りつぶすと履歴パネルが静かに「コミットなし」と表示され、ユーザーに
-    // 実際の問題が伝わらない
-    const hasCommits = await git
-      .raw(['rev-parse', '--verify', 'HEAD'])
-      .then(() => true)
-      .catch((revParseErr) => {
-        // rev-parse 自体が GitError(git プロセスは起動できたが exit code 非0)
-        // 以外の理由で失敗した場合(git バイナリ不在等の spawn レベルの異常)、
-        // それは log の失敗と同じ根本原因である可能性が高い。unborn HEAD と
-        // 誤判定して元の log 失敗のエラー(err)を握りつぶさないよう、
-        // GitError 以外はここで rethrow する
-        if (!(revParseErr instanceof GitError)) throw err
-        return false
-      })
-    if (!hasCommits) return []
+    if (!(await hasHeadCommit(git, err))) return []
     throw err
   }
   return parseGitLogOutput(output)
+}
+
+// HEAD のコミットメッセージ。履歴の先頭は上流が先行すると HEAD でなくなるため、amend の欄にはこちらを使う。
+// null はリポジトリでない・コミットが無いときだけで、空のメッセージのコミットは ''(amend できる)
+export async function getHeadCommitMessage(folderPath: string): Promise<string | null> {
+  const git = simpleGit(folderPath)
+  const isRepo = await git.checkIsRepo()
+  if (!isRepo) return null
+  try {
+    // --no-show-signature と末尾の -- の理由は getLog と同じ
+    const output = await git.raw([
+      'log',
+      '-1',
+      '--no-show-signature',
+      '--pretty=format:%B',
+      'HEAD',
+      '--'
+    ])
+    return output.trim()
+  } catch (err) {
+    if (!(await hasHeadCommit(git, err))) return null
+    throw err
+  }
 }
 
 export async function getBranches(folderPath: string): Promise<GitBranch[]> {

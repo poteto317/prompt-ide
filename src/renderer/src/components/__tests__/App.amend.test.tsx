@@ -12,6 +12,7 @@ vi.mock('../../lib/gitApi', () => ({
   stageHunk: vi.fn(),
   unstageHunk: vi.fn(),
   getLog: vi.fn(),
+  getHeadCommitMessage: vi.fn(() => Promise.resolve(null)),
   getBranches: vi.fn(),
   getTags: vi.fn(),
   amendCommit: vi.fn()
@@ -24,6 +25,7 @@ import { activityBarPanels } from '../../config/activityBarPanels'
 
 const mockGetGitStatus = vi.mocked(gitApi.getGitStatus)
 const mockGetLog = vi.mocked(gitApi.getLog)
+const mockGetHeadCommitMessage = vi.mocked(gitApi.getHeadCommitMessage)
 const mockGetBranches = vi.mocked(gitApi.getBranches)
 const mockGetTags = vi.mocked(gitApi.getTags)
 const mockAmendCommit = vi.mocked(gitApi.amendCommit)
@@ -72,12 +74,16 @@ describe('App: amend 完了後の履歴反映', () => {
     const beforeLog: GitLogEntry[] = [
       {
         hash: 'abc123',
+        parents: [],
+        refs: [],
+        isHead: false,
         message: '直前のコミット',
         date: '2026-09-04T00:00:00Z',
         authorName: 'Alice'
       }
     ]
     mockGetLog.mockResolvedValueOnce(beforeLog)
+    mockGetHeadCommitMessage.mockResolvedValueOnce('直前のコミット')
     await openGitPanel()
     await waitFor(() => expect(screen.getByText('直前のコミット')).toBeInTheDocument())
 
@@ -90,6 +96,7 @@ describe('App: amend 完了後の履歴反映', () => {
     // amend 後の履歴再取得(getLog の2回目呼び出し)をこちらで制御する
     const deferredLog = createDeferred<GitLogEntry[]>()
     mockGetLog.mockImplementationOnce(() => deferredLog.promise)
+    mockGetHeadCommitMessage.mockResolvedValueOnce('直前のコミット(amend後)')
 
     await userEvent.click(screen.getByRole('button', { name: 'コミット' }))
     await waitFor(() => expect(mockAmendCommit).toHaveBeenCalled())
@@ -112,6 +119,9 @@ describe('App: amend 完了後の履歴反映', () => {
     deferredLog.resolve([
       {
         hash: 'def456',
+        parents: [],
+        refs: [],
+        isHead: false,
         message: '直前のコミット(amend後)',
         date: '2026-09-04T00:01:00Z',
         authorName: 'Alice'
@@ -120,5 +130,30 @@ describe('App: amend 完了後の履歴反映', () => {
 
     await waitFor(() => expect(screen.getByRole('checkbox', { name: 'amend' })).not.toBeChecked())
     expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue('')
+  })
+
+  it('上流が HEAD より進んで getLog の先頭が別のコミットでも、amend の欄に HEAD のメッセージが入る', async () => {
+    const makeEntry = (hash: string, message: string, isHead: boolean): GitLogEntry => ({
+      hash,
+      parents: [],
+      refs: [],
+      isHead,
+      message,
+      date: '2026-09-04T00:00:00Z',
+      authorName: 'Alice'
+    })
+    mockGetLog.mockResolvedValueOnce([
+      makeEntry('upstream1', '上流のコミット', false),
+      makeEntry('head1', 'HEAD のコミット', true)
+    ])
+    mockGetHeadCommitMessage.mockResolvedValueOnce('HEAD のコミット')
+    await openGitPanel()
+    await waitFor(() => expect(screen.getByText('上流のコミット')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'amend' }))
+
+    expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue(
+      'HEAD のコミット'
+    )
   })
 })

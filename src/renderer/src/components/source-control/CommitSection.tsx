@@ -6,8 +6,8 @@ interface Props {
   onCommit: (message: string) => Promise<boolean>
   lastCommitMessage: string | null
   onAmend: (message: string) => Promise<boolean>
-  /** コミット履歴(lastCommitMessage の元)を取得中か。フォルダ切替直後は
-   *  useGitHistory の log が前フォルダの値のまま残るため、取得完了まで amend を
+  /** コミット履歴と lastCommitMessage を取得中か。フォルダ切替直後は useGitHistory の
+   *  headCommitMessage が前フォルダの値のまま残るため、取得完了まで amend を
    *  無効化しないと、別リポジトリの直前コミットを誤って amend してしまう */
   isLoadingFolder?: boolean
   /** stage/unstage(useGitOperations)やハンク操作(useDiffOperations の
@@ -111,8 +111,9 @@ export default function CommitSection({
           aria-label="amend"
           checked={isAmend}
           onChange={(e) => handleAmendToggle(e.target.checked)}
-          // lastCommitMessage は log[0]?.message 由来のため、null は
-          // 「コミットが1件も無いリポジトリ」を意味する。amend の対象が
+          // lastCommitMessage は HEAD のメッセージ(useGitHistory の headCommitMessage)で、
+          // null は「コミットが1件も無いリポジトリ」を意味する(取得に失敗したときも
+          // null になり、amend できないものとして扱う)。amend の対象が
           // 無い状態でチェックを入れられると、メッセージ入力だけで
           // コミットボタンが有効化されてしまい、実行して初めて
           // git の `fatal: you have nothing to amend` エラーに気づくことになる。

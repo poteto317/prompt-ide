@@ -98,6 +98,7 @@ export default function App(): React.JSX.Element {
     log,
     branches,
     tags,
+    headCommitMessage,
     hasMore,
     isLoading: isLoadingHistory,
     isLoadingFolder,
@@ -179,6 +180,12 @@ export default function App(): React.JSX.Element {
   const handleCommit = (message: string): Promise<boolean> => commit(message, refreshHistory)
 
   const handleAmend = (message: string): Promise<boolean> => amend(message, refreshHistory)
+
+  // ソース管理の「更新」。端末でのコミットや fetch を反映するため、Git の状態と履歴の両方を
+  // 取り直す。片方の失敗で他方を止めないよう、それぞれ独立に走らせる
+  const handleRefreshSourceControl = (): void => {
+    void Promise.allSettled([refreshGitStatus(), refreshHistory()])
+  }
 
   // フォルダ/ファイル読み込み系の error(useFileSystem 由来)とは別スロットにする。
   // 共有すると、フォルダ読み込みエラー表示中に gitignore 追加が失敗した場合(逆も)、
@@ -301,7 +308,7 @@ export default function App(): React.JSX.Element {
               gitStatus={gitStatus}
               gitLoading={gitLoading}
               gitError={gitError}
-              onRefreshGitStatus={refreshGitStatus}
+              onRefreshGitStatus={handleRefreshSourceControl}
               stagingPaths={stagingPaths}
               isLocked={isLocked}
               isAnyLocked={isAnyLocked}
@@ -335,7 +342,7 @@ export default function App(): React.JSX.Element {
               gitBranchOperationError={branchOperationError}
               onOpenDiff={handleOpenDiff}
               onAmend={handleAmend}
-              lastCommitMessage={log[0]?.message ?? null}
+              lastCommitMessage={headCommitMessage}
               log={log}
               branches={branches}
               tags={tags}

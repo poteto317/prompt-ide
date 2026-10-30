@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { ComponentProps } from 'react'
-import type { GitStatusResult } from '@shared/types'
+import type { GitLogEntry, GitStatusResult } from '@shared/types'
 import type { GitTagPanelState } from '../../../types'
 import HistorySection from '../HistorySection'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
@@ -13,10 +13,40 @@ import * as gitApi from '../../../lib/gitApi'
 import { useGitTagOperations } from '../../../hooks/useGitTagOperations'
 
 describe('HistorySection', () => {
-  it('タグ名だけをバッジとして表示し、ブランチ名は表示しない', () => {
-    render(
+  const makeEntry = (overrides: Partial<GitLogEntry> = {}): GitLogEntry => ({
+    hash: 'abcdef1234567',
+    parents: [],
+    refs: [],
+    isHead: false,
+    message: 'feat: 新機能',
+    date: '2026-09-03T10:00:00+09:00',
+    authorName: 'Alice',
+    ...overrides
+  })
+
+  const renderLog = (log: GitLogEntry[], upstream: string | null = null): HTMLElement => {
+    const { container } = render(
+      <HistorySection
+        log={log}
+        upstream={upstream}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={null}
+        onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
+      />
+    )
+    return container
+  }
+
+  it('上部にタグやブランチのバッジを出さない(タグはコミットの行に出す)', () => {
+    const { container } = render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[
           { name: 'main', current: true },
           { name: 'dev', current: false }
@@ -30,107 +60,119 @@ describe('HistorySection', () => {
         isBlocked={false}
       />
     )
+    expect(container.querySelector('.history-section__badges')).toBeNull()
     expect(screen.queryByText('main')).toBeNull()
     expect(screen.queryByText('dev')).toBeNull()
-    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+    expect(screen.queryByText('v1.0.0')).toBeNull()
   })
 
-  it('タグが 0 件のときはバッジの枠を出さない', () => {
-    const { container } = render(
-      <HistorySection
-        log={[]}
-        branches={[
-          { name: 'main', current: true },
-          { name: 'dev', current: false }
-        ]}
-        tags={[]}
-        hasMore={false}
-        isLoading={false}
-        error={null}
-        onLoadMore={vi.fn()}
-        gitTag={makeGitTagPanelState()}
-        isBlocked={false}
-      />
-    )
-    expect(container.querySelector('.history-section__badges')).toBeNull()
-  })
-
-  it('コミット一覧をハッシュ短縮形・メッセージで表示する', () => {
-    render(
-      <HistorySection
-        log={[
-          {
-            hash: 'abcdef1234567',
-            message: 'feat: 新機能',
-            date: '2026-09-03T10:00:00+09:00',
-            authorName: 'Alice'
-          }
-        ]}
-        branches={[]}
-        tags={[]}
-        hasMore={false}
-        isLoading={false}
-        error={null}
-        onLoadMore={vi.fn()}
-        gitTag={makeGitTagPanelState()}
-        isBlocked={false}
-      />
-    )
-    expect(screen.getByText('abcdef1')).toBeInTheDocument()
+  // title はフォーカスできない li に付くため、スクリーンリーダーとキーボードでは読めない
+  it('行に件名と作成者を出し、ハッシュと相対日時は視覚的に隠したテキストにだけ出す', () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    renderLog([makeEntry({ date: oneHourAgo })])
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
+    expect(screen.getByText('Alice')).toBeInTheDocument()
+    const hidden = screen.getByText('abcdef1 1時間前')
+    expect(hidden).toHaveClass('history-section__visually-hidden')
+    expect(screen.getByRole('listitem')).toContainElement(hidden)
+  })
+
+  it('行の title は件名、ハッシュの先頭 7 文字、作成者、相対日時を改行で区切る', () => {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    renderLog([makeEntry({ message: 'feat: 新機能\n\n詳細な説明文', date: oneHourAgo })])
+    expect(screen.getByRole('listitem')).toHaveAttribute(
+      'title',
+      'feat: 新機能\nabcdef1\nAlice\n1時間前'
+    )
   })
 
   it('複数行のコミットメッセージは最初の行だけを表示する', () => {
-    render(
-      <HistorySection
-        log={[
-          {
-            hash: 'abcdef1234567',
-            message: 'feat: 新機能\n\n詳細な説明文',
-            date: '2026-09-03T10:00:00+09:00',
-            authorName: 'Alice'
-          }
-        ]}
-        branches={[]}
-        tags={[]}
-        hasMore={false}
-        isLoading={false}
-        error={null}
-        onLoadMore={vi.fn()}
-        gitTag={makeGitTagPanelState()}
-        isBlocked={false}
-      />
-    )
+    renderLog([makeEntry({ message: 'feat: 新機能\n\n詳細な説明文' })])
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
     expect(screen.queryByText(/詳細な説明文/)).not.toBeInTheDocument()
   })
 
-  it('各コミットに日時関連のテキストが表示される（相対日時）', () => {
-    // 設計仕様は「ハッシュ短縮形・メッセージ1行・相対日時」を要求しているが、
-    // 以前は entry.date が描画されておらず、履歴一覧に日時が一切表示されなかった
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-    render(
-      <HistorySection
-        log={[
-          { hash: 'abcdef1234567', message: 'feat: 新機能', date: oneHourAgo, authorName: 'Alice' }
-        ]}
-        branches={[]}
-        tags={[]}
-        hasMore={false}
-        isLoading={false}
-        error={null}
-        onLoadMore={vi.fn()}
-        gitTag={makeGitTagPanelState()}
-        isBlocked={false}
-      />
+  it('行の並びはグラフ、件名、作成者、位置のラベルの順', () => {
+    const container = renderLog([makeEntry({ refs: [{ kind: 'current', name: 'main' }] })])
+    const item = screen.getByRole('listitem')
+    const inRowOrder = Array.from(
+      item.querySelectorAll(
+        '.history-section__graph, .history-section__log-message, .history-section__log-author, .history-section__ref'
+      )
+    ).map((el) => el.getAttribute('class')?.split(' ')[0])
+    expect(inRowOrder).toEqual([
+      'history-section__graph',
+      'history-section__log-message',
+      'history-section__log-author',
+      'history-section__ref'
+    ])
+    expect(container.querySelector('.history-section__ref--current')).toHaveTextContent('main')
+  })
+
+  it('グラフの SVG は aria-hidden で、行ごとに 1 つ出す', () => {
+    renderLog([
+      makeEntry({ hash: 'a'.repeat(40), parents: ['b'.repeat(40)] }),
+      makeEntry({ hash: 'b'.repeat(40) })
+    ])
+    const items = screen.getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    items.forEach((item) => {
+      expect(item.querySelector('.history-section__graph')).toHaveAttribute('aria-hidden', 'true')
+    })
+  })
+
+  it('読み込んだ全件でグラフを組み立てる(マージの親が別のレーンに出る)', () => {
+    const [merge, side, base] = ['a', 'b', 'c'].map((c) => c.repeat(40))
+    renderLog([
+      makeEntry({ hash: merge, parents: [base, side], message: 'マージ' }),
+      makeEntry({ hash: side, parents: [base], message: '分岐' }),
+      makeEntry({ hash: base, message: '土台' })
+    ])
+    const widthOf = (message: string): string | null | undefined =>
+      screen
+        .getByText(message)
+        .closest('li')
+        ?.querySelector('.history-section__graph')
+        ?.getAttribute('width')
+    expect(widthOf('マージ')).toBe('22')
+    expect(widthOf('分岐')).toBe('22')
+    expect(widthOf('土台')).toBe('22')
+  })
+
+  it('upstream をグラフの色に使う(上流のコミットは紫)', () => {
+    const container = renderLog(
+      [
+        makeEntry({
+          refs: [{ kind: 'remote', name: 'origin/main' }],
+          parents: []
+        })
+      ],
+      'origin/main'
     )
-    expect(screen.getByText('1時間前')).toBeInTheDocument()
+    expect(container.querySelector('.history-section__graph circle')).toHaveAttribute(
+      'fill',
+      '#B180D7'
+    )
+  })
+
+  it('位置のラベルを行に出す', () => {
+    renderLog([
+      makeEntry({
+        refs: [
+          { kind: 'tag', name: 'v1.0.0' },
+          { kind: 'remote', name: 'origin/main' }
+        ]
+      })
+    ])
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+    expect(screen.getByText('origin/main')).toBeInTheDocument()
   })
 
   it('hasMore が true のとき「もっと見る」ボタンを表示する', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={true}
@@ -148,6 +190,7 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={false}
@@ -166,6 +209,7 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={true}
@@ -184,6 +228,7 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={true}
@@ -203,6 +248,7 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={false}
@@ -220,6 +266,7 @@ describe('HistorySection', () => {
     render(
       <HistorySection
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMore={false}
@@ -245,6 +292,7 @@ describe('HistorySection のタグの作成', () => {
   } => {
     const props: SectionProps = {
       log: [],
+      upstream: null,
       branches: [{ name: 'main', current: true }],
       tags: ['v1'],
       hasMore: false,
@@ -353,6 +401,7 @@ describe('HistorySection のタグの作成(useGitTagOperations との結合)', 
       <>
         <HistorySection
           log={[]}
+          upstream={null}
           branches={[{ name: 'main', current: true }]}
           tags={[]}
           hasMore={false}

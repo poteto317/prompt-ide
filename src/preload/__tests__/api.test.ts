@@ -103,6 +103,11 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['git:getLog', 20, 0]
   ],
   [
+    'getHeadCommitMessage は git:getHeadCommitMessage チャンネルを呼び出す',
+    () => api.getHeadCommitMessage(),
+    ['git:getHeadCommitMessage']
+  ],
+  [
     'getBranches は git:getBranches チャンネルを呼び出す',
     () => api.getBranches(),
     ['git:getBranches']

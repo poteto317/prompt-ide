@@ -54,6 +54,7 @@ const baseProps = {
   lastCommitMessage: null,
   onAmend: vi.fn().mockResolvedValue(true),
   log: [],
+  upstream: null,
   branches: [],
   tags: [],
   hasMoreLog: false,
@@ -215,6 +216,7 @@ describe('GitRepoView', () => {
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMoreLog={false}
@@ -273,6 +275,34 @@ describe('GitRepoView', () => {
     expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
   })
 
+  it('upstream を HistorySection へ渡す(上流のコミットの円が紫になる)', () => {
+    const { container } = render(
+      <GitRepoView
+        branch="main"
+        ahead={0}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        upstream="origin/main"
+        log={[
+          {
+            hash: 'a'.repeat(40),
+            parents: [],
+            refs: [{ kind: 'remote', name: 'origin/main' }],
+            isHead: false,
+            message: 'feat: 新機能',
+            date: '2026-09-03T10:00:00+09:00',
+            authorName: 'Alice'
+          }
+        ]}
+      />
+    )
+    expect(container.querySelector('.history-section__graph circle')).toHaveAttribute(
+      'fill',
+      '#B180D7'
+    )
+  })
+
   it('CommitSection と HistorySection に必要な props が渡る', () => {
     render(
       <GitRepoView
@@ -289,7 +319,18 @@ describe('GitRepoView', () => {
         onCommit={vi.fn().mockResolvedValue(true)}
         lastCommitMessage="feat: 直前のコミット"
         onAmend={vi.fn().mockResolvedValue(true)}
-        log={[{ hash: 'abc1234', message: 'feat: 新機能', date: 'd', authorName: 'x' }]}
+        log={[
+          {
+            hash: 'abc1234',
+            parents: [],
+            refs: [],
+            isHead: false,
+            message: 'feat: 新機能',
+            date: 'd',
+            authorName: 'x'
+          }
+        ]}
+        upstream={null}
         branches={[{ name: 'main', current: true }]}
         tags={[]}
         hasMoreLog={false}
@@ -332,6 +373,7 @@ describe('GitRepoView', () => {
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMoreLog={false}
@@ -375,6 +417,7 @@ describe('GitRepoView', () => {
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
         log={[]}
+        upstream={null}
         branches={[]}
         tags={[]}
         hasMoreLog={false}

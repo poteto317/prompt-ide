@@ -38,6 +38,8 @@ export interface GitRepoViewProps {
   lastCommitMessage: string | null
   onAmend: (message: string) => Promise<boolean>
   log: GitLogEntry[]
+  /** 現在のブランチの上流の短い名前(gitStatus.upstream) */
+  upstream: string | null
   branches: GitBranch[]
   tags: string[]
   hasMoreLog: boolean
@@ -85,6 +87,7 @@ export default function GitRepoView({
   lastCommitMessage,
   onAmend,
   log,
+  upstream,
   branches,
   tags,
   hasMoreLog,
@@ -174,6 +177,7 @@ export default function GitRepoView({
       <StashSection stash={stash} isBlocked={isBlockedByOtherOperation} />
       <HistorySection
         log={log}
+        upstream={upstream}
         branches={branches}
         tags={tags}
         hasMore={hasMoreLog}

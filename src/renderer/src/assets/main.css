@@ -1782,8 +1782,9 @@ body {
   padding: 0;
 }
 
-/* 読み上げだけの通知(見た目には出さない) */
-.agent-changes__live {
+/* 読み上げだけのテキスト(見た目には出さない) */
+.agent-changes__live,
+.history-section__visually-hidden {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -3528,59 +3529,132 @@ body {
   background: #2d2d2d;
 }
 
-.history-section__badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
-.history-section__badge {
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  background: #3c3c3c;
-  color: #cccccc;
-}
-
-/* タグは history-section__badge の灰色のままだと目立たないため、オレンジ系にする */
-.history-section__badge--tag {
-  background: #8a6d1f;
-  color: #ffffff;
-}
-
 .history-section__log-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* position は隠しテキストの基準。無いとスクロールする親の外の祖先が基準になり、パネルのスクロールで切られない */
 .history-section__log-item {
+  position: relative;
   display: flex;
-  gap: 8px;
-  padding: 4px 8px;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
   font-size: 12px;
-  border-bottom: 1px solid #2d2d2d;
 }
 
-.history-section__log-hash {
-  font-family: monospace;
-  color: #8a8a8a;
-  flex-shrink: 0;
+/* viewBox を持たないため、max-width で切れた分は縮小されず見えなくなる */
+.history-section__graph {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 50%;
+  overflow: hidden;
 }
 
-.history-section__log-message {
-  color: #cccccc;
+/* 件名と作成者を 1 つにまとめた欄。基準の幅を 0 にして残りの幅を受け持つ。件名が長くてもグラフとラベルが比例して
+   縮まない。グラフ(上限 50%)とラベル(上限 45%)が両方広がると残りは 5% になるため、最低の幅を持たせ、
+   足りない分はグラフとラベルを縮める */
+.history-section__log-text {
+  display: flex;
+  flex: 1 1 0%;
+  gap: 6px;
+  min-width: 40%;
+  overflow: hidden;
+}
+
+.history-section__log-message,
+.history-section__log-author {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.history-section__log-date {
-  color: #8a8a8a;
+.history-section__log-message {
+  color: #cccccc;
+}
+
+/* 件名より先に潰れないよう縮めず、上限で切り詰める。件名と比例して縮むと、長い件名の行で 1 文字も読めなくなる */
+.history-section__log-author {
+  flex: 0 0 auto;
+  max-width: 30%;
+  color: #969696;
   font-size: 11px;
-  flex-shrink: 0;
+}
+
+.history-section__refs {
+  display: flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  min-width: 40px;
+  max-width: 45%;
   margin-left: auto;
+  overflow: hidden;
+}
+
+/* レーンの多い行では、列はグラフと比例して細くなり、ラベルの最小幅の合計を下回って +N が切れる。ラベルが 2 つ以上の
+   列は縮めず、足りない幅はグラフが譲る。先頭の最低の幅 40px、2 つ目 20px、間隔 8px に 3 桁の +N(32px)を足すと
+   100.3px で、固定幅のサイドバーの行(223px)の 45% に収まる。先頭は最低の幅を超えた余りも受け取る */
+.history-section__refs--multiple {
+  flex-shrink: 0;
+}
+
+/* 優先の高い先頭のラベルを残すため、2 つ目は先に縮める。幅に比例して縮むと、main と origin/main の行で短い main まで
+   「m…」に潰れる。先頭が長い名前でも 2 つ目が消えないよう、2 つ目にはアイコンが残るだけの最低の幅を持たせる */
+.history-section__ref {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 1000 auto;
+  align-items: center;
+  gap: 3px;
+  min-width: 20px;
+  padding: 0 4px;
+  overflow: hidden;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  background: #3c3c3c;
+  color: #cccccc;
+}
+
+.history-section__ref:first-child {
+  flex-shrink: 1;
+  min-width: 40px;
+}
+
+.history-section__ref svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.history-section__ref-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 背景が明るいため、白ではなく暗い文字にする(コントラスト比 4.5:1 以上。#1e1e1e で青 6.43:1、紫 5.51:1) */
+.history-section__ref--current {
+  background: #59a4f9;
+  color: #1e1e1e;
+}
+
+.history-section__ref--remote {
+  background: #b180d7;
+  color: #1e1e1e;
+}
+
+.history-section__ref--more {
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .history-section__load-more-btn {

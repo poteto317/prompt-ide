@@ -206,7 +206,7 @@ describe('CommitSection', () => {
   })
 
   it('isLoadingFolder が true のとき amend チェックボックスは無効(lastCommitMessage が別フォルダの古い値の可能性があるため)', () => {
-    // フォルダを切り替えた直後、useGitHistory の log は新フォルダの取得が完了する
+    // フォルダを切り替えた直後、useGitHistory の headCommitMessage は新フォルダの取得が完了する
     // まで前フォルダの値が残る。isLoadingFolder を見ずに lastCommitMessage だけで
     // 判定すると、この間に amend を実行してしまい、無関係な別リポジトリの
     // 直前コミットメッセージで意図しない amend が成立してしまう
