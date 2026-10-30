@@ -10,5 +10,5 @@ export const editorOptions: editor.IStandaloneEditorConstructionOptions = {
   tabSize: 2,
   lineNumbers: 'on',
   wordWrap: 'off',
-  automaticLayout: true,
+  automaticLayout: true
 }

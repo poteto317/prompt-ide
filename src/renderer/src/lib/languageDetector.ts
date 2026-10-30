@@ -16,7 +16,7 @@ export const EXT_LANGUAGE: Record<string, string> = {
   rs: 'rust',
   go: 'go',
   sh: 'shell',
-  bash: 'shell',
+  bash: 'shell'
 }
 
 export function detectLanguage(filename: string): string {

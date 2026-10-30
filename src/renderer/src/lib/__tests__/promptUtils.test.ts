@@ -74,12 +74,7 @@ describe('sortByPinned', () => {
   })
 
   it('各グループ内の相対順序を維持する（安定ソート）', () => {
-    const result = sortByPinned([
-      make('a', true),
-      make('b'),
-      make('c', true),
-      make('d')
-    ])
+    const result = sortByPinned([make('a', true), make('b'), make('c', true), make('d')])
     expect(result.map((p) => p.id)).toEqual(['a', 'c', 'b', 'd'])
   })
 
@@ -131,4 +126,3 @@ describe('crossesPinBoundary', () => {
     expect(crossesPinBoundary(make('a', false), make('b'))).toBe(false)
   })
 })
-

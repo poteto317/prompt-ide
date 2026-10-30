@@ -8,7 +8,7 @@ const mockApiImport = vi.hoisted(() => vi.fn())
 
 vi.mock('../../lib/promptsApi', () => ({
   exportPrompts: mockApiExport,
-  importPrompts: mockApiImport,
+  importPrompts: mockApiImport
 }))
 
 import { usePromptTransfer } from '../usePromptTransfer'
@@ -64,7 +64,7 @@ describe('importPrompts', () => {
   it('取り込んだ各要素を id 再生成して apply で末尾追加し、件数を返す', async () => {
     const imported: Prompt[] = [
       { id: 'imp1', title: '取込1', content: 'X', createdAt: 100 },
-      { id: 'imp2', title: '取込2', content: 'Y', createdAt: 200, pinned: true },
+      { id: 'imp2', title: '取込2', content: 'Y', createdAt: 200, pinned: true }
     ]
     mockApiImport.mockResolvedValue(imported)
     const apply = vi.fn()

@@ -24,7 +24,7 @@ const basePrompt: Prompt = {
   id: 'test-id-1',
   title: 'テストタイトル',
   content: 'テストコンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 const defaultProps = {
@@ -32,7 +32,7 @@ const defaultProps = {
   onDelete: vi.fn(),
   onRun: vi.fn(),
   onEdit: vi.fn(),
-  onTogglePin: vi.fn(),
+  onTogglePin: vi.fn()
 }
 
 describe('PromptItem', () => {
@@ -48,9 +48,7 @@ describe('PromptItem', () => {
 
   it(`コンテンツが ${PREVIEW_MAX} 文字を超えるとき省略表示される`, () => {
     const longContent = 'あ'.repeat(PREVIEW_MAX + 1)
-    render(
-      <PromptItem {...defaultProps} prompt={{ ...basePrompt, content: longContent }} />
-    )
+    render(<PromptItem {...defaultProps} prompt={{ ...basePrompt, content: longContent }} />)
     expect(screen.getByText('あ'.repeat(PREVIEW_MAX) + '…')).toBeInTheDocument()
   })
 
@@ -257,7 +255,7 @@ describe('PromptItem', () => {
       id: 'var-1',
       title: '挨拶',
       content: '{{name}} さんへ、{{topic}} について教えて',
-      createdAt: 2000000,
+      createdAt: 2000000
     }
 
     it('変数なしのプロンプトは実行クリックで onRun が即呼ばれる（回帰確認）', async () => {

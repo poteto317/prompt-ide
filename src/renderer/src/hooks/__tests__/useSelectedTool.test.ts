@@ -14,20 +14,28 @@ describe('useSelectedTool', () => {
 
   it('selectTool で selectedTool が変わる', () => {
     const { result } = renderHook(() => useSelectedTool())
-    act(() => { result.current.selectTool('copilot') })
+    act(() => {
+      result.current.selectTool('copilot')
+    })
     expect(result.current.selectedTool).toBe('copilot')
   })
 
   it('claude に変更できる', () => {
     const { result } = renderHook(() => useSelectedTool())
-    act(() => { result.current.selectTool('copilot') })
-    act(() => { result.current.selectTool('claude') })
+    act(() => {
+      result.current.selectTool('copilot')
+    })
+    act(() => {
+      result.current.selectTool('claude')
+    })
     expect(result.current.selectedTool).toBe('claude')
   })
 
   it('api に変更できる', () => {
     const { result } = renderHook(() => useSelectedTool())
-    act(() => { result.current.selectTool('api') })
+    act(() => {
+      result.current.selectTool('api')
+    })
     expect(result.current.selectedTool).toBe('api')
   })
 

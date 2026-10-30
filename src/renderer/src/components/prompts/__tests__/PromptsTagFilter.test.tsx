@@ -29,9 +29,7 @@ describe('PromptsTagFilter', () => {
   })
 
   it('選択中タグに --active クラスが付く', () => {
-    render(
-      <PromptsTagFilter tags={['React', 'Vue']} selectedTags={['React']} onToggle={vi.fn()} />
-    )
+    render(<PromptsTagFilter tags={['React', 'Vue']} selectedTags={['React']} onToggle={vi.fn()} />)
     expect(screen.getByRole('button', { name: 'React' })).toHaveClass(
       'prompts-panel__tag-chip--active'
     )
@@ -50,9 +48,7 @@ describe('PromptsTagFilter', () => {
 
   it('複数タグを連続クリックするとそれぞれ onToggle が呼ばれる', async () => {
     const onToggle = vi.fn()
-    render(
-      <PromptsTagFilter tags={['React', 'Vue']} selectedTags={[]} onToggle={onToggle} />
-    )
+    render(<PromptsTagFilter tags={['React', 'Vue']} selectedTags={[]} onToggle={onToggle} />)
     await userEvent.click(screen.getByRole('button', { name: 'React' }))
     await userEvent.click(screen.getByRole('button', { name: 'Vue' }))
     expect(onToggle).toHaveBeenNthCalledWith(1, 'React')

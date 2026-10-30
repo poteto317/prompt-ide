@@ -37,7 +37,7 @@ describe('sortFileTree', () => {
     const nodes = [
       { name: 'index.ts', type: 'file' as const },
       { name: 'src', type: 'directory' as const },
-      { name: 'README.md', type: 'file' as const },
+      { name: 'README.md', type: 'file' as const }
     ]
     const result = sortFileTree(nodes)
     expect(result[0].type).toBe('directory')
@@ -47,7 +47,7 @@ describe('sortFileTree', () => {
     const nodes = [
       { name: 'z.ts', type: 'file' as const },
       { name: 'a.ts', type: 'file' as const },
-      { name: 'm.ts', type: 'file' as const },
+      { name: 'm.ts', type: 'file' as const }
     ]
     const result = sortFileTree(nodes)
     expect(result.map((n) => n.name)).toEqual(['a.ts', 'm.ts', 'z.ts'])
@@ -56,7 +56,7 @@ describe('sortFileTree', () => {
   it('ディレクトリ同士もアルファベット順にソートされる', () => {
     const nodes = [
       { name: 'z-dir', type: 'directory' as const },
-      { name: 'a-dir', type: 'directory' as const },
+      { name: 'a-dir', type: 'directory' as const }
     ]
     const result = sortFileTree(nodes)
     expect(result[0].name).toBe('a-dir')
@@ -65,7 +65,7 @@ describe('sortFileTree', () => {
   it('元の配列を破壊しない', () => {
     const nodes = [
       { name: 'b.ts', type: 'file' as const },
-      { name: 'a.ts', type: 'file' as const },
+      { name: 'a.ts', type: 'file' as const }
     ]
     const original = [...nodes]
     sortFileTree(nodes)

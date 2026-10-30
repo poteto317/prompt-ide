@@ -54,6 +54,6 @@ export function usePromptEditForm(
     handleTagInputChange,
     handleTagInputKeyDown,
     handleRemoveTag,
-    handleSave,
+    handleSave
   }
 }

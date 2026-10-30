@@ -6,7 +6,7 @@ import PromptsToolbar from '../PromptsToolbar'
 const defaultProps = {
   onImport: vi.fn(),
   onExport: vi.fn(),
-  isExportDisabled: false,
+  isExportDisabled: false
 }
 
 describe('PromptsToolbar', () => {
@@ -40,4 +40,3 @@ describe('PromptsToolbar', () => {
     expect(screen.getByRole('button', { name: 'プロンプトをインポート' })).toBeEnabled()
   })
 })
-

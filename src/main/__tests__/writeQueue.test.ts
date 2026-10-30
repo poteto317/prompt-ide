@@ -8,9 +8,15 @@ describe('WriteQueue', () => {
       const order: number[] = []
 
       await Promise.all([
-        queue.enqueue(async () => { order.push(1) }),
-        queue.enqueue(async () => { order.push(2) }),
-        queue.enqueue(async () => { order.push(3) })
+        queue.enqueue(async () => {
+          order.push(1)
+        }),
+        queue.enqueue(async () => {
+          order.push(2)
+        }),
+        queue.enqueue(async () => {
+          order.push(3)
+        })
       ])
 
       expect(order).toEqual([1, 2, 3])
@@ -22,11 +28,16 @@ describe('WriteQueue', () => {
       let secondStarted = false
 
       let resolveFirst!: () => void
-      const p1 = queue.enqueue(() => new Promise<void>((resolve) => {
-        firstStarted = true
-        resolveFirst = resolve
-      }))
-      const p2 = queue.enqueue(async () => { secondStarted = true })
+      const p1 = queue.enqueue(
+        () =>
+          new Promise<void>((resolve) => {
+            firstStarted = true
+            resolveFirst = resolve
+          })
+      )
+      const p2 = queue.enqueue(async () => {
+        secondStarted = true
+      })
 
       await vi.waitFor(() => expect(firstStarted).toBe(true))
       expect(secondStarted).toBe(false)
@@ -46,7 +57,9 @@ describe('WriteQueue', () => {
         executed.push('first')
         throw new Error('失敗')
       })
-      const p2 = queue.enqueue(async () => { executed.push('second') })
+      const p2 = queue.enqueue(async () => {
+        executed.push('second')
+      })
 
       await expect(p1).rejects.toThrow('失敗')
       await expect(p2).resolves.toBeUndefined()
@@ -56,7 +69,9 @@ describe('WriteQueue', () => {
     it('enqueue した Promise 自体はエラーを伝播する', async () => {
       const queue = new WriteQueue()
       await expect(
-        queue.enqueue(async () => { throw new Error('タスクエラー') })
+        queue.enqueue(async () => {
+          throw new Error('タスクエラー')
+        })
       ).rejects.toThrow('タスクエラー')
     })
 
@@ -65,9 +80,15 @@ describe('WriteQueue', () => {
       const results: string[] = []
 
       const tasks = [
-        queue.enqueue(async () => { results.push('ok1') }),
-        queue.enqueue(async () => { throw new Error('fail') }),
-        queue.enqueue(async () => { results.push('ok2') })
+        queue.enqueue(async () => {
+          results.push('ok1')
+        }),
+        queue.enqueue(async () => {
+          throw new Error('fail')
+        }),
+        queue.enqueue(async () => {
+          results.push('ok2')
+        })
       ]
 
       await Promise.allSettled(tasks)
@@ -90,9 +111,18 @@ describe('WriteQueue', () => {
       const order: string[] = []
 
       let resolveA!: () => void
-      const pA = qA.enqueue(() => new Promise<void>((r) => { resolveA = r }))
-      qA.enqueue(async () => { order.push('A2') })
-      qB.enqueue(async () => { order.push('B1') })
+      const pA = qA.enqueue(
+        () =>
+          new Promise<void>((r) => {
+            resolveA = r
+          })
+      )
+      qA.enqueue(async () => {
+        order.push('A2')
+      })
+      qB.enqueue(async () => {
+        order.push('B1')
+      })
 
       await vi.waitFor(() => expect(order).toContain('B1'))
       expect(order).not.toContain('A2')

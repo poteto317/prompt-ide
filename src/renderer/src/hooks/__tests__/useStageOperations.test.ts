@@ -112,7 +112,9 @@ describe('useStageOperations', () => {
     it('対象ステージが in_progress（履歴あり）に戻る', () => {
       task = makeTask({
         stages: task.stages.map((s) =>
-          s.id === 'commit' ? { ...s, status: 'done' as const, events: [{ id: 'e1', occurredAt: 1 }] } : s
+          s.id === 'commit'
+            ? { ...s, status: 'done' as const, events: [{ id: 'e1', occurredAt: 1 }] }
+            : s
         )
       })
       const { result } = renderHook(() => useStageOperations(updateTask))
@@ -141,9 +143,7 @@ describe('useStageOperations', () => {
 
     it('後続の done ステージが in_progress に落ちる', () => {
       task = makeTask({
-        stages: task.stages.map((s) =>
-          s.id === 'commit' ? { ...s, status: 'done' as const } : s
-        )
+        stages: task.stages.map((s) => (s.id === 'commit' ? { ...s, status: 'done' as const } : s))
       })
       const { result } = renderHook(() => useStageOperations(updateTask))
       act(() => result.current.reopenStage('t1', 'refactor'))

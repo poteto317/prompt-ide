@@ -41,4 +41,3 @@ describe('createTask', () => {
     expect(task.stages.map((s) => s.id)).toEqual(STAGES.map((s) => s.id))
   })
 })
-

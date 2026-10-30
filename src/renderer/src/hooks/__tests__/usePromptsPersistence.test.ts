@@ -7,7 +7,7 @@ const mockSavePrompts = vi.hoisted(() => vi.fn())
 
 vi.mock('../../lib/promptsApi', () => ({
   loadPrompts: mockLoadPrompts,
-  savePrompts: mockSavePrompts,
+  savePrompts: mockSavePrompts
 }))
 
 import { usePromptsPersistence } from '../usePromptsPersistence'

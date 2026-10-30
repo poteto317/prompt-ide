@@ -7,7 +7,7 @@ const samplePrompt: Prompt = {
   id: 'p1',
   title: 'タイトル',
   content: 'コンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 describe('buildExport', () => {

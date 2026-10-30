@@ -3,7 +3,11 @@ import { isValidTask } from '../progressValidation'
 import type { Task } from '@shared/types'
 
 const ALL_STAGES: Task['stages'] = [
-  { id: 'plan', status: 'in_progress', events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }] },
+  {
+    id: 'plan',
+    status: 'in_progress',
+    events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }]
+  },
   { id: 'implement', status: 'not_started', events: [] },
   { id: 'refactor', status: 'not_started', events: [] },
   { id: 'localReview', status: 'not_started', events: [] },
@@ -91,7 +95,9 @@ describe('isValidTask', () => {
 
   it('currentStageId が stages に存在しない場合は拒否する', () => {
     const stagesWithoutPlan = ALL_STAGES.filter((s) => s.id !== 'plan')
-    expect(isValidTask({ ...validTask, currentStageId: 'plan', stages: stagesWithoutPlan })).toBe(false)
+    expect(isValidTask({ ...validTask, currentStageId: 'plan', stages: stagesWithoutPlan })).toBe(
+      false
+    )
   })
 
   it('未知の stage id を拒否する', () => {

@@ -18,9 +18,9 @@ export function usePromptsPersistence(): PromptsPersistence {
   }, [])
 
   const save = useCallback((prompts: Prompt[]): void => {
-    promptsApi.savePrompts(prompts).catch((err) =>
-      console.error('[usePromptsPersistence] save failed:', err)
-    )
+    promptsApi
+      .savePrompts(prompts)
+      .catch((err) => console.error('[usePromptsPersistence] save failed:', err))
   }, [])
 
   return { load, save }

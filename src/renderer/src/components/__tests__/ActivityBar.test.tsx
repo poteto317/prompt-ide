@@ -8,7 +8,7 @@ describe('ActivityBar', () => {
   const defaultProps = {
     activePanel: 'explorer' as const,
     sidebarOpen: true,
-    onPanelChange: vi.fn(),
+    onPanelChange: vi.fn()
   }
 
   it('activityBarPanels の件数分ボタンが描画される', () => {

@@ -5,7 +5,7 @@ import ExecutionToolSelector from '../ExecutionToolSelector'
 
 const defaultProps = {
   selectedTool: 'claude' as const,
-  onSelectTool: vi.fn(),
+  onSelectTool: vi.fn()
 }
 
 describe('ExecutionToolSelector', () => {

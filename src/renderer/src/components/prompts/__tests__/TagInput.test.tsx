@@ -8,7 +8,7 @@ const defaultProps = {
   tagInput: '',
   onTagInputChange: vi.fn(),
   onTagInputKeyDown: vi.fn(),
-  onRemoveTag: vi.fn(),
+  onRemoveTag: vi.fn()
 }
 
 describe('TagInput', () => {
@@ -26,9 +26,9 @@ describe('TagInput', () => {
 
   it('入力欄に渡された tagInput 値が表示される', () => {
     render(<TagInput {...defaultProps} tagInput="Vue" />)
-    expect(
-      screen.getByRole('textbox', { name: '新しいタグを入力（Enter で確定）' })
-    ).toHaveValue('Vue')
+    expect(screen.getByRole('textbox', { name: '新しいタグを入力（Enter で確定）' })).toHaveValue(
+      'Vue'
+    )
   })
 
   it('タグが表示される', () => {

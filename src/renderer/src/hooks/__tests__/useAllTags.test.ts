@@ -8,7 +8,7 @@ const makePrompt = (overrides: Partial<Prompt> = {}): Prompt => ({
   title: 'タイトル',
   content: 'コンテンツ',
   createdAt: 1000,
-  ...overrides,
+  ...overrides
 })
 
 describe('useAllTags', () => {
@@ -41,7 +41,7 @@ describe('useAllTags', () => {
     it('複数プロンプトのタグをマージしてソート済みで返す', () => {
       const prompts = [
         makePrompt({ id: '1', tags: ['React'] }),
-        makePrompt({ id: '2', tags: ['Vue', 'TypeScript'] }),
+        makePrompt({ id: '2', tags: ['Vue', 'TypeScript'] })
       ]
       const { result } = renderHook(() => useAllTags(prompts))
       expect(result.current).toEqual(['React', 'TypeScript', 'Vue'])
@@ -50,7 +50,7 @@ describe('useAllTags', () => {
     it('複数プロンプトにまたがる重複タグは1つにまとめる', () => {
       const prompts = [
         makePrompt({ id: '1', tags: ['React', 'TypeScript'] }),
-        makePrompt({ id: '2', tags: ['React', 'Vue'] }),
+        makePrompt({ id: '2', tags: ['React', 'Vue'] })
       ]
       const { result } = renderHook(() => useAllTags(prompts))
       expect(result.current).toEqual(['React', 'TypeScript', 'Vue'])
@@ -60,7 +60,7 @@ describe('useAllTags', () => {
       const prompts = [
         makePrompt({ id: '1', tags: ['React'] }),
         makePrompt({ id: '2' }),
-        makePrompt({ id: '3', tags: ['Vue'] }),
+        makePrompt({ id: '3', tags: ['Vue'] })
       ]
       const { result } = renderHook(() => useAllTags(prompts))
       expect(result.current).toEqual(['React', 'Vue'])
@@ -81,7 +81,7 @@ describe('useAllTags', () => {
     it('タグを持つプロンプトが削除されるとそのタグが消える', () => {
       let prompts = [
         makePrompt({ id: '1', tags: ['React'] }),
-        makePrompt({ id: '2', tags: ['Vue'] }),
+        makePrompt({ id: '2', tags: ['Vue'] })
       ]
       const { result, rerender } = renderHook(() => useAllTags(prompts))
       expect(result.current).toEqual(['React', 'Vue'])

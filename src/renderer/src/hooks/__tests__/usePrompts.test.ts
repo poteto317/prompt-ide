@@ -9,12 +9,12 @@ const mockApiExport = vi.hoisted(() => vi.fn())
 const mockApiImport = vi.hoisted(() => vi.fn())
 
 vi.mock('../usePromptsPersistence', () => ({
-  usePromptsPersistence: () => ({ load: mockLoad, save: mockSave }),
+  usePromptsPersistence: () => ({ load: mockLoad, save: mockSave })
 }))
 
 vi.mock('../../lib/promptsApi', () => ({
   exportPrompts: mockApiExport,
-  importPrompts: mockApiImport,
+  importPrompts: mockApiImport
 }))
 
 import { usePrompts } from '../usePrompts'
@@ -136,7 +136,7 @@ describe('ロード完了前のミューテーション競合', () => {
 
     const stored: Prompt[] = [
       { id: 'p1', title: 'T1', content: 'C1', createdAt: 1 },
-      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 },
+      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 }
     ]
     await act(async () => resolveLoad(stored))
     expect(result.current.promptsLoaded).toBe(true)
@@ -178,7 +178,7 @@ describe('ロード完了前のミューテーション競合', () => {
     expect(mockSave).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({ id: 'existing' }),
-        expect.objectContaining({ title: '新規' }),
+        expect.objectContaining({ title: '新規' })
       ])
     )
   })
@@ -233,7 +233,7 @@ describe('deletePrompt', () => {
   it('指定 ID のプロンプトが削除される', async () => {
     const stored: Prompt[] = [
       { id: 'p1', title: 'タイトル1', content: 'コンテンツ1', createdAt: 1 },
-      { id: 'p2', title: 'タイトル2', content: 'コンテンツ2', createdAt: 2 },
+      { id: 'p2', title: 'タイトル2', content: 'コンテンツ2', createdAt: 2 }
     ]
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
@@ -265,7 +265,7 @@ describe('deletePrompt', () => {
 describe('updatePrompt', () => {
   it('指定 ID のプロンプトの title と content が更新される', async () => {
     const stored: Prompt[] = [
-      { id: 'p1', title: '旧タイトル', content: '旧コンテンツ', createdAt: 1 },
+      { id: 'p1', title: '旧タイトル', content: '旧コンテンツ', createdAt: 1 }
     ]
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
@@ -282,16 +282,14 @@ describe('updatePrompt', () => {
     await waitFor(() => expect(result.current.prompts).toHaveLength(1))
     act(() => result.current.updatePrompt('p1', '新T', '新C'))
     expect(mockSave).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'p1', title: '新T', content: '新C' }),
-      ])
+      expect.arrayContaining([expect.objectContaining({ id: 'p1', title: '新T', content: '新C' })])
     )
   })
 
   it('他のプロンプトは変化しない', async () => {
     const stored: Prompt[] = [
       { id: 'p1', title: 'T1', content: 'C1', createdAt: 1 },
-      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 },
+      { id: 'p2', title: 'T2', content: 'C2', createdAt: 2 }
     ]
     mockLoad.mockResolvedValue(stored)
     const { result } = renderHook(() => usePrompts())
@@ -443,7 +441,7 @@ describe('reorderPrompts', () => {
   it('ピン済み/非ピン済みの境界をまたぐ並び替えは配列が変わらない', async () => {
     const mixed: Prompt[] = [
       { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
-      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 }
     ]
     mockLoad.mockResolvedValue(mixed)
     const { result } = renderHook(() => usePrompts())
@@ -457,7 +455,7 @@ describe('reorderPrompts', () => {
   it('ピン済み/非ピン済みの境界をまたぐ並び替えは save が呼ばれない', async () => {
     const mixed: Prompt[] = [
       { id: 'p1', title: 'A', content: 'a', createdAt: 1, pinned: true },
-      { id: 'p2', title: 'B', content: 'b', createdAt: 2 },
+      { id: 'p2', title: 'B', content: 'b', createdAt: 2 }
     ]
     mockLoad.mockResolvedValue(mixed)
     const { result } = renderHook(() => usePrompts())

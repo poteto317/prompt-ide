@@ -3,7 +3,11 @@ import { toTask } from '../taskTransformer'
 import type { Task } from '@shared/types'
 
 const ALL_STAGES: Task['stages'] = [
-  { id: 'plan', status: 'done', events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }] },
+  {
+    id: 'plan',
+    status: 'done',
+    events: [{ id: 'e1', occurredAt: 500, note: 'メモ', meta: { commit: 'abc' } }]
+  },
   { id: 'implement', status: 'not_started', events: [] },
   { id: 'refactor', status: 'not_started', events: [] },
   { id: 'localReview', status: 'not_started', events: [] },
@@ -57,7 +61,13 @@ describe('toTask', () => {
         stages: [
           {
             ...validTask.stages[0],
-            events: [{ id: 'e1', occurredAt: 500, meta: { commit: 'abc', badNum: 99 as unknown as string } }]
+            events: [
+              {
+                id: 'e1',
+                occurredAt: 500,
+                meta: { commit: 'abc', badNum: 99 as unknown as string }
+              }
+            ]
           }
         ]
       }

@@ -161,17 +161,13 @@ describe('MarkdownRenderer', () => {
   })
 
   it('file: 画像は <img> ではなく alt テキストの <span> にフォールバックする', () => {
-    const { container } = render(
-      <MarkdownRenderer content="![秘密ファイル](file:///etc/passwd)" />
-    )
+    const { container } = render(<MarkdownRenderer content="![秘密ファイル](file:///etc/passwd)" />)
     expect(container.querySelector('img')).not.toBeInTheDocument()
     expect(screen.getByText('秘密ファイル')).toBeInTheDocument()
   })
 
   it('javascript: 画像も <span> にフォールバックする', () => {
-    const { container } = render(
-      <MarkdownRenderer content="![XSS](javascript:alert(1))" />
-    )
+    const { container } = render(<MarkdownRenderer content="![XSS](javascript:alert(1))" />)
     expect(container.querySelector('img')).not.toBeInTheDocument()
   })
 

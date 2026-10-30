@@ -9,13 +9,13 @@ const mockWriteFile = vi.hoisted(() => vi.fn())
 
 vi.mock('../dialogService', () => ({
   saveJsonDialog: mockSaveJsonDialog,
-  openJsonDialog: mockOpenJsonDialog,
+  openJsonDialog: mockOpenJsonDialog
 }))
 
 vi.mock('node:fs/promises', () => ({
   default: { readFile: mockReadFile, writeFile: mockWriteFile },
   readFile: mockReadFile,
-  writeFile: mockWriteFile,
+  writeFile: mockWriteFile
 }))
 
 import { exportPromptsToFile, importPromptsFromFile } from '../promptTransferService'
@@ -24,7 +24,7 @@ const samplePrompt: Prompt = {
   id: 'p1',
   title: 'タイトル',
   content: 'コンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 beforeEach(() => {

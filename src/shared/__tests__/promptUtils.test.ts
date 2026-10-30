@@ -7,7 +7,9 @@ describe('buildPromptContent', () => {
   })
 
   it('fileContent が文字列のとき --- セパレーターで結合する', () => {
-    expect(buildPromptContent('プロンプト', 'ファイル内容')).toBe('プロンプト\n\n---\n\nファイル内容')
+    expect(buildPromptContent('プロンプト', 'ファイル内容')).toBe(
+      'プロンプト\n\n---\n\nファイル内容'
+    )
   })
 
   it('fileContent が空文字のときも結合する', () => {

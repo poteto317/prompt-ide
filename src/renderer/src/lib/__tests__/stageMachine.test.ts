@@ -4,7 +4,13 @@
 import { describe, it, expect } from 'vitest'
 import { createTask } from '../taskFactory'
 import { createStageEvent } from '../stageEventFactory'
-import { recordStageEvent, completeStage, skipStage, reopenStage, advanceCurrentStage } from '../stageMachine'
+import {
+  recordStageEvent,
+  completeStage,
+  skipStage,
+  reopenStage,
+  advanceCurrentStage
+} from '../stageMachine'
 
 describe('stageMachine (barrel)', () => {
   it('recordStageEvent はステージにイベントを追加する', () => {

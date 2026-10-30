@@ -13,7 +13,9 @@ describe('usePromptForm', () => {
   it('title のみ入力されているとき isDisabled が true', () => {
     const { result } = renderHook(() => usePromptForm(vi.fn()))
     act(() => {
-      result.current.handleTitleChange({ target: { value: 'My Title' } } as React.ChangeEvent<HTMLInputElement>)
+      result.current.handleTitleChange({
+        target: { value: 'My Title' }
+      } as React.ChangeEvent<HTMLInputElement>)
     })
     expect(result.current.isDisabled).toBe(true)
   })
@@ -21,7 +23,9 @@ describe('usePromptForm', () => {
   it('content のみ入力されているとき isDisabled が true', () => {
     const { result } = renderHook(() => usePromptForm(vi.fn()))
     act(() => {
-      result.current.handleContentChange({ target: { value: 'My Content' } } as React.ChangeEvent<HTMLTextAreaElement>)
+      result.current.handleContentChange({
+        target: { value: 'My Content' }
+      } as React.ChangeEvent<HTMLTextAreaElement>)
     })
     expect(result.current.isDisabled).toBe(true)
   })
@@ -29,8 +33,12 @@ describe('usePromptForm', () => {
   it('title と content 両方入力済みのとき isDisabled が false', () => {
     const { result } = renderHook(() => usePromptForm(vi.fn()))
     act(() => {
-      result.current.handleTitleChange({ target: { value: 'Title' } } as React.ChangeEvent<HTMLInputElement>)
-      result.current.handleContentChange({ target: { value: 'Content' } } as React.ChangeEvent<HTMLTextAreaElement>)
+      result.current.handleTitleChange({
+        target: { value: 'Title' }
+      } as React.ChangeEvent<HTMLInputElement>)
+      result.current.handleContentChange({
+        target: { value: 'Content' }
+      } as React.ChangeEvent<HTMLTextAreaElement>)
     })
     expect(result.current.isDisabled).toBe(false)
   })
@@ -38,8 +46,12 @@ describe('usePromptForm', () => {
   it('空白のみの入力は isDisabled が true のまま', () => {
     const { result } = renderHook(() => usePromptForm(vi.fn()))
     act(() => {
-      result.current.handleTitleChange({ target: { value: '   ' } } as React.ChangeEvent<HTMLInputElement>)
-      result.current.handleContentChange({ target: { value: '   ' } } as React.ChangeEvent<HTMLTextAreaElement>)
+      result.current.handleTitleChange({
+        target: { value: '   ' }
+      } as React.ChangeEvent<HTMLInputElement>)
+      result.current.handleContentChange({
+        target: { value: '   ' }
+      } as React.ChangeEvent<HTMLTextAreaElement>)
     })
     expect(result.current.isDisabled).toBe(true)
   })
@@ -48,11 +60,17 @@ describe('usePromptForm', () => {
     const onAdd = vi.fn()
     const { result } = renderHook(() => usePromptForm(onAdd))
     act(() => {
-      result.current.handleTitleChange({ target: { value: ' Title ' } } as React.ChangeEvent<HTMLInputElement>)
-      result.current.handleContentChange({ target: { value: ' Content ' } } as React.ChangeEvent<HTMLTextAreaElement>)
+      result.current.handleTitleChange({
+        target: { value: ' Title ' }
+      } as React.ChangeEvent<HTMLInputElement>)
+      result.current.handleContentChange({
+        target: { value: ' Content ' }
+      } as React.ChangeEvent<HTMLTextAreaElement>)
     })
     act(() => {
-      result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent<HTMLFormElement>)
+      result.current.handleSubmit({
+        preventDefault: vi.fn()
+      } as unknown as React.FormEvent<HTMLFormElement>)
     })
     expect(onAdd).toHaveBeenCalledWith('Title', 'Content')
   })
@@ -60,11 +78,17 @@ describe('usePromptForm', () => {
   it('handleSubmit 後に title と content がリセットされる', () => {
     const { result } = renderHook(() => usePromptForm(vi.fn()))
     act(() => {
-      result.current.handleTitleChange({ target: { value: 'Title' } } as React.ChangeEvent<HTMLInputElement>)
-      result.current.handleContentChange({ target: { value: 'Content' } } as React.ChangeEvent<HTMLTextAreaElement>)
+      result.current.handleTitleChange({
+        target: { value: 'Title' }
+      } as React.ChangeEvent<HTMLInputElement>)
+      result.current.handleContentChange({
+        target: { value: 'Content' }
+      } as React.ChangeEvent<HTMLTextAreaElement>)
     })
     act(() => {
-      result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent<HTMLFormElement>)
+      result.current.handleSubmit({
+        preventDefault: vi.fn()
+      } as unknown as React.FormEvent<HTMLFormElement>)
     })
     expect(result.current.title).toBe('')
     expect(result.current.content).toBe('')
@@ -74,7 +98,9 @@ describe('usePromptForm', () => {
     const onAdd = vi.fn()
     const { result } = renderHook(() => usePromptForm(onAdd))
     act(() => {
-      result.current.handleSubmit({ preventDefault: vi.fn() } as unknown as React.FormEvent<HTMLFormElement>)
+      result.current.handleSubmit({
+        preventDefault: vi.fn()
+      } as unknown as React.FormEvent<HTMLFormElement>)
     })
     expect(onAdd).not.toHaveBeenCalled()
   })

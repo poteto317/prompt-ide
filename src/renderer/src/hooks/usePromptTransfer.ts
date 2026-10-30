@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { Prompt } from '../types'
 import { cloneAsNewPrompt } from '../lib/promptFactory'
-import { exportPrompts as apiExportPrompts, importPrompts as apiImportPrompts } from '../lib/promptsApi'
+import {
+  exportPrompts as apiExportPrompts,
+  importPrompts as apiImportPrompts
+} from '../lib/promptsApi'
 import type { Transform } from './useBufferedPersistence'
 
 interface PromptTransfer {

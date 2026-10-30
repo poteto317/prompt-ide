@@ -11,7 +11,7 @@ const iconComponents = [
   { name: 'GitIcon', Component: GitIcon },
   { name: 'PromptIcon', Component: PromptIcon },
   { name: 'SettingsIcon', Component: SettingsIcon },
-  { name: 'BranchIcon', Component: BranchIcon },
+  { name: 'BranchIcon', Component: BranchIcon }
 ]
 
 describe('Icons', () => {

@@ -10,9 +10,7 @@ export function useTagFilter(): TagFilterState {
   const [selectedTags, setSelectedTags] = useState<string[]>([])
 
   const toggleTag = useCallback((tag: string): void => {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    )
+    setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
   }, [])
 
   const resetTags = useCallback((): void => {

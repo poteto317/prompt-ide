@@ -5,14 +5,14 @@ const mockWriteFile = vi.hoisted(() => vi.fn())
 const mockMkdir = vi.hoisted(() => vi.fn())
 
 vi.mock('electron', () => ({
-  app: { getPath: vi.fn(() => '/mock/userData') },
+  app: { getPath: vi.fn(() => '/mock/userData') }
 }))
 
 vi.mock('node:fs/promises', () => ({
   default: { readFile: mockReadFile, writeFile: mockWriteFile, mkdir: mockMkdir },
   readFile: mockReadFile,
   writeFile: mockWriteFile,
-  mkdir: mockMkdir,
+  mkdir: mockMkdir
 }))
 
 import { loadPrompts, savePrompts } from '../promptStore'
@@ -22,7 +22,7 @@ const samplePrompt: Prompt = {
   id: 'p1',
   title: 'タイトル',
   content: 'コンテンツ',
-  createdAt: 1000000,
+  createdAt: 1000000
 }
 
 beforeEach(() => {
@@ -155,7 +155,10 @@ describe('savePrompts', () => {
       let resolveFirst!: () => void
       mockWriteFile
         .mockImplementationOnce(
-          () => new Promise<void>((resolve) => { resolveFirst = resolve })
+          () =>
+            new Promise<void>((resolve) => {
+              resolveFirst = resolve
+            })
         )
         .mockResolvedValue(undefined)
 

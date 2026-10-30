@@ -8,13 +8,13 @@ const makePrompt = (overrides: Partial<Prompt> = {}): Prompt => ({
   title: 'テストタイトル',
   content: 'テストコンテンツ',
   createdAt: 1000,
-  ...overrides,
+  ...overrides
 })
 
 const PROMPTS: Prompt[] = [
   makePrompt({ id: '1', title: 'リファクタリング計画', content: 'コードを整理する' }),
   makePrompt({ id: '2', title: 'バグ修正手順', content: 'エラーを再現して修正する' }),
-  makePrompt({ id: '3', title: 'コードレビュー', content: 'プルリクエストを確認する' }),
+  makePrompt({ id: '3', title: 'コードレビュー', content: 'プルリクエストを確認する' })
 ]
 
 describe('usePromptFilter', () => {
@@ -64,7 +64,7 @@ describe('usePromptFilter', () => {
     it('title と content の両方にヒットする場合も重複なく返す', () => {
       const prompts: Prompt[] = [
         makePrompt({ id: '1', title: '検索ワード', content: '検索ワードの説明' }),
-        makePrompt({ id: '2', title: '別タイトル', content: '別コンテンツ' }),
+        makePrompt({ id: '2', title: '別タイトル', content: '別コンテンツ' })
       ]
       const { result } = renderHook(() => usePromptFilter(prompts))
       act(() => result.current.setQuery('検索ワード'))
@@ -77,7 +77,7 @@ describe('usePromptFilter', () => {
     it('英字は大文字小文字を区別しない', () => {
       const prompts: Prompt[] = [
         makePrompt({ id: '1', title: 'Hello World', content: '' }),
-        makePrompt({ id: '2', title: 'Other', content: '' }),
+        makePrompt({ id: '2', title: 'Other', content: '' })
       ]
       const { result } = renderHook(() => usePromptFilter(prompts))
       act(() => result.current.setQuery('hello'))
@@ -86,9 +86,7 @@ describe('usePromptFilter', () => {
     })
 
     it('大文字クエリでも一致する', () => {
-      const prompts: Prompt[] = [
-        makePrompt({ id: '1', title: 'hello world', content: '' }),
-      ]
+      const prompts: Prompt[] = [makePrompt({ id: '1', title: 'hello world', content: '' })]
       const { result } = renderHook(() => usePromptFilter(prompts))
       act(() => result.current.setQuery('HELLO'))
       expect(result.current.filteredPrompts).toHaveLength(1)
