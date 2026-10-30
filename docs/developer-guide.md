@@ -69,6 +69,10 @@ src/
 受け口の登録は `src/main/ipcHandlers.ts`(composition root)にまとまっている。フォルダへのアクセスを伴う受け口は
 `FolderAccessManager` を共有し、開いているフォルダの外へのアクセスを `handlers/fileAccessGuard.ts` で拒む。
 
+Git の受け口(`handlers/gitHandlers.ts`)は、領域ごとの `registerGit*Handlers`(作業ツリー・コンフリクト・履歴・ブランチ・stash・リモート)に
+分かれており、`registerGitHandlers` がそれらをまとめて登録する。renderer から受ける引数の検証は `handlers/gitPayloadParser.ts` の
+`assert*Arg` 関数にまとめてあり、受け口は検証を通してから Git の操作へ渡す。
+
 ### 3.2 main → renderer の通知
 
 ストリーミングの出力(`prompt:streamChunk`)・エージェントの端末の出力(`agentTerminal:data`)・外部でのファイルの変更
@@ -99,6 +103,22 @@ main 側は `agentSession*.ts`(起動・停止)・`agentHook*.ts`(CLI の hooks 
 `agentChanges*.ts`(変更の記録と戻す操作)、renderer 側は `hooks/useAgent*.ts` と `lib/agent*.ts` が担う。
 CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/agentCliLaunchSpecs.ts`・`renderer/src/lib/agentPromptSendSpecs.ts`)に
 まとめてあり、種類を足すときは表に行を足す。設計の経緯は `docs/superpowers/specs/` の設計書にある。
+
+### 3.5 設定の読み書きのフック
+
+設定画面の値は、読み込みと保存の形に応じて 2 つのフックを使い分ける。どちらも変更を楽観的に反映して保存し、
+保存に失敗したときは固定の文言(`SETTINGS_FILE_ERROR_REASON`)を `saveError` に入れる。例外の文言は画面に出さず、`console.error` にだけ残す。
+
+- **選択式**(実行方式・エージェント CLI): `hooks/useSavedSetting.ts`。保存に失敗したら、その変更の直前の値へ戻す。
+  `useExecutionMode`・`useAgentCliKind` が使う。
+- **真偽値**(エージェントの通知・送信前の確認): `hooks/useBooleanSetting.ts`。最後に保存できた値へ戻す。
+  続けて変更したときに、後の変更がすでに始まっていれば、前の変更の失敗では戻さず後の変更の結果に任せる(変更の通し番号で判定する)。
+
+両者を分けているのは、続けて変更したときの戻し方が異なるため。`useSavedSetting` は直前の値へ戻すだけで通し番号を持たない。
+
+どちらも、オプションに渡す関数(`load`・`save`・`readValue`・`onLoaded` など)は描画をまたいで同じ参照にする。
+読み込みの effect と `change` の依存にそれらが入っているため、描画ごとに新しい関数を渡すと、読み込みが繰り返し走る。
+モジュールの直下の関数か `useCallback` で用意する。
 
 ## 4. 外部入力の扱い
 

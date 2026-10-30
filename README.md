@@ -66,6 +66,7 @@ docs/            実機テスト仕様書・レビューの運用手順・設計
 - `index.ts`: ウィンドウの作成と、遷移・新しいウィンドウを開く操作の制限。
 - `ipcHandlers.ts`: 依存の組み立ての起点（composition root）。各機能の IPC ハンドラ・寿命の管理（フォルダの切り替え・ウィンドウの破棄・アプリの終了での後始末）を、同じ `FolderAccessManager` などを共有させてつなぎます。
 - `handlers/`: IPC の受け口。`*PayloadParser.ts` と `payloadValidators.ts` で renderer からの入力を検証し、`ipcSenderGuard.ts` で送信元のフレームを確かめてから処理に渡します。
+  - `gitHandlers.ts`・`gitPayloadParser.ts`: Git の受け口は領域ごとの `registerGit*Handlers` に分かれます。引数の検証は `gitPayloadParser.ts` の `assert*Arg` 関数に置きます。
 - `folderAccessManager.ts`・`traversalPolicy.ts`・`handlers/fileAccessGuard.ts`: ウィンドウごとに開いているフォルダを持ち、その外へのアクセス（パストラバーサル）を防ぎます。
 - `agentSession*.ts`・`agentCommand.ts`・`agentCliLaunchSpecs.ts`: エージェント CLI のセッションの起動・停止と、CLI の種類ごとの起動の規則。
 - `agentRuntime.ts`・`agentHooksRuntime.ts`: 実物の依存（node-pty・ログインシェル・プロセスの停止・hooks の受け口）を組み立てるモジュール。テストではモジュールごと差し替えます。
@@ -91,6 +92,7 @@ docs/            実機テスト仕様書・レビューの運用手順・設計
 - `components/`: 画面の部品。`explorer/`・`editor/`・`prompts/`・`source-control/`・`agent/`（エージェントのターミナルとタブ）・`settings/` など、パネルごとに分けています。
 - `hooks/`: 状態と副作用を持つカスタム hook。
   - `useFileSystem.ts`: 開いているフォルダ・ファイルツリー・エディタのタブの状態の持ち主。フォルダの走査、タブの開閉・切り替え、外部の変更の反映を、読み込みの世代と同期のミラー(ref)で競合させずに行います。保存は `useFileEditing.ts`、ファイルの作成・リネーム・削除は `useFileTreeOperations.ts` に任せます。
+  - `useSavedSetting.ts`: 選択式の設定(実行方式・エージェント CLI)の読み込みと保存。変更は楽観的に反映し、保存に失敗したら変更の前の値へ戻します。真偽値の設定は `useBooleanSetting.ts` が受け持ちます。
 - `lib/`: 画面に依存しないロジック（IPC の呼び出しの薄い包み、状態遷移、文言の組み立てなど）。
   - `openTabs.ts`: タブの配列を扱う純粋な関数(パスでタブを探す・アクティブなタブが消えたときの移り先を選ぶ・タブをディスクの内容に置き換える)。
   - `openedFileSignal.ts`: 「ファイルを開いた」信号(`OpenedFileSignal`)の型と、同じパスを畳んで件数の上限で切りながらイベントを足す関数。クイックオープンの履歴とエディタへのフォーカスの移動が使います。
