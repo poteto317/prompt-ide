@@ -812,14 +812,40 @@ describe('getLog', () => {
 })
 
 describe('getBranches', () => {
+  beforeEach(() => {
+    mockRaw.mockReset()
+  })
+
   it('branchLocal の結果を GitBranch[] に変換する', async () => {
     mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
+    mockRaw.mockResolvedValue('refs/heads/main\n')
     const result = await getBranches('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project')
-    expect(result).toEqual([
+    // 印の欄そのものが無いことまで固定する(toEqual は undefined の欄を区別しない)
+    expect(result).toStrictEqual([
       { name: 'main', current: true },
       { name: 'feature/x', current: false }
     ])
+  })
+
+  // branchLocal の detached は rebase 中・bisect 中に false になるため、判定に使わない
+  it('ブランチ上にいなければ、branchLocal の detached が false でも現在の項目に印を付ける', async () => {
+    mockBranchLocal.mockResolvedValue({
+      all: ['(no', 'main'],
+      current: '(no',
+      detached: false
+    })
+    mockRaw.mockResolvedValue('')
+    await expect(getBranches('/project')).resolves.toStrictEqual([
+      { name: '(no', current: true, isDetachedHead: true },
+      { name: 'main', current: false }
+    ])
+  })
+
+  it('ブランチ上にいれば、branchLocal の detached が true でも印を付けない', async () => {
+    mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main', detached: true })
+    mockRaw.mockResolvedValue('refs/heads/main\n')
+    await expect(getBranches('/project')).resolves.toStrictEqual([{ name: 'main', current: true }])
   })
 })
 

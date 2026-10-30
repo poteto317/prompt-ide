@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
@@ -1359,6 +1359,50 @@ describe('useAppState', () => {
       window.api.mergeBranch = originalMerge
       confirmSpy.mockRestore()
     }
+  })
+
+  // ブランチ操作の失敗はステータスバーに常に見えるため、前のフォルダの失敗を次のフォルダへ持ち込まない
+  describe('フォルダの切り替えとブランチ操作の失敗', () => {
+    const renderWithCheckoutFailure = async (): Promise<
+      ReturnType<typeof renderHook<ReturnType<typeof useAppState>, unknown>>
+    > => {
+      setupEditorSyncedGitOperation({
+        confirmDiscardAnyDirty: () => true,
+        reloadOpenFiles: vi.fn().mockResolvedValue(undefined)
+      })
+      const hook = renderHook(() => useAppState())
+      await act(async () => {
+        await hook.result.current.checkoutBranch('feature/x')
+      })
+      expect(hook.result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+      return hook
+    }
+
+    const originalCheckoutBranch = window.api.checkoutBranch
+    beforeEach(() => {
+      window.api.checkoutBranch = vi.fn().mockRejectedValue(new Error('checkout に失敗しました'))
+    })
+    afterEach(() => {
+      window.api.checkoutBranch = originalCheckoutBranch
+    })
+
+    it('folderPath が変わると branchOperationError が null になる', async () => {
+      const { result, rerender } = await renderWithCheckoutFailure()
+      mockUseFileSystem.mockReturnValue({ ...mockUseFileSystem(), folderPath: '/other-project' })
+      rerender()
+      expect(result.current.branchOperationError).toBeNull()
+    })
+
+    it('folderPath が変わらなければ branchOperationError は残る', async () => {
+      const { result, rerender } = await renderWithCheckoutFailure()
+      rerender()
+      expect(result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+    })
+
+    it('clearBranchOperationError は公開しない', () => {
+      const { result } = renderHook(() => useAppState())
+      expect(result.current).not.toHaveProperty('clearBranchOperationError')
+    })
   })
 
   it('useMergeState に完了・中止の後始末のコールバック(onFinished)を渡さない', () => {

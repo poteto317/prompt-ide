@@ -80,6 +80,8 @@ export type GitLogEntry = {
 export type GitBranch = {
   name: string
   current: boolean
+  // ブランチ上にいないときに getBranches が返す疑似項目の印(実在のブランチではない)。それ以外の項目には付かない
+  isDetachedHead?: boolean
 }
 
 // 安全削除(git branch -d)の結果。未マージで削除しなかった場合を例外ではなく

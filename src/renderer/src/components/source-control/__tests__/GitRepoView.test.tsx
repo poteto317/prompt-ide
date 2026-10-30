@@ -312,9 +312,6 @@ describe('GitRepoView', () => {
       />
     )
     expect(screen.getByText('feat: 新機能')).toBeInTheDocument()
-    expect(
-      screen.getByText('main', { selector: '.history-section__badge--branch-current' })
-    ).toBeInTheDocument()
   })
 
   it('ChangesSection の onOpenDiff は staged=false で呼ばれる', async () => {

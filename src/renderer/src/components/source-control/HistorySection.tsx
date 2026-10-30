@@ -69,20 +69,8 @@ export default function HistorySection({
           {error.message}
         </p>
       )}
-      {(branches.length > 0 || tags.length > 0) && (
+      {tags.length > 0 && (
         <div className="history-section__badges">
-          {branches.map((branch) => (
-            <span
-              key={branch.name}
-              className={
-                branch.current
-                  ? 'history-section__badge history-section__badge--branch-current'
-                  : 'history-section__badge history-section__badge--branch'
-              }
-            >
-              {branch.name}
-            </span>
-          ))}
           {tags.map((tag) => (
             <span key={tag} className="history-section__badge history-section__badge--tag">
               {tag}

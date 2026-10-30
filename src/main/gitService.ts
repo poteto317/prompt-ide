@@ -303,7 +303,14 @@ export async function getLog(
 export async function getBranches(folderPath: string): Promise<GitBranch[]> {
   const git = simpleGit(folderPath)
   const summary = await git.branchLocal()
-  return summary.all.map((name) => ({ name, current: name === summary.current }))
+  // ブランチ上にいないとき、branchLocal は all の先頭に実在しない疑似項目(4fd2759、refs/heads/main、
+  // rebase 中・bisect 中の `(no` など)を current: true で返す。summary.detached は rebase 中・bisect 中に
+  // false になるため使わない(gitHeadState の getCurrentBranchRef を参照)
+  const ref = await getCurrentBranchRef(git)
+  return summary.all.map((name) => {
+    const current = name === summary.current
+    return ref === null && current ? { name, current, isDetachedHead: true } : { name, current }
+  })
 }
 
 export async function getTags(folderPath: string): Promise<string[]> {

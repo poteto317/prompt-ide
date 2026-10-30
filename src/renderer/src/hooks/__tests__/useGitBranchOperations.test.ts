@@ -1008,3 +1008,66 @@ describe('共通の開始条件', () => {
     }
   )
 })
+
+describe('clearBranchOperationError', () => {
+  const renderOperations = (
+    status: GitStatusResult = repoStatus
+  ): ReturnType<typeof renderHook<GitBranchOperationsState, { status: GitStatusResult }>> =>
+    renderHook(
+      ({ status }: { status: GitStatusResult }) =>
+        useGitBranchOperations(
+          status,
+          vi.fn().mockResolvedValue(undefined),
+          vi.fn().mockResolvedValue(undefined),
+          makeFileLock(),
+          { onConfirm: vi.fn().mockReturnValue(true) }
+        ),
+      { initialProps: { status } }
+    )
+
+  it('ブランチ操作の失敗を消す', async () => {
+    mockCheckoutBranch.mockRejectedValue(new Error('checkout に失敗しました'))
+    const { result } = renderOperations()
+    await act(async () => {
+      await result.current.checkoutBranch('feature/x')
+    })
+    expect(result.current.branchOperationError?.message).toBe('checkout に失敗しました')
+
+    act(() => {
+      result.current.clearBranchOperationError()
+    })
+
+    expect(result.current.branchOperationError).toBeNull()
+  })
+
+  it('コンフリクトの通知も消す。マージ中が解除されても消えたままで、次の通知は出る', async () => {
+    const conflictMessage = 'コンフリクトしました（a.txt）。解決するか、マージを中止してください'
+    mockMergeBranch.mockResolvedValue({ status: 'conflict', message: conflictMessage })
+    const { result, rerender } = renderOperations()
+    await act(async () => {
+      await result.current.mergeBranch('feature/x')
+    })
+    rerender({ status: { ...repoStatus, mergeInProgress: true } })
+    expect(result.current.branchOperationError?.message).toBe(conflictMessage)
+
+    act(() => {
+      result.current.clearBranchOperationError()
+    })
+    expect(result.current.branchOperationError).toBeNull()
+
+    rerender({ status: repoStatus })
+    expect(result.current.branchOperationError).toBeNull()
+
+    await act(async () => {
+      await result.current.mergeBranch('feature/y')
+    })
+    expect(result.current.branchOperationError?.message).toBe(conflictMessage)
+  })
+
+  it('参照が安定している(useOnChange などへそのまま渡せる)', () => {
+    const { result, rerender } = renderOperations()
+    const first = result.current.clearBranchOperationError
+    rerender({ status: { ...repoStatus } })
+    expect(result.current.clearBranchOperationError).toBe(first)
+  })
+})

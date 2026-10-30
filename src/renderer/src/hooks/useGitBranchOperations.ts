@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as gitApi from '../lib/gitApi'
 import { useFileOperationLock } from './useFileOperationLock'
 import type { FileOperationLock } from './useFileOperationLock'
@@ -33,6 +33,9 @@ export interface GitBranchOperationsState {
   /** ブランチ操作のエラー。マージがコンフリクトで止まったときの通知もここに入り、
    *  マージ中(gitStatus.mergeInProgress)が解除されたら自動で消える */
   branchOperationError: Error | null
+  /** branchOperationError を消す(コンフリクトの通知も含む)。フォルダを切り替えたときに、
+   *  前のフォルダの失敗をステータスバーに残さないために使う */
+  clearBranchOperationError: () => void
 }
 
 export interface GitBranchOperationsOptions {
@@ -66,6 +69,12 @@ export function useGitBranchOperations(
     conflictNoticeRef.current = null
     setBranchOperationError((current) => (current === notice ? null : current))
   }, [mergeInProgress])
+
+  const clearBranchOperationError = useCallback((): void => {
+    // 控えも消す。残すと、消した通知を指したまま次の通知まで保持する
+    conflictNoticeRef.current = null
+    setBranchOperationError(null)
+  }, [])
 
   const localFileLock = useFileOperationLock()
   const lock = fileLock ?? localFileLock
@@ -191,6 +200,7 @@ export function useGitBranchOperations(
     createBranch,
     deleteBranch,
     mergeBranch,
-    branchOperationError
+    branchOperationError,
+    clearBranchOperationError
   }
 }

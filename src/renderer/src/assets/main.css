@@ -1141,6 +1141,48 @@ body {
   flex: 1;
 }
 
+/* ブランチの項目(押すと一覧を開く) */
+.status-bar__branch {
+  /* 長いブランチ名でも失敗のメッセージや右側の項目を押し出さないよう、縮められるようにする */
+  min-width: 0;
+  max-width: 40vw;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.status-bar__branch-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 明るくすると #007acc と白の文字の比が 4.5:1 を割るため、.status-bar__agent と同じく暗くする */
+.status-bar__branch:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.status-bar__branch:focus-visible {
+  outline: 1px solid #ffffff;
+  outline-offset: -2px;
+}
+
+.status-bar__branch:disabled {
+  cursor: default;
+}
+
+/* ブランチ操作の失敗。.status-bar__item の flex のままだと省略記号が出ないため block にする */
+.status-bar__branch-error {
+  display: block;
+  min-width: 0;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: #a1260d;
+}
+
 /* エージェントの活動のまとめ(押すとターミナルを開く)。タッチで押せるよう 32px の高さにする */
 .status-bar__agent {
   box-sizing: border-box;
@@ -3178,6 +3220,18 @@ body {
   color: #a0a0a0;
 }
 
+/* ブランチの一覧。長い名前を切り詰め、現在の印を押し出さない */
+.branch-picker__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.branch-picker__current {
+  flex: 0 0 auto;
+}
+
 .quick-open__match {
   background: none;
   color: #2aaaff;
@@ -3489,19 +3543,7 @@ body {
   color: #cccccc;
 }
 
-.history-section__badge--branch-current {
-  background: #0e639c;
-  color: #ffffff;
-}
-
-/* カレントブランチ(--branch-current)以外のブランチ・タグは、history-section__badge
-   の地味な灰色のままだと視覚的に区別できない。VSCode の Git グラフに倣い、
-   ブランチは緑系、タグはオレンジ系で色分けする */
-.history-section__badge--branch {
-  background: #4d7c4d;
-  color: #ffffff;
-}
-
+/* タグは history-section__badge の灰色のままだと目立たないため、オレンジ系にする */
 .history-section__badge--tag {
   background: #8a6d1f;
   color: #ffffff;

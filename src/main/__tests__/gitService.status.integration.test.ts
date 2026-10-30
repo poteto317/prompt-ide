@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync } from 'fs'
 import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { getGitStatus } from '../gitService'
+import { getBranches, getGitStatus } from '../gitService'
 import {
   commitAll,
   initRepo,
@@ -157,5 +157,85 @@ describe('getGitStatus の hasOrigin・hasRemote・upstream・detached(実 git)'
         upstream: null
       })
     })
+  })
+})
+
+// simple-git の branchLocal() がブランチ上にいないときに返す疑似項目は、状態によって名前も detached の値も違う
+// (実 git で確認)。形の推測で固定しないよう、実 git で検証する
+describe('getBranches の isDetachedHead(実 git)', () => {
+  let root: string
+  let repo: string
+
+  const detachedHeadNames = async (): Promise<string[]> =>
+    (await getBranches(repo)).filter((branch) => branch.isDetachedHead).map((branch) => branch.name)
+
+  beforeEach(() => {
+    stubIsolatedGitEnv()
+    root = mkdtempSync(join(tmpdir(), 'branches-detached-'))
+    repo = join(root, 'repo')
+    mkdirSync(repo)
+    initRepo(repo)
+    writeRepoFile(repo, 'a.txt', '1\n')
+    commitAll(repo, 'first')
+    writeRepoFile(repo, 'a.txt', '2\n')
+    commitAll(repo, 'second')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    removeTempPathSync(root)
+  })
+
+  it('ブランチ上では、どの項目にも欄を付けない', async () => {
+    runGit(repo, 'branch', 'dev')
+    await expect(getBranches(repo)).resolves.toStrictEqual([
+      { name: 'dev', current: false },
+      { name: 'main', current: true }
+    ])
+  })
+
+  it('コミットの無いリポジトリでは空を返す', async () => {
+    const empty = join(root, 'empty')
+    mkdirSync(empty)
+    initRepo(empty)
+    await expect(getBranches(empty)).resolves.toStrictEqual([])
+  })
+
+  it('コミットを指して detached にすると、短い SHA の疑似項目に印が付く', async () => {
+    const sha = runGit(repo, 'rev-parse', '--short', 'HEAD').trim()
+    runGit(repo, 'checkout', '-q', sha)
+    await expect(getBranches(repo)).resolves.toStrictEqual([
+      { name: sha, current: true, isDetachedHead: true },
+      { name: 'main', current: false }
+    ])
+  })
+
+  it('ブランチ名を指して detached にすると、refs/heads/main の疑似項目に印が付く', async () => {
+    runGit(repo, 'checkout', '-q', '--detach', 'main')
+    await expect(getBranches(repo)).resolves.toStrictEqual([
+      { name: 'refs/heads/main', current: true, isDetachedHead: true },
+      { name: 'main', current: false }
+    ])
+  })
+
+  it('リベースで止めている間も、疑似項目に印が付き、実在のブランチには付かない', async () => {
+    // --exec false で 1 つ目のコミットの後に止める(エディタを使わずに「リベース中」を作る)
+    try {
+      runGit(repo, 'rebase', '--exec', 'false', 'HEAD~1')
+    } catch {
+      // 意図した停止(終了コード 1)
+    }
+    await expect(detachedHeadNames()).resolves.toEqual(['(no'])
+    await expect(getBranches(repo)).resolves.toContainEqual({ name: 'main', current: false })
+  })
+
+  it('bisect の間も、疑似項目に印が付き、実在のブランチには付かない', async () => {
+    writeRepoFile(repo, 'a.txt', '3\n')
+    commitAll(repo, 'third')
+    runGit(repo, 'bisect', 'start')
+    runGit(repo, 'bisect', 'bad', 'HEAD')
+    runGit(repo, 'bisect', 'good', 'HEAD~2')
+    await expect(detachedHeadNames()).resolves.toEqual(['(no'])
+    await expect(getBranches(repo)).resolves.toContainEqual({ name: 'main', current: false })
   })
 })

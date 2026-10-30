@@ -13,7 +13,7 @@ import * as gitApi from '../../../lib/gitApi'
 import { useGitTagOperations } from '../../../hooks/useGitTagOperations'
 
 describe('HistorySection', () => {
-  it('ブランチ名・タグ名をバッジとして表示する', () => {
+  it('タグ名だけをバッジとして表示し、ブランチ名は表示しない', () => {
     render(
       <HistorySection
         log={[]}
@@ -30,9 +30,29 @@ describe('HistorySection', () => {
         isBlocked={false}
       />
     )
-    expect(screen.getByText('main')).toBeInTheDocument()
-    expect(screen.getByText('dev')).toBeInTheDocument()
+    expect(screen.queryByText('main')).toBeNull()
+    expect(screen.queryByText('dev')).toBeNull()
     expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+  })
+
+  it('タグが 0 件のときはバッジの枠を出さない', () => {
+    const { container } = render(
+      <HistorySection
+        log={[]}
+        branches={[
+          { name: 'main', current: true },
+          { name: 'dev', current: false }
+        ]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={null}
+        onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
+      />
+    )
+    expect(container.querySelector('.history-section__badges')).toBeNull()
   })
 
   it('コミット一覧をハッシュ短縮形・メッセージで表示する', () => {

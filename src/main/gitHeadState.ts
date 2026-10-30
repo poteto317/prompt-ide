@@ -9,7 +9,7 @@ const HEADS_NAMESPACE = 'refs/heads/'
 // rebase を edit で止めている間などに検証をすり抜けてしまう(実機で確認)。
 // symbolic-ref -q HEAD はブランチ上なら `refs/heads/<name>` を返し、ブランチ上にいなければ
 // (detached・rebase 中・bisect 中)終了コード 1・stderr 空で終わる。simple-git は reject せず空文字で resolve する。
-// コミットの無いリポジトリでも refs/heads/<name> を返す。gitService の isOnBranch(マージ)と
+// コミットの無いリポジトリでも refs/heads/<name> を返す。gitService の isOnBranch(マージ)・getBranches(疑似項目の印)と
 // gitRemoteSetupService の pushSetUpstream が同じ判定を使う(パターン 55)
 export async function getCurrentBranchRef(git: SimpleGit): Promise<string | null> {
   const ref = (await git.raw(['symbolic-ref', '-q', 'HEAD'])).trim()

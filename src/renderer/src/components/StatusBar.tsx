@@ -1,5 +1,6 @@
 'use client'
-import { BranchIcon } from './icons'
+import StatusBarBranch from './StatusBarBranch'
+import type { StatusBarBranchState } from './StatusBarBranch'
 import type { AgentStatusBarState } from '../hooks/useAgentStatusBar'
 import {
   describeAgentActivitySummary,
@@ -9,15 +10,14 @@ import {
 interface StatusBarProps {
   /** エージェントの活動のまとめ。null・items が空なら出さない。省略させない(App が渡し忘れると、まとめが黙って出なくなるため) */
   agent: AgentStatusBarState | null
+  /** ブランチの表示。リポジトリの外なら null。省略させない(App が渡し忘れると、ブランチが黙って出なくなるため) */
+  branch: StatusBarBranchState | null
 }
 
-export default function StatusBar({ agent }: StatusBarProps): React.JSX.Element {
+export default function StatusBar({ agent, branch }: StatusBarProps): React.JSX.Element {
   return (
     <div className="status-bar">
-      <div className="status-bar__item">
-        <BranchIcon />
-        <span>main</span>
-      </div>
+      {branch !== null && <StatusBarBranch state={branch} />}
       {agent !== null && agent.items.length > 0 && (
         <button
           type="button"

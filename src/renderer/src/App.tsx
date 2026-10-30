@@ -237,6 +237,19 @@ export default function App(): React.JSX.Element {
     })()
   }
 
+  // isGitOperationDisabled は型を絞り込まないため、ここでは直接判定する
+  const statusBarBranch =
+    gitStatus === null || !gitStatus.isRepo
+      ? null
+      : {
+          currentBranch: gitStatus.detached ? null : gitStatus.branch,
+          branches,
+          pendingBranchOperation,
+          isBlocked: stagingPaths.size > 0 || isAnyLocked(),
+          error: branchOperationError,
+          onCheckoutBranch: checkoutBranch
+        }
+
   return (
     <>
       <div className="ide-root">
@@ -392,7 +405,7 @@ export default function App(): React.JSX.Element {
           />
         </div>
       </div>
-      <StatusBar agent={statusBarAgent} />
+      <StatusBar agent={statusBarAgent} branch={statusBarBranch} />
       <AgentAnnouncer message={agentAnnouncement} />
       {/* エクスプローラから参照を足したとき・すでに足してあったときの読み上げ。エクスプローラを開いている間はプロンプトパネルが隠れるため、パネルの外に常設する */}
       <AgentAnnouncer message={agentReferenceAnnouncement} />
