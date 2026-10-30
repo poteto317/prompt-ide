@@ -6,11 +6,13 @@ import {
   getAgentSendConfirmEnabled,
   getModelSettings,
   getPromptExecutionMode,
+  getPromptListMode,
   setAgentCliKind,
   setAgentNotificationsEnabled,
   setAgentSendConfirmEnabled,
   setModelSettings,
-  setPromptExecutionMode
+  setPromptExecutionMode,
+  setPromptListMode
 } from '../settingsApi'
 
 const mockApi = {
@@ -59,6 +61,19 @@ describe('実行方式', () => {
     await expect(getPromptExecutionMode()).resolves.toBe('legacy')
     await setPromptExecutionMode('agent-cli')
     expect(api.setPromptExecutionMode).toHaveBeenCalledWith('agent-cli')
+  })
+})
+
+describe('プロンプト一覧のモード', () => {
+  it('getPromptListMode・setPromptListMode は window.api に委譲する', async () => {
+    const api = {
+      getPromptListMode: vi.fn().mockResolvedValue('view'),
+      setPromptListMode: vi.fn().mockResolvedValue(undefined)
+    }
+    vi.stubGlobal('api', api)
+    await expect(getPromptListMode()).resolves.toBe('view')
+    await setPromptListMode('edit')
+    expect(api.setPromptListMode).toHaveBeenCalledExactlyOnceWith('edit')
   })
 })
 

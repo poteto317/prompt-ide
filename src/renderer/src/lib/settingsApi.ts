@@ -2,7 +2,8 @@ import type {
   AgentCliKind,
   AgentCliKindSetting,
   ModelSettings,
-  PromptExecutionMode
+  PromptExecutionMode,
+  PromptListMode
 } from '@shared/types'
 
 export function getModelSettings(): Promise<ModelSettings> {
@@ -19,6 +20,14 @@ export function getPromptExecutionMode(): Promise<PromptExecutionMode> {
 
 export function setPromptExecutionMode(mode: PromptExecutionMode): Promise<void> {
   return window.api.setPromptExecutionMode(mode)
+}
+
+export function getPromptListMode(): Promise<PromptListMode> {
+  return window.api.getPromptListMode()
+}
+
+export function setPromptListMode(mode: PromptListMode): Promise<void> {
+  return window.api.setPromptListMode(mode)
 }
 
 export function getAgentNotificationsEnabled(): Promise<boolean> {

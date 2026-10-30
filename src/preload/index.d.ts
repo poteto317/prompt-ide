@@ -23,6 +23,7 @@ import type {
   CLIOnlyToolId,
   ExternalFileChangeEvent,
   PromptExecutionMode,
+  PromptListMode,
   WriteFileCheckedResult,
   CloneRepositoryResult,
   ConflictChoice,
@@ -133,6 +134,8 @@ declare global {
       saveHistory(entries: HistoryEntry[]): Promise<void>
       getPromptExecutionMode(): Promise<PromptExecutionMode>
       setPromptExecutionMode(mode: PromptExecutionMode): Promise<void>
+      getPromptListMode(): Promise<PromptListMode>
+      setPromptListMode(mode: PromptListMode): Promise<void>
       getAgentNotificationsEnabled(): Promise<boolean>
       setAgentNotificationsEnabled(enabled: boolean): Promise<void>
       getAgentSendConfirmEnabled(): Promise<boolean>

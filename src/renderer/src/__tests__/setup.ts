@@ -47,6 +47,9 @@ Object.defineProperty(window, 'api', {
     // 既存のテストは従来の方式の画面を前提にしている。エージェント CLI 方式の画面のテストは個別に差し替える
     getPromptExecutionMode: () => Promise.resolve('legacy'),
     setPromptExecutionMode: () => Promise.resolve(),
+    // 一覧のモードの既定は編集モード(既存のテストは `編集`・`削除` が出る前提)。表示モードのテストは個別に差し替える
+    getPromptListMode: () => Promise.resolve('edit'),
+    setPromptListMode: () => Promise.resolve(),
     getAgentNotificationsEnabled: () => Promise.resolve(true),
     setAgentNotificationsEnabled: () => Promise.resolve(),
     getAgentSendConfirmEnabled: () => Promise.resolve(true),

@@ -25,6 +25,8 @@ export interface SettingsFile {
   maxTokens?: number
   /** プロンプトの実行方式(executionModeStore が検証する) */
   promptExecutionMode?: string
+  /** プロンプト一覧のモード(promptListModeStore が検証する) */
+  promptListMode?: string
   /** エージェントの通知のオン・オフ(agentNotificationSettingStore が検証する) */
   agentNotificationsEnabled?: boolean
   /** エージェントへの送信前の確認のオン・オフ(agentSendConfirmSettingStore が検証する) */

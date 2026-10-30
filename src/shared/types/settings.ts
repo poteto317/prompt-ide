@@ -35,6 +35,16 @@ export function isPromptExecutionMode(value: unknown): value is PromptExecutionM
   return isOneOf(PROMPT_EXECUTION_MODES, value)
 }
 
+/** プロンプト一覧のモード。edit: 各項目に `編集`・`削除` を出す。view: 出さない(誤タップの防止) */
+export const PROMPT_LIST_MODES = ['edit', 'view'] as const
+export type PromptListMode = (typeof PROMPT_LIST_MODES)[number]
+/** 保存が無い初回の既定。編集モード(今の見た目と挙動を変えない) */
+export const DEFAULT_PROMPT_LIST_MODE: PromptListMode = 'edit'
+
+export function isPromptListMode(value: unknown): value is PromptListMode {
+  return isOneOf(PROMPT_LIST_MODES, value)
+}
+
 /** エージェントの完了・許可待ちの通知(OS の通知と Dock のバッジ)の既定。オン */
 export const DEFAULT_AGENT_NOTIFICATIONS_ENABLED = true
 

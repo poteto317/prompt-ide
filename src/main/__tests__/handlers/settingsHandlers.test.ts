@@ -22,6 +22,13 @@ vi.mock('../../executionModeStore', () => ({
   setPromptExecutionMode: mockSetPromptExecutionMode
 }))
 
+const mockGetPromptListMode = vi.hoisted(() => vi.fn())
+const mockSetPromptListMode = vi.hoisted(() => vi.fn())
+vi.mock('../../promptListModeStore', () => ({
+  getPromptListMode: mockGetPromptListMode,
+  setPromptListMode: mockSetPromptListMode
+}))
+
 const mockGetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
 const mockSetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
 vi.mock('../../agentNotificationSettingStore', () => ({
@@ -280,5 +287,28 @@ describe('実行方式', () => {
     await expect(
       getRegisteredHandler('settings:setPromptExecutionMode')(makeEvent(1), 'shell')
     ).rejects.toThrow('実行方式が不正です: shell')
+  })
+})
+
+describe('プロンプト一覧のモード', () => {
+  it('settings:getPromptListMode は保存されたモードを返す', async () => {
+    mockGetPromptListMode.mockResolvedValueOnce('view')
+    await expect(getRegisteredHandler('settings:getPromptListMode')(makeEvent(1))).resolves.toBe(
+      'view'
+    )
+    expect(mockGetPromptListMode).toHaveBeenCalledOnce()
+  })
+
+  it('settings:setPromptListMode は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetPromptListMode.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setPromptListMode')(makeEvent(1), 'hidden')
+    expect(mockSetPromptListMode).toHaveBeenCalledExactlyOnceWith('hidden')
+  })
+
+  it('settings:setPromptListMode は store の拒否をそのまま返す', async () => {
+    mockSetPromptListMode.mockRejectedValueOnce(new Error('プロンプト一覧のモードが不正です'))
+    await expect(
+      getRegisteredHandler('settings:setPromptListMode')(makeEvent(1), 'hidden')
+    ).rejects.toThrow('プロンプト一覧のモードが不正です')
   })
 })

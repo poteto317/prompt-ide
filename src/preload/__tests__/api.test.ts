@@ -509,6 +509,16 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['settings:setPromptExecutionMode', 'legacy']
     ],
     [
+      'getPromptListMode は settings:getPromptListMode を呼ぶ',
+      () => api.getPromptListMode(),
+      ['settings:getPromptListMode']
+    ],
+    [
+      'setPromptListMode は settings:setPromptListMode にモードを渡す',
+      () => api.setPromptListMode('view'),
+      ['settings:setPromptListMode', 'view']
+    ],
+    [
       'getAgentNotificationsEnabled は settings:getAgentNotificationsEnabled を呼ぶ',
       () => api.getAgentNotificationsEnabled(),
       ['settings:getAgentNotificationsEnabled']

@@ -14,6 +14,7 @@ import {
 } from '../agentSendConfirmSettingStore'
 import { getAgentCliKindSetting, setAgentCliKind } from '../agentCliKindStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
+import { getPromptListMode, setPromptListMode } from '../promptListModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
   // API キーの状態。読み込みの失敗は reject せず理由の種類だけを返す(例外の文言には settings.json のパスや中身の断片が
@@ -51,6 +52,14 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'settings:setPromptExecutionMode',
     async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptExecutionMode(mode)
+  )
+
+  // プロンプト一覧の編集モード / 表示モード。検証は store が行う
+  ipcMain.handle('settings:getPromptListMode', async () => getPromptListMode())
+
+  ipcMain.handle(
+    'settings:setPromptListMode',
+    async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptListMode(mode)
   )
 
   // 使うエージェント CLI。読み込みは種類と既定に戻した理由を返す(設定の画面が注記に使う)。検証は store が行う

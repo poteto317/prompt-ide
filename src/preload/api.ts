@@ -25,6 +25,7 @@ import type {
   CLIOnlyToolId,
   ExternalFileChangeEvent,
   PromptExecutionMode,
+  PromptListMode,
   WriteFileCheckedResult,
   CloneRepositoryResult,
   ConflictChoice,
@@ -182,6 +183,10 @@ export const api = {
     ipcRenderer.invoke('settings:getPromptExecutionMode'),
   setPromptExecutionMode: (mode: PromptExecutionMode): Promise<void> =>
     ipcRenderer.invoke('settings:setPromptExecutionMode', mode),
+  getPromptListMode: (): Promise<PromptListMode> =>
+    ipcRenderer.invoke('settings:getPromptListMode'),
+  setPromptListMode: (mode: PromptListMode): Promise<void> =>
+    ipcRenderer.invoke('settings:setPromptListMode', mode),
   getAgentNotificationsEnabled: (): Promise<boolean> =>
     ipcRenderer.invoke('settings:getAgentNotificationsEnabled'),
   setAgentNotificationsEnabled: (enabled: boolean): Promise<void> =>
