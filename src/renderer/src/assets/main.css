@@ -3576,7 +3576,8 @@ body {
 
 .merge-banner__message,
 .remote-setup-banner__message {
-  flex: 1;
+  /* 基準幅を持たせる。0 だと折り返しが起きず、狭いパネルでボタンが同じ行に残ってメッセージが 1 文字幅に潰れる */
+  flex: 1 1 160px;
   min-width: 0;
   margin: 0;
   color: #d7ba7d;

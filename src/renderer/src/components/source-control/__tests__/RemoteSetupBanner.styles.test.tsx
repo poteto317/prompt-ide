@@ -75,6 +75,25 @@ describe('リモートの管理のスタイル(main.css)', () => {
     expect(getComputedStyle(screen.getByRole('status')).overflowWrap).toBe('anywhere')
   })
 
+  // 基準幅が 0 だと折り返し(flex-wrap)が起きず、狭いパネルでボタンが同じ行に残って文言が 1 文字幅に潰れる。
+  // 基準幅を持たせ、文言とボタンが並びきらなければボタンが次の行へ回るようにする
+  it('バナーの文言は基準幅を持ち、狭いパネルではボタンが次の行へ回る', () => {
+    render(
+      <RemoteSetupBanner
+        kind="no-upstream"
+        branch="fix/agent-input-empty-when-unfocused"
+        remoteSetup={makeRemoteSetupPanelState()}
+        isBlocked={false}
+        requestFocus={vi.fn()}
+      />
+    )
+    const style = getComputedStyle(screen.getByRole('status'))
+    expect(style.flexBasis).toBe('160px')
+    expect(getComputedStyle(screen.getByRole('status').parentElement as HTMLElement).flexWrap).toBe(
+      'wrap'
+    )
+  })
+
   it('「リポジトリを初期化」は 32px 四方以上の枠付きボタンになる', () => {
     render(
       <NotRepositoryView
