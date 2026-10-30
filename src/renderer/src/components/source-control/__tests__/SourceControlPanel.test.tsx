@@ -2,10 +2,25 @@ import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { GitStatusResult } from '@shared/types'
-import type { DiscardAllState, MergeStatePanelState, StashPanelState } from '../../../types'
+import type {
+  AgentChangesView,
+  DiscardAllState,
+  MergeStatePanelState,
+  StashPanelState
+} from '../../../types'
+import type { AgentChangesPanelState } from '../../../hooks/useAgentChangesWiring'
 import SourceControlPanel from '../SourceControlPanel'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../../__tests__/makeRemoteSetupPanelState'
+import {
+  makeAgentChangesPanelChanges,
+  makeAgentChangesPanelState,
+  makeAgentChangesRecordingView
+} from '../../../__tests__/makeAgentChangesState'
+import {
+  selectSourceControlMenuItem,
+  sourceControlMenuButton
+} from '../../../__tests__/sourceControlMenu'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -64,12 +79,10 @@ const baseProps = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPull: vi.fn().mockResolvedValue(undefined),
   onFetch: vi.fn().mockResolvedValue(undefined),
+  isSyncing: false,
+  isSyncBlocked: false,
+  onSync: vi.fn().mockResolvedValue(undefined),
   remoteOperationError: null as Error | null,
-  pendingBranchOperation: null,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-  onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true),
-  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
@@ -162,20 +175,19 @@ describe('SourceControlPanel', () => {
     expect(screen.getByText('Git リポジトリではありません')).toBeInTheDocument()
   })
 
-  it('files が空のときブランチ名と「変更はありません」が表示される', () => {
+  it('files が空でも「変更はありません」の文は出さない', () => {
     render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} />)
-    expect(screen.getByText('main')).toBeInTheDocument()
-    expect(screen.getByText('変更はありません')).toBeInTheDocument()
+    expect(screen.queryByText('変更はありません')).not.toBeInTheDocument()
   })
 
-  it('ステージ済みファイルが「ステージ済み」セクションに表示される', () => {
+  it('ステージ済みファイルが「ステージされている変更」セクションに表示される', () => {
     const status: GitStatusResult = {
       ...repoStatus,
       files: [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('ステージ済み (1)')).toBeInTheDocument()
-    expect(screen.getByText('src/index.ts')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ステージされている変更 1' })).toBeInTheDocument()
+    expect(screen.getByText('index.ts')).toBeInTheDocument()
   })
 
   it('ステージ済みファイルのステータス文字が表示される（M）', () => {
@@ -193,7 +205,7 @@ describe('SourceControlPanel', () => {
       files: [{ path: 'README.md', index: ' ', workingDir: 'M' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('変更 (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '変更 1' })).toBeInTheDocument()
     expect(screen.getByText('README.md')).toBeInTheDocument()
   })
 
@@ -203,7 +215,7 @@ describe('SourceControlPanel', () => {
       files: [{ path: 'new-file.ts', index: '?', workingDir: '?' }]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('変更 (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '変更 1' })).toBeInTheDocument()
     expect(screen.getByText('U')).toBeInTheDocument()
     expect(screen.getByText('new-file.ts')).toBeInTheDocument()
   })
@@ -217,20 +229,17 @@ describe('SourceControlPanel', () => {
       ]
     }
     render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('ステージ済み (1)')).toBeInTheDocument()
-    expect(screen.getByText('変更 (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ステージされている変更 1' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '変更 1' })).toBeInTheDocument()
   })
 
-  it('ahead が正のとき「↑N」が表示される', () => {
-    const status: GitStatusResult = { ...repoStatus, ahead: 3 }
-    render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('↑3')).toBeInTheDocument()
-  })
-
-  it('behind が正のとき「↓N」が表示される', () => {
-    const status: GitStatusResult = { ...repoStatus, behind: 2 }
-    render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('↓2')).toBeInTheDocument()
+  it('ブランチの欄を出さない(ブランチの操作はステータスバーの一覧へ移した)', () => {
+    const status: GitStatusResult = { ...repoStatus, ahead: 3, behind: 2 }
+    const { container } = render(<SourceControlPanel {...baseProps} gitStatus={status} />)
+    expect(container.querySelector('.source-control-panel__branch')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ブランチを切り替え' })).not.toBeInTheDocument()
+    expect(screen.queryByText('↑3')).not.toBeInTheDocument()
+    expect(screen.queryByText('↓2')).not.toBeInTheDocument()
   })
 
   // 更新ボタンのクリックで onRefresh が呼ばれること自体は、Panel が受け取った
@@ -247,12 +256,6 @@ describe('SourceControlPanel', () => {
   it('gitError が渡されたとき error.message が表示される', () => {
     render(<SourceControlPanel {...baseProps} gitError={new Error('git fatal error')} />)
     expect(screen.getByText('git fatal error')).toBeInTheDocument()
-  })
-
-  it('branch が null のとき "(no branch)" が表示される', () => {
-    const status: GitStatusResult = { ...repoStatus, branch: null }
-    render(<SourceControlPanel {...baseProps} gitStatus={status} />)
-    expect(screen.getByText('(no branch)')).toBeInTheDocument()
   })
 
   it('operationError があれば表示する', () => {
@@ -301,12 +304,10 @@ describe('SourceControlPanel', () => {
         onPush={vi.fn()}
         onPull={vi.fn()}
         onFetch={vi.fn()}
+        isSyncing={false}
+        isSyncBlocked={false}
+        onSync={vi.fn()}
         remoteOperationError={null}
-        pendingBranchOperation={null}
-        onCheckoutBranch={vi.fn()}
-        onCreateBranch={vi.fn().mockResolvedValue(true)}
-        onDeleteBranch={vi.fn().mockResolvedValue(true)}
-        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
@@ -332,24 +333,24 @@ describe('SourceControlPanel', () => {
   // 更新ボタンと同じ理由(Panel → Toolbar への橋渡し確認)。disabled 判定の
   // 全パターン(gitStatus null・isRepo false・isPulling/isPushing 相互排他等)は
   // SourceControlToolbar.test.tsx 側で検証済みのため、ここでは重複させない
-  it('フェッチボタンをクリックすると onFetch が呼ばれる', async () => {
+  it('メニューのフェッチを押すと onFetch が呼ばれる', async () => {
     const onFetch = vi.fn().mockResolvedValue(undefined)
     render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onFetch={onFetch} />)
-    await userEvent.click(screen.getByRole('button', { name: 'フェッチ' }))
+    await selectSourceControlMenuItem('フェッチ')
     expect(onFetch).toHaveBeenCalledOnce()
   })
 
-  it('プルボタンをクリックすると onPull が呼ばれる', async () => {
+  it('メニューのプルを押すと onPull が呼ばれる', async () => {
     const onPull = vi.fn().mockResolvedValue(undefined)
     render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onPull={onPull} />)
-    await userEvent.click(screen.getByRole('button', { name: 'プル' }))
+    await selectSourceControlMenuItem('プル')
     expect(onPull).toHaveBeenCalledOnce()
   })
 
-  it('プッシュボタンをクリックすると onPush が呼ばれる', async () => {
+  it('メニューのプッシュを押すと onPush が呼ばれる', async () => {
     const onPush = vi.fn().mockResolvedValue(undefined)
     render(<SourceControlPanel {...baseProps} gitStatus={repoStatus} onPush={onPush} />)
-    await userEvent.click(screen.getByRole('button', { name: 'プッシュ' }))
+    await selectSourceControlMenuItem('プッシュ')
     expect(onPush).toHaveBeenCalledOnce()
   })
 
@@ -500,9 +501,9 @@ describe('SourceControlPanel', () => {
       expect(remoteSetup.clearAddOriginError).toHaveBeenCalledOnce()
     })
 
-    // 初回 push の成功の後は、ツールバーの「プッシュ」へ移す(パネルの中の印の付いたボタン)。要求の state は
+    // 初回 push の成功の後は、ツールバーの「…」へ移す(パネルの中の印の付いたボタン)。要求の state は
     // このパネルの useRemoteSetupFocus が持ち、バナーへ requestFocus を渡す(移す条件はフックのテストで確かめる)
-    it('バナーの初回 push に成功すると、バナーが消えた後にツールバーの「プッシュ」へフォーカスを移す', async () => {
+    it('バナーの初回 push に成功すると、バナーが消えた後にツールバーの「…」へフォーカスを移す', async () => {
       const remoteSetup = makeRemoteSetupPanelState()
       let resolvePush: (succeeded: boolean) => void = () => {}
       remoteSetup.pushSetUpstream = () =>
@@ -520,7 +521,36 @@ describe('SourceControlPanel', () => {
       )
       expect(document.body).toHaveFocus()
       await act(async () => resolvePush(true))
-      expect(screen.getByRole('button', { name: 'プッシュ' })).toHaveFocus()
+      expect(sourceControlMenuButton()).toHaveFocus()
     })
+  })
+
+  // useAgentChangesClearFocus は「更新」をクラスで探す。アイコンにしても実物のツールバーへ移ること
+  it('従来の方式で「確認を終える」の後にセクションが消えると、ツールバーの「更新」へフォーカスを移す', async () => {
+    const recording = makeAgentChangesRecordingView(null, { startedAt: 1 })
+    const clear = vi.fn(async () => undefined)
+    const makeAgentChanges = (view: AgentChangesView): AgentChangesPanelState =>
+      makeAgentChangesPanelState({
+        changes: makeAgentChangesPanelChanges({ view, clear }),
+        isAgentMode: false
+      })
+    const { rerender } = render(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        agentChanges={makeAgentChanges(recording)}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '確認を終える' }))
+    expect(clear).toHaveBeenCalledOnce()
+    ;(document.activeElement as HTMLElement).blur()
+    rerender(
+      <SourceControlPanel
+        {...baseProps}
+        gitStatus={repoStatus}
+        agentChanges={makeAgentChanges({ kind: 'none' })}
+      />
+    )
+    expect(screen.getByRole('button', { name: '更新' })).toHaveFocus()
   })
 })

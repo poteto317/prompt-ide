@@ -29,7 +29,36 @@ const e2 = {
 describe('StashSection', () => {
   it('見出しに件数を出す', () => {
     render(<StashSection stash={makeStash({ entries: [e1, e2] })} isBlocked={false} />)
-    expect(screen.getByRole('heading', { name: '退避（2）' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '退避 2' })).toBeInTheDocument()
+  })
+
+  it('0 件のときは件数を出さない', () => {
+    render(<StashSection stash={makeStash()} isBlocked={false} />)
+    expect(screen.getByRole('heading', { name: '退避' })).toBeInTheDocument()
+  })
+
+  it('「退避する」は見出しの操作の枠に置き、閉じても押せる', async () => {
+    render(<StashSection stash={makeStash()} isBlocked={false} />)
+    const action = screen.getByRole('button', { name: '変更を退避する' })
+    expect(action.parentElement).toHaveClass('collapsible-section__actions')
+    await userEvent.click(screen.getByRole('button', { name: '退避' }))
+    expect(action).toBeVisible()
+    expect(screen.getByText('退避はありません')).not.toBeVisible()
+  })
+
+  it('閉じてもエラーは見える', async () => {
+    render(<StashSection stash={makeStash({ error: new Error('失敗') })} isBlocked={false} />)
+    await userEvent.click(screen.getByRole('button', { name: '退避' }))
+    expect(screen.getByRole('alert')).toBeVisible()
+  })
+
+  it('メッセージの入力ダイアログは section の外に出て、閉じていても見える', async () => {
+    render(<StashSection stash={makeStash()} isBlocked={false} />)
+    await userEvent.click(screen.getByRole('button', { name: '退避' }))
+    await userEvent.click(screen.getByRole('button', { name: '変更を退避する' }))
+    const input = screen.getByRole('textbox')
+    expect(input).toBeVisible()
+    expect(screen.getByRole('region', { name: '退避' })).not.toContainElement(input)
   })
 
   it('0 件のとき「退避はありません」を出す', () => {

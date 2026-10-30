@@ -45,7 +45,7 @@ export default function RemoteSetupBanner({
     requestFocus('set-upstream')
   }
 
-  // 成功するとバナーごと消えるため、ツールバーの「プッシュ」へ移す
+  // 成功するとバナーごと消えるため、ツールバーの「…」へ移す
   const handleSetUpstream = async (): Promise<void> => {
     if (await remoteSetup.pushSetUpstream()) requestFocus('push')
   }
@@ -58,7 +58,7 @@ export default function RemoteSetupBanner({
   // body のままだと、キーボードの利用者がボタンへ戻れない。そのため実行中が解けたとき(エラーがある=失敗)に、
   // フォーカスが body ならボタンへ戻す(外の要素にあるフォーカスは奪わない。useFocusOnRunningEnd。パターン 86)。
   // 成功ではバナーが消えるか、残っても(upstream が表示されない origin)成功の後のフォーカスの要求
-  // (ツールバーの「プッシュ」。useRemoteSetupFocus)に任せるため、ここでは移さない(enabled をエラーの有無にする)
+  // (ツールバーの「…」。useRemoteSetupFocus)に任せるため、ここでは移さない(enabled をエラーの有無にする)
   const setUpstreamButtonRef = useRef<HTMLButtonElement>(null)
   useFocusOnRunningEnd(isSettingUpstream, setUpstreamButtonRef, {
     enabled: remoteSetup.remoteOperationError !== null

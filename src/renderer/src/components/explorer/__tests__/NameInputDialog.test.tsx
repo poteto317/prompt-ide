@@ -99,6 +99,66 @@ describe('NameInputDialog', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
+  it('キーボードの操作の click(detail: 0)でもオーバーレイから閉じる', () => {
+    const onCancel = vi.fn()
+    const { container } = render(<NameInputDialog {...defaultProps} onCancel={onCancel} />)
+    fireEvent.click(container.querySelector('.name-input-dialog__overlay')!, { detail: 0 })
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  // 一覧の項目のダブルクリックの 2 回目が、開いた直後のオーバーレイに落ちても閉じない(要件 17)。
+  // 押した時点でフォーカスが body へ落ちるので、入力欄へ戻す(Escape が届かなくならないように)
+  it('ダブルクリックの 2 回目(detail: 2)では閉じず、入力欄へフォーカスを戻す', () => {
+    const onCancel = vi.fn()
+    const { container } = render(<NameInputDialog {...defaultProps} onCancel={onCancel} />)
+    screen.getByLabelText('名前').blur()
+    fireEvent.click(container.querySelector('.name-input-dialog__overlay')!, { detail: 2 })
+    expect(onCancel).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('名前')).toHaveFocus()
+  })
+
+  describe('isBlocked', () => {
+    const NOTICE = '他の操作が完了するまで実行できません'
+
+    it('OK を押せなくし、案内を role="status" で出す', () => {
+      render(<NameInputDialog {...defaultProps} isBlocked />)
+      expect(screen.getByRole('button', { name: 'OK' })).toBeDisabled()
+      expect(screen.getByRole('status')).toHaveTextContent(NOTICE)
+    })
+
+    it('既定では押せて、案内を出さない', () => {
+      render(<NameInputDialog {...defaultProps} />)
+      expect(screen.getByRole('button', { name: 'OK' })).toBeEnabled()
+      expect(screen.queryByText(NOTICE)).not.toBeInTheDocument()
+    })
+
+    it('Enter でも onSubmit を呼ばない', async () => {
+      const onSubmit = vi.fn()
+      render(<NameInputDialog {...defaultProps} onSubmit={onSubmit} isBlocked />)
+      await userEvent.type(screen.getByLabelText('名前'), 'new.ts')
+      fireEvent.submit(screen.getByRole('dialog'))
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('キャンセルはできる', async () => {
+      const onCancel = vi.fn()
+      render(<NameInputDialog {...defaultProps} onCancel={onCancel} isBlocked />)
+      await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+      expect(onCancel).toHaveBeenCalledOnce()
+    })
+
+    it('解けたら確定できる', async () => {
+      const onSubmit = vi.fn()
+      const { rerender } = render(
+        <NameInputDialog {...defaultProps} onSubmit={onSubmit} isBlocked />
+      )
+      await userEvent.type(screen.getByLabelText('名前'), 'new.ts')
+      rerender(<NameInputDialog {...defaultProps} onSubmit={onSubmit} isBlocked={false} />)
+      await userEvent.click(screen.getByRole('button', { name: 'OK' }))
+      expect(onSubmit).toHaveBeenCalledWith('new.ts')
+    })
+  })
+
   it('入力欄に自動フォーカスされる', () => {
     render(<NameInputDialog {...defaultProps} />)
     expect(screen.getByLabelText('名前')).toHaveFocus()

@@ -1,10 +1,12 @@
 import { join } from 'path'
 import simpleGit, { GitError } from 'simple-git'
 import type { BranchSummary, SimpleGit } from 'simple-git'
+import { errorMessageOf } from './errorMessage'
 import type {
   GitStatusResult,
   GitLogEntry,
   GitBranch,
+  GitPullResult,
   DeleteBranchResult,
   MergeBranchResult
 } from '@shared/types'
@@ -386,7 +388,15 @@ export async function push(folderPath: string): Promise<void> {
   }
 }
 
-export async function pull(folderPath: string): Promise<void> {
+async function hasConflictedFiles(git: SimpleGit): Promise<boolean> {
+  return (await git.status()).conflicted.length > 0
+}
+
+// コンフリクトで git.pull() が例外を投げるかは stderr の有無で変わる(simple-git は終了コードと stderr の両方で失敗を
+// 判定する。実測では取得済みのマージと autostash の復元は投げず、プルの中で取得するマージと rebase は投げる)。どの形でも同じ結果に
+// するため status で判定する。成功の後の status の失敗は投げる: コンフリクトの有無が分からないまま成功として返すと、
+// 同期がプッシュへ進む
+export async function pull(folderPath: string): Promise<GitPullResult> {
   const git = simpleGitWithRemoteTimeout(folderPath)
   // マージ中の pull は git が英語('You have not concluded your merge (MERGE_HEAD exists).')で
   // 失敗する。ブランチの切り替えと同じく、git に渡す前に日本語で拒否する
@@ -394,7 +404,18 @@ export async function pull(folderPath: string): Promise<void> {
   try {
     await git.pull()
   } catch (err) {
-    throw toRemoteOperationError(err)
+    const error = toRemoteOperationError(err)
+    const conflicted = await hasConflictedFiles(git).catch(() => false)
+    if (conflicted) return { conflicted, errorMessage: errorMessageOf(error) }
+    throw error
+  }
+  try {
+    return { conflicted: await hasConflictedFiles(git) }
+  } catch (err) {
+    // プル自体は反映済みなので、素の例外だと失敗したように見える
+    throw new Error(
+      `プルは完了しましたが、コンフリクトの確認に失敗しました: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }
 

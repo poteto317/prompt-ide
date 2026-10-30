@@ -4,14 +4,12 @@ import ChangesSection from './ChangesSection'
 import CommitSection from './CommitSection'
 import HistorySection from './HistorySection'
 import StashSection from './StashSection'
-import BranchSwitcher from './BranchSwitcher'
 import MergeBanner from './MergeBanner'
 import RemoteSetupBanner from './RemoteSetupBanner'
 import AgentChangesSection from './AgentChangesSection'
 import type { AgentChangesPanelState } from '../../hooks/useAgentChangesWiring'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import type {
-  BranchOperationKind,
   DiscardAllState,
   GitTagPanelState,
   MergeStatePanelState,
@@ -37,6 +35,9 @@ export interface GitRepoViewProps {
   onCommit: (message: string) => Promise<boolean>
   lastCommitMessage: string | null
   onAmend: (message: string) => Promise<boolean>
+  isSyncing: boolean
+  isSyncBlocked: boolean
+  onSync: () => Promise<void>
   log: GitLogEntry[]
   /** 現在のブランチの上流の短い名前(gitStatus.upstream) */
   upstream: string | null
@@ -45,16 +46,11 @@ export interface GitRepoViewProps {
   hasMoreLog: boolean
   isLoadingLog: boolean
   /** フォルダ切替による履歴の初回取得中のみ true(同一フォルダ内の refresh では
-   *  true にならない)。CommitSection の amend チェック/メッセージ欄リセットの
+   *  true にならない)。CommitSection の amend の選択/メッセージ欄リセットの
    *  トリガーに使う。isLoadingLog(HistorySection 用、refresh 中も true)とは別 */
   isLoadingFolder: boolean
   historyError: Error | null
   onLoadMoreLog: () => void
-  pendingBranchOperation: BranchOperationKind | null
-  onCheckoutBranch: (branchName: string) => Promise<void>
-  onCreateBranch: (branchName: string) => Promise<boolean>
-  onDeleteBranch: (branchName: string) => Promise<boolean>
-  onMergeBranch: (branchName: string) => Promise<void>
   stash: StashPanelState
   discardAll: DiscardAllState
   mergeState: MergeStatePanelState
@@ -86,6 +82,9 @@ export default function GitRepoView({
   onCommit,
   lastCommitMessage,
   onAmend,
+  isSyncing,
+  isSyncBlocked,
+  onSync,
   log,
   upstream,
   branches,
@@ -95,11 +94,6 @@ export default function GitRepoView({
   isLoadingFolder,
   historyError,
   onLoadMoreLog,
-  pendingBranchOperation,
-  onCheckoutBranch,
-  onCreateBranch,
-  onDeleteBranch,
-  onMergeBranch,
   stash,
   discardAll,
   mergeState,
@@ -119,20 +113,6 @@ export default function GitRepoView({
   const isBlockedByOtherOperation = stagingPaths.size > 0 || isAnyLocked()
   return (
     <>
-      <div className="source-control-panel__branch">
-        <BranchSwitcher
-          currentBranch={branch}
-          branches={branches}
-          pendingBranchOperation={pendingBranchOperation}
-          isBlocked={isBlockedByOtherOperation}
-          onCheckoutBranch={onCheckoutBranch}
-          onCreateBranch={onCreateBranch}
-          onDeleteBranch={onDeleteBranch}
-          onMergeBranch={onMergeBranch}
-        />
-        {ahead > 0 && <span className="source-control-panel__ahead">↑{ahead}</span>}
-        {behind > 0 && <span className="source-control-panel__behind">↓{behind}</span>}
-      </div>
       <MergeBanner mergeState={mergeState} isBlocked={isBlockedByOtherOperation} />
       {/* マージのバナーの直後に出す(どちらも条件を満たせば両方。設計書の表) */}
       <RemoteSetupBanner
@@ -154,6 +134,12 @@ export default function GitRepoView({
         onAmend={onAmend}
         isLoadingFolder={isLoadingFolder}
         isBlockedByOtherOperation={isBlockedByOtherOperation}
+        ahead={ahead}
+        behind={behind}
+        mergeInProgress={mergeState.inProgress}
+        isSyncing={isSyncing}
+        isSyncBlocked={isSyncBlocked}
+        onSync={onSync}
       />
       <StagedSection
         files={files}
@@ -173,7 +159,6 @@ export default function GitRepoView({
         onOpenDiff={(path) => onOpenDiff(path, false)}
         discardAll={discardAll}
       />
-      {files.length === 0 && <p className="source-control-panel__empty">変更はありません</p>}
       <StashSection stash={stash} isBlocked={isBlockedByOtherOperation} />
       <HistorySection
         log={log}

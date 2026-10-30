@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { StashPanelState } from '../../types'
+import CollapsibleSection from './CollapsibleSection'
 import StashItem from './StashItem'
 import StashMessageDialog from './StashMessageDialog'
 
@@ -31,42 +32,48 @@ export default function StashSection({ stash, isBlocked }: Props): React.JSX.Ele
   }
 
   return (
-    <section className="source-control-panel__section stash-section">
-      <div className="stash-section__header">
-        <h3 className="source-control-panel__section-title">退避（{stash.entries.length}）</h3>
-        <button
-          ref={pushButtonRef}
-          type="button"
-          className="stash-section__push"
-          aria-label={isPushing ? '退避中' : '変更を退避する'}
-          disabled={isDisabled}
-          onClick={() => setIsDialogOpen(true)}
-        >
-          {isPushing ? '退避中...' : '退避する'}
-        </button>
-      </div>
-      {stash.error !== null && (
-        <p className="stash-section__error" role="alert">
-          {stash.error.message}
-        </p>
-      )}
-      {stash.entries.length === 0 ? (
-        <p className="stash-section__empty">退避はありません</p>
-      ) : (
-        <ul className="stash-section__list">
-          {stash.entries.map((entry) => (
-            <StashItem
-              key={entry.sha}
-              entry={entry}
-              pending={stash.pendingOperation}
-              isBlocked={isBlocked}
-              onPop={(sha) => void stash.onPop(sha)}
-              onDrop={(target) => void stash.onDrop(target)}
-            />
-          ))}
-        </ul>
-      )}
+    <>
+      <CollapsibleSection
+        title="退避"
+        count={stash.entries.length}
+        actions={
+          <button
+            ref={pushButtonRef}
+            type="button"
+            className="stash-section__push"
+            aria-label={isPushing ? '退避中' : '変更を退避する'}
+            disabled={isDisabled}
+            onClick={() => setIsDialogOpen(true)}
+          >
+            {isPushing ? '退避中...' : '退避する'}
+          </button>
+        }
+        alwaysVisible={
+          stash.error !== null && (
+            <p className="stash-section__error" role="alert">
+              {stash.error.message}
+            </p>
+          )
+        }
+      >
+        {stash.entries.length === 0 ? (
+          <p className="stash-section__empty">退避はありません</p>
+        ) : (
+          <ul className="stash-section__list">
+            {stash.entries.map((entry) => (
+              <StashItem
+                key={entry.sha}
+                entry={entry}
+                pending={stash.pendingOperation}
+                isBlocked={isBlocked}
+                onPop={(sha) => void stash.onPop(sha)}
+                onDrop={(target) => void stash.onDrop(target)}
+              />
+            ))}
+          </ul>
+        )}
+      </CollapsibleSection>
       {isDialogOpen && <StashMessageDialog onSubmit={handleSubmit} onCancel={closeDialog} />}
-    </section>
+    </>
   )
 }

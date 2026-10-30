@@ -78,6 +78,9 @@ export default function App(): React.JSX.Element {
     push,
     pull,
     fetchRemote,
+    syncChanges,
+    isSyncing,
+    isSyncBlocked,
     remoteOperationError,
     diffTabs,
     activeDiffTab,
@@ -255,7 +258,16 @@ export default function App(): React.JSX.Element {
           pendingBranchOperation,
           isBlocked: stagingPaths.size > 0 || isAnyLocked(),
           error: branchOperationError,
-          onCheckoutBranch: checkoutBranch
+          remoteError: remoteOperationError,
+          ahead: gitStatus.ahead,
+          behind: gitStatus.behind,
+          isSyncing,
+          isSyncBlocked,
+          onCheckoutBranch: checkoutBranch,
+          onSync: syncChanges,
+          onCreateBranch: createBranch,
+          onDeleteBranch: deleteBranch,
+          onMergeBranch: mergeBranch
         }
 
   return (
@@ -329,12 +341,10 @@ export default function App(): React.JSX.Element {
               onPush={push}
               onPull={pull}
               onFetch={fetchRemote}
+              isSyncing={isSyncing}
+              isSyncBlocked={isSyncBlocked}
+              onSync={syncChanges}
               gitRemoteOperationError={remoteOperationError}
-              pendingBranchOperation={pendingBranchOperation}
-              onCheckoutBranch={checkoutBranch}
-              onCreateBranch={createBranch}
-              onDeleteBranch={deleteBranch}
-              onMergeBranch={mergeBranch}
               stash={stash}
               discardAll={discardAll}
               mergeState={mergeState}

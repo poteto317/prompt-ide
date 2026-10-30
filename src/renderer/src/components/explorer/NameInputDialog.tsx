@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { isSafeEntryName } from '@shared/entryName'
 
 interface Props {
@@ -9,6 +9,8 @@ interface Props {
   validate?: (name: string) => string | null
   /** 入力欄のアクセシブルネーム。省略時は「名前」 */
   inputLabel?: string
+  /** 他の操作中で、確定しても実行できない状態か。OK を押せなくして案内を出す */
+  isBlocked?: boolean
   onSubmit: (name: string) => void
   onCancel: () => void
 }
@@ -31,14 +33,17 @@ export default function NameInputDialog({
   initialValue = '',
   validate = validateName,
   inputLabel = '名前',
+  isBlocked = false,
   onSubmit,
   onCancel
 }: Props): React.JSX.Element {
   const [value, setValue] = useState(initialValue)
   const [error, setError] = useState<string | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = (e: React.FormEvent): void => {
     e.preventDefault()
+    if (isBlocked) return
     const trimmed = value.trim()
     const validationError = validate(trimmed)
     if (validationError !== null) {
@@ -48,8 +53,18 @@ export default function NameInputDialog({
     onSubmit(trimmed)
   }
 
+  // 開く操作のダブルクリックの 2 回目がオーバーレイに落ちても閉じない。押した時点でフォーカスが body へ
+  // 落ちると Escape が入力欄に届かなくなるため、入力欄へ戻す
+  const handleOverlayClick = (e: React.MouseEvent): void => {
+    if (e.detail > 1) {
+      inputRef.current?.focus()
+      return
+    }
+    onCancel()
+  }
+
   return (
-    <div className="name-input-dialog__overlay" role="presentation" onClick={onCancel}>
+    <div className="name-input-dialog__overlay" role="presentation" onClick={handleOverlayClick}>
       <form
         className="name-input-dialog"
         role="dialog"
@@ -61,6 +76,7 @@ export default function NameInputDialog({
         <input
           // ダイアログを開いた直後に入力を始められるようにする(モーダルの慣例)。
           // jsx-a11y は導入していないため、no-autofocus の無効化コメントは書かない(未定義の規則への参照は lint のエラーになる)
+          ref={inputRef}
           autoFocus
           type="text"
           className="name-input-dialog__input"
@@ -79,8 +95,13 @@ export default function NameInputDialog({
             {error}
           </p>
         )}
+        {isBlocked && (
+          <p className="create-tag-dialog__note" role="status">
+            他の操作が完了するまで実行できません
+          </p>
+        )}
         <div className="name-input-dialog__actions">
-          <button type="submit" className="name-input-dialog__ok">
+          <button type="submit" className="name-input-dialog__ok" disabled={isBlocked}>
             OK
           </button>
           <button type="button" className="name-input-dialog__cancel" onClick={onCancel}>

@@ -10,6 +10,7 @@ import type {
   GitStatusResult,
   GitLogEntry,
   GitBranch,
+  GitPullResult,
   GitStashEntry,
   StashPopResult
 } from '@shared/types'
@@ -119,7 +120,7 @@ export function push(): Promise<void> {
   return window.api.push()
 }
 
-export function pull(): Promise<void> {
+export function pull(): Promise<GitPullResult> {
   return window.api.pull()
 }
 

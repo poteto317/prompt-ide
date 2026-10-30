@@ -1,4 +1,5 @@
-import type { RemoteSetupFocusTarget } from '../../lib/remoteSetupState'
+import { sidebarTitles } from '../../config/sidebarTitles'
+import ActionMenu from './ActionMenu'
 
 interface Props {
   gitLoading: boolean
@@ -36,44 +37,47 @@ export default function SourceControlToolbar({
 }: Props): React.JSX.Element {
   return (
     <div className="source-control-panel__toolbar">
+      <h2 className="source-control-panel__title">{sidebarTitles['source-control']}</h2>
       <button
         type="button"
         className="source-control-panel__refresh-btn"
         onClick={onRefresh}
         disabled={gitLoading}
         aria-label="更新"
+        title="更新"
       >
-        更新
+        <span aria-hidden="true">↻</span>
       </button>
-      <button
-        type="button"
-        className="source-control-panel__fetch-btn"
-        onClick={onFetch}
-        disabled={isRemoteOperationDisabled || isFetching}
-        aria-label={isFetching ? 'フェッチ中' : 'フェッチ'}
-      >
-        {isFetching ? 'フェッチ中...' : 'フェッチ'}
-      </button>
-      <button
-        type="button"
-        className="source-control-panel__pull-btn"
-        onClick={onPull}
-        disabled={isRemoteOperationDisabled || isPulling || isPullBlocked}
-        aria-label={isPulling ? 'プル中' : 'プル'}
-      >
-        {isPulling ? 'プル中...' : 'プル'}
-      </button>
-      <button
-        type="button"
-        className="source-control-panel__push-btn"
-        // 初回 push の成功の後のフォーカスの移し先(useRemoteSetupFocus が探す)。値は RemoteSetupFocusTarget と型で結ぶ
-        data-remote-setup-focus={'push' satisfies RemoteSetupFocusTarget}
-        onClick={onPush}
-        disabled={isRemoteOperationDisabled || isPushing || isPushBlocked}
-        aria-label={isPushing ? 'プッシュ中' : 'プッシュ'}
-      >
-        {isPushing ? 'プッシュ中...' : 'プッシュ'}
-      </button>
+      <ActionMenu
+        buttonLabel="その他の操作"
+        buttonContent={<span aria-hidden="true">…</span>}
+        buttonClassName="source-control-panel__more-btn"
+        // 初回 push の成功の後のフォーカスの移し先(useRemoteSetupFocus が探す)
+        focusTarget="push"
+        items={[
+          {
+            id: 'pull',
+            label: isPulling ? 'プル中...' : 'プル',
+            ariaLabel: isPulling ? 'プル中' : 'プル',
+            disabled: isRemoteOperationDisabled || isPulling || isPullBlocked,
+            onSelect: onPull
+          },
+          {
+            id: 'push',
+            label: isPushing ? 'プッシュ中...' : 'プッシュ',
+            ariaLabel: isPushing ? 'プッシュ中' : 'プッシュ',
+            disabled: isRemoteOperationDisabled || isPushing || isPushBlocked,
+            onSelect: onPush
+          },
+          {
+            id: 'fetch',
+            label: isFetching ? 'フェッチ中...' : 'フェッチ',
+            ariaLabel: isFetching ? 'フェッチ中' : 'フェッチ',
+            disabled: isRemoteOperationDisabled || isFetching,
+            onSelect: onFetch
+          }
+        ]}
+      />
     </div>
   )
 }

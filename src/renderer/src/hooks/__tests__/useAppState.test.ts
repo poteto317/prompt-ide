@@ -1420,6 +1420,98 @@ describe('useAppState', () => {
     })
   })
 
+  // 同期の失敗はステータスバーにも出る。前のフォルダの失敗を次のフォルダへ持ち込まない(要件 15a)
+  describe('フォルダの切り替えと remoteOperationError', () => {
+    const originalPush = window.api.push
+    const renderWithPushFailure = async (): Promise<
+      ReturnType<typeof renderHook<ReturnType<typeof useAppState>, unknown>>
+    > => {
+      const hook = renderHook(() => useAppState())
+      await act(async () => {
+        await hook.result.current.push()
+      })
+      expect(hook.result.current.remoteOperationError?.message).toBe('push に失敗しました')
+      return hook
+    }
+
+    const setupStatus = (ahead: number, behind: number): void => {
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: {
+          isRepo: true,
+          branch: 'main',
+          ahead,
+          behind,
+          files: [],
+          mergeInProgress: false,
+          hasOrigin: true,
+          hasRemote: true,
+          upstream: 'origin/main',
+          detached: false
+        },
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus: vi.fn().mockResolvedValue(undefined)
+      })
+    }
+
+    beforeEach(() => {
+      setupStatus(1, 0)
+      window.api.push = vi.fn().mockRejectedValue(new Error('push に失敗しました'))
+    })
+    afterEach(() => {
+      window.api.push = originalPush
+    })
+
+    it('folderPath が変わると remoteOperationError が null になる', async () => {
+      const { result, rerender } = await renderWithPushFailure()
+      mockUseFileSystem.mockReturnValue({ ...mockUseFileSystem(), folderPath: '/other-project' })
+      rerender()
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    it('folderPath が変わらなければ remoteOperationError は残る', async () => {
+      const { result, rerender } = await renderWithPushFailure()
+      rerender()
+      expect(result.current.remoteOperationError?.message).toBe('push に失敗しました')
+    })
+
+    it('clearRemoteOperationError は公開しない', () => {
+      const { result } = renderHook(() => useAppState())
+      expect(result.current).not.toHaveProperty('clearRemoteOperationError')
+    })
+
+    // useGitRemoteOperations の 5 番目の引数(folderPath)を渡していることを、実物のフックで確かめる
+    it('プルの間にフォルダが切り替わったら、同期はプッシュしない', async () => {
+      setupStatus(1, 1)
+      const originalPull = window.api.pull
+      let resolvePull: () => void = () => {}
+      window.api.pull = vi.fn(
+        () =>
+          new Promise<{ conflicted: boolean }>((resolve) => {
+            resolvePull = () => resolve({ conflicted: false })
+          })
+      )
+      window.api.push = vi.fn().mockResolvedValue(undefined)
+      try {
+        const { result, rerender } = renderHook(() => useAppState())
+        let syncing: Promise<void> = Promise.resolve()
+        act(() => {
+          syncing = result.current.syncChanges()
+        })
+        mockUseFileSystem.mockReturnValue({ ...mockUseFileSystem(), folderPath: '/other-project' })
+        rerender()
+        await act(async () => {
+          resolvePull()
+          await syncing
+        })
+        expect(window.api.pull).toHaveBeenCalledOnce()
+        expect(window.api.push).not.toHaveBeenCalled()
+      } finally {
+        window.api.pull = originalPull
+      }
+    })
+  })
+
   it('useMergeState に完了・中止の後始末のコールバック(onFinished)を渡さない', () => {
     renderHook(() => useAppState())
     expect(mockUseMergeState.mock.lastCall?.[0]).not.toHaveProperty('onFinished')

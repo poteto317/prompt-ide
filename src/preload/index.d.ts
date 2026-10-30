@@ -34,6 +34,7 @@ import type {
   DiscardAllEntry,
   DiscardAllResult,
   FileTreeNode,
+  GitPullResult,
   GitStatusResult,
   GitLogEntry,
   GitBranch,
@@ -91,7 +92,7 @@ declare global {
       getTags(): Promise<string[]>
       amendCommit(message: string): Promise<void>
       push(): Promise<void>
-      pull(): Promise<void>
+      pull(): Promise<GitPullResult>
       fetchRemote(): Promise<void>
       checkoutBranch(branchName: string): Promise<void>
       createBranch(branchName: string): Promise<void>

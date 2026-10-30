@@ -159,12 +159,10 @@ export default function Sidebar({
   onPush,
   onPull,
   onFetch,
+  isSyncing,
+  isSyncBlocked,
+  onSync,
   gitRemoteOperationError,
-  pendingBranchOperation,
-  onCheckoutBranch,
-  onCreateBranch,
-  onDeleteBranch,
-  onMergeBranch,
   stash,
   discardAll,
   mergeState,
@@ -205,7 +203,10 @@ export default function Sidebar({
   const agentSend = promptRun?.agentSend ?? null
   return (
     <div className="sidebar">
-      <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
+      {/* ソース管理の見出しは、更新などのボタンと同じ行に並べるためパネルのツールバーが出す */}
+      {activePanel !== 'source-control' && (
+        <div className="sidebar__header">{sidebarTitles[activePanel]}</div>
+      )}
       {agentSend !== null && <AgentSendFeedbackAnnouncer feedback={agentSend} />}
       <PanelContainer isActive={activePanel === 'explorer'}>
         <ExplorerPanel
@@ -297,12 +298,10 @@ export default function Sidebar({
           onPush={onPush}
           onPull={onPull}
           onFetch={onFetch}
+          isSyncing={isSyncing}
+          isSyncBlocked={isSyncBlocked}
+          onSync={onSync}
           remoteOperationError={gitRemoteOperationError}
-          pendingBranchOperation={pendingBranchOperation}
-          onCheckoutBranch={onCheckoutBranch}
-          onCreateBranch={onCreateBranch}
-          onDeleteBranch={onDeleteBranch}
-          onMergeBranch={onMergeBranch}
           stash={stash}
           discardAll={discardAll}
           mergeState={mergeState}

@@ -3,6 +3,7 @@ import { isUnstagedFile } from '../../lib/gitUtils'
 import type { DiscardAllState } from '../../types'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
 import ChangesFileItem from './ChangesFileItem'
+import CollapsibleSection from './CollapsibleSection'
 
 interface Props {
   files: GitFileStatus[]
@@ -44,10 +45,11 @@ export default function ChangesSection({
   const changed = files.filter(isUnstagedFile)
   if (changed.length === 0) return null
   return (
-    <section className="source-control-panel__section">
-      <div className="changes-section__header">
-        <h3 className="source-control-panel__section-title">変更 ({changed.length})</h3>
-        {discardAll !== undefined && (
+    <CollapsibleSection
+      title="変更"
+      count={changed.length}
+      actions={
+        discardAll !== undefined ? (
           <button
             type="button"
             className="changes-section__discard-all"
@@ -59,13 +61,17 @@ export default function ChangesSection({
           >
             {discardAll.isDiscarding ? '取り消し中...' : 'すべて取り消す'}
           </button>
-        )}
-      </div>
-      {discardAll !== undefined && discardAll.error !== null && (
-        <p className="changes-section__error" role="alert">
-          {discardAll.error.message}
-        </p>
-      )}
+        ) : undefined
+      }
+      alwaysVisible={
+        discardAll !== undefined &&
+        discardAll.error !== null && (
+          <p className="changes-section__error" role="alert">
+            {discardAll.error.message}
+          </p>
+        )
+      }
+    >
       <ul className="source-control-panel__file-list">
         {changed.map((f) => (
           <ChangesFileItem
@@ -80,6 +86,6 @@ export default function ChangesSection({
           />
         ))}
       </ul>
-    </section>
+    </CollapsibleSection>
   )
 }

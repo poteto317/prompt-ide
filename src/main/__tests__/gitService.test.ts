@@ -1041,6 +1041,44 @@ describe('pull', () => {
     // 既定はマージ中ではない(MERGE_HEAD が無いと rev-parse -q --verify は空文字で resolve する)
     mockRaw.mockReset()
     mockRaw.mockResolvedValue('')
+    mockPull.mockReset()
+    mockStatus.mockReset()
+    mockStatus.mockResolvedValue({ conflicted: [] })
+  })
+
+  it('コンフリクトが無ければ conflicted: false を返す', async () => {
+    mockPull.mockResolvedValue(undefined)
+    await expect(pull('/project')).resolves.toEqual({ conflicted: false })
+  })
+
+  it('pull が例外を投げなくても、status にコンフリクトがあれば conflicted: true を返す', async () => {
+    mockPull.mockResolvedValue(undefined)
+    mockStatus.mockResolvedValue({ conflicted: ['a.txt'] })
+    await expect(pull('/project')).resolves.toEqual({ conflicted: true })
+  })
+
+  it('pull が例外を投げ、status にコンフリクトがあれば、その文言を付けて conflicted: true を返す', async () => {
+    mockPull.mockRejectedValue(new Error('CONFLICT (content)'))
+    mockStatus.mockResolvedValue({ conflicted: ['a.txt'] })
+    await expect(pull('/project')).resolves.toEqual({
+      conflicted: true,
+      errorMessage: 'CONFLICT (content)'
+    })
+  })
+
+  it('pull の例外の後に status も失敗したら、pull のエラーを伝える', async () => {
+    mockPull.mockRejectedValue(new Error('pull failed'))
+    mockStatus.mockRejectedValue(new Error('status failed'))
+    await expect(pull('/project')).rejects.toThrow('pull failed')
+  })
+
+  // コンフリクトの有無が分からないまま成功として返すと、同期がプッシュへ進んでしまう
+  it('pull の成功の後に status が失敗したら、成功として返さない', async () => {
+    mockPull.mockResolvedValue(undefined)
+    mockStatus.mockRejectedValue(new Error('status failed'))
+    await expect(pull('/project')).rejects.toThrow(
+      'プルは完了しましたが、コンフリクトの確認に失敗しました: status failed'
+    )
   })
 
   it('simpleGit を folderPath とタイムアウト設定で呼び、pull を引数なしで呼ぶ', async () => {

@@ -17,6 +17,10 @@ import type {
   StashPanelState
 } from '../../../types'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
+import {
+  openSourceControlMenu,
+  sourceControlMenuButton
+} from '../../../__tests__/sourceControlMenu'
 
 const emptyStash: StashPanelState = {
   entries: [],
@@ -66,11 +70,6 @@ const otherProps = {
   historyError: null,
   onLoadMoreLog: vi.fn(),
   operationError: null,
-  pendingBranchOperation: null,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-  onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true),
-  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
@@ -139,6 +138,9 @@ function Harness({ initial }: { initial: GitStatusResult }): React.JSX.Element {
       onPush={remoteOps.push}
       onPull={remoteOps.pull}
       onFetch={remoteOps.fetchRemote}
+      isSyncing={remoteOps.isSyncing}
+      isSyncBlocked={remoteOps.isSyncBlocked}
+      onSync={remoteOps.syncChanges}
       remoteOperationError={remoteOps.remoteOperationError}
       remoteSetup={remoteSetup}
     />
@@ -287,7 +289,7 @@ describe('リモートの管理の流れ(実物のフックと SourceControlPane
     expect(screen.getByText('upstream が未設定です（main）')).toBeInTheDocument()
   })
 
-  it('初回 push: 実行中はバナーとツールバーが push 中になり、成功するとバナーが消えて「プッシュ」へフォーカスが移る', async () => {
+  it('初回 push: 実行中はバナーとメニューが push 中になり、成功するとバナーが消えて「…」へフォーカスが移る', async () => {
     const pending = holdNext((impl) =>
       vi.mocked(gitApi.pushSetUpstream).mockImplementationOnce(impl)
     )
@@ -297,11 +299,15 @@ describe('リモートの管理の流れ(実物のフックと SourceControlPane
     expect(
       screen.getByText('初回 push 中です。応答が 30 秒途絶えると打ち切ります')
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'プッシュ中' })).toBeDisabled()
+    await openSourceControlMenu()
+    expect(screen.getByRole('menuitem', { name: 'プッシュ中' })).toBeDisabled()
+    // 押したボタンがバナーごと消えた実物と同じく、フォーカスが行き場を失った状態にする
+    await userEvent.click(document.body)
+    expect(document.body).toHaveFocus()
 
     nextStatus = configured
     pending.resolve()
-    await waitFor(() => expect(screen.getByRole('button', { name: 'プッシュ' })).toHaveFocus())
+    await waitFor(() => expect(sourceControlMenuButton()).toHaveFocus())
     expect(screen.queryByText('upstream が未設定です（main）')).not.toBeInTheDocument()
   })
 

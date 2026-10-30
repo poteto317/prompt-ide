@@ -53,6 +53,9 @@ const baseProps = {
   onCommit: vi.fn().mockResolvedValue(true),
   lastCommitMessage: null,
   onAmend: vi.fn().mockResolvedValue(true),
+  isSyncing: false,
+  isSyncBlocked: false,
+  onSync: vi.fn().mockResolvedValue(undefined),
   log: [],
   upstream: null,
   branches: [],
@@ -62,11 +65,6 @@ const baseProps = {
   isLoadingFolder: false,
   historyError: null,
   onLoadMoreLog: vi.fn(),
-  pendingBranchOperation: null,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-  onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true),
-  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
@@ -77,118 +75,30 @@ const baseProps = {
 }
 
 describe('GitRepoView', () => {
-  it('branch 名が表示される', () => {
-    render(<GitRepoView branch="main" ahead={0} behind={0} files={noFiles} {...baseProps} />)
-    expect(screen.getByText('main')).toBeInTheDocument()
-  })
-
-  it('branch 名がブランチ切り替えボタン(BranchSwitcher)として描画され、クリックするとブランチ一覧が開く', async () => {
-    render(
-      <GitRepoView
-        branch="main"
-        ahead={0}
-        behind={0}
-        files={noFiles}
-        {...baseProps}
-        branches={[
-          { name: 'main', current: true },
-          { name: 'feature/x', current: false }
-        ]}
-      />
-    )
-    const trigger = screen.getByRole('button', { name: 'ブランチを切り替え' })
-    expect(trigger).toHaveTextContent('main')
-    await userEvent.click(trigger)
-    expect(screen.getByRole('radio', { name: /feature\/x/ })).toBeInTheDocument()
-  })
-
-  // コードレビュー指摘: BranchSwitcher のトリガーボタンが pendingBranchOperation のみで
-  // disabled 判定しており、stage/unstage・ハンク操作・commit・pull 実行中
-  // (isAnyLocked)でもクリックできてしまい、実際には isBusy() でサイレントに
-  // no-op になる無反応な操作に見えていた。isBlockedByOtherOperation
-  // (CommitSection に渡しているものと同じ値)を BranchSwitcher にも渡す
-  it('isAnyLocked が true のとき、BranchSwitcher のトリガーボタンが disabled になる', () => {
-    render(
-      <GitRepoView
-        branch="main"
-        ahead={0}
-        behind={0}
-        files={noFiles}
-        {...baseProps}
-        isAnyLocked={() => true}
-      />
-    )
-    const trigger = screen.getByRole('button', {
-      name: '他の操作が完了するまでブランチを切り替えられません'
-    })
-    expect(trigger).toBeDisabled()
-  })
-
-  it('stagingPaths が空でなく isAnyLocked が false のとき、BranchSwitcher のトリガーボタンが disabled になる', () => {
-    render(
-      <GitRepoView
-        branch="main"
-        ahead={0}
-        behind={0}
-        files={noFiles}
-        {...baseProps}
-        stagingPaths={new Set(['a.ts'])}
-      />
-    )
-    const trigger = screen.getByRole('button', {
-      name: '他の操作が完了するまでブランチを切り替えられません'
-    })
-    expect(trigger).toBeDisabled()
-  })
-
-  it('branch が null のとき "(no branch)" が表示される', () => {
-    render(<GitRepoView branch={null} ahead={0} behind={0} files={noFiles} {...baseProps} />)
-    expect(screen.getByText('(no branch)')).toBeInTheDocument()
-  })
-
-  it('ahead > 0 のとき "↑N" が表示される', () => {
-    render(<GitRepoView branch="main" ahead={3} behind={0} files={noFiles} {...baseProps} />)
-    expect(screen.getByText('↑3')).toBeInTheDocument()
-  })
-
-  it('behind > 0 のとき "↓N" が表示される', () => {
-    render(<GitRepoView branch="main" ahead={0} behind={2} files={noFiles} {...baseProps} />)
-    expect(screen.getByText('↓2')).toBeInTheDocument()
-  })
-
-  it('ahead = 0 のとき ahead インジケーターが表示されない', () => {
+  it('ブランチの欄を出さない(ブランチの操作はステータスバーの一覧へ移した)', () => {
     const { container } = render(
-      <GitRepoView branch="main" ahead={0} behind={0} files={noFiles} {...baseProps} />
+      <GitRepoView branch="main" ahead={3} behind={2} files={noFiles} {...baseProps} />
     )
-    expect(container.querySelector('.source-control-panel__ahead')).toBeNull()
+    expect(container.querySelector('.source-control-panel__branch')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'ブランチを切り替え' })).not.toBeInTheDocument()
+    expect(screen.queryByText('↑3')).not.toBeInTheDocument()
+    expect(screen.queryByText('↓2')).not.toBeInTheDocument()
   })
 
-  it('behind = 0 のとき behind インジケーターが表示されない', () => {
-    const { container } = render(
-      <GitRepoView branch="main" ahead={0} behind={0} files={noFiles} {...baseProps} />
-    )
-    expect(container.querySelector('.source-control-panel__behind')).toBeNull()
-  })
-
-  it('files が空のとき「変更はありません」が表示される', () => {
+  it('files が空でも「変更はありません」の文は出さない', () => {
     render(<GitRepoView branch="main" ahead={0} behind={0} files={noFiles} {...baseProps} />)
-    expect(screen.getByText('変更はありません')).toBeInTheDocument()
-  })
-
-  it('files が空でないとき「変更はありません」は表示されない', () => {
-    render(<GitRepoView branch="main" ahead={0} behind={0} files={[stagedFile]} {...baseProps} />)
     expect(screen.queryByText('変更はありません')).not.toBeInTheDocument()
   })
 
-  it('staged ファイルが StagedSection に委譲され「ステージ済み」セクションが表示される', () => {
+  it('staged ファイルが StagedSection に委譲され「ステージされている変更」セクションが表示される', () => {
     render(<GitRepoView branch="main" ahead={0} behind={0} files={[stagedFile]} {...baseProps} />)
-    expect(screen.getByText('ステージ済み (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ステージされている変更 1' })).toBeInTheDocument()
     expect(screen.getByText('staged.ts')).toBeInTheDocument()
   })
 
   it('changed ファイルが ChangesSection に委譲され「変更」セクションが表示される', () => {
     render(<GitRepoView branch="main" ahead={0} behind={0} files={[changedFile]} {...baseProps} />)
-    expect(screen.getByText('変更 (1)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '変更 1' })).toBeInTheDocument()
     expect(screen.getByText('changed.ts')).toBeInTheDocument()
   })
 
@@ -215,6 +125,9 @@ describe('GitRepoView', () => {
         onCommit={onCommit}
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
+        isSyncing={false}
+        isSyncBlocked={false}
+        onSync={vi.fn().mockResolvedValue(undefined)}
         log={[]}
         upstream={null}
         branches={[]}
@@ -224,11 +137,6 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        pendingBranchOperation={null}
-        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
-        onCreateBranch={vi.fn().mockResolvedValue(true)}
-        onDeleteBranch={vi.fn().mockResolvedValue(true)}
-        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
@@ -243,6 +151,58 @@ describe('GitRepoView', () => {
     await userEvent.click(screen.getByLabelText('staged.ts をアンステージ'))
     expect(onUnstage).toHaveBeenCalledWith('staged.ts', undefined)
     expect(screen.getByLabelText('コミットメッセージ')).toBeInTheDocument()
+  })
+
+  it('ahead・behind・同期の状態が CommitSection に渡り、主ボタンから onSync が呼ばれる', async () => {
+    const onSync = vi.fn().mockResolvedValue(undefined)
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={2}
+        behind={1}
+        files={noFiles}
+        {...baseProps}
+        onSync={onSync}
+      />
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: '変更を同期(プル 1 件、プッシュ 2 件)' })
+    )
+    expect(onSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('isSyncing と isSyncBlocked が主ボタンに渡る', () => {
+    const { rerender } = render(
+      <GitRepoView
+        branch="main"
+        ahead={1}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        isSyncBlocked
+      />
+    )
+    expect(
+      screen.getByRole('button', { name: '変更を同期(プル 0 件、プッシュ 1 件)' })
+    ).toBeDisabled()
+    rerender(
+      <GitRepoView branch="main" ahead={1} behind={0} files={noFiles} {...baseProps} isSyncing />
+    )
+    expect(screen.getByRole('button', { name: '同期中...' })).toBeDisabled()
+  })
+
+  it('マージ中は ahead があっても主ボタンを同期にしない(mergeState.inProgress が渡る)', () => {
+    render(
+      <GitRepoView
+        branch="main"
+        ahead={1}
+        behind={0}
+        files={noFiles}
+        {...baseProps}
+        mergeState={{ ...emptyMergeState, inProgress: true }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'コミット' })).toBeInTheDocument()
   })
 
   it('ChangesSection の取り消しボタンから onDiscard が呼ばれる', async () => {
@@ -319,6 +279,9 @@ describe('GitRepoView', () => {
         onCommit={vi.fn().mockResolvedValue(true)}
         lastCommitMessage="feat: 直前のコミット"
         onAmend={vi.fn().mockResolvedValue(true)}
+        isSyncing={false}
+        isSyncBlocked={false}
+        onSync={vi.fn().mockResolvedValue(undefined)}
         log={[
           {
             hash: 'abc1234',
@@ -338,11 +301,6 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        pendingBranchOperation={null}
-        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
-        onCreateBranch={vi.fn().mockResolvedValue(true)}
-        onDeleteBranch={vi.fn().mockResolvedValue(true)}
-        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
@@ -372,6 +330,9 @@ describe('GitRepoView', () => {
         onCommit={vi.fn().mockResolvedValue(true)}
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
+        isSyncing={false}
+        isSyncBlocked={false}
+        onSync={vi.fn().mockResolvedValue(undefined)}
         log={[]}
         upstream={null}
         branches={[]}
@@ -381,11 +342,6 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        pendingBranchOperation={null}
-        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
-        onCreateBranch={vi.fn().mockResolvedValue(true)}
-        onDeleteBranch={vi.fn().mockResolvedValue(true)}
-        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
@@ -416,6 +372,9 @@ describe('GitRepoView', () => {
         onCommit={vi.fn().mockResolvedValue(true)}
         lastCommitMessage={null}
         onAmend={vi.fn().mockResolvedValue(true)}
+        isSyncing={false}
+        isSyncBlocked={false}
+        onSync={vi.fn().mockResolvedValue(undefined)}
         log={[]}
         upstream={null}
         branches={[]}
@@ -425,11 +384,6 @@ describe('GitRepoView', () => {
         isLoadingFolder={false}
         historyError={null}
         onLoadMoreLog={vi.fn()}
-        pendingBranchOperation={null}
-        onCheckoutBranch={vi.fn().mockResolvedValue(undefined)}
-        onCreateBranch={vi.fn().mockResolvedValue(true)}
-        onDeleteBranch={vi.fn().mockResolvedValue(true)}
-        onMergeBranch={vi.fn().mockResolvedValue(undefined)}
         stash={emptyStash}
         discardAll={emptyDiscardAll}
         mergeState={emptyMergeState}
@@ -441,53 +395,6 @@ describe('GitRepoView', () => {
     )
     await userEvent.click(screen.getByText('a.ts'))
     expect(onOpenDiff).toHaveBeenCalledWith('a.ts', true)
-  })
-
-  it('BranchSwitcher の削除ボタンから onDeleteBranch が呼ばれる', async () => {
-    const onDeleteBranch = vi.fn().mockResolvedValue(true)
-    render(
-      <GitRepoView
-        {...baseProps}
-        branch="main"
-        ahead={0}
-        behind={0}
-        files={noFiles}
-        branches={[
-          { name: 'main', current: true },
-          { name: 'feature/x', current: false }
-        ]}
-        onDeleteBranch={onDeleteBranch}
-      />
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
-    await userEvent.click(screen.getByRole('button', { name: 'ブランチ feature/x を削除' }))
-    expect(onDeleteBranch).toHaveBeenCalledWith('feature/x')
-  })
-
-  it('BranchSwitcher のマージボタンから onMergeBranch が呼ばれる', async () => {
-    const onMergeBranch = vi.fn().mockResolvedValue(undefined)
-    render(
-      <GitRepoView
-        {...baseProps}
-        branch="main"
-        ahead={0}
-        behind={0}
-        files={noFiles}
-        branches={[
-          { name: 'main', current: true },
-          { name: 'feature/x', current: false }
-        ]}
-        onMergeBranch={onMergeBranch}
-        stash={emptyStash}
-        discardAll={emptyDiscardAll}
-        mergeState={emptyMergeState}
-      />
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'ブランチを切り替え' }))
-    await userEvent.click(
-      screen.getByRole('button', { name: 'ブランチ feature/x を現在のブランチにマージ' })
-    )
-    expect(onMergeBranch).toHaveBeenCalledWith('feature/x')
   })
 
   it('「退避」セクションを変更の下・履歴の上に表示する', () => {
@@ -504,8 +411,8 @@ describe('GitRepoView', () => {
       />
     )
     const headings = screen.getAllByRole('heading').map((h) => h.textContent)
-    expect(headings.indexOf('退避（0）')).toBeGreaterThan(-1)
-    expect(headings.indexOf('退避（0）')).toBeLessThan(headings.indexOf('履歴'))
+    expect(headings.indexOf('▾ 退避')).toBeGreaterThan(-1)
+    expect(headings.indexOf('▾ 退避')).toBeLessThan(headings.indexOf('▾ 履歴'))
   })
 
   it('退避の操作は stash の props から呼ばれる(「退避する」→ onPush)', async () => {
@@ -565,7 +472,7 @@ describe('GitRepoView', () => {
     expect(screen.queryByRole('button', { name: 'マージを中止' })).not.toBeInTheDocument()
   })
 
-  it('マージ中ならバナーを、ブランチスイッチャーの後・コミット欄(変更セクション)の前に出す', async () => {
+  it('マージ中ならバナーを、コミット欄(変更セクション)の前に出す', async () => {
     const onAbort = vi.fn().mockResolvedValue(undefined)
     const { container } = render(
       <GitRepoView
@@ -579,10 +486,8 @@ describe('GitRepoView', () => {
     )
     const status = screen.getByRole('status')
     expect(status).toHaveTextContent('マージ中（未解決 2 件）')
-    const branch = container.querySelector('.source-control-panel__branch') as HTMLElement
     const banner = container.querySelector('.merge-banner') as HTMLElement
     const changes = screen.getByRole('button', { name: 'changed.ts の未ステージ差分を表示' })
-    expect(branch.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(banner.compareDocumentPosition(changes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: 'マージを中止' }))
     expect(onAbort).toHaveBeenCalledTimes(1)
@@ -779,7 +684,7 @@ describe('GitRepoView', () => {
       expect(remoteSetup.clearAddOriginError).toHaveBeenCalledOnce()
     })
 
-    it('requestRemoteSetupFocus がバナーまで届く(初回 push の成功 → ツールバーの「プッシュ」を要求する)', async () => {
+    it('requestRemoteSetupFocus がバナーまで届く(初回 push の成功 → ツールバーの「…」を要求する)', async () => {
       const requestRemoteSetupFocus = vi.fn()
       render(
         <GitRepoView

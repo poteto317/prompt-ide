@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -15,7 +15,8 @@ vi.mock('../../lib/gitApi', () => ({
   getHeadCommitMessage: vi.fn(() => Promise.resolve(null)),
   getBranches: vi.fn(),
   getTags: vi.fn(),
-  amendCommit: vi.fn()
+  amendCommit: vi.fn(),
+  push: vi.fn()
 }))
 
 import * as gitApi from '../../lib/gitApi'
@@ -28,6 +29,7 @@ const mockGetLog = vi.mocked(gitApi.getLog)
 const mockGetBranches = vi.mocked(gitApi.getBranches)
 const mockGetTags = vi.mocked(gitApi.getTags)
 const mockCommitChanges = vi.mocked(gitApi.commitChanges)
+const mockPush = vi.mocked(gitApi.push)
 
 function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void
@@ -183,5 +185,41 @@ describe('App: ソース管理の「更新」', () => {
 
     await waitFor(() => expect(screen.getByText(/履歴の取得に失敗しました/)).toBeInTheDocument())
     expect(mockGetGitStatus).toHaveBeenCalledOnce()
+  })
+})
+
+describe('App: コミット欄の変更の同期', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    window.api.openFolder = vi.fn().mockResolvedValue('/project')
+    window.api.readDirectory = vi.fn().mockResolvedValue([])
+    mockGetLog.mockResolvedValue([])
+    mockGetBranches.mockResolvedValue([])
+    mockGetTags.mockResolvedValue([])
+  })
+
+  it('コミットするものが無く ahead があるとき、主ボタンを押すとプッシュする', async () => {
+    mockGetGitStatus.mockResolvedValue({
+      isRepo: true,
+      mergeInProgress: false,
+      hasOrigin: true,
+      hasRemote: true,
+      upstream: 'origin/main',
+      detached: false,
+      branch: 'main',
+      ahead: 1,
+      behind: 0,
+      files: []
+    })
+    mockPush.mockResolvedValue(undefined)
+    await openGitPanel()
+
+    // ステータスバーにも同じ名前のボタンが出るので、パネルの主ボタンに絞る
+    const panel = document.querySelector('.source-control-panel') as HTMLElement
+    await userEvent.click(
+      await within(panel).findByRole('button', { name: '変更を同期(プル 0 件、プッシュ 1 件)' })
+    )
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1))
   })
 })

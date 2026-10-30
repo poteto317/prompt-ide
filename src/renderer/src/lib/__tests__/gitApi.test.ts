@@ -240,9 +240,14 @@ describe('push / pull / fetchRemote', () => {
   })
 
   it('pull は引数なしで window.api.pull を呼ぶ', async () => {
-    mockApi.pull.mockResolvedValue(undefined)
+    mockApi.pull.mockResolvedValue({ conflicted: false })
     await pull()
     expect(mockApi.pull).toHaveBeenCalledWith()
+  })
+
+  it('pull は window.api.pull の結果を返す', async () => {
+    mockApi.pull.mockResolvedValue({ conflicted: true })
+    await expect(pull()).resolves.toEqual({ conflicted: true })
   })
 
   it('fetchRemote は引数なしで window.api.fetchRemote を呼ぶ', async () => {

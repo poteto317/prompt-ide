@@ -1192,6 +1192,16 @@ body {
   flex: 1;
 }
 
+/* 同期のボタン(.status-bar__branch と同じ見た目。件数は短いので縮めない) */
+.status-bar__sync {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* ブランチの項目(押すと一覧を開く) */
 .status-bar__branch {
   /* 長いブランチ名でも失敗のメッセージや右側の項目を押し出さないよう、縮められるようにする */
@@ -1215,7 +1225,16 @@ body {
   background: rgba(0, 0, 0, 0.15);
 }
 
+.status-bar__sync:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.15);
+}
+
 .status-bar__branch:focus-visible {
+  outline: 1px solid #ffffff;
+  outline-offset: -2px;
+}
+
+.status-bar__sync:focus-visible {
   outline: 1px solid #ffffff;
   outline-offset: -2px;
 }
@@ -1224,7 +1243,11 @@ body {
   cursor: default;
 }
 
-/* ブランチ操作の失敗。.status-bar__item の flex のままだと省略記号が出ないため block にする */
+.status-bar__sync:disabled {
+  cursor: default;
+}
+
+/* ブランチ操作と同期の失敗。.status-bar__item の flex のままだと省略記号が出ないため block にする */
 .status-bar__branch-error {
   display: block;
   min-width: 0;
@@ -1282,38 +1305,110 @@ body {
 .source-control-panel__toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: 2px;
+  padding: 6px 8px 6px 12px;
   border-bottom: 1px solid #3c3c3c;
   flex-shrink: 0;
 }
 
-.source-control-panel__refresh-btn,
-.source-control-panel__fetch-btn,
-.source-control-panel__pull-btn,
-.source-control-panel__push-btn {
-  background: none;
-  color: #969696;
-  border: 1px solid #555555;
+/* .sidebar__header と同じ見た目の見出し */
+.source-control-panel__title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
   font-size: 11px;
-  padding: 3px 8px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #bbbcbc;
+  user-select: none;
+}
+
+.source-control-panel__refresh-btn,
+.source-control-panel__more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: none;
+  color: #bbbcbc;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .source-control-panel__refresh-btn:hover:not(:disabled),
-.source-control-panel__fetch-btn:hover:not(:disabled),
-.source-control-panel__pull-btn:hover:not(:disabled),
-.source-control-panel__push-btn:hover:not(:disabled) {
-  color: #cccccc;
-  border-color: #888888;
+.source-control-panel__more-btn:hover:not(:disabled) {
+  background: #3c3c3c;
+  color: #ffffff;
 }
 
 .source-control-panel__refresh-btn:disabled,
-.source-control-panel__fetch-btn:disabled,
-.source-control-panel__pull-btn:disabled,
-.source-control-panel__push-btn:disabled {
+.source-control-panel__more-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* ---- Action Menu ---- */
+
+/* メニューの基準(.action-menu__list はここからの absolute) */
+.action-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ExplorerContextMenu(.explorer-context-menu)と同じ見た目のポップオーバー。
+   右端をボタンに揃え、パネルの横スクロールを防ぐ */
+.action-menu__list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 1000;
+  min-width: 160px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: #2d2d2d;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.action-menu__item {
+  display: block;
+  width: 100%;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.action-menu__item:hover:not(:disabled),
+.action-menu__item:focus {
+  background: #094771;
+  color: #ffffff;
+  outline: none;
+}
+
+.action-menu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.action-menu__check {
+  display: inline-block;
+  width: 16px;
 }
 
 .source-control-panel__error {
@@ -1328,7 +1423,6 @@ body {
 
 .source-control-panel__loading,
 .source-control-panel__no-repo,
-.source-control-panel__empty,
 .source-control-panel__placeholder {
   padding: 12px;
   color: #6c6c6c;
@@ -1342,129 +1436,44 @@ body {
   padding: 0 12px 12px;
 }
 
-.source-control-panel__branch {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  color: #cccccc;
-  border-bottom: 1px solid #3c3c3c;
-  flex-shrink: 0;
-}
-
-.source-control-panel__branch-switcher {
-  position: relative;
-}
-
-.source-control-panel__branch-trigger {
-  background: none;
-  border: none;
-  padding: 0;
-  color: #cccccc;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.source-control-panel__branch-trigger:hover:not(:disabled) {
-  text-decoration: underline;
-}
-
-.source-control-panel__branch-trigger:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-/* ExplorerContextMenu(.explorer-context-menu)と同じ見た目のポップオーバー。
-   position は fixed ではなく absolute(親の .source-control-panel__branch-switcher
-   が position: relative) */
-.source-control-panel__branch-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 1000;
-  min-width: 160px;
-  margin-top: 4px;
-  padding: 4px 0;
-  background: #2d2d2d;
-  border: 1px solid #454545;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.source-control-panel__branch-menu-item {
-  display: block;
-  width: 100%;
-  padding: 6px 16px;
-  background: none;
-  border: none;
-  color: #cccccc;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.source-control-panel__branch-menu-item:hover:not(:disabled) {
-  background: #094771;
-  color: #ffffff;
-}
-
-.source-control-panel__branch-menu-item:disabled {
-  color: #4ec9b0;
-  cursor: default;
-}
-
-/* 作成ボタンの見た目は .source-control-panel__branch-menu-item を併用して揃え、
-   ここでは区切り線(ブランチ一覧との境界)だけを足す。.branch-menu-item の border: none
-   より後に置くことで border-bottom が優先される。
-   メニューは shrink-to-fit で、短いブランチ名しか無いと min-width まで縮む。日本語の文言は
-   文字間で改行できるため、nowrap で文言の幅をメニュー幅の下限にして1行に収める(PRレビュー指摘) */
-.source-control-panel__branch-menu-create {
-  border-bottom: 1px solid #454545;
-  white-space: nowrap;
-}
-
-.source-control-panel__branch-menu-row {
-  display: flex;
-  align-items: center;
-}
-
-.source-control-panel__branch-menu-row .source-control-panel__branch-menu-item {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 削除・マージボタンの基本宣言(タッチ操作で押しやすい 32px 四方・色・フォント・カーソル等)を共有する */
-.source-control-panel__branch-menu-delete,
-.source-control-panel__branch-menu-merge {
-  flex: none;
-  width: 32px;
-  height: 32px;
-  background: none;
-  border: none;
-  color: #cccccc;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.source-control-panel__branch-menu-delete:hover {
-  background: #5a1d1d;
-  color: #ffffff;
-}
-
-/* ホバーは破壊的でない操作なので、削除の赤ではなく青系にする */
-.source-control-panel__branch-menu-merge:hover {
-  background: #094771;
-  color: #ffffff;
-}
-
-/* 「退避」セクション。ボタンの見た目は下の共通のボタン規則で、マージのバナー・コンフリクト解決ビューと共有する */
-.stash-section__header,
-.history-section__header {
+/* 開閉できるセクション(CollapsibleSection)の見出し行。開閉のボタンの見た目は .agent-changes__toggle と共有する */
+.collapsible-section__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 4px;
   padding-right: 12px;
+  min-width: 0;
+}
+
+/* .source-control-panel__section-title より後ろの定義で負けないよう、詳細度を上げて余白を消す */
+.collapsible-section__header .collapsible-section__title {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+}
+
+.collapsible-section__count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: #4d4d4d;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 16px;
+  text-align: center;
+}
+
+.collapsible-section__actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
 }
 
 /* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・エクスプローラーの clone・
@@ -1605,14 +1614,7 @@ body {
   font-size: 12px;
 }
 
-/* 変更セクションの見出し行と「すべて取り消す」(.stash-section__header / __push と同じ寸法・配色) */
-.changes-section__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-right: 12px;
-}
-
+/* 変更セクションの「すべて取り消す」(.stash-section__push と同じ寸法・配色) */
 .changes-section__discard-all {
   flex: none;
   min-width: 32px;
@@ -1651,7 +1653,8 @@ body {
   padding: 0;
 }
 
-.agent-changes__toggle {
+.agent-changes__toggle,
+.collapsible-section__toggle {
   display: block;
   width: 100%;
   min-height: 32px;
@@ -1667,6 +1670,14 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
+}
+
+.collapsible-section__toggle {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  /* バッジと文字の高さを揃える(ボタンの中身は縦の中央に置かれる) */
+  padding: 0 4px 0 12px;
 }
 
 .agent-changes__loading {
@@ -1854,16 +1865,6 @@ body {
   font-size: 12px;
 }
 
-.source-control-panel__ahead {
-  color: #4ec9b0;
-  font-size: 11px;
-}
-
-.source-control-panel__behind {
-  color: #f48771;
-  font-size: 11px;
-}
-
 .source-control-panel__section {
   flex-shrink: 0;
 }
@@ -1885,7 +1886,9 @@ body {
   padding: 0;
 }
 
+/* 「変更」「ステージされている変更」の 1 行(GitFileRow)。.source-control-panel__file-open の ::after の位置の基準 */
 .source-control-panel__file-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1902,12 +1905,11 @@ body {
 .source-control-panel__stage-btn,
 .source-control-panel__unstage-btn,
 .source-control-panel__discard-btn {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin-left: auto;
   padding: 0;
   border: none;
   border-radius: 3px;
@@ -1917,12 +1919,6 @@ body {
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
-}
-
-.source-control-panel__file-item:hover .source-control-panel__stage-btn,
-.source-control-panel__file-item:hover .source-control-panel__unstage-btn,
-.source-control-panel__file-item:hover .source-control-panel__discard-btn {
-  display: flex;
 }
 
 .source-control-panel__stage-btn:hover,
@@ -1938,17 +1934,93 @@ body {
   cursor: default;
 }
 
-/* 行の右端に操作ボタン(取り消し・ステージ)を並べる。ボタン自身の margin-left: auto は
-   ボタンが 1 つだけの前提だったため、並べる場合は外側の列で右寄せする */
+/* 行の右に操作ボタンを並べる。button の入れ子はできないため差分を開くボタンの兄弟に置き、行いっぱいに広がる ::after
+   より上へ出す。display ではなく opacity で隠す(Tab の順を変えず、キーボードのフォーカスで見えるようにする) */
 .source-control-panel__file-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
+  flex-shrink: 0;
   gap: 2px;
-  margin-left: auto;
+  opacity: 0;
 }
 
-.source-control-panel__file-actions .source-control-panel__stage-btn,
-.source-control-panel__file-actions .source-control-panel__discard-btn {
-  margin-left: 0;
+.source-control-panel__file-item:hover .source-control-panel__file-actions,
+.source-control-panel__file-item:focus-within .source-control-panel__file-actions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .source-control-panel__file-actions {
+    opacity: 1;
+  }
+}
+
+/* 差分を開くボタン。::after を li へ広げて行の全体を押せるようにするため、position と overflow を付けない。
+   省略記号は内側の .source-control-panel__file-label に付ける。エージェントの行の .source-control-panel__file-path とは分ける */
+.source-control-panel__file-open {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.source-control-panel__file-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.source-control-panel__file-open:focus-visible {
+  outline: none;
+}
+
+.source-control-panel__file-open:focus-visible::after {
+  outline: 1px solid #0e639c;
+  outline-offset: -1px;
+}
+
+.source-control-panel__file-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-control-panel__file-dir {
+  margin-left: 6px;
+  color: #969696;
+  font-size: 11px;
+}
+
+/* 状態の文字。色は VS Code の既定で、背景 #252526 と hover の背景の両方で 4.5:1 を満たす(GitFileRow.styles.test.tsx) */
+.source-control-panel__file-state {
+  flex-shrink: 0;
+  width: 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: #cccccc;
+}
+
+.source-control-panel__file-state--modified {
+  color: #e2c08d;
+}
+
+.source-control-panel__file-state--added {
+  color: #73c991;
+}
+
+.source-control-panel__file-state--deleted,
+.source-control-panel__file-state--conflicted {
+  color: #f48771;
 }
 
 .source-control-panel__commit {
@@ -1971,8 +2043,16 @@ body {
   font-family: inherit;
 }
 
+/* 主ボタンと ▾ の行。主ボタンが幅いっぱいに広がる */
+.source-control-panel__commit-actions {
+  display: flex;
+  gap: 2px;
+}
+
 .source-control-panel__commit-btn {
-  align-self: flex-end;
+  flex: 1;
+  /* 同期の件数で文言が長くなっても ▾ を押し出さない */
+  min-width: 0;
   padding: 4px 12px;
   background: #0e639c;
   border: none;
@@ -1982,14 +2062,29 @@ body {
   cursor: pointer;
 }
 
-.source-control-panel__commit-btn:hover:not(:disabled) {
+.source-control-panel__commit-btn:hover:not(:disabled),
+.source-control-panel__commit-menu-btn:hover:not(:disabled) {
   background: #1177bb;
 }
 
-.source-control-panel__commit-btn:disabled {
+.source-control-panel__commit-btn:disabled,
+.source-control-panel__commit-menu-btn:disabled {
   background: #454545;
   color: #8a8a8a;
   cursor: default;
+}
+
+/* 主ボタンと同じ色の ▾ */
+.source-control-panel__commit-menu-btn {
+  display: block;
+  height: 100%;
+  padding: 4px 6px;
+  background: #0e639c;
+  border: none;
+  border-radius: 3px;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .source-control-panel__file-status {
@@ -1998,10 +2093,6 @@ body {
   width: 14px;
   flex-shrink: 0;
   text-align: center;
-}
-
-.source-control-panel__file-status--staged {
-  color: #4ec9b0;
 }
 
 .source-control-panel__file-status--changed {
@@ -3284,6 +3375,67 @@ body {
   flex: 0 0 auto;
 }
 
+/* 行は option と操作のボタンを兄弟で持つ。ボタンの高さ(32px)に合わせ、どの行も同じ高さにする */
+.branch-picker__row {
+  position: relative;
+}
+
+.branch-picker__row .quick-open__item {
+  box-sizing: border-box;
+  min-height: 32px;
+  align-items: center;
+}
+
+/* ボタンの分だけ右を空ける。長いブランチ名がボタンの下に潜らず、省略記号で切り詰められる */
+.branch-picker__row--actions .quick-open__item {
+  padding-right: 104px;
+}
+
+/* 作成の項目とブランチの一覧の区切り */
+.branch-picker__row--create {
+  border-bottom: 1px solid #454545;
+}
+
+.branch-picker__actions {
+  position: absolute;
+  top: 0;
+  right: 6px;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* マージ・削除のボタンの基本の宣言(タッチで押しやすい 32px・色・フォント・カーソル)を共有する */
+.branch-picker__action {
+  flex: none;
+  box-sizing: border-box;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 6px;
+  background: none;
+  border: none;
+  color: #cccccc;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.branch-picker__action[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* マージは破壊的でない操作なので、削除の赤ではなく青系にする */
+.branch-picker__action--merge:hover:not([aria-disabled='true']) {
+  background: #094771;
+  color: #ffffff;
+}
+
+.branch-picker__action--delete:hover:not([aria-disabled='true']) {
+  background: #5a1d1d;
+  color: #ffffff;
+}
+
 .quick-open__match {
   background: none;
   color: #2aaaff;
@@ -3435,14 +3587,6 @@ body {
 .agent-send-confirm__cancel:focus-visible {
   outline: 1px solid #007acc;
   outline-offset: 2px;
-}
-
-.source-control-panel__amend-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: #cccccc;
 }
 
 .diff-view {

@@ -100,12 +100,10 @@ const defaultProps = {
   onPush: vi.fn().mockResolvedValue(undefined),
   onPull: vi.fn().mockResolvedValue(undefined),
   onFetch: vi.fn().mockResolvedValue(undefined),
+  isSyncing: false,
+  isSyncBlocked: false,
+  onSync: vi.fn().mockResolvedValue(undefined),
   gitRemoteOperationError: null as Error | null,
-  pendingBranchOperation: null,
-  onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-  onCreateBranch: vi.fn().mockResolvedValue(true),
-  onDeleteBranch: vi.fn().mockResolvedValue(true),
-  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   stash: emptyStash,
   discardAll: emptyDiscardAll,
   mergeState: emptyMergeState,
@@ -153,9 +151,19 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: 'フォルダを開く' })).toBeInTheDocument()
   })
 
-  it('source-control: 正しいヘッダーが表示される', () => {
-    render(<Sidebar activePanel="source-control" {...defaultProps} />)
+  // 見出しはパネルのツールバーの行が出す。sidebar__header も出すと 2 回並ぶ
+  it('source-control: sidebar__header を出さず、見出しはツールバーの行に 1 つだけ出る', () => {
+    const { container } = render(<Sidebar activePanel="source-control" {...defaultProps} />)
+    expect(container.querySelector('.sidebar__header')).toBeNull()
     expect(screen.getByText(sidebarTitles['source-control'])).toBeInTheDocument()
+    expect(container.querySelector('.source-control-panel__toolbar')).toContainElement(
+      screen.getByRole('heading', { name: sidebarTitles['source-control'] })
+    )
+  })
+
+  it('source-control 以外: sidebar__header を出す', () => {
+    const { container } = render(<Sidebar activePanel="explorer" {...defaultProps} />)
+    expect(container.querySelector('.sidebar__header')).toHaveTextContent(sidebarTitles.explorer)
   })
 
   it('source-control: mergeState がバナーまで届く(マージ中の件数が出る)', () => {

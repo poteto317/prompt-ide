@@ -28,11 +28,6 @@ describe('ChangesSection のスタイル(main.css)', () => {
         onOpenDiff={vi.fn()}
       />
     )
-    // ステージ/取り消しボタンは行の hover 時のみ display:flex になる(main.css)。
-    // jsdom は :hover 擬似クラスを解決しないため、既定状態では display:none のまま。
-    // getByRole(name:...) はアクセス不能(非表示)な要素を除外してしまう(hidden:true を
-    // 付けても name によるアクセシブルネーム照合はヒットしない)ため、既存の
-    // ChangesSection.test.tsx ステージボタンテストと同じく getByLabelText を使う
     const discard = getComputedStyle(screen.getByLabelText('src/a.ts の変更を取り消し'))
     const stage = getComputedStyle(screen.getByLabelText('src/a.ts をステージ'))
     expect(discard.width).toBe(stage.width)

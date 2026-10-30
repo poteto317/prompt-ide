@@ -22,6 +22,7 @@ import * as gitApi from '../../lib/gitApi'
 import type { GitLogEntry } from '@shared/types'
 import App from '../../App'
 import { activityBarPanels } from '../../config/activityBarPanels'
+import { toggleAmend } from '../../__tests__/sourceControlMenu'
 
 const mockGetGitStatus = vi.mocked(gitApi.getGitStatus)
 const mockGetLog = vi.mocked(gitApi.getLog)
@@ -87,7 +88,7 @@ describe('App: amend 完了後の履歴反映', () => {
     await openGitPanel()
     await waitFor(() => expect(screen.getByText('直前のコミット')).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'amend' }))
+    await toggleAmend()
     expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue(
       '直前のコミット'
     )
@@ -98,14 +99,13 @@ describe('App: amend 完了後の履歴反映', () => {
     mockGetLog.mockImplementationOnce(() => deferredLog.promise)
     mockGetHeadCommitMessage.mockResolvedValueOnce('直前のコミット(amend後)')
 
-    await userEvent.click(screen.getByRole('button', { name: 'コミット' }))
+    await userEvent.click(screen.getByRole('button', { name: 'コミット (amend)' }))
     await waitFor(() => expect(mockAmendCommit).toHaveBeenCalled())
 
     // 履歴の再取得がまだ解決していない間は、amend成功後の後始末
-    // (チェックボックス解除・メッセージクリア)が起きてはならない。
-    // ここが起きてしまうと、この直後にユーザーが amend チェックを再度入れた場合、
+    // (amend の解除・メッセージクリア)が起きてはならない。
+    // ここが起きてしまうと、この直後にユーザーが amend を再度オンにした場合、
     // まだ古い(amend前の)コミットメッセージがプリフィルされてしまう
-    expect(screen.getByRole('checkbox', { name: 'amend' })).toBeChecked()
     expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue(
       '直前のコミット'
     )
@@ -114,7 +114,7 @@ describe('App: amend 完了後の履歴反映', () => {
     // この間にユーザーが再クリックした場合、同じメッセージで二重に amend が
     // 実行されてしまう(useGitOperations の isCommitting は amend() 自体の完了時点で
     // 既に false へ戻っており、この後処理の待機時間をカバーしていない)
-    expect(screen.getByRole('button', { name: /コミット/ })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'コミット中...' })).toBeDisabled()
 
     deferredLog.resolve([
       {
@@ -128,7 +128,9 @@ describe('App: amend 完了後の履歴反映', () => {
       }
     ])
 
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'amend' })).not.toBeChecked())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'コミット' })).toBeInTheDocument()
+    )
     expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue('')
   })
 
@@ -150,7 +152,7 @@ describe('App: amend 完了後の履歴反映', () => {
     await openGitPanel()
     await waitFor(() => expect(screen.getByText('上流のコミット')).toBeInTheDocument())
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'amend' }))
+    await toggleAmend()
 
     expect(screen.getByRole('textbox', { name: 'コミットメッセージ' })).toHaveValue(
       'HEAD のコミット'

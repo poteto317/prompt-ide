@@ -10,6 +10,8 @@ export interface ExclusiveGitOperationOptions {
   /** 実行終了時(refresh 完了後)に呼ぶ副作用。ロック解放等 */
   onEnd?: () => void
   execute: () => Promise<void>
+  /** 結果が古くなった(実行中にフォルダが切り替わった等)か。true なら成功も失敗もエラー state へ反映しない */
+  isResultStale?: () => boolean
 }
 
 // fetch/pull/push/checkoutBranch はいずれも「開始条件を満たすか判定 → busy 化
@@ -32,17 +34,17 @@ export function useRunExclusiveGitOperation(
   refresh: () => Promise<void>,
   setError: (err: Error | null) => void
 ): (options: ExclusiveGitOperationOptions) => Promise<boolean> {
-  return async ({ isBusy, setBusy, onStart, onEnd, execute }) => {
+  return async ({ isBusy, setBusy, onStart, onEnd, execute, isResultStale }) => {
     if (isBusy()) return false
     setBusy(true)
     onStart?.()
     let succeeded = false
     try {
       await execute()
-      setError(null)
+      if (!isResultStale?.()) setError(null)
       succeeded = true
     } catch (err) {
-      setError(toError(err))
+      if (!isResultStale?.()) setError(toError(err))
     } finally {
       // 操作自体(execute)が成功していた場合、refresh 自体の失敗理由で
       // エラー state を上書きしない(useGitOperations.ts の

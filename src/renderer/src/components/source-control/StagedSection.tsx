@@ -1,6 +1,8 @@
 import type { GitFileStatus } from '@shared/types'
 import { statusChar, isStagedFile } from '../../lib/gitUtils'
 import { alwaysUnlocked } from '../../hooks/useFileOperationLock'
+import CollapsibleSection from './CollapsibleSection'
+import GitFileRow from './GitFileRow'
 
 interface Props {
   files: GitFileStatus[]
@@ -37,22 +39,16 @@ export default function StagedSection({
   const staged = files.filter(isStagedFile)
   if (staged.length === 0) return null
   return (
-    <section className="source-control-panel__section">
-      <h3 className="source-control-panel__section-title">ステージ済み ({staged.length})</h3>
+    <CollapsibleSection title="ステージされている変更" count={staged.length}>
       <ul className="source-control-panel__file-list">
         {staged.map((f) => (
-          <li key={f.path} className="source-control-panel__file-item">
-            <span className="source-control-panel__file-status source-control-panel__file-status--staged">
-              {statusChar(f.index)}
-            </span>
-            <button
-              type="button"
-              className="source-control-panel__file-path"
-              onClick={() => onOpenDiff(f.path)}
-              aria-label={`${f.path} のステージ済み差分を表示`}
-            >
-              {f.path}
-            </button>
+          <GitFileRow
+            key={f.path}
+            file={f}
+            statusLetter={statusChar(f.index)}
+            openLabel={`${f.path} のステージ済み差分を表示`}
+            onOpenDiff={() => onOpenDiff(f.path)}
+          >
             <button
               type="button"
               className="source-control-panel__unstage-btn"
@@ -62,9 +58,9 @@ export default function StagedSection({
             >
               −
             </button>
-          </li>
+          </GitFileRow>
         ))}
       </ul>
-    </section>
+    </CollapsibleSection>
   )
 }

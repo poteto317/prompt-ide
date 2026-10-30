@@ -96,7 +96,7 @@ async function fetchGitHistoryData(
     if (isCancelled()) return
     setters.setHistoryError(toError(err))
     // headCommitMessage を前フォルダの値のまま残すと、isLoadingFolder が false に
-    // 戻った時点で CommitSection の amend チェックボックスが「isCommitting=false,
+    // 戻った時点で CommitSection の amend の選択が「isCommitting=false,
     // lastCommitMessage(headCommitMessage)=前フォルダの非null値, isLoadingFolder=false」
     // という条件を満たしてしまい、無関係な別リポジトリの直前コミットメッセージで
     // 誤って amend できてしまう

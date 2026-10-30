@@ -27,6 +27,8 @@ const makeFileLock = (overrides: Partial<FileOperationLock> = {}): FileOperation
 
 // ほとんどのテストは「push/pull/fetch が実行可能なリポジトリ」を前提にする。
 // isRepo/gitStatus 自体の判定は別の describe ブロックでのみ検証する
+const pullSucceeded = { conflicted: false }
+
 const repoStatus: GitStatusResult = {
   isRepo: true,
   mergeInProgress: false,
@@ -146,7 +148,7 @@ describe('fetchRemote', () => {
           resolveFetch = resolve
         })
     )
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const lock = makeFileLock()
     const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus, lock))
@@ -183,7 +185,7 @@ describe('fetchRemote', () => {
 
 describe('pull', () => {
   it('gitApi.pull を呼び、実行中は lock.lockGlobal/unlockGlobal を呼ぶ', async () => {
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const lock = makeFileLock()
     const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus, lock))
@@ -207,8 +209,8 @@ describe('pull', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
@@ -239,8 +241,8 @@ describe('pull', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
@@ -260,7 +262,7 @@ describe('pull', () => {
   })
 
   it('lock.isAnyLocked() が true(ハンク操作中 or commit 中)のときは no-op', async () => {
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
     const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus, lock))
@@ -281,7 +283,7 @@ describe('pull', () => {
           resolvePush = resolve
         })
     )
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
 
@@ -331,8 +333,8 @@ describe('pull', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     mockFetchRemote.mockResolvedValue(undefined)
@@ -424,8 +426,8 @@ describe('push', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     mockPush.mockResolvedValue(undefined)
@@ -538,8 +540,8 @@ describe('isPushBlocked / isPullBlocked', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
@@ -649,7 +651,7 @@ describe('isRemoteOperationDisabled', () => {
 
   it('gitStatus が null のとき push/pull/fetch は実行されない(no-op)', async () => {
     mockPush.mockResolvedValue(undefined)
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     mockFetchRemote.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useGitRemoteOperations(null, refreshGitStatus))
@@ -683,7 +685,7 @@ describe('isRemoteOperationDisabled', () => {
       files: []
     }
     mockPush.mockResolvedValue(undefined)
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     mockFetchRemote.mockResolvedValue(undefined)
     const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useGitRemoteOperations(notRepo, refreshGitStatus))
@@ -975,8 +977,8 @@ describe('pushSetUpstream(初回 push)', () => {
     let resolvePull: () => void = () => {}
     mockPull.mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
-          resolvePull = resolve
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
         })
     )
     const { refreshGitStatus } = makeRefreshes()
@@ -1005,12 +1007,28 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   type Operation = 'fetchRemote' | 'pull' | 'push'
   const operations: Array<{
     name: Operation
-    mockExecute: typeof mockFetchRemote
+    mockSuccess: () => void
+    mockFailure: (error: Error) => void
     busyFlag: 'isFetching' | 'isPulling' | 'isPushing'
   }> = [
-    { name: 'fetchRemote', mockExecute: mockFetchRemote, busyFlag: 'isFetching' },
-    { name: 'pull', mockExecute: mockPull, busyFlag: 'isPulling' },
-    { name: 'push', mockExecute: mockPush, busyFlag: 'isPushing' }
+    {
+      name: 'fetchRemote',
+      mockSuccess: () => mockFetchRemote.mockResolvedValue(undefined),
+      mockFailure: (error) => mockFetchRemote.mockRejectedValue(error),
+      busyFlag: 'isFetching'
+    },
+    {
+      name: 'pull',
+      mockSuccess: () => mockPull.mockResolvedValue(pullSucceeded),
+      mockFailure: (error) => mockPull.mockRejectedValue(error),
+      busyFlag: 'isPulling'
+    },
+    {
+      name: 'push',
+      mockSuccess: () => mockPush.mockResolvedValue(undefined),
+      mockFailure: (error) => mockPush.mockRejectedValue(error),
+      busyFlag: 'isPushing'
+    }
   ]
 
   const makeRefreshes = (): {
@@ -1022,7 +1040,7 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   })
 
   it.each(operations)('$name の成功の後に、ステータスと履歴を取り直す', async (operation) => {
-    operation.mockExecute.mockResolvedValue(undefined)
+    operation.mockSuccess()
     const { refreshGitStatus, refreshHistory } = makeRefreshes()
     const { result } = renderHook(() =>
       useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
@@ -1039,7 +1057,7 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   it.each(operations)(
     '$name が失敗してもステータスと履歴を取り直し、エラーの表示は保つ',
     async (operation) => {
-      operation.mockExecute.mockRejectedValue(new Error('操作に失敗'))
+      operation.mockFailure(new Error('操作に失敗'))
       const { refreshGitStatus, refreshHistory } = makeRefreshes()
       const { result } = renderHook(() =>
         useGitRemoteOperations(repoStatus, refreshGitStatus, undefined, refreshHistory)
@@ -1059,7 +1077,7 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   it.each(operations)(
     '$name の履歴の取り直しが失敗しても、操作のエラーにはせず実行中フラグを下ろす',
     async (operation) => {
-      operation.mockExecute.mockResolvedValue(undefined)
+      operation.mockSuccess()
       const { refreshGitStatus, refreshHistory } = makeRefreshes()
       refreshHistory.mockRejectedValueOnce(new Error('履歴の取得に失敗'))
       const { result } = renderHook(() =>
@@ -1078,7 +1096,7 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   it.each(operations)(
     '$name は履歴が先に失敗しても、ステータスの取り直しが終わるまで実行中フラグを保つ',
     async (operation) => {
-      operation.mockExecute.mockResolvedValue(undefined)
+      operation.mockSuccess()
       const { refreshGitStatus, refreshHistory } = makeRefreshes()
       let resolveStatus: () => void = () => {}
       refreshGitStatus.mockImplementationOnce(
@@ -1113,7 +1131,7 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
   )
 
   it('pull の共有ロックは、履歴の取り直しが終わるまで解放しない', async () => {
-    mockPull.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
     const fileLock = makeFileLock()
     const { refreshGitStatus, refreshHistory } = makeRefreshes()
     let resolveHistory: () => void = () => {}
@@ -1140,5 +1158,594 @@ describe('fetch・pull・push の後の履歴の取り直し', () => {
       await pullPromise
     })
     expect(fileLock.unlockGlobal).toHaveBeenCalledOnce()
+  })
+})
+
+describe('pull の結果の表示', () => {
+  it('コンフリクトでも、例外にならなかった pull はエラーを出さない', async () => {
+    mockPull.mockResolvedValue({ conflicted: true })
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    await act(async () => {
+      await result.current.pull()
+    })
+
+    expect(result.current.remoteOperationError).toBeNull()
+  })
+
+  it('例外だったコンフリクトは、これまでどおり git の文言を出す', async () => {
+    mockPull.mockResolvedValue({ conflicted: true, errorMessage: 'CONFLICT (content)' })
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    await act(async () => {
+      await result.current.pull()
+    })
+
+    expect(result.current.remoteOperationError?.message).toBe('CONFLICT (content)')
+  })
+})
+
+describe('syncChanges', () => {
+  const CONFLICT_MESSAGE = 'プルでコンフリクトが発生しました。解決してからもう一度同期してください'
+  const refreshGitStatus = vi.fn<() => Promise<void>>()
+  const statusWith = (overrides: Partial<GitStatusResult>): GitStatusResult => ({
+    ...repoStatus,
+    ...overrides
+  })
+  const syncedOnce = async (
+    status: GitStatusResult,
+    lock?: FileOperationLock
+  ): Promise<ReturnType<typeof renderHook<ReturnType<typeof useGitRemoteOperations>, unknown>>> => {
+    const hook = renderHook(() => useGitRemoteOperations(status, refreshGitStatus, lock))
+    await act(async () => {
+      await hook.result.current.syncChanges()
+    })
+    return hook
+  }
+
+  it('完了の後も失敗の後も、もう一度同期できる', async () => {
+    const hook = await syncedOnce(statusWith({ behind: 1 }))
+    expect(mockPull).toHaveBeenCalledTimes(1)
+    mockPull.mockRejectedValueOnce(new Error('pull failed'))
+    await act(async () => {
+      await hook.result.current.syncChanges()
+    })
+    expect(mockPull).toHaveBeenCalledTimes(2)
+    await act(async () => {
+      await hook.result.current.syncChanges()
+    })
+    expect(mockPull).toHaveBeenCalledTimes(3)
+  })
+
+  beforeEach(() => {
+    refreshGitStatus.mockReset()
+    refreshGitStatus.mockResolvedValue(undefined)
+    mockPull.mockResolvedValue(pullSucceeded)
+    mockPush.mockResolvedValue(undefined)
+  })
+
+  it('behind だけならプルだけを実行する', async () => {
+    await syncedOnce(statusWith({ behind: 2 }))
+    expect(mockPull).toHaveBeenCalledOnce()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('ahead だけならプッシュだけを実行する', async () => {
+    await syncedOnce(statusWith({ ahead: 2 }))
+    expect(mockPull).not.toHaveBeenCalled()
+    expect(mockPush).toHaveBeenCalledOnce()
+  })
+
+  it('両方あるならプル、プッシュの順に実行する', async () => {
+    await syncedOnce(statusWith({ ahead: 1, behind: 1 }))
+    expect(mockPull).toHaveBeenCalledOnce()
+    expect(mockPush).toHaveBeenCalledOnce()
+    expect(mockPull.mock.invocationCallOrder[0]).toBeLessThan(mockPush.mock.invocationCallOrder[0])
+  })
+
+  it('どちらも 0 なら何も実行しない', async () => {
+    await syncedOnce(repoStatus)
+    expect(mockPull).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('プルが失敗したらプッシュせず、エラーを出す', async () => {
+    mockPull.mockRejectedValue(new Error('pull failed'))
+    const { result } = await syncedOnce(statusWith({ ahead: 1, behind: 1 }))
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(result.current.remoteOperationError?.message).toBe('pull failed')
+    expect(result.current.isSyncing).toBe(false)
+  })
+
+  it.each([
+    ['例外にならなかった', { conflicted: true }],
+    ['例外だった', { conflicted: true, errorMessage: 'CONFLICT (content)' }]
+  ])('%s コンフリクトではプッシュせず、案内を出す', async (_, pullResult) => {
+    mockPull.mockResolvedValue(pullResult)
+    const { result } = await syncedOnce(statusWith({ ahead: 1, behind: 1 }))
+    expect(mockPush).not.toHaveBeenCalled()
+    expect(result.current.remoteOperationError?.message).toBe(CONFLICT_MESSAGE)
+  })
+
+  // 例外の形のコンフリクトでも、取り直しの間に git の英語の文言を挟まない
+  it('同期のコンフリクトは、取り直しの間も git の文言を出さない', async () => {
+    mockPull.mockResolvedValue({ conflicted: true, errorMessage: 'CONFLICT (content)' })
+    let resolveRefresh: () => void = () => {}
+    refreshGitStatus.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRefresh = resolve
+        })
+    )
+    const status = statusWith({ behind: 1 })
+    const { result } = renderHook(() => useGitRemoteOperations(status, refreshGitStatus))
+
+    let syncing!: Promise<void>
+    await act(async () => {
+      syncing = result.current.syncChanges()
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(refreshGitStatus).toHaveBeenCalled())
+    expect(result.current.remoteOperationError).toBeNull()
+
+    await act(async () => {
+      resolveRefresh()
+      await syncing
+    })
+    expect(result.current.remoteOperationError?.message).toBe(CONFLICT_MESSAGE)
+  })
+
+  describe('コンフリクトの通知の消去', () => {
+    const conflictedFile = { path: 'a.txt', index: 'U', workingDir: 'U' }
+    const behindStatus = statusWith({ behind: 1 })
+    const conflictedStatus = statusWith({ behind: 1, files: [conflictedFile] })
+    const renderWithStatus = (): ReturnType<
+      typeof renderHook<ReturnType<typeof useGitRemoteOperations>, { status: GitStatusResult }>
+    > =>
+      renderHook(({ status }) => useGitRemoteOperations(status, refreshGitStatus), {
+        initialProps: { status: behindStatus }
+      })
+
+    beforeEach(() => {
+      mockPull.mockResolvedValue({ conflicted: true })
+    })
+
+    it('未解決のファイルが無くなると消す(rebase は mergeInProgress が false のまま)', async () => {
+      const { result, rerender } = renderWithStatus()
+      await act(async () => {
+        await result.current.syncChanges()
+      })
+      rerender({ status: conflictedStatus })
+      expect(result.current.remoteOperationError?.message).toBe(CONFLICT_MESSAGE)
+
+      rerender({ status: behindStatus })
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    // 通知は取り直しの後に出す。取り直しで先に未解決のファイルが見えていても、解決で消せること
+    it('通知より先に未解決のファイルが見えていても、無くなると消す', async () => {
+      const { result, rerender } = renderWithStatus()
+      refreshGitStatus.mockImplementationOnce(async () => {
+        rerender({ status: conflictedStatus })
+      })
+      await act(async () => {
+        await result.current.syncChanges()
+      })
+      expect(result.current.remoteOperationError?.message).toBe(CONFLICT_MESSAGE)
+
+      rerender({ status: behindStatus })
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    // 取り直しが失敗や競合で反映されないと、未解決のファイルは見えないまま。一度も見えていないなら消さない
+    it('未解決のファイルが一度も見えていなければ消さない', async () => {
+      const { result, rerender } = renderWithStatus()
+      await act(async () => {
+        await result.current.syncChanges()
+      })
+      rerender({ status: statusWith({ behind: 2 }) })
+      expect(result.current.remoteOperationError?.message).toBe(CONFLICT_MESSAGE)
+    })
+
+    it('別のエラーに置き換わっていれば消さない', async () => {
+      mockPush.mockRejectedValue(new Error('push failed'))
+      const { result, rerender } = renderWithStatus()
+      await act(async () => {
+        await result.current.syncChanges()
+      })
+      rerender({ status: conflictedStatus })
+      await act(async () => {
+        await result.current.push()
+      })
+
+      rerender({ status: behindStatus })
+      expect(result.current.remoteOperationError?.message).toBe('push failed')
+    })
+  })
+
+  it('プルが未実行(別の操作の実行中)ならプッシュしない', async () => {
+    // プルの判定のときだけロック中にする。プッシュの判定まで残ると、プッシュ側の判定で止まり区別できない
+    const isAnyLocked = vi.fn().mockReturnValue(false)
+    const lock = makeFileLock({ isAnyLocked })
+    const hook = renderHook(() =>
+      useGitRemoteOperations(statusWith({ ahead: 1, behind: 1 }), refreshGitStatus, lock)
+    )
+    isAnyLocked.mockReturnValueOnce(true)
+    await act(async () => {
+      await hook.result.current.syncChanges()
+    })
+    expect(mockPull).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('マージ中は実行しない', async () => {
+    await syncedOnce(statusWith({ ahead: 1, behind: 1, mergeInProgress: true }))
+    expect(mockPull).not.toHaveBeenCalled()
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  it('両方の完了まで isSyncing が true のままで、プッシュが失敗すればエラーを出す', async () => {
+    let resolvePull: () => void = () => {}
+    let rejectPush: (reason: Error) => void = () => {}
+    mockPull.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
+        })
+    )
+    mockPush.mockImplementation(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectPush = reject
+        })
+    )
+    const status = statusWith({ ahead: 1, behind: 1 })
+    const { result } = renderHook(() => useGitRemoteOperations(status, refreshGitStatus))
+
+    let syncing!: Promise<void>
+    await act(async () => {
+      syncing = result.current.syncChanges()
+      await Promise.resolve()
+    })
+    expect(result.current.isSyncing).toBe(true)
+    expect(result.current.isPulling).toBe(true)
+
+    await act(async () => {
+      resolvePull()
+    })
+    await waitFor(() => expect(mockPush).toHaveBeenCalledOnce())
+    expect(result.current.isSyncing).toBe(true)
+    expect(result.current.isPulling).toBe(false)
+
+    await act(async () => {
+      rejectPush(new Error('push failed'))
+      await syncing
+    })
+    expect(result.current.isSyncing).toBe(false)
+    expect(result.current.remoteOperationError?.message).toBe('push failed')
+  })
+
+  // プッシュ側の判定でも 2 回目は実行されないため、回数だけでは見分けられない。2 回目が先に終わって
+  // 実行中の表示を下ろさないことまで確かめる
+  it('実行中の多重呼び出しは何もせず、isSyncing を下ろさない', async () => {
+    let resolvePush: () => void = () => {}
+    mockPush.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve
+        })
+    )
+    const { result } = renderHook(() =>
+      useGitRemoteOperations(statusWith({ ahead: 1 }), refreshGitStatus)
+    )
+
+    let syncing!: Promise<void>
+    await act(async () => {
+      syncing = result.current.syncChanges()
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await result.current.syncChanges()
+    })
+    expect(result.current.isSyncing).toBe(true)
+    expect(mockPush).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      resolvePush()
+      await syncing
+    })
+    expect(result.current.isSyncing).toBe(false)
+  })
+
+  it('プルの間に ahead が変わっても、開始時の値でプッシュを決める', async () => {
+    let resolvePull: () => void = () => {}
+    mockPull.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
+        })
+    )
+    const { result, rerender } = renderHook(
+      ({ status }) => useGitRemoteOperations(status, refreshGitStatus),
+      { initialProps: { status: statusWith({ ahead: 1, behind: 1 }) } }
+    )
+
+    let syncing!: Promise<void>
+    await act(async () => {
+      syncing = result.current.syncChanges()
+      await Promise.resolve()
+    })
+    rerender({ status: statusWith({ ahead: 0, behind: 1 }) })
+    await act(async () => {
+      resolvePull()
+      await syncing
+    })
+
+    expect(mockPush).toHaveBeenCalledOnce()
+  })
+
+  describe('プルの間のフォルダの切り替え', () => {
+    const status = statusWith({ ahead: 1, behind: 1 })
+    const renderInFolder = (): ReturnType<
+      typeof renderHook<ReturnType<typeof useGitRemoteOperations>, { folderPath: string }>
+    > =>
+      renderHook(
+        ({ folderPath }) =>
+          useGitRemoteOperations(status, refreshGitStatus, undefined, undefined, folderPath),
+        { initialProps: { folderPath: '/project-a' } }
+      )
+
+    it('切り替わったらプッシュしない', async () => {
+      let resolvePull: () => void = () => {}
+      mockPull.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePull = () => resolve(pullSucceeded)
+          })
+      )
+      const { result, rerender } = renderInFolder()
+
+      let syncing!: Promise<void>
+      await act(async () => {
+        syncing = result.current.syncChanges()
+        await Promise.resolve()
+      })
+      rerender({ folderPath: '/project-b' })
+      await act(async () => {
+        resolvePull()
+        await syncing
+      })
+
+      expect(mockPush).not.toHaveBeenCalled()
+      expect(result.current.isSyncing).toBe(false)
+    })
+
+    it('切り替わらなければプッシュする', async () => {
+      const { result, rerender } = renderInFolder()
+      rerender({ folderPath: '/project-a' })
+      await act(async () => {
+        await result.current.syncChanges()
+      })
+      expect(mockPush).toHaveBeenCalledOnce()
+    })
+
+    // ステータスバーは常に見えるため、前のフォルダの結果を、切り替えの後に遅れて出さない(要件 13a)
+    const switchFoldersDuring = async (
+      start: (hook: ReturnType<typeof renderInFolder>) => Promise<unknown>,
+      finish: () => void
+    ): Promise<ReturnType<typeof renderInFolder>> => {
+      const hook = renderInFolder()
+      let running!: Promise<unknown>
+      await act(async () => {
+        running = start(hook)
+        await Promise.resolve()
+      })
+      hook.rerender({ folderPath: '/project-b' })
+      await act(async () => {
+        finish()
+        await running
+      })
+      return hook
+    }
+
+    it('同期のプルの失敗を出さない', async () => {
+      let rejectPull: (reason: Error) => void = () => {}
+      mockPull.mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            rejectPull = reject
+          })
+      )
+      const { result } = await switchFoldersDuring(
+        ({ result }) => result.current.syncChanges(),
+        () => rejectPull(new Error('pull failed'))
+      )
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    it('同期のコンフリクトの通知を出さない', async () => {
+      let resolvePull: () => void = () => {}
+      mockPull.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePull = () => resolve({ conflicted: true })
+          })
+      )
+      const { result } = await switchFoldersDuring(
+        ({ result }) => result.current.syncChanges(),
+        () => resolvePull()
+      )
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    it('公開の pull の失敗を出さない', async () => {
+      let rejectPull: (reason: Error) => void = () => {}
+      mockPull.mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            rejectPull = reject
+          })
+      )
+      const { result } = await switchFoldersDuring(
+        ({ result }) => result.current.pull(),
+        () => rejectPull(new Error('pull failed'))
+      )
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    it('push の失敗を出さない', async () => {
+      let rejectPush: (reason: Error) => void = () => {}
+      mockPush.mockImplementation(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectPush = reject
+          })
+      )
+      const { result } = await switchFoldersDuring(
+        ({ result }) => result.current.push(),
+        () => rejectPush(new Error('push failed'))
+      )
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    it('fetch の失敗を出さない', async () => {
+      let rejectFetch: (reason: Error) => void = () => {}
+      mockFetchRemote.mockImplementation(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectFetch = reject
+          })
+      )
+      const { result } = await switchFoldersDuring(
+        ({ result }) => result.current.fetchRemote(),
+        () => rejectFetch(new Error('fetch failed'))
+      )
+      expect(result.current.remoteOperationError).toBeNull()
+    })
+
+    // 成功も同じ。新しいフォルダで出ている失敗を、前のフォルダの成功で消さない
+    it('前のフォルダの操作の成功で、新しいフォルダの失敗を消さない', async () => {
+      let resolveFetch: () => void = () => {}
+      mockFetchRemote.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFetch = resolve
+          })
+      )
+      mockPush.mockRejectedValue(new Error('push failed'))
+      const hook = renderInFolder()
+      let fetching!: Promise<void>
+      await act(async () => {
+        fetching = hook.result.current.fetchRemote()
+        await Promise.resolve()
+      })
+      hook.rerender({ folderPath: '/project-b' })
+      await act(async () => {
+        await hook.result.current.push()
+      })
+      await act(async () => {
+        resolveFetch()
+        await fetching
+      })
+      expect(hook.result.current.remoteOperationError?.message).toBe('push failed')
+    })
+  })
+})
+
+describe('isSyncBlocked', () => {
+  const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+
+  it('何も実行していなければ false', () => {
+    const status = { ...repoStatus, ahead: 1, behind: 1 }
+    const { result } = renderHook(() => useGitRemoteOperations(status, refreshGitStatus))
+    expect(result.current.isSyncBlocked).toBe(false)
+  })
+
+  it('リポジトリが無ければ true', () => {
+    const { result } = renderHook(() => useGitRemoteOperations(null, refreshGitStatus))
+    expect(result.current.isSyncBlocked).toBe(true)
+  })
+
+  it('マージ中は true', () => {
+    const status = { ...repoStatus, ahead: 1, mergeInProgress: true }
+    const { result } = renderHook(() => useGitRemoteOperations(status, refreshGitStatus))
+    expect(result.current.isSyncBlocked).toBe(true)
+  })
+
+  it('ロック中は、ahead・behind のどちらかがあれば true、どちらも 0 なら false', () => {
+    const lock = makeFileLock({ isAnyLocked: vi.fn().mockReturnValue(true) })
+    const render = (status: GitStatusResult): boolean =>
+      renderHook(() => useGitRemoteOperations(status, refreshGitStatus, lock)).result.current
+        .isSyncBlocked
+    expect(render({ ...repoStatus, behind: 1 })).toBe(true)
+    expect(render({ ...repoStatus, ahead: 1 })).toBe(true)
+    expect(render(repoStatus)).toBe(false)
+  })
+
+  it('プルの実行中は true', async () => {
+    let resolvePull: () => void = () => {}
+    mockPull.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePull = () => resolve(pullSucceeded)
+        })
+    )
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    let pulling!: Promise<void>
+    await act(async () => {
+      pulling = result.current.pull()
+      await Promise.resolve()
+    })
+    expect(result.current.isSyncBlocked).toBe(true)
+
+    await act(async () => {
+      resolvePull()
+      await pulling
+    })
+    expect(result.current.isSyncBlocked).toBe(false)
+  })
+
+  it('プッシュの実行中は true', async () => {
+    let resolvePush: () => void = () => {}
+    mockPush.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePush = resolve
+        })
+    )
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+
+    let pushing!: Promise<void>
+    await act(async () => {
+      pushing = result.current.push()
+      await Promise.resolve()
+    })
+    expect(result.current.isSyncBlocked).toBe(true)
+
+    await act(async () => {
+      resolvePush()
+      await pushing
+    })
+  })
+})
+
+describe('clearRemoteOperationError', () => {
+  it('remoteOperationError を消す', async () => {
+    mockPush.mockRejectedValue(new Error('push failed'))
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useGitRemoteOperations(repoStatus, refreshGitStatus))
+    await act(async () => {
+      await result.current.push()
+    })
+    expect(result.current.remoteOperationError).not.toBeNull()
+
+    act(() => {
+      result.current.clearRemoteOperationError()
+    })
+
+    expect(result.current.remoteOperationError).toBeNull()
   })
 })

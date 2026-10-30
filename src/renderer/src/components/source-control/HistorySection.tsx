@@ -4,6 +4,7 @@ import type { GitTagPanelState } from '../../types'
 import { formatRelativeDate } from '../../lib/dateFormat'
 import { buildGitGraphRows } from '../../lib/gitGraph'
 import { useDialogFocusReturn } from '../../hooks/useDialogFocusReturn'
+import CollapsibleSection from './CollapsibleSection'
 import CreateTagDialog from './CreateTagDialog'
 import GitGraphCell from './GitGraphCell'
 import GitLogRefLabels from './GitLogRefLabels'
@@ -72,56 +73,61 @@ export default function HistorySection({
   }
 
   return (
-    <section className="source-control-panel__section">
-      <div className="history-section__header">
-        <h3 className="source-control-panel__section-title">履歴</h3>
-        <button
-          ref={createTagButtonRef}
-          type="button"
-          className="history-section__create-tag"
-          aria-label="タグを作成"
-          // 作成中も押せない(開き直したダイアログが、前の作成の成功で閉じられるのを防ぐ。パターン 73)
-          disabled={isBlocked || gitTag.isCreating}
-          onClick={tagDialog.open}
-        >
-          タグを作成
-        </button>
-      </div>
-      {error !== null && (
-        <p className="history-section__error" role="alert">
-          {error.message}
-        </p>
-      )}
-      <ul className="history-section__log-list">
-        {rows.map((row) => (
-          <li
-            key={row.entry.hash}
-            className="history-section__log-item"
-            title={buildCommitTitle(row.entry)}
+    <>
+      <CollapsibleSection
+        title="履歴"
+        actions={
+          <button
+            ref={createTagButtonRef}
+            type="button"
+            className="history-section__create-tag"
+            aria-label="タグを作成"
+            // 作成中も押せない(開き直したダイアログが、前の作成の成功で閉じられるのを防ぐ。パターン 73)
+            disabled={isBlocked || gitTag.isCreating}
+            onClick={tagDialog.open}
           >
-            <GitGraphCell row={row} />
-            <span className="history-section__log-text">
-              <span className="history-section__log-message">{getCommitSubject(row.entry)}</span>
-              <span className="history-section__log-author">{row.entry.authorName}</span>
-              {/* title は li に付くため、スクリーンリーダーとキーボードでは読めない */}
-              <span className="history-section__visually-hidden">
-                {`${getShortHash(row.entry)} ${formatRelativeDate(row.entry.date)}`}
+            タグを作成
+          </button>
+        }
+        alwaysVisible={
+          error !== null && (
+            <p className="history-section__error" role="alert">
+              {error.message}
+            </p>
+          )
+        }
+      >
+        <ul className="history-section__log-list">
+          {rows.map((row) => (
+            <li
+              key={row.entry.hash}
+              className="history-section__log-item"
+              title={buildCommitTitle(row.entry)}
+            >
+              <GitGraphCell row={row} />
+              <span className="history-section__log-text">
+                <span className="history-section__log-message">{getCommitSubject(row.entry)}</span>
+                <span className="history-section__log-author">{row.entry.authorName}</span>
+                {/* title は li に付くため、スクリーンリーダーとキーボードでは読めない */}
+                <span className="history-section__visually-hidden">
+                  {`${getShortHash(row.entry)} ${formatRelativeDate(row.entry.date)}`}
+                </span>
               </span>
-            </span>
-            <GitLogRefLabels refs={row.entry.refs} />
-          </li>
-        ))}
-      </ul>
-      {hasMore && (
-        <button
-          type="button"
-          className="history-section__load-more-btn"
-          onClick={onLoadMore}
-          disabled={isLoading}
-        >
-          もっと見る
-        </button>
-      )}
+              <GitLogRefLabels refs={row.entry.refs} />
+            </li>
+          ))}
+        </ul>
+        {hasMore && (
+          <button
+            type="button"
+            className="history-section__load-more-btn"
+            onClick={onLoadMore}
+            disabled={isLoading}
+          >
+            もっと見る
+          </button>
+        )}
+      </CollapsibleSection>
       {tagDialog.isOpen && (
         <CreateTagDialog
           tags={tags}
@@ -133,6 +139,6 @@ export default function HistorySection({
           onCancel={tagDialog.close}
         />
       )}
-    </section>
+    </>
   )
 }

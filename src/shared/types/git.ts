@@ -28,6 +28,15 @@ export type GitStatusResult = {
   detached: boolean
 }
 
+/** プルの結果。コンフリクトは失敗ではなく結果で返す(同期が失敗と区別して案内を出し、プッシュへ進まないため) */
+export type GitPullResult = {
+  /** プルの後に未解決のファイルがあるか(マージ・rebase のどちらのコンフリクトも含む) */
+  conflicted: boolean
+  /** git がコンフリクトを失敗として返したときの文言。git.pull() が例外を投げるかは stderr の有無で変わる
+   *  (取得済みのマージと autostash の復元は投げない)。公開の pull はこの文言を従来どおり表示する */
+  errorMessage?: string
+}
+
 /** コンフリクトのブロックごとの解決方法（both は自分 → 相手の順） */
 export const CONFLICT_CHOICES = ['ours', 'theirs', 'both'] as const
 export type ConflictChoice = (typeof CONFLICT_CHOICES)[number]

@@ -36,6 +36,7 @@ import type {
   DiscardAllEntry,
   DiscardAllResult,
   FileTreeNode,
+  GitPullResult,
   GitStatusResult,
   GitLogEntry,
   GitBranch,
@@ -112,7 +113,7 @@ export const api = {
   getTags: (): Promise<string[]> => ipcRenderer.invoke('git:getTags'),
   amendCommit: (message: string): Promise<void> => ipcRenderer.invoke('git:amendCommit', message),
   push: (): Promise<void> => ipcRenderer.invoke('git:push'),
-  pull: (): Promise<void> => ipcRenderer.invoke('git:pull'),
+  pull: (): Promise<GitPullResult> => ipcRenderer.invoke('git:pull'),
   fetchRemote: (): Promise<void> => ipcRenderer.invoke('git:fetch'),
   checkoutBranch: (branchName: string): Promise<void> =>
     ipcRenderer.invoke('git:checkoutBranch', branchName),

@@ -3,7 +3,7 @@ import type { RefObject } from 'react'
 import type { RemoteSetupFocusTarget } from '../lib/remoteSetupState'
 
 // 成功の後に、次の操作のボタンへフォーカスを移す(初期化 → 「リモートを追加」、追加 → 「初回 push（upstream を設定）」、
-// 初回 push → ツールバーの「プッシュ」)。移す先は rootRef の中の data-remote-setup-focus="<target>" の要素。
+// 初回 push → ツールバーの「…」)。移す先は rootRef の中の data-remote-setup-focus="<target>" の要素。
 // 要求の state もここで持つ(UI の振る舞いで、Git 操作のフックとは変わる理由が違う。要求する部品
 // (NotRepositoryView・RemoteSetupBanner)も移す先も、rootRef を持つ SourceControlPanel の配下にある)。
 // 要求は、成功を受け取った部品がダイアログを閉じるのと同じ描画で出す(差分 4)ため、この useEffect が走る時点では、

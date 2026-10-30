@@ -1256,9 +1256,18 @@ describe('registerGitHandlers', () => {
     it('folderAccess の allowedFolder を引数に pull を呼ぶ', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
       registerGitHandlers(mockIpcMain, folderAccess)
-      mockPull.mockResolvedValue(undefined)
+      mockPull.mockResolvedValue({ conflicted: false })
       await getRegisteredHandler('git:pull')(makeEvent(1))
       expect(mockPull).toHaveBeenCalledWith('/project')
+    })
+
+    it('pull の結果をそのまま返す', async () => {
+      const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
+      registerGitHandlers(mockIpcMain, folderAccess)
+      mockPull.mockResolvedValue({ conflicted: true })
+      await expect(getRegisteredHandler('git:pull')(makeEvent(1))).resolves.toEqual({
+        conflicted: true
+      })
     })
 
     it('pull が throw した場合エラーが伝播する', async () => {

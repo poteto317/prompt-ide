@@ -22,7 +22,7 @@ interface BranchTriggerState {
   currentBranch: string | null
 }
 
-// ブランチスイッチャーのトリガーボタンに出す文言を状態から決める(BranchSwitcher は
+// ブランチの項目(ステータスバー)に出す文言を状態から決める(StatusBarBranch は
 // これを表示するだけにし、文言の決定規則をコンポーネントから切り離す)
 export function getBranchTriggerLabel({
   pendingBranchOperation,

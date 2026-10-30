@@ -357,7 +357,7 @@ function registerGitRemoteHandlers(ipcMain: IpcMain, folderAccess: FolderAccessM
 
   ipcMain.handle('git:pull', async (event: IpcMainInvokeEvent) => {
     const allowedFolder = getAllowedFolder(folderAccess, event)
-    await pull(allowedFolder)
+    return pull(allowedFolder)
   })
 
   ipcMain.handle('git:fetch', async (event: IpcMainInvokeEvent) => {

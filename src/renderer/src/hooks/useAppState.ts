@@ -117,7 +117,7 @@ type AppState = {
   ReturnType<typeof useProgressTasks> &
   ReturnType<typeof useGitStatus> &
   ReturnType<typeof useGitOperations> &
-  ReturnType<typeof useGitRemoteOperations> &
+  Omit<ReturnType<typeof useGitRemoteOperations>, 'clearRemoteOperationError'> &
   Omit<
     ReturnType<typeof useGitBranchOperations>,
     'checkoutBranch' | 'mergeBranch' | 'clearBranchOperationError'
@@ -175,7 +175,8 @@ export function useAppState(): AppState {
     git.gitStatus,
     git.refreshGitStatus,
     fileOperationLock,
-    gitHistory.refresh
+    gitHistory.refresh,
+    fileSystem.folderPath
   )
   // ブランチ切替はブランチ一覧の再取得(gitHistory.refresh)に依存するため、
   // gitHistory より後に配置する必要がある
@@ -189,6 +190,9 @@ export function useAppState(): AppState {
   // 消す操作はここで使うだけなので、戻り値からは外す
   const { clearBranchOperationError, ...publicGitBranchOperations } = gitBranchOperations
   useOnChange(fileSystem.folderPath, clearBranchOperationError)
+  // 同期の失敗もステータスバーに出るため、同じ理由で前のフォルダの失敗を持ち込まない
+  const { clearRemoteOperationError, ...publicGitRemoteOperations } = gitRemoteOperations
+  useOnChange(fileSystem.folderPath, clearRemoteOperationError)
   // タグの作成は作業ツリーを変えないため、再取得は履歴(ログ・ブランチ・タグ)だけ。他の Git 操作の
   // 途中(HEAD が動く間)は実行しないよう、ブランチ操作などと同じロックを渡す(ロック自体は取らない)
   const gitTag = useGitTagOperations(git.gitStatus, gitHistory.refresh, fileOperationLock)
@@ -564,7 +568,7 @@ export function useAppState(): AppState {
     ...progress,
     ...git,
     ...gitOperations,
-    ...gitRemoteOperations,
+    ...publicGitRemoteOperations,
     ...diffTabs,
     ...diffOperations,
     ...gitHistory,

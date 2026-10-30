@@ -1,10 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import type { GitBranch } from '@shared/types'
 import {
+  BRANCH_PICKER_ARIA_KEYSHORTCUTS,
+  CREATE_BRANCH_OPTION,
   buildBranchPickerItems,
+  getBranchPickerShortcut,
   initialBranchPickerSelection,
   moveBranchPickerSelection,
-  resolveBranchPickerSelection
+  resolveBranchPickerSelection,
+  withCreateBranchOption
 } from '../branchPicker'
 import type { BranchPickerItem } from '../branchPicker'
 
@@ -159,6 +163,27 @@ describe('resolveBranchPickerSelection', () => {
     expect(resolveBranchPickerSelection([], 'main')).toBeNull()
     expect(resolveBranchPickerSelection([], null)).toBeNull()
   })
+
+  describe('作成の項目を含む候補', () => {
+    const withCreate = withCreateBranchOption(items)
+
+    it('作成の項目が選ばれていればそのまま返す', () => {
+      expect(resolveBranchPickerSelection(withCreate, CREATE_BRANCH_OPTION)).toBe(
+        CREATE_BRANCH_OPTION
+      )
+    })
+
+    it('選択が消えたら、作成の項目ではなく先頭のブランチを返す', () => {
+      expect(resolveBranchPickerSelection(withCreate, 'gone')).toBe('main')
+      expect(resolveBranchPickerSelection(withCreate, null)).toBe('main')
+    })
+
+    it('ブランチの候補が無ければ作成の項目を返す', () => {
+      expect(resolveBranchPickerSelection(withCreateBranchOption([]), null)).toBe(
+        CREATE_BRANCH_OPTION
+      )
+    })
+  })
 })
 
 describe('moveBranchPickerSelection', () => {
@@ -191,5 +216,81 @@ describe('moveBranchPickerSelection', () => {
   it('候補が 0 件なら null を返す', () => {
     expect(moveBranchPickerSelection([], 'main', 1)).toBeNull()
     expect(moveBranchPickerSelection([], null, -1)).toBeNull()
+  })
+
+  it('作成の項目も循環に含む', () => {
+    const withCreate = withCreateBranchOption(items)
+    expect(moveBranchPickerSelection(withCreate, 'feat/a', 1)).toBe(CREATE_BRANCH_OPTION)
+    expect(moveBranchPickerSelection(withCreate, CREATE_BRANCH_OPTION, 1)).toBe('main')
+    expect(moveBranchPickerSelection(withCreate, 'main', -1)).toBe(CREATE_BRANCH_OPTION)
+  })
+})
+
+describe('withCreateBranchOption', () => {
+  it('候補の先頭に作成の項目を足す', () => {
+    expect(withCreateBranchOption([item('main', true)])).toEqual([
+      item(CREATE_BRANCH_OPTION),
+      item('main', true)
+    ])
+  })
+
+  // 実在のブランチと同じ名前にならないよう、Git のブランチ名に使えない文字を含める
+  it('作成の項目の名前は Git のブランチ名に使えない制御文字を含む', () => {
+    expect(CREATE_BRANCH_OPTION).toContain('\0')
+  })
+})
+
+describe('getBranchPickerShortcut', () => {
+  const key = (
+    overrides: Partial<Parameters<typeof getBranchPickerShortcut>[0]>
+  ): Parameters<typeof getBranchPickerShortcut>[0] => ({
+    key: '',
+    code: '',
+    shiftKey: false,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    ...overrides
+  })
+
+  // macOS の Option+M は e.key が µ になるため、物理キーで判定する
+  it.each(['m', 'µ'])('Alt と M の物理キーは merge(e.key が %s でも)', (k) => {
+    expect(getBranchPickerShortcut(key({ key: k, code: 'KeyM', altKey: true }))).toBe('merge')
+  })
+
+  it.each(['shiftKey', 'ctrlKey', 'metaKey'] as const)('Alt+M に %s が付くと null', (mod) => {
+    expect(
+      getBranchPickerShortcut(key({ key: 'm', code: 'KeyM', altKey: true, [mod]: true }))
+    ).toBeNull()
+  })
+
+  it('修飾キーの無い M は null(絞り込みの入力)', () => {
+    expect(getBranchPickerShortcut(key({ key: 'm', code: 'KeyM' }))).toBeNull()
+  })
+
+  it.each(['Delete', 'Backspace'])('Shift+%s は delete', (k) => {
+    expect(getBranchPickerShortcut(key({ key: k, shiftKey: true }))).toBe('delete')
+  })
+
+  it.each(['Delete', 'Backspace'])('修飾キーの無い %s は null(絞り込みの入力)', (k) => {
+    expect(getBranchPickerShortcut(key({ key: k }))).toBeNull()
+  })
+
+  it.each(['altKey', 'ctrlKey', 'metaKey'] as const)('Shift+Delete に %s が付くと null', (mod) => {
+    expect(getBranchPickerShortcut(key({ key: 'Delete', shiftKey: true, [mod]: true }))).toBeNull()
+    expect(
+      getBranchPickerShortcut(key({ key: 'Backspace', shiftKey: true, [mod]: true }))
+    ).toBeNull()
+  })
+
+  it.each(['Enter', 'ArrowDown', 'a', 'Escape'])('%s は null', (k) => {
+    expect(getBranchPickerShortcut(key({ key: k }))).toBeNull()
+  })
+
+  // 告知(aria-keyshortcuts)と判定の食い違いを防ぐ
+  it('告知の各トークンは、そのキーの組み合わせとして判定される', () => {
+    expect(BRANCH_PICKER_ARIA_KEYSHORTCUTS).toBe('Alt+M Shift+Delete')
+    expect(getBranchPickerShortcut(key({ key: 'µ', code: 'KeyM', altKey: true }))).toBe('merge')
+    expect(getBranchPickerShortcut(key({ key: 'Delete', shiftKey: true }))).toBe('delete')
   })
 })

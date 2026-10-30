@@ -44,7 +44,40 @@ describe('StagedSection', () => {
         onOpenDiff={vi.fn()}
       />
     )
-    expect(screen.getByText('ステージ済み (2)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'ステージされている変更 2' })).toBeInTheDocument()
+  })
+
+  it('行は「変更」セクションと同じ形(差分のボタン、操作の枠、状態の文字)で並ぶ', () => {
+    const files: GitFileStatus[] = [{ path: 'src/index.ts', index: 'M', workingDir: ' ' }]
+    render(
+      <StagedSection
+        files={files}
+        stagingPaths={new Set()}
+        onUnstage={vi.fn()}
+        onOpenDiff={vi.fn()}
+      />
+    )
+    const open = screen.getByRole('button', { name: 'src/index.ts のステージ済み差分を表示' })
+    const row = open.parentElement as HTMLElement
+    expect(row.tagName).toBe('LI')
+    expect(row.children).toHaveLength(3)
+    expect(open).toHaveAttribute('title', 'src/index.ts')
+    expect(row.children[1]).toContainElement(screen.getByLabelText('src/index.ts をアンステージ'))
+    expect(row.lastElementChild).toHaveTextContent('M')
+  })
+
+  it('閉じても一覧はアンマウントせず、hidden の本体に残る', async () => {
+    const files: GitFileStatus[] = [{ path: 'index.ts', index: 'M', workingDir: ' ' }]
+    render(
+      <StagedSection
+        files={files}
+        stagingPaths={new Set()}
+        onUnstage={vi.fn()}
+        onOpenDiff={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'ステージされている変更' }))
+    expect(screen.getByText('index.ts')).not.toBeVisible()
   })
 
   it('staged ファイルのパスが表示される', () => {
@@ -57,7 +90,8 @@ describe('StagedSection', () => {
         onOpenDiff={vi.fn()}
       />
     )
-    expect(screen.getByText('src/index.ts')).toBeInTheDocument()
+    expect(screen.getByText('index.ts')).toBeInTheDocument()
+    expect(screen.getByText('src')).toBeInTheDocument()
   })
 
   it('staged ファイルのステータス文字（index）が表示される', () => {

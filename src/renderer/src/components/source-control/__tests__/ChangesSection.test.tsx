@@ -34,7 +34,7 @@ describe('ChangesSection', () => {
         onOpenDiff={vi.fn()}
       />
     )
-    expect(screen.getByText('変更 (2)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '変更 2' })).toBeInTheDocument()
   })
 
   it('changed ファイルのパスが表示される', () => {
@@ -363,6 +363,25 @@ describe('ChangesSection — すべて取り消す', () => {
     unmount()
     renderSection({ discardAll: makeDiscardAll() })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('「すべて取り消す」は見出しの操作の枠に置き、開閉のボタンの外にある', () => {
+    renderSection({ discardAll: makeDiscardAll() })
+    const action = screen.getByRole('button', { name: '変更をすべて取り消す' })
+    expect(action.parentElement).toHaveClass('collapsible-section__actions')
+    expect(screen.getByRole('button', { name: '変更' })).not.toContainElement(action)
+  })
+
+  it('discardAll が無ければ操作の枠を出さない', () => {
+    const { container } = renderSection()
+    expect(container.querySelector('.collapsible-section__actions')).toBeNull()
+  })
+
+  it('閉じても error は見え、「すべて取り消す」は押せる', async () => {
+    renderSection({ discardAll: makeDiscardAll({ error: new Error('取り消せませんでした') }) })
+    await userEvent.click(screen.getByRole('button', { name: '変更' }))
+    expect(screen.getByRole('alert')).toBeVisible()
+    expect(screen.getByRole('button', { name: '変更をすべて取り消す' })).toBeVisible()
   })
 
   it('変更が 0 件ならセクションごと出さない', () => {

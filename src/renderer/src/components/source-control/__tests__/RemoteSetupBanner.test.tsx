@@ -127,7 +127,7 @@ describe('RemoteSetupBanner', () => {
       expect(setUpstreamButton()).toBeDisabled()
     })
 
-    it('押すと初回 push し、成功したらツールバーの「プッシュ」へのフォーカスを要求する', async () => {
+    it('押すと初回 push し、成功したらツールバーの「…」へのフォーカスを要求する', async () => {
       const { remoteSetup, requestFocus } = renderBanner({ kind: 'no-upstream' })
       await userEvent.click(setUpstreamButton())
       expect(remoteSetup.pushSetUpstream).toHaveBeenCalledOnce()
@@ -195,7 +195,7 @@ describe('RemoteSetupBanner', () => {
         expect(setUpstreamButton()).toHaveFocus()
       })
 
-      // 成功するとバナーが消える。戻す先が無いので何もしない(ツールバーの「プッシュ」へは useRemoteSetupFocus が移す)
+      // 成功するとバナーが消える。戻す先が無いので何もしない(ツールバーの「…」へは useRemoteSetupFocus が移す)
       it('成功してバナーが消えたら、何もしない', () => {
         const { rerenderWith } = renderBanner({ kind: 'no-upstream', remoteSetup: running })
         rerenderWith({ kind: null, remoteSetup: makeRemoteSetupPanelState() })
@@ -203,7 +203,7 @@ describe('RemoteSetupBanner', () => {
       })
 
       // 成功してもバナーが残る場合(fetch の設定の無い origin で upstream が表示されない)は、成功の後の
-      // フォーカスの要求(ツールバーの「プッシュ」)に任せ、バナーのボタンへは移さない
+      // フォーカスの要求(ツールバーの「…」)に任せ、バナーのボタンへは移さない
       it('エラーが無ければ(成功)、バナーが残ってもボタンへは移さない', () => {
         const { rerenderWith } = renderBanner({ kind: 'no-upstream', remoteSetup: running })
         rerenderWith({ remoteSetup: makeRemoteSetupPanelState() })

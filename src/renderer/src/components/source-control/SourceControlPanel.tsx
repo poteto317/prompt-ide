@@ -53,6 +53,9 @@ export default function SourceControlPanel({
   onCommit,
   lastCommitMessage,
   onAmend,
+  isSyncing,
+  isSyncBlocked,
+  onSync,
   log,
   branches,
   tags,
@@ -72,11 +75,6 @@ export default function SourceControlPanel({
   onPull,
   onFetch,
   remoteOperationError,
-  pendingBranchOperation,
-  onCheckoutBranch,
-  onCreateBranch,
-  onDeleteBranch,
-  onMergeBranch,
   stash,
   discardAll,
   mergeState,
@@ -117,7 +115,7 @@ export default function SourceControlPanel({
       {/* 「読み込み中」を出すのは、まだ表示できる内容が何も無い初回取得のときだけ。
           再取得(stage/unstage/commit/ファイル保存のたびに走る)でも出してしまうと、
           下の GitRepoView がアンマウントされ、CommitSection のローカル state
-          (入力中のコミットメッセージ・amend チェック)が破棄されてしまう */}
+          (入力中のコミットメッセージ・amend の選択)が破棄されてしまう */}
       {gitLoading && gitStatus === null && (
         <p className="source-control-panel__loading">読み込み中...</p>
       )}
@@ -146,6 +144,9 @@ export default function SourceControlPanel({
             onCommit={onCommit}
             lastCommitMessage={lastCommitMessage}
             onAmend={onAmend}
+            isSyncing={isSyncing}
+            isSyncBlocked={isSyncBlocked}
+            onSync={onSync}
             log={log}
             upstream={gitStatus.upstream}
             branches={branches}
@@ -155,11 +156,6 @@ export default function SourceControlPanel({
             isLoadingFolder={isLoadingFolder}
             historyError={historyError}
             onLoadMoreLog={onLoadMoreLog}
-            pendingBranchOperation={pendingBranchOperation}
-            onCheckoutBranch={onCheckoutBranch}
-            onCreateBranch={onCreateBranch}
-            onDeleteBranch={onDeleteBranch}
-            onMergeBranch={onMergeBranch}
             stash={stash}
             discardAll={discardAll}
             mergeState={mergeState}

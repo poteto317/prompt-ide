@@ -135,3 +135,41 @@ describe('useRunExclusiveGitOperation', () => {
     expect(t.calls).toEqual(['setBusy(true)', 'setError(null)', 'refresh', 'setBusy(false)'])
   })
 })
+
+describe('useRunExclusiveGitOperation の isResultStale', () => {
+  it('結果が古ければ、失敗をエラーへ反映せず false を返す', async () => {
+    const { run, setError, refresh } = setup()
+    const succeeded = await run({
+      isBusy: () => false,
+      setBusy: vi.fn(),
+      isResultStale: () => true,
+      execute: () => Promise.reject(new Error('failed'))
+    })
+    expect(succeeded).toBe(false)
+    expect(setError).not.toHaveBeenCalled()
+    expect(refresh).toHaveBeenCalledOnce()
+  })
+
+  it('結果が古ければ、成功でもエラーを消さない', async () => {
+    const { run, setError } = setup()
+    const succeeded = await run({
+      isBusy: () => false,
+      setBusy: vi.fn(),
+      isResultStale: () => true,
+      execute: () => Promise.resolve()
+    })
+    expect(succeeded).toBe(true)
+    expect(setError).not.toHaveBeenCalled()
+  })
+
+  it('結果が古くなければ、これまでどおりエラーへ反映する', async () => {
+    const { run, setError } = setup()
+    await run({
+      isBusy: () => false,
+      setBusy: vi.fn(),
+      isResultStale: () => false,
+      execute: () => Promise.reject(new Error('failed'))
+    })
+    expect(setError).toHaveBeenCalledWith(new Error('failed'))
+  })
+})

@@ -4,11 +4,16 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { GitBranch } from '@shared/types'
 import { useLatestRef } from '../../hooks/useLatestRef'
 import {
+  BRANCH_PICKER_ARIA_KEYSHORTCUTS,
+  CREATE_BRANCH_OPTION,
   buildBranchPickerItems,
+  getBranchPickerShortcut,
   initialBranchPickerSelection,
   moveBranchPickerSelection,
-  resolveBranchPickerSelection
+  resolveBranchPickerSelection,
+  withCreateBranchOption
 } from '../../lib/branchPicker'
+import type { BranchPickerShortcut } from '../../lib/branchPicker'
 import { isScrollbarMouseDown } from '../../lib/isScrollbarMouseDown'
 
 interface Props {
@@ -17,23 +22,68 @@ interface Props {
   /** 押せない状態(ブランチ操作の実行中・他の操作中)。確定を無視し、案内を出す */
   isDisabled: boolean
   onSelect: (branchName: string) => void
+  /** 「＋ 新しいブランチを作成…」の確定。絞り込みの文字(前後の空白を除く)を渡す。一覧を閉じてダイアログを開くのは親の役割 */
+  onCreateRequest: (initialName: string) => void
+  /** マージのボタン、または Alt+M。確認は呼び出し元(フック)が出す */
+  onMerge: (branchName: string) => void
+  /** 削除のボタン、または Shift+Delete。確認は呼び出し元(フック)が出す */
+  onDelete: (branchName: string) => void
   onClose: () => void
 }
 
 const LISTBOX_ID = 'branch-picker-listbox'
 const optionId = (index: number): string => `branch-picker-option-${index}`
 
+interface RowActionButtonProps {
+  label: string
+  ariaLabel: string
+  className: string
+  isDisabled: boolean
+  onPress: () => void
+}
+
+// 行のマージ・削除のボタン。Tab の停止点にせず、フォーカスは入力欄に残す(キーボードでは Alt+M・Shift+Delete)。
+// 押せない状態は disabled にしない。disabled だと mousedown が届かず入力欄のフォーカスを失うため、
+// aria-disabled にして押下を受け、行の確定へ伝えないようにする
+function RowActionButton({
+  label,
+  ariaLabel,
+  className,
+  isDisabled,
+  onPress
+}: RowActionButtonProps): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      className={className}
+      aria-label={ariaLabel}
+      aria-disabled={isDisabled}
+      onClick={(e) => {
+        e.stopPropagation()
+        onPress()
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 // 親が開いている間だけマウントする。閉じたあとのフォーカスの復帰は親(useDialogFocusReturn)が担うため、
-// ここでは戻さない。別のブランチの確定は onSelect だけを呼び、閉じるのと切り替えの順序は親が決める
+// ここでは戻さない。別のブランチの確定・作成・マージ・削除は親の関数だけを呼び、閉じるのと操作の順序は親が決める
 export default function BranchQuickPick({
   branches,
   currentBranch,
   isDisabled,
   onSelect,
+  onCreateRequest,
+  onMerge,
+  onDelete,
   onClose
 }: Props): React.JSX.Element {
   const [query, setQuery] = useState('')
-  // 添字ではなく名前で持つ。開いている間に一覧が変わっても同じブランチを指し続ける
+  // 添字ではなく名前で持つ。開いている間に一覧が変わっても同じブランチを指し続ける。作成の項目は
+  // CREATE_BRANCH_OPTION で表す。開いたときの選択はブランチの候補だけで決める(作成の項目を選んだ状態で開かない)
   const [selected, setSelected] = useState(() =>
     initialBranchPickerSelection(buildBranchPickerItems(branches, currentBranch, ''))
   )
@@ -48,10 +98,11 @@ export default function BranchQuickPick({
   const enterPressedRef = useRef(false)
   const onCloseRef = useLatestRef(onClose)
 
-  const items = useMemo(
+  const branchItems = useMemo(
     () => buildBranchPickerItems(branches, currentBranch, query),
     [branches, currentBranch, query]
   )
+  const items = useMemo(() => withCreateBranchOption(branchItems), [branchItems])
   const activeName = resolveBranchPickerSelection(items, selected)
   const activeIndex = items.findIndex((item) => item.name === activeName)
 
@@ -61,7 +112,7 @@ export default function BranchQuickPick({
 
   // キーボードで選択を動かしたとき、選択中の項目が一覧の外に出たままにならないようにする
   useEffect(() => {
-    listRef.current?.children[activeIndex]?.scrollIntoView({ block: 'nearest' })
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex, items])
 
   // Escape と Tab は document の capture で受ける。入力欄の onKeyDown だけに任せると、フォーカスが
@@ -89,11 +140,23 @@ export default function BranchQuickPick({
 
   const confirm = (name: string | null): void => {
     if (name === null || isDisabled) return
+    if (name === CREATE_BRANCH_OPTION) {
+      onCreateRequest(query.trim())
+      return
+    }
     if (name === currentBranch) {
       onClose()
       return
     }
     onSelect(name)
+  }
+
+  // 現在のブランチと作成の項目は、マージも削除もできない
+  const runRowAction = (action: BranchPickerShortcut, name: string | null): void => {
+    if (name === null || isDisabled) return
+    if (name === CREATE_BRANCH_OPTION || name === currentBranch) return
+    if (action === 'merge') onMerge(name)
+    else onDelete(name)
   }
 
   const handleQueryChange = (value: string): void => {
@@ -107,6 +170,14 @@ export default function BranchQuickPick({
     // 押し始めの印が残っていても、変換確定の keyup で確定しないよう消す
     if (e.nativeEvent.isComposing) {
       enterPressedRef.current = false
+      return
+    }
+    // 判定に当たったキーは、何もしない場合も必ず既定の動作を止める。絞り込みの文字の入力・削除に漏らさない。
+    // リピートは実行しない(確認がネイティブのダイアログのため、押し続けたキーの続きで開かない)
+    const shortcut = getBranchPickerShortcut(e)
+    if (shortcut !== null) {
+      e.preventDefault()
+      if (!e.repeat) runRowAction(shortcut, activeName)
       return
     }
     if (e.key === 'ArrowDown') {
@@ -183,6 +254,7 @@ export default function BranchQuickPick({
           aria-expanded
           aria-controls={LISTBOX_ID}
           aria-autocomplete="list"
+          aria-keyshortcuts={BRANCH_PICKER_ARIA_KEYSHORTCUTS}
           {...(activeIndex >= 0 ? { 'aria-activedescendant': optionId(activeIndex) } : {})}
           placeholder="切り替えるブランチを選択"
           value={query}
@@ -205,28 +277,63 @@ export default function BranchQuickPick({
           className="quick-open__list"
           ref={listRef}
         >
-          {items.map((item, index) => (
-            <div
-              key={item.name}
-              id={optionId(index)}
-              role="option"
-              aria-selected={item.name === activeName}
-              className={`quick-open__item${item.name === activeName ? ' quick-open__item--active' : ''}`}
-              onClick={() => confirm(item.name)}
-              // mouseenter ではなく mousemove を使う。キーボードで選択を動かすと一覧が
-              // スクロールし、静止したカーソルの下に別の項目が入って mouseenter が発火するため
-              onMouseMove={() => setSelected(item.name)}
-            >
-              <span className="quick-open__name branch-picker__name" title={item.name}>
-                {item.name}
-              </span>
-              {item.isCurrent && (
-                <span className="quick-open__directory branch-picker__current">現在</span>
-              )}
-            </div>
-          ))}
+          {items.map((item, index) => {
+            const isCreate = item.name === CREATE_BRANCH_OPTION
+            const isActive = item.name === activeName
+            const hasActions = !isCreate && !item.isCurrent
+            return (
+              // 行のボタンは option の外に置く。option の子はアクセシブルネームに混ざり、読み上げから隠れる。
+              // クリックとマウスの追従は、ボタンの上でも効くよう行で受ける
+              <div
+                key={item.name}
+                role="presentation"
+                className={`branch-picker__row${isCreate ? ' branch-picker__row--create' : ''}${hasActions ? ' branch-picker__row--actions' : ''}`}
+                onClick={() => confirm(item.name)}
+                // mouseenter ではなく mousemove を使う。キーボードで選択を動かすと一覧が
+                // スクロールし、静止したカーソルの下に別の項目が入って mouseenter が発火するため
+                onMouseMove={() => setSelected(item.name)}
+              >
+                <div
+                  id={optionId(index)}
+                  role="option"
+                  aria-selected={isActive}
+                  className={`quick-open__item${isActive ? ' quick-open__item--active' : ''}`}
+                >
+                  {isCreate ? (
+                    <span className="quick-open__name">＋ 新しいブランチを作成…</span>
+                  ) : (
+                    <span className="quick-open__name branch-picker__name" title={item.name}>
+                      {item.name}
+                    </span>
+                  )}
+                  {item.isCurrent && (
+                    <span className="quick-open__directory branch-picker__current">現在</span>
+                  )}
+                </div>
+                {hasActions && (
+                  // ボタンの隙間の click を行の確定へ伝えない(押せない状態のボタンと同じ扱いにする)
+                  <div className="branch-picker__actions" onClick={(e) => e.stopPropagation()}>
+                    <RowActionButton
+                      label="マージ"
+                      ariaLabel={`ブランチ ${item.name} を現在のブランチにマージ`}
+                      className="branch-picker__action branch-picker__action--merge"
+                      isDisabled={isDisabled}
+                      onPress={() => runRowAction('merge', item.name)}
+                    />
+                    <RowActionButton
+                      label="削除"
+                      ariaLabel={`ブランチ ${item.name} を削除`}
+                      className="branch-picker__action branch-picker__action--delete"
+                      isDisabled={isDisabled}
+                      onPress={() => runRowAction('delete', item.name)}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
-        {items.length === 0 && (
+        {branchItems.length === 0 && (
           <p className="quick-open__empty" role="status">
             {emptyMessage}
           </p>

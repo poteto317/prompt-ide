@@ -262,6 +262,36 @@ describe('HistorySection', () => {
     expect(screen.getByText('spawn git ENOENT')).toBeInTheDocument()
   })
 
+  it('閉じても error は見え、本体の一覧は隠れる', async () => {
+    render(
+      <HistorySection
+        log={[
+          {
+            hash: 'a'.repeat(40),
+            parents: [],
+            refs: [],
+            isHead: false,
+            message: 'feat: 新機能',
+            date: '2026-09-03T10:00:00+09:00',
+            authorName: 'Alice'
+          }
+        ]}
+        upstream={null}
+        branches={[]}
+        tags={[]}
+        hasMore={false}
+        isLoading={false}
+        error={new Error('git が見つかりません')}
+        onLoadMore={vi.fn()}
+        gitTag={makeGitTagPanelState()}
+        isBlocked={false}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: '履歴' }))
+    expect(screen.getByRole('alert')).toBeVisible()
+    expect(screen.getByText('feat: 新機能')).not.toBeVisible()
+  })
+
   it('error が null の場合、エラーメッセージを表示しない', () => {
     render(
       <HistorySection
@@ -317,6 +347,22 @@ describe('HistorySection のタグの作成', () => {
     unmount()
     renderSection()
     expect(openButton()).toBeEnabled()
+  })
+
+  it('見出しは「履歴」のままで、件数を出さない', () => {
+    renderSection()
+    expect(screen.getByRole('heading', { name: '履歴' })).toBeInTheDocument()
+  })
+
+  it('「タグを作成」は見出しの操作の枠に置き、閉じても押せて、ダイアログは見える', async () => {
+    renderSection()
+    expect(openButton().parentElement).toHaveClass('collapsible-section__actions')
+    await userEvent.click(screen.getByRole('button', { name: '履歴' }))
+    expect(openButton()).toBeVisible()
+    await userEvent.click(openButton())
+    const input = screen.getByRole('textbox', { name: 'タグ名' })
+    expect(input).toBeVisible()
+    expect(screen.getByRole('region', { name: '履歴' })).not.toContainElement(input)
   })
 
   it('押すと前回のエラーを消してからダイアログを開く', async () => {

@@ -77,4 +77,52 @@ describe('ChangesFileItem', () => {
     renderItem({ file: { path: 'new.txt', index: '?', workingDir: '?' } })
     expect(screen.getByRole('button', { name: 'new.txt の変更を取り消し' })).toBeInTheDocument()
   })
+
+  describe('行の形', () => {
+    const row = (): HTMLElement =>
+      screen.getByRole('button', { name: 'src/lib/a.ts の未ステージ差分を表示' })
+        .parentElement as HTMLElement
+
+    it('差分を開くボタン、操作の枠、状態の文字が li の直下に兄弟として並ぶ', () => {
+      renderItem({ file: { path: 'src/lib/a.ts', index: ' ', workingDir: 'M' } })
+      const [open, actions, status] = Array.from(row().children)
+      expect(row().tagName).toBe('LI')
+      expect(row().children).toHaveLength(3)
+      expect(open.tagName).toBe('BUTTON')
+      expect(actions).toHaveClass('source-control-panel__file-actions')
+      expect(actions).toContainElement(screen.getByLabelText('src/lib/a.ts をステージ'))
+      expect(status).toHaveTextContent('M')
+    })
+
+    it('ファイル名の次にフォルダのパスを出し、全文を title に入れる', () => {
+      renderItem({ file: { path: 'src/lib/a.ts', index: ' ', workingDir: 'M' } })
+      const open = screen.getByRole('button', { name: 'src/lib/a.ts の未ステージ差分を表示' })
+      const name = screen.getByText('a.ts')
+      const dir = screen.getByText('src/lib')
+      expect(open).toContainElement(name)
+      expect(open).toContainElement(dir)
+      expect(name.compareDocumentPosition(dir) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(open).toHaveAttribute('title', 'src/lib/a.ts')
+    })
+
+    it('直下のファイルにはフォルダの要素を出さない', () => {
+      const { container } = renderItem({
+        file: { path: 'README.md', index: ' ', workingDir: 'M' }
+      })
+      expect(container.querySelector('.source-control-panel__file-dir')).toBeNull()
+    })
+
+    it('コンフリクトの行は操作の枠が空で、状態の文字は最後に並ぶ', () => {
+      renderItem({ file: { path: 'src/lib/a.ts', index: 'U', workingDir: 'U' } })
+      expect(row().querySelector('.source-control-panel__file-actions')).toBeEmptyDOMElement()
+      expect(row().lastElementChild).toHaveTextContent('U')
+    })
+
+    it('行の button はエージェントの行のクラスを使わない', () => {
+      renderItem({ file: { path: 'src/lib/a.ts', index: ' ', workingDir: 'M' } })
+      const open = screen.getByRole('button', { name: 'src/lib/a.ts の未ステージ差分を表示' })
+      expect(open).not.toHaveClass('source-control-panel__file-path')
+      expect(row().lastElementChild).not.toHaveClass('source-control-panel__file-status--changed')
+    })
+  })
 })

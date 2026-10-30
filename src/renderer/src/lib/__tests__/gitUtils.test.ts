@@ -7,7 +7,8 @@ import {
   isIntentToAddFile,
   isUnstagedFile,
   isGitOperationDisabled,
-  isConflictedFile
+  isConflictedFile,
+  getGitStatusTone
 } from '../gitUtils'
 
 describe('statusChar', () => {
@@ -181,5 +182,42 @@ describe('isConflictedFile', () => {
     ['A', ' ']
   ])('index=%s workingDir=%s はコンフリクトではない', (index, workingDir) => {
     expect(isConflictedFile({ path: 'a.txt', index, workingDir })).toBe(false)
+  })
+})
+
+describe('getGitStatusTone', () => {
+  const file = (index: string, workingDir: string): GitStatusResult['files'][number] => ({
+    path: 'a.ts',
+    index,
+    workingDir
+  })
+
+  it.each(['M', 'R', 'C', 'T'])('%s は modified', (letter) => {
+    expect(getGitStatusTone(file(' ', letter), letter)).toBe('modified')
+  })
+
+  it.each(['A', 'U'])('%s は added(未追跡の U を含む)', (letter) => {
+    expect(getGitStatusTone(file('?', '?'), letter)).toBe('added')
+  })
+
+  it('D は deleted', () => {
+    expect(getGitStatusTone(file(' ', 'D'), 'D')).toBe('deleted')
+  })
+
+  it.each(['X', '·', '!'])('%s は other', (letter) => {
+    expect(getGitStatusTone(file(' ', ' '), letter)).toBe('other')
+  })
+
+  // U・A・D の文字の色より先に判定する(UU の U が追加の色、AA の A が追加の色にならない)
+  it.each([
+    ['U', 'U', 'U'],
+    ['A', 'A', 'A'],
+    ['D', 'D', 'D'],
+    ['A', 'U', 'U'],
+    ['U', 'D', 'D'],
+    ['U', 'A', 'A'],
+    ['D', 'U', 'U']
+  ])('コンフリクト(%s%s)は文字が %s でも conflicted', (index, workingDir, letter) => {
+    expect(getGitStatusTone(file(index, workingDir), letter)).toBe('conflicted')
   })
 })

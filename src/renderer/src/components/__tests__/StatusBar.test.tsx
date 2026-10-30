@@ -23,7 +23,16 @@ const makeBranch = (overrides: Partial<StatusBarBranchState> = {}): StatusBarBra
   pendingBranchOperation: null,
   isBlocked: false,
   error: null,
+  remoteError: null,
+  ahead: 0,
+  behind: 0,
+  isSyncing: false,
+  isSyncBlocked: false,
   onCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  onSync: vi.fn().mockResolvedValue(undefined),
+  onCreateBranch: vi.fn().mockResolvedValue(true),
+  onDeleteBranch: vi.fn().mockResolvedValue(true),
+  onMergeBranch: vi.fn().mockResolvedValue(undefined),
   ...overrides
 })
 
@@ -52,6 +61,27 @@ describe('StatusBar', () => {
       const agentIndex = children.findIndex((el) => el.matches('.status-bar__agent'))
       expect(errorIndex).toBe(branchIndex + 1)
       expect(agentIndex).toBe(errorIndex + 1)
+    })
+
+    it('同期のボタンと失敗の表示は、ブランチの右、エージェントのまとめの左に順に並ぶ', () => {
+      const { container } = render(
+        <StatusBar
+          agent={makeAgent()}
+          branch={makeBranch({
+            ahead: 1,
+            error: new Error('切り替えの失敗'),
+            remoteError: new Error('同期の失敗')
+          })}
+        />
+      )
+      const children = Array.from(container.querySelector('.status-bar')!.children)
+      const branchIndex = children.findIndex((el) => el.matches('.status-bar__branch'))
+      expect(children.slice(branchIndex + 1, branchIndex + 5)).toEqual([
+        screen.getByRole('button', { name: /^変更を同期/ }),
+        screen.getByText('切り替えの失敗'),
+        screen.getByText('同期の失敗'),
+        container.querySelector('.status-bar__agent')
+      ])
     })
   })
 
@@ -165,6 +195,25 @@ describe('ステータスバーのスタイル(main.css)', () => {
     expect(button.cursor).toBe('pointer')
   })
 
+  it('同期のボタンは既定の枠や背景を消し、押せない間は既定のカーソルにする', () => {
+    const { rerender } = render(<StatusBar agent={null} branch={makeBranch({ ahead: 1 })} />)
+    const button = getComputedStyle(screen.getByRole('button', { name: /^変更を同期/ }))
+    expect(button.borderStyle).toBe('none')
+    expect(button.backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    expect(button.cursor).toBe('pointer')
+    rerender(<StatusBar agent={null} branch={makeBranch({ ahead: 1, isSyncBlocked: true })} />)
+    expect(getComputedStyle(screen.getByRole('button', { name: /^変更を同期/ })).cursor).toBe(
+      'default'
+    )
+  })
+
+  it('同期の失敗も、ブランチの失敗と同じ形で切り詰める', () => {
+    render(<StatusBar agent={null} branch={makeBranch({ remoteError: new Error('失敗') })} />)
+    const alert = getComputedStyle(screen.getByRole('alert'))
+    expect(alert.textOverflow).toBe('ellipsis')
+    expect(alert.backgroundColor).toBe('rgb(161, 38, 13)')
+  })
+
   it('失敗のメッセージは幅が足りなければ省略記号で切り詰める', () => {
     render(<StatusBar agent={null} branch={makeBranch({ error: new Error('失敗') })} />)
     const alert = getComputedStyle(screen.getByRole('alert'))
@@ -191,7 +240,7 @@ describe('ステータスバーのスタイル(main.css)', () => {
   })
 
   // jsdom は疑似クラスを評価しないため、ルールの宣言そのものを確かめる
-  it('ブランチのボタンの hover・focus-visible・disabled の宣言', () => {
+  it('ブランチと同期のボタンの hover・focus-visible・disabled の宣言', () => {
     const declarationOf = (selector: string, property: string): string => {
       const rule = Array.from((styleElement.sheet as CSSStyleSheet).cssRules).find(
         (candidate): candidate is CSSStyleRule =>
@@ -205,5 +254,10 @@ describe('ステータスバーのスタイル(main.css)', () => {
     )
     expect(declarationOf('.status-bar__branch:focus-visible', 'outline')).toBe('1px solid #ffffff')
     expect(declarationOf('.status-bar__branch:disabled', 'cursor')).toBe('default')
+    expect(declarationOf('.status-bar__sync:hover:not(:disabled)', 'background')).toBe(
+      'rgba(0, 0, 0, 0.15)'
+    )
+    expect(declarationOf('.status-bar__sync:focus-visible', 'outline')).toBe('1px solid #ffffff')
+    expect(declarationOf('.status-bar__sync:disabled', 'cursor')).toBe('default')
   })
 })

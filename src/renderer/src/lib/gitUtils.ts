@@ -20,6 +20,17 @@ export function isConflictedFile(f: GitFileStatus): boolean {
   return false
 }
 
+export type GitStatusTone = 'modified' | 'added' | 'deleted' | 'conflicted' | 'other'
+
+// ソース管理の行の状態の文字の色の種類。コンフリクトは U・A・D の文字でも追加や削除の色にせず、先に判定する
+export function getGitStatusTone(f: GitFileStatus, letter: string): GitStatusTone {
+  if (isConflictedFile(f)) return 'conflicted'
+  if (letter === 'M' || letter === 'R' || letter === 'C' || letter === 'T') return 'modified'
+  if (letter === 'A' || letter === 'U') return 'added'
+  if (letter === 'D') return 'deleted'
+  return 'other'
+}
+
 // GitRepoView.tsx(コミットボタンの有効/無効判定)と StagedSection.tsx
 // (一覧フィルタ)の両方が同じ「ステージ済みかどうか」の判定を必要とするため
 // 共有する。片方だけ判定基準を変えると、コミットボタンの状態と
