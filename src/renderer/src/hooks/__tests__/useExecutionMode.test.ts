@@ -12,6 +12,20 @@ const mockGet = vi.mocked(settingsApi.getPromptExecutionMode)
 const mockSet = vi.mocked(settingsApi.setPromptExecutionMode)
 let consoleSpy: MockInstance<typeof console.error> | null = null
 
+function deferred(): {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (err: Error) => void
+} {
+  let resolve = (): void => undefined
+  let reject: (err: Error) => void = () => undefined
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
   consoleSpy = null
@@ -69,6 +83,107 @@ describe('useExecutionMode', () => {
     // 文言は固定のファイル名(settings.json)だけを案内し、例外に入っていたパスは出さない
     expect(result.current.saveError).not.toContain('/Users/someone')
     expect(consoleSpy).toHaveBeenCalledWith(expect.any(String), err)
+  })
+
+  it('読み込みの失敗 → 記録の文字列は完全一致で、見出しと例外の 2 引数', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('broken')
+    mockGet.mockRejectedValueOnce(err)
+    const { result } = renderHook(() => useExecutionMode())
+    await waitFor(() => expect(result.current.mode).toBe('agent-cli'))
+    expect(consoleSpy).toHaveBeenCalledTimes(1)
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[useExecutionMode] getPromptExecutionMode failed:',
+      err
+    )
+  })
+
+  it('保存の失敗 → 記録の文字列は完全一致で、見出しと例外の 2 引数', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('broken')
+    mockGet.mockResolvedValueOnce('agent-cli')
+    mockSet.mockRejectedValueOnce(err)
+    const { result } = renderHook(() => useExecutionMode())
+    await waitFor(() => expect(result.current.mode).toBe('agent-cli'))
+    await act(async () => {
+      await result.current.changeMode('legacy')
+    })
+    expect(consoleSpy).toHaveBeenCalledWith(
+      '[useExecutionMode] setPromptExecutionMode failed:',
+      err
+    )
+  })
+
+  it('アンマウントの後に読み込みが失敗する → 記録は 1 回', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let rejectLoad: (err: Error) => void = () => undefined
+    mockGet.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectLoad = reject
+      })
+    )
+    const { unmount } = renderHook(() => useExecutionMode())
+    unmount()
+    await act(async () => {
+      rejectLoad(new Error('broken'))
+      await Promise.resolve()
+    })
+    expect(consoleSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('読み込みの完了の前に変更する → 後から届いた読み込みの結果が上書きする(今の振る舞い)', async () => {
+    let resolveLoad: (mode: PromptExecutionMode) => void = () => undefined
+    mockGet.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    mockSet.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useExecutionMode())
+    await act(async () => {
+      await result.current.changeMode('legacy')
+    })
+    expect(result.current.mode).toBe('legacy')
+    await act(async () => {
+      resolveLoad('agent-cli')
+      await Promise.resolve()
+    })
+    expect(result.current.mode).toBe('agent-cli')
+  })
+
+  it('3 回続けて変更し、最後の保存の成功の後で最初の保存が失敗する → 変更前の値へ戻す(今の振る舞い)', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockGet.mockResolvedValueOnce('agent-cli')
+    const first = deferred()
+    const second = deferred()
+    const third = deferred()
+    mockSet
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise)
+    const { result } = renderHook(() => useExecutionMode())
+    await waitFor(() => expect(result.current.mode).toBe('agent-cli'))
+    let firstResult: Promise<boolean> = Promise.resolve(true)
+    let secondResult: Promise<boolean> = Promise.resolve(true)
+    let thirdResult: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      firstResult = result.current.changeMode('legacy')
+      secondResult = result.current.changeMode('agent-cli')
+      thirdResult = result.current.changeMode('legacy')
+    })
+    second.resolve()
+    third.resolve()
+    await act(async () => {
+      await Promise.all([secondResult, thirdResult])
+    })
+    expect(result.current.mode).toBe('legacy')
+    first.reject(new Error('broken'))
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(false)
+    })
+    // 最後に保存できたのは legacy だが、画面は最初の変更の前の値に戻る
+    expect(result.current.mode).toBe('agent-cli')
+    expect(result.current.saveError).not.toBeNull()
   })
 
   it('保存の失敗の接頭辞', () => {

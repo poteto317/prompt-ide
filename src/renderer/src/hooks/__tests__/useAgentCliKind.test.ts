@@ -15,6 +15,20 @@ let consoleErrorSpy: MockInstance<typeof console.error> | null = null
 const SAVE_ERROR =
   '使うエージェント CLI を保存できませんでした: 設定ファイルを読み書きできませんでした。ほかのアプリで settings.json を開いていれば閉じてから、もう一度試してください。続くときはアプリのデータフォルダの settings.json が壊れていないか確かめてください'
 
+function deferred(): {
+  promise: Promise<void>
+  resolve: () => void
+  reject: (err: Error) => void
+} {
+  let resolve = (): void => undefined
+  let reject: (err: Error) => void = () => undefined
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   vi.resetAllMocks()
 })
@@ -128,6 +142,113 @@ describe('useAgentCliKind', () => {
       await result.current.changeKind('copilot')
     })
     expect(result.current).toMatchObject({ kind: 'copilot', saveError: null })
+  })
+
+  it('読み込みの失敗 → 記録の文字列は完全一致で、見出しと例外の 2 引数', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('broken')
+    mockGet.mockRejectedValueOnce(err)
+    const { result } = renderHook(() => useAgentCliKind())
+    await waitFor(() => expect(result.current.kind).toBe('claude'))
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[useAgentCliKind] getAgentCliKind failed:', err)
+  })
+
+  it('保存の失敗 → 記録の文字列は完全一致で、見出しと例外の 2 引数', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const err = new Error('broken')
+    mockGet.mockResolvedValueOnce({ kind: 'claude', fallback: null })
+    mockSet.mockRejectedValueOnce(err)
+    const { result } = renderHook(() => useAgentCliKind())
+    await waitFor(() => expect(result.current.kind).toBe('claude'))
+    await act(async () => {
+      await result.current.changeKind('copilot')
+    })
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[useAgentCliKind] setAgentCliKind failed:', err)
+  })
+
+  it('アンマウントの後に読み込みが失敗する → 記録は 1 回', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let rejectLoad: (err: Error) => void = () => undefined
+    mockGet.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        rejectLoad = reject
+      })
+    )
+    const { unmount } = renderHook(() => useAgentCliKind())
+    unmount()
+    await act(async () => {
+      rejectLoad(new Error('broken'))
+      await Promise.resolve()
+    })
+    expect(consoleErrorSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('読み込みの完了の前に変更する → 後から届いた読み込みの結果が上書きする(今の振る舞い)', async () => {
+    let resolveLoad: (loaded: AgentCliKindSetting) => void = () => undefined
+    mockGet.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLoad = resolve
+      })
+    )
+    mockSet.mockResolvedValueOnce(undefined)
+    const { result } = renderHook(() => useAgentCliKind())
+    await act(async () => {
+      await result.current.changeKind('copilot')
+    })
+    expect(result.current.kind).toBe('copilot')
+    await act(async () => {
+      resolveLoad({ kind: 'claude', fallback: null })
+      await Promise.resolve()
+    })
+    expect(result.current.kind).toBe('claude')
+  })
+
+  it('3 回続けて変更し、最後の保存の成功の後で最初の保存が失敗する → 変更前の値へ戻す(今の振る舞い)', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockGet.mockResolvedValueOnce({ kind: 'copilot', fallback: null })
+    const first = deferred()
+    const second = deferred()
+    const third = deferred()
+    mockSet
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+      .mockReturnValueOnce(third.promise)
+    const { result } = renderHook(() => useAgentCliKind())
+    await waitFor(() => expect(result.current.kind).toBe('copilot'))
+    let firstResult: Promise<boolean> = Promise.resolve(true)
+    let secondResult: Promise<boolean> = Promise.resolve(true)
+    let thirdResult: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      firstResult = result.current.changeKind('claude')
+      secondResult = result.current.changeKind('copilot')
+      thirdResult = result.current.changeKind('claude')
+    })
+    second.resolve()
+    third.resolve()
+    await act(async () => {
+      await Promise.all([secondResult, thirdResult])
+    })
+    expect(result.current.kind).toBe('claude')
+    first.reject(new Error('broken'))
+    await act(async () => {
+      await expect(firstResult).resolves.toBe(false)
+    })
+    // 最後に保存できたのは claude だが、画面は最初の変更の前の値に戻る
+    expect(result.current.kind).toBe('copilot')
+    expect(result.current.saveError).not.toBeNull()
+  })
+
+  it('読み込みが失敗して read-failed のとき、保存に失敗しても fallback が残る', async () => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockGet.mockRejectedValueOnce(new Error('ipc'))
+    mockSet.mockRejectedValueOnce(new Error('disk'))
+    const { result } = renderHook(() => useAgentCliKind())
+    await waitFor(() => expect(result.current.fallback).toBe('read-failed'))
+    await act(async () => {
+      await expect(result.current.changeKind('copilot')).resolves.toBe(false)
+    })
+    expect(result.current).toMatchObject({ kind: 'claude', fallback: 'read-failed' })
   })
 
   // StrictMode では effect が「実行 → 後始末 → 実行」と 2 回走る。最初の実行の読み込みは後始末で取り消され、遅れて届いても反映しない
