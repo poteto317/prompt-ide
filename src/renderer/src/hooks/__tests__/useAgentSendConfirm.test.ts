@@ -74,7 +74,7 @@ describe('useAgentSendConfirm', () => {
     expect(result.current.pending).toBeNull()
     act(() => result.current.request('hello', opts('p1')))
     expect(result.current.pending).toEqual({
-      text: 'hello',
+      composeText: expect.any(Function),
       target: {
         slotId: 'slot-1',
         controller: tab1.controller,
@@ -100,7 +100,7 @@ describe('useAgentSendConfirm', () => {
       // 確認を開くとフォーカスはダイアログへ移るが、控えた要素は変えない
       opener.blur()
       await act(async () => {
-        result.current.confirm()
+        result.current.confirm('')
       })
       expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
         slotId: 'slot-1',
@@ -120,7 +120,7 @@ describe('useAgentSendConfirm', () => {
       result.current.request('second', opts('p2'))
     })
     act(() => result.current.request('third', opts(null)))
-    expect(result.current.pending?.text).toBe('first')
+    expect(result.current.pending?.composeText('')).toBe('first')
     expect(result.current.pending?.promptId).toBe('p1')
   })
 
@@ -132,7 +132,7 @@ describe('useAgentSendConfirm', () => {
     const { result, rerender, onSendSettled } = renderConfirm({ send })
     act(() => result.current.request('hello', opts('p1')))
     rerender({ selected: tab2, send, onSendSettled })
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     // 閉じるのは押した時点
     expect(result.current.pending).toBeNull()
     expect(send).toHaveBeenCalledExactlyOnceWith('hello', {
@@ -169,7 +169,7 @@ describe('useAgentSendConfirm', () => {
 
   it('閉じているときの confirm は何もしない', () => {
     const { result, send, onSendSettled } = renderConfirm()
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     expect(send).not.toHaveBeenCalled()
     expect(onSendSettled).not.toHaveBeenCalled()
   })
@@ -179,7 +179,7 @@ describe('useAgentSendConfirm', () => {
     act(() => result.current.request('first', opts('p1')))
     act(() => result.current.cancel())
     act(() => result.current.request('second', opts('p2')))
-    expect(result.current.pending?.text).toBe('second')
+    expect(result.current.pending?.composeText('')).toBe('second')
   })
 
   it.each([
@@ -202,7 +202,7 @@ describe('useAgentSendConfirm', () => {
       const { result, onSendSettled } = renderConfirm({ send })
       act(() => result.current.request('hello', opts(null)))
       await act(async () => {
-        result.current.confirm()
+        result.current.confirm('')
         await Promise.resolve()
       })
       expect(result.current.pending).toBeNull()
@@ -255,7 +255,7 @@ describe('useAgentSendConfirm: 未保存の一覧と送れたときの知らせ(
       calls.push('settled')
     })
     act(() => result.current.request('hello', { ...opts('p1'), onSent }))
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
     expect(calls).toEqual(['onSent', 'settled'])
   })
@@ -273,7 +273,7 @@ describe('useAgentSendConfirm: 未保存の一覧と送れたときの知らせ(
     const onSent = vi.fn()
     const { result, onSendSettled } = renderConfirm({ send })
     act(() => result.current.request('hello', { ...opts('p1'), onSent }))
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
     expect(onSent).not.toHaveBeenCalled()
   })
@@ -293,7 +293,7 @@ describe('useAgentSendConfirm: 未保存の一覧と送れたときの知らせ(
     })
     const { result, onSendSettled } = renderConfirm()
     act(() => result.current.request('hello', { ...opts('p1'), onSent }))
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     await waitFor(() =>
       expect(onSendSettled).toHaveBeenCalledExactlyOnceWith({
         slotId: 'slot-1',
@@ -318,10 +318,10 @@ describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
     act(() => result.current.request('hello', { ...opts('p1'), onSent }))
     expect(result.current.pending?.target.describeSession).toBe(tab1.describeSession)
     rerender({ selected: tab2, send, onSendSettled })
-    act(() => result.current.confirm())
+    act(() => result.current.confirm(''))
     await waitFor(() => expect(onSendSettled).toHaveBeenCalledOnce())
     expect(send.mock.calls[0][1].describeSession).toBe(tab1.describeSession)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1, 'claude')
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(SENT_TO_1, 'claude', 'hello')
   })
 
   it('確認を開いた時点の送り先の cliKind を控え、開いた後に選択中のタブが変わっても控えた値で送る', async () => {
@@ -331,8 +331,27 @@ describe('useAgentSendConfirm: 送り先の控え(describeSession)', () => {
     expect(result.current.pending?.target.cliKind).toBe('copilot')
     rerender({ selected: tab2, send, onSendSettled })
     await act(async () => {
-      result.current.confirm()
+      result.current.confirm('')
     })
     expect(send.mock.calls[0][1].cliKind).toBe('copilot')
+  })
+})
+
+describe('useAgentSendConfirm: 引数', () => {
+  it('confirm(argument) は request の本文へ引数を付けて送り、送った全文を onSent へ渡す', async () => {
+    const onSent = vi.fn()
+    const { result, send } = renderConfirm()
+    act(() => result.current.request('/review', { promptId: 'p1', unsavedPaths: [], onSent }))
+    await act(async () => result.current.confirm('123'))
+    expect(send).toHaveBeenCalledWith('/review 123', expect.anything())
+    expect(onSent).toHaveBeenCalledWith(null, 'claude', '/review 123')
+  })
+
+  it('options の composeText があればそれで全文を作る', async () => {
+    const composeText = vi.fn((argument: string) => `body ${argument}\n\nrefs`)
+    const { result, send } = renderConfirm()
+    act(() => result.current.request('body', { promptId: 'p1', unsavedPaths: [], composeText }))
+    await act(async () => result.current.confirm('1'))
+    expect(send).toHaveBeenCalledWith('body 1\n\nrefs', expect.anything())
   })
 })

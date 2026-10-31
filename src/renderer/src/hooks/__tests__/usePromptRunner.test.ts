@@ -196,7 +196,8 @@ describe('usePromptRunner: 実行方式', () => {
     expect(sendToAgent).toHaveBeenCalledExactlyOnceWith('送る本文', {
       promptId: 'p1',
       unsavedPaths: [],
-      onSent: expect.any(Function)
+      onSent: expect.any(Function),
+      composeText: expect.any(Function)
     })
     expect(executePrompt).not.toHaveBeenCalled()
     expect(addHistoryEntry).not.toHaveBeenCalled()
@@ -268,11 +269,16 @@ describe('usePromptRunner: 実行方式', () => {
     await result.current.runPrompt('送る本文', 'claude', prompt)
     expect(sendToAgent).toHaveBeenCalledExactlyOnceWith(
       '送る本文\n\n参照:\n- @src/app.ts\n- @src/app.ts#L10-20\n- @docs/notes.md',
-      { promptId: 'p1', unsavedPaths: ['src/app.ts'], onSent: expect.any(Function) }
+      {
+        promptId: 'p1',
+        unsavedPaths: ['src/app.ts'],
+        onSent: expect.any(Function),
+        composeText: expect.any(Function)
+      }
     )
     // 足したファイルを外すのは送れたときだけ(押した時点の写しを渡す。L-407)
     expect(agentReferences.markSent).not.toHaveBeenCalled()
-    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO, 'claude')
+    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO, 'claude', '送る本文')
     expect(agentReferences.markSent).toHaveBeenCalledExactlyOnceWith(prepared)
   })
 
@@ -346,7 +352,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
   it('送れたら(onSent)、送った全文(参照を含む)と控えた送り先を status: sent で記録する', async () => {
     const { onSent, addHistoryEntry } = await runAndTakeOnSent()
     expect(addHistoryEntry).not.toHaveBeenCalled()
-    onSent(SENT_TO, 'claude')
+    onSent(SENT_TO, 'claude', '送る本文\n\n参照:\n- @src/app.ts')
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith({
       promptId: 'p1',
       promptTitle: 'プロンプトタイトル',
@@ -361,10 +367,18 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     })
   })
 
+  it('onSent の第 3 引数(引数を付けた全文)を履歴に記録する(一覧の実行)', async () => {
+    const { onSent, addHistoryEntry } = await runAndTakeOnSent()
+    onSent(SENT_TO, 'claude', '/review 123')
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ promptContent: '/review 123' })
+    )
+  })
+
   it('claude の送り先で送り先を控えられなかった(null)ときは、参照の後始末だけ行い、記録を省いてログに残す', async () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
-    onSent(null, 'claude')
+    onSent(null, 'claude', '送る本文')
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
     expect(addHistoryEntry).not.toHaveBeenCalled()
     expect(consoleErrorSpy).toHaveBeenCalled()
@@ -372,7 +386,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
 
   it('copilot の送り先で送れたら、cliKind: copilot のエントリを記録する(ツールの欄は claude のまま。段階 3a)', async () => {
     const { onSent, addHistoryEntry } = await runAndTakeOnSent()
-    onSent(COPILOT_SENT_TO, 'copilot')
+    onSent(COPILOT_SENT_TO, 'copilot', '送る本文')
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ status: 'sent', toolId: 'claude', agent: COPILOT_SENT_TO })
     )
@@ -381,7 +395,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
   it('copilot の送り先で送り先を控えられなかった(null)ときは、claude と同じく記録を省いてログに残す', async () => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
-    onSent(null, 'copilot')
+    onSent(null, 'copilot', '送る本文')
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
     expect(addHistoryEntry).not.toHaveBeenCalled()
     expect(consoleErrorSpy).toHaveBeenCalled()
@@ -391,7 +405,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     capabilityOverrides.sessionResumeUnsupportedKinds.add('copilot')
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const { onSent, addHistoryEntry, agentReferences } = await runAndTakeOnSent()
-    onSent(null, 'copilot')
+    onSent(null, 'copilot', '送る本文')
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
     expect(addHistoryEntry).not.toHaveBeenCalled()
     expect(consoleErrorSpy).not.toHaveBeenCalled()
@@ -406,7 +420,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
         })
       })
     })
-    expect(() => first.onSent(SENT_TO, 'claude')).not.toThrow()
+    expect(() => first.onSent(SENT_TO, 'claude', '送る本文')).not.toThrow()
     expect(first.addHistoryEntry).toHaveBeenCalledOnce()
 
     const addHistoryEntry = vi.fn<AddHistoryEntry>(() => {
@@ -414,7 +428,7 @@ describe('usePromptRunner: 送れたときの履歴への記録', () => {
     })
     const agentReferences = makeAgentReferencesState()
     const second = await runAndTakeOnSent({ addHistoryEntry, agentReferences })
-    expect(() => second.onSent(SENT_TO, 'claude')).not.toThrow()
+    expect(() => second.onSent(SENT_TO, 'claude', '送る本文')).not.toThrow()
     expect(agentReferences.markSent).toHaveBeenCalledOnce()
   })
 })
@@ -461,7 +475,7 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
       cliKind: 'claude',
       tabLabel: 'claude 1'
     }
-    sendToAgent.mock.calls[0][1].onSent?.(resent, 'claude')
+    sendToAgent.mock.calls[0][1].onSent?.(resent, 'claude', '送った全文\n\n参照:\n- @src/app.ts')
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         promptId: 'p2',
@@ -472,6 +486,29 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
       })
     )
     expect(agentReferences.markSent).not.toHaveBeenCalled()
+  })
+
+  it('再実行で引数を付けて送れたら、onSent の第 3 引数(送った全文)を履歴に記録する', async () => {
+    const addHistoryEntry = vi.fn()
+    const sendToAgent = vi.fn<(text: string, options: AgentSendOptions) => Promise<unknown>>(
+      async () => undefined
+    )
+    const { result } = renderHook(() =>
+      usePromptRunner({
+        openFile,
+        folderPath: '/repo',
+        executePrompt: vi.fn(),
+        addHistoryEntry,
+        executionMode: 'agent-cli',
+        sendToAgent,
+        agentReferences: makeAgentReferencesState()
+      })
+    )
+    await result.current.rerunHistoryEntry(agentEntry)
+    sendToAgent.mock.calls[0][1].onSent?.(SENT_TO, 'claude', '/review 123')
+    expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ promptContent: '/review 123' })
+    )
   })
 
   it('copilot のタブへ再実行して送れたときは、copilot の送り先で新しいエントリを記録する(エントリの種類は見ない)', async () => {
@@ -491,7 +528,11 @@ describe('usePromptRunner: エージェントのエントリの再実行', () =>
       })
     )
     await result.current.rerunHistoryEntry(agentEntry)
-    sendToAgent.mock.calls[0][1].onSent?.(COPILOT_SENT_TO, 'copilot')
+    sendToAgent.mock.calls[0][1].onSent?.(
+      COPILOT_SENT_TO,
+      'copilot',
+      '送った全文\n\n参照:\n- @src/app.ts'
+    )
     expect(addHistoryEntry).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         promptId: 'p2',

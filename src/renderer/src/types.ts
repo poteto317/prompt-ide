@@ -349,8 +349,8 @@ export interface AgentReferencesPanelState {
 
 // 送信前の確認のダイアログで開いている依頼(useAgentWorkspace が useAgentSendConfirm の pending から組み立てる)
 export interface AgentSendConfirmPending {
-  /** 送る全文(正規化の前。ダイアログが正規化して表示する) */
-  text: string
+  /** 引数から送る全文(正規化の前)を作る。ダイアログが正規化して表示する */
+  composeText: (argument: string) => string
   /** 送り先のタブ */
   slotId: string
   /** 送り先のタブの名前(開いた時点で固定) */
@@ -370,7 +370,7 @@ export interface AgentSendConfirmDialogState {
   /** 送り先のタブが今は送れない理由(終了した・閉じる途中・送信中)。送れるなら null */
   targetBlockedReason: string | null
   /** 控えた送り先へ送って閉じる。フォーカスは送信が終わってから移す(送れたら送り先のタブのターミナル、失敗したら確認を開いた時点の要素〈履歴の詳細の `再実行` など〉、無ければ同じプロンプトの `実行`。送信中に利用者が別の場所へ移していれば移さない) */
-  onConfirm: () => void
+  onConfirm: (argument: string) => void
   /** 送らずに閉じる */
   onCancel: () => void
 }

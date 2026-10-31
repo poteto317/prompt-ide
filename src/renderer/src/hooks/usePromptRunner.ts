@@ -87,15 +87,20 @@ export function usePromptRunner({
         // 足したファイルは、送れたときだけ、この写しの分を外す(確認のキャンセル・送信の失敗では外さない。L-407)
         const prepared = prepareAgentReferences()
         const context: ExecutionContext = { promptId: prompt.id, promptTitle: prompt.title }
-        const request = buildAgentPromptRequest(content, prompt.id, prepared, (sentTo, cliKind) => {
-          // 参照の後始末と履歴の記録は段ごとに別の try で包み、片方が投げてももう片方を止めない(L-053)
-          try {
-            markAgentReferencesSent(prepared)
-          } catch (err) {
-            console.error('[usePromptRunner] markSent failed:', err)
+        const request = buildAgentPromptRequest(
+          content,
+          prompt.id,
+          prepared,
+          (sentTo, cliKind, sentText) => {
+            // 参照の後始末と履歴の記録は段ごとに別の try で包み、片方が投げてももう片方を止めない(L-053)
+            try {
+              markAgentReferencesSent(prepared)
+            } catch (err) {
+              console.error('[usePromptRunner] markSent failed:', err)
+            }
+            recordAgentSent(context, sentText, sentTo, cliKind)
           }
-          recordAgentSent(context, request.text, sentTo, cliKind)
-        })
+        )
         await sendToAgent(request.text, request.options)
         return
       }
@@ -117,7 +122,7 @@ export function usePromptRunner({
   )
 
   // 履歴からの再実行。従来のエントリは「実行時のファイル内容スナップショット」をそのまま再現する（現在開いているファイルではなく
-  // entry.fileContent を使う）。エージェントのエントリは、今の選択中のタブへ同じ全文を送り(参照は全文に含まれているので足し直さない)、
+  // entry.fileContent を使う）。エージェントのエントリは、今の選択中のタブへ同じ全文を送り(引数が付くことがある。参照は全文に含まれているので足し直さない)、
   // 送れたら新しいエントリとして記録する。方式とエントリの種類が合わないもの・記録したフォルダを開いていないもの(全文の @相対パス が
   // 別のファイルを指すため)は何もしない(ボタンは押せないが、処理の側でも同じ条件で守る。L-058)
   const rerunHistoryEntry = useCallback(
@@ -128,10 +133,9 @@ export function usePromptRunner({
         if (folderPath === null || !isSamePath(folderPath, entry.agent.folderPath)) return
         await sendToAgent(entry.promptContent, {
           promptId: entry.promptId,
-          // 記録した全文をそのまま送る。全文から参照を解析し直すのは脆いので、未保存の注意は出さない(既知の制約。設計書の「既知の制約」)
+          // 記録した全文をそのまま送る(送信前の確認で引数が付くことがある)。全文から参照を解析し直すのは脆いので、未保存の注意は出さない(既知の制約。設計書の「既知の制約」)
           unsavedPaths: [],
-          onSent: (sentTo, cliKind) =>
-            recordAgentSent(context, entry.promptContent, sentTo, cliKind)
+          onSent: (sentTo, cliKind, sentText) => recordAgentSent(context, sentText, sentTo, cliKind)
         })
         return
       }

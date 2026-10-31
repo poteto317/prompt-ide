@@ -10,12 +10,13 @@ import {
   RUN_DISABLED_NO_SESSION,
   RUN_DISABLED_SENDING
 } from '../../../lib/agentSendMessages'
+import { appendAgentPromptArgument } from '../../../lib/agentPromptArgument'
 import AgentSendConfirmDialog from '../AgentSendConfirmDialog'
 
 const makePending = (
   overrides: Partial<AgentSendConfirmPending> = {}
 ): AgentSendConfirmPending => ({
-  text: 'このフォルダのファイルを一覧して',
+  composeText: () => 'このフォルダのファイルを一覧して',
   slotId: 'slot-2',
   label: 'claude 2',
   cliKind: 'claude',
@@ -78,7 +79,7 @@ describe('AgentSendConfirmDialog', () => {
       expect(screen.queryByRole('dialog')).toBeNull()
     })
 
-    // 開いたときのフォーカスは送信なので、送り先はダイアログの説明として読ませる(本文は長くなりうるので含めない)
+    // 開いたときのフォーカスは引数欄(送れない理由があるとキャンセル)なので、送り先はダイアログの説明として読ませる(本文は長くなりうるので含めない)
     it('ダイアログの説明に送り先を結び付ける', () => {
       render(<AgentSendConfirmDialog state={makeState()} />)
       expect(screen.getByRole('dialog')).toHaveAccessibleDescription('送り先: claude 2')
@@ -110,7 +111,7 @@ describe('AgentSendConfirmDialog', () => {
     it('本文は正規化した後の文字列を、改行を保って出し、文字数も正規化した後の長さ', () => {
       render(
         <AgentSendConfirmDialog
-          state={makeState({ pending: makePending({ text: 'line1\r\nline2\x07' }) })}
+          state={makeState({ pending: makePending({ composeText: () => 'line1\r\nline2\x07' }) })}
         />
       )
       expect(screen.getByRole('region', { name: '送る内容' }).textContent).toBe('line1\nline2')
@@ -120,7 +121,7 @@ describe('AgentSendConfirmDialog', () => {
     it('文字数は 3 桁ごとに区切る', () => {
       render(
         <AgentSendConfirmDialog
-          state={makeState({ pending: makePending({ text: 'a'.repeat(1234) }) })}
+          state={makeState({ pending: makePending({ composeText: () => 'a'.repeat(1234) }) })}
         />
       )
       expect(screen.getByText('1,234 文字')).toBeInTheDocument()
@@ -157,7 +158,10 @@ describe('AgentSendConfirmDialog', () => {
       render(
         <AgentSendConfirmDialog
           state={makeState({
-            pending: makePending({ text: '!ls', unsavedPaths: ['src/app.ts', 'docs/a.md'] })
+            pending: makePending({
+              composeText: () => '!ls',
+              unsavedPaths: ['src/app.ts', 'docs/a.md']
+            })
           })}
         />
       )
@@ -180,7 +184,11 @@ describe('AgentSendConfirmDialog', () => {
     ])(
       '本文が %s なら理由を role="alert" で出し、送信を押せず、理由を送信の説明にする',
       (_label, text, message) => {
-        render(<AgentSendConfirmDialog state={makeState({ pending: makePending({ text }) })} />)
+        render(
+          <AgentSendConfirmDialog
+            state={makeState({ pending: makePending({ composeText: () => text }) })}
+          />
+        )
         expect(screen.getByRole('alert')).toHaveTextContent(message)
         expect(submitButton()).toBeDisabled()
         expect(submitButton()).toHaveAccessibleDescription(message)
@@ -190,7 +198,7 @@ describe('AgentSendConfirmDialog', () => {
     it('長すぎるときも文字数を出す', () => {
       render(
         <AgentSendConfirmDialog
-          state={makeState({ pending: makePending({ text: 'a'.repeat(200_001) }) })}
+          state={makeState({ pending: makePending({ composeText: () => 'a'.repeat(200_001) }) })}
         />
       )
       expect(screen.getByText('200,001 文字')).toBeInTheDocument()
@@ -211,7 +219,7 @@ describe('AgentSendConfirmDialog', () => {
       render(
         <AgentSendConfirmDialog
           state={makeState({
-            pending: makePending({ text: '!ls' }),
+            pending: makePending({ composeText: () => '!ls' }),
             targetBlockedReason: RUN_DISABLED_NO_SESSION
           })}
         />
@@ -228,7 +236,11 @@ describe('AgentSendConfirmDialog', () => {
       render(
         <AgentSendConfirmDialog
           state={makeState({
-            pending: makePending({ text: '/help', label: 'copilot 1', cliKind: 'copilot' })
+            pending: makePending({
+              composeText: () => '/help',
+              label: 'copilot 1',
+              cliKind: 'copilot'
+            })
           })}
         />
       )
@@ -240,7 +252,9 @@ describe('AgentSendConfirmDialog', () => {
 
     it('送り先が claude なら、/help は今までどおり送れる', () => {
       render(
-        <AgentSendConfirmDialog state={makeState({ pending: makePending({ text: '/help' }) })} />
+        <AgentSendConfirmDialog
+          state={makeState({ pending: makePending({ composeText: () => '/help' }) })}
+        />
       )
       expect(screen.queryByRole('alert')).toBeNull()
       expect(submitButton()).not.toBeDisabled()
@@ -297,7 +311,7 @@ describe('AgentSendConfirmDialog', () => {
       expect(state.onConfirm).not.toHaveBeenCalled()
     })
 
-    // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の送信を押してしまう。
+    // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の引数欄・送信に届く。
     // ボタンの Enter は keydown の既定の動作で click になるため、既定の動作を止めているか(fireEvent の戻り値)で確かめる
     it.each([['Enter'], [' ']])(
       'キーリピートの %j の keydown は既定の動作を止める(押し続けても確認を飛ばして送らない)',
@@ -342,12 +356,12 @@ describe('AgentSendConfirmDialog', () => {
         expect(fireEvent.mouseDown(screen.getByRole('region', { name: '送る内容' }))).toBe(true)
       })
 
-      it('背景を右クリックしても閉じず、フォーカスは送信に残り、続けて Esc で閉じられる', async () => {
+      it('背景を右クリックしても閉じず、フォーカスは引数欄に残り、続けて Esc で閉じられる', async () => {
         const state = makeState()
         render(<AgentSendConfirmDialog state={state} />)
         await userEvent.pointer({ keys: '[MouseRight]', target: getOverlay() })
         expect(state.onCancel).not.toHaveBeenCalled()
-        expect(submitButton()).toHaveFocus()
+        expect(screen.getByRole('textbox', { name: '引数（任意）' })).toHaveFocus()
         await userEvent.keyboard('{Escape}')
         expect(state.onCancel).toHaveBeenCalledOnce()
       })
@@ -392,7 +406,7 @@ describe('AgentSendConfirmDialog', () => {
           { keys: '[/MouseLeft]', target: screen.getByRole('region', { name: '送る内容' }) }
         ])
         expect(state.onCancel).not.toHaveBeenCalled()
-        expect(submitButton()).toHaveFocus()
+        expect(screen.getByRole('textbox', { name: '引数（任意）' })).toHaveFocus()
         await userEvent.keyboard('{Escape}')
         expect(state.onCancel).toHaveBeenCalledOnce()
       })
@@ -400,20 +414,23 @@ describe('AgentSendConfirmDialog', () => {
   })
 
   describe('フォーカス', () => {
-    it('開いたら送信にフォーカスを置く', () => {
+    it('開いたら引数欄にフォーカスを置く', () => {
       render(<AgentSendConfirmDialog state={makeState()} />)
-      expect(submitButton()).toHaveFocus()
+      expect(screen.getByRole('textbox', { name: '引数（任意）' })).toHaveFocus()
     })
 
     it('開いた時点で送信を押せなければ、キャンセルにフォーカスを置く', () => {
       render(
-        <AgentSendConfirmDialog state={makeState({ pending: makePending({ text: '!ls' }) })} />
+        <AgentSendConfirmDialog
+          state={makeState({ pending: makePending({ composeText: () => '!ls' }) })}
+        />
       )
       expect(cancelButton()).toHaveFocus()
     })
 
     it('開いている間に送信を押せなくなったら、送信にあったフォーカスをキャンセルへ移す', () => {
       const { rerender } = render(<AgentSendConfirmDialog state={makeState()} />)
+      submitButton().focus()
       expect(submitButton()).toHaveFocus()
       rerender(
         <AgentSendConfirmDialog
@@ -423,16 +440,19 @@ describe('AgentSendConfirmDialog', () => {
       expect(cancelButton()).toHaveFocus()
     })
 
-    it('Tab・Shift+Tab は本文・送信・キャンセルの間を回り、背後へ出ない', async () => {
+    it('Tab・Shift+Tab は本文・引数欄・送信・キャンセルの間を回り、背後へ出ない', async () => {
       render(<Harness state={makeState()} />)
       const body = screen.getByRole('region', { name: '送る内容' })
+      const input = screen.getByRole('textbox', { name: '引数（任意）' })
+      expect(input).toHaveFocus()
+      await userEvent.tab()
       expect(submitButton()).toHaveFocus()
       await userEvent.tab()
       expect(cancelButton()).toHaveFocus()
       await userEvent.tab()
       expect(body).toHaveFocus()
       await userEvent.tab()
-      expect(submitButton()).toHaveFocus()
+      expect(input).toHaveFocus()
       await userEvent.tab({ shift: true })
       expect(body).toHaveFocus()
       await userEvent.tab({ shift: true })
@@ -446,7 +466,7 @@ describe('AgentSendConfirmDialog', () => {
       opener.focus()
       const open = makeState()
       rerender(<Harness state={open} />)
-      expect(submitButton()).toHaveFocus()
+      expect(screen.getByRole('textbox', { name: '引数（任意）' })).toHaveFocus()
       await userEvent.click(cancelButton())
       expect(open.onCancel).toHaveBeenCalledOnce()
       expect(opener).toHaveFocus()
@@ -535,5 +555,105 @@ describe('AgentSendConfirmDialog', () => {
     } finally {
       style.remove()
     }
+  })
+
+  describe('引数欄', () => {
+    const argumentInput = (): HTMLElement => screen.getByRole('textbox', { name: '引数（任意）' })
+    const renderDialog = (
+      overrides: Partial<AgentSendConfirmDialogState> = {}
+    ): ReturnType<typeof render> =>
+      render(
+        <AgentSendConfirmDialog
+          state={makeState({
+            pending: makePending({
+              composeText: (argument) => appendAgentPromptArgument('/review', argument)
+            }),
+            ...overrides
+          })}
+        />
+      )
+
+    it('開いたら引数欄にフォーカスがある', () => {
+      renderDialog()
+      expect(argumentInput()).toHaveFocus()
+    })
+
+    it('送れない理由があるときは開いたフォーカスがキャンセルへ行く', () => {
+      renderDialog({ pending: makePending({ composeText: () => '' }) })
+      expect(cancelButton()).toHaveFocus()
+    })
+
+    it('入力に合わせて本文と文字数を更新する', async () => {
+      renderDialog()
+      await userEvent.type(argumentInput(), '123')
+      expect(screen.getByRole('region', { name: '送る内容' })).toHaveTextContent('/review 123')
+      expect(screen.getByText('11 文字')).toBeInTheDocument()
+    })
+
+    it('引数で送れない理由が解消すれば送信を押せる', async () => {
+      const pending = makePending({
+        composeText: (argument) => appendAgentPromptArgument('', argument)
+      })
+      renderDialog({ pending })
+      expect(submitButton()).toBeDisabled()
+      await userEvent.type(argumentInput(), 'x')
+      expect(submitButton()).toBeEnabled()
+    })
+
+    it('送信は入力した引数を渡す', async () => {
+      const onConfirm = vi.fn()
+      renderDialog({ onConfirm })
+      await userEvent.type(argumentInput(), '123')
+      await userEvent.click(submitButton())
+      expect(onConfirm).toHaveBeenCalledWith('123')
+    })
+
+    it('引数欄の Enter は送信と同じ', () => {
+      const onConfirm = vi.fn()
+      renderDialog({ onConfirm })
+      fireEvent.change(argumentInput(), { target: { value: '123' } })
+      // 既定の動作を止めているか(fireEvent の戻り値)も確かめる
+      expect(fireEvent.keyDown(argumentInput(), { key: 'Enter' })).toBe(false)
+      expect(onConfirm).toHaveBeenCalledExactlyOnceWith('123')
+    })
+
+    it.each([
+      ['isComposing', { key: 'Enter', isComposing: true }],
+      ['keyCode 229', { key: 'Enter', keyCode: 229 }],
+      ['キーリピート', { key: 'Enter', repeat: true }]
+    ])('%s の Enter では送らない', (_label, init) => {
+      const onConfirm = vi.fn()
+      renderDialog({ onConfirm })
+      fireEvent.keyDown(argumentInput(), init)
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    it('送れない理由があるときの Enter では送らない', () => {
+      const onConfirm = vi.fn()
+      renderDialog({ onConfirm, targetBlockedReason: '送信中です' })
+      fireEvent.keyDown(argumentInput(), { key: 'Enter' })
+      expect(onConfirm).not.toHaveBeenCalled()
+    })
+
+    it('変換の取り消しの Esc では閉じない', () => {
+      const onCancel = vi.fn()
+      renderDialog({ onCancel })
+      fireEvent.keyDown(argumentInput(), { key: 'Escape', isComposing: true })
+      expect(onCancel).not.toHaveBeenCalled()
+    })
+
+    it('開いている間に送信を押せなくなっても、引数欄のフォーカスは移さない', () => {
+      const state = makeState({ pending: makePending() })
+      const { rerender } = render(<AgentSendConfirmDialog state={state} />)
+      expect(argumentInput()).toHaveFocus()
+      rerender(<AgentSendConfirmDialog state={{ ...state, targetBlockedReason: '送信中です' }} />)
+      expect(argumentInput()).toHaveFocus()
+    })
+
+    it('Space のキーリピートは引数欄に入らない', () => {
+      renderDialog()
+      const notPrevented = fireEvent.keyDown(argumentInput(), { key: ' ', repeat: true })
+      expect(notPrevented).toBe(false)
+    })
   })
 })

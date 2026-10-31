@@ -291,7 +291,7 @@ export function useAgentWorkspace({
         cliKind: selectedTarget.cliKind
       })
       // 確認を開かない分岐でも、送れたときだけ知らせる(確認から送ったときは useAgentSendConfirm が知らせる)
-      notifyAgentSent(outcome, options.onSent)
+      notifyAgentSent(outcome, options.onSent, text)
       return outcome
     },
     [isSendConfirmRequired, clearSendResult, requestSendConfirm, sendAgentPrompt, selectedTarget]
@@ -494,7 +494,7 @@ export function useAgentWorkspace({
         pendingSend === null
           ? null
           : {
-              text: pendingSend.text,
+              composeText: pendingSend.composeText,
               slotId: pendingSend.target.slotId,
               label: pendingSend.label,
               cliKind: pendingSend.target.cliKind,

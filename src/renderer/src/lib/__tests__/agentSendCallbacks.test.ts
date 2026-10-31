@@ -12,8 +12,12 @@ afterEach(() => {
 describe('notifyAgentSent', () => {
   it('送れた(sent)ときだけ onSent を呼ぶ', () => {
     const onSent = vi.fn()
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude')
+    notifyAgentSent(
+      { kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' },
+      onSent,
+      '全文'
+    )
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude', '全文')
   })
 
   it('送れたときは、結果の sentTo(控えた送り先)を onSent に渡す', () => {
@@ -24,14 +28,18 @@ describe('notifyAgentSent', () => {
       tabLabel: 'claude 1',
       folderPath: '/work'
     }
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo, cliKind: 'claude' }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'claude')
+    notifyAgentSent(
+      { kind: 'sent', clearedDraft: false, sentTo, cliKind: 'claude' },
+      onSent,
+      '全文'
+    )
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'claude', '全文')
   })
 
   it('失敗・結果なし(undefined)では呼ばない', () => {
     const onSent = vi.fn()
-    notifyAgentSent({ kind: 'failed', reason: 'input-not-found' }, onSent)
-    notifyAgentSent(undefined, onSent)
+    notifyAgentSent({ kind: 'failed', reason: 'input-not-found' }, onSent, '全文')
+    notifyAgentSent(undefined, onSent, '全文')
     expect(onSent).not.toHaveBeenCalled()
   })
 
@@ -39,7 +47,8 @@ describe('notifyAgentSent', () => {
     expect(() =>
       notifyAgentSent(
         { kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' },
-        undefined
+        undefined,
+        '全文'
       )
     ).not.toThrow()
   })
@@ -52,7 +61,8 @@ describe('notifyAgentSent', () => {
     expect(() =>
       notifyAgentSent(
         { kind: 'sent', clearedDraft: false, sentTo: null, cliKind: 'claude' },
-        onSent
+        onSent,
+        '全文'
       )
     ).not.toThrow()
     expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -69,7 +79,21 @@ describe('notifyAgentSent', () => {
       tabLabel: 'copilot 1',
       folderPath: '/work'
     }
-    notifyAgentSent({ kind: 'sent', clearedDraft: false, sentTo, cliKind: 'copilot' }, onSent)
-    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'copilot')
+    notifyAgentSent(
+      { kind: 'sent', clearedDraft: false, sentTo, cliKind: 'copilot' },
+      onSent,
+      '全文'
+    )
+    expect(onSent).toHaveBeenCalledExactlyOnceWith(sentTo, 'copilot', '全文')
+  })
+
+  it('送った全文を第 3 引数で渡す', () => {
+    const onSent = vi.fn()
+    notifyAgentSent(
+      { kind: 'sent', sentTo: null, cliKind: 'claude', clearedDraft: false },
+      onSent,
+      '/review 123'
+    )
+    expect(onSent).toHaveBeenCalledWith(null, 'claude', '/review 123')
   })
 })

@@ -7,6 +7,7 @@ import { buildAgentSendPreview } from '../../lib/agentSendPreview'
 import { formatAgentUnsavedNotice } from '../../lib/agentReferenceMessages'
 import { findSendConfirmReturnTarget } from '../../lib/promptRunButton'
 import { isActivationKey } from '../../lib/activationKey'
+import AgentSendArgumentField from './AgentSendArgumentField'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss'
 
@@ -32,7 +33,7 @@ export default function AgentSendConfirmDialog({ state }: Props): React.JSX.Elem
 interface BodyProps {
   pending: AgentSendConfirmPending
   targetBlockedReason: string | null
-  onConfirm: () => void
+  onConfirm: (argument: string) => void
   onCancel: () => void
 }
 
@@ -42,28 +43,32 @@ function AgentSendConfirmDialogBody({
   onConfirm,
   onCancel
 }: BodyProps): React.JSX.Element {
-  // 開いた時点のフォーカス(キャンセルで閉じたときの戻り先)。マウントの後では送信へ移っているため、描画の時点で控える。
+  // 開いた時点のフォーカス(キャンセルで閉じたときの戻り先)。マウントの後では引数欄へ移っているため、描画の時点で控える。
   // 変数のフォームから開いた場合、ここで控えるフォームの実行ボタンはこの描画のコミットで外れる(戻すときに一覧の実行を探す)
   const [opener] = useState(() => document.activeElement)
   const dialogRef = useRef<HTMLDivElement>(null)
   const submitRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const argumentRef = useRef<HTMLInputElement>(null)
+  const [argument, setArgument] = useState('')
   const titleId = useId()
   const reasonId = useId()
   const targetId = useId()
   const unsavedId = useId()
 
   // 本文は最大 20 万字になりうるため、描画のたびに正規化し直さない。規則は開いた時点に控えた送り先の種類で引く
+  // pending は描画ごとに新しいオブジェクトになるため、依存には composeText と cliKind だけを入れる
+  const { composeText, cliKind } = pending
   const preview = useMemo(
-    () => buildAgentSendPreview(pending.text, pending.cliKind),
-    [pending.text, pending.cliKind]
+    () => buildAgentSendPreview(composeText(argument), cliKind),
+    [composeText, cliKind, argument]
   )
-  // 本文の理由はキャンセルして直すしかないため先に出す。1 つだけ出す
+  // 本文の理由を先に出す。1 つだけ出す
   const reason = preview.rejection ?? targetBlockedReason
   const isSubmitDisabled = reason !== null
   // 参照として添えたファイルの未保存の注意(送信は止めない)。実行を押した時点の写し
   const hasUnsaved = pending.unsavedPaths.length > 0
-  // 開いたときのフォーカスは送信(送れない理由があるとキャンセル)なので、送り先・未保存の注意・送れない理由をこの順に説明として
+  // 開いたときのフォーカスは引数欄(送れない理由があるとキャンセル)なので、送り先・未保存の注意・送れない理由をこの順に説明として
   // 読ませる(本文は最大 20 万字になりうるので含めない)
   const describedBy = [targetId, hasUnsaved ? unsavedId : null, reason !== null ? reasonId : null]
     .filter((id): id is string => id !== null)
@@ -74,7 +79,7 @@ function AgentSendConfirmDialogBody({
     onCancel()
   }
   const handleConfirm = (): void => {
-    if (!isSubmitDisabled) onConfirm()
+    if (!isSubmitDisabled) onConfirm(argument)
   }
   // 実行をダブルクリックすると、1 回目で開いた確認に 2 回目の click が届く。狭いウィンドウでは 2 回目が送信・キャンセルの上に
   // 落ち、読む前に送られる・開いた直後に閉じて変数の値が失われる。連続のクリックの 2 回目以降(detail > 1)は押したとみなさない
@@ -88,13 +93,13 @@ function AgentSendConfirmDialogBody({
 
   // 背景で押して離したときだけ閉じる(中と背景をまたぐドラッグでは閉じない。useOverlayDismiss)
   const overlayHandlers = useOverlayDismiss(handleCancel)
-  // モーダルとして、Tab / Shift+Tab をダイアログの中(本文・送信・キャンセル)で回す(開いている間だけマウントする)
+  // モーダルとして、Tab / Shift+Tab をダイアログの中(本文・引数欄・送信・キャンセル)で回す(開いている間だけマウントする)
   useDialogFocusTrap(dialogRef, true)
 
-  // 開いたら送信へ。送れない(押せない)ときはキャンセルへ。開いたときだけ
+  // 開いたら引数欄へ。送れない(押せない)ときはキャンセルへ。開いたときだけ
   useEffect(() => {
     const submit = submitRef.current
-    if (submit !== null && !submit.disabled) submit.focus()
+    if (submit !== null && !submit.disabled) argumentRef.current?.focus()
     else cancelRef.current?.focus()
   }, [])
 
@@ -135,10 +140,14 @@ function AgentSendConfirmDialogBody({
         aria-describedby={describedBy}
         // ダイアログの中の文字・余白をクリックしたときも、フォーカスが body に落ちず Esc が届くようにする(Tab の順には入らない)
         tabIndex={-1}
-        // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の送信を押し、全文を読む前に
-        // 送られる。ボタンの Enter・Space の既定の動作(押す)をリピートでは止める(本文の領域の Space のスクロールは止めない)
+        // 一覧の実行・変数のフォームで押した Enter を押し続けると、リピートの keydown が開いた直後の引数欄・送信に届き、全文を
+        // 読む前に送られる。ボタン・引数欄の Enter・Space の既定の動作をリピートでは止める(本文の領域の Space のスクロールは止めない)
         onKeyDownCapture={(e) => {
-          if (e.repeat && isActivationKey(e.key) && e.target instanceof HTMLButtonElement) {
+          if (
+            e.repeat &&
+            isActivationKey(e.key) &&
+            (e.target instanceof HTMLButtonElement || e.target instanceof HTMLInputElement)
+          ) {
             e.preventDefault()
           }
         }}
@@ -161,6 +170,12 @@ function AgentSendConfirmDialogBody({
           {preview.text}
         </pre>
         <p className="agent-send-confirm__count">{LENGTH_FORMAT.format(preview.length)} 文字</p>
+        <AgentSendArgumentField
+          ref={argumentRef}
+          value={argument}
+          onChange={setArgument}
+          onSubmit={handleConfirm}
+        />
         {hasUnsaved && (
           <p id={unsavedId} className="agent-send-confirm__unsaved">
             {formatAgentUnsavedNotice(

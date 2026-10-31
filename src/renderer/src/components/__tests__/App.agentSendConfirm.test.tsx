@@ -35,7 +35,7 @@ describe('App: 送信前の確認の配線', () => {
       makeAgentWorkspaceState({
         agentSendConfirmDialog: {
           pending: {
-            text: '本文',
+            composeText: () => '本文',
             slotId: 'slot-1',
             label: 'claude 1',
             cliKind: 'claude',
@@ -62,7 +62,7 @@ describe('App: 送信前の確認の配線', () => {
       makeAgentWorkspaceState({
         agentSendConfirmDialog: {
           pending: {
-            text: '本文',
+            composeText: () => '本文',
             slotId: 'slot-1',
             label: 'claude 1',
             cliKind: 'claude',

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildAgentPromptRequest } from '../agentPromptRequest'
+import { appendAgentReferences } from '../agentReferences'
 import type { PreparedAgentReferences } from '../agentReferenceCandidates'
 
 const prepared: PreparedAgentReferences = {
@@ -13,7 +14,12 @@ describe('buildAgentPromptRequest', () => {
     const onSent = vi.fn()
     const request = buildAgentPromptRequest('直して', 'p1', prepared, onSent)
     expect(request.text).toBe('直して\n\n参照:\n- @src/app.ts#L1-2')
-    expect(request.options).toEqual({ promptId: 'p1', unsavedPaths: ['src/app.ts'], onSent })
+    expect(request.options).toEqual({
+      promptId: 'p1',
+      unsavedPaths: ['src/app.ts'],
+      onSent,
+      composeText: expect.any(Function)
+    })
   })
 
   it('未保存の一覧は写しと配列を共有しない', () => {
@@ -27,6 +33,14 @@ describe('buildAgentPromptRequest', () => {
     const second = buildAgentPromptRequest('二回目', 'p1', prepared, vi.fn())
     expect(second.options.unsavedPaths).toEqual(first.options.unsavedPaths)
     expect(second.options.unsavedPaths).not.toBe(first.options.unsavedPaths)
+  })
+
+  it('composeText は引数を参照の一覧より前に入れ、空なら text と同じ全文を返す', () => {
+    const request = buildAgentPromptRequest('/review', 'p1', prepared, vi.fn())
+    expect(request.options.composeText?.('')).toBe(request.text)
+    expect(request.options.composeText?.('123')).toBe(
+      appendAgentReferences('/review 123', prepared.references)
+    )
   })
 
   it('参照が無ければ本文のまま', () => {

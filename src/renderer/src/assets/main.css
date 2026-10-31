@@ -3551,6 +3551,35 @@ body {
   outline-offset: -1px;
 }
 
+.agent-send-confirm__argument-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-send-confirm__argument-label {
+  color: #a0a0a0;
+  font-size: 13px;
+}
+
+.agent-send-confirm__argument {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  background: #1e1e1e;
+  border: 1px solid #3c3c3c;
+  border-radius: 2px;
+  color: #d4d4d4;
+  font-family: Menlo, Monaco, 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.agent-send-confirm__argument:focus-visible {
+  outline: 1px solid #007acc;
+  outline-offset: -1px;
+}
+
 .agent-send-confirm__body {
   flex: 1 1 auto;
   /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(13px × 1.5 × 3)を残す */

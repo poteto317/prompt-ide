@@ -854,7 +854,7 @@ describe('useAgentWorkspace', () => {
       await openConfirm(result)
       expect(sender.send).not.toHaveBeenCalled()
       expect(result.current.agentSendConfirmDialog.pending).toEqual({
-        text: 'hello',
+        composeText: expect.any(Function),
         slotId: 'slot-2',
         label: 'claude 2',
         cliKind: 'claude',
@@ -939,9 +939,11 @@ describe('useAgentWorkspace', () => {
       const { result } = renderWorkspace()
       act(() => result.current.agentTerminal.layout.toggleOpen())
       await openConfirm(result)
-      act(() => result.current.agentSendConfirmDialog.onConfirm())
+      // 画面の全文と送る全文が同じ引数で作られる
+      expect(result.current.agentSendConfirmDialog.pending?.composeText('123')).toBe('hello 123')
+      act(() => result.current.agentSendConfirmDialog.onConfirm('123'))
       expect(result.current.agentSendConfirmDialog.pending).toBeNull()
-      expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello', {
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith('hello 123', {
         slotId: 'slot-2',
         controller: tab2.controller,
         describeSession: expect.any(Function),
@@ -996,7 +998,7 @@ describe('useAgentWorkspace', () => {
         setTabs([tab1, tab2], 'slot-1', selectTab)
         const { result } = renderWorkspace()
         await openConfirm(result)
-        act(() => result.current.agentSendConfirmDialog.onConfirm())
+        act(() => result.current.agentSendConfirmDialog.onConfirm(''))
         const other = addButton()
         other.focus()
         await act(async () => {
@@ -1016,7 +1018,7 @@ describe('useAgentWorkspace', () => {
         const runButton = addButton('p1')
         const { result } = renderWorkspace()
         await openConfirm(result)
-        act(() => result.current.agentSendConfirmDialog.onConfirm())
+        act(() => result.current.agentSendConfirmDialog.onConfirm(''))
         const other = addButton()
         other.focus()
         await act(async () => {
@@ -1036,7 +1038,7 @@ describe('useAgentWorkspace', () => {
         runButton.disabled = true
         const { result, rerender } = renderWorkspace()
         await openConfirm(result)
-        act(() => result.current.agentSendConfirmDialog.onConfirm())
+        act(() => result.current.agentSendConfirmDialog.onConfirm(''))
         await act(async () => {
           resolve({ kind: 'failed', reason: 'input-not-found' })
         })
@@ -1088,7 +1090,7 @@ describe('useAgentWorkspace', () => {
           const { result } = renderWorkspace()
           await openConfirm(result)
           await act(async () => {
-            result.current.agentSendConfirmDialog.onConfirm()
+            result.current.agentSendConfirmDialog.onConfirm('')
           })
           expect(tab2.controller.focus).not.toHaveBeenCalled()
           expect(selectTab).not.toHaveBeenCalled()
@@ -1116,7 +1118,7 @@ describe('useAgentWorkspace', () => {
         const { result } = renderWorkspace()
         await openConfirm(result)
         await act(async () => {
-          result.current.agentSendConfirmDialog.onConfirm()
+          result.current.agentSendConfirmDialog.onConfirm('')
         })
         expect(focus).not.toHaveBeenCalled()
         expect(document.activeElement).toBe(document.body)
@@ -1162,7 +1164,7 @@ describe('useAgentWorkspace', () => {
           // 確認のダイアログへ移ったフォーカスは、閉じると body へ落ちる
           origin.blur()
           await act(async () => {
-            result.current.agentSendConfirmDialog.onConfirm()
+            result.current.agentSendConfirmDialog.onConfirm('')
           })
           expect(origin).toHaveFocus()
           expect(button).not.toHaveFocus()
@@ -1176,7 +1178,7 @@ describe('useAgentWorkspace', () => {
           origin.blur()
           origin.disabled = true
           await act(async () => {
-            result.current.agentSendConfirmDialog.onConfirm()
+            result.current.agentSendConfirmDialog.onConfirm('')
           })
           expect(origin).not.toHaveFocus()
           origin.disabled = false
@@ -1195,7 +1197,7 @@ describe('useAgentWorkspace', () => {
           origin.blur()
           Object.defineProperty(origin, 'checkVisibility', { value: () => false })
           await act(async () => {
-            result.current.agentSendConfirmDialog.onConfirm()
+            result.current.agentSendConfirmDialog.onConfirm('')
           })
           expect(origin).not.toHaveFocus()
           expect(button).toHaveFocus()
@@ -1207,7 +1209,7 @@ describe('useAgentWorkspace', () => {
           const { result } = renderFailing(false)
           await openConfirm(result)
           await act(async () => {
-            result.current.agentSendConfirmDialog.onConfirm()
+            result.current.agentSendConfirmDialog.onConfirm('')
           })
           expect(button).not.toHaveFocus()
         })
@@ -1230,7 +1232,7 @@ describe('useAgentWorkspace', () => {
         const { result, rerender } = renderWorkspace()
         await openConfirm(result)
         await act(async () => {
-          result.current.agentSendConfirmDialog.onConfirm()
+          result.current.agentSendConfirmDialog.onConfirm('')
         })
         expect(button).not.toHaveFocus()
         button.disabled = false
@@ -1264,7 +1266,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [], onSent })
       })
-      expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude')
+      expect(onSent).toHaveBeenCalledExactlyOnceWith(null, 'claude', 'hello')
     })
 
     it('設定がオフで送信が失敗したら onSent を呼ばない', async () => {
@@ -1314,7 +1316,7 @@ describe('useAgentWorkspace', () => {
       })
       expect(result.current.agentSendConfirmDialog.pending?.unsavedPaths).toEqual(['src/a.ts'])
       expect(onSent).not.toHaveBeenCalled()
-      act(() => result.current.agentSendConfirmDialog.onConfirm())
+      act(() => result.current.agentSendConfirmDialog.onConfirm(''))
       await waitFor(() => expect(onSent).toHaveBeenCalledOnce())
     })
 
@@ -1359,7 +1361,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.sendToAgent('second', { promptId: 'p2', unsavedPaths: [] })
       })
-      expect(result.current.agentSendConfirmDialog.pending?.text).toBe('hello')
+      expect(result.current.agentSendConfirmDialog.pending?.composeText('')).toBe('hello')
     })
 
     it('開いている間に従来の方式へ切り替わったら閉じる(送らない。L-405)', async () => {
@@ -2482,7 +2484,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
       })
-      act(() => result.current.agentSendConfirmDialog.onConfirm())
+      act(() => result.current.agentSendConfirmDialog.onConfirm(''))
       await waitFor(() => expect(sender.send).toHaveBeenCalledOnce())
       expect(vi.mocked(sender.send).mock.calls[0][1].describeSession()).toEqual({
         claudeSessionId: ID,
@@ -3195,7 +3197,8 @@ describe('useAgentWorkspace', () => {
           cliKind: 'copilot',
           folderPath: '/p'
         }),
-        'copilot'
+        'copilot',
+        COPILOT_TEXT
       )
     })
 

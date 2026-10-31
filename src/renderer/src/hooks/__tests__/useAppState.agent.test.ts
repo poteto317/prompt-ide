@@ -927,7 +927,7 @@ describe('useAppState', () => {
       const workspace = makeAgentWorkspaceState({
         agentSendConfirmDialog: {
           pending: {
-            text: '本文',
+            composeText: () => '本文',
             slotId: 'slot-1',
             label: 'claude 1',
             cliKind: 'claude',
