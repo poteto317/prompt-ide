@@ -31,6 +31,7 @@ import type { AgentChangesReasonTarget } from '../../lib/agentChangesSectionText
 import AgentChangesFileItem from './AgentChangesFileItem'
 import AgentChangesScopeSelect from './AgentChangesScopeSelect'
 import AgentChangesUndoBand from './AgentChangesUndoBand'
+import { ChevronIcon } from '../icons'
 
 /** 「いまから記録する」「もう一度試す」の記録開始ボタン(記録中は押せず、文言が変わる) */
 function BeginRecordingButton({
@@ -163,7 +164,7 @@ export default function AgentChangesSection({
               aria-controls={bodyId}
               onClick={() => setIsOpen((open) => !open)}
             >
-              <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span> {heading}
+              <ChevronIcon direction={isOpen ? 'down' : 'right'} /> {heading}
             </button>
           </h3>
           {recording !== null && changes.isLoading && (

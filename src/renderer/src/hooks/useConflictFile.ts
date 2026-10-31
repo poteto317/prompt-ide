@@ -14,7 +14,7 @@ export interface ConflictFileOptions {
   activePath: string | null
   gitStatus: GitStatusResult | null
   refreshGitStatus: () => Promise<void>
-  /** ブランチ操作・退避などと共有するロック(作業ツリーを書き換えるため lockGlobal を取る) */
+  /** ブランチ操作・stash などと共有するロック(作業ツリーを書き換えるため lockGlobal を取る) */
   fileLock: FileOperationLock
   /** useFileSystem.hasDirtyTabAtOrInside。書き換える前に未保存編集の破棄を確認するために使う */
   hasDirtyTabAtOrInside: (absolutePath: string) => boolean

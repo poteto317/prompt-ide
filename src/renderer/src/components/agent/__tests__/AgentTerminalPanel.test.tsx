@@ -133,6 +133,15 @@ describe('AgentTerminalPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('claude コマンドが見つかりません。')
   })
 
+  it.each([
+    { isOpen: true, direction: 'down' },
+    { isOpen: false, direction: 'right' }
+  ])('開閉の矢印の向き(isOpen: $isOpen → $direction)', ({ isOpen, direction }) => {
+    renderPanel({ layout: makeAgentTerminalPanelLayout({ isOpen }) })
+    const toggle = screen.getByRole('button', { name: /^エージェント$/ })
+    expect(toggle.querySelector('svg')).toHaveAttribute('data-direction', direction)
+  })
+
   it('閉じているときは本文を隠す(xterm は取り外さない)', () => {
     renderPanel({ layout: makeAgentTerminalPanelLayout({ isOpen: false }) })
     const toggle = screen.getByRole('button', { name: /エージェント/ })
@@ -192,6 +201,9 @@ describe('AgentTerminalPanel — 変更を確認', () => {
     renderPanel({}, { isRecording: true, onReview })
     const button = screen.getByRole('button', { name: REVIEW })
     expect(button).toHaveTextContent('変更を確認')
+    // 省略されても全文が分かるよう子に title を付ける(ボタンに付けると説明として重ねて読まれる)
+    expect(button).not.toHaveAttribute('title')
+    expect(button.querySelector('[title]')).toHaveAttribute('title', '変更を確認')
     expect(button.compareDocumentPosition(screen.getByRole('button', { name: '最大化' }))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     )
@@ -270,9 +282,7 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       // userEvent.click は mousedown でフォーカスを × へ移すため、フォーカスを動かさない fireEvent で押す
       fireEvent.click(screen.getByLabelText('claude 1 を閉じる'))
       await waitFor(() => expect(sessions.closeTab).toHaveBeenCalled())
-      expect(focusAtClose).toBe(
-        screen.getByRole('button', { name: /^▾ エージェント|^エージェント/ })
-      )
+      expect(focusAtClose).toBe(screen.getByRole('button', { name: /^エージェント/ }))
     })
 
     it('選択中でないタブの × を押して取りやめたら、選択中のタブへフォーカスを戻す', async () => {

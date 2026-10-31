@@ -1,7 +1,7 @@
 import type { editor } from 'monaco-editor'
 
 export const editorOptions: editor.IStandaloneEditorConstructionOptions = {
-  fontSize: 14,
+  fontSize: 15,
   fontFamily: "'Fira Code', 'Cascadia Code', Menlo, Monaco, Consolas, monospace",
   fontLigatures: true,
   minimap: { enabled: false },

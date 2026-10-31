@@ -24,7 +24,7 @@ interface Props {
   onLoadMore: () => void
   /** タグの作成の状態と操作(useGitTagOperations) */
   gitTag: GitTagPanelState
-  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・退避)で、作成しても no-op になる状態 */
+  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・stash)で、作成しても no-op になる状態 */
   isBlocked: boolean
 }
 

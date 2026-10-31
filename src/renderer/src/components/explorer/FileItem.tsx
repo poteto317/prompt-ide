@@ -10,7 +10,8 @@ interface Props {
 }
 
 const INDENT_PX = 12
-const ICON_OFFSET_PX = 16
+// ディレクトリの行の矢印の枠(幅 16px)と gap(4px)の分。ファイル名の左端をディレクトリ名に揃える
+const ICON_OFFSET_PX = 20
 
 export default function FileItem({
   node,

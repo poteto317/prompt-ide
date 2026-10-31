@@ -7,6 +7,7 @@ import SettingsIcon from '../SettingsIcon'
 import BranchIcon from '../BranchIcon'
 import CloudIcon from '../CloudIcon'
 import TagIcon from '../TagIcon'
+import ChevronIcon from '../ChevronIcon'
 
 const iconComponents = [
   { name: 'ExplorerIcon', Component: ExplorerIcon },
@@ -26,5 +27,16 @@ describe('Icons', () => {
       expect(svg).not.toBeNull()
       expect(svg).toHaveAttribute('aria-hidden', 'true')
     })
+  })
+
+  it('ChevronIcon: 指定した向きで描き、読み上げない', () => {
+    const { container, rerender } = render(<ChevronIcon direction="down" />)
+    const svg = container.querySelector('svg')
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(svg).toHaveAttribute('data-direction', 'down')
+    expect(container.querySelector('path')).toHaveAttribute('d', 'M5 9l7 7 7-7')
+    rerender(<ChevronIcon direction="right" />)
+    expect(container.querySelector('svg')).toHaveAttribute('data-direction', 'right')
+    expect(container.querySelector('path')).toHaveAttribute('d', 'M9 5l7 7-7 7')
   })
 })

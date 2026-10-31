@@ -92,6 +92,19 @@ describe('FileItem', () => {
     expect(screen.getByRole('treeitem')).toHaveAttribute('aria-selected', 'false')
   })
 
+  it('depth=0 の padding-left はディレクトリの矢印の枠と gap の分(20px)になる', () => {
+    const { container } = render(
+      <FileItem
+        node={fileNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
+    expect((container.firstChild as HTMLElement).style.paddingLeft).toBe('20px')
+  })
+
   it('depth=2 のとき padding-left が depth=0 より大きい', () => {
     const { rerender, container } = render(
       <FileItem

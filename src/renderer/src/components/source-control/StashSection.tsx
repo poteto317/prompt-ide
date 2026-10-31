@@ -10,7 +10,7 @@ interface Props {
   isBlocked: boolean
 }
 
-// 「退避」セクション(見出し・件数・「退避する」ボタン・一覧)。メッセージ入力ダイアログの開閉と、
+// 「stash」セクション(見出し・件数・「stash する」ボタン・一覧)。メッセージ入力ダイアログの開閉と、
 // 閉じたときのフォーカスの戻し(パターン 22)をここで持つ。操作の実行・排他・確認は
 // 呼び出し元(useAppState / useGitStashOperations)の責務
 export default function StashSection({ stash, isBlocked }: Props): React.JSX.Element {
@@ -34,18 +34,18 @@ export default function StashSection({ stash, isBlocked }: Props): React.JSX.Ele
   return (
     <>
       <CollapsibleSection
-        title="退避"
+        title="stash"
         count={stash.entries.length}
         actions={
           <button
             ref={pushButtonRef}
             type="button"
             className="stash-section__push"
-            aria-label={isPushing ? '退避中' : '変更を退避する'}
+            aria-label={isPushing ? 'stash 中' : '変更を stash する'}
             disabled={isDisabled}
             onClick={() => setIsDialogOpen(true)}
           >
-            {isPushing ? '退避中...' : '退避する'}
+            {isPushing ? 'stash 中...' : 'stash する'}
           </button>
         }
         alwaysVisible={
@@ -57,7 +57,7 @@ export default function StashSection({ stash, isBlocked }: Props): React.JSX.Ele
         }
       >
         {stash.entries.length === 0 ? (
-          <p className="stash-section__empty">退避はありません</p>
+          <p className="stash-section__empty">stash はありません</p>
         ) : (
           <ul className="stash-section__list">
             {stash.entries.map((entry) => (

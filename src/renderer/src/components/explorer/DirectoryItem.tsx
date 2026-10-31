@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FileTreeNode } from '../../types'
 import { isActivationKey } from '../../lib/activationKey'
 import FileTreeItem from './FileTreeItem'
+import { ChevronIcon } from '../icons'
 
 interface Props {
   node: FileTreeNode
@@ -41,7 +42,9 @@ export default function DirectoryItem({
         onKeyDown={handleKeyDown}
         onContextMenu={(e) => onContextMenu(e, node)}
       >
-        <span className="file-tree__item-icon">{expanded ? '▾' : '▸'}</span>
+        <span className="file-tree__item-icon">
+          <ChevronIcon direction={expanded ? 'down' : 'right'} />
+        </span>
         {node.name}
       </div>
       {expanded && (

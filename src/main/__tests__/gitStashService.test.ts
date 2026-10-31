@@ -14,7 +14,7 @@ beforeEach(() => {
 })
 
 describe('getStashes', () => {
-  it('git stash list を NUL 区切りの書式で呼び、解析した退避を返す', async () => {
+  it('git stash list を NUL 区切りの書式で呼び、解析した stash を返す', async () => {
     const sha = 'a'.repeat(40)
     mockRaw.mockResolvedValue(`${sha}\0On main: msg\0${'2026-10-01T10:00:00+09:00'}\0`)
     await expect(getStashes('/project')).resolves.toEqual([
@@ -23,7 +23,7 @@ describe('getStashes', () => {
     expect(mockRaw).toHaveBeenCalledWith(['stash', 'list', '-z', '--format=%H%x00%gs%x00%cI'])
   })
 
-  it('退避が無ければ空配列', async () => {
+  it('stash が無ければ空配列', async () => {
     mockRaw.mockResolvedValue('')
     await expect(getStashes('/project')).resolves.toEqual([])
   })
@@ -61,7 +61,7 @@ describe('stashPush', () => {
   // 検証の詳細(順序・拒否文言)は gitStashGuards.test.ts で固定している。ここでは「拒否されたら push しない」だけ
   it('検証(guards)で拒否されたら、stash push を呼ばない', async () => {
     setupRaw({ head: '' })
-    await expect(stashPush('/project', '')).rejects.toThrow('コミットが無いため退避できません')
+    await expect(stashPush('/project', '')).rejects.toThrow('コミットが無いため stash できません')
     expect(stashWasCalled()).toBe(false)
   })
 
@@ -161,18 +161,18 @@ describe('stashPop / stashDrop', () => {
       async (bad) => {
         setupRaw({})
         await expect(stashPop('/project', bad)).rejects.toThrow(
-          '退避が見つかりません（すでに削除された可能性があります）'
+          'stash が見つかりません（すでに削除された可能性があります）'
         )
         expect(mockRaw).not.toHaveBeenCalled()
       }
     )
 
-    // git はすでに捨てた退避の SHA でも stash apply で復元できてしまう(実機で確認)ため、
+    // git はすでに捨てた stash の SHA でも stash apply で復元できてしまう(実機で確認)ため、
     // 現在の一覧にあることを許可リスト方式で確認する
-    it('一覧に無い SHA(すでに削除された退避)は、apply を呼ばずに拒否する', async () => {
+    it('一覧に無い SHA(すでに削除された stash)は、apply を呼ばずに拒否する', async () => {
       setupRaw({ lists: [listOutput(other)] })
       await expect(stashPop('/project', sha)).rejects.toThrow(
-        '退避が見つかりません（すでに削除された可能性があります）'
+        'stash が見つかりません（すでに削除された可能性があります）'
       )
       expect(called((a) => a[1] === 'apply')).toBe(false)
     })
@@ -186,7 +186,7 @@ describe('stashPop / stashDrop', () => {
 
     it('検証の順序は 形式 → 一覧に存在 → ツリーがきれい', async () => {
       setupRaw({ lists: [listOutput(other)], status: 'x\0' })
-      await expect(stashPop('/project', sha)).rejects.toThrow('退避が見つかりません')
+      await expect(stashPop('/project', sha)).rejects.toThrow('stash が見つかりません')
       expect(called((a) => a[0] === 'status')).toBe(false)
     })
 
@@ -198,10 +198,10 @@ describe('stashPop / stashDrop', () => {
       expect(called((a) => a[0] === 'reset' || a[0] === 'clean')).toBe(false)
     })
 
-    it('apply が失敗したら、未解決ファイルを取得してから reset --hard と clean -fd で戻し、退避は drop しない', async () => {
+    it('apply が失敗したら、未解決ファイルを取得してから reset --hard と clean -fd で戻し、stash は drop しない', async () => {
       setupRaw({ applyError: new Error('CONFLICT'), conflicted: 'a.txt\0b.txt\0' })
       await expect(stashPop('/project', sha)).rejects.toThrow(
-        '退避を戻せなかったため元に戻しました。退避は残っています（コンフリクト: a.txt, b.txt）'
+        'stash の変更を作業ツリーへ戻せなかったため、戻す前の状態にしました。stash は残っています（コンフリクト: a.txt, b.txt）'
       )
       const calls = rawCalls()
       const diffIndex = calls.findIndex((a) => a[0] === 'diff')
@@ -225,12 +225,12 @@ describe('stashPop / stashDrop', () => {
     })
 
     const dropFailureMessage =
-      '退避は戻しましたが、一覧から削除できませんでした。不要なら「捨てる」で削除してください'
+      'stash の変更は作業ツリーへ戻しましたが、この stash を一覧から削除できませんでした。不要なら「捨てる」で削除してください'
 
     // 作業ツリーは変わっているため throw ではなく結果で返す(renderer が再読込できるように)
     it.each([
       [
-        'SHA 不一致(別の退避を消したため store で戻した)',
+        'SHA 不一致(別の stash を消したため store で戻した)',
         {
           dropOutput: `Dropped stash@{0} (${other})`,
           lists: [listOutput(sha), listOutput(sha, other)]
@@ -260,7 +260,7 @@ describe('stashPop / stashDrop', () => {
     })
 
     const rollbackFailure =
-      '退避を戻せず、元に戻す処理にも失敗しました。作業ツリーに途中の変更が残っている可能性があります。退避は残っています'
+      'stash の変更を作業ツリーへ戻せず、戻す前の状態への復旧にも失敗しました。作業ツリーに途中の変更が残っている可能性があります。stash は残っています'
 
     // 巻き戻しの失敗は作業ツリーが変わり得るため、throw ではなく結果で返す(renderer が再読込できるように)
     it('reset が失敗しても clean を試み、rollbackFailed を返す', async () => {
@@ -302,7 +302,7 @@ describe('stashPop / stashDrop', () => {
       async (bad) => {
         setupRaw({})
         await expect(stashDrop('/project', bad)).rejects.toThrow(
-          '退避が見つかりません（すでに削除された可能性があります）'
+          'stash が見つかりません（すでに削除された可能性があります）'
         )
         expect(mockRaw).not.toHaveBeenCalled()
       }
@@ -311,7 +311,7 @@ describe('stashPop / stashDrop', () => {
     it('一覧に無い SHA は、pop と同じ文言で drop を呼ばずに拒否する', async () => {
       setupRaw({ lists: [listOutput(other)] })
       await expect(stashDrop('/project', sha)).rejects.toThrow(
-        '退避が見つかりません（すでに削除された可能性があります）'
+        'stash が見つかりません（すでに削除された可能性があります）'
       )
       expect(called((a) => a[1] === 'drop')).toBe(false)
     })
@@ -322,15 +322,15 @@ describe('stashPop / stashDrop', () => {
       expect(rawCalls()).toContainEqual(['stash', 'drop', 'stash@{1}'])
     })
 
-    // 検索と削除の間に退避が増減すると、同じ番号が別の退避を指す。git の出力の
-    // `Dropped stash@{n} (<sha>)` で削除した退避を確認し、違えば元に戻す
-    it('出力の SHA が要求と違えば、誤って消した退避を stash store で戻してエラーにする', async () => {
+    // 検索と削除の間に stash が増減すると、同じ番号が別の stash を指す。git の出力の
+    // `Dropped stash@{n} (<sha>)` で削除した stash を確認し、違えば元に戻す
+    it('出力の SHA が要求と違えば、誤って消した stash を stash store で戻してエラーにする', async () => {
       setupRaw({
         lists: [listOutput(sha, other)],
         dropOutput: `Dropped stash@{0} (${other})`
       })
       await expect(stashDrop('/project', sha)).rejects.toThrow(
-        '退避の状態が変わったため削除をやり直しました。もう一度操作してください'
+        'stash の状態が変わったため削除を取り消しました。もう一度操作してください'
       )
       expect(called((a) => a[1] === 'store' && a[a.length - 1] === other)).toBe(true)
       expect(rawCalls()).toContainEqual(['stash', 'store', '--message=m-b', other])

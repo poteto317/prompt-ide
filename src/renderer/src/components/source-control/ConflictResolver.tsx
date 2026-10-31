@@ -10,7 +10,7 @@ import ConflictLines from './ConflictLines'
 
 interface Props {
   conflict: ConflictFileState
-  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・退避・マージの完了/中止)で、
+  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・stash・マージの完了/中止)で、
    *  押しても no-op になる状態。全ボタンを disabled にする */
   isBlocked: boolean
 }

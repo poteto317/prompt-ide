@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-// ソース管理のメニューのテスト用の操作(ツールバーの「…」のプル・プッシュ・フェッチ、コミットボタンの ▾ の amend。
+// ソース管理のメニューのテスト用の操作(ツールバーの「…」のプル・プッシュ・フェッチ、コミットボタンの矢印の amend。
 // どちらもメニューの中にある。1 か所から使う)
 
 /** ツールバーの「…」のボタン */
@@ -20,12 +20,12 @@ export async function selectSourceControlMenuItem(name: string): Promise<void> {
   await userEvent.click(screen.getByRole('menuitem', { name }))
 }
 
-/** コミットボタンの ▾ のボタン */
+/** コミットボタンの矢印のボタン */
 export function commitMenuButton(): HTMLElement {
   return screen.getByRole('button', { name: 'コミットのオプション' })
 }
 
-/** ▾ を開いて amend を切り替える */
+/** 矢印のボタンを開いて amend を切り替える */
 export async function toggleAmend(): Promise<void> {
   await userEvent.click(commitMenuButton())
   await userEvent.click(

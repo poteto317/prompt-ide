@@ -1,6 +1,7 @@
 import { formatConflictFiles } from './gitMergeMessages'
 
-const RESTORE_FAILURE_BASE = '退避を戻せなかったため元に戻しました。退避は残っています'
+const RESTORE_FAILURE_BASE =
+  'stash の変更を作業ツリーへ戻せなかったため、戻す前の状態にしました。stash は残っています'
 
 // 復元(git stash apply)に失敗して作業ツリーを元に戻したときのエラー文言を組み立てる。
 // git のエラー文は status の出力のような長い文章で、そのまま見せても原因が分からないため使わない。

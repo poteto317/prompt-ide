@@ -29,7 +29,7 @@ const focusFirstEnabledItem = (menu: HTMLUListElement | null): void => {
   menu?.querySelector<HTMLButtonElement>(ENABLED_ITEM_SELECTOR)?.focus()
 }
 
-// ソース管理の小さなメニュー(ツールバーの「…」、コミットボタンの ▾)。開閉と閉じた後のフォーカスの戻りは
+// ソース管理の小さなメニュー(ツールバーの「…」、コミットボタンの矢印)。開閉と閉じた後のフォーカスの戻りは
 // useDialogFocusReturn に任せる(実行でボタンが押せなくなっても、押せるようになった描画の後で戻す)。
 // 項目は tabIndex -1 で、Tab の順に入れない(↑↓ で移す)。Enter・Space の実行はボタンの click に任せる
 export default function ActionMenu({

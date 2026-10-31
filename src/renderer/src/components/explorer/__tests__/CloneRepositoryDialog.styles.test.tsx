@@ -66,7 +66,7 @@ describe('clone のダイアログのスタイル(main.css)', () => {
       />
     )
     const label = getComputedStyle(screen.getByText('フォルダ名'))
-    expect(label.fontSize).toBe('11px')
+    expect(label.fontSize).toBe('12px')
     const field = getComputedStyle(screen.getByText('フォルダ名').parentElement as HTMLElement)
     expect(field.display).toBe('flex')
     expect(field.flexDirection).toBe('column')

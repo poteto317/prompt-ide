@@ -1,5 +1,6 @@
 'use client'
 import { useId, useState } from 'react'
+import { ChevronIcon } from '../icons'
 
 interface Props {
   title: string
@@ -12,7 +13,7 @@ interface Props {
   children: React.ReactNode
 }
 
-// ソース管理の開閉できるセクション(ステージされている変更・変更・退避・履歴)。見出しは AgentChangesSection と同じ
+// ソース管理の開閉できるセクション(ステージされている変更・変更・stash・履歴)。見出しは AgentChangesSection と同じ
 // h3 > button の形で、状態は aria-expanded で伝える。閉じても中身はアンマウントせず hidden にする(入力中の状態を
 // 失わない)。開閉の状態は保存しない
 export default function CollapsibleSection({
@@ -41,7 +42,7 @@ export default function CollapsibleSection({
               if (e.key === 'Enter' && e.repeat) e.preventDefault()
             }}
           >
-            <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span> {title}
+            <ChevronIcon direction={isOpen ? 'down' : 'right'} /> {title}
           </button>
           {count !== undefined && count > 0 && (
             <span className="collapsible-section__count">{count}</span>

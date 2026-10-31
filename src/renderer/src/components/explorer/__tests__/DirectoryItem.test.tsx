@@ -93,6 +93,22 @@ describe('DirectoryItem', () => {
     expect(dirItem).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('矢印は展開時に下向き、折りたたみ時に右向きになる', async () => {
+    const { container } = render(
+      <DirectoryItem
+        node={dirNode}
+        openFilePath={null}
+        onSelectFile={vi.fn()}
+        onContextMenu={vi.fn()}
+        depth={0}
+      />
+    )
+    const dirItem = container.querySelector('[aria-expanded]') as HTMLElement
+    expect(dirItem.querySelector('svg')).toHaveAttribute('data-direction', 'down')
+    await userEvent.click(dirItem)
+    expect(dirItem.querySelector('svg')).toHaveAttribute('data-direction', 'right')
+  })
+
   it('折りたたみ時に aria-expanded が false になる', async () => {
     const { container } = render(
       <DirectoryItem

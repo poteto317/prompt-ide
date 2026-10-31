@@ -26,7 +26,10 @@ describe('isAnyGitOperationRunning', () => {
     ['fetch(isFetching)', { isFetching: true }],
     ['初回 push(isSettingUpstream)', { isSettingUpstream: true }],
     ['ブランチの操作(pendingBranchOperation)', { pendingBranchOperation: 'delete' }],
-    ['退避の操作(stashPendingOperation)', { stashPendingOperation: { kind: 'drop', sha: 'abc' } }],
+    [
+      'stash の操作(stashPendingOperation)',
+      { stashPendingOperation: { kind: 'drop', sha: 'abc' } }
+    ],
     ['タグの作成(isCreatingTag)', { isCreatingTag: true }],
     ['初期化(isInitializing)', { isInitializing: true }],
     ['origin の追加(isAddingOrigin)', { isAddingOrigin: true }]

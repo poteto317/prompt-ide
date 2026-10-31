@@ -7,20 +7,20 @@ interface Props {
   onCancel: () => void
 }
 
-// 退避のメッセージの検証。メッセージは任意なので空を許可する。NUL は main 側が拒否する
+// stash のメッセージの検証。メッセージは任意なので空を許可する。NUL は main 側が拒否する
 // (spawn の引数に渡せない)ため、UX のためにここでも弾く。NameInputDialog は validate が
 // 渡されたとき既定の「空は不可」の検証を使わない(CreateBranchDialog と同じ使い方)
 function validateStashMessage(message: string): string | null {
   return message.includes('\0') ? 'メッセージに使用できない文字が含まれています' : null
 }
 
-// 退避のメッセージ入力ダイアログ。入力 UI は NameInputDialog を流用し、ここでは検証を差し込むことだけを担う。
+// stash のメッセージ入力ダイアログ。入力 UI は NameInputDialog を流用し、ここでは検証を差し込むことだけを担う。
 // 開閉状態とフォーカスの戻し先は呼び出し元(StashSection)の責務
 export default function StashMessageDialog({ onSubmit, onCancel }: Props): React.JSX.Element {
   return (
     <NameInputDialog
-      title="退避のメッセージ（任意）"
-      inputLabel="退避のメッセージ"
+      title="stash のメッセージ（任意）"
+      inputLabel="stash のメッセージ"
       validate={validateStashMessage}
       onSubmit={onSubmit}
       onCancel={onCancel}

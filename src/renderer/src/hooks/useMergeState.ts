@@ -13,7 +13,7 @@ export interface MergeStateOptions {
   refreshGitStatus: () => Promise<void>
   /** useGitHistory.refresh。マージコミットの作成・中止でログとブランチ一覧が変わる */
   refreshHistory: () => Promise<void>
-  /** ブランチ操作・退避などと共有するロック(作業ツリーを書き換えるため lockGlobal を取る) */
+  /** ブランチ操作・stash などと共有するロック(作業ツリーを書き換えるため lockGlobal を取る) */
   fileLock: FileOperationLock
   /** useFileSystem.confirmDiscardAnyDirty。未保存編集の破棄確認 */
   confirmDiscardAnyDirty: () => boolean

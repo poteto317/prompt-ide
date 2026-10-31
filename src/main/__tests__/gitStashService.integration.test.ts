@@ -6,7 +6,7 @@ import { join } from 'path'
 import { getStashes, stashDrop, stashPop, stashPush } from '../gitStashService'
 import { commitAll, initRepo, runGit, stubIsolatedGitEnv } from './helpers/realGitRepo'
 
-// gitStashService.test.ts は simple-git をモックするため、「実際の git が退避で何を残し何を消すか」は
+// gitStashService.test.ts は simple-git をモックするため、「実際の git が stash で何を残し何を消すか」は
 // 検証できない。データを失わないことに関わる判定だけ、実 git で固定する
 describe('gitStashService(実 git)', () => {
   let repo: string
@@ -33,7 +33,7 @@ describe('gitStashService(実 git)', () => {
     removeTempPathSync(repo)
   })
 
-  it('追跡済み・ステージ済み・未追跡を退避して作業ツリーを HEAD に戻し、ignored は残す', async () => {
+  it('追跡済み・ステージ済み・未追跡を stash して作業ツリーを HEAD に戻し、ignored は残す', async () => {
     commit({ 'a.txt': 'base', 'b.txt': 'b', '.gitignore': '*.log\n' })
     write('a.txt', 'modified')
     write('b.txt', 'staged')
@@ -53,7 +53,7 @@ describe('gitStashService(実 git)', () => {
     expect(stashes[0].sha).toMatch(/^[0-9a-f]{40}$/)
   })
 
-  it('メッセージ無しの退避は最後のコミットの件名が表示メッセージになる', async () => {
+  it('メッセージ無しの stash は最後のコミットの件名が表示メッセージになる', async () => {
     commit({ 'a.txt': 'base' }, 'last commit subject')
     write('a.txt', 'm')
     await stashPush(repo, '')
@@ -77,22 +77,22 @@ describe('gitStashService(実 git)', () => {
     expect((await getStashes(repo))[0].message).toBe('--foo bar')
   })
 
-  it('退避が無ければ一覧は空', async () => {
+  it('stash が無ければ一覧は空', async () => {
     commit({ 'a.txt': 'base' })
     await expect(getStashes(repo)).resolves.toEqual([])
   })
 
   // git は変更が無くても終了コード 0 で成功扱いにするため、アプリ側の事前確認で拒否する
-  it('変更が無ければ拒否し、退避を作らない', async () => {
+  it('変更が無ければ拒否し、stash を作らない', async () => {
     commit({ 'a.txt': 'base' })
-    await expect(stashPush(repo, '')).rejects.toThrow('退避する変更がありません')
+    await expect(stashPush(repo, '')).rejects.toThrow('stash する変更がありません')
     expect(await getStashes(repo)).toEqual([])
   })
 
   it('ignored の変更だけなら変更なしとして拒否する', async () => {
     commit({ 'a.txt': 'base', '.gitignore': '*.log\n' })
     write('x.log', 'ig')
-    await expect(stashPush(repo, '')).rejects.toThrow('退避する変更がありません')
+    await expect(stashPush(repo, '')).rejects.toThrow('stash する変更がありません')
   })
 
   it('空白だけのメッセージは -m を付けず、最後のコミットの件名が表示メッセージになる', async () => {
@@ -104,7 +104,7 @@ describe('gitStashService(実 git)', () => {
 
   it('コミットが無いリポジトリでは拒否する', async () => {
     write('a.txt', 'new')
-    await expect(stashPush(repo, '')).rejects.toThrow('コミットが無いため退避できません')
+    await expect(stashPush(repo, '')).rejects.toThrow('コミットが無いため stash できません')
   })
 
   it('コンフリクト中は拒否し、ファイルを変えない', async () => {
@@ -114,11 +114,11 @@ describe('gitStashService(実 git)', () => {
     runGit(repo, 'checkout', '-q', 'main')
     commit({ 'a.txt': 'main' })
     expect(() => runGit(repo, 'merge', '--no-edit', 'feature')).toThrow()
-    await expect(stashPush(repo, '')).rejects.toThrow('コンフリクト中のため退避できません')
+    await expect(stashPush(repo, '')).rejects.toThrow('コンフリクト中のため stash できません')
     expect(status()).toContain('UU a.txt')
   })
 
-  it('detached HEAD でも退避でき、ブランチは (no branch) になる', async () => {
+  it('detached HEAD でも stash でき、ブランチは (no branch) になる', async () => {
     commit({ 'a.txt': 'base' })
     runGit(repo, 'checkout', '-q', '--detach')
     write('a.txt', 'm')
@@ -129,7 +129,7 @@ describe('gitStashService(実 git)', () => {
     })
   })
 
-  it('未追跡ファイルだけの変更も退避され、作業ツリーから消える', async () => {
+  it('未追跡ファイルだけの変更も stash され、作業ツリーから消える', async () => {
     commit({ 'a.txt': 'base' })
     write('only-untracked.txt', 'new')
     write('d/y.txt', 'dir')
@@ -148,7 +148,7 @@ describe('gitStashService(実 git)', () => {
     '-c core.pager=x',
     '-ccore.sshCommand=x'
   ])(
-    'simple-git が危険なオプションと誤検出する形のメッセージ(%s)でも退避でき、そのまま残る',
+    'simple-git が危険なオプションと誤検出する形のメッセージ(%s)でも stash でき、そのまま残る',
     async (message) => {
       commit({ 'a.txt': 'base' })
       write('a.txt', 'm')
@@ -157,7 +157,7 @@ describe('gitStashService(実 git)', () => {
     }
   )
 
-  // 解決済みでコンフリクトの無い途中の操作は ls-files -u に現れない。退避すると
+  // 解決済みでコンフリクトの無い途中の操作は ls-files -u に現れない。stash すると
   // MERGE_HEAD / CHERRY_PICK_HEAD が消えて「途中」の状態が失われるため拒否する
   it('merge --no-commit の途中(コンフリクト無し・解決済み)は拒否し、状態を変えない', async () => {
     commit({ 'a.txt': 'base' })
@@ -169,7 +169,7 @@ describe('gitStashService(実 git)', () => {
     const before = status()
     expect(before).toContain('A  f.txt')
     await expect(stashPush(repo, '')).rejects.toThrow(
-      'マージ・cherry-pick・revert の途中のため退避できません'
+      'マージ・cherry-pick・revert の途中のため stash できません'
     )
     expect(() => runGit(repo, 'rev-parse', '-q', '--verify', 'MERGE_HEAD')).not.toThrow()
     expect(status()).toBe(before)
@@ -188,14 +188,14 @@ describe('gitStashService(実 git)', () => {
     runGit(repo, 'add', 'a.txt')
     expect(runGit(repo, 'ls-files', '-u')).toBe('')
     await expect(stashPush(repo, '')).rejects.toThrow(
-      'マージ・cherry-pick・revert の途中のため退避できません'
+      'マージ・cherry-pick・revert の途中のため stash できません'
     )
     expect(() => runGit(repo, 'rev-parse', '-q', '--verify', 'CHERRY_PICK_HEAD')).not.toThrow()
     expect(read('a.txt')).toBe('resolved')
     expect(await getStashes(repo)).toEqual([])
   })
 
-  // サブモジュールの変更は退避の対象外(git stash は No local changes to save を終了コード 0 で
+  // サブモジュールの変更は stash の対象外(git stash は No local changes to save を終了コード 0 で
   // 返す)。サブモジュールの追加は file プロトコルの許可(-c protocol.file.allow=always)が必要
   describe('サブモジュール', () => {
     let subSource: string
@@ -218,7 +218,7 @@ describe('gitStashService(実 git)', () => {
       setupSubmodule()
       writeFileSync(join(repo, 'sub', 's.txt'), 'changed')
       expect(status()).toContain('sub')
-      await expect(stashPush(repo, '')).rejects.toThrow('退避する変更がありません')
+      await expect(stashPush(repo, '')).rejects.toThrow('stash する変更がありません')
       expect(await getStashes(repo)).toEqual([])
     })
 
@@ -231,10 +231,10 @@ describe('gitStashService(実 git)', () => {
       runGit(join(repo, 'sub'), 'add', 's2.txt')
       runGit(join(repo, 'sub'), 'commit', '-qm', 'sub2')
       expect(status()).toContain('sub')
-      await expect(stashPush(repo, '')).rejects.toThrow('退避する変更がありません')
+      await expect(stashPush(repo, '')).rejects.toThrow('stash する変更がありません')
     })
 
-    it('外のファイルも変更していれば退避でき、サブモジュールの変更は含まれない', async () => {
+    it('外のファイルも変更していれば stash でき、サブモジュールの変更は含まれない', async () => {
       setupSubmodule()
       writeFileSync(join(repo, 'sub', 's.txt'), 'changed')
       write('a.txt', 'm')
@@ -247,7 +247,7 @@ describe('gitStashService(実 git)', () => {
 
   const firstSha = async (): Promise<string> => (await getStashes(repo))[0].sha
 
-  it('退避を戻すと、ステージ済み・未ステージ・新規のステージ・未追跡が退避前と同じに戻り、一覧から消える', async () => {
+  it('stash を戻すと、ステージ済み・未ステージ・新規のステージ・未追跡が stash 前と同じに戻り、一覧から消える', async () => {
     commit({ 'a.txt': 'base', 'b.txt': 'b' })
     write('b.txt', 'staged')
     runGit(repo, 'add', 'b.txt')
@@ -263,7 +263,7 @@ describe('gitStashService(実 git)', () => {
     expect(await getStashes(repo)).toEqual([])
   })
 
-  it('作業ツリーがきれいでなければ(未追跡ファイルだけでも)拒否し、退避も作業ツリーも変えない', async () => {
+  it('作業ツリーがきれいでなければ(未追跡ファイルだけでも)拒否し、stash も作業ツリーも変えない', async () => {
     commit({ 'a.txt': 'base' })
     write('a.txt', 'm')
     await stashPush(repo, 'm')
@@ -275,8 +275,8 @@ describe('gitStashService(実 git)', () => {
     expect(await getStashes(repo)).toHaveLength(1)
   })
 
-  // 失敗しても作業ツリーを復元前の状態へ戻し、退避は残す(本命のケース)
-  it('コンフリクトしたら元に戻し、退避は残る', async () => {
+  // 失敗しても作業ツリーを復元前の状態へ戻し、stash は残す(本命のケース)
+  it('コンフリクトしたら元に戻し、stash は残る', async () => {
     commit({ 'a.txt': 'base' })
     write('a.txt', 'stashed')
     write('u2.txt', 'untracked in stash')
@@ -284,7 +284,7 @@ describe('gitStashService(実 git)', () => {
     commit({ 'a.txt': 'head-change' }, 'head change')
     const sha = await firstSha()
     await expect(stashPop(repo, sha)).rejects.toThrow(
-      '退避を戻せなかったため元に戻しました。退避は残っています（コンフリクト: a.txt）'
+      'stash の変更を作業ツリーへ戻せなかったため、戻す前の状態にしました。stash は残っています（コンフリクト: a.txt）'
     )
     expect(status()).toBe('')
     expect(read('a.txt')).toBe('head-change')
@@ -292,9 +292,9 @@ describe('gitStashService(実 git)', () => {
     expect((await getStashes(repo)).map((e) => e.sha)).toEqual([sha])
   })
 
-  // 退避に含まれる未追跡ファイルと同じパスに ignored のファイルがあっても、git は黙って上書きせず失敗する。
+  // stash に含まれる未追跡ファイルと同じパスに ignored のファイルがあっても、git は黙って上書きせず失敗する。
   // 失敗時は巻き戻し、ignored のファイルはそのまま残る
-  it('同名の ignored ファイルとの衝突では、上書きせず失敗して巻き戻し、退避は残る', async () => {
+  it('同名の ignored ファイルとの衝突では、上書きせず失敗して巻き戻し、stash は残る', async () => {
     commit({ 'a.txt': 'base' })
     write('build.log', 'STASHED')
     write('a.txt', 'mod')
@@ -309,22 +309,22 @@ describe('gitStashService(実 git)', () => {
     expect(await getStashes(repo)).toHaveLength(1)
   })
 
-  it('すでに捨てた退避の SHA は拒否する(git は復元できてしまう)', async () => {
+  it('すでに捨てた stash の SHA は拒否する(git は復元できてしまう)', async () => {
     commit({ 'a.txt': 'base' })
     write('a.txt', 'm')
     await stashPush(repo, 'm')
     const sha = await firstSha()
     await stashDrop(repo, sha)
-    await expect(stashPop(repo, sha)).rejects.toThrow('退避が見つかりません')
+    await expect(stashPop(repo, sha)).rejects.toThrow('stash が見つかりません')
     expect(status()).toBe('')
   })
 
   it('形式が不正な SHA は拒否する', async () => {
     commit({ 'a.txt': 'base' })
-    await expect(stashPop(repo, '--all')).rejects.toThrow('退避が見つかりません')
+    await expect(stashPop(repo, '--all')).rejects.toThrow('stash が見つかりません')
   })
 
-  it('drop は SHA で識別する: 先に別の退避を捨てて番号がずれても、指定した退避だけが消える', async () => {
+  it('drop は SHA で識別する: 先に別の stash を捨てて番号がずれても、指定した stash だけが消える', async () => {
     commit({ 'a.txt': 'base' })
     write('a.txt', '1')
     await stashPush(repo, 'first')
@@ -339,7 +339,7 @@ describe('gitStashService(実 git)', () => {
     expect((await getStashes(repo)).map((e) => e.sha)).toEqual([first.sha])
   })
 
-  it('pop は退避の番号がずれていても、指定した SHA の退避を戻して消す', async () => {
+  it('pop は stash の番号がずれていても、指定した SHA の stash を戻して消す', async () => {
     commit({ 'a.txt': 'base' })
     write('a.txt', 'first-change')
     await stashPush(repo, 'first')
@@ -351,9 +351,9 @@ describe('gitStashService(実 git)', () => {
     expect((await getStashes(repo)).map((e) => e.sha)).toEqual([second.sha])
   })
 
-  // サブモジュールの変更は退避の対象外。復元の「きれいか」の判定も同じ基準でないと、
-  // 退避は「変更なし」・復元は「作業中の変更あり」の行き止まりになる
-  it('サブモジュールの中だけが変更されている状態でも、退避を戻せる', async () => {
+  // サブモジュールの変更は stash の対象外。復元の「きれいか」の判定も同じ基準でないと、
+  // stash は「変更なし」・復元は「作業中の変更あり」の行き止まりになる
+  it('サブモジュールの中だけが変更されている状態でも、stash を戻せる', async () => {
     const subSource = mkdtempSync(join(tmpdir(), 'stash-pop-submodule-src-'))
     try {
       initRepo(subSource)
@@ -376,7 +376,7 @@ describe('gitStashService(実 git)', () => {
   })
 
   // assume-unchanged のファイルの変更は status に出ないが、失敗時の reset --hard が消す(実機で確認)
-  it('assume-unchanged を付けたファイルを編集した状態では拒否し、そのファイルも退避も作業ツリーも変えない', async () => {
+  it('assume-unchanged を付けたファイルを編集した状態では拒否し、そのファイルも stash も作業ツリーも変えない', async () => {
     commit({ 'a.txt': 'base', 'c.txt': 'c-base' })
     write('a.txt', 'stashed')
     await stashPush(repo, 'm')
@@ -406,7 +406,7 @@ describe('gitStashService(実 git)', () => {
 
   // コンフリクトを ours で解決して add したマージの途中は、status も ls-files -u も空だが MERGE_HEAD が残る。
   // 戻すに失敗すると巻き戻しの reset --hard が MERGE_HEAD を消して、解決途中のマージが失われるため拒否する
-  it('ours で解決したマージの途中(MERGE_HEAD あり・status 空)は復元を拒否し、MERGE_HEAD と退避が残る', async () => {
+  it('ours で解決したマージの途中(MERGE_HEAD あり・status 空)は復元を拒否し、MERGE_HEAD と stash が残る', async () => {
     commit({ 'a.txt': 'base', 'f.txt': 'base' })
     write('a.txt', 'stashed')
     await stashPush(repo, 'm')
@@ -442,7 +442,9 @@ describe('gitStashService(実 git)', () => {
       await stashPush(repo, 'conflict')
       commit({ 'a.txt': 'head-change' }, 'head change')
       writeFileSync(join(repo, 'sub', 's.txt'), 'LOCAL')
-      await expect(stashPop(repo, await firstSha())).rejects.toThrow('退避を戻せなかったため')
+      await expect(stashPop(repo, await firstSha())).rejects.toThrow(
+        'stash の変更を作業ツリーへ戻せなかったため'
+      )
       expect(read('a.txt')).toBe('head-change')
       expect(read('sub/s.txt')).toBe('LOCAL')
       expect(await getStashes(repo)).toHaveLength(1)

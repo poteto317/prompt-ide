@@ -7,9 +7,9 @@ describe('buildStashDropConfirmMessage', () => {
       'fix bug を捨てますか？この操作は元に戻せません。'
     )
   })
-  it('メッセージが空のときは「この退避」と言う', () => {
+  it('メッセージが空のときは「この stash」と言う', () => {
     expect(buildStashDropConfirmMessage('')).toBe(
-      'この退避を捨てますか？この操作は元に戻せません。'
+      'この stash を捨てますか？この操作は元に戻せません。'
     )
   })
 })

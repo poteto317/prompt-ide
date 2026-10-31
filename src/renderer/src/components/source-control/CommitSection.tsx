@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import ActionMenu from './ActionMenu'
 import { formatSyncCounts, getSyncChangesAriaLabel } from '../../lib/syncChangesLabel'
+import { ChevronIcon } from '../icons'
 
 interface Props {
   stagedCount: number
@@ -192,7 +193,7 @@ export default function CommitSection({
         </button>
         <ActionMenu
           buttonLabel="コミットのオプション"
-          buttonContent="▾"
+          buttonContent={<ChevronIcon direction="down" />}
           buttonClassName="source-control-panel__commit-menu-btn"
           items={[
             {

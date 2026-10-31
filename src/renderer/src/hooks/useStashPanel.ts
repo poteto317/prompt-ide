@@ -9,7 +9,7 @@ export interface StashPanelOptions {
   folderPath: string | null
   gitStatus: GitStatusResult | null
   refreshGitStatus: () => Promise<void>
-  /** ブランチ操作などと共有するロック(退避・復元が作業ツリーを書き換えるため相互に待たせる) */
+  /** ブランチ操作などと共有するロック(stash・復元が作業ツリーを書き換えるため相互に待たせる) */
   fileOperationLock: FileOperationLock
   /** useFileSystem.confirmDiscardAnyDirty。未保存編集の破棄確認 */
   confirmDiscardAnyDirty: () => boolean
@@ -19,8 +19,8 @@ export interface StashPanelOptions {
   refreshTree: () => Promise<unknown>
 }
 
-// 退避セクションが受け取る状態と操作を組み立てる。
-// 退避は一覧の取得(useGitStashes)と操作(useGitStashOperations)に分ける。操作は作業ツリーを
+// stash セクションが受け取る状態と操作を組み立てる。
+// stash は一覧の取得(useGitStashes)と操作(useGitStashOperations)に分ける。操作は作業ツリーを
 // 書き換えるため、ブランチ操作と同じ fileOperationLock を共有して相互に待たせる
 export function useStashPanel({
   folderPath,
@@ -38,8 +38,8 @@ export function useStashPanel({
     gitStashes.refreshStashes,
     fileOperationLock
   )
-  // 退避・復元も checkout・マージと同じく working tree を書き換えるため、runEditorSyncedOperation で
-  // 「未保存編集の破棄確認 → 操作 → 成功時のみタブを再読込」にする。退避は未追跡ファイルを消し、
+  // stash・復元も checkout・マージと同じく working tree を書き換えるため、runEditorSyncedOperation で
+  // 「未保存編集の破棄確認 → 操作 → 成功時のみタブを再読込」にする。stash は未追跡ファイルを消し、
   // 復元は未追跡ファイルを作るため、成功後はファイルツリーも読み直す(変更の取り消しと同じ理由。
   // ファイルウォッチャーが無い)。ツリーの読み直しの失敗はツリー側が自身のエラー表示へ報告するため、
   // タブの再読込を止めない

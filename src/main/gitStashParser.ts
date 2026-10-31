@@ -34,7 +34,7 @@ export function parseStashList(output: string): GitStashEntry[] {
   return entries
 }
 
-// 退避の番号(stash@{n})は、他の退避の追加・削除でずれる。実行時に SHA から引き直すための位置の検索
+// stash の番号(stash@{n})は、他の stash の追加・削除でずれる。実行時に SHA から引き直すための位置の検索
 export function findStashIndex(entries: GitStashEntry[], sha: string): number {
   return entries.findIndex((entry) => entry.sha === sha)
 }

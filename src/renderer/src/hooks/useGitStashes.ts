@@ -30,7 +30,7 @@ async function loadStashes(
   if (!isStale()) setStashes(entries)
 }
 
-// 退避の一覧の取得と保持だけを担う(操作の実行は useGitStashOperations)。
+// stash の一覧の取得と保持だけを担う(操作の実行は useGitStashOperations)。
 // 操作の後に呼ぶ refreshStashes が、フォルダ切り替え後に遅れて解決しても古い結果で上書きしない
 export function useGitStashes(folderPath: string | null): GitStashesState {
   const [stashes, setStashes] = useState<GitStashEntry[]>([])

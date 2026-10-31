@@ -331,7 +331,7 @@ describe('AgentReferenceChips', () => {
       const visible = getGroup().querySelector('.agent-references__visible-reason') as HTMLElement
       const computed = getComputedStyle(visible)
       expect(computed.color).toBe('rgb(150, 150, 150)')
-      expect(computed.fontSize).toBe('12px')
+      expect(computed.fontSize).toBe('13px')
       expect(computed.flexBasis).toBe('100%')
     } finally {
       style.remove()

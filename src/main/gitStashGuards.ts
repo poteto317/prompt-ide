@@ -1,10 +1,10 @@
 import type { SimpleGit } from 'simple-git'
 
-// 退避(push)と復元(pop)が「作業ツリーに変更があるか」を判定するための status。
+// stash(push)と復元(pop)が「作業ツリーに変更があるか」を判定するための status。
 // push 側と pop 側で必ず同じ判定を使うよう、引数列をここ 1 箇所に集約する。
 // サブモジュールの変更は数えない(--ignore-submodules=all): 数えると、サブモジュールの
-// 中だけを変更した状態で「退避する変更がありません」(退避)と「作業中の変更があるため戻せません」
-// (復元)の行き止まりになる。stash push は終了コード 0 で `No local changes to save`(退避なし)に
+// 中だけを変更した状態で「stash する変更がありません」(stash)と「作業中の変更があるため戻せません」
+// (復元)の行き止まりになる。stash push は終了コード 0 で `No local changes to save`(stash なし)に
 // なり、apply --index も失敗時の reset --hard もサブモジュールの中身には触れない
 async function readStashRelevantStatus(git: SimpleGit): Promise<string> {
   return git.raw([
@@ -27,28 +27,28 @@ export async function hasInProgressOperation(git: SimpleGit): Promise<boolean> {
   return false
 }
 
-// 退避してよい状態かを検証する。前の検証に失敗したら後の git 呼び出しには進まない。
+// stash してよい状態かを検証する。前の検証に失敗したら後の git 呼び出しには進まない。
 // 英語のエラーを見せる前に日本語で弾くものと、git が成功扱いにするものを事前に判定する:
 // - 初期コミットが無いと git は終了コード 1 で `You do not have the initial commit yet`
 // - コンフリクト中は終了コード 1 で `needs merge`
-// - 解決済みのマージ・cherry-pick・revert の途中(コンフリクト無し)で退避すると、成功して
+// - 解決済みのマージ・cherry-pick・revert の途中(コンフリクト無し)で stash すると、成功して
 //   MERGE_HEAD 等が消え、「途中」の状態が黙って失われる(実機で確認)
 // - サブモジュールの変更だけだと status は変更ありだが、stash push は終了コード 0 で
-//   `No local changes to save`(退避なし)。stash に合わせ --ignore-submodules=all で判定する
-// - 退避する変更が無くても git は終了コード 0 で `No local changes to save` と言う
+//   `No local changes to save`(stash なし)。stash に合わせ --ignore-submodules=all で判定する
+// - stash する変更が無くても git は終了コード 0 で `No local changes to save` と言う
 //   (出力の文言に頼らず、事前の状態で判定する。パターン 28)
 // rev-parse --verify -q は ref が無いと終了コード 1・stderr 空で終わり、simple-git は reject せず
 // 空文字で resolve する(hasMergeInProgress と同じ)
 export async function assertStashable(git: SimpleGit): Promise<void> {
   const head = await git.raw(['rev-parse', '--verify', '-q', 'HEAD'])
-  if (head.trim() === '') throw new Error('コミットが無いため退避できません')
+  if (head.trim() === '') throw new Error('コミットが無いため stash できません')
   const unmerged = await git.raw(['ls-files', '-u', '-z'])
-  if (unmerged !== '') throw new Error('コンフリクト中のため退避できません')
+  if (unmerged !== '') throw new Error('コンフリクト中のため stash できません')
   if (await hasInProgressOperation(git)) {
-    throw new Error('マージ・cherry-pick・revert の途中のため退避できません')
+    throw new Error('マージ・cherry-pick・revert の途中のため stash できません')
   }
   const status = await readStashRelevantStatus(git)
-  if (status === '') throw new Error('退避する変更がありません')
+  if (status === '') throw new Error('stash する変更がありません')
 }
 
 // 復元してよい状態(作業ツリーが完全にきれい)かを検証する。失敗時の巻き戻し(applyOrRollback)が
@@ -57,11 +57,11 @@ export async function assertStashable(git: SimpleGit): Promise<void> {
 export async function assertRestorable(git: SimpleGit): Promise<void> {
   const status = await readStashRelevantStatus(git)
   if (status !== '') {
-    throw new Error('作業中の変更があるため戻せません。先にコミットまたは退避してください')
+    throw new Error('作業中の変更があるため戻せません。先にコミットまたは stash してください')
   }
   // コンフリクトを解決して add した後のマージ・cherry-pick・revert の途中は、status も ls-files -u も
   // 空だが MERGE_HEAD 等は残る。復元に失敗すると巻き戻しの reset --hard がそれを消し、解決途中の
-  // 状態が黙って失われる(成功しても途中の操作に退避の変更が混ざる)ため、退避(push)と同じく拒否する
+  // 状態が黙って失われる(成功しても途中の操作に stash の変更が混ざる)ため、stash(push)と同じく拒否する
   if (await hasInProgressOperation(git)) {
     throw new Error('マージ・cherry-pick・revert の途中のため戻せません')
   }

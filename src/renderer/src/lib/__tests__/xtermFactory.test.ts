@@ -89,12 +89,12 @@ describe('createController(タブごとの xterm の controller)', () => {
     expect(one.terminal.loadAddon).toHaveBeenCalledExactlyOnceWith(one.deps.fitAddon)
   })
 
-  it('xterm の設定(点滅なし・等幅の書体・13px・5,000 行の履歴・背景色)', () => {
+  it('xterm の設定(点滅なし・等幅の書体・14px・5,000 行の履歴・背景色)', () => {
     const { terminal } = createOne()
     expect(terminal.options).toMatchObject({
       cursorBlink: false,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 13,
+      fontSize: 14,
       scrollback: 5000,
       theme: { background: '#1e1e1e' }
     })

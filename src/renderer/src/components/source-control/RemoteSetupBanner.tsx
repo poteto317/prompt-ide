@@ -12,7 +12,7 @@ interface Props {
   /** 現在のブランチ名(upstream が未設定の文言に使う) */
   branch: string | null
   remoteSetup: RemoteSetupPanelState
-  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・退避・解決ビューの操作)で、押しても no-op になる状態 */
+  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・stash・解決ビューの操作)で、押しても no-op になる状態 */
   isBlocked: boolean
   /** 成功の後に、次の操作のボタンへのフォーカスを要求する(SourceControlPanel の useRemoteSetupFocus) */
   requestFocus: (target: RemoteSetupFocusTarget) => void

@@ -3,22 +3,22 @@ import { findStashIndex, parseStashList, parseStashSubject } from '../gitStashPa
 
 describe('parseStashSubject', () => {
   // git stash push -m "msg" の件名は "On <branch>: msg"
-  it('メッセージ付きの退避(On <branch>: <msg>)からメッセージとブランチを取り出す', () => {
+  it('メッセージ付きの stash(On <branch>: <msg>)からメッセージとブランチを取り出す', () => {
     expect(parseStashSubject('On main: my message')).toEqual({
       branch: 'main',
       message: 'my message'
     })
   })
 
-  // メッセージ無しの退避の件名は "WIP on <branch>: <短縮ハッシュ> <最後のコミットの件名>"
-  it('メッセージ無しの退避(WIP on <branch>: <hash> <subject>)は件名だけをメッセージにする', () => {
+  // メッセージ無しの stash の件名は "WIP on <branch>: <短縮ハッシュ> <最後のコミットの件名>"
+  it('メッセージ無しの stash(WIP on <branch>: <hash> <subject>)は件名だけをメッセージにする', () => {
     expect(parseStashSubject('WIP on main: 745da1d fix the bug')).toEqual({
       branch: 'main',
       message: 'fix the bug'
     })
   })
 
-  it('detached HEAD の退避は branch が (no branch) になる', () => {
+  it('detached HEAD の stash は branch が (no branch) になる', () => {
     expect(parseStashSubject('On (no branch): detached')).toEqual({
       branch: '(no branch)',
       message: 'detached'
@@ -57,7 +57,7 @@ describe('parseStashList', () => {
     expect(parseStashList('')).toEqual([])
   })
 
-  it('NUL 区切りの SHA・件名・日時を 1 件ずつの退避にする(新しい順のまま)', () => {
+  it('NUL 区切りの SHA・件名・日時を 1 件ずつの stash にする(新しい順のまま)', () => {
     const output = `${sha1}\0On main: first\0${'2026-10-01T10:00:00+09:00'}\0${sha2}\0WIP on dev: 123abcd second\0${'2026-09-30T09:00:00+09:00'}\0`
     expect(parseStashList(output)).toEqual([
       { sha: sha1, message: 'first', branch: 'main', createdAt: '2026-10-01T10:00:00+09:00' },
@@ -70,8 +70,8 @@ describe('parseStashList', () => {
     expect(parseStashList(output)).toHaveLength(1)
   })
 
-  // メッセージが空の退避(件名が "On main: ")でも、3 フィールドごとの区切りがずれない
-  it('件名が空に近い退避があっても、後ろの退避の区切りがずれない', () => {
+  // メッセージが空の stash(件名が "On main: ")でも、3 フィールドごとの区切りがずれない
+  it('件名が空に近い stash があっても、後ろの stash の区切りがずれない', () => {
     const output = `${sha1}\0On main: \0${'2026-10-01T10:00:00+09:00'}\0${sha2}\0On main: y\0${'2026-10-01T11:00:00+09:00'}\0`
     const entries = parseStashList(output)
     expect(entries.map((e) => e.sha)).toEqual([sha1, sha2])

@@ -6,7 +6,7 @@ import type { MergeStatePanelState } from '../../../types'
 import MergeBanner from '../MergeBanner'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する。
-// バナーのボタンは、退避セクション・解決ビューのボタン(.stash-section__push / __action・
+// バナーのボタンは、stash セクション・解決ビューのボタン(.stash-section__push / __action・
 // .conflict-resolver__button / .conflict-block__button)と 1 つのグループセレクタで宣言を共有する。
 // グループから外れると見た目が崩れるため固定する。
 // jsdom は :hover を計算しないため、ホバー色は検証しない
@@ -41,7 +41,7 @@ describe('MergeBanner のスタイル(main.css)', () => {
     expect(style.paddingLeft).toBe('8px')
     expect(style.borderTopStyle).toBe('solid')
     expect(style.borderRadius).toBe('3px')
-    expect(style.fontSize).toBe('12px')
+    expect(style.fontSize).toBe('13px')
     expect(style.cursor).toBe('pointer')
   })
 

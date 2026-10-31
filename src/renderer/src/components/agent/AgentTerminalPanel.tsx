@@ -17,6 +17,7 @@ import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
 import type { AgentChangesReviewAction } from '../../types'
 import AgentSessionTabList from './AgentSessionTabList'
 import AgentTerminalView from './AgentTerminalView'
+import { ChevronIcon } from '../icons'
 
 interface Props {
   state: AgentTerminalPanelState
@@ -92,7 +93,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
             layout.toggleOpen()
           }}
         >
-          <span aria-hidden="true">{layout.isOpen ? '▾' : '▸'}</span> エージェント
+          <ChevronIcon direction={layout.isOpen ? 'down' : 'right'} /> エージェント
         </button>
         <span id={hintId} className="agent-terminal-panel__hint">
           F6 でターミナルから抜けます
@@ -216,7 +217,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
           {review?.isRecording === true && (
             <button
               type="button"
-              className="agent-terminal-panel__button"
+              className="agent-terminal-panel__button agent-terminal-panel__button--review"
               aria-label="エージェントの変更を確認（ソース管理を開く）"
               onClick={() => {
                 // 最大化の間はエディタとサイドバーの操作が隠れるため、元に戻してから移る
@@ -227,7 +228,7 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
                 review.onReview()
               }}
             >
-              変更を確認
+              <span title="変更を確認">変更を確認</span>
             </button>
           )}
           <button

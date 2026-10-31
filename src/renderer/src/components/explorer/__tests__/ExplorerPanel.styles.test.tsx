@@ -7,7 +7,7 @@ import ExplorerPanel from '../ExplorerPanel'
 import { makeCloneRepositoryPanelState } from '../../../__tests__/makeCloneRepositoryPanelState'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する。
-// 「リポジトリを clone」は、退避・マージ・リモートのバナーのボタンと 1 つのグループセレクタで宣言を共有する
+// 「リポジトリを clone」は、stash・マージ・リモートのバナーのボタンと 1 つのグループセレクタで宣言を共有する
 // (パターン 30・77)。グループから外れると見た目が崩れるため固定する。jsdom は :hover を計算しない
 let styleElement: HTMLStyleElement
 

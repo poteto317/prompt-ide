@@ -24,45 +24,45 @@ describe('StashItem', () => {
     expect(screen.getByText('(メッセージなし)')).toBeInTheDocument()
   })
 
-  it('「戻す」「捨てる」ボタンは aria-label に退避の名前を含む', () => {
+  it('「戻す」「捨てる」ボタンは aria-label に stash の名前を含む', () => {
     render(<StashItem {...baseProps} />)
-    expect(screen.getByRole('button', { name: '退避 fix bug を戻す' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '退避 fix bug を捨てる' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'stash fix bug を戻す' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'stash fix bug を捨てる' })).toBeInTheDocument()
   })
 
-  it('「戻す」で onPop を SHA で、「捨てる」で onDrop を退避ごと呼ぶ', async () => {
+  it('「戻す」で onPop を SHA で、「捨てる」で onDrop を stash ごと呼ぶ', async () => {
     const onPop = vi.fn()
     const onDrop = vi.fn()
     render(<StashItem {...baseProps} onPop={onPop} onDrop={onDrop} />)
-    await userEvent.click(screen.getByRole('button', { name: '退避 fix bug を戻す' }))
-    await userEvent.click(screen.getByRole('button', { name: '退避 fix bug を捨てる' }))
+    await userEvent.click(screen.getByRole('button', { name: 'stash fix bug を戻す' }))
+    await userEvent.click(screen.getByRole('button', { name: 'stash fix bug を捨てる' }))
     expect(onPop).toHaveBeenCalledWith(entry.sha)
     expect(onDrop).toHaveBeenCalledWith(entry)
   })
 
   it('他の操作中(isBlocked)は両方のボタンが disabled', () => {
     render(<StashItem {...baseProps} isBlocked />)
-    expect(screen.getByRole('button', { name: '退避 fix bug を戻す' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '退避 fix bug を捨てる' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'stash fix bug を戻す' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'stash fix bug を捨てる' })).toBeDisabled()
   })
 
   // 押したボタンだけ実行中の表示にする(別の行の同じボタンは変えない)
-  it('この退避の復元が実行中なら「戻し中...」(aria-label は「退避を戻し中」)で両方 disabled', () => {
+  it('この stash の復元が実行中なら「戻し中...」(aria-label は「stash を戻し中」)で両方 disabled', () => {
     render(<StashItem {...baseProps} pending={{ kind: 'pop', sha: entry.sha }} />)
-    const pop = screen.getByRole('button', { name: '退避を戻し中' })
+    const pop = screen.getByRole('button', { name: 'stash を戻し中' })
     expect(pop).toHaveTextContent('戻し中...')
     expect(pop).toBeDisabled()
-    expect(screen.getByRole('button', { name: '退避 fix bug を捨てる' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'stash fix bug を捨てる' })).toBeDisabled()
   })
 
-  it('この退避の削除が実行中なら「削除中...」(aria-label は「退避を削除中」)', () => {
+  it('この stash の削除が実行中なら「削除中...」(aria-label は「stash を削除中」)', () => {
     render(<StashItem {...baseProps} pending={{ kind: 'drop', sha: entry.sha }} />)
-    expect(screen.getByRole('button', { name: '退避を削除中' })).toHaveTextContent('削除中...')
+    expect(screen.getByRole('button', { name: 'stash を削除中' })).toHaveTextContent('削除中...')
   })
 
-  it('別の退避に対する操作が実行中のとき、この行は通常の表示のまま disabled だけになる', () => {
+  it('別の stash に対する操作が実行中のとき、この行は通常の表示のまま disabled だけになる', () => {
     render(<StashItem {...baseProps} pending={{ kind: 'pop', sha: 'b'.repeat(40) }} />)
-    expect(screen.getByRole('button', { name: '退避 fix bug を戻す' })).toBeDisabled()
-    expect(screen.queryByRole('button', { name: '退避を戻し中' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'stash fix bug を戻す' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'stash を戻し中' })).not.toBeInTheDocument()
   })
 })

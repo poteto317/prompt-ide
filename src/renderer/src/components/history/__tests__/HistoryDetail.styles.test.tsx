@@ -59,7 +59,7 @@ describe('履歴の詳細の押せない理由のスタイル(main.css)', () => 
       expect(style.marginTop).toBe('4px')
       expect(style.marginBottom).toBe('4px')
       expect(style.color).toBe('rgb(150, 150, 150)')
-      expect(style.fontSize).toBe('12px')
+      expect(style.fontSize).toBe('13px')
     }
   })
 })
@@ -71,9 +71,24 @@ const expectReadOnlyBodyStyle = (style: CSSStyleDeclaration): void => {
   expect(style.backgroundColor).toBe('rgb(30, 30, 30)')
   expect(style.borderTopColor).toBe('rgb(60, 60, 60)')
   expect(style.color).toBe('rgb(212, 212, 212)')
-  expect(style.fontSize).toBe('12px')
+  expect(style.fontSize).toBe('13px')
   expect(style.whiteSpace).toBe('pre-wrap')
 }
+
+// main.css に文字サイズの規則が無いと、ボタンと選択欄だけ既定の文字サイズのまま残る
+describe('実行履歴のボタンと実行ツールの選択欄の文字サイズ(main.css)', () => {
+  it.each([
+    'history-item',
+    'history-detail__rerun',
+    'history-detail__resume',
+    'history-detail__delete',
+    'history-panel__clear',
+    'prompts-panel__tool-select'
+  ])('%s は 14px', (className) => {
+    const { container } = render(<button type="button" className={className} />)
+    expect(getComputedStyle(container.firstChild as HTMLElement).fontSize).toBe('14px')
+  })
+})
 
 describe('履歴の詳細の送った内容のスタイル(main.css)', () => {
   it('送った全文は送信前の確認の本文と同じ枠の見た目で、高さは 40vh まで(確認の本文の min-height は持たない)', () => {

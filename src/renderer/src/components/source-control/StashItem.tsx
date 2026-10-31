@@ -5,7 +5,7 @@ import { getStashDisplayName } from '../../lib/stashDisplayName'
 
 interface Props {
   entry: GitStashEntry
-  /** 実行中の退避操作(どの退避に対するものかは pending.sha で分かる) */
+  /** 実行中の stash 操作(どの stash に対するものかは pending.sha で分かる) */
   pending: PendingStashOperation | null
   /** 他の操作中(ステージ・コミット・pull・ブランチ操作 等)で押しても no-op になる状態 */
   isBlocked: boolean
@@ -13,7 +13,7 @@ interface Props {
   onDrop: (entry: GitStashEntry) => void
 }
 
-// 退避一覧の 1 行(メッセージ・ブランチ・日時と、戻す・捨てるボタン)。
+// stash 一覧の 1 行(メッセージ・ブランチ・日時と、戻す・捨てるボタン)。
 // 押したボタンだけを実行中の表示にし、別の行の同じボタンは通常の表示のまま disabled だけにする
 export default function StashItem({
   entry,
@@ -38,7 +38,7 @@ export default function StashItem({
       <button
         type="button"
         className="stash-section__action"
-        aria-label={isPopping ? '退避を戻し中' : `退避 ${name} を戻す`}
+        aria-label={isPopping ? 'stash を戻し中' : `stash ${name} を戻す`}
         disabled={isDisabled}
         onClick={() => onPop(entry.sha)}
       >
@@ -47,7 +47,7 @@ export default function StashItem({
       <button
         type="button"
         className="stash-section__action stash-section__action--danger"
-        aria-label={isDropping ? '退避を削除中' : `退避 ${name} を捨てる`}
+        aria-label={isDropping ? 'stash を削除中' : `stash ${name} を捨てる`}
         disabled={isDisabled}
         onClick={() => onDrop(entry)}
       >

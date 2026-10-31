@@ -9,9 +9,9 @@ import type { FileOperationLock } from './useFileOperationLock'
 import { useRunExclusiveGitOperation } from './useRunExclusiveGitOperation'
 
 export interface GitStashOperationsState {
-  /** 実行中の退避操作と、その対象(push は退避がまだ無いので sha が null) */
+  /** 実行中の stash 操作と、その対象(push は stash がまだ無いので sha が null) */
   pendingStashOperation: PendingStashOperation | null
-  /** 退避する。戻り値は実際に実行され成功したか(useAppState が成功時だけ再読込するために使う) */
+  /** stash する。戻り値は実際に実行され成功したか(useAppState が成功時だけ再読込するために使う) */
   pushStash: (message: string) => Promise<boolean>
   /** 戻す。戻り値は実際に実行され、作業ツリーが変わったか(復元は済んだが一覧から消せなかった等の警告つきも true) */
   popStash: (sha: string) => Promise<boolean>
@@ -25,9 +25,9 @@ export interface GitStashOperationsOptions {
   onConfirm?: (message: string) => boolean
 }
 
-// useGitBranchOperations と同じ作り: 退避操作どうしは busy ref で排他にし、他の Git 操作が
+// useGitBranchOperations と同じ作り: stash 操作どうしは busy ref で排他にし、他の Git 操作が
 // ロックを持っている間(lock.isAnyLocked())やリポジトリが無い間も待つ。
-// 退避・復元は作業ツリー/index を書き換えるため lockGlobal を取る(実行中の push・ステージ・
+// stash・復元は作業ツリー/index を書き換えるため lockGlobal を取る(実行中の push・ステージ・
 // ブランチ操作を待たせる。pull・checkout と同じ理由)。削除は作業ツリーに触れないため取らない
 // (取ると削除中に push/pull が無意味に待たされる。ブランチ削除と同じ扱い)
 export function useGitStashOperations(

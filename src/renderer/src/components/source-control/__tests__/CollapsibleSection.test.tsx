@@ -37,9 +37,12 @@ describe('CollapsibleSection', () => {
   it('開閉の印は読み上げず、開閉に合わせて変わる', async () => {
     render(<CollapsibleSection title="変更">中身</CollapsibleSection>)
     const mark = toggle().querySelector('[aria-hidden="true"]') as HTMLElement
-    expect(mark).toHaveTextContent('▾')
+    expect(mark).toHaveAttribute('data-direction', 'down')
     await userEvent.click(toggle())
-    expect(toggle().querySelector('[aria-hidden="true"]')).toHaveTextContent('▸')
+    expect(toggle().querySelector('[aria-hidden="true"]')).toHaveAttribute(
+      'data-direction',
+      'right'
+    )
   })
 
   it('閉じると本体は hidden になり、もう一度押すと開く', async () => {

@@ -10,7 +10,7 @@ import { SETTING_UPSTREAM_NOTICE } from '../../../lib/remoteSetupState'
 import { makeRemoteSetupPanelState } from '../../../__tests__/makeRemoteSetupPanelState'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する。
-// バナーのボタンと「リポジトリを初期化」は、退避・マージのバナーのボタンと 1 つのグループセレクタで宣言を共有する
+// バナーのボタンと「リポジトリを初期化」は、stash・マージのバナーのボタンと 1 つのグループセレクタで宣言を共有する
 // (パターン 30・77)。グループから外れると見た目が崩れるため固定する。jsdom は :hover を計算しない
 let styleElement: HTMLStyleElement
 
@@ -132,8 +132,8 @@ describe('リモートの管理のスタイル(main.css)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'リポジトリを初期化' }))
     expect(
       getComputedStyle(screen.getByText('このフォルダに空の Git リポジトリを作成します')).fontSize
-    ).toBe('11px')
-    expect(getComputedStyle(screen.getByText('ブランチ名')).fontSize).toBe('11px')
+    ).toBe('12px')
+    expect(getComputedStyle(screen.getByText('ブランチ名')).fontSize).toBe('12px')
   })
 
   // 初回 push 中の案内は、ダイアログの説明と同じ小さい補足の文字で、文言とボタンの下の行に出す
@@ -148,7 +148,7 @@ describe('リモートの管理のスタイル(main.css)', () => {
       />
     )
     const style = getComputedStyle(screen.getByText(SETTING_UPSTREAM_NOTICE))
-    expect(style.fontSize).toBe('11px')
+    expect(style.fontSize).toBe('12px')
     expect(style.flexBasis).toBe('100%')
   })
 

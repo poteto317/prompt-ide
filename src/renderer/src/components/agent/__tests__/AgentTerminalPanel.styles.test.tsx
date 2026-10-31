@@ -103,12 +103,23 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
     expect(resumeShrink).toBeGreaterThan(tabsShrink)
   })
 
-  it('開閉・起動・変更を確認・最大化のボタンは縮まず、折り返さない', () => {
+  it('変更を確認のボタンは文字を省略して縮み、右端の最大化を帯の外へ押し出さない', () => {
+    renderNoFolder()
+    const review = getComputedStyle(
+      screen.getByRole('button', { name: 'エージェントの変更を確認（ソース管理を開く）' })
+    )
+    expect(review.flexShrink).toBe('10')
+    expect(review.whiteSpace).toBe('nowrap')
+    expect(review.overflow).toBe('hidden')
+    expect(review.textOverflow).toBe('ellipsis')
+    expect(review.minWidth).toBe('4em')
+  })
+
+  it('開閉・起動・最大化のボタンは縮まず、折り返さない', () => {
     renderNoFolder()
     const buttons = [
-      screen.getByRole('button', { name: /^▾ エージェント$|^エージェント$/ }),
+      screen.getByRole('button', { name: /^エージェント$/ }),
       screen.getByRole('button', { name: /^起動/ }),
-      screen.getByRole('button', { name: 'エージェントの変更を確認（ソース管理を開く）' }),
       screen.getByRole('button', { name: '最大化' })
     ]
     for (const button of buttons) {

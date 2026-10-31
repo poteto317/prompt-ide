@@ -6,11 +6,11 @@ import { buildStashRestoreFailureMessage } from './gitStashMessages'
 import { listUnresolvedFiles } from './gitMergeState'
 import { assertRestorable, assertStashable } from './gitStashGuards'
 
-// 退避(git stash)。退避の識別には番号(stash@{n})ではなく退避コミットの SHA を使う。番号は他の操作
-// (別の退避の追加・削除、外部ターミナルの操作)でずれ、別の退避を指すようになるため
+// stash(git stash)。stash の識別には番号(stash@{n})ではなく stash コミットの SHA を使う。番号は他の操作
+// (別の stash の追加・削除、外部ターミナルの操作)でずれ、別の stash を指すようになるため
 
 // 一覧は simple-git の stashList() ではなく stash list -z の出力を自分で解析する(パターン 44)。
-// 退避が無ければ何も出力されず、空配列になる
+// stash が無ければ何も出力されず、空配列になる
 async function listStashes(git: SimpleGit): Promise<GitStashEntry[]> {
   const output = await git.raw(['stash', 'list', '-z', '--format=%H%x00%gs%x00%cI'])
   return parseStashList(output)
@@ -20,12 +20,12 @@ export async function getStashes(folderPath: string): Promise<GitStashEntry[]> {
   return listStashes(simpleGit(folderPath))
 }
 
-// 追跡済みの変更(ステージ済み・未ステージ)と未追跡ファイルを退避する(git stash push -u)。
+// 追跡済みの変更(ステージ済み・未ステージ)と未追跡ファイルを stash する(git stash push -u)。
 // ignored のファイルは対象外で、そのまま残る(実機で確認)。
 // メッセージは --message=<message> の 1 引数で渡す(パターン 21・41): simple-git の
 // blockUnsafeOperationsPlugin は引数列の中の --upload-pack=... / --template=... / -c ... を
 // 値であってもオプションとして検出して拒否するため、`-m <message>` の 2 引数だと、そのような
-// メッセージの退避が英語のエラーで失敗する。1 引数にすれば '-' で始まる文字列も含め、
+// メッセージの stash が英語のエラーで失敗する。1 引数にすれば '-' で始まる文字列も含め、
 // 件名としてそのまま残る(実機で確認)。
 // コミッター情報が無いときは git が作業ツリーを変えずに失敗する(実機で確認)ため、
 // そのエラーをそのまま投げる
@@ -43,13 +43,13 @@ export async function stashPush(folderPath: string, message: string): Promise<vo
 const STASH_SHA_PATTERN = /^[0-9a-f]{40}$/
 
 function stashNotFoundError(): Error {
-  return new Error('退避が見つかりません（すでに削除された可能性があります）')
+  return new Error('stash が見つかりません（すでに削除された可能性があります）')
 }
 
-// sha が「形式として正しく」かつ「現在の退避一覧にある」ことを確認し、一覧と位置を返す(許可リスト方式。パターン 21)。
+// sha が「形式として正しく」かつ「現在の stash 一覧にある」ことを確認し、一覧と位置を返す(許可リスト方式。パターン 21)。
 // IPC 境界から届く任意の文字列のため、形式で弾いてから git に渡す。さらに、一覧にあることも確認する:
-// git は、すでに drop した退避の SHA でもぶら下がったコミットが残っている間は stash apply で復元できてしまう
-// (実機で確認)。確認しないと、捨てたはずの退避が復活し、その後の drop が見つけられなくなる
+// git は、すでに drop した stash の SHA でもぶら下がったコミットが残っている間は stash apply で復元できてしまう
+// (実機で確認)。確認しないと、捨てたはずの stash が復活し、その後の drop が見つけられなくなる
 async function findExistingStash(
   git: SimpleGit,
   sha: string
@@ -108,9 +108,9 @@ class RollbackFailedError extends Error {
 }
 
 const ROLLBACK_FAILED_MESSAGE =
-  '退避を戻せず、元に戻す処理にも失敗しました。作業ツリーに途中の変更が残っている可能性があります。退避は残っています'
+  'stash の変更を作業ツリーへ戻せず、戻す前の状態への復旧にも失敗しました。作業ツリーに途中の変更が残っている可能性があります。stash は残っています'
 const DROP_FAILED_MESSAGE =
-  '退避は戻しましたが、一覧から削除できませんでした。不要なら「捨てる」で削除してください'
+  'stash の変更は作業ツリーへ戻しましたが、この stash を一覧から削除できませんでした。不要なら「捨てる」で削除してください'
 
 async function applyOrRollback(git: SimpleGit, sha: string): Promise<void> {
   try {
@@ -126,8 +126,8 @@ async function applyOrRollback(git: SimpleGit, sha: string): Promise<void> {
 }
 
 // 一覧から sha の現在の位置を引き直して drop し、git が出力する `Dropped stash@{n} (<sha>)` の
-// <sha> が要求した sha と一致することを確認する。検索と削除の間に退避が増減すると、同じ番号が
-// 別の退避を指すため、一致しなければ誤って消した退避を stash store で一覧に戻す。
+// <sha> が要求した sha と一致することを確認する。検索と削除の間に stash が増減すると、同じ番号が
+// 別の stash を指すため、一致しなければ誤って消した stash を stash store で一覧に戻す。
 // 出力から SHA を取れなかったとき(書式が想定外)は、確認できないので成功として扱う
 async function dropStashBySha(git: SimpleGit, sha: string): Promise<void> {
   const { stashes, index } = await findExistingStash(git, sha)
@@ -136,13 +136,13 @@ async function dropStashBySha(git: SimpleGit, sha: string): Promise<void> {
   if (dropped !== undefined && dropped !== sha) {
     const message = stashes.find((entry) => entry.sha === dropped)?.message ?? ''
     await git.raw(['stash', 'store', `--message=${message}`, dropped])
-    throw new Error('退避の状態が変わったため削除をやり直しました。もう一度操作してください')
+    throw new Error('stash の状態が変わったため削除を取り消しました。もう一度操作してください')
   }
 }
 
-// 退避を戻して、一覧から消す(git stash pop 相当)。作業ツリーが完全にきれいなときだけ実行する:
+// stash を戻して、一覧から消す(git stash pop 相当)。作業ツリーが完全にきれいなときだけ実行する:
 // 失敗時の巻き戻し(applyOrRollback)が未コミットの変更・未追跡ファイルを消すため。
-// --index で、ステージ済みと未ステージの区別まで退避した時点に戻す(付けないとステージ済みだった
+// --index で、ステージ済みと未ステージの区別まで stash した時点に戻す(付けないとステージ済みだった
 // 変更が未ステージになる。実機で確認)。
 // 作業ツリーが変わっていないとき(事前検証の失敗、巻き戻しに成功した apply の失敗)は例外を投げる。
 // 作業ツリーが変わったうえで警告が要るとき(apply 成功後の drop の失敗、巻き戻しの失敗)は、例外ではなく

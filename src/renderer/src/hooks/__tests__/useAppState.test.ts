@@ -174,7 +174,7 @@ const mockUseGitHistory = vi.hoisted(() =>
   }))
 )
 
-// 退避パネルの組み立て(確認・再読込のラップ)は useStashPanel.test.ts で検証するため、
+// stash パネルの組み立て(確認・再読込のラップ)は useStashPanel.test.ts で検証するため、
 // ここでは useAppState の配線(依存の受け渡しと戻り値の公開)だけを見る静的モックにする
 const mockStashPanel = vi.hoisted(() => ({
   entries: [] as unknown[],
@@ -298,7 +298,7 @@ beforeEach(() => {
   mockUseGitTagOperations.mockReturnValue(makeGitTagPanelState())
   mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState())
   mockUseCloneRepository.mockReturnValue(makeCloneRepositoryPanelState())
-  // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
+  // stash の実行中フラグ(stash.pendingOperation)も合成に入るため、stash の既定の戻り値も毎回設定し直す
   mockUseStashPanel.mockReturnValue(mockStashPanel)
   mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState())
   mockUsePromptListMode.mockReturnValue(makePromptListModePanelState())
@@ -1906,7 +1906,7 @@ describe('useAppState', () => {
     })
   })
 
-  describe('stash(退避)', () => {
+  describe('stash', () => {
     it('useStashPanel の戻り値を stash として公開し、依存を渡す', () => {
       const confirmDiscardAnyDirty = vi.fn(() => true)
       const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
@@ -2262,9 +2262,9 @@ describe('useAppState', () => {
       )
     })
 
-    // 退避の削除(drop)はロックを取らないため、退避の実行中フラグ(stash.pendingOperation)で見る。
+    // stash の削除(drop)はロックを取らないため、stash の実行中フラグ(stash.pendingOperation)で見る。
     // useStashPanel はこのファイルでは静的モックのため、実行中の戻り値に差し替えて再描画する
-    it('退避の削除の実行中は Git 操作の実行中として渡し、終わったら外す', () => {
+    it('stash の削除の実行中は Git 操作の実行中として渡し、終わったら外す', () => {
       mockUseStashPanel.mockReturnValue({
         ...mockStashPanel,
         pendingOperation: { kind: 'drop', sha: 'abc123' }

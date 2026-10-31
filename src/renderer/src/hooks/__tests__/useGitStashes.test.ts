@@ -20,7 +20,7 @@ beforeEach(() => {
 })
 
 describe('useGitStashes', () => {
-  it('フォルダを開いたら退避を取得する', async () => {
+  it('フォルダを開いたら stash を取得する', async () => {
     mockGetStashes.mockResolvedValue([entry('a'.repeat(40))])
     const { result } = renderHook(() => useGitStashes('/project'))
     await waitFor(() => expect(result.current.stashes).toHaveLength(1))

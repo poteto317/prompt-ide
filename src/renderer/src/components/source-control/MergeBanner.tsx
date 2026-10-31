@@ -3,7 +3,7 @@ import { buildMergeBannerText } from '../../lib/mergeStateMessage'
 
 interface Props {
   mergeState: MergeStatePanelState
-  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・退避・解決ビューの操作)で、
+  /** 他の操作中(ステージ・ハンク操作・commit・pull・ブランチ操作・stash・解決ビューの操作)で、
    *  押しても no-op になる状態。完了・中止を disabled にする */
   isBlocked: boolean
 }

@@ -12,9 +12,9 @@ describe('StashMessageDialog', () => {
     expect(onSubmit).toHaveBeenCalledWith('wip')
   })
 
-  it('入力欄のアクセシブルネームは「退避のメッセージ」', () => {
+  it('入力欄のアクセシブルネームは「stash のメッセージ」', () => {
     render(<StashMessageDialog onSubmit={vi.fn()} onCancel={vi.fn()} />)
-    expect(screen.getByRole('textbox', { name: '退避のメッセージ' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'stash のメッセージ' })).toBeInTheDocument()
   })
 
   // メッセージは任意。空のまま OK できる(NameInputDialog の既定の「空は不可」を使わない)
@@ -44,8 +44,8 @@ describe('StashMessageDialog', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
-  it('ダイアログのタイトルは「退避のメッセージ（任意）」', () => {
+  it('ダイアログのタイトルは「stash のメッセージ（任意）」', () => {
     render(<StashMessageDialog onSubmit={vi.fn()} onCancel={vi.fn()} />)
-    expect(screen.getByRole('dialog', { name: '退避のメッセージ（任意）' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'stash のメッセージ（任意）' })).toBeInTheDocument()
   })
 })

@@ -209,7 +209,7 @@ const mockUseGitHistory = vi.hoisted(() =>
   }))
 )
 
-// 退避パネルの組み立て(確認・再読込のラップ)は useStashPanel.test.ts で検証するため、
+// stash パネルの組み立て(確認・再読込のラップ)は useStashPanel.test.ts で検証するため、
 // ここでは useAppState の配線(依存の受け渡しと戻り値の公開)だけを見る静的モックにする
 const mockStashPanel = vi.hoisted(() => ({
   entries: [] as unknown[],
@@ -340,7 +340,7 @@ beforeEach(() => {
   mockUseGitTagOperations.mockReturnValue(makeGitTagPanelState())
   mockUseGitRemoteSetup.mockReturnValue(makeRemoteSetupPanelState())
   mockUseCloneRepository.mockReturnValue(makeCloneRepositoryPanelState())
-  // 退避の実行中フラグ(stash.pendingOperation)も合成に入るため、退避の既定の戻り値も毎回設定し直す
+  // stash の実行中フラグ(stash.pendingOperation)も合成に入るため、stash の既定の戻り値も毎回設定し直す
   mockUseStashPanel.mockReturnValue(mockStashPanel)
   mockUseAgentWorkspace.mockReturnValue(makeAgentWorkspaceState())
   mockUseAgentReferences.mockReturnValue(makeAgentReferencesState())

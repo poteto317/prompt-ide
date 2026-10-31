@@ -37,6 +37,12 @@ describe('CollapsibleSection のスタイル(main.css)', () => {
     expect(getComputedStyle(screen.getByRole('button', { name: '変更' })).paddingLeft).toBe('12px')
   })
 
+  // 大文字にすると見出しの `stash` が `STASH` になる
+  it('見出しの英字を大文字に変えない', () => {
+    renderSection()
+    expect(getComputedStyle(screen.getByRole('heading')).textTransform).not.toBe('uppercase')
+  })
+
   it('見出し行は横並びで、開閉のボタンが縮み、バッジと操作は縮まない', () => {
     renderSection()
     const heading = screen.getByRole('heading')

@@ -8,7 +8,7 @@ import HistorySection from '../HistorySection'
 import { makeGitTagPanelState } from '../../../__tests__/makeGitTagPanelState'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する。
-// 「タグを作成」と種類の選択肢は、退避・マージのバナーのボタンと 1 つのグループセレクタで宣言を共有する
+// 「タグを作成」と種類の選択肢は、stash・マージのバナーのボタンと 1 つのグループセレクタで宣言を共有する
 // (パターン 30・77)。グループから外れると見た目が崩れるため固定する。jsdom は :hover を計算しない
 let styleElement: HTMLStyleElement
 
@@ -105,7 +105,7 @@ describe('HistorySection のスタイル(main.css)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'タグを作成' }))
     const note = getComputedStyle(screen.getByText('現在の HEAD にタグを付けます'))
     const label = getComputedStyle(screen.getByText('タグ名'))
-    expect(note.fontSize).toBe('11px')
+    expect(note.fontSize).toBe('12px')
     expect(note.color).toBe('rgb(150, 150, 150)')
     expect(label.fontSize).toBe(note.fontSize)
     expect(label.color).toBe(note.color)

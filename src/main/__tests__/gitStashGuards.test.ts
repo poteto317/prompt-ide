@@ -56,15 +56,15 @@ describe('hasInProgressOperation', () => {
 })
 
 describe('assertStashable', () => {
-  it('HEAD が無ければ「コミットが無いため退避できません」で、後続の git を呼ばない', async () => {
+  it('HEAD が無ければ「コミットが無いため stash できません」で、後続の git を呼ばない', async () => {
     const { git, raw } = createGit({ head: '' })
-    await expect(assertStashable(git)).rejects.toThrow('コミットが無いため退避できません')
+    await expect(assertStashable(git)).rejects.toThrow('コミットが無いため stash できません')
     expect(callsOf(raw)).toEqual([['rev-parse', '--verify', '-q', 'HEAD']])
   })
 
-  it('未解決ファイルがあれば「コンフリクト中のため退避できません」で、途中操作・status を呼ばない', async () => {
+  it('未解決ファイルがあれば「コンフリクト中のため stash できません」で、途中操作・status を呼ばない', async () => {
     const { git, raw } = createGit({ unmerged: '100644 abc 1\ta.txt\0', status: ' M a.txt\0' })
-    await expect(assertStashable(git)).rejects.toThrow('コンフリクト中のため退避できません')
+    await expect(assertStashable(git)).rejects.toThrow('コンフリクト中のため stash できません')
     expect(callsOf(raw)).toEqual([
       ['rev-parse', '--verify', '-q', 'HEAD'],
       ['ls-files', '-u', '-z']
@@ -76,15 +76,15 @@ describe('assertStashable', () => {
     async (ref) => {
       const { git, raw } = createGit({ inProgress: ref, status: ' M a.txt\0' })
       await expect(assertStashable(git)).rejects.toThrow(
-        'マージ・cherry-pick・revert の途中のため退避できません'
+        'マージ・cherry-pick・revert の途中のため stash できません'
       )
       expect(callsOf(raw).some((a) => a[0] === 'status')).toBe(false)
     }
   )
 
-  it('変更が無ければ「退避する変更がありません」', async () => {
+  it('変更が無ければ「stash する変更がありません」', async () => {
     const { git } = createGit({ status: '' })
-    await expect(assertStashable(git)).rejects.toThrow('退避する変更がありません')
+    await expect(assertStashable(git)).rejects.toThrow('stash する変更がありません')
   })
 
   it('変更があれば通り、検証は HEAD → ls-files -u → 途中操作 → status の順', async () => {
@@ -105,7 +105,7 @@ describe('assertRestorable', () => {
   it('変更があれば「作業中の変更があるため戻せません…」で、ls-files -v を呼ばない', async () => {
     const { git, raw } = createGit({ status: ' M a.txt\0' })
     await expect(assertRestorable(git)).rejects.toThrow(
-      '作業中の変更があるため戻せません。先にコミットまたは退避してください'
+      '作業中の変更があるため戻せません。先にコミットまたは stash してください'
     )
     expect(callsOf(raw)).toEqual([STATUS_ARGS])
   })

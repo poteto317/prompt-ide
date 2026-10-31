@@ -397,7 +397,7 @@ describe('GitRepoView', () => {
     expect(onOpenDiff).toHaveBeenCalledWith('a.ts', true)
   })
 
-  it('「退避」セクションを変更の下・履歴の上に表示する', () => {
+  it('「stash」セクションを変更の下・履歴の上に表示する', () => {
     render(
       <GitRepoView
         {...baseProps}
@@ -410,12 +410,12 @@ describe('GitRepoView', () => {
         mergeState={emptyMergeState}
       />
     )
-    const headings = screen.getAllByRole('heading').map((h) => h.textContent)
-    expect(headings.indexOf('▾ 退避')).toBeGreaterThan(-1)
-    expect(headings.indexOf('▾ 退避')).toBeLessThan(headings.indexOf('▾ 履歴'))
+    const headings = screen.getAllByRole('heading').map((h) => h.textContent?.trim())
+    expect(headings.indexOf('stash')).toBeGreaterThan(-1)
+    expect(headings.indexOf('stash')).toBeLessThan(headings.indexOf('履歴'))
   })
 
-  it('退避の操作は stash の props から呼ばれる(「退避する」→ onPush)', async () => {
+  it('stash の操作は stash の props から呼ばれる(「stash する」→ onPush)', async () => {
     const onPush = vi.fn().mockResolvedValue(undefined)
     render(
       <GitRepoView
@@ -429,13 +429,13 @@ describe('GitRepoView', () => {
         mergeState={emptyMergeState}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: '変更を退避する' }))
+    await userEvent.click(screen.getByRole('button', { name: '変更を stash する' }))
     await userEvent.click(screen.getByRole('button', { name: 'OK' }))
     expect(onPush).toHaveBeenCalledWith('')
   })
 
-  // 退避・復元は lockGlobal を取る。他の操作中(isAnyLocked)は押しても no-op になるため disabled にする
-  it('他の操作中(isAnyLocked)は「退避する」が disabled になる', () => {
+  // stash・復元は lockGlobal を取る。他の操作中(isAnyLocked)は押しても no-op になるため disabled にする
+  it('他の操作中(isAnyLocked)は「stash する」が disabled になる', () => {
     render(
       <GitRepoView
         {...baseProps}
@@ -446,7 +446,7 @@ describe('GitRepoView', () => {
         isAnyLocked={() => true}
       />
     )
-    expect(screen.getByRole('button', { name: '変更を退避する' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '変更を stash する' })).toBeDisabled()
   })
 
   it('discardAll は ChangesSection まで届く(「すべて取り消す」→ onDiscardAll、error は alert に出る)', async () => {
@@ -588,7 +588,7 @@ describe('GitRepoView', () => {
       expect(screen.getByRole('button', { name: 'タグを作成' })).toBeDisabled()
     })
 
-    // pull・ブランチ操作・退避などがロックを持つ間(isAnyLocked)も、作成は no-op になるため押せない
+    // pull・ブランチ操作・stash などがロックを持つ間(isAnyLocked)も、作成は no-op になるため押せない
     it('他の操作中(isAnyLocked)は「タグを作成」が押せない', () => {
       render(
         <GitRepoView

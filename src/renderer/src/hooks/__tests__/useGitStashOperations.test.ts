@@ -114,14 +114,14 @@ describe('pushStash', () => {
   })
 
   it('失敗したら false を返し、stashOperationError に反映してロックを解除する', async () => {
-    mockPush.mockRejectedValue(new Error('退避する変更がありません'))
+    mockPush.mockRejectedValue(new Error('stash する変更がありません'))
     const { result, lock } = setup()
     let ok = true
     await act(async () => {
       ok = await result.current.pushStash('')
     })
     expect(ok).toBe(false)
-    expect(result.current.stashOperationError?.message).toBe('退避する変更がありません')
+    expect(result.current.stashOperationError?.message).toBe('stash する変更がありません')
     expect(lock.unlockGlobal).toHaveBeenCalledOnce()
   })
 })
@@ -159,8 +159,11 @@ describe('popStash の結果とロック', () => {
   })
 
   it.each([
-    ['dropFailed', '退避は戻しましたが、一覧から削除できませんでした'],
-    ['rollbackFailed', '退避を戻せず、元に戻す処理にも失敗しました']
+    [
+      'dropFailed',
+      'stash の変更は作業ツリーへ戻しましたが、この stash を一覧から削除できませんでした'
+    ],
+    ['rollbackFailed', 'stash の変更を作業ツリーへ戻せず、戻す前の状態への復旧にも失敗しました']
   ] as const)(
     '%s は作業ツリーが変わっているので true を返し、message を stashOperationError に出して一覧を再取得する',
     async (status, message) => {
@@ -271,9 +274,9 @@ describe('共通の開始条件', () => {
     }
   )
 
-  // 退避操作どうしは busy ref で排他にする(実行中に別の退避操作を始めない)
+  // stash 操作どうしは busy ref で排他にする(実行中に別の stash 操作を始めない)
   it.each(['pushStash', 'popStash', 'dropStash'] as const)(
-    '退避の実行中は %s を呼んでも git API を呼ばない',
+    'stash の実行中は %s を呼んでも git API を呼ばない',
     async (op) => {
       mockPush.mockReturnValue(new Promise<void>(() => {}))
       const { result } = setup()

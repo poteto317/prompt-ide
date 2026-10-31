@@ -107,7 +107,7 @@ body {
 }
 
 .sidebar__header {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -120,7 +120,7 @@ body {
 .sidebar__placeholder {
   padding: 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
 }
 
@@ -160,13 +160,18 @@ body {
   flex-shrink: 0;
 }
 
+/* ブラウザの既定(約 13.33px)のまま残さない。13px にすると以前より小さくなるため 14px にする */
+.prompts-panel__tool-select {
+  font-size: 14px;
+}
+
 .prompts-panel__toolbar-button {
   flex: 1;
   background: #3c3c3c;
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   cursor: pointer;
   outline: none;
@@ -202,7 +207,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   cursor: pointer;
   outline: none;
@@ -228,7 +233,7 @@ body {
   margin: 0;
   padding-top: 2px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -249,7 +254,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
 }
@@ -265,7 +270,7 @@ body {
 .prompts-panel__empty {
   padding: 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   margin: 0;
 }
@@ -273,7 +278,7 @@ body {
 .prompts-panel__no-results {
   padding: 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   margin: 0;
 }
@@ -292,7 +297,7 @@ body {
   border: 1px solid #555555;
   border-radius: 10px;
   color: #aaaaaa;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
   outline: none;
@@ -342,7 +347,7 @@ body {
 
 .agent-references__label {
   margin-right: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: #aaaaaa;
 }
 
@@ -358,7 +363,7 @@ body {
   border: 1px solid #555555;
   border-radius: 16px;
   color: #cccccc;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -402,7 +407,7 @@ body {
   border-radius: 4px;
   background: #5a4a1a;
   color: #e2c08d;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .agent-references__remove {
@@ -412,7 +417,7 @@ body {
   border: none;
   border-radius: 16px;
   color: inherit;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
 }
 
@@ -430,7 +435,7 @@ body {
   flex-basis: 100%;
   margin: 0;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .prompt-item {
@@ -457,7 +462,7 @@ body {
   padding: 2px 4px;
   cursor: grab;
   color: #6c6c6c;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
   opacity: 0;
   transition: opacity 0.1s;
@@ -482,7 +487,7 @@ body {
 }
 
 .prompt-item__title {
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   font-weight: 600;
   white-space: nowrap;
@@ -493,7 +498,7 @@ body {
 }
 
 .prompt-item__preview {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   white-space: nowrap;
   overflow: hidden;
@@ -510,7 +515,7 @@ body {
   background: #2d4a6e;
   border-radius: 10px;
   color: #89b4e8;
-  font-size: 10px;
+  font-size: 11px;
   padding: 1px 7px;
   line-height: 1.5;
 }
@@ -530,7 +535,7 @@ body {
   background: #2d4a6e;
   border-radius: 10px;
   color: #89b4e8;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 6px 2px 8px;
   line-height: 1.4;
 }
@@ -540,7 +545,7 @@ body {
   border: none;
   color: #89b4e8;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   padding: 0;
   line-height: 1;
   opacity: 0.7;
@@ -557,7 +562,7 @@ body {
   border: none;
   border-bottom: 1px solid #555555;
   color: #cccccc;
-  font-size: 11px;
+  font-size: 12px;
   outline: none;
   padding: 2px 4px;
 }
@@ -572,7 +577,7 @@ body {
 
 .prompt-item__delete {
   align-self: flex-end;
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   background: none;
   border: none;
@@ -585,7 +590,7 @@ body {
 }
 
 .prompt-item__edit-btn {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   background: none;
   border: none;
@@ -608,7 +613,7 @@ body {
   border: 1px solid #555555;
   border-radius: 2px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
 }
@@ -624,7 +629,7 @@ body {
   border: 1px solid #555555;
   border-radius: 2px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
   resize: vertical;
@@ -654,7 +659,7 @@ body {
   padding: 0 2px;
   cursor: pointer;
   color: #6c6c6c;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
 }
 
@@ -678,7 +683,7 @@ body {
 }
 
 .prompt-item__variables-title {
-  font-size: 11px;
+  font-size: 12px;
   color: #999999;
   margin-bottom: 2px;
 }
@@ -690,7 +695,7 @@ body {
 }
 
 .prompt-item__variable-label {
-  font-size: 11px;
+  font-size: 12px;
   color: #cccccc;
 }
 
@@ -701,7 +706,7 @@ body {
   border: 1px solid #555555;
   border-radius: 2px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
 }
@@ -711,7 +716,7 @@ body {
 }
 
 .prompt-item__save {
-  font-size: 11px;
+  font-size: 12px;
   color: #ffffff;
   background: #0e639c;
   border: none;
@@ -725,7 +730,7 @@ body {
 }
 
 .prompt-item__cancel {
-  font-size: 11px;
+  font-size: 12px;
   color: #cccccc;
   background: none;
   border: 1px solid #555555;
@@ -751,7 +756,7 @@ body {
   background: #3c3c3c;
   border: 1px solid #555555;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
   resize: none;
@@ -766,7 +771,7 @@ body {
   background: #0e639c;
   color: #ffffff;
   border: none;
-  font-size: 12px;
+  font-size: 13px;
   padding: 5px 12px;
   cursor: pointer;
   align-self: flex-end;
@@ -795,7 +800,7 @@ body {
   background: #0e639c;
   color: #ffffff;
   border: none;
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 12px;
   cursor: pointer;
   align-self: stretch;
@@ -810,7 +815,7 @@ body {
   background: none;
   color: #969696;
   border: 1px solid #555555;
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 8px;
   cursor: pointer;
   align-self: flex-start;
@@ -830,7 +835,7 @@ body {
 
 .explorer-panel__error {
   margin: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
 }
 
@@ -856,7 +861,7 @@ body {
   background: none;
   border: none;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -889,7 +894,7 @@ body {
 
 .name-input-dialog__title {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: #cccccc;
 }
@@ -901,7 +906,7 @@ body {
   background: #3c3c3c;
   border: 1px solid #555555;
   color: #cccccc;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .name-input-dialog__input:focus {
@@ -911,7 +916,7 @@ body {
 
 .name-input-dialog__error {
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: #f48771;
   /* `/` `.` `_` では折り返されない長い名前が、エラー文に含まれても枠からはみ出さない */
   overflow-wrap: anywhere;
@@ -928,7 +933,7 @@ body {
   background: #0e639c;
   color: #ffffff;
   border: none;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 12px;
   cursor: pointer;
 }
@@ -947,7 +952,7 @@ body {
 .clone-repository-dialog__note,
 .clone-repository-dialog__label,
 .remote-setup-banner__note {
-  font-size: 11px;
+  font-size: 12px;
   color: #969696;
 }
 
@@ -988,7 +993,7 @@ body {
   background: none;
   color: #cccccc;
   border: 1px solid #555555;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 12px;
   cursor: pointer;
 }
@@ -1010,7 +1015,7 @@ body {
   align-items: center;
   gap: 4px;
   height: 22px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   cursor: pointer;
   user-select: none;
@@ -1039,10 +1044,22 @@ body {
 }
 
 .file-tree__item-icon {
-  font-size: 10px;
-  width: 12px;
+  display: flex;
+  width: 16px;
   flex-shrink: 0;
-  color: #969696;
+  color: #cccccc;
+}
+
+/* 開閉の矢印 */
+.chevron-icon {
+  flex-shrink: 0;
+  vertical-align: -3px;
+}
+
+/* 見出しの文字色(#969696)より明るくして見つけやすくする */
+.agent-changes__toggle .chevron-icon,
+.collapsible-section__toggle .chevron-icon {
+  color: #cccccc;
 }
 
 /* ---- Editor Panel ---- */
@@ -1077,7 +1094,7 @@ body {
   align-items: center;
   padding: 0 16px;
   color: #969696;
-  font-size: 13px;
+  font-size: 14px;
   border-right: 1px solid #252526;
   user-select: none;
   white-space: nowrap;
@@ -1106,7 +1123,7 @@ body {
   border-radius: 3px;
   background: transparent;
   color: #cccccc;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
 }
@@ -1121,7 +1138,7 @@ body {
   padding: 0 8px;
   align-self: center;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1131,7 +1148,7 @@ body {
   margin: 0 8px;
   padding: 2px 10px;
   align-self: center;
-  font-size: 12px;
+  font-size: 13px;
   background: transparent;
   border: 1px solid #454545;
   color: #cccccc;
@@ -1162,7 +1179,7 @@ body {
   height: 100%;
   margin: 0;
   color: #888888;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 /* ---- Status Bar ---- */
@@ -1174,7 +1191,7 @@ body {
   display: flex;
   align-items: center;
   padding: 0 4px;
-  font-size: 12px;
+  font-size: 13px;
   color: #ffffff;
   flex-shrink: 0;
 }
@@ -1317,7 +1334,7 @@ body {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.5px;
   text-overflow: ellipsis;
@@ -1339,7 +1356,7 @@ body {
   color: #bbbcbc;
   border: none;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
 }
@@ -1388,7 +1405,7 @@ body {
   background: none;
   border: none;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
@@ -1413,7 +1430,7 @@ body {
 
 .source-control-panel__error {
   margin: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   /* push 拒否時の複数行ヒント(non-fast-forward 等)や認証エラーメッセージは
      改行を含むことが多い。white-space の既定(normal)は改行を潰して1行に
@@ -1426,7 +1443,7 @@ body {
 .source-control-panel__placeholder {
   padding: 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
   margin: 0;
 }
@@ -1463,7 +1480,7 @@ body {
   border-radius: 8px;
   background: #4d4d4d;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   letter-spacing: 0;
   line-height: 16px;
@@ -1476,10 +1493,10 @@ body {
   gap: 4px;
 }
 
-/* 枠付きの小さなボタンの共通の見た目(退避・マージのバナー・リモートのバナー・初期化・エクスプローラーの clone・
+/* 枠付きの小さなボタンの共通の見た目(stash・マージのバナー・リモートのバナー・初期化・エクスプローラーの clone・
    解決ビューのツールバー・ブロック・出力パネルとコードブロックの「挿入」「置換」)。
    タッチ操作で押しやすいよう 32px 以上のタップ領域を確保し、ホバー時だけ表示する作りにはしない。
-   ホバー色は破壊的でない操作=青系、危険系(--danger: 退避を捨てる・マージを中止・削除する)=赤系
+   ホバー色は破壊的でない操作=青系、危険系(--danger: stash を捨てる・マージを中止・削除する)=赤系
    (ブランチメニューのマージ・削除ボタンと同じ)。見た目を変えるときはここ 1 か所を直す */
 .stash-section__push,
 .stash-section__action,
@@ -1505,7 +1522,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -1577,7 +1594,7 @@ body {
   align-items: center;
   gap: 4px;
   padding: 4px 12px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
 }
 
@@ -1597,21 +1614,21 @@ body {
   display: flex;
   gap: 8px;
   color: #969696;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .stash-section__empty {
   margin: 0;
   padding: 4px 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .stash-section__error {
   margin: 0;
   padding: 4px 12px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* 変更セクションの「すべて取り消す」(.stash-section__push と同じ寸法・配色) */
@@ -1624,7 +1641,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -1665,7 +1682,6 @@ body {
   font: inherit;
   letter-spacing: inherit;
   text-align: left;
-  text-transform: inherit;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1683,7 +1699,7 @@ body {
 .agent-changes__loading {
   flex: none;
   color: #969696;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1691,7 +1707,7 @@ body {
   margin: 0;
   padding: 4px 12px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -1699,7 +1715,7 @@ body {
   margin: 0;
   padding: 4px 12px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
@@ -1719,7 +1735,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -1745,11 +1761,11 @@ body {
   gap: 6px;
   min-height: 32px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
 }
 
-/* 文字の高さ(約 15px)ではなく行の高さいっぱいを押せるようにする(タップ領域 32px 以上。設計書「A の詳細」・AGC-025) */
+/* 文字の高さではなく行の高さいっぱいを押せるようにする(タップ領域 32px 以上。設計書「A の詳細」・AGC-025) */
 .agent-changes__path {
   flex: 1;
   min-width: 0;
@@ -1760,7 +1776,7 @@ body {
 .agent-changes__mark {
   flex: none;
   color: #969696;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1773,7 +1789,7 @@ body {
   border-radius: 3px;
   background: transparent;
   color: #cccccc;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
 }
 
@@ -1791,7 +1807,7 @@ body {
 .agent-changes__scope-label {
   flex: none;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* 長い項目は選択の中で末尾が切れ(環境によっては省略され)、開くと全文が見える(狭いサイドバー) */
@@ -1805,7 +1821,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   text-overflow: ellipsis;
 }
 
@@ -1831,7 +1847,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .agent-changes__undo-button {
@@ -1862,7 +1878,7 @@ body {
   margin: 0;
   padding: 4px 12px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .source-control-panel__section {
@@ -1870,10 +1886,9 @@ body {
 }
 
 .source-control-panel__section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
   color: #969696;
   padding: 6px 12px 2px;
   margin: 0;
@@ -1894,7 +1909,7 @@ body {
   gap: 6px;
   height: 22px;
   padding: 0 12px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
 }
 
@@ -1915,7 +1930,7 @@ body {
   border-radius: 3px;
   background: transparent;
   color: #cccccc;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
@@ -1967,7 +1982,7 @@ body {
   margin: 0;
   color: inherit;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   text-align: left;
   cursor: pointer;
 }
@@ -1997,14 +2012,14 @@ body {
 .source-control-panel__file-dir {
   margin-left: 6px;
   color: #969696;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* 状態の文字。色は VS Code の既定で、背景 #252526 と hover の背景の両方で 4.5:1 を満たす(GitFileRow.styles.test.tsx) */
 .source-control-panel__file-state {
   flex-shrink: 0;
   width: 14px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   text-align: center;
   color: #cccccc;
@@ -2039,11 +2054,11 @@ body {
   border: 1px solid #454545;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
 }
 
-/* 主ボタンと ▾ の行。主ボタンが幅いっぱいに広がる */
+/* 主ボタンと矢印のボタンの行。主ボタンが幅いっぱいに広がる */
 .source-control-panel__commit-actions {
   display: flex;
   gap: 2px;
@@ -2051,14 +2066,14 @@ body {
 
 .source-control-panel__commit-btn {
   flex: 1;
-  /* 同期の件数で文言が長くなっても ▾ を押し出さない */
+  /* 同期の件数で文言が長くなっても矢印のボタンを押し出さない */
   min-width: 0;
   padding: 4px 12px;
   background: #0e639c;
   border: none;
   border-radius: 3px;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -2074,7 +2089,12 @@ body {
   cursor: default;
 }
 
-/* 主ボタンと同じ色の ▾ */
+/* 行ボックスの分だけ主ボタンより下へずらさない */
+.source-control-panel__commit-menu-btn .chevron-icon {
+  display: block;
+}
+
+/* 主ボタンと同じ色の矢印 */
 .source-control-panel__commit-menu-btn {
   display: block;
   height: 100%;
@@ -2083,12 +2103,12 @@ body {
   border: none;
   border-radius: 3px;
   color: #ffffff;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
 .source-control-panel__file-status {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   width: 14px;
   flex-shrink: 0;
@@ -2103,7 +2123,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 12px;
+  font-size: 13px;
   /* span からキーボード到達可能な button に変更したため、既存の見た目を保つよう
      ボタンの既定装飾(枠線・背景・余白等)をリセットする */
   background: none;
@@ -2146,7 +2166,7 @@ body {
   background: #3a3d41;
   border-bottom: 1px solid #454545;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
@@ -2221,7 +2241,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* 操作群は箱を作らず、理由とボタンを帯の直接の子として並べる。
@@ -2238,7 +2258,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -2246,9 +2266,10 @@ body {
   white-space: nowrap;
 }
 
-/* 前回の続きからは文字が長いため、理由の次に(状態の文言・タブ列より先に)縮んで末尾を省略する。
+/* 前回の続きから・変更を確認は文字が長いため、理由の次に(状態の文言・タブ列より先に)縮んで末尾を省略する。
    最初の数文字と省略記号が入る幅は残す。名前は aria-label で全文が読まれ、マウスではラベルの文字の title で全文(押せないときはボタンの title で理由)が出る */
-.agent-terminal-panel__button--resume {
+.agent-terminal-panel__button--resume,
+.agent-terminal-panel__button--review {
   flex: 0 10 auto;
   min-width: 4em;
   overflow: hidden;
@@ -2318,7 +2339,7 @@ body {
   border: 0;
   border-bottom: 2px solid transparent;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   cursor: pointer;
 }
@@ -2424,7 +2445,7 @@ body {
   margin: 0;
   padding: 4px 12px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
@@ -2462,7 +2483,7 @@ body {
 }
 
 /* 高さは 32px の挿入・置換のボタンが入る高さ(4px + 32px + 4px + 境界線 1px)で固定する。パネルは高さ固定のため、
-   ボタンの無い実行中・エラーだけのとき(クリア・キャンセルは約 19px)に縮むと、実行の開始・終了のたびに本文の領域が伸び縮みする。
+   ボタンの無い実行中・エラーだけのとき(クリア・キャンセルは 32px より低い)に縮むと、実行の開始・終了のたびに本文の領域が伸び縮みする。
    狭い幅でも 1 行に収める(通知・無効の理由ははみ出しを省略し、タイトル・クリア・キャンセルは縮めない。.editor-tabs__error と同じ扱い) */
 .output-panel__header {
   display: flex;
@@ -2477,7 +2498,7 @@ body {
 }
 
 .output-panel__title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -2493,7 +2514,7 @@ body {
   background: none;
   color: #969696;
   border: 1px solid #555555;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -2509,7 +2530,7 @@ body {
   background: none;
   color: #f48771;
   border: 1px solid #a1533f;
-  font-size: 11px;
+  font-size: 12px;
   padding: 2px 8px;
   cursor: pointer;
 }
@@ -2532,7 +2553,7 @@ body {
   flex: 1;
   min-width: 0;
   margin: 0 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #89d185;
   white-space: nowrap;
   overflow: hidden;
@@ -2541,7 +2562,7 @@ body {
 
 /* 挿入・置換が無効な理由(無効なボタンの aria-describedby)。タッチ操作では title が出ないため画面に表示する */
 .output-panel__apply-reason {
-  font-size: 11px;
+  font-size: 12px;
   color: #969696;
   white-space: nowrap;
   overflow: hidden;
@@ -2555,14 +2576,14 @@ body {
 }
 
 .output-panel__loading {
-  font-size: 13px;
+  font-size: 14px;
   color: #6c6c6c;
   margin: 0;
 }
 
 .output-panel__streaming {
   font-family: 'SF Mono', Monaco, Menlo, Consolas, monospace;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
   color: #cccccc;
   white-space: pre-wrap;
@@ -2571,7 +2592,7 @@ body {
 }
 
 .markdown-renderer {
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -2597,18 +2618,18 @@ body {
 }
 
 .markdown-renderer h1 {
-  font-size: 18px;
+  font-size: 19px;
 }
 .markdown-renderer h2 {
-  font-size: 16px;
+  font-size: 17px;
 }
 .markdown-renderer h3 {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .markdown-renderer code {
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  font-size: 12px;
+  font-size: 13px;
   background: #1e1e1e;
   color: #ce9178;
   padding: 1px 5px;
@@ -2644,7 +2665,7 @@ body {
 
 .code-block__language {
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  font-size: 11px;
+  font-size: 12px;
   color: #969696;
 }
 
@@ -2663,7 +2684,7 @@ body {
   background: none;
   padding: 0;
   color: #d4d4d4;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .markdown-renderer ul,
@@ -2701,7 +2722,7 @@ body {
   border-collapse: collapse;
   width: 100%;
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .markdown-renderer th,
@@ -2731,7 +2752,7 @@ body {
 }
 
 .output-panel__error {
-  font-size: 13px;
+  font-size: 14px;
   color: #f48771;
   margin: 0;
 }
@@ -2754,7 +2775,7 @@ body {
 }
 
 .settings-panel__label {
-  font-size: 11px;
+  font-size: 12px;
   color: #969696;
   user-select: none;
 }
@@ -2763,7 +2784,7 @@ body {
   background: #3c3c3c;
   border: 1px solid #555555;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
   font-family: inherit;
@@ -2787,7 +2808,7 @@ body {
   background: #0e639c;
   color: #ffffff;
   border: none;
-  font-size: 12px;
+  font-size: 13px;
   padding: 5px 12px;
   cursor: pointer;
 }
@@ -2802,22 +2823,22 @@ body {
 }
 
 .settings-panel__status {
-  font-size: 11px;
+  font-size: 12px;
   color: #4ec9b0;
 }
 
 .settings-panel__saved {
-  font-size: 12px;
+  font-size: 13px;
   color: #4ec9b0;
 }
 
 .settings-panel__error {
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
 }
 
 .settings-panel__keystore-error {
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   margin-bottom: 8px;
   word-break: break-all;
@@ -2849,7 +2870,7 @@ body {
 }
 
 .settings-panel__note {
-  font-size: 11px;
+  font-size: 12px;
   color: #969696;
 }
 
@@ -2859,7 +2880,7 @@ body {
   align-items: center;
   gap: 8px;
   min-height: 32px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   cursor: pointer;
 }
@@ -2871,7 +2892,7 @@ body {
   margin: 0;
   padding: 2px 12px;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* 空の通知も DOM に残す(ライブリージョンは先に在る必要がある。パターン 87)。余白だけを消す */
@@ -2883,7 +2904,16 @@ body {
   margin: 0;
   padding: 2px 12px;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+/* ブラウザの既定(約 13.33px)のまま残さない。13px にすると以前より小さくなるため 14px にする */
+.history-item,
+.history-detail__rerun,
+.history-detail__resume,
+.history-detail__delete,
+.history-panel__clear {
+  font-size: 14px;
 }
 
 /* 再実行・このセッションで再開の押せない理由。同じ詳細の中に並ぶので、見た目は 1 つの規則で揃える */
@@ -2891,7 +2921,7 @@ body {
 .history-detail__resume-reason {
   margin: 4px 0;
   color: #969696;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* エージェント CLI 方式で送ったエントリの状態。結果を知らないので、成功・エラーと区別する中立の色にする */
@@ -2920,7 +2950,7 @@ body {
 }
 
 .prompt-item__run {
-  font-size: 11px;
+  font-size: 12px;
   color: #4ec9b0;
   background: none;
   border: 1px solid #4ec9b0;
@@ -2959,7 +2989,7 @@ body {
   border: 1px solid #555555;
   border-radius: 3px;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
 }
@@ -2977,7 +3007,7 @@ body {
 .progress-panel__empty {
   padding: 12px;
   color: #6c6c6c;
-  font-size: 12px;
+  font-size: 13px;
   margin: 0;
 }
 
@@ -2990,7 +3020,7 @@ body {
 }
 
 .progress-panel__task-title {
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   font-weight: 600;
   white-space: nowrap;
@@ -3000,13 +3030,13 @@ body {
 }
 
 .progress-panel__task-progress {
-  font-size: 11px;
+  font-size: 12px;
   color: #4ec9b0;
   flex-shrink: 0;
 }
 
 .progress-panel__delete {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   background: none;
   border: none;
@@ -3047,7 +3077,7 @@ body {
 }
 
 .stage-row__icon {
-  font-size: 13px;
+  font-size: 14px;
   color: #6c6c6c;
   flex-shrink: 0;
 }
@@ -3065,7 +3095,7 @@ body {
 }
 
 .stage-row__name {
-  font-size: 12px;
+  font-size: 13px;
   color: #cccccc;
   flex: 1;
   white-space: nowrap;
@@ -3074,13 +3104,13 @@ body {
 }
 
 .stage-row__kind {
-  font-size: 10px;
+  font-size: 11px;
   color: #6c6c6c;
   flex-shrink: 0;
 }
 
 .stage-row__badge {
-  font-size: 10px;
+  font-size: 11px;
   color: #ffffff;
   background: #0e639c;
   border-radius: 8px;
@@ -3089,7 +3119,7 @@ body {
 }
 
 .stage-row__toggle {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   background: none;
   border: none;
@@ -3111,7 +3141,7 @@ body {
 }
 
 .stage-actions__btn {
-  font-size: 11px;
+  font-size: 12px;
   background: none;
   cursor: pointer;
   padding: 2px 8px;
@@ -3153,7 +3183,7 @@ body {
 }
 
 .stage-history__empty {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   margin: 0;
 }
@@ -3170,7 +3200,7 @@ body {
 .stage-history__item {
   display: flex;
   flex-direction: column;
-  font-size: 11px;
+  font-size: 12px;
   color: #cccccc;
   border-left: 1px solid #3c3c3c;
   padding-left: 8px;
@@ -3196,7 +3226,7 @@ body {
   border: 1px solid #555555;
   border-radius: 2px;
   color: #cccccc;
-  font-size: 11px;
+  font-size: 12px;
   padding: 3px 6px;
   outline: none;
 }
@@ -3206,7 +3236,7 @@ body {
 }
 
 .stage-history__record-btn {
-  font-size: 11px;
+  font-size: 12px;
   color: #cccccc;
   background: none;
   border: 1px solid #555555;
@@ -3238,13 +3268,13 @@ body {
 }
 
 .stage-legend__icon {
-  font-size: 12px;
+  font-size: 13px;
   color: #cccccc;
   margin: 0;
 }
 
 .stage-legend__label {
-  font-size: 11px;
+  font-size: 12px;
   color: #6c6c6c;
   margin: 0;
 }
@@ -3264,7 +3294,7 @@ body {
   background: #3c3c3c;
   border: 1px solid #555555;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   outline: none;
 }
@@ -3277,7 +3307,7 @@ body {
   background: #0e639c;
   color: #ffffff;
   border: none;
-  font-size: 12px;
+  font-size: 13px;
   padding: 5px 12px;
   cursor: pointer;
   align-self: flex-end;
@@ -3322,7 +3352,7 @@ body {
   background: #3c3c3c;
   border: 1px solid #007acc;
   color: #cccccc;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .quick-open__input:focus {
@@ -3339,7 +3369,7 @@ body {
   align-items: baseline;
   gap: 8px;
   padding: 4px 10px;
-  font-size: 13px;
+  font-size: 14px;
   color: #cccccc;
   cursor: pointer;
   white-space: nowrap;
@@ -3358,7 +3388,7 @@ body {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 11px;
+  font-size: 12px;
   /* 選択中の背景 #04395e 上でも 4.5:1 を満たす明るさ(#8c8c8c では 3.56:1) */
   color: #a0a0a0;
 }
@@ -3416,7 +3446,7 @@ body {
   background: none;
   border: none;
   color: #cccccc;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -3445,7 +3475,7 @@ body {
 .quick-open__empty {
   margin: 0;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: #8c8c8c;
 }
 
@@ -3485,7 +3515,7 @@ body {
 
 .agent-send-confirm__title {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: #cccccc;
 }
@@ -3493,7 +3523,7 @@ body {
 .agent-send-confirm__target,
 .agent-send-confirm__count {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: #a0a0a0;
 }
 
@@ -3509,7 +3539,7 @@ body {
   border-radius: 2px;
   color: #d4d4d4;
   font-family: Menlo, Monaco, 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -3523,14 +3553,14 @@ body {
 
 .agent-send-confirm__body {
   flex: 1 1 auto;
-  /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(12px × 1.5 × 3)を残す */
+  /* 全体が border-box なので、上下の padding と枠を含めて中身 3 行分(13px × 1.5 × 3)を残す */
   min-height: 6em;
   max-height: 50vh;
 }
 
 .agent-send-confirm__reason {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   overflow-wrap: anywhere;
 }
@@ -3538,7 +3568,7 @@ body {
 /* 参照として添えたファイルの未保存の注意(送信は止めないので、送れない理由の赤より弱い黄系) */
 .agent-send-confirm__unsaved {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: #e2c08d;
   overflow-wrap: anywhere;
 }
@@ -3554,7 +3584,7 @@ body {
   min-height: 32px;
   min-width: 64px;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -3592,7 +3622,7 @@ body {
 .diff-view {
   padding: 8px;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 13px;
   overflow: auto;
   height: 100%;
 }
@@ -3622,7 +3652,7 @@ body {
   border: none;
   border-radius: 3px;
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -3651,21 +3681,21 @@ body {
 .diff-view__error {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   background: #2d2d2d;
 }
 
 .diff-view__header-line {
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #cccccc;
 }
 
 .diff-view__empty {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #888888;
 }
 
@@ -3673,7 +3703,7 @@ body {
 .diff-view__notice {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #d7ba7d;
   background: #2d2d2d;
 }
@@ -3683,7 +3713,7 @@ body {
 .diff-view__truncated {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #d7ba7d;
   background: #2d2d2d;
 }
@@ -3693,7 +3723,7 @@ body {
 .diff-view__loading {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #888888;
 }
 
@@ -3719,7 +3749,7 @@ body {
 .history-section__error {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   background: #2d2d2d;
 }
@@ -3738,7 +3768,7 @@ body {
   gap: 6px;
   height: 22px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* viewBox を持たないため、max-width で切れた分は縮小されず見えなくなる */
@@ -3779,7 +3809,7 @@ body {
   flex: 0 0 auto;
   max-width: 30%;
   color: #969696;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .history-section__refs {
@@ -3811,7 +3841,7 @@ body {
   padding: 0 4px;
   overflow: hidden;
   border-radius: 3px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
   background: #3c3c3c;
@@ -3858,7 +3888,7 @@ body {
   background: transparent;
   border: none;
   color: #8a8a8a;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -3872,7 +3902,7 @@ body {
 }
 
 /* マージ中のバナーとリモートの状態バナー。ボタン(.merge-banner__button / .remote-setup-banner__button)の見た目は
-   退避セクションの共通のボタン規則で共有する */
+   stash セクションの共通のボタン規則で共有する */
 .merge-banner,
 .remote-setup-banner {
   display: flex;
@@ -3892,7 +3922,7 @@ body {
   min-width: 0;
   margin: 0;
   color: #d7ba7d;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .merge-banner__actions,
@@ -3906,7 +3936,7 @@ body {
   flex-basis: 100%;
   margin: 0;
   color: #f48771;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 /* ブランチ名が長いと `/` `.` `_` で折り返せないため、枠からはみ出さないよう途中でも折り返す(パターン 90) */
@@ -3926,7 +3956,7 @@ body {
 .conflict-resolver {
   padding: 8px;
   font-family: monospace;
-  font-size: 12px;
+  font-size: 13px;
   overflow: auto;
   height: 100%;
 }
@@ -3938,7 +3968,7 @@ body {
   margin-bottom: 8px;
 }
 
-/* ボタンの見た目は退避セクションの共通のボタン規則で共有する。「解決済みにする」(--primary)だけは
+/* ボタンの見た目は stash セクションの共通のボタン規則で共有する。「解決済みにする」(--primary)だけは
    コミットボタン(.source-control-panel__commit-btn)と同じ青で強調する。disabled のときは強調せず、
    共通の disabled(半透明)の見た目にする */
 .conflict-resolver__button--primary:not(:disabled) {
@@ -3955,7 +3985,7 @@ body {
 .conflict-resolver__error {
   margin: 0 0 8px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #f48771;
   background: #2d2d2d;
 }
@@ -3963,7 +3993,7 @@ body {
 .conflict-resolver__notice {
   margin: 0 0 8px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #d7ba7d;
   background: #2d2d2d;
 }
@@ -3971,7 +4001,7 @@ body {
 .conflict-resolver__loading {
   margin: 0;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: #888888;
 }
 
@@ -4013,7 +4043,7 @@ body {
 .conflict-block__side-title {
   padding: 2px 8px;
   color: #8a8a8a;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .conflict-block__side--ours .diff-view__line {
@@ -4038,7 +4068,7 @@ body {
 .conflict-resolver__status {
   margin: 0;
   color: #3fb950;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .conflict-resolver__status:not(:empty) {

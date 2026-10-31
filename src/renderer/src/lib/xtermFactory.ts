@@ -20,7 +20,7 @@ function createXtermAgentTerminalController(): AgentTerminalController {
   const terminal = new Terminal({
     cursorBlink: false,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    fontSize: 13,
+    fontSize: 14,
     scrollback: 5000,
     theme: { background: '#1e1e1e' },
     // OSC 8 のリンクは、http・https だけを既定のブラウザで開く(main でもスキームを確かめる)

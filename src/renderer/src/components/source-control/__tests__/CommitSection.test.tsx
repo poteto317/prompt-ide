@@ -261,7 +261,7 @@ describe('CommitSection', () => {
   })
 
   describe('amend', () => {
-    it('▾ のメニューに amend の menuitemcheckbox を出し、チェックボックスは出さない', async () => {
+    it('矢印のメニューに amend の menuitemcheckbox を出し、チェックボックスは出さない', async () => {
       render(
         <CommitSection
           stagedCount={1}
@@ -278,7 +278,7 @@ describe('CommitSection', () => {
       ).toHaveAttribute('aria-checked', 'false')
     })
 
-    it('amend のときは ▾ の項目がチェックされ、主ボタンの名前が コミット (amend) になる', async () => {
+    it('amend のときはメニューの項目がチェックされ、主ボタンの名前が コミット (amend) になる', async () => {
       render(
         <CommitSection
           stagedCount={0}

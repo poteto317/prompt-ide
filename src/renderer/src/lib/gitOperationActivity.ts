@@ -15,9 +15,9 @@ export interface GitOperationActivity {
 }
 
 // Git 操作が実行中か。clone は成功するとフォルダが切り替わるため、Git 操作の実行中は始めない(その判定に使う)。
-// 全体ロックを取る操作(commit・pull・checkout・ブランチの作成・マージ・退避の push と pop・取り消し・マージの完了と
+// 全体ロックを取る操作(commit・pull・checkout・ブランチの作成・マージ・stash の push と pop・取り消し・マージの完了と
 // 中止)と、パス単位のロックを取る操作(ステージ・ハンク)はロックで見る。ロックを取らない操作(push・fetch・初回 push・
-// ブランチの削除・退避の削除(drop)・タグの作成・初期化・origin の追加)は実行中フラグで見る
+// ブランチの削除・stash の削除(drop)・タグの作成・初期化・origin の追加)は実行中フラグで見る
 export function isAnyGitOperationRunning(activity: GitOperationActivity): boolean {
   return (
     activity.isAnyLocked ||

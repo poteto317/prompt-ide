@@ -77,7 +77,7 @@ type AppState = {
    *  成功時のみ reloadOpenFiles を行うラッパーに差し替えている(checkoutBranch と同じ)。
    *  公開する型は Promise<void> */
   mergeBranch: (branchName: string) => Promise<void>
-  /** 退避セクションが受け取る状態と操作。退避・復元は未保存編集の破棄確認 + 成功時の
+  /** stash セクションが受け取る状態と操作。stash・復元は未保存編集の破棄確認 + 成功時の
    *  ファイルツリーとタブの再読込を行うラッパーに差し替えている */
   stash: StashPanelState
   /** ハンクの取り消し(確認 → 取り消し → 成功時のタブ・ツリーの再読込)。引数は diff のパッチと
@@ -412,7 +412,7 @@ export function useAppState(): AppState {
       reloadOpenFiles: fileSystem.reloadOpenFiles,
       operation: () => gitBranchOperations.mergeBranch(branchName)
     })
-  // 退避の一覧・操作と、未保存編集の破棄確認・ツリー/タブの再読込の組み立ては
+  // stash の一覧・操作と、未保存編集の破棄確認・ツリー/タブの再読込の組み立ては
   // useStashPanel に任せ、ここでは依存を渡すだけにする
   const stash = useStashPanel({
     folderPath: fileSystem.folderPath,
@@ -423,7 +423,7 @@ export function useAppState(): AppState {
     reloadOpenFiles: fileSystem.reloadOpenFiles,
     refreshTree: fileSystem.refreshTree
   })
-  // clone は Git 操作の実行中は始めない(判定の中身と理由は lib/gitOperationActivity)。退避の実行中フラグ
+  // clone は Git 操作の実行中は始めない(判定の中身と理由は lib/gitOperationActivity)。stash の実行中フラグ
   // (stash.pendingOperation)を読むため、useStashPanel より後ろに置く
   const isGitOperationRunning = isAnyGitOperationRunning({
     isAnyLocked: fileOperationLock.isAnyLocked(),

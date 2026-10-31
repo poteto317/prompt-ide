@@ -111,15 +111,15 @@ export type GitBranch = {
 // 戻り値で返す(renderer 側が git のエラーメッセージ文字列で分岐しないため)
 export type DeleteBranchResult = { deleted: true } | { deleted: false; reason: 'not-fully-merged' }
 
-// 退避(git stash)の 1 件。番号(stash@{n})は他の操作で別の退避を指すようになるため、
-// 識別には退避コミットの SHA を使う
+// stash(git stash)の 1 件。番号(stash@{n})は他の操作で別の stash を指すようになるため、
+// 識別には stash コミットの SHA を使う
 export type GitStashEntry = {
   sha: string
-  /** 表示用のメッセージ。メッセージ無しの退避では最後のコミットの件名。空のこともある */
+  /** 表示用のメッセージ。メッセージ無しの stash では最後のコミットの件名。空のこともある */
   message: string
-  /** 退避したブランチ名。detached HEAD では '(no branch)'。件名から取れなければ空文字 */
+  /** stash したブランチ名。detached HEAD では '(no branch)'。件名から取れなければ空文字 */
   branch: string
-  /** 退避した日時(ISO 8601) */
+  /** stash した日時(ISO 8601) */
   createdAt: string
 }
 
@@ -152,7 +152,7 @@ export type TagKind = (typeof TAG_KINDS)[number]
 // タグの作成の要求。付ける先は常に現在の HEAD。message は注釈付きのときだけ使う(軽量では無視する)
 export type CreateTagRequest = { name: string; kind: TagKind; message: string }
 
-// 退避の復元(git stash pop 相当)の結果。事前検証の失敗と、巻き戻しに成功した apply 失敗は例外で返す
+// stash の復元(git stash pop 相当)の結果。事前検証の失敗と、巻き戻しに成功した apply 失敗は例外で返す
 // (作業ツリーは変わっていない)。作業ツリーが変わったうえで警告が要る場合だけ、例外ではなく結果で返す:
 // renderer は例外のとき開いているタブを再読込しないため、結果で返さないと変更後のディスクを
 // 古いタブが上書きする。cause は IPC を渡れないので含めない

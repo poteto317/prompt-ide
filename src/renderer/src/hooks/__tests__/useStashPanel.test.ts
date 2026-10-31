@@ -44,7 +44,7 @@ beforeEach(() => {
   mockUseGitStashes.mockReturnValue({ stashes: [], refreshStashes: vi.fn() })
 })
 
-// 退避・復元は working tree を書き換える。未保存編集の破棄を確認し、成功時だけタブを再読込し、
+// stash・復元は working tree を書き換える。未保存編集の破棄を確認し、成功時だけタブを再読込し、
 // 未追跡ファイルが増減するためファイルツリーも読み直す(変更の取り消しと同じ理由)
 const setup = (options: {
   confirmDiscardAnyDirty: () => boolean
@@ -99,7 +99,7 @@ describe('useStashPanel', () => {
     )
   })
 
-  it('退避: 未保存編集の確認 → 操作 → 成功時にファイルツリーとタブを再読込する', async () => {
+  it('stash: 未保存編集の確認 → 操作 → 成功時にファイルツリーとタブを再読込する', async () => {
     const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
     const refreshTree = vi.fn().mockResolvedValue(true)
     const pushStash = vi.fn().mockResolvedValue(true)
@@ -136,7 +136,7 @@ describe('useStashPanel', () => {
   })
 
   // 失敗時に再読込すると、操作が行われていないのに無関係な未保存編集がディスク内容で上書きされる
-  it('退避が失敗(false)したら、ファイルツリーもタブも再読込しない', async () => {
+  it('stash が失敗(false)したら、ファイルツリーもタブも再読込しない', async () => {
     const reloadOpenFiles = vi.fn().mockResolvedValue(undefined)
     const refreshTree = vi.fn().mockResolvedValue(true)
     const { result } = setup({
