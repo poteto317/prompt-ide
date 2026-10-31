@@ -1,3 +1,4 @@
+'use client'
 interface ChevronIconProps {
   direction: 'down' | 'right'
 }
