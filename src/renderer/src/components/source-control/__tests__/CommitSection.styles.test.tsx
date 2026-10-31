@@ -53,5 +53,6 @@ describe('CommitSection のスタイル(main.css)', () => {
     expect(getComputedStyle(commitMenuButton()).display).toBe('block')
     const arrow = commitMenuButton().querySelector('svg') as SVGElement
     expect(getComputedStyle(arrow).display).toBe('block')
+    expect(arrow).toHaveAttribute('data-direction', 'down')
   })
 })

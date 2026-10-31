@@ -37,6 +37,15 @@ describe('CollapsibleSection のスタイル(main.css)', () => {
     expect(getComputedStyle(screen.getByRole('button', { name: '変更' })).paddingLeft).toBe('12px')
   })
 
+  it('開閉の矢印は見出しより明るい色で、文字に押されて縮まない', () => {
+    renderSection()
+    const arrow = screen.getByRole('button', { name: '変更' }).querySelector('svg') as SVGElement
+    const style = getComputedStyle(arrow)
+    expect(style.color).toBe('rgb(204, 204, 204)')
+    expect(style.flexShrink).toBe('0')
+    expect(style.verticalAlign).toBe('-3px')
+  })
+
   // 大文字にすると見出しの `stash` が `STASH` になる
   it('見出しの英字を大文字に変えない', () => {
     renderSection()
