@@ -122,7 +122,12 @@ body {
 .panel-resizer:focus-visible,
 .panel-resizer--dragging {
   background: #007acc;
-  outline: none;
+}
+
+/* 透明の枠は通常は見えず、強制カラー(ハイコントラスト)では背景の代わりに見える */
+.panel-resizer:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: -2px;
 }
 
 @media (pointer: coarse) {

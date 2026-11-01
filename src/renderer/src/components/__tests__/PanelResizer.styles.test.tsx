@@ -51,6 +51,15 @@ describe('PanelResizer のスタイル(main.css)', () => {
     expect(style.maxWidth).toBe('calc(100vw - 400px)')
   })
 
+  it('フォーカスの表示は強制カラーでも残るよう、透明の枠を持つ', () => {
+    const sheet = styleElement.sheet as CSSStyleSheet
+    const rule = Array.from(sheet.cssRules).find(
+      (candidate): candidate is CSSStyleRule =>
+        candidate instanceof CSSStyleRule && candidate.selectorText === '.panel-resizer:focus-visible'
+    )
+    expect(rule?.style.outline).toBe('2px solid transparent')
+  })
+
   it('ターミナルのパネルは境界の高さの変数を使い、既定は 45%・最小は 160px', () => {
     const section = document.createElement('section')
     section.className = 'agent-terminal-panel agent-terminal-panel--open'
