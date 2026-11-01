@@ -5,6 +5,7 @@ import type {
   PromptExecutionMode,
   PromptListMode
 } from '@shared/types'
+import type { PanelLayout } from '@shared/panelLayout'
 
 export function getModelSettings(): Promise<ModelSettings> {
   return window.api.getModelSettings()
@@ -28,6 +29,14 @@ export function getPromptListMode(): Promise<PromptListMode> {
 
 export function setPromptListMode(mode: PromptListMode): Promise<void> {
   return window.api.setPromptListMode(mode)
+}
+
+export function getPanelLayout(): Promise<PanelLayout> {
+  return window.api.getPanelLayout()
+}
+
+export function setPanelLayout(layout: PanelLayout): Promise<void> {
+  return window.api.setPanelLayout(layout)
 }
 
 export function getAgentNotificationsEnabled(): Promise<boolean> {

@@ -96,8 +96,53 @@ body {
 
 /* ---- Sidebar ---- */
 
+/* 隣り合う領域の大きさを変える境界。レイアウトの幅を取らない。z-index は Monaco のスクロールバー(11)より手前にする値 */
+.panel-resizer {
+  position: relative;
+  z-index: 12;
+  flex-shrink: 0;
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+
+.panel-resizer--vertical {
+  width: 6px;
+  margin: 0 -3px;
+  cursor: col-resize;
+}
+
+.panel-resizer--horizontal {
+  height: 6px;
+  margin-top: -6px;
+  cursor: row-resize;
+}
+
+.panel-resizer:hover,
+.panel-resizer:focus-visible,
+.panel-resizer--dragging {
+  background: #007acc;
+  outline: none;
+}
+
+@media (pointer: coarse) {
+  .panel-resizer--vertical {
+    width: 16px;
+    margin: 0 -8px;
+  }
+
+  .panel-resizer--horizontal {
+    height: 16px;
+    margin-top: -16px;
+  }
+}
+
+/* width は既定の幅(境界のドラッグで style が上書きする)。min-width は SIDEBAR_WIDTH_MIN と同じ値。max-width はエディタの領域
+   352px とアクティビティバー 48px を残す。ウィンドウが狭いと、保存した幅より max-width が優先される */
 .sidebar {
   width: 240px;
+  min-width: 220px;
+  max-width: calc(100vw - 400px);
   background: #252526;
   border-right: 1px solid #3c3c3c;
   display: flex;
@@ -1830,7 +1875,7 @@ body {
   cursor: default;
 }
 
-/* 帯「直前に戻した操作」。狭い幅では理由が次の行へ折り返し、長い対象は末尾を省略する。ボタンは折り返さずに押せる */
+/* 帯「直前に戻した操作」。狭い幅では理由が次の行へ折り返し、長い対象は末尾を省略する。ボタンの文言は折り返さず、基準の幅が取れなければボタンごと次の行へ移る */
 .agent-changes__undo {
   display: flex;
   flex-wrap: wrap;
@@ -1839,8 +1884,9 @@ body {
   padding: 4px 12px;
 }
 
+/* 基準の幅が取れないサイドバー(約 238px 以下)では、文字を潰さずボタンを次の行へ折り返す */
 .agent-changes__undo-text {
-  flex: 1 1 0;
+  flex: 1 1 60px;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -2060,8 +2106,24 @@ body {
 
 /* 主ボタンと矢印のボタンの行。主ボタンが幅いっぱいに広がる */
 .source-control-panel__commit-actions {
+  position: relative;
   display: flex;
   gap: 2px;
+}
+
+/* コミットのメニューは行の幅に揃える。ボタンの右端から左へ伸ばすと、狭いサイドバーで左側が切れてチェックが見えなくなる */
+.source-control-panel__commit .action-menu {
+  position: static;
+}
+
+.source-control-panel__commit .action-menu__list {
+  left: 0;
+  right: 0;
+  min-width: 0;
+}
+
+.source-control-panel__commit .action-menu__item {
+  white-space: normal;
 }
 
 .source-control-panel__commit-btn {
@@ -2205,9 +2267,9 @@ body {
   min-height: 0;
 }
 
-/* 開いたときはエディタの領域の 45%(最小 160px)。閉じたときは見出しの帯だけ。最大化は全体 */
+/* 既定はエディタの領域の 45%(最小 160px)。境界のドラッグで変えられる。閉じたときは見出しの帯だけ。最大化は全体 */
 .agent-terminal-panel--open {
-  flex: 0 0 45%;
+  flex: 0 0 var(--agent-terminal-height, 45%);
   min-height: 160px;
 }
 
@@ -3216,11 +3278,14 @@ body {
 
 .stage-history__record {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 
 .stage-history__record-input {
-  flex: 1;
+  /* 狭いサイドバーでは、ボタンを押し出さず次の行へ折り返す */
+  flex: 1 1 100px;
+  min-width: 0;
   box-sizing: border-box;
   background: #3c3c3c;
   border: 1px solid #555555;
@@ -3853,7 +3918,7 @@ body {
 
 /* レーンの多い行では、列はグラフと比例して細くなり、ラベルの最小幅の合計を下回って +N が切れる。ラベルが 2 つ以上の
    列は縮めず、足りない幅はグラフが譲る。先頭の最低の幅 40px、2 つ目 20px、間隔 8px に 3 桁の +N(32px)を足すと
-   100.3px で、固定幅のサイドバーの行(223px)の 45% に収まる。先頭は最低の幅を超えた余りも受け取る */
+   100.3px で、既定の幅のサイドバーの行(223px)の 45% に収まる。既定より狭い幅では切れることがある。先頭は最低の幅を超えた余りも受け取る */
 .history-section__refs--multiple {
   flex-shrink: 0;
 }

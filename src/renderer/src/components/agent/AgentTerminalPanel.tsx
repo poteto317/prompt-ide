@@ -18,16 +18,30 @@ import type { AgentChangesReviewAction } from '../../types'
 import AgentSessionTabList from './AgentSessionTabList'
 import AgentTerminalView from './AgentTerminalView'
 import { ChevronIcon } from '../icons'
+import { terminalHeightLimits } from '../../lib/panelLayoutLimits'
+import PanelResizer from '../PanelResizer'
+
+export interface AgentTerminalSize {
+  /** エディタの領域に対する高さ(%) */
+  heightPercent: number
+  onChange: (value: number) => void
+  onCommit: () => void
+}
 
 interface Props {
   state: AgentTerminalPanelState
   review?: AgentChangesReviewAction
+  terminalSize?: AgentTerminalSize
 }
 
 // エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・セッションのタブ・状態・中断・起動/終了・変更を確認・最大化)と xterm の表示の領域。
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
-export default function AgentTerminalPanel({ state, review }: Props): React.JSX.Element {
+export default function AgentTerminalPanel({
+  state,
+  review,
+  terminalSize
+}: Props): React.JSX.Element {
   const { sessions, layout, sendingSlotId, activities, resumeLast, interrupt, appCliKind } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
@@ -59,6 +73,14 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
     moveFocusOutOfTerminal
   )
 
+  // flex-basis の % の基準はエディタの領域(section の親)
+  const heightFromPointer = (_clientX: number, clientY: number): number => {
+    if (terminalSize === undefined) return 0
+    const area = sectionRef.current?.parentElement?.getBoundingClientRect()
+    if (area === undefined || area.height === 0) return terminalSize.heightPercent
+    return ((area.bottom - clientY) / area.height) * 100
+  }
+
   const isActive = isActiveAgentSessionStatus(session.status)
   // 閉じる途中のタブは起動しない(useAgentSessions も弾く。直後の削除で controller が捨てられるため)
   const startDisabled =
@@ -78,8 +100,29 @@ export default function AgentTerminalPanel({ state, review }: Props): React.JSX.
         .filter((name) => name !== '')
         .join(' ')}
       aria-label="エージェント"
+      style={
+        terminalSize === undefined
+          ? undefined
+          : ({ '--agent-terminal-height': `${terminalSize.heightPercent}%` } as React.CSSProperties)
+      }
       onFocus={handlePanelFocus}
     >
+      {terminalSize !== undefined && layout.isOpen && !layout.isMaximized && (
+        <PanelResizer
+          orientation="horizontal"
+          label="ターミナルの高さ"
+          value={Math.round(terminalSize.heightPercent)}
+          step={2}
+          limits={() =>
+            terminalHeightLimits(
+              sectionRef.current?.parentElement?.getBoundingClientRect().height ?? 0
+            )
+          }
+          valueFromPointer={heightFromPointer}
+          onChange={terminalSize.onChange}
+          onCommit={terminalSize.onCommit}
+        />
+      )}
       <div className="agent-terminal-panel__header">
         <button
           ref={toggleRef}

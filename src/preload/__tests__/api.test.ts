@@ -519,6 +519,16 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['settings:setPromptListMode', 'view']
     ],
     [
+      'getPanelLayout は settings:getPanelLayout を呼ぶ',
+      () => api.getPanelLayout(),
+      ['settings:getPanelLayout']
+    ],
+    [
+      'setPanelLayout は settings:setPanelLayout に大きさを渡す',
+      () => api.setPanelLayout({ sidebarWidth: 300, terminalHeightPercent: 60 }),
+      ['settings:setPanelLayout', { sidebarWidth: 300, terminalHeightPercent: 60 }]
+    ],
+    [
       'getAgentNotificationsEnabled は settings:getAgentNotificationsEnabled を呼ぶ',
       () => api.getAgentNotificationsEnabled(),
       ['settings:getAgentNotificationsEnabled']

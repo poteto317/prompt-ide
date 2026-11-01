@@ -1,10 +1,12 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useAppState } from './hooks/useAppState'
 import { useOnChange } from './hooks/useOnChange'
 import { useLatestRef } from './hooks/useLatestRef'
+import { usePanelLayout } from './hooks/usePanelLayout'
 import ActivityBar from './components/ActivityBar'
 import Sidebar from './components/Sidebar'
 import EditorPanel from './components/EditorPanel'
+import PanelResizer from './components/PanelResizer'
 import StatusBar from './components/StatusBar'
 import AgentAnnouncer from './components/agent/AgentAnnouncer'
 import AgentSendConfirmDialog from './components/agent/AgentSendConfirmDialog'
@@ -12,6 +14,7 @@ import QuickOpenDialog from './components/quick-open/QuickOpenDialog'
 import * as fileSystemApi from './lib/fileSystemApi'
 import { toError } from './lib/errorUtils'
 import type { FileTreeNode } from './types'
+import { sidebarWidthLimits } from './lib/panelLayoutLimits'
 
 export default function App(): React.JSX.Element {
   const {
@@ -162,6 +165,8 @@ export default function App(): React.JSX.Element {
     agentDiffActions,
     agentChangesReview
   } = useAppState()
+  const panelLayout = usePanelLayout()
+  const ideMainRef = useRef<HTMLDivElement>(null)
 
   // タブを開く操作(openDiffTab の呼び出し)と、diff 内容の取得(activeDiffTab の変化に対する
   // 反応、および実行中フラグ・エラー状態)は useDiffOperations(useAppState 経由)に分離する。
@@ -278,7 +283,7 @@ export default function App(): React.JSX.Element {
           sidebarOpen={sidebarOpen}
           onPanelChange={handlePanelChange}
         />
-        <div className="ide-main">
+        <div ref={ideMainRef} className="ide-main">
           {sidebarOpen && (
             <Sidebar
               activePanel={activePanel}
@@ -377,6 +382,21 @@ export default function App(): React.JSX.Element {
               agentSendConfirm={agentSendConfirmPanel}
               agentCliKind={agentCliKindPanel}
               agentReferences={agentReferences}
+              width={panelLayout.layout.sidebarWidth}
+            />
+          )}
+          {sidebarOpen && (
+            <PanelResizer
+              orientation="vertical"
+              label="サイドバーの幅"
+              value={panelLayout.layout.sidebarWidth}
+              step={16}
+              limits={() => sidebarWidthLimits(window.innerWidth)}
+              valueFromPointer={(clientX) =>
+                clientX - (ideMainRef.current?.getBoundingClientRect().left ?? 0)
+              }
+              onChange={panelLayout.changeSidebarWidth}
+              onCommit={panelLayout.commit}
             />
           )}
           <EditorPanel
@@ -417,6 +437,11 @@ export default function App(): React.JSX.Element {
             canDiscardHunk={canDiscardHunk}
             bottomPanel={bottomPanel}
             agentTerminal={agentTerminal}
+            terminalSize={{
+              heightPercent: panelLayout.layout.terminalHeightPercent,
+              onChange: panelLayout.changeTerminalHeightPercent,
+              onCommit: panelLayout.commit
+            }}
             externalChangeBanner={externalChangeBanner}
             agentDiffActions={agentDiffActions}
             agentChangesReview={agentChangesReview}

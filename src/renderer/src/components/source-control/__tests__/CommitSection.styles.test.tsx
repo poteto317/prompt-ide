@@ -55,4 +55,26 @@ describe('CommitSection のスタイル(main.css)', () => {
     expect(getComputedStyle(arrow).display).toBe('block')
     expect(arrow).toHaveAttribute('data-direction', 'down')
   })
+
+  it('メニューは行の幅に揃え、狭いサイドバーでも項目が切れない', () => {
+    const commit = document.createElement('div')
+    commit.className = 'source-control-panel__commit'
+    commit.innerHTML =
+      '<div class="source-control-panel__commit-actions"><div class="action-menu">' +
+      '<ul class="action-menu__list"><li><button class="action-menu__item"></button></li></ul>' +
+      '</div></div>'
+    document.body.append(commit)
+    try {
+      const styleOf = (selector: string): CSSStyleDeclaration =>
+        getComputedStyle(commit.querySelector(selector) as Element)
+      expect(styleOf('.source-control-panel__commit-actions').position).toBe('relative')
+      expect(styleOf('.action-menu').position).toBe('static')
+      expect(styleOf('.action-menu__list').left).toBe('0px')
+      expect(styleOf('.action-menu__list').right).toBe('0px')
+      expect(styleOf('.action-menu__list').minWidth).toBe('0px')
+      expect(styleOf('.action-menu__item').whiteSpace).toBe('normal')
+    } finally {
+      commit.remove()
+    }
+  })
 })

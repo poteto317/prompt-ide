@@ -14,6 +14,7 @@ import {
 } from '../agentSendConfirmSettingStore'
 import { getAgentCliKindSetting, setAgentCliKind } from '../agentCliKindStore'
 import { getPromptExecutionMode, setPromptExecutionMode } from '../executionModeStore'
+import { getPanelLayout, setPanelLayout } from '../panelLayoutStore'
 import { getPromptListMode, setPromptListMode } from '../promptListModeStore'
 
 export function registerSettingsHandlers(ipcMain: IpcMain): void {
@@ -60,6 +61,14 @@ export function registerSettingsHandlers(ipcMain: IpcMain): void {
   ipcMain.handle(
     'settings:setPromptListMode',
     async (_event: IpcMainInvokeEvent, mode: unknown): Promise<void> => setPromptListMode(mode)
+  )
+
+  // サイドバーの幅とターミナルの高さ。検証は store が行う
+  ipcMain.handle('settings:getPanelLayout', async () => getPanelLayout())
+
+  ipcMain.handle(
+    'settings:setPanelLayout',
+    async (_event: IpcMainInvokeEvent, layout: unknown): Promise<void> => setPanelLayout(layout)
   )
 
   // 使うエージェント CLI。読み込みは種類と既定に戻した理由を返す(設定の画面が注記に使う)。検証は store が行う

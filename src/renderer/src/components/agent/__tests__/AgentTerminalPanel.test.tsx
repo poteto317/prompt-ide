@@ -37,8 +37,121 @@ function renderPanel(
   return state
 }
 
+const size = { heightPercent: 60, onChange: vi.fn(), onCommit: vi.fn() }
+const renderSized = (layout = makeAgentTerminalPanelLayout()): void => {
+  const state = makeAgentTerminalPanelState({ sessions: makeSessions(), layout })
+  render(<AgentTerminalPanel state={state} terminalSize={size} />)
+}
+
 beforeEach(() => {
   controller = makeFakeController()
+  size.onChange.mockClear()
+  size.onCommit.mockClear()
+  Element.prototype.setPointerCapture = vi.fn()
+  Element.prototype.hasPointerCapture = vi.fn(() => false)
+  Element.prototype.releasePointerCapture = vi.fn()
+})
+
+describe('AgentTerminalPanel: 高さの境界', () => {
+  it('境界は横向きで、小数の高さは丸めて伝える', () => {
+    size.heightPercent = 60.4
+    renderSized()
+    const handle = screen.getByRole('separator')
+    expect(handle).toHaveAttribute('aria-orientation', 'horizontal')
+    expect(handle).toHaveAttribute('aria-valuenow', '60')
+    size.heightPercent = 60
+  })
+
+  it('terminalSize が無ければ境界も高さの指定も出さない', () => {
+    renderPanel()
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+    expect(
+      screen
+        .getByRole('region', { name: 'エージェント' })
+        .style.getPropertyValue('--agent-terminal-height')
+    ).toBe('')
+  })
+
+  it('開いている間だけ高さの境界を出し、高さを section へ渡す', () => {
+    renderSized()
+    expect(screen.getByRole('separator', { name: 'ターミナルの高さ' })).toHaveAttribute(
+      'aria-valuenow',
+      '60'
+    )
+    expect(
+      screen
+        .getByRole('region', { name: 'エージェント' })
+        .style.getPropertyValue('--agent-terminal-height')
+    ).toBe('60%')
+  })
+
+  it.each([
+    ['閉じている', { isOpen: false }],
+    ['最大化', { isMaximized: true }]
+  ])('%s 間は境界を出さない', (_label, overrides) => {
+    renderSized(makeAgentTerminalPanelLayout(overrides))
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument()
+  })
+
+  it('ポインタの位置をエディタの領域に対する % へ変える', () => {
+    renderSized()
+    const section = screen.getByRole('region', { name: 'エージェント' })
+    vi.spyOn(section.parentElement as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+      top: 100,
+      bottom: 500,
+      height: 400,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: 100,
+      toJSON: () => ({})
+    })
+    const handle = screen.getByRole('separator')
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 0, clientY: 300 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 200 })
+    expect(size.onChange).toHaveBeenLastCalledWith(75)
+  })
+
+  it('エディタの領域が低いと、パネルの最小の高さに合わせて下限を上げる', () => {
+    renderSized()
+    const section = screen.getByRole('region', { name: 'エージェント' })
+    vi.spyOn(section.parentElement as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 800,
+      height: 800,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    })
+    const handle = screen.getByRole('separator')
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 0, clientY: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 790 })
+    expect(size.onChange).toHaveBeenLastCalledWith(20)
+  })
+
+  it('エディタの領域の高さが 0 なら今の値のまま', () => {
+    renderSized()
+    const section = screen.getByRole('region', { name: 'エージェント' })
+    vi.spyOn(section.parentElement as HTMLElement, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 0,
+      height: 0,
+      left: 0,
+      right: 0,
+      width: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({})
+    })
+    const handle = screen.getByRole('separator')
+    fireEvent.pointerDown(handle, { pointerId: 1, button: 0, clientY: 0 })
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 200 })
+    expect(size.onChange).not.toHaveBeenCalled()
+  })
 })
 
 describe('AgentTerminalPanel', () => {

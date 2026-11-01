@@ -39,6 +39,8 @@ describe('AgentChangesUndoBand のスタイル(main.css)', () => {
     const text = container.querySelector('.agent-changes__undo-text')
     expect(text).not.toBeNull()
     const textStyle = getComputedStyle(text!)
+    // 基準の幅が取れないときはボタンを次の行へ送り、文字を潰さない
+    expect(textStyle.flexBasis).toBe('60px')
     expect(textStyle.minWidth).toBe('0px')
     expect(textStyle.textOverflow).toBe('ellipsis')
     expect(textStyle.whiteSpace).toBe('nowrap')

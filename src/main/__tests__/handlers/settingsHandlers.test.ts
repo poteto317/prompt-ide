@@ -29,6 +29,13 @@ vi.mock('../../promptListModeStore', () => ({
   setPromptListMode: mockSetPromptListMode
 }))
 
+const mockGetPanelLayout = vi.hoisted(() => vi.fn())
+const mockSetPanelLayout = vi.hoisted(() => vi.fn())
+vi.mock('../../panelLayoutStore', () => ({
+  getPanelLayout: mockGetPanelLayout,
+  setPanelLayout: mockSetPanelLayout
+}))
+
 const mockGetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
 const mockSetAgentNotificationsEnabled = vi.hoisted(() => vi.fn())
 vi.mock('../../agentNotificationSettingStore', () => ({
@@ -310,5 +317,29 @@ describe('プロンプト一覧のモード', () => {
     await expect(
       getRegisteredHandler('settings:setPromptListMode')(makeEvent(1), 'hidden')
     ).rejects.toThrow('プロンプト一覧のモードが不正です')
+  })
+})
+
+describe('パネルの大きさ', () => {
+  it('settings:getPanelLayout は保存された大きさを返す', async () => {
+    const layout = { sidebarWidth: 300, terminalHeightPercent: 60 }
+    mockGetPanelLayout.mockResolvedValueOnce(layout)
+    await expect(getRegisteredHandler('settings:getPanelLayout')(makeEvent(1))).resolves.toEqual(
+      layout
+    )
+    expect(mockGetPanelLayout).toHaveBeenCalledOnce()
+  })
+
+  it('settings:setPanelLayout は受け取った値をそのまま store へ渡す(検証は store が行う)', async () => {
+    mockSetPanelLayout.mockResolvedValueOnce(undefined)
+    await getRegisteredHandler('settings:setPanelLayout')(makeEvent(1), 'wide')
+    expect(mockSetPanelLayout).toHaveBeenCalledExactlyOnceWith('wide')
+  })
+
+  it('settings:setPanelLayout は store の拒否をそのまま返す', async () => {
+    mockSetPanelLayout.mockRejectedValueOnce(new Error('パネルの大きさが不正です'))
+    await expect(
+      getRegisteredHandler('settings:setPanelLayout')(makeEvent(1), 'wide')
+    ).rejects.toThrow('パネルの大きさが不正です')
   })
 })

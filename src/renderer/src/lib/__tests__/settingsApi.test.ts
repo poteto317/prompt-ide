@@ -6,12 +6,14 @@ import {
   getAgentSendConfirmEnabled,
   getModelSettings,
   getPromptExecutionMode,
+  getPanelLayout,
   getPromptListMode,
   setAgentCliKind,
   setAgentNotificationsEnabled,
   setAgentSendConfirmEnabled,
   setModelSettings,
   setPromptExecutionMode,
+  setPanelLayout,
   setPromptListMode
 } from '../settingsApi'
 
@@ -74,6 +76,20 @@ describe('プロンプト一覧のモード', () => {
     await expect(getPromptListMode()).resolves.toBe('view')
     await setPromptListMode('edit')
     expect(api.setPromptListMode).toHaveBeenCalledExactlyOnceWith('edit')
+  })
+})
+
+describe('パネルの大きさ', () => {
+  it('getPanelLayout・setPanelLayout は window.api に委譲する', async () => {
+    const layout = { sidebarWidth: 300, terminalHeightPercent: 60 }
+    const api = {
+      getPanelLayout: vi.fn().mockResolvedValue(layout),
+      setPanelLayout: vi.fn().mockResolvedValue(undefined)
+    }
+    vi.stubGlobal('api', api)
+    await expect(getPanelLayout()).resolves.toEqual(layout)
+    await setPanelLayout(layout)
+    expect(api.setPanelLayout).toHaveBeenCalledExactlyOnceWith(layout)
   })
 })
 

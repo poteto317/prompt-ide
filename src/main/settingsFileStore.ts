@@ -27,6 +27,8 @@ export interface SettingsFile {
   promptExecutionMode?: string
   /** プロンプト一覧のモード(promptListModeStore が検証する) */
   promptListMode?: string
+  /** サイドバーの幅とターミナルの高さ(panelLayoutStore が検証する) */
+  panelLayout?: unknown
   /** エージェントの通知のオン・オフ(agentNotificationSettingStore が検証する) */
   agentNotificationsEnabled?: boolean
   /** エージェントへの送信前の確認のオン・オフ(agentSendConfirmSettingStore が検証する) */

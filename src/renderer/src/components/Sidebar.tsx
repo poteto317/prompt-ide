@@ -95,6 +95,8 @@ interface Props
   /** エージェントへ送るプロンプトの参照(プロンプトパネルの参照の行と、エクスプローラの「参照として添える」)。エージェント CLI 方式で
    *  フォルダを開いているときだけで、それ以外は null。省略できない(L-060) */
   agentReferences: AgentReferencesPanelState | null
+  /** サイドバーの幅(px)。省略時は CSS の既定 */
+  width?: number
   /** プロンプト一覧の編集モード / 表示モード(プロンプトパネルのトグルの行と、`編集`・`削除` の出し分け)。省略できない(L-060) */
   promptListMode: PromptListModePanelState
 }
@@ -195,14 +197,15 @@ export default function Sidebar({
   agentSendConfirm,
   agentCliKind,
   agentReferences,
-  promptListMode
+  promptListMode,
+  width
 }: Props): React.JSX.Element {
   // 送信の結果の見える文字は、見えているパネル(プロンプト・実行履歴)の 1 か所だけに出す。読み上げはパネルの外に常に置いた
   // 1 か所(AgentSendFeedbackAnnouncer)だけが担う。パネルの中に置くと、隠れたパネル(display: none)では読まれず、
   // 切り替えのたびにマウントし直して古い失敗を読み直すため
   const agentSend = promptRun?.agentSend ?? null
   return (
-    <div className="sidebar">
+    <div className="sidebar" style={width === undefined ? undefined : { width }}>
       {/* ソース管理の見出しは、更新などのボタンと同じ行に並べるためパネルのツールバーが出す */}
       {activePanel !== 'source-control' && (
         <div className="sidebar__header">{sidebarTitles[activePanel]}</div>

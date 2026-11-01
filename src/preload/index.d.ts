@@ -45,6 +45,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
+import type { PanelLayout } from '@shared/panelLayout'
 import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 
 declare global {
@@ -137,6 +138,8 @@ declare global {
       setPromptExecutionMode(mode: PromptExecutionMode): Promise<void>
       getPromptListMode(): Promise<PromptListMode>
       setPromptListMode(mode: PromptListMode): Promise<void>
+      getPanelLayout(): Promise<PanelLayout>
+      setPanelLayout(layout: PanelLayout): Promise<void>
       getAgentNotificationsEnabled(): Promise<boolean>
       setAgentNotificationsEnabled(enabled: boolean): Promise<void>
       getAgentSendConfirmEnabled(): Promise<boolean>

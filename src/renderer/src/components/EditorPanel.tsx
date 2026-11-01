@@ -19,6 +19,7 @@ import ConflictResolver from './source-control/ConflictResolver'
 import type { ConflictFileState } from '../hooks/useConflictFile'
 import AgentTerminalPanel from './agent/AgentTerminalPanel'
 import type { AgentTerminalPanelState } from '../hooks/useAgentWorkspace'
+import type { AgentTerminalSize } from './agent/AgentTerminalPanel'
 import ExternalChangeBanner, { ExternalChangeAnnouncer } from './editor/ExternalChangeBanner'
 import type { ExternalChangeBannerState } from '../hooks/useExternalFileChanges'
 
@@ -83,6 +84,8 @@ interface Props {
   bottomPanel?: 'output' | 'agent-terminal' | 'none'
   /** bottomPanel が agent-terminal のときのターミナルパネルの状態 */
   agentTerminal?: AgentTerminalPanelState
+  /** ターミナルパネルの高さの変更(境界の操作)。無ければ境界を出さない */
+  terminalSize?: AgentTerminalSize
   /** 編集中のタブのファイルがディスク上で変わったときの通知(useExternalFileChanges)。無ければ null */
   externalChangeBanner?: ExternalChangeBannerState | null
   /** エージェントの変更の diff タブのハンクの操作(アクティブな diff タブが agent のときだけ DiffView に渡す) */
@@ -130,6 +133,7 @@ export default function EditorPanel({
   onEditorMount,
   bottomPanel = 'output',
   agentTerminal,
+  terminalSize,
   externalChangeBanner = null,
   agentDiffActions,
   agentChangesReview
@@ -278,7 +282,11 @@ export default function EditorPanel({
         />
       )}
       {showAgentTerminal && (
-        <AgentTerminalPanel state={agentTerminal} review={agentChangesReview} />
+        <AgentTerminalPanel
+          state={agentTerminal}
+          review={agentChangesReview}
+          terminalSize={terminalSize}
+        />
       )}
     </div>
   )

@@ -50,6 +50,8 @@ Object.defineProperty(window, 'api', {
     // 一覧のモードの既定は編集モード(既存のテストは `編集`・`削除` が出る前提)。表示モードのテストは個別に差し替える
     getPromptListMode: () => Promise.resolve('edit'),
     setPromptListMode: () => Promise.resolve(),
+    getPanelLayout: () => Promise.resolve({ sidebarWidth: 240, terminalHeightPercent: 45 }),
+    setPanelLayout: () => Promise.resolve(),
     getAgentNotificationsEnabled: () => Promise.resolve(true),
     setAgentNotificationsEnabled: () => Promise.resolve(),
     getAgentSendConfirmEnabled: () => Promise.resolve(true),

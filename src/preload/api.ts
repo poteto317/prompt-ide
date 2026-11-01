@@ -47,6 +47,7 @@ import type {
   Prompt,
   Task
 } from '@shared/types'
+import type { PanelLayout } from '@shared/panelLayout'
 import type { ApiKeyStatus } from '@shared/apiKeyStatus'
 import { AGENT_SLOT_ID_PATTERN, isAgentExitReason } from '@shared/types'
 import { isObjectLike } from '@shared/typeGuards'
@@ -188,6 +189,9 @@ export const api = {
     ipcRenderer.invoke('settings:getPromptListMode'),
   setPromptListMode: (mode: PromptListMode): Promise<void> =>
     ipcRenderer.invoke('settings:setPromptListMode', mode),
+  getPanelLayout: (): Promise<PanelLayout> => ipcRenderer.invoke('settings:getPanelLayout'),
+  setPanelLayout: (layout: PanelLayout): Promise<void> =>
+    ipcRenderer.invoke('settings:setPanelLayout', layout),
   getAgentNotificationsEnabled: (): Promise<boolean> =>
     ipcRenderer.invoke('settings:getAgentNotificationsEnabled'),
   setAgentNotificationsEnabled: (enabled: boolean): Promise<void> =>
