@@ -55,7 +55,8 @@ describe('PanelResizer のスタイル(main.css)', () => {
     const sheet = styleElement.sheet as CSSStyleSheet
     const rule = Array.from(sheet.cssRules).find(
       (candidate): candidate is CSSStyleRule =>
-        candidate instanceof CSSStyleRule && candidate.selectorText === '.panel-resizer:focus-visible'
+        candidate instanceof CSSStyleRule &&
+        candidate.selectorText === '.panel-resizer:focus-visible'
     )
     expect(rule?.style.outline).toBe('2px solid transparent')
   })
