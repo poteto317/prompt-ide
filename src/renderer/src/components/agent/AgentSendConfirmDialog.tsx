@@ -175,6 +175,8 @@ function AgentSendConfirmDialogBody({
           value={argument}
           onChange={setArgument}
           onSubmit={handleConfirm}
+          describedBy={reason !== null ? reasonId : undefined}
+          invalid={preview.rejection !== null}
         />
         {hasUnsaved && (
           <p id={unsavedId} className="agent-send-confirm__unsaved">

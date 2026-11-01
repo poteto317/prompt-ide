@@ -650,6 +650,31 @@ describe('AgentSendConfirmDialog', () => {
       expect(argumentInput()).toHaveFocus()
     })
 
+    it('送り先の都合で送れないときは、理由を引数欄の説明にし、入力の誤りとはしない', () => {
+      renderDialog({ targetBlockedReason: '送信中です' })
+      expect(argumentInput()).toHaveAccessibleDescription('送信中です')
+      expect(argumentInput()).toHaveAttribute('aria-invalid', 'false')
+    })
+
+    it('全文が送れないときは、引数欄を入力の誤りとして理由を説明にする', () => {
+      renderDialog({
+        pending: makePending({
+          composeText: (argument) => appendAgentPromptArgument('', argument)
+        })
+      })
+      fireEvent.change(argumentInput(), { target: { value: '!x' } })
+      expect(argumentInput()).toHaveAttribute('aria-invalid', 'true')
+      expect(argumentInput()).toHaveAccessibleDescription(
+        screen.getByRole('alert').textContent ?? ''
+      )
+    })
+
+    it('送れない理由が無いときは、引数欄に説明を付けない', () => {
+      renderDialog()
+      expect(argumentInput()).not.toHaveAttribute('aria-describedby')
+      expect(argumentInput()).toHaveAttribute('aria-invalid', 'false')
+    })
+
     it('Space のキーリピートは引数欄に入らない', () => {
       renderDialog()
       const notPrevented = fireEvent.keyDown(argumentInput(), { key: ' ', repeat: true })
