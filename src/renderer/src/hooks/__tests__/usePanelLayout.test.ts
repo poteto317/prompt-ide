@@ -120,6 +120,19 @@ describe('usePanelLayout', () => {
     expect(mockSet).not.toHaveBeenCalled()
   })
 
+  it('読み込みの前の commit も、読み込みに失敗したら保存しない', async () => {
+    consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let rejectLoad: (reason: unknown) => void = () => undefined
+    mockGet.mockReturnValue(new Promise<PanelLayout>((_, reject) => (rejectLoad = reject)))
+    const { result } = renderHook(() => usePanelLayout())
+    act(() => {
+      result.current.changeSidebarWidth(320)
+      result.current.commit()
+    })
+    await act(async () => rejectLoad(new Error('broken')))
+    expect(mockSet).not.toHaveBeenCalled()
+  })
+
   it('読み込みに失敗したら保存しない(変えていない項目を既定値で上書きしない)', async () => {
     consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockGet.mockRejectedValueOnce(new Error('broken'))

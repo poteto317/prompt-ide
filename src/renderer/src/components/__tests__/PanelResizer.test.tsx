@@ -167,6 +167,14 @@ describe('PanelResizer', () => {
     expect(onCommit).not.toHaveBeenCalled()
   })
 
+  it('描画の後に範囲が変わっても、矢印キーは今の範囲から動かす', () => {
+    let high = 600
+    const { handle, onChange } = setup({ value: 600, limits: () => ({ min: 160, max: high }) })
+    high = 300
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(284)
+  })
+
   it('描画の後に範囲が変わっても、押した時点の範囲から始める', () => {
     let high = 600
     const { handle, onChange, onCommit } = setup({
