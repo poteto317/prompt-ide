@@ -63,6 +63,18 @@ describe('createAgentInstructionFile', () => {
   })
 
   itSymlink(
+    '.claude がフォルダの中のフォルダへのリンク → リンク先に雛形で作る(書く先は許可フォルダの中)',
+    async () => {
+      const shared = join(folder, 'shared')
+      await mkdir(shared)
+      await symlink(shared, join(folder, '.claude'))
+      await createAgentInstructionFile(folder, access, fileOf('claude-dot'))
+      expect(await readFile(join(shared, 'CLAUDE.md'), 'utf-8')).toBe(fileOf('claude-dot').template)
+      expect(await readdir(outside)).toEqual([])
+    }
+  )
+
+  itSymlink(
     '.claude がフォルダの外へのリンク → FolderAccessDeniedError で、外に何も作らない',
     async () => {
       await symlink(outside, join(folder, '.claude'))
