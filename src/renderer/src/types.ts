@@ -15,6 +15,7 @@ import type {
   PromptListMode
 } from '@shared/types'
 import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentInstructionFile } from '@shared/agentInstructionFiles'
 
 export type {
   PromptToolId,
@@ -104,6 +105,29 @@ export interface GitTagPanelState {
   createTag: (request: CreateTagRequest) => Promise<boolean>
   /** error を消す。ダイアログを開くときに、前回の失敗の表示を持ち越さないために呼ぶ */
   clearError: () => void
+}
+
+/** 指示ファイルの節の 1 行。node はツリーで見つかったファイル(無ければ null) */
+export interface AgentInstructionFileRow {
+  file: AgentInstructionFile
+  /** 一覧と aria-label に出す相対パス(区切りは /) */
+  relativePath: string
+  node: FileTreeNode | null
+}
+
+/** エクスプローラーの「エージェントの指示ファイル」の節の状態と操作(設計書 2026-11-05) */
+export interface AgentInstructionsPanelState {
+  /** 一覧の CLI(設定の種類。読み込み中は既定の claude) */
+  cliKind: AgentCliKind
+  rows: readonly AgentInstructionFileRow[]
+  /** 作成の途中(押した結果)。節のボタンを aria-disabled にし、押しても何もしない(disabled にするのは clone 中だけ。L-157) */
+  isCreating: boolean
+  /** 失敗の固定の文言。次の操作で消える */
+  message: string | null
+  /** ファイルがある行を開く(エクスプローラーでファイルを選んだときと同じ経路) */
+  open: (row: AgentInstructionFileRow) => void
+  /** 無い行を雛形で作って開く */
+  create: (row: AgentInstructionFileRow) => Promise<void>
 }
 
 // リポジトリの clone(エクスプローラーの「リポジトリを clone」とそのダイアログ)が受け取る状態と操作。

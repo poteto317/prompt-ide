@@ -4,6 +4,10 @@ import { sep } from 'node:path'
 /** 開いているフォルダが変わったときの通知(webContents の id と新しいフォルダ) */
 export type FolderChangeListener = (webContentsId: number, path: string) => void
 
+/** 開いているフォルダの外を指したときの拒否。受け口が範囲外を他の失敗(realpath の ENOENT など)と見分けるために使う。
+ *  name は設定しない(IPC 越しに renderer へ届く `Error invoking remote method '...': Error: Access denied: ...` を変えないため) */
+export class FolderAccessDeniedError extends Error {}
+
 export class FolderAccessManager {
   private readonly folders = new Map<number, string>()
   private readonly changeListeners = new Set<FolderChangeListener>()
@@ -47,10 +51,10 @@ export class FolderAccessManager {
     // startsWith(prefix) を満たしてしまう(文字列は自分自身で始まるため)。
     // 等値は許可フォルダ末尾の区切り有無に関わらず常に拒否することを明示する。
     if (resolvedTarget === allowedPath) {
-      throw new Error(`Access denied: ${targetPath}`)
+      throw new FolderAccessDeniedError(`Access denied: ${targetPath}`)
     }
     if (!resolvedTarget.startsWith(this.toPrefix(allowedPath))) {
-      throw new Error(`Access denied: ${targetPath}`)
+      throw new FolderAccessDeniedError(`Access denied: ${targetPath}`)
     }
   }
 
@@ -63,7 +67,7 @@ export class FolderAccessManager {
   async assertParentWithinFolder(allowedPath: string, parentPath: string): Promise<string> {
     const resolvedParent = await realpath(parentPath)
     if (resolvedParent !== allowedPath && !resolvedParent.startsWith(this.toPrefix(allowedPath))) {
-      throw new Error(`Access denied: ${parentPath}`)
+      throw new FolderAccessDeniedError(`Access denied: ${parentPath}`)
     }
     return resolvedParent
   }

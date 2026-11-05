@@ -6,6 +6,7 @@ import { app, shell, BrowserWindow, Notification } from 'electron'
 import { FolderAccessManager } from './folderAccessManager'
 import { setupFolderAccessLifecycle } from './folderAccessLifecycle'
 import { registerFileSystemHandlers } from './handlers/fileSystemHandlers'
+import { registerAgentInstructionsHandlers } from './handlers/agentInstructionsHandlers'
 import { registerGitHandlers } from './handlers/gitHandlers'
 import { registerCloneHandlers } from './handlers/cloneHandlers'
 import { CloneRegistry } from './cloneRegistry'
@@ -68,6 +69,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   setupFolderAccessLifecycle(app, folderAccess)
 
   registerFileSystemHandlers(ipcMain, folderAccess)
+  registerAgentInstructionsHandlers(ipcMain, folderAccess)
   registerGitHandlers(ipcMain, folderAccess)
   // clone は成功したフォルダを開く許可に切り替えるため、同じ FolderAccessManager を渡す
   const cloneRegistry = new CloneRegistry()

@@ -12,6 +12,7 @@ import type {
   AgentChangesState,
   AgentChangesUndoResult,
   AgentInterruptFollowUpResult,
+  AgentInstructionCreateResult,
   AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
@@ -49,6 +50,7 @@ import type {
 } from '@shared/types'
 import type { PanelLayout } from '@shared/panelLayout'
 import type { ApiKeyStatus } from '@shared/apiKeyStatus'
+import type { AgentInstructionFileId } from '@shared/agentInstructionFiles'
 import { AGENT_SLOT_ID_PATTERN, isAgentExitReason } from '@shared/types'
 import { isObjectLike } from '@shared/typeGuards'
 
@@ -61,6 +63,12 @@ export const api = {
     ipcRenderer.invoke('fs:writeFile', path, content),
   createFile: (parentPath: string, name: string): Promise<void> =>
     ipcRenderer.invoke('fs:createFile', parentPath, name),
+  createAgentInstructionFile: (
+    expectedRoot: string,
+    cliKind: AgentCliKind,
+    fileId: AgentInstructionFileId
+  ): Promise<AgentInstructionCreateResult> =>
+    ipcRenderer.invoke('agentInstructions:create', expectedRoot, cliKind, fileId),
   createDirectory: (parentPath: string, name: string): Promise<void> =>
     ipcRenderer.invoke('fs:createDirectory', parentPath, name),
   renameEntry: (path: string, newName: string): Promise<void> =>

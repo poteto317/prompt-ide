@@ -1,9 +1,10 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi } from 'vitest'
 import type { FileTreeNode } from '../../../types'
 import ExplorerPanel from '../ExplorerPanel'
 import { makeCloneRepositoryPanelState } from '../../../__tests__/makeCloneRepositoryPanelState'
+import { makeAgentInstructionsPanelState } from '../../../__tests__/makeAgentInstructionsPanelState'
 
 const mockTree: FileTreeNode[] = [
   {
@@ -28,7 +29,8 @@ const defaultProps = {
   onRenameEntry: vi.fn(),
   onDeleteEntry: vi.fn(),
   onAddToGitignore: vi.fn(),
-  clone: makeCloneRepositoryPanelState()
+  clone: makeCloneRepositoryPanelState(),
+  agentInstructions: makeAgentInstructionsPanelState()
 }
 
 const openedProps = { ...defaultProps, folderPath: '/p', fileTree: mockTree }
@@ -231,5 +233,27 @@ describe('ExplorerPanel', () => {
       expect(onCreateFile).not.toHaveBeenCalled()
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
+  })
+
+  it('フォルダを開いている → 指示ファイルの節をツリーの前に出す', () => {
+    render(<ExplorerPanel {...openedProps} />)
+    const section = screen.getByRole('region', { name: 'エージェントの指示ファイル(Claude Code)' })
+    const tree = screen.getByRole('tree')
+    expect(section.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('clone の実行中 → 節のボタンがすべて disabled(isBlocked の配線)', () => {
+    render(
+      <ExplorerPanel {...openedProps} clone={makeCloneRepositoryPanelState({ isCloning: true })} />
+    )
+    const section = screen.getByRole('region', { name: 'エージェントの指示ファイル(Claude Code)' })
+    for (const button of within(section).getAllByRole('button')) expect(button).toBeDisabled()
+  })
+
+  it('フォルダを開いていない → 指示ファイルの節を出さない', () => {
+    render(<ExplorerPanel {...defaultProps} />)
+    expect(
+      screen.queryByRole('region', { name: /エージェントの指示ファイル/ })
+    ).not.toBeInTheDocument()
   })
 })

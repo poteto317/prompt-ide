@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentInstructionFile } from '@shared/agentInstructionFiles'
 import type { FileTreeNode, OpenFile } from '../types'
 import { detectLanguage } from '../lib/languageDetector'
 import {
@@ -18,6 +20,8 @@ import {
   SAVE_ABORTED_BY_RENAME_DESTINATION_DIRECTORY,
   SAVE_ABORTED_BY_RENAME_DESTINATION_FILE
 } from './useFileEditing'
+import { runAgentInstructionFileCreation } from './agentInstructionFileCreation'
+import type { AgentInstructionCreateOutcome } from './agentInstructionFileCreation'
 import type {
   FileOperationLockOptions,
   FileOperationResult,
@@ -71,6 +75,11 @@ interface FileTreeOperationsState {
   deleteEntry: (node: FileTreeNode) => Promise<void>
   /** ツリーを再読込する。実際に現在のツリーへ反映した場合のみ true */
   refreshTree: () => Promise<boolean>
+  /** 指示ファイルを表の雛形で作ってツリーを読み直す。成否は結果で返し、共有の error には書かない(設計書 2026-11-05) */
+  createAgentInstructionFile: (
+    cliKind: AgentCliKind,
+    file: AgentInstructionFile
+  ) => Promise<AgentInstructionCreateOutcome>
 }
 
 // ファイル/フォルダの新規作成・リネーム・削除という CRUD 操作一式と、
@@ -94,30 +103,34 @@ export function useFileTreeOperations({
 
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
-  const refreshTree = async (): Promise<boolean> => {
+  // ツリーを読み直して反映する。反映したらそのツリー、反映しなかった(走査中・古い結果・フォルダが無い)ら null。
+  // 読み込みの失敗は reportTreeLoad の後に投げ直す(refreshTree と指示ファイルの作成が使う)
+  const reloadTree = async (): Promise<FileTreeNode[] | null> => {
     // フォルダ走査中は触らない。権威あるツリーはフォルダ読み込み側が書く
     const isLatestWrite = beginTreeWrite()
-    if (isLatestWrite === null) return false
+    if (isLatestWrite === null) return null
     // クロージャではなく「読み込む時点」のフォルダを見る。CRUD の完了が遅れると
     // クロージャの folderPath は切替前のものになり、旧フォルダを読んでしまう
     const target = getFolderPath()
-    if (target === null) return false
+    if (target === null) return null
     // 後発の読み込み(フォルダ読み込みを含む)が始まっていたら反映しない。
     // フォルダが同じでも、古いスナップショットで新しい結果を上書きしてしまう
     const isStale = (): boolean => !isLatestWrite() || getFolderPath() !== target
     try {
       const tree = await fileSystemApi.readDirectory(target)
-      if (isStale()) return false
+      if (isStale()) return null
       setFileTree(tree)
       reportTreeLoad(null)
-      return true
+      return tree
     } catch (err) {
       // 古い再読込の失敗を、現在の画面に出さない
-      if (isStale()) return false
+      if (isStale()) return null
       reportTreeLoad(err instanceof Error ? err : new Error(String(err)))
       throw err
     }
   }
+
+  const refreshTree = async (): Promise<boolean> => (await reloadTree()) !== null
 
   const DISCARD_ON_DELETE_MESSAGE = '保存されていない変更があります。破棄して削除しますか？'
   // 削除は完了済みなので「削除しますか」ではなく破棄の可否だけを聞く。
@@ -403,6 +416,16 @@ export function useFileTreeOperations({
     })
   }
 
+  const createAgentInstructionFile = (
+    cliKind: AgentCliKind,
+    file: AgentInstructionFile
+  ): Promise<AgentInstructionCreateOutcome> =>
+    runAgentInstructionFileCreation(
+      { getFolderPath, lockPathForFileOperation, reloadTree },
+      cliKind,
+      file
+    )
+
   return {
     fileTree,
     setFileTree,
@@ -412,6 +435,7 @@ export function useFileTreeOperations({
     createDirectory,
     renameEntry,
     deleteEntry,
-    refreshTree
+    refreshTree,
+    createAgentInstructionFile
   }
 }

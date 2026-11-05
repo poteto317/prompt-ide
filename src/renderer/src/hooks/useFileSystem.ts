@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentInstructionFile } from '@shared/agentInstructionFiles'
 import type { FileTreeNode, FileNode, OpenFile } from '../types'
 import { createOpenFile, isFileNode } from '../lib/fileUtils'
 import { toError } from '../lib/errorUtils'
@@ -13,6 +15,7 @@ import { readFileAfterPendingSaves } from '../lib/readFileAfterPendingSaves'
 import { useFileEditing, DISCARD_CONFIRM_MESSAGE } from './useFileEditing'
 import type { Options } from './useFileEditing'
 import { useFileTreeOperations } from './useFileTreeOperations'
+import type { AgentInstructionCreateOutcome } from './agentInstructionFileCreation'
 import { arrayMove } from '@dnd-kit/sortable'
 
 // 純粋な部分は lib へ分けている(開いた信号: lib/openedFileSignal、タブの配列の操作: lib/openTabs、
@@ -73,6 +76,11 @@ interface FileSystemState {
   updateFileContent: (content: string) => void
   saveFile: () => Promise<void>
   createFile: (parentPath: string, name: string) => Promise<void>
+  /** 指示ファイルを表の雛形で作ってツリーを読み直す。成否は結果で返す(共有の error には書かない) */
+  createAgentInstructionFile: (
+    cliKind: AgentCliKind,
+    file: AgentInstructionFile
+  ) => Promise<AgentInstructionCreateOutcome>
   createDirectory: (parentPath: string, name: string) => Promise<void>
   renameEntry: (node: FileTreeNode, newName: string) => Promise<void>
   deleteEntry: (node: FileTreeNode) => Promise<void>
@@ -332,7 +340,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     createDirectory,
     renameEntry,
     deleteEntry,
-    refreshTree
+    refreshTree,
+    createAgentInstructionFile
   } = useFileTreeOperations({
     getOpenFiles: () => openFilesMirrorRef.current,
     setOpenFiles: setOpenFilesAndFixActive,
@@ -817,6 +826,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     updateFileContent,
     saveFile,
     createFile,
+    createAgentInstructionFile,
     createDirectory,
     renameEntry,
     deleteEntry,

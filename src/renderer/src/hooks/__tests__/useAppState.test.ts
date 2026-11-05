@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import type { GitStatusResult } from '@shared/types'
+import type { AgentCliKind } from '@shared/agentCliKinds'
+import type { AgentInstructionFile } from '@shared/agentInstructionFiles'
+import type { AgentInstructionCreateOutcome } from '../agentInstructionFileCreation'
+import { makeAgentTerminalPanelState } from '../../__tests__/makeAgentTerminalPanelState'
 import { makeAgentWorkspaceState } from '../../__tests__/makeAgentWorkspaceState'
 import type { DiffTabKey } from '../useDiffTabs'
 import type { ApplyOpenedFolderOptions } from '../useFileSystem'
@@ -41,6 +45,10 @@ const mockUseFileSystem = vi.hoisted(() =>
       refreshTree?: () => Promise<boolean>
       captureDirtySnapshot?: () => string
       applyOpenedFolder?: (path: string, options: ApplyOpenedFolderOptions) => Promise<void>
+      createAgentInstructionFile?: (
+        cliKind: AgentCliKind,
+        file: AgentInstructionFile
+      ) => Promise<AgentInstructionCreateOutcome>
     } => ({
       folderPath: null,
       fileTree: [],
@@ -2274,6 +2282,106 @@ describe('useAppState', () => {
       mockUseStashPanel.mockReturnValue(mockStashPanel)
       rerender()
       expect(mockUseCloneRepository.mock.lastCall![0].isGitOperationRunning).toBe(false)
+    })
+  })
+
+  describe('agentInstructions(エージェントの指示ファイルの節)', () => {
+    const claudeNode = { name: 'CLAUDE.md', path: '/p/CLAUDE.md', type: 'file' as const }
+    const makeDiffTabsMock = (
+      deactivateDiffTab: () => void
+    ): ReturnType<typeof mockUseDiffTabs> => ({
+      diffTabs: [],
+      activeDiffTab: null,
+      openDiffTab: vi.fn(),
+      closeDiffTab: vi.fn(),
+      activateDiffTab: vi.fn(),
+      deactivateDiffTab
+    })
+    const makeFileSystemMock = (
+      overrides: Partial<ReturnType<typeof mockUseFileSystem>>
+    ): ReturnType<typeof mockUseFileSystem> => ({
+      folderPath: '/p',
+      fileTree: [],
+      openFile: null,
+      openedFileSignal: { events: [] },
+      error: null,
+      openFolder: vi.fn(),
+      selectFile: vi.fn(),
+      activateTab: vi.fn(),
+      saveFile: vi.fn().mockResolvedValue(undefined),
+      createFile: vi.fn().mockResolvedValue(undefined),
+      createDirectory: vi.fn().mockResolvedValue(undefined),
+      renameEntry: vi.fn().mockResolvedValue(undefined),
+      deleteEntry: vi.fn().mockResolvedValue(undefined),
+      ...overrides
+    })
+
+    it('既定 → claude の 3 行を出す', () => {
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentInstructions.cliKind).toBe('claude')
+      expect(result.current.agentInstructions.rows.map((r) => r.relativePath)).toEqual([
+        'CLAUDE.md',
+        '.claude/CLAUDE.md',
+        'CLAUDE.local.md'
+      ])
+    })
+
+    it('設定の CLI が copilot → copilot の 2 行を出す', () => {
+      mockUseAgentWorkspace.mockReturnValue(
+        makeAgentWorkspaceState({
+          agentTerminal: makeAgentTerminalPanelState({ appCliKind: 'copilot' })
+        })
+      )
+      const { result } = renderHook(() => useAppState())
+      expect(result.current.agentInstructions.cliKind).toBe('copilot')
+      expect(result.current.agentInstructions.rows.map((r) => r.relativePath)).toEqual([
+        'AGENTS.md',
+        '.github/copilot-instructions.md'
+      ])
+    })
+
+    it('open → 開けたら diff タブを非アクティブ化する(包んだ selectFile を使う)', async () => {
+      const deactivateDiffTab = vi.fn()
+      mockUseDiffTabs.mockReturnValue(makeDiffTabsMock(deactivateDiffTab))
+      const selectFile = vi.fn().mockResolvedValue(true)
+      mockUseFileSystem.mockReturnValue(makeFileSystemMock({ fileTree: [claudeNode], selectFile }))
+      const { result } = renderHook(() => useAppState())
+      await act(async () => {
+        result.current.agentInstructions.open(result.current.agentInstructions.rows[0])
+      })
+      await waitFor(() => expect(deactivateDiffTab).toHaveBeenCalled())
+      expect(selectFile).toHaveBeenCalledWith(claudeNode, undefined)
+    })
+
+    it.each<[string, AgentInstructionCreateOutcome, number]>([
+      ['created', { status: 'created', tree: [claudeNode] }, 1],
+      ['failed', { status: 'failed', reason: 'exists' }, 0]
+    ])('create が %s → created のときだけ git の状態を取り直す', async (_label, outcome, delta) => {
+      const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+      mockUseGitStatus.mockReturnValue({
+        gitStatus: null,
+        gitLoading: false,
+        gitError: null,
+        refreshGitStatus
+      })
+      mockUseDiffTabs.mockReturnValue(makeDiffTabsMock(vi.fn()))
+      const createAgentInstructionFile = vi.fn().mockResolvedValue(outcome)
+      mockUseFileSystem.mockReturnValue(
+        makeFileSystemMock({
+          selectFile: vi.fn().mockResolvedValue(true),
+          createAgentInstructionFile
+        })
+      )
+      const { result } = renderHook(() => useAppState())
+      const before = refreshGitStatus.mock.calls.length
+      await act(async () => {
+        await result.current.agentInstructions.create(result.current.agentInstructions.rows[0])
+      })
+      expect(createAgentInstructionFile).toHaveBeenCalledWith(
+        'claude',
+        result.current.agentInstructions.rows[0].file
+      )
+      expect(refreshGitStatus.mock.calls.length - before).toBe(delta)
     })
   })
 })

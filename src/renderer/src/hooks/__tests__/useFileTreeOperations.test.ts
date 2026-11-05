@@ -4,8 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FileTreeNode, OpenFile } from '../../types'
 
 vi.mock('../../lib/fileSystemApi')
+vi.mock('../../lib/agentInstructionsApi')
 
 import * as fileSystemApi from '../../lib/fileSystemApi'
+import * as agentInstructionsApi from '../../lib/agentInstructionsApi'
+import { AGENT_INSTRUCTION_FILES } from '@shared/agentInstructionFiles'
 import { useFileTreeOperations } from '../useFileTreeOperations'
 import type { FileOperationLockOptions, ResetForFileChangeOptions } from '../useFileEditing'
 
@@ -970,5 +973,62 @@ describe('複数ファイルへの追随', () => {
       '/project/src/a.ts',
       '/project/src/renamed.ts'
     ])
+  })
+})
+
+describe('createAgentInstructionFile', () => {
+  const rootFile = AGENT_INSTRUCTION_FILES.claude[0] // CLAUDE.md
+  const created: FileTreeNode[] = [{ name: 'CLAUDE.md', path: '/project/CLAUDE.md', type: 'file' }]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('成功 → ツリーを読み直して反映し、そのツリーを返す。共有の error は null のまま', async () => {
+    vi.mocked(agentInstructionsApi.createAgentInstructionFile).mockResolvedValue({ ok: true })
+    mockReadDirectory.mockResolvedValue(created)
+    const { result } = renderOperations()
+    let outcome: unknown = null
+    await act(async () => {
+      outcome = await result.current.createAgentInstructionFile('claude', rootFile)
+    })
+    expect(outcome).toEqual({ status: 'created', tree: created })
+    expect(result.current.fileTree).toEqual(created)
+    expect(result.current.error).toBeNull()
+  })
+
+  it('{ ok: false } → failed を返し、ツリーを読み直し、共有の error に書かない', async () => {
+    vi.mocked(agentInstructionsApi.createAgentInstructionFile).mockResolvedValue({
+      ok: false,
+      reason: 'exists'
+    })
+    const { result } = renderOperations()
+    let outcome: unknown = null
+    await act(async () => {
+      outcome = await result.current.createAgentInstructionFile('claude', rootFile)
+    })
+    expect(outcome).toEqual({ status: 'failed', reason: 'exists' })
+    expect(result.current.error).toBeNull()
+    expect(mockReadDirectory).toHaveBeenCalled()
+  })
+
+  it('読み直しの失敗 → tree: null を返す(refreshTree の失敗は従来どおり投げる)', async () => {
+    vi.mocked(agentInstructionsApi.createAgentInstructionFile).mockResolvedValue({ ok: true })
+    mockReadDirectory.mockRejectedValue(new Error('read failed'))
+    const { result } = renderOperations()
+    let outcome: unknown = null
+    await act(async () => {
+      outcome = await result.current.createAgentInstructionFile('claude', rootFile)
+    })
+    expect(outcome).toEqual({ status: 'created', tree: null })
+    let caught: unknown = null
+    await act(async () => {
+      try {
+        await result.current.refreshTree()
+      } catch (err) {
+        caught = err
+      }
+    })
+    expect(caught).toBeInstanceOf(Error)
   })
 })

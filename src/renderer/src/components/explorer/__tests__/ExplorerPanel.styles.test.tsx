@@ -5,6 +5,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import type { FileTreeNode } from '../../../types'
 import ExplorerPanel from '../ExplorerPanel'
 import { makeCloneRepositoryPanelState } from '../../../__tests__/makeCloneRepositoryPanelState'
+import { makeAgentInstructionsPanelState } from '../../../__tests__/makeAgentInstructionsPanelState'
 
 // 実際の main.css を読み込み、jsdom のカスケード結果(getComputedStyle)で宣言値を検証する。
 // 「リポジトリを clone」は、stash・マージ・リモートのバナーのボタンと 1 つのグループセレクタで宣言を共有する
@@ -32,7 +33,8 @@ const baseProps = {
   onCreateDirectory: vi.fn(),
   onRenameEntry: vi.fn(),
   onDeleteEntry: vi.fn(),
-  onAddToGitignore: vi.fn()
+  onAddToGitignore: vi.fn(),
+  agentInstructions: makeAgentInstructionsPanelState()
 }
 
 describe('エクスプローラーの clone のボタンのスタイル(main.css)', () => {
@@ -84,5 +86,28 @@ describe('エクスプローラーの clone のボタンのスタイル(main.css
     expect(style.marginLeft).toBe('12px')
     expect(style.marginRight).toBe('12px')
     expect(style.marginBottom).toBe('6px')
+  })
+
+  it('指示ファイルの節のボタンは 32px 四方以上の枠付きボタン', () => {
+    render(<ExplorerPanel {...baseProps} folderPath="/p" clone={makeCloneRepositoryPanelState()} />)
+    const style = getComputedStyle(screen.getByRole('button', { name: 'CLAUDE.md を作成' }))
+    expect(style.minWidth).toBe('32px')
+    expect(style.minHeight).toBe('32px')
+    expect(style.borderTopStyle).toBe('solid')
+    expect(style.cursor).toBe('pointer')
+  })
+
+  it('指示ファイルの節の作成の途中(aria-disabled)は半透明で、カーソルが既定に戻る', () => {
+    render(
+      <ExplorerPanel
+        {...baseProps}
+        folderPath="/p"
+        clone={makeCloneRepositoryPanelState()}
+        agentInstructions={makeAgentInstructionsPanelState({ isCreating: true })}
+      />
+    )
+    const style = getComputedStyle(screen.getByRole('button', { name: 'CLAUDE.md を作成' }))
+    expect(style.opacity).toBe('0.5')
+    expect(style.cursor).toBe('default')
   })
 })

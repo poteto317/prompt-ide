@@ -48,6 +48,11 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['fs:createFile', '/project', 'a.txt']
   ],
   [
+    'createAgentInstructionFile は agentInstructions:create チャンネルに expectedRoot と cliKind と fileId を渡す',
+    () => api.createAgentInstructionFile('/p', 'claude', 'claude-dot'),
+    ['agentInstructions:create', '/p', 'claude', 'claude-dot']
+  ],
+  [
     'createDirectory は fs:createDirectory チャンネルに parentPath と name を渡す',
     () => api.createDirectory('/project', 'sub'),
     ['fs:createDirectory', '/project', 'sub']

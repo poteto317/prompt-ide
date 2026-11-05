@@ -115,6 +115,7 @@ export default function Sidebar({
   onRenameEntry,
   onDeleteEntry,
   clone,
+  agentInstructions,
   prompts,
   onAddPrompt,
   onDeletePrompt,
@@ -226,6 +227,7 @@ export default function Sidebar({
           onDeleteEntry={onDeleteEntry}
           onAddToGitignore={onAddToGitignore}
           clone={clone}
+          agentInstructions={agentInstructions}
           onAddReference={
             agentReferences === null
               ? undefined

@@ -122,6 +122,7 @@ export default function App(): React.JSX.Element {
     gitTag,
     remoteSetup,
     clone,
+    agentInstructions,
     conflictFile,
     isActiveFileConflicted,
     branchOperationError,
@@ -299,6 +300,7 @@ export default function App(): React.JSX.Element {
               onRenameEntry={renameEntry}
               onDeleteEntry={deleteEntry}
               clone={clone}
+              agentInstructions={agentInstructions}
               prompts={prompts}
               onAddPrompt={addPrompt}
               onDeletePrompt={deletePrompt}

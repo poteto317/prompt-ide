@@ -889,6 +889,61 @@ body {
   color: #f48771;
 }
 
+/* ---- エージェントの指示ファイル(エクスプローラーの上部の節) ---- */
+
+.agent-instructions {
+  margin: 0 12px 6px;
+  padding: 6px 0;
+  border-top: 1px solid #3c3c3c;
+  border-bottom: 1px solid #3c3c3c;
+  flex-shrink: 0;
+}
+
+.agent-instructions__title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbbbbb;
+}
+
+.agent-instructions__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-instructions__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+/* 狭いサイドバー(220px)では説明を次の行へ折り返し、ボタンは右端に残す */
+.agent-instructions__text {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.agent-instructions__path {
+  color: #cccccc;
+  overflow-wrap: anywhere;
+}
+
+.agent-instructions__description {
+  color: #969696;
+}
+
+.agent-instructions__message {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #f48771;
+}
+
 /* ---- Explorer Context Menu ---- */
 
 .explorer-context-menu {
@@ -1557,6 +1612,7 @@ body {
 .remote-setup-banner__button,
 .source-control-panel__init-btn,
 .explorer-panel__clone-btn,
+.agent-instructions__button,
 .output-panel__apply-btn,
 .code-block__button,
 .create-tag-dialog__kind,
@@ -1585,6 +1641,7 @@ body {
 .remote-setup-banner__button:hover:not(:disabled),
 .source-control-panel__init-btn:hover:not(:disabled),
 .explorer-panel__clone-btn:hover:not(:disabled),
+.agent-instructions__button:hover:not(:disabled):not([aria-disabled='true']),
 .output-panel__apply-btn:hover:not(:disabled),
 .code-block__button:hover:not(:disabled),
 .create-tag-dialog__kind:hover:not(:disabled),
@@ -1613,6 +1670,8 @@ body {
 .remote-setup-banner__button:disabled,
 .source-control-panel__init-btn:disabled,
 .explorer-panel__clone-btn:disabled,
+.agent-instructions__button:disabled,
+.agent-instructions__button[aria-disabled='true'],
 .explorer-panel__open-btn:disabled,
 .explorer-panel__change-btn:disabled,
 .output-panel__apply-btn:disabled,

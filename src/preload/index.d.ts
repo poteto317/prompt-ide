@@ -10,6 +10,7 @@ import type {
   AgentChangesState,
   AgentChangesUndoResult,
   AgentInterruptFollowUpResult,
+  AgentInstructionCreateResult,
   AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
@@ -47,6 +48,7 @@ import type {
 } from '@shared/types'
 import type { PanelLayout } from '@shared/panelLayout'
 import type { ApiKeyStatus } from '@shared/apiKeyStatus'
+import type { AgentInstructionFileId } from '@shared/agentInstructionFiles'
 
 declare global {
   interface Window {
@@ -57,6 +59,13 @@ declare global {
       /** 照合を通さない書き込み(fs:writeFile)。保存には使わない(保存は writeFileChecked) */
       writeFile(path: string, content: string): Promise<void>
       createFile(parentPath: string, name: string): Promise<void>
+      /** 指示ファイルを表の雛形で作る(agentInstructions:create)。パスと中身は main が表から決める。失敗は理由で返す。
+       *  expectedRoot は renderer が開いているフォルダで、main の許可フォルダと違えば作らずに folderChanged を返す */
+      createAgentInstructionFile(
+        expectedRoot: string,
+        cliKind: AgentCliKind,
+        fileId: AgentInstructionFileId
+      ): Promise<AgentInstructionCreateResult>
       createDirectory(parentPath: string, name: string): Promise<void>
       renameEntry(path: string, newName: string): Promise<void>
       deleteEntry(path: string): Promise<void>

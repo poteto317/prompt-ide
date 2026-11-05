@@ -17,6 +17,7 @@ import { useCloneRepository } from '../../../hooks/useCloneRepository'
 import type { UseCloneRepositoryOptions } from '../../../hooks/useCloneRepository'
 import { useFileOperationLock } from '../../../hooks/useFileOperationLock'
 import { makeCloneRepositoryPanelState } from '../../../__tests__/makeCloneRepositoryPanelState'
+import { makeAgentInstructionsPanelState } from '../../../__tests__/makeAgentInstructionsPanelState'
 
 const mockCloneRepository = vi.mocked(gitApi.cloneRepository)
 const mockCancelCloneRepository = vi.mocked(gitApi.cancelCloneRepository)
@@ -38,7 +39,8 @@ const baseProps = {
   onCreateDirectory: vi.fn(),
   onRenameEntry: vi.fn(),
   onDeleteEntry: vi.fn(),
-  onAddToGitignore: vi.fn()
+  onAddToGitignore: vi.fn(),
+  agentInstructions: makeAgentInstructionsPanelState()
 }
 
 const cloneButton = (): HTMLElement => screen.getByRole('button', { name: 'リポジトリを clone' })

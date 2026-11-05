@@ -29,6 +29,7 @@ import { useConflictFile } from './useConflictFile'
 import { useGitTagOperations } from './useGitTagOperations'
 import { useGitRemoteSetup } from './useGitRemoteSetup'
 import { useCloneRepository } from './useCloneRepository'
+import { useAgentInstructionFiles } from './useAgentInstructionFiles'
 import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
@@ -36,6 +37,7 @@ import { runEditorSyncedOperation } from '../lib/editorSyncedOperation'
 import { isAnyGitOperationRunning } from '../lib/gitOperationActivity'
 import { isSamePath } from '../lib/pathUtils'
 import type {
+  AgentInstructionsPanelState,
   AgentReferencesPanelState,
   CloneRepositoryPanelState,
   DiscardAllState,
@@ -91,6 +93,8 @@ type AppState = {
   remoteSetup: RemoteSetupPanelState
   /** リポジトリの clone の状態と操作(エクスプローラーの「リポジトリを clone」とダイアログ) */
   clone: CloneRepositoryPanelState
+  /** エクスプローラーの「エージェントの指示ファイル」の節の状態と操作 */
+  agentInstructions: AgentInstructionsPanelState
   /** マージ中バナーの状態と、マージの完了・中止の操作 */
   mergeState: MergeStatePanelState
   /** 未解決ファイルの解決ビューの状態と操作 */
@@ -360,6 +364,22 @@ export function useAppState(): AppState {
     await fileSystem.createFile(parentPath, name)
     await git.refreshGitStatus()
   }
+  // 作成できたら git の状態も取り直す(新しい未追跡のファイル。createFile の包みと同じ)
+  const createAgentInstructionFile: typeof fileSystem.createAgentInstructionFile = async (
+    cliKind,
+    file
+  ) => {
+    const outcome = await fileSystem.createAgentInstructionFile(cliKind, file)
+    if (outcome.status === 'created') await git.refreshGitStatus()
+    return outcome
+  }
+  const agentInstructions = useAgentInstructionFiles({
+    folderPath: fileSystem.folderPath,
+    fileTree: fileSystem.fileTree,
+    cliKind: agentWorkspace.agentTerminal.appCliKind,
+    createFile: createAgentInstructionFile,
+    openFile: selectFile
+  })
   const createDirectory: typeof fileSystem.createDirectory = async (parentPath, name) => {
     await fileSystem.createDirectory(parentPath, name)
     await git.refreshGitStatus()
@@ -583,6 +603,7 @@ export function useAppState(): AppState {
     selectFile,
     activateTab,
     createFile,
+    createAgentInstructionFile,
     createDirectory,
     renameEntry,
     deleteEntry,
@@ -598,6 +619,7 @@ export function useAppState(): AppState {
     gitTag,
     remoteSetup,
     clone,
+    agentInstructions,
     mergeState,
     conflictFile,
     isActiveFileConflicted,

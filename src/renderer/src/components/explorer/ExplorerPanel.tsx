@@ -1,11 +1,16 @@
 import { useState } from 'react'
-import type { CloneRepositoryPanelState, FileTreeNode } from '../../types'
+import type {
+  AgentInstructionsPanelState,
+  CloneRepositoryPanelState,
+  FileTreeNode
+} from '../../types'
 import { useContextMenu } from '../../hooks/useContextMenu'
 import { buildMenuItems } from '../../lib/explorerMenuItems'
 import FileTreeItem from './FileTreeItem'
 import ExplorerContextMenu from './ExplorerContextMenu'
 import NameInputDialog from './NameInputDialog'
 import CloneRepositoryEntry from './CloneRepositoryEntry'
+import AgentInstructionFilesSection from './AgentInstructionFilesSection'
 
 export interface ExplorerPanelProps {
   folderPath: string | null
@@ -24,6 +29,8 @@ export interface ExplorerPanelProps {
   onAddToGitignore: (node: FileTreeNode) => void
   /** リポジトリの clone の状態と操作(「リポジトリを clone」とダイアログ) */
   clone: CloneRepositoryPanelState
+  /** 「エージェントの指示ファイル」の節(フォルダを開いているときだけ出す。省略できない。L-060) */
+  agentInstructions: AgentInstructionsPanelState
   /** 右クリックの「参照として添える」(エージェント CLI 方式でフォルダを開いているときだけ渡す。ファイルにだけ出す) */
   onAddReference?: (node: FileTreeNode) => void
 }
@@ -52,6 +59,7 @@ export default function ExplorerPanel({
   onDeleteEntry,
   onAddToGitignore,
   clone,
+  agentInstructions,
   onAddReference
 }: ExplorerPanelProps): React.JSX.Element {
   const { menu, openMenu, closeMenu } = useContextMenu()
@@ -98,6 +106,7 @@ export default function ExplorerPanel({
             フォルダを変更
           </button>
           <CloneRepositoryEntry clone={clone} />
+          <AgentInstructionFilesSection state={agentInstructions} isBlocked={clone.isCloning} />
           <div
             role="tree"
             aria-label="ファイルツリー"

@@ -14,6 +14,7 @@ import { sidebarTitles } from '../../config/sidebarTitles'
 import { makeGitTagPanelState } from '../../__tests__/makeGitTagPanelState'
 import { makeRemoteSetupPanelState } from '../../__tests__/makeRemoteSetupPanelState'
 import { makeCloneRepositoryPanelState } from '../../__tests__/makeCloneRepositoryPanelState'
+import { makeAgentInstructionsPanelState } from '../../__tests__/makeAgentInstructionsPanelState'
 import { makeAgentReferencesPanelState } from '../../__tests__/makeAgentReferencesState'
 import { makePromptListModePanelState } from '../../__tests__/makePromptListModePanelState'
 
@@ -110,6 +111,7 @@ const defaultProps = {
   gitTag: makeGitTagPanelState(),
   remoteSetup: makeRemoteSetupPanelState(),
   clone: makeCloneRepositoryPanelState(),
+  agentInstructions: makeAgentInstructionsPanelState(),
   gitBranchOperationError: null as Error | null,
   onOpenDiff: vi.fn(),
   onAmend: vi.fn().mockResolvedValue(true),

@@ -14,6 +14,7 @@ Object.defineProperty(window, 'api', {
     readFile: () => Promise.resolve(''),
     writeFile: () => Promise.resolve(),
     createFile: () => Promise.resolve(),
+    createAgentInstructionFile: () => Promise.resolve({ ok: true }),
     createDirectory: () => Promise.resolve(),
     renameEntry: () => Promise.resolve(),
     deleteEntry: () => Promise.resolve(),

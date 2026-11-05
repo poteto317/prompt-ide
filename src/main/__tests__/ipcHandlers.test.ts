@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockSetupFolderAccessLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterFileSystemHandlers = vi.hoisted(() => vi.fn())
+const mockRegisterAgentInstructionsHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterGitHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterSettingsHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterPromptsHandlers = vi.hoisted(() => vi.fn())
@@ -173,6 +174,9 @@ vi.mock('../folderAccessLifecycle', () => ({
 vi.mock('../handlers/fileSystemHandlers', () => ({
   registerFileSystemHandlers: mockRegisterFileSystemHandlers
 }))
+vi.mock('../handlers/agentInstructionsHandlers', () => ({
+  registerAgentInstructionsHandlers: mockRegisterAgentInstructionsHandlers
+}))
 vi.mock('../handlers/gitHandlers', () => ({
   registerGitHandlers: mockRegisterGitHandlers
 }))
@@ -243,6 +247,15 @@ describe('registerIpcHandlers', () => {
     registerIpcHandlers(mockIpcMain)
     expect(mockRegisterFileSystemHandlers).toHaveBeenCalledOnce()
     expect(mockRegisterFileSystemHandlers).toHaveBeenCalledWith(mockIpcMain, expect.any(Object))
+  })
+
+  it('registerAgentInstructionsHandlers を ipcMain と registerFileSystemHandlers と同じ FolderAccessManager で呼び出す', () => {
+    registerIpcHandlers(mockIpcMain)
+    expect(mockRegisterAgentInstructionsHandlers).toHaveBeenCalledOnce()
+    const [ipcMain, folderAccess] = mockRegisterAgentInstructionsHandlers.mock.calls[0]
+    expect(ipcMain).toBe(mockIpcMain)
+    // 同じインスタンス(深い比較ではなく参照)。別の FolderAccessManager だと許可フォルダが常に無い
+    expect(folderAccess).toBe(mockRegisterFileSystemHandlers.mock.calls[0][1])
   })
 
   it('registerGitHandlers を ipcMain と FolderAccessManager を引数に呼び出す', () => {

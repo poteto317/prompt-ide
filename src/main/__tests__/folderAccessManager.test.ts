@@ -8,7 +8,7 @@ vi.mock('node:fs/promises', () => ({
   realpath: mockRealpath
 }))
 
-import { FolderAccessManager } from '../folderAccessManager'
+import { FolderAccessManager, FolderAccessDeniedError } from '../folderAccessManager'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -208,5 +208,25 @@ describe('FolderAccessManager.onDidChange', () => {
     manager.onDidChange(listener)
     manager.delete(1)
     expect(listener).not.toHaveBeenCalled()
+  })
+})
+
+describe('FolderAccessDeniedError', () => {
+  it('assertWithinFolder の範囲外 → FolderAccessDeniedError で、文言は Access denied のまま', async () => {
+    const manager = new FolderAccessManager()
+    const promise = manager.assertWithinFolder('/allowed', '/outside/a.txt')
+    await expect(promise).rejects.toBeInstanceOf(FolderAccessDeniedError)
+    await expect(promise).rejects.toThrow('Access denied: /outside/a.txt')
+  })
+
+  it('assertParentWithinFolder の範囲外 → FolderAccessDeniedError', async () => {
+    const manager = new FolderAccessManager()
+    await expect(manager.assertParentWithinFolder('/allowed', '/outside')).rejects.toBeInstanceOf(
+      FolderAccessDeniedError
+    )
+  })
+
+  it('name は Error のまま(IPC 越しの文言の前置きを変えない)', () => {
+    expect(new FolderAccessDeniedError('x').name).toBe('Error')
   })
 })
