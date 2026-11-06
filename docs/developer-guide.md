@@ -103,7 +103,7 @@ payload を検証してからリスナーを呼び、購読の解除関数を返
 エディタの下部のターミナル(xterm.js + node-pty)で `claude`・`copilot` を起動し、登録したプロンプトを入力欄へ送る。
 main 側は `agentSession*.ts`(起動・停止)・`agentHook*.ts`(CLI の hooks を受ける HTTP の受け口)・`agentBaseline*.ts`/
 `agentChanges*.ts`(変更の記録と戻す操作)、renderer 側は `hooks/useAgent*.ts` と `lib/agent*.ts` が担う。
-CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/agentCliLaunchSpecs.ts`・`renderer/src/lib/agentPromptSendSpecs.ts`・`src/shared/agentInstructionFiles.ts`〈指示ファイルの一覧と雛形〉)に
+CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/agentCliLaunchSpecs.ts`・`renderer/src/lib/agentPromptSendSpecs.ts`・`src/shared/agentInstructionFiles.ts`〈指示ファイルの一覧と雛形〉・`renderer/src/lib/agentPermissionPromptReaders.ts`〈許可の確認の読み取り〉・`renderer/src/lib/agentPermissionAnswerMessages.ts` の `AGENT_PERMISSION_ANSWER_TEXTS`〈許可の確認への答えの文言〉)に
 まとめてあり、種類を足すときは表に行を足す。設計の経緯は `docs/superpowers/specs/` の設計書にある。
 
 ### 3.5 設定の読み書きのフック
