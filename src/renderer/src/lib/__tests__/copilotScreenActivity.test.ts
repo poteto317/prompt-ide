@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyCopilotScreen } from '../copilotScreenActivity'
+import { classifyCopilotScreen, locateCopilotPermissionQuestion } from '../copilotScreenActivity'
 import type { AgentActivity } from '../agentActivity'
 import { lineText } from '../agentViewport'
 import type { ViewportLine } from '../agentViewport'
@@ -7,6 +7,7 @@ import { makeLine } from './fixtures/agentScreens'
 import { copilotScreen } from './fixtures/copilotScreens'
 import type { CopilotScreenName } from './fixtures/copilotScreens'
 import data from './fixtures/copilotScreens.json'
+import { copilotScreenTexts } from '../copilotInputBox'
 
 // 記録済みの画面(GitHub Copilot CLI 1.0.87。設計書 2026-10-21「実装の最初に確かめること」4)ごとの期待。台帳に画面が増えたら、
 // ここに足さないと最後のテストが落ちる
@@ -288,5 +289,25 @@ describe('classifyCopilotScreen(手書きの画面。分からない画面の扱
         boxScreen([' ● word0'], draft, [' ◎ Working · 18 B esc interrupt · ctrl+q enqueue'])
       )
     ).toBe('working')
+  })
+})
+
+describe('locateCopilotPermissionQuestion', () => {
+  it('記録の permission の画面で、案内の行と問いの行を返す', () => {
+    expect(
+      locateCopilotPermissionQuestion(copilotScreenTexts(copilotScreen('permission').lines))
+    ).toEqual({ hintRow: 28, questionRow: 23 })
+  })
+
+  it('入力待ちの画面では null', () => {
+    expect(
+      locateCopilotPermissionQuestion(copilotScreenTexts(copilotScreen('idle').lines))
+    ).toBeNull()
+  })
+
+  it('問いの無い選択の画面が上にあっても、下の許可の確認を返す', () => {
+    const real = copilotScreenTexts(copilotScreen('permission').lines)
+    const texts = ['╭──', '│ Pick one', '↑↓ to navigate · enter to select', ...real]
+    expect(locateCopilotPermissionQuestion(texts)).toEqual({ hintRow: 31, questionRow: 26 })
   })
 })

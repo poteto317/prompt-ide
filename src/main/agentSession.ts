@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks'
+import type { AgentPermissionOptionNumber } from '@shared/agentPermissionAnswer'
 import type { AgentExitReason } from '@shared/types'
 import type { AgentCliInterruptSpec } from './agentCliInterruptSpecs'
 import { judgeAgentCliInterruptFollowUpTiming } from './agentCliInterruptSpecs'
@@ -7,6 +8,22 @@ import { judgeAgentCliInterruptFollowUpTiming } from './agentCliInterruptSpecs'
 
 /** CLI の作業の中断(ターミナルで Esc を押すのと同じ)。回数は種類ごとの表(agentCliInterruptSpecs.ts)。renderer の値を混ぜない固定の 1 バイト */
 export const AGENT_INTERRUPT_SEQUENCE = '\x1b'
+
+/**
+ * 許可の確認の選択肢の番号キー(ターミナルで数字を 1 回押すのと同じ。設計書 2026-11-06「main」)。renderer の値は表を引く鍵にだけ使い、
+ * 書くのは表の固定の 1 バイト(L-019)。矢印と Enter は送らない(L-594)
+ */
+export const AGENT_PERMISSION_ANSWER_KEYS: Record<AgentPermissionOptionNumber, string> = {
+  1: '1',
+  2: '2',
+  3: '3',
+  4: '4',
+  5: '5',
+  6: '6',
+  7: '7',
+  8: '8',
+  9: '9'
+}
 
 export interface PtyDisposable {
   dispose(): void
@@ -59,6 +76,9 @@ export type AgentSessionInterruptFollowUpResult =
   | 'expired'
   | 'not-alive'
   | 'write-failed'
+
+/** 許可の確認への答えの結果 */
+export type AgentSessionPermissionAnswerResult = 'sent' | 'not-alive' | 'write-failed'
 
 /** 単調増加の時刻(performance.now)。AgentSessionParams.now の本番の値(参照が安定した関数) */
 export const monotonicNow = (): number => performance.now()
@@ -191,6 +211,21 @@ export class AgentSession {
       return true
     } catch {
       return false
+    }
+  }
+
+  /**
+   * 許可の確認に答える(選択肢の番号キーを 1 回)。終了の後・停止の途中(stop の後、終了の前)は書かない。pty.write の例外は握って
+   * write-failed(受け口から投げない)。CLI の反応は待たない(pty.write は同期で返る。L-052)。main は画面を読まないので、送る番号が
+   * Yes・No の選択肢かは renderer の読み取りで確かめる
+   */
+  answerPermission(optionNumber: AgentPermissionOptionNumber): AgentSessionPermissionAnswerResult {
+    if (!this.alive || this.stopping !== null) return 'not-alive'
+    try {
+      this.pty.write(AGENT_PERMISSION_ANSWER_KEYS[optionNumber])
+      return 'sent'
+    } catch {
+      return 'write-failed'
     }
   }
 

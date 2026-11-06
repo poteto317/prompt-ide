@@ -65,6 +65,7 @@ Object.defineProperty(window, 'api', {
     stopAgentSession: () => Promise.resolve(),
     interruptAgentSession: () => Promise.resolve({ kind: 'sent', followUp: null }),
     interruptAgentSessionFollowUp: () => Promise.resolve({ kind: 'not-pending' }),
+    answerAgentPermission: () => Promise.resolve({ kind: 'sent' }),
     getAgentSessions: () => Promise.resolve([]),
     getLastAgentSession: () => Promise.resolve(null),
     onAgentData: () => () => {},

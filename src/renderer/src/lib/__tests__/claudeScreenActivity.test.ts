@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyClaudeScreen } from '../claudeScreenActivity'
+import { classifyClaudeScreen, locateClaudePermissionPrompt } from '../claudeScreenActivity'
 import type { AgentActivity } from '../agentActivity'
 import { agentScreen, makeLine } from './fixtures/agentScreens'
 import type { AgentScreenName } from './fixtures/agentScreens'
@@ -477,5 +477,33 @@ describe('classifyClaudeScreen', () => {
   it('記録済みの全画面がいずれかの期待に含まれている', () => {
     const covered = new Set<string>(Object.values(EXPECTED).flat())
     expect(Object.keys(data.screens).sort()).toEqual([...covered].sort())
+  })
+})
+
+describe('locateClaudePermissionPrompt', () => {
+  it('記録の permission の画面で、カーソルの行・番号の桁・問いの範囲を返す', () => {
+    const texts = agentScreen('permission').lines.map(lineTextOf)
+    expect(locateClaudePermissionPrompt(texts)).toEqual({
+      cursorRow: 18,
+      numberColumn: 3,
+      questionFirst: 17,
+      questionLast: 17
+    })
+  })
+
+  it('入力待ちの画面では null', () => {
+    expect(locateClaudePermissionPrompt(agentScreen('empty').lines.map(lineTextOf))).toBeNull()
+  })
+
+  const real = agentScreen('permission').lines.map(lineTextOf)
+  it('段落の無いカーソルの行が上にあっても、下の許可の確認を返す', () => {
+    expect(
+      locateClaudePermissionPrompt(['────', '  ❯ 1. leftover', ...real.slice(2)])?.cursorRow
+    ).toBe(18)
+  })
+  it('問いの合わないカーソルの行が上にあっても、下の許可の確認を返す', () => {
+    expect(
+      locateClaudePermissionPrompt(['  Pick one:', '  ❯ 1. leftover', ...real.slice(2)])?.cursorRow
+    ).toBe(18)
   })
 })

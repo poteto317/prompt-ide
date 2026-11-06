@@ -66,7 +66,9 @@ export default function AgentSessionTabList({
     tabRefs.current.get(selectedSlotId)?.focus()
   })
 
-  const handleAdd = (): void => {
+  const handleAdd = (event: React.MouseEvent<HTMLButtonElement>): void => {
+    // ダブルクリックの 2 回目は捨てる(狭い幅で帯の 許可・拒否 が消えるとタブ列が伸び、2 回目が + に届いて CLI を起動しない。キーボードのクリックは detail が 0)
+    if (event.detail > 1) return
     addFocusRequestRef.current = selectedSlotId
     onAdd()
   }
@@ -159,7 +161,11 @@ export default function AgentSessionTabList({
                   aria-hidden="true"
                   tabIndex={-1}
                   disabled={!isClosable(tab)}
-                  onClick={() => onClose(tab.slotId)}
+                  onClick={(event) => {
+                    // ダブルクリックの 2 回目は捨てる(タブ 1 つで + を押すと、描き直しの後に + のあった位置へ claude 1 の × が出る。タブ 3 つ以上で × を押すと詰まった隣のタブの × が来る。どちらも止まっているタブを確認なしに閉じない。× はマウス専用で、キーボードは Delete で閉じる)
+                    if (event.detail > 1) return
+                    onClose(tab.slotId)
+                  }}
                 >
                   <span aria-hidden="true">×</span>
                 </button>

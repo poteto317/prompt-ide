@@ -3,6 +3,7 @@ import type {
   AgentInterruptFollowUpResult,
   AgentInterruptResult,
   AgentLastSession,
+  AgentPermissionAnswerResult,
   AgentSessionSnapshotEntry,
   AgentStartResult
 } from '@shared/types'
@@ -14,6 +15,7 @@ import { isMainFrameSender } from './ipcSenderGuard'
 import {
   parseAgentCliKind,
   parseAgentFolderPath,
+  parseAgentPermissionOptionNumber,
   parseAgentResize,
   parseAgentSessionId,
   parseAgentStartRequest,
@@ -21,13 +23,19 @@ import {
 } from './agentTerminalPayloadParser'
 
 // エージェントのセッションの IPC の受け口(設計書「IPC」)。起動のコマンド・作業ディレクトリ・環境変数は main で決め、
-// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型と種類)・「前回」の種類・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断を含む)だけを受け取る
+// renderer からは slotId(タブ)・folderPath(許可との一致の確認だけ)・桁数・行数・起動の指定(新規・再開の列挙型と種類)・「前回」の種類・書き込む文字列・sessionId(作業中・作業の終わりの知らせ・中断・許可の確認への答えを含む)・許可の確認の選択肢の番号だけを受け取る
 
 export interface AgentTerminalHandlerDeps {
-  /** 書き込み・リサイズ・停止・中断(1 回目と 2 回目)・状態の取得の相手(所有者・枠ごとのセッション) */
+  /** 書き込み・リサイズ・停止・中断(1 回目と 2 回目)・許可の確認への答え・状態の取得の相手(所有者・枠ごとのセッション) */
   registry: Pick<
     AgentSessionRegistry,
-    'write' | 'resize' | 'stop' | 'snapshot' | 'interrupt' | 'interruptFollowUp'
+    | 'write'
+    | 'resize'
+    | 'stop'
+    | 'snapshot'
+    | 'interrupt'
+    | 'interruptFollowUp'
+    | 'answerPermission'
   >
   /** 起動の規則(許可のフォルダとの照合・起動の途中の取り消し・再開の照合・同じ会話の二重の起動の拒否)と pty の配線。組み立ては
    *  ipcHandlers.ts(agentSessionStarter.createAgentSessionStarter の start) */
@@ -117,6 +125,24 @@ export function registerAgentTerminalHandlers(
     (event: IpcMainInvokeEvent, sessionId: unknown): AgentInterruptFollowUpResult => {
       if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
       return registry.interruptFollowUp(event.sender.id, parseAgentSessionId(sessionId))
+    }
+  )
+
+  // 許可の確認への答え(設計書 2026-11-06「IPC」)。renderer からは sessionId と選択肢の番号(数)だけを受け取り、main が 1〜9 の整数で
+  // あることを確かめて、固定の表から 1 バイトを書く(L-019)。書けたか・セッションが無かったかを返すため invoke にする(L-001)
+  ipcMain.handle(
+    'agentTerminal:answerPermission',
+    (
+      event: IpcMainInvokeEvent,
+      sessionId: unknown,
+      optionNumber: unknown
+    ): AgentPermissionAnswerResult => {
+      if (!isMainFrameSender(event)) throw new Error(NOT_MAIN_FRAME)
+      return registry.answerPermission(
+        event.sender.id,
+        parseAgentSessionId(sessionId),
+        parseAgentPermissionOptionNumber(optionNumber)
+      )
     }
   )
 

@@ -10,6 +10,7 @@ import type {
   AgentChangesState,
   AgentChangesUndoResult,
   AgentInterruptFollowUpResult,
+  AgentPermissionAnswerResult,
   AgentInstructionCreateResult,
   AgentInterruptResult,
   AgentRevertAllEntry,
@@ -161,6 +162,10 @@ declare global {
       stopAgentSession(sessionId: string): Promise<void>
       interruptAgentSession(sessionId: string): Promise<AgentInterruptResult>
       interruptAgentSessionFollowUp(sessionId: string): Promise<AgentInterruptFollowUpResult>
+      answerAgentPermission(
+        sessionId: string,
+        optionNumber: number
+      ): Promise<AgentPermissionAnswerResult>
       getAgentSessions(): Promise<AgentSessionSnapshotEntry[]>
       getLastAgentSession(
         folderPath: string,

@@ -13,10 +13,13 @@ import {
 import type { AgentSessionTabView } from '../../../hooks/useAgentSessions'
 import {
   makeAgentInterruptPanelState,
+  makeAgentPermissionAnswerPanelState,
   makeAgentTerminalPanelLayout,
   makeAgentTerminalPanelState
 } from '../../../__tests__/makeAgentTerminalPanelState'
 import type { AgentInterruptPanelState } from '../../../hooks/useAgentInterrupt'
+import type { AgentPermissionAnswerPanelState } from '../../../hooks/useAgentPermissionAnswer'
+import { toAnnouncementText } from '../../../lib/announcementText'
 
 let controller: FakeController
 
@@ -200,6 +203,15 @@ describe('AgentTerminalPanel', () => {
     expect(state.sessions.start).toHaveBeenCalledExactlyOnceWith('slot-2', { kind: 'new' })
   })
 
+  // 終了・前回の続きから・+ とそろえ、ダブルクリックの 2 回目で start を重ねない
+  it('起動: キーボードのクリック(detail: 0)では start を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2' }) })
+    const start = screen.getByRole('button', { name: /^起動/ })
+    fireEvent.click(start, { detail: 0 })
+    fireEvent.click(start, { detail: 2 })
+    expect(state.sessions.start).toHaveBeenCalledExactlyOnceWith('slot-2', { kind: 'new' })
+  })
+
   it('実行中は終了を出し、押すと確認なしで選択中のタブの stop を呼ぶ', async () => {
     const state = renderPanel({
       sessions: makeSessions({ slotId: 'slot-2', status: 'running' })
@@ -207,6 +219,28 @@ describe('AgentTerminalPanel', () => {
     expect(screen.getByText('実行中')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^終了/ }))
     expect(state.sessions.stop).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  // 許可・拒否 をダブルクリックすると、ボタンが消えて詰まった帯の 終了 に 2 回目が届きうる(狭い幅で帯がはみ出すとき)。確認なしで会話を失わない
+  it('終了: キーボードのクリック(detail: 0)では stop を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const state = renderPanel({
+      sessions: makeSessions({ slotId: 'slot-2', status: 'running' })
+    })
+    const stop = screen.getByRole('button', { name: /^終了/ })
+    fireEvent.click(stop, { detail: 0 })
+    fireEvent.click(stop, { detail: 2 })
+    expect(state.sessions.stop).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  // 許可・拒否 で長押しした Enter の残りのリピートは、ボタンが消えた後の移し先の開閉のボタンに届く(Chromium はリピートごとに click を合成する。L-408)
+  it('開閉のボタン: Enter・Space のキーリピートの keydown は既定の動作を止め、単発の打鍵と他のキーは止めない', () => {
+    renderPanel()
+    const toggle = screen.getByRole('button', { name: 'エージェント' })
+    expect(fireEvent.keyDown(toggle, { key: 'Enter', repeat: true })).toBe(false)
+    expect(fireEvent.keyDown(toggle, { key: ' ', repeat: true })).toBe(false)
+    expect(fireEvent.keyDown(toggle, { key: 'Enter' })).toBe(true)
+    expect(fireEvent.keyDown(toggle, { key: ' ' })).toBe(true)
+    expect(fireEvent.keyDown(toggle, { key: 'a', repeat: true })).toBe(true)
   })
 
   it('実行中の帯の状態は選択中のタブの活動の文言になる(unknown は従来の「実行中」)', () => {
@@ -351,6 +385,30 @@ describe('AgentTerminalPanel — 変更を確認', () => {
       expect(screen.getByRole('tablist', { name: 'エージェントのセッション' })).toBeInTheDocument()
       await userEvent.click(screen.getByRole('button', { name: '新しいセッション' }))
       expect(state.sessions.addTab).toHaveBeenCalledTimes(1)
+    })
+
+    // タブ 1 つで + を押すと、描き直しの後に + のあった位置へ claude 1 の × が出る(ダブルクリックの 2 回目で止まっている claude 1 を確認なしに閉じない)
+    it('タブ 1 つで + を押し、描き直しの後の × にダブルクリックの 2 回目(detail: 2)が届いても closeTab を呼ばない', () => {
+      const a = makeAgentSessionTabView({ slotId: 'a', label: 'claude 1', controller })
+      const sessions = makeAgentSessionsState({ tabs: [a], selected: a })
+      const { rerender } = render(
+        <AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions })} />
+      )
+      const b = makeAgentSessionTabView({
+        slotId: 'b',
+        label: 'claude 2',
+        controller: makeFakeController()
+      })
+      const added = makeAgentSessionsState({ tabs: [a, b], selected: b })
+      added.closeTab = vi.fn(async () => true)
+      sessions.addTab = vi.fn(async () => {
+        rerender(<AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions: added })} />)
+      })
+      rerender(<AgentTerminalPanel state={makeAgentTerminalPanelState({ sessions })} />)
+      fireEvent.click(screen.getByRole('button', { name: '新しいセッション' }), { detail: 1 })
+      expect(sessions.addTab).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getByLabelText('claude 1 を閉じる'), { detail: 2 })
+      expect(added.closeTab).not.toHaveBeenCalled()
     })
 
     it('タブの aria-controls は本文を参照する', () => {
@@ -545,6 +603,16 @@ describe('AgentTerminalPanel: 前回の続きから', () => {
     const button = screen.getByRole('button', { name: RESUME_LABEL })
     expect(button).toHaveTextContent('前回の続きから')
     await userEvent.click(button)
+    expect(state.resumeLast.onResume).toHaveBeenCalledExactlyOnceWith('slot-2')
+  })
+
+  // 帯のボタンは右寄せ。止まると 終了 が 起動 に替わり、その右に 前回の続きから が足されるので、終了 のあった位置に 前回の続きから が出る。
+  // 終了 のダブルクリックの 2 回目がここに届いて、止めたばかりのセッションを再開しない
+  it('前回の続きから: キーボードのクリック(detail: 0)では onResume を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const state = renderPanel({ sessions: makeSessions({ slotId: 'slot-2', status: 'exited' }) })
+    const button = screen.getByRole('button', { name: RESUME_LABEL })
+    fireEvent.click(button, { detail: 0 })
+    fireEvent.click(button, { detail: 2 })
     expect(state.resumeLast.onResume).toHaveBeenCalledExactlyOnceWith('slot-2')
   })
 
@@ -858,5 +926,237 @@ describe('AgentTerminalPanel: 中断', () => {
       expect(start()).toBeDisabled()
       expect(toggle()).toHaveFocus()
     })
+  })
+})
+
+describe('AgentTerminalPanel: 許可の確認への答え', () => {
+  const ALLOW = /^許可/
+  const DENY = /^拒否/
+  const ALLOW_NAME = '許可（claude 1 の「Do you want to proceed?」に 1 番の Yes で答える）'
+  const DENY_NAME = '拒否（claude 1 の「Do you want to proceed?」に 4 番の No で答える）'
+  const COOLDOWN = '答えを押した直後です（少し待つと押せます）'
+  const NO_YES = '画面に「Yes」の選択肢が見つかりません（ターミナルで答えてください）'
+  const FULL_QUESTION = 'Do you want to make this edit to a-very-long-file-name.md?'
+
+  const answerState = (
+    overrides: Partial<AgentPermissionAnswerPanelState> = {}
+  ): AgentPermissionAnswerPanelState =>
+    makeAgentPermissionAnswerPanelState({
+      visible: true,
+      question: { firstLine: 'Do you want to proceed?', full: 'Do you want to proceed?' },
+      allow: { disabledReason: null, ariaLabel: ALLOW_NAME },
+      deny: { disabledReason: null, ariaLabel: DENY_NAME },
+      ...overrides
+    })
+  const permissionState = (
+    permissionAnswer: Partial<AgentPermissionAnswerPanelState> = {}
+  ): AgentTerminalPanelState =>
+    makeAgentTerminalPanelState({
+      sessions: makeSessions({ status: 'running' }),
+      interrupt: makeAgentInterruptPanelState({
+        visible: true,
+        disabledReason:
+          '許可待ちのため中断できません（Esc は許可の拒否になります。ターミナルで答えてください）'
+      }),
+      permissionAnswer: answerState(permissionAnswer)
+    })
+  // 許可待ちでない帯(答えの状態は既定の「出さない」)。描かないことと、許可待ちが終わったときのフォーカスの移し先のテストで使う
+  const notPermissionState = (): AgentTerminalPanelState =>
+    makeAgentTerminalPanelState({
+      sessions: makeSessions({ status: 'running' }),
+      interrupt: makeAgentInterruptPanelState({ visible: true })
+    })
+  const allowButton = (): HTMLElement => screen.getByRole('button', { name: ALLOW })
+  const denyButton = (): HTMLElement => screen.getByRole('button', { name: DENY })
+
+  it('許可待ちでないときは、問いも 2 つのボタンも描かない', () => {
+    const { container } = render(<AgentTerminalPanel state={notPermissionState()} />)
+    expect(screen.queryByRole('button', { name: ALLOW })).toBeNull()
+    expect(screen.queryByRole('button', { name: DENY })).toBeNull()
+    expect(container.querySelector('.agent-terminal-panel__permission-question')).toBeNull()
+  })
+
+  it('許可待ちでは 許可・拒否 を 中断 の直前に並べ、名前は見える文字で始まる', () => {
+    render(<AgentTerminalPanel state={permissionState()} />)
+    expect(allowButton()).toHaveTextContent('許可')
+    expect(denyButton()).toHaveTextContent('拒否')
+    expect(allowButton()).toHaveAccessibleName(ALLOW_NAME)
+    expect(denyButton()).toHaveAccessibleName(DENY_NAME)
+    const buttons = screen.getAllByRole('button')
+    const index = buttons.indexOf(allowButton())
+    expect(buttons[index + 1]).toBe(denyButton())
+    expect(buttons[index + 2]).toBe(screen.getByRole('button', { name: /^中断/ }))
+  })
+
+  it('問いは 1 行目を見える文字に、全文を title に入れ、読み上げの順番には出さない(aria-hidden)', () => {
+    const { container } = render(
+      <AgentTerminalPanel
+        state={permissionState({
+          question: { firstLine: 'Do you want to make this edit to', full: FULL_QUESTION }
+        })}
+      />
+    )
+    const question = container.querySelector('.agent-terminal-panel__permission-question')
+    expect(question).toHaveTextContent('Do you want to make this edit to')
+    expect(question).toHaveAttribute('title', FULL_QUESTION)
+    expect(question).toHaveAttribute('aria-hidden', 'true')
+    // 問いは 許可 の直前
+    expect(question?.nextElementSibling).toBe(allowButton())
+  })
+
+  it('問いを読み取れないときは、問いを描かずにボタンだけ出す', () => {
+    const { container } = render(<AgentTerminalPanel state={permissionState({ question: null })} />)
+    expect(container.querySelector('.agent-terminal-panel__permission-question')).toBeNull()
+    expect(allowButton()).toBeInTheDocument()
+  })
+
+  it('押せるときは aria-disabled・説明・title を付けない', () => {
+    render(<AgentTerminalPanel state={permissionState()} />)
+    for (const button of [allowButton(), denyButton()]) {
+      expect(button).not.toHaveAttribute('aria-disabled')
+      expect(button).not.toHaveAttribute('aria-describedby')
+      expect(button).not.toHaveAttribute('title')
+      expect(button).toBeEnabled()
+    }
+  })
+
+  it('押せないときは aria-disabled(disabled ではない)で、ボタンごとの理由を説明(隠した span)と title に出す', () => {
+    render(
+      <AgentTerminalPanel
+        state={permissionState({
+          allow: { disabledReason: NO_YES, ariaLabel: ALLOW_NAME },
+          deny: { disabledReason: null, ariaLabel: DENY_NAME }
+        })}
+      />
+    )
+    const allow = allowButton()
+    expect(allow).toHaveAttribute('aria-disabled', 'true')
+    expect(allow).not.toHaveAttribute('disabled')
+    expect(allow).toHaveAccessibleDescription(NO_YES)
+    expect(allow).toHaveAttribute('title', NO_YES)
+    const description = document.getElementById(allow.getAttribute('aria-describedby') ?? '')
+    expect(description).not.toBeVisible()
+    expect(denyButton()).not.toHaveAttribute('aria-disabled')
+  })
+
+  it('2 つのボタンの説明は別々の要素を参照する(理由がボタンで違いうるため)', () => {
+    render(
+      <AgentTerminalPanel
+        state={permissionState({
+          allow: { disabledReason: NO_YES, ariaLabel: ALLOW_NAME },
+          deny: { disabledReason: COOLDOWN, ariaLabel: DENY_NAME }
+        })}
+      />
+    )
+    expect(allowButton().getAttribute('aria-describedby')).not.toBe(
+      denyButton().getAttribute('aria-describedby')
+    )
+    expect(denyButton()).toHaveAccessibleDescription(COOLDOWN)
+  })
+
+  it.each([
+    ['押せるとき', null],
+    ['押せないとき', COOLDOWN]
+  ] as const)(
+    '%s の click で onAnswer に選択肢を渡す(送らないことと理由の読み上げは hook の役目。L-058)',
+    async (_name, disabledReason) => {
+      const state = permissionState({
+        allow: { disabledReason, ariaLabel: ALLOW_NAME },
+        deny: { disabledReason, ariaLabel: DENY_NAME }
+      })
+      render(<AgentTerminalPanel state={state} />)
+      await userEvent.click(allowButton())
+      await userEvent.click(denyButton())
+      expect(vi.mocked(state.permissionAnswer.onAnswer).mock.calls).toEqual([['allow'], ['deny']])
+    }
+  )
+
+  it('キーボードのクリック(detail: 0)では onAnswer を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const state = permissionState()
+    render(<AgentTerminalPanel state={state} />)
+    fireEvent.click(allowButton(), { detail: 0 })
+    fireEvent.click(allowButton(), { detail: 1 })
+    fireEvent.click(allowButton(), { detail: 2 })
+    expect(state.permissionAnswer.onAnswer).toHaveBeenCalledTimes(2)
+  })
+
+  it('Enter・Space のキーリピートの keydown は既定の動作を止め、単発の Enter・Space は止めない(L-408)', () => {
+    render(<AgentTerminalPanel state={permissionState()} />)
+    for (const button of [allowButton(), denyButton()]) {
+      expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false)
+      expect(fireEvent.keyDown(button, { key: ' ', repeat: true })).toBe(false)
+      expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(true)
+      expect(fireEvent.keyDown(button, { key: ' ' })).toBe(true)
+      // Enter・Space 以外のリピート(Tab など)は止めない
+      expect(fireEvent.keyDown(button, { key: 'Tab', repeat: true })).toBe(true)
+    }
+  })
+
+  it('読み上げの要素(role="status")は中断のものと別に常に 2 つあり、1 つ目に中断・2 つ目に答えの notice の文言を入れる', () => {
+    const { container, rerender } = render(
+      <AgentTerminalPanel state={makeAgentTerminalPanelState()} />
+    )
+    const lives = container.querySelectorAll('.agent-terminal-panel__live')
+    expect(lives).toHaveLength(2)
+    for (const live of lives) expect(live).toHaveAttribute('role', 'status')
+    const base = permissionState({
+      notice: { text: 'claude 1 に許可（1 番の Yes）を送りました', id: 1 }
+    })
+    rerender(
+      <AgentTerminalPanel
+        state={{
+          ...base,
+          interrupt: { ...base.interrupt, notice: { text: 'claude 1 に中断を送りました', id: 2 } }
+        }}
+      />
+    )
+    const after = container.querySelectorAll('.agent-terminal-panel__live')
+    expect(after[0]).toBe(lives[0])
+    expect(after[1]).toBe(lives[1])
+    // 全文を比べる(部分一致だと、2 つ目に中断の文言が混ざっても通る)。同じ文の再読み上げ用の末尾の文字は id の偶奇で付く(toAnnouncementText)
+    expect(after[0].textContent).toBe(
+      toAnnouncementText({ text: 'claude 1 に中断を送りました', id: 2 })
+    )
+    expect(after[1].textContent).toBe(
+      toAnnouncementText({ text: 'claude 1 に許可（1 番の Yes）を送りました', id: 1 })
+    )
+  })
+
+  it('押せない状態に変わっても、フォーカスは押したボタンに残る(aria-disabled のため body に落ちない。L-157)', () => {
+    const { rerender } = render(<AgentTerminalPanel state={permissionState()} />)
+    allowButton().focus()
+    rerender(
+      <AgentTerminalPanel
+        state={permissionState({ allow: { disabledReason: COOLDOWN, ariaLabel: ALLOW_NAME } })}
+      />
+    )
+    expect(allowButton()).toHaveFocus()
+  })
+
+  // 移すかの判定の細部は useAgentPermissionAnswerFocus のテストで確かめる。ここでは帯の配線(section の onFocus・移し先)だけ
+  it.each([ALLOW, DENY])(
+    '%s にフォーカスがある状態で許可待ちが終わると、開閉のボタン(エージェント)へ移り、中断・終了へは移らない',
+    (name) => {
+      const { rerender } = render(<AgentTerminalPanel state={permissionState()} />)
+      screen.getByRole('button', { name }).focus()
+      rerender(<AgentTerminalPanel state={notPermissionState()} />)
+      expect(screen.getByRole('button', { name: 'エージェント' })).toHaveFocus()
+      expect(screen.getByRole('button', { name: /^中断/ })).not.toHaveFocus()
+      expect(screen.getByRole('button', { name: /^終了/ })).not.toHaveFocus()
+    }
+  )
+
+  it('中断 のフォーカスの控えも、答えのボタンと同じ section の onFocus で働き続ける', () => {
+    const { rerender } = render(<AgentTerminalPanel state={permissionState()} />)
+    screen.getByRole('button', { name: /^中断/ }).focus()
+    rerender(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({
+          sessions: makeSessions({ status: 'exited', exit: { exitCode: 0, reason: 'exited' } }),
+          interrupt: makeAgentInterruptPanelState({ visible: false })
+        })}
+      />
+    )
+    expect(screen.getByRole('button', { name: /^起動/ })).toHaveFocus()
   })
 })

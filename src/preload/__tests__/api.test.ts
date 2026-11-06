@@ -479,6 +479,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['agentTerminal:interruptFollowUp', 'id']
     ],
     [
+      'answerAgentPermission は agentTerminal:answerPermission に sessionId と番号だけを渡す',
+      () => api.answerAgentPermission('id', 1),
+      ['agentTerminal:answerPermission', 'id', 1]
+    ],
+    [
       'getAgentSessions は agentTerminal:getState を呼ぶ',
       () => api.getAgentSessions(),
       ['agentTerminal:getState']
@@ -716,6 +721,14 @@ describe('interruptAgentSessionFollowUp の戻り値', () => {
     const result = { kind: 'expired' }
     mockInvoke.mockResolvedValue(result)
     await expect(api.interruptAgentSessionFollowUp('id')).resolves.toBe(result)
+  })
+})
+
+describe('answerAgentPermission の戻り値', () => {
+  it('agentTerminal:answerPermission の結果をそのまま返す', async () => {
+    const result = { kind: 'no-session' }
+    mockInvoke.mockResolvedValue(result)
+    await expect(api.answerAgentPermission('id', 1)).resolves.toBe(result)
   })
 })
 

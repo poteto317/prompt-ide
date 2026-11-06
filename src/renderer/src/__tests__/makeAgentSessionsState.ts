@@ -63,6 +63,7 @@ export function makeAgentSessionsState(
     interruptFollowUp: vi.fn<AgentSessionsState['interruptFollowUp']>(async () => ({
       kind: 'sent'
     })),
+    answerPermission: vi.fn<AgentSessionsState['answerPermission']>(async () => ({ kind: 'sent' })),
     addTab: vi.fn<AgentSessionsState['addTab']>(async () => undefined),
     resumeInNewTab: vi.fn<AgentSessionsState['resumeInNewTab']>(() => null),
     closeTab: vi.fn<AgentSessionsState['closeTab']>(async () => true),

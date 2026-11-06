@@ -6,6 +6,7 @@ import { isActiveAgentSessionStatus } from './agentSessionTabState'
 import type { AgentSessionStatus } from './agentSessionTabState'
 import type { ViewportLine } from './agentViewport'
 import {
+  AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
@@ -41,6 +42,12 @@ export interface AgentInterruptAvailabilityInput {
    * 終わってから数え直す。待ちはタブごと)
    */
   isInterrupting: boolean
+  /**
+   * 対象のタブが、許可の答えを送っている途中か、押してから 1,000ms 以内か、送った後の画面の読み直し待ち(useAgentPermissionAnswerCooldown の
+   * isPending / isPendingNow)。答えた直後は、CLI が数字を受け取って描き直すまでの画面と許可して作業中になった画面のどちらも読みうるうえ、
+   * 続けて許可の確認が出ると Esc は拒否・取り消しになるため
+   */
+  isAnsweringPermission: boolean
 }
 
 export interface AgentInterruptAvailability {
@@ -58,7 +65,7 @@ export function describeAgentInterruptBlockedByActivity(
   return agentInterruptBlockedByActivityReason(activity, cliKind)
 }
 
-/** 表の順(起動中 → CLI が中断に対応していない → 閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内 → 活動)で最初に当たった理由 */
+/** 表の順(起動中 → CLI が中断に対応していない → 閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内 → 許可の答えを押した直後(送っている途中・1,000ms・読み直し待ち) → 活動)で最初に当たった理由 */
 function blockedReasonOf(input: AgentInterruptAvailabilityInput): string | null {
   if (input.status === 'starting') return AGENT_INTERRUPT_DISABLED_STARTING
   // CLI に中断の能力が無い(能力の表の interrupt が false の種類。段階 2a で claude・copilot とも中断できる)。起動中の直後・閉じる途中より前
@@ -70,6 +77,7 @@ function blockedReasonOf(input: AgentInterruptAvailabilityInput): string | null 
   if (input.isSending) return AGENT_INTERRUPT_DISABLED_SENDING
   if (input.isSendConfirmOpen) return AGENT_INTERRUPT_DISABLED_SEND_CONFIRM
   if (input.isInterrupting) return AGENT_INTERRUPT_DISABLED_COOLDOWN
+  if (input.isAnsweringPermission) return AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
   if (input.activity !== 'working')
     return describeAgentInterruptBlockedByActivity(input.activity, input.cliKind)
   return null

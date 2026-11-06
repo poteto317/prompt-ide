@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { Mock } from 'vitest'
@@ -171,6 +171,15 @@ describe('AgentSessionTabList', () => {
     expect(onClose).toHaveBeenCalledWith('b')
   })
 
+  // タブ 1 つで + を押すと、描き直しの後に + のあった位置へ claude 1 の × が出る。ダブルクリックの 2 回目が届くと止まっているタブを確認なしに閉じる
+  it('×: クリック(detail: 1)では onClose を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const { onClose } = renderList()
+    const close = screen.getByLabelText('claude 2 を閉じる')
+    fireEvent.click(close, { detail: 1 })
+    fireEvent.click(close, { detail: 2 })
+    expect(onClose).toHaveBeenCalledExactlyOnceWith('b')
+  })
+
   it('タブが 1 つなら × を出さない', () => {
     renderList({ tabs: [tabs[0]] })
     expect(screen.queryByLabelText(/を閉じる/)).toBeNull()
@@ -266,6 +275,15 @@ describe('AgentSessionTabList', () => {
   it('+ のクリックで onAdd', async () => {
     const { onAdd } = renderList()
     await userEvent.click(screen.getByRole('button', { name: '新しいセッション' }))
+    expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  // 狭い幅で帯の 許可・拒否 が消えるとタブ列が伸び、ダブルクリックの 2 回目が + に届きうる(新しい CLI が起動して選択が移る)
+  it('+: キーボードのクリック(detail: 0)では onAdd を呼び、ダブルクリックの 2 回目(detail: 2)では呼ばない', () => {
+    const { onAdd } = renderList()
+    const add = screen.getByRole('button', { name: '新しいセッション' })
+    fireEvent.click(add, { detail: 0 })
+    fireEvent.click(add, { detail: 2 })
     expect(onAdd).toHaveBeenCalledTimes(1)
   })
 

@@ -80,6 +80,29 @@ function start(
   return session
 }
 
+/**
+ * 受け取ったバイトを 16 進で out へ書き足す raw モードの子(node)を起動し、raw に切り替わるのを待つ(interrupt・answerPermission が
+ * 届けるバイトを確かめる)
+ */
+async function startRawHexChild(): Promise<{ session: AgentSession; out: string }> {
+  const out = join(dir, 'received-hex')
+  const ready = join(dir, 'ready')
+  const script = join(dir, 'raw-hex.js')
+  writeFileSync(
+    script,
+    [
+      "const fs = require('node:fs')",
+      'process.stdin.setRawMode(true)',
+      `process.stdin.on('data', (chunk) => fs.appendFileSync(${JSON.stringify(out)}, chunk.toString('hex')))`,
+      // raw への切り替えの後に印を書く(raw になった後の入力は tty に溜まり、失われない)
+      `fs.writeFileSync(${JSON.stringify(ready)}, 'ready')`
+    ].join('\n')
+  )
+  const session = start(`exec '${process.execPath}' '${script}'`)
+  await waitForFile(ready, timers)
+  return { session, out }
+}
+
 describe.skipIf(process.platform === 'win32')('AgentSession(実物の pty)', () => {
   it('作業ディレクトリで起動し、貼り付けのバイト列と Enter がそのまま届く', async () => {
     const out = join(dir, 'received')
@@ -103,21 +126,7 @@ describe.skipIf(process.platform === 'win32')('AgentSession(実物の pty)', () 
   }, 15_000)
 
   it('interrupt は固定の 1 バイト(\\x1b)だけを子の標準入力へ届ける(raw モードの子が受け取ったバイトを 16 進で書き出す)', async () => {
-    const out = join(dir, 'received-hex')
-    const ready = join(dir, 'ready')
-    const script = join(dir, 'raw-hex.js')
-    writeFileSync(
-      script,
-      [
-        "const fs = require('node:fs')",
-        'process.stdin.setRawMode(true)',
-        `process.stdin.on('data', (chunk) => fs.appendFileSync(${JSON.stringify(out)}, chunk.toString('hex')))`,
-        // raw への切り替えの後に印を書く(raw になった後の入力は tty に溜まり、失われない)
-        `fs.writeFileSync(${JSON.stringify(ready)}, 'ready')`
-      ].join('\n')
-    )
-    const session = start(`exec '${process.execPath}' '${script}'`)
-    await waitForFile(ready, timers)
+    const { session, out } = await startRawHexChild()
     expect(session.interrupt()).toEqual({ kind: 'sent', followUp: null })
     expect(await waitForFile(out, timers)).toBe('1b')
     // 続けて余分なバイト(改行・Ctrl+C など)が届かないことを、少し待ってから確かめる
@@ -180,6 +189,15 @@ describe.skipIf(process.platform === 'win32')('AgentSession(実物の pty)', () 
     // 続けて余分なバイトが届かないことを、少し待ってから確かめる
     await timers.delay(300)
     expect(readLines()).toEqual(['1b', '1b'])
+  }, 15_000)
+
+  it('answerPermission(1) は数字の 1 バイト(31)だけを子の標準入力へ届ける(raw モードの子が受け取ったバイトを 16 進で書き出す)', async () => {
+    const { session, out } = await startRawHexChild()
+    expect(session.answerPermission(1)).toBe('sent')
+    expect(await waitForFile(out, timers)).toBe('31')
+    // 続けて余分なバイト(Enter・Esc など)が届かないことを、少し待ってから確かめる
+    await timers.delay(300)
+    expect(readFileSync(out, 'utf8')).toBe('31')
   }, 15_000)
 
   it('別のセッションへ抜けた孫(setsid)も、停止の後に残らない', async () => {

@@ -83,6 +83,10 @@ export interface UseAgentInterruptOptions {
   interruptFollowUp: (slotId: string, sessionId: string) => Promise<AgentInterruptFollowUpOutcome>
   /** そのタブがまだあるか(useAgentSessions の tabs にあるか)。2 回目を待つ間に閉じたタブの、破棄した画面を読まないため。省略できない */
   isTabOpen: (slotId: string) => boolean
+  /** 描画用: そのタブが許可の答えを押した直後(送っている途中・1,000ms・読み直し待ち)か(useAgentPermissionAnswerCooldown の isPending。state)。省略できない(L-060) */
+  isAnsweringPermission: (slotId: string) => boolean
+  /** 押した時点用: isAnsweringPermission と同じ間(useAgentPermissionAnswerCooldown の isPendingNow。ref)。省略できない */
+  isAnsweringPermissionNow: (slotId: string) => boolean
 }
 
 /** 押せるかの判定の入力の元になる値(描画の値、または押した時点の最新の値) */
@@ -93,11 +97,13 @@ export type AgentInterruptSources = Pick<
 
 /**
  * 判定の入力を組み立てる(描画と押した処理で同じ写像を使う。L-058)。活動が未記録のタブは unknown として扱う。
- * isInterrupting は呼び出し側が渡す(描画は state の isPending、押した処理は ref の isCoolingDown)
+ * isInterrupting・isAnsweringPermission は呼び出し側が渡す(描画は state の isPending・isAnsweringPermission、押した処理は ref の
+ * isCoolingDown・isAnsweringPermissionNow)
  */
 export function toAgentInterruptAvailabilityInput(
   { selected, activities, isSending, isSendConfirmOpen }: AgentInterruptSources,
-  isInterrupting: boolean
+  isInterrupting: boolean,
+  isAnsweringPermission: boolean
 ): AgentInterruptAvailabilityInput {
   return {
     status: selected.status,
@@ -106,7 +112,8 @@ export function toAgentInterruptAvailabilityInput(
     activity: activities.get(selected.slotId) ?? 'unknown',
     isSending,
     isSendConfirmOpen,
-    isInterrupting
+    isInterrupting,
+    isAnsweringPermission
   }
 }
 
@@ -117,7 +124,9 @@ export function useAgentInterrupt({
   isSendConfirmOpen,
   interrupt,
   interruptFollowUp,
-  isTabOpen
+  isTabOpen,
+  isAnsweringPermission,
+  isAnsweringPermissionNow
 }: UseAgentInterruptOptions): AgentInterruptState {
   const { notice, announce } = useTransientNotice(AGENT_INTERRUPT_NOTICE_MS)
   const cooldown = useAgentInterruptCooldown()
@@ -136,7 +145,8 @@ export function useAgentInterrupt({
   const availability = getAgentInterruptAvailability(
     toAgentInterruptAvailabilityInput(
       { selected, activities, isSending, isSendConfirmOpen },
-      cooldown.isPending(selected.slotId)
+      cooldown.isPending(selected.slotId),
+      isAnsweringPermission(selected.slotId)
     )
   )
   const latestRef = useLatestRef({
@@ -146,7 +156,8 @@ export function useAgentInterrupt({
     isSendConfirmOpen,
     interrupt,
     interruptFollowUp,
-    isTabOpen
+    isTabOpen,
+    isAnsweringPermissionNow
   })
 
   const onInterrupt = useCallback((): void => {
@@ -158,7 +169,11 @@ export function useAgentInterrupt({
     if (isInFlight(slotId)) return
     // 2・3. 最新の値で押せるかを求め直し、押した時点の画面をタブの種類の規則で読み直す。押せなければ理由を読み上げる(L-057)
     const check = checkAgentInterruptAtPress(
-      toAgentInterruptAvailabilityInput(current, isCoolingDown(slotId)),
+      toAgentInterruptAvailabilityInput(
+        current,
+        isCoolingDown(slotId),
+        current.isAnsweringPermissionNow(slotId)
+      ),
       () => tab.controller.readScreen()
     )
     if (check.kind === 'unreadable') {

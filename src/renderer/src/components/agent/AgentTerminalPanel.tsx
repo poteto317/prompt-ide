@@ -13,6 +13,9 @@ import { toAnnouncementText } from '../../lib/announcementText'
 import { isActiveAgentSessionStatus } from '../../lib/agentSessionTabState'
 import { useAgentTabCloseFocus } from '../../hooks/useAgentTabCloseFocus'
 import { useAgentInterruptFocus } from '../../hooks/useAgentInterruptFocus'
+import { useAgentPermissionAnswerFocus } from '../../hooks/useAgentPermissionAnswerFocus'
+import { agentPermissionAnswerLabel } from '../../lib/agentPermissionAnswerMessages'
+import AgentPermissionAnswerButton from './AgentPermissionAnswerButton'
 import type { AgentTerminalPanelState } from '../../hooks/useAgentWorkspace'
 import type { AgentChangesReviewAction } from '../../types'
 import AgentSessionTabList from './AgentSessionTabList'
@@ -34,7 +37,7 @@ interface Props {
   terminalSize?: AgentTerminalSize
 }
 
-// エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・セッションのタブ・状態・中断・起動/終了・変更を確認・最大化)と xterm の表示の領域。
+// エディタの領域の下部のターミナルパネル(設計書「配置の案」A)。見出しの帯(開閉・セッションのタブ・状態・許可の確認の問いと 許可・拒否・中断・起動/終了・変更を確認・最大化)と xterm の表示の領域。
 // 閉じても xterm とセッションは破棄せず、表示だけを隠す(出力は裏で受け取り続ける)。帯の状態・起動・終了・エラーと
 // ターミナルは選択中のタブのもの
 export default function AgentTerminalPanel({
@@ -42,7 +45,16 @@ export default function AgentTerminalPanel({
   review,
   terminalSize
 }: Props): React.JSX.Element {
-  const { sessions, layout, sendingSlotId, activities, resumeLast, interrupt, appCliKind } = state
+  const {
+    sessions,
+    layout,
+    sendingSlotId,
+    activities,
+    resumeLast,
+    interrupt,
+    permissionAnswer,
+    appCliKind
+  } = state
   const session = sessions.selected
   const { startDisabledReason } = sessions
   const bodyId = useId()
@@ -55,11 +67,24 @@ export default function AgentTerminalPanel({
   const interruptRef = useRef<HTMLButtonElement>(null)
   const interruptReasonId = useId()
   // セッションが終わって 中断 が消えたときのフォーカスの移し先(主ボタン、押せなければ開閉のボタン)
-  const handlePanelFocus = useAgentInterruptFocus(interrupt.visible, {
+  const handleInterruptFocus = useAgentInterruptFocus(interrupt.visible, {
     interruptRef,
     primaryButtonRef,
     toggleRef
   })
+  // 許可待ちが終わって 許可・拒否 が消えたときのフォーカスの移し先(開閉のボタン。中断・終了・ターミナルへは移さない)
+  const allowRef = useRef<HTMLButtonElement>(null)
+  const denyRef = useRef<HTMLButtonElement>(null)
+  const handlePermissionAnswerFocus = useAgentPermissionAnswerFocus(permissionAnswer.visible, {
+    allowRef,
+    denyRef,
+    toggleRef
+  })
+  // section の onFocus は 1 つなので、両方の控えを更新する
+  const handlePanelFocus = (event: React.FocusEvent<HTMLElement>): void => {
+    handleInterruptFocus(event)
+    handlePermissionAnswerFocus(event)
+  }
 
   // 消える要素にフォーカスを残さない(パターン 86)
   const moveFocusOutOfTerminal = (): void => {
@@ -135,6 +160,10 @@ export default function AgentTerminalPanel({
             if (layout.isOpen) moveFocusOutOfTerminal()
             layout.toggleOpen()
           }}
+          onKeyDown={(event) => {
+            // 許可・拒否 が消えるとフォーカスはここへ移る。長押しした Enter・Space の残りのリピートで開閉を繰り返さない(単発の打鍵は止めない。L-408)
+            if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault()
+          }}
         >
           <ChevronIcon direction={layout.isOpen ? 'down' : 'right'} /> エージェント
         </button>
@@ -173,6 +202,32 @@ export default function AgentTerminalPanel({
               </span>
             </>
           )}
+          {permissionAnswer.visible && (
+            <>
+              {/* 問いの 1 行目。全文は title。問いはボタンの名前に入れているので、読み上げの順番には出さない */}
+              {permissionAnswer.question !== null && (
+                <span
+                  className="agent-terminal-panel__permission-question"
+                  title={permissionAnswer.question.full}
+                  aria-hidden="true"
+                >
+                  {permissionAnswer.question.firstLine}
+                </span>
+              )}
+              <AgentPermissionAnswerButton
+                ref={allowRef}
+                label={agentPermissionAnswerLabel('allow')}
+                state={permissionAnswer.allow}
+                onPress={() => permissionAnswer.onAnswer('allow')}
+              />
+              <AgentPermissionAnswerButton
+                ref={denyRef}
+                label={agentPermissionAnswerLabel('deny')}
+                state={permissionAnswer.deny}
+                onPress={() => permissionAnswer.onAnswer('deny')}
+              />
+            </>
+          )}
           {interrupt.visible && (
             <>
               {/* 押せない理由は見える文字にしない(title と説明だけ。狭い帯で状態の文言・タブ列を押し出さないため。既知の制約) */}
@@ -207,7 +262,7 @@ export default function AgentTerminalPanel({
               </button>
             </>
           )}
-          {/* 起動 と 終了 は同じ位置の 1 つの button として描く(押すと同じ要素が使い回され、フォーカスが 終了 に残る) */}
+          {/* 起動 と 終了 は JSX の同じ位置の 1 つの button として描く(押すと同じ要素が使い回され、フォーカスが 終了 に残る) */}
           {isActive ? (
             <button
               ref={primaryButtonRef}
@@ -215,7 +270,11 @@ export default function AgentTerminalPanel({
               className="agent-terminal-panel__button"
               aria-label="終了（エージェントを止める）"
               disabled={session.status === 'starting' || session.isClosing}
-              onClick={() => void sessions.stop(session.slotId)}
+              onClick={(event) => {
+                // ダブルクリックの 2 回目は捨てる(許可・拒否 が消えて詰まった帯で、2 回目が届いて確認なしに会話を失わない。キーボードのクリックは detail が 0)
+                if (event.detail > 1) return
+                void sessions.stop(session.slotId)
+              }}
             >
               終了
             </button>
@@ -228,7 +287,11 @@ export default function AgentTerminalPanel({
               disabled={startDisabled}
               aria-describedby={startDisabledReason !== null ? reasonId : undefined}
               title={startDisabledReason ?? undefined}
-              onClick={() => void sessions.start(session.slotId, { kind: 'new' })}
+              onClick={(event) => {
+                // ダブルクリックの 2 回目は捨てる(終了・前回の続きから・+ とそろえる。押すと同じ button が 終了 に替わる(見た目は右へ移り、起動 のあった位置には 中断〈起動中は押せない〉か状態の文言が来る)が、描き直しが遅れても 2 回目で start を重ねない。キーボードのクリックは detail が 0)
+                if (event.detail > 1) return
+                void sessions.start(session.slotId, { kind: 'new' })
+              }}
             >
               起動
             </button>
@@ -241,7 +304,10 @@ export default function AgentTerminalPanel({
               disabled={resumeDisabled}
               aria-describedby={resumeLast.disabledReason !== null ? reasonId : undefined}
               title={resumeLast.disabledReason ?? undefined}
-              onClick={() => {
+              onClick={(event) => {
+                // ダブルクリックの 2 回目は捨てる(帯のボタンは右寄せで、止まると 終了 のあった位置にこのボタンが出る。
+                // 止まるのが速いと、終了 のダブルクリックの 2 回目が届いて止めたばかりのセッションを再開しない。キーボードのクリックは detail が 0)
+                if (event.detail > 1) return
                 // 押すとこのボタンは消える。先に 起動 へ移し、同じ要素が 終了 に替わってフォーカスが残るようにする(body に落とさない)。
                 // 押せるときは 起動 も押せる(起動の理由があれば 前回の続きから も押せない)
                 primaryButtonRef.current?.focus()
@@ -308,6 +374,10 @@ export default function AgentTerminalPanel({
       {/* 中断の読み上げ(送れたとき・押せない状態で押したとき・2 回目を頼まなかったとき)。ライブリージョンは先に在る必要があるため常に描く(パターン 87) */}
       <p className="agent-terminal-panel__live" role="status">
         {toAnnouncementText(interrupt.notice)}
+      </p>
+      {/* 許可・拒否 の読み上げ(送れたとき・押せない状態で押したとき)。中断の読み上げと同じ要素で上書きし合わないよう分ける。常に描く(パターン 87) */}
+      <p className="agent-terminal-panel__live" role="status">
+        {toAnnouncementText(permissionAnswer.notice)}
       </p>
     </section>
   )

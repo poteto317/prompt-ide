@@ -371,6 +371,57 @@ describe('読み取り', () => {
   })
 })
 
+describe('スクロール', () => {
+  it('isScrolledToBottom は表示が画面の末尾(viewportY === baseY)かを返す', () => {
+    const getLine = vi.fn<ViewportBufferLike['getLine']>(() => undefined)
+    terminal.buffer = { active: { viewportY: 7, baseY: 7, getLine } }
+    expect(controller.isScrolledToBottom()).toBe(true)
+    terminal.buffer = { active: { viewportY: 2, baseY: 7, getLine } }
+    expect(controller.isScrolledToBottom()).toBe(false)
+  })
+
+  it('xterm のスクロール(onScroll)で listener を呼び、解除した listener は呼ばない', () => {
+    const listener = vi.fn()
+    const unsubscribe = controller.onScroll(listener)
+    terminal.emitScroll()
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsubscribe()
+    terminal.emitScroll()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('dispose で xterm のスクロールの購読を外し、その後は listener を呼ばない', () => {
+    const listener = vi.fn()
+    controller.onScroll(listener)
+    expect(terminal.scrollListeners.size).toBe(1)
+    controller.dispose()
+    expect(terminal.scrollListeners.size).toBe(0)
+    terminal.emitScroll()
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('xterm の大きさの変化(onResize)で onResized の listener を呼び、解除した listener は呼ばない', () => {
+    const listener = vi.fn()
+    const unsubscribe = controller.onResized(listener)
+    terminal.rows = 40
+    terminal.emitResize()
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsubscribe()
+    terminal.emitResize()
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('dispose で xterm の大きさの変化の購読を外し、その後は listener を呼ばない', () => {
+    const listener = vi.fn()
+    controller.onResized(listener)
+    expect(terminal.resizeListeners.size).toBe(1)
+    controller.dispose()
+    expect(terminal.resizeListeners.size).toBe(0)
+    terminal.emitResize()
+    expect(listener).not.toHaveBeenCalled()
+  })
+})
+
 describe('dispose', () => {
   it('出力の購読を外し、xterm を破棄する', () => {
     const unsubscribeData = vi.fn()

@@ -12,6 +12,7 @@ import type {
   AgentChangesState,
   AgentChangesUndoResult,
   AgentInterruptFollowUpResult,
+  AgentPermissionAnswerResult,
   AgentInstructionCreateResult,
   AgentInterruptResult,
   AgentRevertAllEntry,
@@ -228,6 +229,12 @@ export const api = {
   // 中断の 2 回目(copilot)。引数は sessionId だけで、書くバイト列・回数・時間は main が決める
   interruptAgentSessionFollowUp: (sessionId: string): Promise<AgentInterruptFollowUpResult> =>
     ipcRenderer.invoke('agentTerminal:interruptFollowUp', sessionId),
+  // 許可の確認への答え。引数は sessionId と選択肢の番号だけで、書くバイトは main が表から決める。書けたかを返すため invoke
+  answerAgentPermission: (
+    sessionId: string,
+    optionNumber: number
+  ): Promise<AgentPermissionAnswerResult> =>
+    ipcRenderer.invoke('agentTerminal:answerPermission', sessionId, optionNumber),
   getAgentSessions: (): Promise<AgentSessionSnapshotEntry[]> =>
     ipcRenderer.invoke('agentTerminal:getState'),
   // このフォルダで最後に起動が確定した、cliKind の種類のセッション(前回の続きから)。照合は main が許可のフォルダと種類の記録で行う

@@ -3,6 +3,7 @@ import { AGENT_CLI_KINDS } from '@shared/agentCliKinds'
 import type { AgentInterruptFollowUpResult, AgentInterruptResult } from '@shared/types'
 import { AGENT_STOP_ERROR_PREFIX, formatAgentTabLabel } from '../agentSessionMessages'
 import {
+  AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
@@ -47,6 +48,12 @@ describe('中断の文言(設計書 2026-10-19「画面」「エラー処理」�
     expect(AGENT_INTERRUPT_DISABLED_SEND_CONFIRM).toBe('送信前の確認を開いている間は中断できません')
     expect(AGENT_INTERRUPT_DISABLED_COOLDOWN).toBe(
       '中断を送りました。まだ作業中なら、少し待つと押せます'
+    )
+  })
+
+  it('許可の答えを押した直後の理由', () => {
+    expect(AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION).toBe(
+      '許可の答えを押した直後は中断できません（少し待つと押せます）'
     )
   })
 

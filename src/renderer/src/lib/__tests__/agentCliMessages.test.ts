@@ -59,11 +59,12 @@ describe('agentCliMessages(設定の画面)', () => {
     expect(AGENT_CLI_KIND_SAVE_ERROR_PREFIX).toBe('使うエージェント CLI を保存できませんでした: ')
   })
 
-  it('能力の名前の表は 5 つの能力を網羅する(並びは能力の表と同じ)', () => {
+  it('能力の名前の表は 6 つの能力を網羅する(並びは能力の表と同じ)', () => {
     expect(AGENT_CLI_CAPABILITY_NAMES).toEqual({
       promptSend: 'プロンプトの送信（実行・再実行）',
       screenActivity: '作業中・入力待ちの表示と通知',
       interrupt: '中断',
+      permissionAnswer: '許可の確認への答え（帯の 許可・拒否）',
       changeAttribution: '利用者の変更との区別',
       sessionResume: '前回の続きから・このセッションで再開'
     })
@@ -84,10 +85,10 @@ describe('agentCliMessages(設定の画面)', () => {
     )
   })
 
-  it('使えない機能の注記: 画面の判定と中断が無い種類(能力の表を差し替えた copilot)は、その 2 つの名前を並べる', () => {
+  it('使えない機能の注記: 画面の判定・中断・許可の確認への答えが無い種類(能力の表を差し替えた copilot)は、その 3 つの名前を並べる', () => {
     capabilityOverrides.unsupportedKinds.add('copilot')
     expect(agentCliUnsupportedFeaturesNote('copilot')).toBe(
-      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断'
+      'copilot では次の機能を使えません（ターミナルで直接操作します）: 作業中・入力待ちの表示と通知、中断、許可の確認への答え（帯の 許可・拒否）'
     )
   })
 

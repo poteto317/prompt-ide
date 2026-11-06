@@ -166,3 +166,9 @@ export type AgentInterruptFollowUpResult =
   | { kind: 'expired' }
   | { kind: 'no-session' }
   | { kind: 'write-failed' }
+
+/** 許可の確認への答え(agentTerminal:answerPermission)の結果。main は番号の 1 バイトを書けたかだけを返す(答えた結果は画面の判定で分かる) */
+export type AgentPermissionAnswerResult =
+  | { kind: 'sent' }
+  | { kind: 'no-session' }
+  | { kind: 'write-failed' }

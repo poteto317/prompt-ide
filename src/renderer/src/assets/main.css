@@ -2370,6 +2370,19 @@ body {
   font-size: 13px;
 }
 
+/* 許可の確認の問いの 1 行目(帯の 許可・拒否 の直前。設計書 2026-11-06「狭い幅」)。狭い幅では状態の文言・タブ列と同じく先に縮み、
+   末尾を省略する(全文は title)。色は状態の文言と同じ */
+.agent-terminal-panel__permission-question {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 24em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #969696;
+  font-size: 13px;
+}
+
 /* 操作群は箱を作らず、理由とボタンを帯の直接の子として並べる。
    縮められる箱に縮まないボタンを入れると、箱だけが縮んでボタンが帯の外へはみ出し、右端の最大化が切れていた */
 .agent-terminal-panel__actions {
@@ -2409,7 +2422,7 @@ body {
   outline-offset: -2px;
 }
 
-/* 帯の 中断 の押せない状態(aria-disabled。フォーカスを残すため disabled にしない)。:disabled と同じ見た目にし、ホバーで色を変えない */
+/* 帯の 中断・許可・拒否 の押せない状態(aria-disabled。フォーカスを残すため disabled にしない)。:disabled と同じ見た目にし、ホバーで色を変えない */
 .agent-terminal-panel__button[aria-disabled='true'] {
   opacity: 0.5;
   cursor: default;

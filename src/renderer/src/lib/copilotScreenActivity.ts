@@ -18,20 +18,38 @@ const SELECTION_HINT = /navigate\s*·\s*enter (?:to )?select/i
 /** 許可の問い(枠の │・┃ と空白を除いた行頭) */
 const PERMISSION_QUESTION = /^Do you want to /
 /** 問いの前に除く、枠の縦線と空白 */
-const FRAME_PREFIX = /^[│┃\s]+/
+export const FRAME_PREFIX = /^[│┃\s]+/
 /** 選択の画面の外枠の上端(行頭の ╭)。問いを探すのはこの行より下だけ */
-const DIALOG_TOP = /^╭/
+export const DIALOG_TOP = /^╭/
 
-/** 選択の案内の行から上へ、外枠の上端(行頭の ╭)に当たるまでの間に、枠の縦線と空白を除くと許可の問いで始まる行があるか */
-function hasPermissionQuestion(texts: readonly string[]): boolean {
-  return texts.some((text, y) => {
-    if (!SELECTION_HINT.test(text)) return false
+/** 許可の確認の画面の位置(選択の案内の行と、許可の問いの行) */
+export interface CopilotPermissionQuestionLocation {
+  hintRow: number
+  questionRow: number
+}
+
+/**
+ * 選択の案内の行から上へ、外枠の上端(行頭の ╭)に当たるまでの間に、枠の縦線と空白を除くと許可の問いで始まる行を探す。
+ * 判定(hasPermissionQuestion)と読み取り(copilotPermissionPrompt.ts)が同じ位置を使う(設計書 2026-11-06「選択肢の読み取り」)。
+ * 上から最初に当たった案内の行の位置を返す
+ */
+export function locateCopilotPermissionQuestion(
+  texts: readonly string[]
+): CopilotPermissionQuestionLocation | null {
+  for (let y = 0; y < texts.length; y++) {
+    if (!SELECTION_HINT.test(texts[y])) continue
     for (let above = y - 1; above >= 0; above--) {
-      if (DIALOG_TOP.test(texts[above])) return false
-      if (PERMISSION_QUESTION.test(texts[above].replace(FRAME_PREFIX, ''))) return true
+      if (DIALOG_TOP.test(texts[above])) break
+      if (PERMISSION_QUESTION.test(texts[above].replace(FRAME_PREFIX, ''))) {
+        return { hintRow: y, questionRow: above }
+      }
     }
-    return false
-  })
+  }
+  return null
+}
+
+function hasPermissionQuestion(texts: readonly string[]): boolean {
+  return locateCopilotPermissionQuestion(texts) !== null
 }
 
 export function classifyCopilotScreen(lines: readonly ViewportLine[]): AgentActivity {

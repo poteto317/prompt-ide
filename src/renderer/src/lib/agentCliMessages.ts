@@ -16,6 +16,7 @@ export const AGENT_CLI_CAPABILITY_NAMES: Record<keyof AgentCliCapabilities, stri
   promptSend: 'プロンプトの送信（実行・再実行）',
   screenActivity: '作業中・入力待ちの表示と通知',
   interrupt: '中断',
+  permissionAnswer: '許可の確認への答え（帯の 許可・拒否）',
   changeAttribution: '利用者の変更との区別',
   sessionResume: '前回の続きから・このセッションで再開'
 }

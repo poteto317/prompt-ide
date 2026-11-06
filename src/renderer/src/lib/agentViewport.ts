@@ -62,6 +62,16 @@ export function readScreenLines(buffer: ViewportBufferLike, rows: number): Viewp
   return readLines(buffer, buffer.baseY, rows)
 }
 
+/**
+ * 表示が画面の末尾にあるか(利用者が上へスクロールして前の出力を読み返していないか)。代替画面(copilot)はスクロールバックが無く
+ * viewportY・baseY が常に 0 なので常に真
+ */
+export function isViewportAtBottom(
+  buffer: Pick<ViewportBufferLike, 'viewportY' | 'baseY'>
+): boolean {
+  return buffer.viewportY === buffer.baseY
+}
+
 /** 行の文字列(セルの文字を連結したもの。末尾の空白も残す) */
 export function lineText(line: ViewportLine): string {
   return line.map((cell) => cell.char).join('')

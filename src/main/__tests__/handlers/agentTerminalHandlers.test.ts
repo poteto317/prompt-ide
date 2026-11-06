@@ -97,6 +97,16 @@ function register(overrides: Partial<AgentTerminalHandlerDeps> = {}): void {
 const start = (event: ReturnType<typeof makeEvent>, payload: unknown): Promise<unknown> =>
   handles.get('agentTerminal:start')?.(event, payload) as Promise<unknown>
 
+// 本物の registry と starter を登録し、ウィンドウ 1 の slot-1 を /work で新しく起動する(sessionId は sid-1)。起動に使った event を返す
+// (start の引数は型で縛られないため、起動の形を 1 か所にまとめる)
+async function started(): Promise<ReturnType<typeof makeEvent>> {
+  register()
+  folderAccess.set(1, '/work')
+  const event = makeEvent()
+  await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+  return event
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve: (value: T) => void = () => undefined
   const promise = new Promise<T>((r) => {
@@ -588,14 +598,6 @@ describe('agentTerminal:start(受け口: 送信元の確認・検証・sink の�
 })
 
 describe('agentTerminal:write・resize・stop・getState', () => {
-  async function started(): Promise<ReturnType<typeof makeEvent>> {
-    register()
-    folderAccess.set(1, '/work')
-    const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
-    return event
-  }
-
   it('write は検証を通った書き込みだけを渡す', async () => {
     const event = await started()
     listeners.get('agentTerminal:write')?.(event, 'sid-1', 'abc')
@@ -674,13 +676,6 @@ describe('agentTerminal:write・resize・stop・getState', () => {
 })
 
 describe('agentTerminal:interrupt', () => {
-  async function started(): Promise<ReturnType<typeof makeEvent>> {
-    register()
-    folderAccess.set(1, '/work')
-    const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
-    return event
-  }
   const interrupt = (event: ReturnType<typeof makeEvent>, ...args: unknown[]): unknown =>
     handles.get('agentTerminal:interrupt')?.(event, ...args)
 
@@ -715,7 +710,8 @@ describe('agentTerminal:interrupt', () => {
       stop: vi.fn(async () => undefined),
       snapshot: vi.fn(() => []),
       interrupt: registryInterrupt,
-      interruptFollowUp: vi.fn()
+      interruptFollowUp: vi.fn(),
+      answerPermission: vi.fn()
     }
     register({ registry: fakeRegistry })
     expect(interrupt(makeEvent(7), 'sid-x', 'extra')).toEqual({ kind: 'write-failed' })
@@ -921,7 +917,8 @@ describe('agentTerminal:interruptFollowUp', () => {
         stop: vi.fn(async () => undefined),
         snapshot: vi.fn(() => []),
         interrupt: vi.fn(),
-        interruptFollowUp: registryFollowUp
+        interruptFollowUp: registryFollowUp,
+        answerPermission: vi.fn()
       }
     })
     expect(() => followUp(makeEvent(1, false), 'sid-1')).toThrow()
@@ -941,7 +938,8 @@ describe('agentTerminal:interruptFollowUp', () => {
         stop: vi.fn(async () => undefined),
         snapshot: vi.fn(() => []),
         interrupt: vi.fn(),
-        interruptFollowUp: registryFollowUp
+        interruptFollowUp: registryFollowUp,
+        answerPermission: vi.fn()
       }
     })
     expect(followUp(makeEvent(7), 'sid-x', '\x1b\x1b', 3)).toEqual({ kind: 'expired' })
@@ -949,11 +947,68 @@ describe('agentTerminal:interruptFollowUp', () => {
   })
 
   it('claude のセッション(2 回目の無い種類)では書かずに not-pending を返す(本物の registry と starter を通す)', async () => {
-    register()
-    folderAccess.set(1, '/work')
-    const event = makeEvent()
-    await start(event, { slotId: 'slot-1', folderPath: '/work', cols: 90, rows: 20, launch: NEW })
+    const event = await started()
     expect(followUp(event, 'sid-1')).toEqual({ kind: 'not-pending' })
     expect(pty.write).not.toHaveBeenCalled()
   })
+})
+
+describe('agentTerminal:answerPermission', () => {
+  const answer = (event: ReturnType<typeof makeEvent>, ...args: unknown[]): unknown =>
+    handles.get('agentTerminal:answerPermission')?.(event, ...args)
+  const fakeRegistry = (
+    answerPermission: AgentTerminalHandlerDeps['registry']['answerPermission']
+  ): AgentTerminalHandlerDeps['registry'] => ({
+    write: vi.fn(),
+    resize: vi.fn(),
+    stop: vi.fn(async () => undefined),
+    snapshot: vi.fn(() => []),
+    interrupt: vi.fn(),
+    interruptFollowUp: vi.fn(),
+    answerPermission
+  })
+
+  it('今のセッションへ番号の 1 バイトだけを書いて sent を返す。余分な引数を渡しても書くバイト列は変わらない(L-019)', async () => {
+    const event = await started()
+    expect(answer(event, 'sid-1', 1, '\r', '\x1b')).toEqual({ kind: 'sent' })
+    expect(pty.write.mock.calls).toEqual([['1']])
+  })
+
+  it('別の sessionId・別のウィンドウからは書かず no-session を返す', async () => {
+    const event = await started()
+    expect(answer(event, 'stale', 1)).toEqual({ kind: 'no-session' })
+    expect(answer(makeEvent(2), 'sid-1', 1)).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('サブフレームからの依頼・空や文字列でない sessionId は投げて registry を呼ばない', () => {
+    const registryAnswer = vi.fn<AgentSessionRegistry['answerPermission']>()
+    register({ registry: fakeRegistry(registryAnswer) })
+    expect(() => answer(makeEvent(1, false), 'sid-1', 1)).toThrow()
+    expect(() => answer(makeEvent(), '', 1)).toThrow()
+    expect(() => answer(makeEvent(), 1, 1)).toThrow()
+    expect(registryAnswer).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 10, 1.5, -1, NaN, Infinity, '1', null, undefined])(
+    '番号 %o は投げて registry を呼ばない',
+    (optionNumber) => {
+      const registryAnswer = vi.fn<AgentSessionRegistry['answerPermission']>()
+      register({ registry: fakeRegistry(registryAnswer) })
+      expect(() => answer(makeEvent(), 'sid-1', optionNumber)).toThrow()
+      expect(registryAnswer).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([1, 9])(
+    '番号 %d は registry.answerPermission に送信元の id・sessionId・番号だけを渡し、結果をそのまま返す',
+    (optionNumber) => {
+      const registryAnswer = vi.fn<AgentSessionRegistry['answerPermission']>(() => ({
+        kind: 'write-failed'
+      }))
+      register({ registry: fakeRegistry(registryAnswer) })
+      expect(answer(makeEvent(7), 'sid-x', optionNumber, 'extra')).toEqual({ kind: 'write-failed' })
+      expect(registryAnswer).toHaveBeenCalledExactlyOnceWith(7, 'sid-x', optionNumber)
+    }
+  )
 })

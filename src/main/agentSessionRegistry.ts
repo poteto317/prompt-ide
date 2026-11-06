@@ -1,7 +1,9 @@
+import type { AgentPermissionOptionNumber } from '@shared/agentPermissionAnswer'
 import type {
   AgentExitReason,
   AgentInterruptFollowUpResult,
   AgentInterruptResult,
+  AgentPermissionAnswerResult,
   AgentStartResult
 } from '@shared/types'
 import { AGENT_MAX_SESSIONS_PER_WINDOW, agentStartCanceled } from '@shared/types'
@@ -202,6 +204,21 @@ export class AgentSessionRegistry {
     const session = this.findBySessionId(ownerId, sessionId)?.session
     if (session === undefined) return { kind: 'no-session' }
     const result = session.interruptFollowUp()
+    return { kind: result === 'not-alive' ? 'no-session' : result }
+  }
+
+  /**
+   * 許可の確認への答え。照合は write・interrupt と同じ(所有者の枠の現在のセッションとの一致。停止中・別のウィンドウ・起動し直す前の
+   * 古い sessionId は no-session。L-037)。セッションの not-alive は no-session に写す
+   */
+  answerPermission(
+    ownerId: number,
+    sessionId: string,
+    optionNumber: AgentPermissionOptionNumber
+  ): AgentPermissionAnswerResult {
+    const session = this.findBySessionId(ownerId, sessionId)?.session
+    if (session === undefined) return { kind: 'no-session' }
+    const result = session.answerPermission(optionNumber)
     return { kind: result === 'not-alive' ? 'no-session' : result }
   }
 

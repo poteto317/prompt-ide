@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { Terminal } from '@xterm/headless'
-import { lineText, readScreenLines, readViewportLines } from '../agentViewport'
+import { isViewportAtBottom, lineText, readScreenLines, readViewportLines } from '../agentViewport'
 
 // 実物の xterm のバッファ(@xterm/headless)で、dim・反転・全角・スクロールの読み取りを確かめる
 let terminal: Terminal | null = null
@@ -62,5 +62,27 @@ describe('readScreenLines', () => {
     const lines = readScreenLines(terminal.buffer.active, 4)
     expect(lines.slice(2)).toEqual([[], []])
     expect(lines.map((line) => lineText(line).trimEnd())).toEqual(['l1', '', '', ''])
+  })
+})
+
+describe('isViewportAtBottom', () => {
+  it('表示が画面の末尾なら真、上へスクロールしている間は偽、末尾へ戻すと真', async () => {
+    terminal = new Terminal({ cols: 10, rows: 2, allowProposedApi: true })
+    await write(terminal, 'l1\r\nl2\r\nl3\r\nl4')
+    expect(isViewportAtBottom(terminal.buffer.active)).toBe(true)
+    terminal.scrollLines(-1)
+    expect(isViewportAtBottom(terminal.buffer.active)).toBe(false)
+    // スクロールしている間に出力が増えても、表示は戻した位置のまま(偽のまま)
+    await write(terminal, '\r\nl5')
+    expect(isViewportAtBottom(terminal.buffer.active)).toBe(false)
+    terminal.scrollToBottom()
+    expect(isViewportAtBottom(terminal.buffer.active)).toBe(true)
+  })
+
+  it('代替画面(スクロールバックが無い)では、上へスクロールしても真', async () => {
+    terminal = new Terminal({ cols: 10, rows: 2, allowProposedApi: true })
+    await write(terminal, 'l1\r\nl2\r\nl3\r\nl4\x1b[?1049hA\r\nB')
+    terminal.scrollLines(-1)
+    expect(isViewportAtBottom(terminal.buffer.active)).toBe(true)
   })
 })

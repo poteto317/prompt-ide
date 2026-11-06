@@ -45,7 +45,10 @@ vi.mock('../useAgentCliKind', () => ({ useAgentCliKind: mockUseAgentCliKind }))
 vi.mock('../useExecutionMode', () => ({ useExecutionMode: mockUseExecutionMode }))
 vi.mock('../useAgentSessions', () => ({ useAgentSessions: mockUseAgentSessions }))
 vi.mock('../useAgentPromptSender', () => ({ useAgentPromptSender: mockUseAgentPromptSender }))
-vi.mock('../useAgentActivity', () => ({ useAgentActivity: mockUseAgentActivity }))
+vi.mock('../useAgentActivity', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../useAgentActivity')>()),
+  useAgentActivity: mockUseAgentActivity
+}))
 const mockUseAgentNotifications = vi.hoisted(() => vi.fn<(options: unknown) => string>(() => ''))
 vi.mock('../useAgentNotifications', () => ({ useAgentNotifications: mockUseAgentNotifications }))
 const mockUseAgentLastSession = vi.hoisted(() =>
@@ -113,14 +116,29 @@ import {
 } from '../../lib/agentSessionMessages'
 import { AGENT_CLI_KIND_LOCKED_WHILE_STARTING } from '../../lib/agentCliMessages'
 import {
+  AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
   AGENT_INTERRUPT_DISABLED_SENDING,
   agentInterruptBlockedByActivityReason,
   agentInterruptSentNotice
 } from '../../lib/agentInterruptMessages'
+import {
+  AGENT_PERMISSION_ANSWER_DISABLED_COOLDOWN,
+  AGENT_PERMISSION_ANSWER_DISABLED_INTERRUPTING,
+  AGENT_PERMISSION_ANSWER_DISABLED_JUST_APPEARED,
+  AGENT_PERMISSION_ANSWER_DISABLED_PANEL_CLOSED,
+  AGENT_PERMISSION_ANSWER_DISABLED_SCROLLED_UP,
+  AGENT_PERMISSION_ANSWER_DISABLED_SEND_CONFIRM,
+  AGENT_PERMISSION_ANSWER_DISABLED_SENDING,
+  agentPermissionAnswerSentNotice
+} from '../../lib/agentPermissionAnswerMessages'
+import {
+  AGENT_PERMISSION_ANSWER_APPEAR_GRACE_MS,
+  AGENT_PERMISSION_ANSWER_COOLDOWN_MS
+} from '../../lib/agentPermissionAnswer'
 import type { FakeController } from '../../__tests__/makeFakeAgentTerminal'
-import { agentScreen } from '../../lib/__tests__/fixtures/agentScreens'
+import { agentScreen, makeLine } from '../../lib/__tests__/fixtures/agentScreens'
 import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
 import { copilotInputScreen } from '../../lib/__tests__/fixtures/copilotInputScreens'
 import { buildAgentPasteBytes } from '@shared/agentPasteText'
@@ -228,6 +246,73 @@ const setMode = (
 ): typeof changeMode => {
   mockUseExecutionMode.mockReturnValue({ mode, saveError: null, changeMode })
   return changeMode
+}
+
+type WiredScreen = 'working' | 'permission'
+
+/**
+ * 中断・答えの配線のテストの準備(本物の useAgentSessions。L-060)。呼んだ describe に beforeEach・afterEach を登録し、共有の偽のタブの
+ * 置き場の選択中のタブを、記録した画面とその活動にする(画面と活動は showScreen で必ず組で変える)。終わったら画面と spy を戻す
+ */
+function setUpWiredAgentTab(initialScreen: WiredScreen): {
+  slotId: string
+  interruptSpy: MockInstance<typeof window.api.interruptAgentSession> | null
+  showScreen: (name: WiredScreen) => void
+  renderStarted: () => Promise<Rendered>
+} {
+  let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
+  let screenController: FakeController | null = null
+  let originalScreen: FakeController['screen'] | null = null
+  const wired = {
+    slotId: '',
+    interruptSpy: null as MockInstance<typeof window.api.interruptAgentSession> | null,
+    showScreen: (name: WiredScreen): void => {
+      if (screenController !== null) screenController.screen = agentScreen(name).lines
+      mockUseAgentActivity.mockReturnValue(new Map([[wired.slotId, name]]))
+    },
+    renderStarted: async (): Promise<Rendered> => {
+      const rendered = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await rendered.result.current.agentTerminal.sessions.start(wired.slotId, { kind: 'new' })
+      })
+      return rendered
+    }
+  }
+
+  beforeEach(async () => {
+    const actual =
+      await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
+    mockUseAgentSessions.mockImplementation(actual.useAgentSessions)
+    setMode('agent-cli')
+    startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
+      kind: 'started',
+      sessionId: 'sid-wire',
+      cliKind: 'claude',
+      cliSessionId: '11111111-1111-4111-8111-111111111111'
+    })
+    wired.interruptSpy = vi
+      .spyOn(window.api, 'interruptAgentSession')
+      .mockResolvedValue({ kind: 'sent', followUp: null })
+    const snapshot = getAgentSessionTabs().getSnapshot()
+    wired.slotId = snapshot.selectedSlotId
+    const controller = snapshot.tabs.find((tab) => tab.slotId === wired.slotId)
+      ?.controller as FakeController
+    screenController = controller
+    originalScreen = controller.screen
+    wired.showScreen(initialScreen)
+  })
+
+  afterEach(() => {
+    if (screenController !== null && originalScreen !== null) {
+      screenController.screen = originalScreen
+    }
+    screenController = null
+    originalScreen = null
+    startSpy?.mockRestore()
+    wired.interruptSpy?.mockRestore()
+  })
+
+  return wired
 }
 
 describe('useAgentWorkspace', () => {
@@ -807,6 +892,19 @@ describe('useAgentWorkspace', () => {
         'disabledReason',
         'notice',
         'onInterrupt',
+        'visible'
+      ])
+    })
+
+    it('パネル(agentTerminal.permissionAnswer)には答えの UI の値だけを渡す', () => {
+      setMode('agent-cli')
+      const { result } = renderWorkspace()
+      expect(Object.keys(result.current.agentTerminal.permissionAnswer).sort()).toEqual([
+        'allow',
+        'deny',
+        'notice',
+        'onAnswer',
+        'question',
         'visible'
       ])
     })
@@ -2617,56 +2715,8 @@ describe('useAgentWorkspace', () => {
   })
 
   describe('中断の配線(agentTerminal.interrupt。本物の useAgentSessions・useAgentInterrupt。L-060)', () => {
-    const CLAUDE_ID = '11111111-1111-4111-8111-111111111111'
-    let startSpy: MockInstance<typeof window.api.startAgentSession> | null = null
-    let interruptSpy: MockInstance<typeof window.api.interruptAgentSession> | null = null
-    let slotId: string
-    // 共有の偽のタブの画面を書き換えるので、終わったら戻す
-    let screenController: FakeController | null = null
-    let originalScreen: FakeController['screen'] | null = null
-
-    beforeEach(async () => {
-      const actual =
-        await vi.importActual<typeof import('../useAgentSessions')>('../useAgentSessions')
-      mockUseAgentSessions.mockImplementation(actual.useAgentSessions)
-      setMode('agent-cli')
-      startSpy = vi.spyOn(window.api, 'startAgentSession').mockResolvedValue({
-        kind: 'started',
-        sessionId: 'sid-wire',
-        cliKind: 'claude',
-        cliSessionId: CLAUDE_ID
-      })
-      interruptSpy = vi
-        .spyOn(window.api, 'interruptAgentSession')
-        .mockResolvedValue({ kind: 'sent', followUp: null })
-      // 文書ごとのタブの置き場(テストでは偽の controller の置き場)の選択中のタブを作業中の画面にする
-      const snapshot = getAgentSessionTabs().getSnapshot()
-      slotId = snapshot.selectedSlotId
-      const controller = snapshot.tabs.find((tab) => tab.slotId === slotId)
-        ?.controller as FakeController
-      screenController = controller
-      originalScreen = controller.screen
-      controller.screen = agentScreen('working').lines
-      mockUseAgentActivity.mockReturnValue(new Map([[slotId, 'working']]))
-    })
-
-    afterEach(() => {
-      if (screenController !== null && originalScreen !== null) {
-        screenController.screen = originalScreen
-      }
-      screenController = null
-      originalScreen = null
-      startSpy?.mockRestore()
-      interruptSpy?.mockRestore()
-    })
-
-    const renderStarted = async (): Promise<Rendered> => {
-      const rendered = renderWorkspace({ folderPath: '/p' })
-      await act(async () => {
-        await rendered.result.current.agentTerminal.sessions.start(slotId, { kind: 'new' })
-      })
-      return rendered
-    }
+    const wired = setUpWiredAgentTab('working')
+    const { renderStarted } = wired
 
     it('作業中の選択中のタブで onInterrupt を呼ぶと、window.api.interruptAgentSession をそのタブの sessionId で呼び、読み上げる', async () => {
       const { result } = await renderStarted()
@@ -2675,7 +2725,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         result.current.agentTerminal.interrupt.onInterrupt()
       })
-      expect(interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-wire')
+      expect(wired.interruptSpy).toHaveBeenCalledExactlyOnceWith('sid-wire')
       const label = result.current.agentTerminal.sessions.selected.label
       expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
         agentInterruptSentNotice(label, 'claude')
@@ -2685,7 +2735,7 @@ describe('useAgentWorkspace', () => {
     it('送信中は理由を出し、押しても呼ばない', async () => {
       const { result, rerender } = await renderStarted()
       mockUseAgentPromptSender.mockReturnValue(
-        makeSender({ isSending: true, sendingSlotId: slotId })
+        makeSender({ isSending: true, sendingSlotId: wired.slotId })
       )
       // 送信中の値で描き直す
       rerender()
@@ -2695,7 +2745,7 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         result.current.agentTerminal.interrupt.onInterrupt()
       })
-      expect(interruptSpy).not.toHaveBeenCalled()
+      expect(wired.interruptSpy).not.toHaveBeenCalled()
     })
 
     it('送信前の確認の表示中は理由を出し、押しても呼ばない', async () => {
@@ -2710,7 +2760,309 @@ describe('useAgentWorkspace', () => {
       await act(async () => {
         result.current.agentTerminal.interrupt.onInterrupt()
       })
-      expect(interruptSpy).not.toHaveBeenCalled()
+      expect(wired.interruptSpy).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('許可の確認への答えの配線(agentTerminal.permissionAnswer。本物の useAgentSessions・答えの hook。L-060)', () => {
+    const wired = setUpWiredAgentTab('permission')
+    const { renderStarted, showScreen } = wired
+    let answerSpy: MockInstance<typeof window.api.answerAgentPermission> | null = null
+
+    beforeEach(() => {
+      answerSpy = vi.spyOn(window.api, 'answerAgentPermission').mockResolvedValue({ kind: 'sent' })
+    })
+
+    afterEach(() => {
+      answerSpy?.mockRestore()
+      vi.useRealTimers()
+    })
+
+    // 許可の確認が出た直後の猶予(AGENT_PERMISSION_ANSWER_APPEAR_GRACE_MS)を偽のタイマーで過ぎてから押す(このテストは waitFor を使わない)
+    const renderStartedPastGrace = async (): Promise<Rendered> => {
+      vi.useFakeTimers()
+      const rendered = await renderStarted()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AGENT_PERMISSION_ANSWER_APPEAR_GRACE_MS)
+      })
+      return rendered
+    }
+
+    it('許可の確認が出た直後(1,000ms 以内)に onAnswer を呼んでも送らず、出た直後の理由を読み上げ、猶予の後は送る', async () => {
+      // 作業中の画面から許可の確認が出た画面に変わる(CLI の出力をきっかけに帯へ 許可・拒否 が挿し込まれる)
+      showScreen('working')
+      vi.useFakeTimers()
+      const { result, rerender } = await renderStarted()
+      showScreen('permission')
+      rerender()
+      expect(result.current.agentTerminal.permissionAnswer.visible).toBe(true)
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_JUST_APPEARED
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.permissionAnswer.notice?.text).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_JUST_APPEARED
+      )
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AGENT_PERMISSION_ANSWER_APPEAR_GRACE_MS - 1)
+      })
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_JUST_APPEARED
+      )
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 1)
+    })
+
+    it('許可待ちのまま別の確認に替わると、出た直後の猶予を数え直し、押しても送らない', async () => {
+      const { result } = await renderStartedPastGrace()
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBeNull()
+      const c = getAgentSessionTabs()
+        .getSnapshot()
+        .tabs.find((t) => t.slotId === wired.slotId)?.controller as FakeController
+      c.screen = c.screen.map((l) => {
+        const text = l.map((cell) => cell.char).join('')
+        return text.includes('Do you want to proceed?')
+          ? makeLine(text.replace('proceed?', 'continue?'))
+          : l
+      })
+      act(() => c.emitOutputWritten())
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200)
+      })
+      expect(result.current.agentTerminal.permissionAnswer.question?.firstLine).toBe(
+        'Do you want to continue?'
+      )
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_JUST_APPEARED
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+    })
+
+    it('許可待ちの選択中のタブで onAnswer(allow) を呼ぶと、window.api.answerAgentPermission をそのタブの sessionId と 1 で呼び、読み上げる', async () => {
+      const { result } = await renderStartedPastGrace()
+      const { permissionAnswer } = result.current.agentTerminal
+      expect(permissionAnswer.visible).toBe(true)
+      expect(permissionAnswer.question?.firstLine).toBe('Do you want to proceed?')
+      expect(permissionAnswer.allow.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 1)
+      const label = result.current.agentTerminal.sessions.selected.label
+      expect(result.current.agentTerminal.permissionAnswer.notice?.text).toBe(
+        agentPermissionAnswerSentNotice(label, 'claude', 'allow', 1)
+      )
+    })
+
+    it('パネルを閉じている間は 許可 に理由を出し、onAnswer(allow) を送らず理由を読み上げる。拒否 は送れる。開くと 許可 を送れる', async () => {
+      const { result } = await renderStartedPastGrace()
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      expect(result.current.agentTerminal.layout.isOpen).toBe(false)
+      expect(result.current.agentTerminal.permissionAnswer.visible).toBe(true)
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_PANEL_CLOSED
+      )
+      expect(result.current.agentTerminal.permissionAnswer.deny.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.permissionAnswer.notice?.text).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_PANEL_CLOSED
+      )
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 1)
+    })
+
+    it('選択中のタブのターミナルを上へスクロールすると 許可 に理由を出し、onAnswer(allow) を送らない。拒否 は送れる', async () => {
+      const { result } = await renderStartedPastGrace()
+      const c = getAgentSessionTabs()
+        .getSnapshot()
+        .tabs.find((t) => t.slotId === wired.slotId)?.controller as FakeController
+      act(() => c.scrollTo(false))
+      expect(result.current.agentTerminal.permissionAnswer.visible).toBe(true)
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_SCROLLED_UP
+      )
+      expect(result.current.agentTerminal.permissionAnswer.deny.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.permissionAnswer.notice?.text).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_SCROLLED_UP
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('deny')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 4)
+    })
+
+    it('末尾へ戻すと 許可 を送れる(スクロールの通知で理由が消える)', async () => {
+      const { result } = await renderStartedPastGrace()
+      const c = getAgentSessionTabs()
+        .getSnapshot()
+        .tabs.find((t) => t.slotId === wired.slotId)?.controller as FakeController
+      act(() => c.scrollTo(false))
+      act(() => c.scrollTo(true))
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 1)
+    })
+
+    it('パネルを閉じている間も onAnswer(deny) は送る(4 番)', async () => {
+      const { result } = await renderStartedPastGrace()
+      act(() => result.current.agentTerminal.layout.toggleOpen())
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('deny')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 4)
+    })
+
+    it('onAnswer(deny) は、その画面の No の番号(4)で呼ぶ(1 に固定しない)', async () => {
+      const { result } = await renderStartedPastGrace()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('deny')
+      })
+      expect(answerSpy).toHaveBeenCalledExactlyOnceWith('sid-wire', 4)
+    })
+
+    it('送信中は理由を出し、押しても呼ばない', async () => {
+      const { result, rerender } = await renderStarted()
+      mockUseAgentPromptSender.mockReturnValue(
+        makeSender({ isSending: true, sendingSlotId: wired.slotId })
+      )
+      rerender()
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_SENDING
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+    })
+
+    it('送信前の確認の表示中は理由を出し、押しても呼ばない', async () => {
+      const { result } = await renderStarted()
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.pending).not.toBeNull()
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_SEND_CONFIRM
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+    })
+
+    it('中断の流れの間は理由を出し、押しても呼ばない', async () => {
+      // 作業中の画面で中断を押してから、許可の確認が出た画面に変わる
+      showScreen('working')
+      const { result, rerender } = await renderStarted()
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(wired.interruptSpy).toHaveBeenCalledOnce()
+      showScreen('permission')
+      rerender()
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_INTERRUPTING
+      )
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(answerSpy).not.toHaveBeenCalled()
+    })
+
+    it('答えた直後は 中断 に答えた直後の理由が出て、作業中の画面に変わっても押した時点の判定で送らない', async () => {
+      const { result, rerender } = await renderStartedPastGrace()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
+      )
+      // 許可して作業中になった(1,000ms の待ちの間)
+      showScreen('working')
+      rerender()
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
+      )
+      await act(async () => {
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(wired.interruptSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+        AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
+      )
+    })
+
+    it('答えた直後に、再描画を挟まず同じ処理の中で onInterrupt を呼んでも押した時点の判定(ref)で止まり、中断を送らない', async () => {
+      // 画面は作業中に変わった後だが、描画の値(state)はまだ許可待ちのまま。state の判定だけなら活動の理由で止まるので、理由で ref の判定を確かめる
+      const { result } = await renderStartedPastGrace()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+        showScreen('working')
+        result.current.agentTerminal.interrupt.onInterrupt()
+      })
+      expect(answerSpy).toHaveBeenCalledOnce()
+      expect(wired.interruptSpy).not.toHaveBeenCalled()
+      expect(result.current.agentTerminal.interrupt.notice?.text).toBe(
+        AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
+      )
+    })
+
+    it('答えた直後は画面が変わらなくても答えた直後の理由で、1,000ms 後に読み直して押せる状態に戻る', async () => {
+      // 1,000ms の待ちと読み直しを実時間で待たないよう、偽のタイマーで進める(renderStartedPastGrace が偽のタイマーにする)
+      const { result } = await renderStartedPastGrace()
+      const allowNameBefore = result.current.agentTerminal.permissionAnswer.allow.ariaLabel
+      const questionBefore = result.current.agentTerminal.permissionAnswer.question
+      expect(questionBefore).not.toBeNull()
+      await act(async () => {
+        result.current.agentTerminal.permissionAnswer.onAnswer('allow')
+      })
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_COOLDOWN
+      )
+      // 読み直し待ちの間も、押したボタンの名前と問いは押す前のまま(読み上げと帯の並びを変えない)
+      expect(result.current.agentTerminal.permissionAnswer.allow.ariaLabel).toBe(allowNameBefore)
+      expect(result.current.agentTerminal.permissionAnswer.question).toEqual(questionBefore)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(AGENT_PERMISSION_ANSWER_COOLDOWN_MS - 1)
+      })
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBe(
+        AGENT_PERMISSION_ANSWER_DISABLED_COOLDOWN
+      )
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
+      )
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1)
+      })
+      expect(result.current.agentTerminal.permissionAnswer.allow.disabledReason).toBeNull()
+      expect(result.current.agentTerminal.interrupt.disabledReason).toBe(
+        agentInterruptBlockedByActivityReason('permission', 'claude')
+      )
     })
   })
 

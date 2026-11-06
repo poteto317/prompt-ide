@@ -15,6 +15,7 @@ import { agentScreen, makeLine } from './fixtures/agentScreens'
 import { copilotScreen } from './fixtures/copilotScreens'
 import type { AgentScreenName } from './fixtures/agentScreens'
 import {
+  AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
@@ -51,14 +52,21 @@ vi.mock('@shared/agentCliKinds', async (importOriginal) => {
 
 const STATUSES: readonly AgentSessionStatus[] = ['none', 'starting', 'running', 'exited']
 const ACTIVITIES: readonly AgentActivity[] = ['working', 'idle', 'permission', 'confirm', 'unknown']
-// 設計書「押せない理由の文言」の表の順(閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内)
-const FLAGS = ['isClosing', 'isSending', 'isSendConfirmOpen', 'isInterrupting'] as const
+// 設計書「押せない理由の文言」の表の順(閉じる途中 → 送信中 → 確認の表示中 → 送っている途中・1,000ms 以内 → 許可の答えを押した直後)
+const FLAGS = [
+  'isClosing',
+  'isSending',
+  'isSendConfirmOpen',
+  'isInterrupting',
+  'isAnsweringPermission'
+] as const
 type Flag = (typeof FLAGS)[number]
 const FLAG_REASONS: Record<Flag, string> = {
   isClosing: AGENT_INTERRUPT_DISABLED_CLOSING,
   isSending: AGENT_INTERRUPT_DISABLED_SENDING,
   isSendConfirmOpen: AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
-  isInterrupting: AGENT_INTERRUPT_DISABLED_COOLDOWN
+  isInterrupting: AGENT_INTERRUPT_DISABLED_COOLDOWN,
+  isAnsweringPermission: AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION
 }
 
 const RUNNING_WORKING: AgentInterruptAvailabilityInput = {
@@ -68,7 +76,8 @@ const RUNNING_WORKING: AgentInterruptAvailabilityInput = {
   activity: 'working',
   isSending: false,
   isSendConfirmOpen: false,
-  isInterrupting: false
+  isInterrupting: false,
+  isAnsweringPermission: false
 }
 
 // 表の期待(状態 → 閉じる途中・送信中・確認の表示中・待ち → 活動の順で最初に当たった理由)
@@ -82,7 +91,7 @@ function expectedReason(input: AgentInterruptAvailabilityInput): string | null {
     : agentInterruptBlockedByActivityReason(input.activity, 'claude')
 }
 
-// 状態(4)× 活動(5)× 閉じる途中・送信中・確認の表示中・待ち(16)の組
+// 状態(4)× 活動(5)× 閉じる途中・送信中・確認の表示中・待ち・答えた直後(32)の組
 const COMBINATIONS: [string, AgentInterruptAvailabilityInput][] = STATUSES.flatMap((status) =>
   ACTIVITIES.flatMap((activity) =>
     Array.from(
@@ -139,7 +148,8 @@ describe('getAgentInterruptAvailability', () => {
         activity: 'permission',
         isSending: true,
         isSendConfirmOpen: true,
-        isInterrupting: true
+        isInterrupting: true,
+        isAnsweringPermission: false
       }).reason
     ).toBe(AGENT_INTERRUPT_DISABLED_STARTING)
   })
@@ -180,6 +190,23 @@ describe('getAgentInterruptAvailability', () => {
       )
     }
   )
+
+  it('許可の答えを押した直後は、中断の流れの理由の後・活動(許可待ち)の理由の前', () => {
+    expect(
+      getAgentInterruptAvailability({
+        ...RUNNING_WORKING,
+        activity: 'permission',
+        isAnsweringPermission: true
+      }).reason
+    ).toBe(AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION)
+    expect(
+      getAgentInterruptAvailability({
+        ...RUNNING_WORKING,
+        isInterrupting: true,
+        isAnsweringPermission: true
+      }).reason
+    ).toBe(AGENT_INTERRUPT_DISABLED_COOLDOWN)
+  })
 })
 
 describe('describeAgentInterruptBlockedByActivity', () => {
@@ -242,6 +269,14 @@ describe('checkAgentInterruptAtPress', () => {
       })
     }
   )
+
+  it('checkAgentInterruptAtPress: 許可の答えを押した直後なら、作業中の画面でも画面を読まずに止める', () => {
+    const readScreen = vi.fn(() => agentScreen('working').lines)
+    expect(
+      checkAgentInterruptAtPress({ ...RUNNING_WORKING, isAnsweringPermission: true }, readScreen)
+    ).toEqual({ kind: 'blocked', reason: AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION })
+    expect(readScreen).not.toHaveBeenCalled()
+  })
 
   it('画面を読めなければ unreadable と例外を返す(投げない)', () => {
     const error = new Error('disposed')

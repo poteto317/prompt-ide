@@ -26,12 +26,22 @@ export interface FakeTerminal extends TerminalLike {
   selection: string
   typeKey(data: string): void
   pressKey(init: KeyboardEventInit & { type?: string }): boolean
+  /** 張られているスクロールの購読(解除の確認に使う) */
+  scrollListeners: Set<(viewportY: number) => void>
+  /** xterm のスクロール(onScroll)をテストから起こす。buffer.active の viewportY を先に変えておく */
+  emitScroll(): void
+  /** 張られている大きさの変化の購読(解除の確認に使う) */
+  resizeListeners: Set<(size: { cols: number; rows: number }) => void>
+  /** xterm の大きさの変化(onResize)をテストから起こす。cols・rows を先に変えておく */
+  emitResize(): void
 }
 
 export function makeFakeTerminal(): FakeTerminal {
   let dataListener: (data: string) => void = () => undefined
   let keyHandler: (event: KeyboardEvent) => boolean = () => true
   const pendingWriteCallbacks: Array<() => void> = []
+  const scrollListeners = new Set<(viewportY: number) => void>()
+  const resizeListeners = new Set<(size: { cols: number; rows: number }) => void>()
   const fake: FakeTerminal = {
     cols: 80,
     rows: 24,
@@ -61,6 +71,22 @@ export function makeFakeTerminal(): FakeTerminal {
     hasSelection: () => fake.selection !== '',
     getSelection: () => fake.selection,
     paste: vi.fn<TerminalLike['paste']>(),
+    onScroll: (listener) => {
+      scrollListeners.add(listener)
+      return { dispose: () => scrollListeners.delete(listener) }
+    },
+    scrollListeners,
+    emitScroll: () => {
+      for (const listener of [...scrollListeners]) listener(fake.buffer.active.viewportY)
+    },
+    onResize: (listener) => {
+      resizeListeners.add(listener)
+      return { dispose: () => resizeListeners.delete(listener) }
+    },
+    resizeListeners,
+    emitResize: () => {
+      for (const listener of [...resizeListeners]) listener({ cols: fake.cols, rows: fake.rows })
+    },
     typeKey: (data) => dataListener(data),
     pressKey: ({ type = 'keydown', ...init }) => keyHandler(new KeyboardEvent(type, init))
   }
@@ -111,6 +137,16 @@ export interface FakeController extends AgentTerminalController {
   outputWrittenListeners: Set<() => void>
   /** 書き込みの通知(onOutputWritten)をテストから起こす */
   emitOutputWritten(): void
+  /** isScrolledToBottom が返す値(既定は真。偽はターミナルを上へスクロールしている間) */
+  scrolledToBottom: boolean
+  /** 張られているスクロールの購読(解除の確認に使う) */
+  scrollListeners: Set<() => void>
+  /** scrolledToBottom を変えてスクロールの通知(onScroll)を起こす */
+  scrollTo(atBottom: boolean): void
+  /** 張られている大きさの変化の購読(解除の確認に使う) */
+  resizedListeners: Set<() => void>
+  /** ターミナルの大きさの変化の通知(onResized)をテストから起こす */
+  emitResized(): void
   bracketed: boolean
   sessionId: string | null
   writes: string[]
@@ -130,6 +166,9 @@ export function makeFakeController(): FakeController {
     viewport: [],
     screen: [],
     outputWrittenListeners: new Set(),
+    scrolledToBottom: true,
+    scrollListeners: new Set(),
+    resizedListeners: new Set(),
     bracketed: true,
     sessionId: null,
     writes: [],
@@ -151,6 +190,24 @@ export function makeFakeController(): FakeController {
       }
     },
     emitOutputWritten: () => fake.outputWrittenListeners.forEach((listener) => listener()),
+    isScrolledToBottom: () => fake.scrolledToBottom,
+    onScroll: (listener) => {
+      fake.scrollListeners.add(listener)
+      return () => {
+        fake.scrollListeners.delete(listener)
+      }
+    },
+    scrollTo: (atBottom) => {
+      fake.scrolledToBottom = atBottom
+      fake.scrollListeners.forEach((listener) => listener())
+    },
+    onResized: (listener) => {
+      fake.resizedListeners.add(listener)
+      return () => {
+        fake.resizedListeners.delete(listener)
+      }
+    },
+    emitResized: () => fake.resizedListeners.forEach((listener) => listener()),
     isBracketedPasteEnabled: () => fake.bracketed,
     writeToSession: (data) => {
       fake.writes.push(data)

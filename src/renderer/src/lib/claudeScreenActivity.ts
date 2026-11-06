@@ -10,9 +10,9 @@ import { locateInputBox } from './agentInputBox'
 
 const PERMISSION_QUESTION = /^\s*Do you want to /
 /** カーソルのある番号付きの選択肢の行(` ❯ 1. Yes`)。字下げを必須にする(履歴に残る `❯ 1. fix the parser` のプロンプトに当てないため)。1 つ目の組は番号の桁 */
-const PERMISSION_CURSOR_OPTION = /^(\s+❯\s*)\d+\./
+export const PERMISSION_CURSOR_OPTION = /^(\s+❯\s*)\d+\./
 /** 番号で始まる行(`   1. Yes`)。番号の桁がカーソルの行と同じ行だけを選択肢の行とみなす(折り返した問いの `2.md?` を除くため) */
-const NUMBERED_LINE = /^\s*\d+\./
+export const NUMBERED_LINE = /^\s*\d+\./
 /**
  * 選択肢の行。字下げを必須にする(会話の履歴に残る利用者のプロンプトは 1 桁目から `❯ hello` と描かれ、
  * 入力欄が見つからない画面でこれを選択肢とみなすと確認待ちと誤って知らせるため)
@@ -32,7 +32,7 @@ const INTERRUPT_HINT = 'esc to interrupt'
 const isSpinnerLine = (text: string): boolean =>
   SPINNER_LINE.test(text) && !SUMMARY_LINE.test(text) && !COMPACTED_LINE.test(text)
 
-const indentOf = (text: string): number => /^\s*/.exec(text)?.[0].length ?? 0
+export const indentOf = (text: string): number => /^\s*/.exec(text)?.[0].length ?? 0
 
 /** 1 桁目が空白の行(空行・字下げの行)。スピナーと入力欄の間に描かれる TodoWrite の一覧 `  ⎿  ☐ …`・tip `  ⎿  Tip: …` など */
 const isBlankOrIndented = (text: string): boolean => text === '' || /^\s/.test(text)
@@ -97,7 +97,16 @@ function judgeWorking(
 }
 
 /** 罫線だけの行(許可の画面の `────` の枠・`╌╌╌╌` の区切り)。問いの段落の区切りにする */
-const RULE_LINE = /^[\s─━═╌╍┄┅┈┉]+$/
+export const RULE_LINE = /^[\s─━═╌╍┄┅┈┉]+$/
+
+/** 許可の確認の画面の位置(カーソルのある選択肢の行・番号の桁・問いの段落の最初と最後の行) */
+export interface ClaudePermissionPromptLocation {
+  cursorRow: number
+  /** 番号の桁(カーソルの行の `\s+❯\s*` の長さ。ほかの選択肢の行の字下げと同じ) */
+  numberColumn: number
+  questionFirst: number
+  questionLast: number
+}
 
 /**
  * 許可の確認の並び: カーソルのある番号付きの選択肢の行から上へ、空行・番号付きの選択肢の行(番号がカーソルの行と同じ桁から始まる行。問いの折り返しの `2.md?` を除くため。
@@ -105,12 +114,15 @@ const RULE_LINE = /^[\s─━═╌╍┄┅┈┉]+$/
  * 空でない行(罫線の行を除く)が続く間で、問いが画面の幅を超えると claude が 1 行目と同じ字下げで折り返すため(ローカルレビュー
  * 第 12 周)。段落の先頭の行が `Do you want to ` で始まり、最後の行(選択肢の直上)が `?` で終わるときだけ許可待ちとする。
  * 問いの行と選択肢の行を画面全体から別々に探すと、履歴に残る `❯ 1. …` のプロンプトや応答の継続行の `  Do you want to …` で
- * 許可待ちと誤るため(ローカルレビュー第 11 周)
+ * 許可待ちと誤るため(ローカルレビュー第 11 周)。判定(isPermissionPrompt)と読み取り(claudePermissionPrompt.ts)が同じ位置を使う
+ * (設計書 2026-11-06「選択肢の読み取り」)。上から最初に当たったカーソルの行の位置を返す
  */
-function isPermissionPrompt(texts: readonly string[]): boolean {
-  return texts.some((text, y) => {
-    const cursor = PERMISSION_CURSOR_OPTION.exec(text)
-    if (cursor === null) return false
+export function locateClaudePermissionPrompt(
+  texts: readonly string[]
+): ClaudePermissionPromptLocation | null {
+  for (let y = 0; y < texts.length; y++) {
+    const cursor = PERMISSION_CURSOR_OPTION.exec(texts[y])
+    if (cursor === null) continue
     const numberColumn = cursor[1].length
     const inParagraph = (line: string): boolean =>
       line.trim() !== '' && !RULE_LINE.test(line) && indentOf(line) <= numberColumn
@@ -123,11 +135,18 @@ function isPermissionPrompt(texts: readonly string[]): boolean {
     ) {
       last--
     }
-    if (last < 0 || !inParagraph(texts[last])) return false
+    if (last < 0 || !inParagraph(texts[last])) continue
     let first = last
     while (first > 0 && inParagraph(texts[first - 1])) first--
-    return PERMISSION_QUESTION.test(texts[first]) && texts[last].trimEnd().endsWith('?')
-  })
+    if (PERMISSION_QUESTION.test(texts[first]) && texts[last].trimEnd().endsWith('?')) {
+      return { cursorRow: y, numberColumn, questionFirst: first, questionLast: last }
+    }
+  }
+  return null
+}
+
+function isPermissionPrompt(texts: readonly string[]): boolean {
+  return locateClaudePermissionPrompt(texts) !== null
 }
 
 export function classifyClaudeScreen(lines: readonly ViewportLine[]): AgentActivity {

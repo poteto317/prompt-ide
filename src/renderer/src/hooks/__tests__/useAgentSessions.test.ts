@@ -9,6 +9,7 @@ import { useAgentSessions } from '../useAgentSessions'
 import type {
   AgentInterruptFollowUpOutcome,
   AgentInterruptOutcome,
+  AgentPermissionAnswerOutcome,
   AgentSessionsState,
   UseAgentSessionsOptions
 } from '../useAgentSessions'
@@ -28,6 +29,7 @@ import type {
   AgentInterruptFollowUpResult,
   AgentInterruptResult,
   AgentLaunchRequest,
+  AgentPermissionAnswerResult,
   AgentSessionExit,
   AgentSessionSnapshotEntry,
   AgentStartResult
@@ -47,6 +49,7 @@ const mockStop = vi.mocked(agentTerminalApi.stopAgentSession)
 const mockGetState = vi.mocked(agentTerminalApi.getAgentSessions)
 const mockOnExit = vi.mocked(agentTerminalApi.onAgentExit)
 const mockInterrupt = vi.mocked(agentTerminalApi.interruptAgentSession)
+const mockAnswer = vi.mocked(agentTerminalApi.answerAgentPermission)
 
 // 終了の購読は hook が agentTerminalApi.onAgentExit を直接張る。購読者を控え、テストから終了を流す
 let exitListeners: Set<(exit: AgentSessionExit) => void>
@@ -117,6 +120,35 @@ const startSelected = async (result: Rendered['result']): Promise<void> => {
   await act(async () => {
     await result.current.start(result.current.selected.slotId, NEW)
   })
+}
+
+// タブ 1 つの場合: 選択中のタブ(slot-1)を、sessionId s1 の claude・copilot で起動する(中断・答えのテストで共有する)
+const startS1 = async (result: Rendered['result']): Promise<void> => {
+  mockStart.mockResolvedValueOnce({
+    kind: 'started',
+    sessionId: 's1',
+    cliKind: 'claude',
+    cliSessionId: CSID
+  })
+  await startSelected(result)
+}
+const startCopilotS1 = async (result: Rendered['result']): Promise<void> => {
+  mockStart.mockResolvedValueOnce({
+    kind: 'started',
+    sessionId: 's1',
+    cliKind: 'copilot',
+    cliSessionId: null
+  })
+  await startSelected(result)
+}
+
+// 結果を後から渡す IPC の偽物の値(中断・答えのテストで共有する)
+function deferredResult<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
 }
 
 // タブ 2 つを s-1・s-2 で動かす
@@ -1475,18 +1507,6 @@ describe('useAgentSessions — 会話の ID(cliSessionId)', () => {
 })
 
 describe('useAgentSessions — 中断(interrupt)', () => {
-  // 結果を後から渡す interruptAgentSession の偽物の値
-  function deferredResult(): {
-    promise: Promise<AgentInterruptResult>
-    resolve: (value: AgentInterruptResult) => void
-  } {
-    let resolve: (value: AgentInterruptResult) => void = () => undefined
-    const promise = new Promise<AgentInterruptResult>((r) => {
-      resolve = r
-    })
-    return { promise, resolve }
-  }
-
   const interruptNow = async (
     result: Rendered['result'],
     slotId = 'slot-1'
@@ -1496,16 +1516,6 @@ describe('useAgentSessions — 中断(interrupt)', () => {
       outcome = await result.current.interrupt(slotId)
     })
     return outcome
-  }
-
-  const startS1 = async (result: Rendered['result']): Promise<void> => {
-    mockStart.mockResolvedValueOnce({
-      kind: 'started',
-      sessionId: 's1',
-      cliKind: 'claude',
-      cliSessionId: CSID
-    })
-    await startSelected(result)
   }
 
   it('セッションが無ければ IPC を呼ばず skipped', async () => {
@@ -1555,7 +1565,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
   it('結果を待つ間に終了して起動し直したら stale で、新しいセッションのタブに何も出さない(L-037)', async () => {
     const { result } = render()
     await startS1(result)
-    const pending = deferredResult()
+    const pending = deferredResult<AgentInterruptResult>()
     mockInterrupt.mockReturnValueOnce(pending.promise)
     let outcome: Promise<AgentInterruptOutcome> | undefined
     act(() => {
@@ -1613,7 +1623,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
   it('結果を待つ間にタブを閉じたら stale で、どのタブにも何も出さない', async () => {
     const { result } = render({ onConfirm: () => true })
     await runTwoTabs(result)
-    const pending = deferredResult()
+    const pending = deferredResult<AgentInterruptResult>()
     mockInterrupt.mockReturnValueOnce(pending.promise)
     let outcome: Promise<AgentInterruptOutcome> | undefined
     act(() => {
@@ -1674,13 +1684,7 @@ describe('useAgentSessions — 中断(interrupt)', () => {
 
   it('copilot のタブの no-session の文言は copilot の名前', async () => {
     const { result } = render()
-    mockStart.mockResolvedValueOnce({
-      kind: 'started',
-      sessionId: 's1',
-      cliKind: 'copilot',
-      cliSessionId: null
-    })
-    await startSelected(result)
+    await startCopilotS1(result)
     mockInterrupt.mockResolvedValueOnce({ kind: 'no-session' })
     await interruptNow(result)
     expect(result.current.selected.error).toBe(
@@ -1691,16 +1695,6 @@ describe('useAgentSessions — 中断(interrupt)', () => {
 
 describe('useAgentSessions — 中断の 2 回目(interruptFollowUp)', () => {
   const mockFollowUp = vi.mocked(agentTerminalApi.interruptAgentSessionFollowUp)
-
-  const startCopilotS1 = async (result: Rendered['result']): Promise<void> => {
-    mockStart.mockResolvedValueOnce({
-      kind: 'started',
-      sessionId: 's1',
-      cliKind: 'copilot',
-      cliSessionId: null
-    })
-    await startSelected(result)
-  }
 
   const followUpNow = async (
     result: Rendered['result'],
@@ -1854,6 +1848,177 @@ describe('useAgentSessions — 中断の 2 回目(interruptFollowUp)', () => {
     })
     expect(await followUpNow(result)).toEqual({ kind: 'error', message: 'boom' })
     expect(result.current.selected.error).toBe('中断を送れませんでした: boom')
+  })
+})
+
+describe('useAgentSessions — 許可の確認への答え(answerPermission)', () => {
+  const answerNow = async (
+    result: Rendered['result'],
+    slotId = 'slot-1',
+    optionNumber = 1
+  ): Promise<AgentPermissionAnswerOutcome | undefined> => {
+    let outcome: AgentPermissionAnswerOutcome | undefined
+    await act(async () => {
+      outcome = await result.current.answerPermission(slotId, optionNumber)
+    })
+    return outcome
+  }
+
+  it('セッションが無ければ IPC を呼ばず skipped', async () => {
+    const { result } = render()
+    expect(await answerNow(result)).toEqual({ kind: 'skipped' })
+    expect(mockAnswer).not.toHaveBeenCalled()
+  })
+
+  it('そのタブの sessionId と番号だけを渡し、sent を返す', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockResolvedValueOnce({ kind: 'sent' })
+    expect(await answerNow(result, 'slot-1', 4)).toEqual({ kind: 'sent' })
+    expect(mockAnswer).toHaveBeenCalledExactlyOnceWith('s1', 4)
+    expect(result.current.selected.error).toBeNull()
+  })
+
+  it.each<[AgentPermissionAnswerResult, string]>([
+    [{ kind: 'no-session' }, '許可の答えを送れませんでした: claude が終了したか、起動し直しました'],
+    [{ kind: 'write-failed' }, '許可の答えを送れませんでした: ターミナルへの書き込みに失敗しました']
+  ])('%o はそのタブの error に出して、そのまま返す', async (ipcResult, message) => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockResolvedValueOnce(ipcResult)
+    expect(await answerNow(result)).toEqual(ipcResult)
+    expect(result.current.selected.error).toBe(message)
+  })
+
+  it('invoke の拒否は、接頭辞に例外の message を付けて error に出し、error を返す', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockRejectedValueOnce(new Error('ipc down'))
+    expect(await answerNow(result)).toEqual({ kind: 'error', message: 'ipc down' })
+    expect(result.current.selected.error).toBe('許可の答えを送れませんでした: ipc down')
+  })
+
+  it('window.api の呼び出しが同期で投げても、拒否と同じに扱う(L-055)', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+    expect(await answerNow(result)).toEqual({ kind: 'error', message: 'boom' })
+    expect(result.current.selected.error).toBe('許可の答えを送れませんでした: boom')
+  })
+
+  it('結果を待つ間に終了して起動し直したら stale で、新しいセッションのタブに何も出さない(L-040・L-093)', async () => {
+    const { result } = render()
+    await startS1(result)
+    const pending = deferredResult<AgentPermissionAnswerResult>()
+    mockAnswer.mockReturnValueOnce(pending.promise)
+    let outcome: Promise<AgentPermissionAnswerOutcome> | undefined
+    act(() => {
+      outcome = result.current.answerPermission('slot-1', 1)
+    })
+    act(() => emitExit({ sessionId: 's1', exitCode: 0, signal: null, reason: 'exited' }))
+    mockStart.mockResolvedValueOnce({
+      kind: 'started',
+      sessionId: 's2',
+      cliKind: 'claude',
+      cliSessionId: CSID
+    })
+    await startSelected(result)
+    let settled: AgentPermissionAnswerOutcome | undefined
+    await act(async () => {
+      pending.resolve({ kind: 'no-session' })
+      settled = await outcome
+    })
+    expect(settled).toEqual({ kind: 'stale' })
+    expect(result.current.selected.status).toBe('running')
+    expect(result.current.selected.error).toBeNull()
+  })
+
+  it('結果を待つ間にタブを閉じたら stale で、どのタブにも何も出さない', async () => {
+    const { result } = render({ onConfirm: () => true })
+    await runTwoTabs(result)
+    const pending = deferredResult<AgentPermissionAnswerResult>()
+    mockAnswer.mockReturnValueOnce(pending.promise)
+    let outcome: Promise<AgentPermissionAnswerOutcome> | undefined
+    act(() => {
+      outcome = result.current.answerPermission('slot-2', 1)
+    })
+    await act(async () => {
+      await result.current.closeTab('slot-2')
+    })
+    let settled: AgentPermissionAnswerOutcome | undefined
+    await act(async () => {
+      pending.resolve({ kind: 'write-failed' })
+      settled = await outcome
+    })
+    expect(settled).toEqual({ kind: 'stale' })
+    expect(result.current.tabs.map((tab) => [tab.slotId, tab.error])).toEqual([['slot-1', null]])
+  })
+
+  it('結果は押したタブの error に出す(結果が届いた時点で別のタブを選んでいても)', async () => {
+    const { result } = render()
+    await runTwoTabs(result)
+    expect(result.current.selected.slotId).toBe('slot-2')
+    mockAnswer.mockResolvedValueOnce({ kind: 'write-failed' })
+    await answerNow(result, 'slot-1')
+    expect(mockAnswer).toHaveBeenCalledExactlyOnceWith('s-1', 1)
+    expect(tabOf(result.current, 'slot-1').error).toBe(
+      '許可の答えを送れませんでした: ターミナルへの書き込みに失敗しました'
+    )
+    expect(result.current.selected.error).toBeNull()
+  })
+
+  it('送れたら、そのタブの答えの失敗の文言だけを消し、中断・終了の失敗の文言は消さない', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockResolvedValueOnce({ kind: 'write-failed' })
+    await answerNow(result)
+    mockAnswer.mockResolvedValueOnce({ kind: 'sent' })
+    await answerNow(result)
+    expect(result.current.selected.error).toBeNull()
+    // 中断の失敗の文言は消さない
+    mockInterrupt.mockResolvedValueOnce({ kind: 'write-failed' })
+    await act(async () => {
+      await result.current.interrupt('slot-1')
+    })
+    mockAnswer.mockResolvedValueOnce({ kind: 'sent' })
+    await answerNow(result)
+    expect(result.current.selected.error).toBe(
+      '中断を送れませんでした: ターミナルへの書き込みに失敗しました'
+    )
+    // 終了の失敗の文言も消さない
+    mockStop.mockRejectedValueOnce(new Error('x'))
+    await act(async () => {
+      await result.current.stop('slot-1')
+    })
+    mockAnswer.mockResolvedValueOnce({ kind: 'sent' })
+    await answerNow(result)
+    expect(result.current.selected.error).toBe('エージェントを終了できませんでした: x')
+  })
+
+  it('中断を送れたときは、答えの失敗の文言を消さない(中断の失敗の文言だけを消す)', async () => {
+    const { result } = render()
+    await startS1(result)
+    mockAnswer.mockResolvedValueOnce({ kind: 'write-failed' })
+    await answerNow(result)
+    mockInterrupt.mockResolvedValueOnce({ kind: 'sent', followUp: null })
+    await act(async () => {
+      await result.current.interrupt('slot-1')
+    })
+    expect(result.current.selected.error).toBe(
+      '許可の答えを送れませんでした: ターミナルへの書き込みに失敗しました'
+    )
+  })
+
+  it('copilot のタブの no-session の文言は copilot の名前', async () => {
+    const { result } = render()
+    await startCopilotS1(result)
+    mockAnswer.mockResolvedValueOnce({ kind: 'no-session' })
+    await answerNow(result)
+    expect(result.current.selected.error).toBe(
+      '許可の答えを送れませんでした: copilot が終了したか、起動し直しました'
+    )
   })
 })
 

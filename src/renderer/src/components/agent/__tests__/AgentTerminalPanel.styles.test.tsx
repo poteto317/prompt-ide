@@ -10,6 +10,7 @@ import {
 } from '../../../__tests__/makeAgentSessionsState'
 import {
   makeAgentInterruptPanelState,
+  makeAgentPermissionAnswerPanelState,
   makeAgentTerminalPanelState
 } from '../../../__tests__/makeAgentTerminalPanelState'
 import { AGENT_START_DISABLED_NO_FOLDER } from '../../../lib/agentSessionMessages'
@@ -373,6 +374,37 @@ describe('ターミナルパネルの見出しの帯のスタイル(main.css)', 
       expect(reason.position).toBe('absolute')
       expect(reason.width).toBe('1px')
     })
+  })
+
+  it('許可の確認の問いは 1 行で省略して縮み(最大 24em)、状態の文言と同じ色', () => {
+    const { container } = render(
+      <AgentTerminalPanel
+        state={makeAgentTerminalPanelState({
+          sessions: makeAgentSessionsState({ selected: { status: 'running' } }),
+          interrupt: makeAgentInterruptPanelState({ visible: true }),
+          permissionAnswer: makeAgentPermissionAnswerPanelState({
+            visible: true,
+            question: { firstLine: 'Do you want to proceed?', full: 'Do you want to proceed?' }
+          })
+        })}
+      />
+    )
+    const question = styleOf(container, '.agent-terminal-panel__permission-question')
+    expect(question.whiteSpace).toBe('nowrap')
+    expect(question.overflow).toBe('hidden')
+    expect(question.textOverflow).toBe('ellipsis')
+    expect(question.minWidth).toBe('0px')
+    expect(question.maxWidth).toBe('24em')
+    expect(question.flexGrow).toBe('0')
+    expect(question.flexShrink).toBe('1')
+    expect(question.color).toBe(styleOf(container, '.agent-terminal-panel__status').color)
+    expect(question.fontSize).toBe(styleOf(container, '.agent-terminal-panel__status').fontSize)
+    // ボタンは共通の規則で縮まない
+    const allow = screen.getByRole('button', { name: /^許可/ })
+    const deny = screen.getByRole('button', { name: /^拒否/ })
+    expect(getComputedStyle(allow).whiteSpace).toBe('nowrap')
+    expect(getComputedStyle(allow).flexShrink).toBe('0')
+    expect(getComputedStyle(deny).flexShrink).toBe('0')
   })
 })
 

@@ -20,6 +20,9 @@ export interface AgentCliCapabilities {
   /** 帯の中断(送り方は main の agentCliInterruptSpecs.ts。claude は Esc を 1 回、copilot は 2 回)。押せる条件が screenActivity の
    *  working なので、true なら screenActivity も true */
   interrupt: boolean
+  /** 帯の 許可・拒否(許可の確認に選択肢の番号キーを送る。設計書 2026-11-06)。出す条件が screenActivity の permission なので、
+   *  true なら screenActivity も true。main では能力で拒否しない(中断と同じ) */
+  permissionAnswer: boolean
   /** hooks によるエージェントの変更と利用者の変更の区別と、画面の作業中・作業の終わりを main の区間の追跡へ知らせること(claude は --settings、
    *  copilot は --plugin-dir で 1 回の起動だけに効く hooks を渡す。copilot はツールの呼び出しの ID が無いため区別が粗い。段階 3b) */
   changeAttribution: boolean
@@ -43,6 +46,7 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
       promptSend: true,
       screenActivity: true,
       interrupt: true,
+      permissionAnswer: true,
       changeAttribution: true,
       sessionResume: true
     }
@@ -54,6 +58,7 @@ export const AGENT_CLI_PROFILES: Record<AgentCliKind, AgentCliProfile> = {
       promptSend: true,
       screenActivity: true,
       interrupt: true,
+      permissionAnswer: true,
       changeAttribution: true,
       sessionResume: true
     }

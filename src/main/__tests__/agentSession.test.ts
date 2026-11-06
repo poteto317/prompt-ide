@@ -1,5 +1,10 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
-import { AGENT_INTERRUPT_SEQUENCE, AgentSession, startAgentSession } from '../agentSession'
+import {
+  AGENT_INTERRUPT_SEQUENCE,
+  AGENT_PERMISSION_ANSWER_KEYS,
+  AgentSession,
+  startAgentSession
+} from '../agentSession'
 import type { AgentSessionCallbacks, PtySpawn, StopTree } from '../agentSession'
 import { makeFakePty } from './helpers/fakePty'
 import { AGENT_CLI_INTERRUPT_SPECS } from '../agentCliInterruptSpecs'
@@ -13,6 +18,21 @@ function makeCallbacks(): AgentSessionCallbacks & {
 } {
   return { onData: vi.fn(), onExit: vi.fn() }
 }
+
+// claude の送り方の s1 のセッション(中断・許可の答えのテストで共有する)
+const makeSession = (
+  pty = makeFakePty(),
+  stopTree = vi.fn<StopTree>()
+): { session: AgentSession; pty: ReturnType<typeof makeFakePty> } => ({
+  session: new AgentSession({
+    ...CLAUDE_INTERRUPT,
+    id: 's1',
+    pty,
+    callbacks: makeCallbacks(),
+    stopTree
+  }),
+  pty
+})
 
 describe('AgentSession', () => {
   it('pty の出力を onData へ渡す', () => {
@@ -185,20 +205,6 @@ describe('AgentSession', () => {
 })
 
 describe('AgentSession.interrupt', () => {
-  const makeSession = (
-    pty = makeFakePty(),
-    stopTree = vi.fn<StopTree>()
-  ): { session: AgentSession; pty: ReturnType<typeof makeFakePty> } => ({
-    session: new AgentSession({
-      ...CLAUDE_INTERRUPT,
-      id: 's1',
-      pty,
-      callbacks: makeCallbacks(),
-      stopTree
-    }),
-    pty
-  })
-
   it('固定の 1 バイト(\\x1b)だけを pty へ書き、sent を返す(renderer の値を混ぜない)', () => {
     const { session, pty } = makeSession()
     expect(AGENT_INTERRUPT_SEQUENCE).toBe('\x1b')
@@ -421,6 +427,59 @@ describe('AgentSession.interruptFollowUp(2 回目の要る種類: copilot)', () 
     expect(session.interrupt()).toEqual({ kind: 'sent', followUp: { afterMs: 100 } })
     clock += 100
     expect(session.interruptFollowUp()).toBe('sent')
+  })
+})
+
+describe('AgentSession.answerPermission', () => {
+  it('表は 1〜9 の番号から同じ数字の 1 文字を引く', () => {
+    expect(AGENT_PERMISSION_ANSWER_KEYS).toEqual({
+      1: '1',
+      2: '2',
+      3: '3',
+      4: '4',
+      5: '5',
+      6: '6',
+      7: '7',
+      8: '8',
+      9: '9'
+    })
+  })
+
+  it.each([
+    [1, '1'],
+    [4, '4']
+  ] as const)(
+    'answerPermission(%d) は pty へ %s の 1 バイトだけを書き、sent を返す',
+    (number, key) => {
+      const { session, pty } = makeSession()
+      expect(session.answerPermission(number)).toBe('sent')
+      expect(pty.write.mock.calls).toEqual([[key]])
+    }
+  )
+
+  it('終了の後は書かずに not-alive を返す', () => {
+    const { session, pty } = makeSession()
+    pty.emitExit(0)
+    expect(session.answerPermission(1)).toBe('not-alive')
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('stop の後(終了の前)は書かずに not-alive を返す', () => {
+    const { session, pty } = makeSession(
+      makeFakePty(),
+      vi.fn<StopTree>(() => new Promise<void>(() => undefined))
+    )
+    void session.stop('stopped')
+    expect(session.answerPermission(1)).toBe('not-alive')
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('pty.write が投げたら write-failed を返し、例外を投げない', () => {
+    const { session, pty } = makeSession()
+    pty.write.mockImplementationOnce(() => {
+      throw new Error('EIO')
+    })
+    expect(session.answerPermission(1)).toBe('write-failed')
   })
 })
 

@@ -1,3 +1,8 @@
+import {
+  AGENT_PERMISSION_OPTION_NUMBER_MAX,
+  isAgentPermissionOptionNumber
+} from '@shared/agentPermissionAnswer'
+import type { AgentPermissionOptionNumber } from '@shared/agentPermissionAnswer'
 import type { AgentLaunchRequest, AgentStartRequest } from '@shared/types'
 import { AGENT_CLI_KINDS, isAgentCliKind } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
@@ -102,6 +107,16 @@ export function parseAgentStartRequest(payload: unknown): AgentStartRequest {
 
 export function parseAgentSessionId(value: unknown): string {
   if (!isSessionId(value)) throw new Error('sessionId は空でない文字列である必要があります')
+  return value
+}
+
+/** 許可の確認の選択肢の番号(1〜9 の整数)。invoke の拒否にするため、不正なら投げる(L-019) */
+export function parseAgentPermissionOptionNumber(value: unknown): AgentPermissionOptionNumber {
+  if (!isAgentPermissionOptionNumber(value)) {
+    throw new Error(
+      `optionNumber は 1〜${AGENT_PERMISSION_OPTION_NUMBER_MAX} の整数である必要があります`
+    )
+  }
   return value
 }
 

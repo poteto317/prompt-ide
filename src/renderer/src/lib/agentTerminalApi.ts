@@ -1,6 +1,7 @@
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type {
   AgentInterruptFollowUpResult,
+  AgentPermissionAnswerResult,
   AgentInterruptResult,
   AgentLastSession,
   AgentSessionData,
@@ -38,6 +39,14 @@ export function interruptAgentSessionFollowUp(
   sessionId: string
 ): Promise<AgentInterruptFollowUpResult> {
   return window.api.interruptAgentSessionFollowUp(sessionId)
+}
+
+/** 許可の確認に答える(ターミナルで選択肢の番号キーを押すのと同じ)。書くバイトは main が番号から決める */
+export function answerAgentPermission(
+  sessionId: string,
+  optionNumber: number
+): Promise<AgentPermissionAnswerResult> {
+  return window.api.answerAgentPermission(sessionId, optionNumber)
 }
 
 export function getAgentSessions(): Promise<AgentSessionSnapshotEntry[]> {

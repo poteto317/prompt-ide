@@ -55,6 +55,9 @@ export const AGENT_INTERRUPT_DISABLED_SEND_CONFIRM = '送信前の確認を開�
 /** 送っている途中・押してから 1,000ms 以内(2 回目の要る種類は 2 回目の流れが終わってから 1,000ms 以内。待ちはタブごと) */
 export const AGENT_INTERRUPT_DISABLED_COOLDOWN =
   '中断を送りました。まだ作業中なら、少し待つと押せます'
+/** 許可の答えを送っている途中・押してから 1,000ms 以内・送った後の画面を読み直す前(設計書 2026-11-06「中断の押せる条件の追加」) */
+export const AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION =
+  '許可の答えを押した直後は中断できません（少し待つと押せます）'
 /** 選択中のタブの CLI が中断に対応していない(能力の表の interrupt が false の種類) */
 export function agentInterruptUnsupportedReason(commandName: string): string {
   return `${commandName} では中断のボタンを使えません（ターミナルで操作してください）`

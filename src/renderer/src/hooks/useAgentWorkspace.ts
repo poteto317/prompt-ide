@@ -39,6 +39,11 @@ import { useAgentResume } from './useAgentResume'
 import type { AgentResumeLastState } from './useAgentResume'
 import { useAgentInterrupt } from './useAgentInterrupt'
 import type { AgentInterruptPanelState } from './useAgentInterrupt'
+import { useAgentPermissionAnswerCooldown } from './useAgentPermissionAnswerCooldown'
+import { useAgentPermissionPrompt } from './useAgentPermissionPrompt'
+import { useAgentPermissionAnswer } from './useAgentPermissionAnswer'
+import { useAgentPermissionAnswerAppearGrace } from './useAgentPermissionAnswerAppearGrace'
+import type { AgentPermissionAnswerPanelState } from './useAgentPermissionAnswer'
 import { useLatestRef } from './useLatestRef'
 import type { AgentActivity } from '../lib/agentActivity'
 import { getAgentSessionTabs } from '../lib/xtermFactory'
@@ -47,6 +52,7 @@ import { getHistoryRerunAvailability, getPromptRunAvailability } from '../lib/pr
 import { notifyAgentSent } from '../lib/agentSendCallbacks'
 import { describeAgentTabSession } from '../lib/agentTabSessionInfo'
 import { agentCapabilityCliKindOf } from '../lib/agentSessionTabState'
+import { isAgentPermissionAnswerVisible } from '../lib/agentPermissionAnswer'
 import {
   AGENT_STOP_ON_CLI_KIND_CHANGE_CONFIRM,
   AGENT_STOP_ON_MODE_CHANGE_CONFIRM,
@@ -74,6 +80,8 @@ export interface AgentTerminalPanelState {
   resumeLast: AgentResumeLastState
   /** 帯の 中断(選択中のタブの CLI に中断。claude は Esc を 1 回、copilot は作業中だけ Esc を 2 回)。押せない理由・読み上げ・押したとき */
   interrupt: AgentInterruptPanelState
+  /** 帯の 許可・拒否(選択中のタブが許可待ちのときだけ。問いの 1 行目・押せない理由・読み上げ・押したとき。設計書 2026-11-06) */
+  permissionAnswer: AgentPermissionAnswerPanelState
   /** 設定の種類(次に起動する CLI)。帯の 起動 の名前に使う(タブの名前はタブの cliKind。能力は agentCapabilityCliKindOf) */
   appCliKind: AgentCliKind
 }
@@ -248,6 +256,9 @@ export function useAgentWorkspace({
     send: agentSender.send,
     onSendSettled: handleSendSettled
   })
+  // 許可の確認への答えの待ち(設計書 2026-11-06「useAgentWorkspace での組み立ての順」)。答えた直後は 中断 も押せないので、中断の hook と
+  // 答えの hook の両方より先に作り、描画は state の関数、押した処理は ref の関数を渡す(同じ描画の値が届く。ref の写しを足さない)
+  const answerCooldown = useAgentPermissionAnswerCooldown()
   // 帯の 中断(設計書 2026-10-19)。押せないのは送信中・送信前の確認の表示中(送信の手順〈貼り付け・Enter など〉と Esc を混ぜない)と、
   // 選択中のタブが作業中でないとき。送り先は押した時点の選択中のタブ。copilot は 2 回目を同じタブのセッションへ頼む(interruptFollowUp)。
   const agentInterrupt = useAgentInterrupt({
@@ -257,7 +268,42 @@ export function useAgentWorkspace({
     isSendConfirmOpen: sendConfirm.pending !== null,
     interrupt: agentSessions.interrupt,
     interruptFollowUp: agentSessions.interruptFollowUp,
-    isTabOpen: (slotId) => agentSessions.tabs.some((tab) => tab.slotId === slotId)
+    isTabOpen: (slotId) => agentSessions.tabs.some((tab) => tab.slotId === slotId),
+    isAnsweringPermission: answerCooldown.isPending,
+    isAnsweringPermissionNow: answerCooldown.isPendingNow
+  })
+  // 帯の 許可・拒否(設計書 2026-11-06)。描画に使う読み取りは選択中のタブが許可待ちの間だけ。送り先は押した時点の選択中のタブ。
+  // 押せないのは送信中・送信前の確認の表示中・中断の流れの間(中断の hook の値をそのまま使う)・答えた直後と、パネルを閉じている間の 許可
+  // (ターミナル本体が隠れ、許可する内容を確かめられない。拒否 は押せる)
+  const permissionPrompt = useAgentPermissionPrompt({
+    selected: agentSessions.selected,
+    activity: activities.get(agentSessions.selected.slotId) ?? 'unknown',
+    isAwaitingReread: answerCooldown.isAwaitingReread,
+    onReread: answerCooldown.markReread
+  })
+  // 許可の確認が帯に出た直後の猶予(出す条件は読み取りと同じ判定の lib。表示用の読み取りが別の確認に替わったときも数え直す)
+  const appearGrace = useAgentPermissionAnswerAppearGrace({
+    slotId: agentSessions.selected.slotId,
+    visible: isAgentPermissionAnswerVisible({
+      status: agentSessions.selected.status,
+      cliKind: agentSessions.selected.cliKind,
+      activity: activities.get(agentSessions.selected.slotId) ?? 'unknown'
+    }),
+    prompt: permissionPrompt.displayPrompt
+  })
+  const permissionAnswer = useAgentPermissionAnswer({
+    selected: agentSessions.selected,
+    activities,
+    prompt: permissionPrompt.prompt,
+    displayPrompt: permissionPrompt.displayPrompt,
+    isSending: agentSender.isSending,
+    isSendConfirmOpen: sendConfirm.pending !== null,
+    isPanelOpen: agentLayout.isOpen,
+    isInterruptPending: agentInterrupt.isInterruptPending,
+    isInterrupting: agentInterrupt.isInterrupting,
+    cooldown: answerCooldown,
+    appearGrace,
+    answerPermission: agentSessions.answerPermission
   })
   // 実行・再実行・送信前の確認の押せる条件に渡す、送り先のタブの活動(中断の判定と同じ写像。L-058)と中断の流れ。3 つの入口で同じ組を
   // 渡すため 1 か所で作る。requiresIdle の種類(copilot)だけが見る
@@ -485,6 +531,7 @@ export function useAgentWorkspace({
         notice: agentInterrupt.notice,
         onInterrupt: agentInterrupt.onInterrupt
       },
+      permissionAnswer,
       appCliKind
     },
     statusBarAgent,

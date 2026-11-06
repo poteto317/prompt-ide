@@ -1052,6 +1052,69 @@ describe('AgentSessionRegistry.interruptFollowUp', () => {
   })
 })
 
+describe('AgentSessionRegistry.answerPermission', () => {
+  it('所有者の枠の現在のセッションだけに番号の 1 バイトを書き、sent を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.answerPermission(1, 's1', 4)).toEqual({ kind: 'sent' })
+    expect(pty.write.mock.calls).toEqual([['4']])
+  })
+
+  it('別の所有者・知らない sessionId には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    expect(registry.answerPermission(2, 's1', 1)).toEqual({ kind: 'no-session' })
+    expect(registry.answerPermission(1, 'other', 1)).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+  })
+
+  it('起動し直した後の古い sessionId には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const first = makeSession('s1')
+    await registry.start(1, 'a', created(first.session))
+    first.pty.emitExit(0)
+    await first.session.exited
+    const second = makeSession('s2')
+    await registry.start(1, 'a', created(second.session))
+    expect(registry.answerPermission(1, 's1', 1)).toEqual({ kind: 'no-session' })
+    expect(first.pty.write).not.toHaveBeenCalled()
+    expect(second.pty.write).not.toHaveBeenCalled()
+  })
+
+  it('停止中のセッション(stop の後、止まりきる前)には書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const slow = makeSlowStoppingSession('old')
+    await registry.start(1, 'a', created(slow.session))
+    const stopping = registry.stop(1, 'stopped', 'old')
+    expect(registry.answerPermission(1, 'old', 1)).toEqual({ kind: 'no-session' })
+    expect(slow.pty.write).not.toHaveBeenCalled()
+    slow.release()
+    await stopping
+  })
+
+  it('終了した直後(枠から外れる前)のセッションには書かず no-session を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    pty.emitExit(0)
+    expect(registry.answerPermission(1, 's1', 1)).toEqual({ kind: 'no-session' })
+    expect(pty.write).not.toHaveBeenCalled()
+    await session.exited
+  })
+
+  it('pty への書き込みが投げたら write-failed を返す', async () => {
+    const registry = new AgentSessionRegistry()
+    const { session, pty } = makeSession('s1')
+    await registry.start(1, 'a', created(session))
+    pty.write.mockImplementationOnce(() => {
+      throw new Error('EIO')
+    })
+    expect(registry.answerPermission(1, 's1', 1)).toEqual({ kind: 'write-failed' })
+  })
+})
+
 describe('AgentSessionRegistry.generationOf', () => {
   it('最初は 0/0 で、stopOwner のたびに所有者ごとに進む(セッションが無くても進む)', async () => {
     const registry = new AgentSessionRegistry()

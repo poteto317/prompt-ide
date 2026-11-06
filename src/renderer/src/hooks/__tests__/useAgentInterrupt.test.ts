@@ -23,6 +23,7 @@ import type { CopilotScreenName } from '../../lib/__tests__/fixtures/copilotScre
 import type { AgentScreenName } from '../../lib/__tests__/fixtures/agentScreens'
 import { AGENT_INTERRUPT_COOLDOWN_MS } from '../../lib/agentInterrupt'
 import {
+  AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION,
   AGENT_INTERRUPT_DISABLED_CLOSING,
   AGENT_INTERRUPT_DISABLED_COOLDOWN,
   AGENT_INTERRUPT_DISABLED_SEND_CONFIRM,
@@ -61,12 +62,19 @@ function runningTab(
 const workingOf = (...slotIds: string[]): ReadonlyMap<string, AgentActivity> =>
   new Map(slotIds.map((slotId): [string, AgentActivity] => [slotId, 'working']))
 
+// 許可の答えを押した直後でない(rerender で全部の値を渡し直すときにも使う)
+const NOT_ANSWERING = {
+  isAnsweringPermission: () => false,
+  isAnsweringPermissionNow: () => false
+} satisfies Pick<Props, 'isAnsweringPermission' | 'isAnsweringPermissionNow'>
+
 function render(props: Partial<Props> = {}): RenderHookResult<AgentInterruptState, Props> {
   const initialProps: Props = {
     selected: tab1,
     activities: workingOf(tab1.slotId),
     isSending: false,
     isSendConfirmOpen: false,
+    ...NOT_ANSWERING,
     ...props
   }
   return renderHook(
@@ -188,12 +196,24 @@ describe('useAgentInterrupt', () => {
     )
     const { result, rerender } = render({ activities })
     await press(result)
-    rerender({ selected: tab2, activities, isSending: false, isSendConfirmOpen: false })
+    rerender({
+      selected: tab2,
+      activities,
+      isSending: false,
+      isSendConfirmOpen: false,
+      ...NOT_ANSWERING
+    })
     expect(result.current.disabledReason).toBeNull()
     await press(result)
     expect(interrupt.mock.calls).toEqual([['slot-1'], ['slot-2']])
     expect(result.current.notice?.text).toBe(agentInterruptSentNotice('claude 2', 'claude'))
-    rerender({ selected: tab1, activities, isSending: false, isSendConfirmOpen: false })
+    rerender({
+      selected: tab1,
+      activities,
+      isSending: false,
+      isSendConfirmOpen: false,
+      ...NOT_ANSWERING
+    })
     expect(result.current.disabledReason).toBe(AGENT_INTERRUPT_DISABLED_COOLDOWN)
     await press(result)
     expect(interrupt).toHaveBeenCalledTimes(2)
@@ -325,7 +345,7 @@ describe('useAgentInterrupt', () => {
 })
 
 describe('toAgentInterruptAvailabilityInput', () => {
-  it('選択中のタブの状態・活動と、送信中・確認の表示中・待ちの値をそのまま写す', () => {
+  it('選択中のタブの状態・活動と、送信中・確認の表示中・待ち・答えた直後の値をそのまま写す', () => {
     const tab = { ...runningTab('slot-1', 1), isClosing: true }
     expect(
       toAgentInterruptAvailabilityInput(
@@ -335,6 +355,7 @@ describe('toAgentInterruptAvailabilityInput', () => {
           isSending: true,
           isSendConfirmOpen: true
         },
+        true,
         true
       )
     ).toEqual({
@@ -344,7 +365,8 @@ describe('toAgentInterruptAvailabilityInput', () => {
       activity: 'permission',
       isSending: true,
       isSendConfirmOpen: true,
-      isInterrupting: true
+      isInterrupting: true,
+      isAnsweringPermission: true
     })
   })
 
@@ -356,6 +378,7 @@ describe('toAgentInterruptAvailabilityInput', () => {
         isSending: false,
         isSendConfirmOpen: false
       },
+      false,
       false
     )
     expect(input.cliKind).toBe('copilot')
@@ -369,6 +392,7 @@ describe('toAgentInterruptAvailabilityInput', () => {
         isSending: false,
         isSendConfirmOpen: false
       },
+      false,
       false
     )
     expect(input.activity).toBe('unknown')
@@ -490,7 +514,13 @@ describe('useAgentInterrupt(2 回目の要る種類: copilot)', () => {
     const activities = workingOf('slot-1', 'slot-2')
     const { result, rerender } = renderCopilot({ activities })
     await press(result)
-    rerender({ selected: copilot2, activities, isSending: false, isSendConfirmOpen: false })
+    rerender({
+      selected: copilot2,
+      activities,
+      isSending: false,
+      isSendConfirmOpen: false,
+      ...NOT_ANSWERING
+    })
     await advanceAsync(FOLLOW_UP.afterMs)
     expect(interruptFollowUp).toHaveBeenCalledExactlyOnceWith('slot-1', 'sid-1')
     expect(result.current.notice?.text).toBe('copilot 1 に中断（Esc を 2 回）を送りました')
@@ -504,7 +534,13 @@ describe('useAgentInterrupt(2 回目の要る種類: copilot)', () => {
       .mockResolvedValueOnce({ kind: 'sent', followUp: { afterMs: 100, sessionId: 'sid-2' } })
     const { result, rerender } = renderCopilot({ activities })
     const select = (selected: AgentSessionTabView): void => {
-      rerender({ selected, activities, isSending: false, isSendConfirmOpen: false })
+      rerender({
+        selected,
+        activities,
+        isSending: false,
+        isSendConfirmOpen: false,
+        ...NOT_ANSWERING
+      })
     }
     // 0ms に copilot 1 を押し、50ms に copilot 2 を選んで押す
     await press(result)
@@ -641,7 +677,13 @@ describe('useAgentInterrupt(2 回目の要る種類: copilot)', () => {
     await press(result)
     // 選んでいたタブを閉じると選択は残ったタブへ移る。閉じたかは選択中のタブではなく送った先のタブで確かめる
     isTabOpen.mockImplementation((slotId) => slotId !== 'slot-1')
-    rerender({ selected: copilot2, activities, isSending: false, isSendConfirmOpen: false })
+    rerender({
+      selected: copilot2,
+      activities,
+      isSending: false,
+      isSendConfirmOpen: false,
+      ...NOT_ANSWERING
+    })
     const readScreen = vi.fn(() => {
       throw new Error('disposed')
     })
@@ -700,7 +742,8 @@ describe('useAgentInterrupt: 送信の判定に使う中断の流れ(isInterrupt
       selected: tab1,
       activities: workingOf('slot-1'),
       isSending: false,
-      isSendConfirmOpen: false
+      isSendConfirmOpen: false,
+      ...NOT_ANSWERING
     })
     expect(result.current.isInterrupting).toBe(first)
   })
@@ -739,5 +782,20 @@ describe('useAgentInterrupt: 送信の判定に使う中断の流れ(isInterrupt
     await advanceAsync(1)
     expect(result.current.isInterrupting('slot-1')).toBe(false)
     expect(result.current.isInterruptPending('slot-1')).toBe(false)
+  })
+})
+
+describe('useAgentInterrupt: 許可の答えとの排他(設計書 2026-11-06「中断の押せる条件の追加」)', () => {
+  it('描画: isAnsweringPermission が真のタブは、答えた直後の理由になる', () => {
+    const { result } = render({ isAnsweringPermission: (slotId) => slotId === tab1.slotId })
+    expect(result.current.disabledReason).toBe(AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION)
+  })
+
+  it('押した時点: 描画の値が偽でも、isAnsweringPermissionNow が真なら送らず理由を読み上げる', async () => {
+    const { result } = render({ isAnsweringPermissionNow: () => true })
+    expect(result.current.disabledReason).toBeNull()
+    await press(result)
+    expect(interrupt).not.toHaveBeenCalled()
+    expect(result.current.notice?.text).toBe(AGENT_INTERRUPT_DISABLED_ANSWERING_PERMISSION)
   })
 })

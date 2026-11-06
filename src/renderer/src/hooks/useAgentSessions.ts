@@ -4,6 +4,7 @@ import type { AgentCliKind } from '@shared/agentCliKinds'
 import type {
   AgentInterruptFollowUpResult,
   AgentLaunchRequest,
+  AgentPermissionAnswerResult,
   AgentSessionExit
 } from '@shared/types'
 import { isAgentStartCanceled } from '@shared/types'
@@ -24,6 +25,11 @@ import {
   agentInterruptError,
   agentInterruptFailureError
 } from '../lib/agentInterruptMessages'
+import {
+  AGENT_PERMISSION_ANSWER_ERROR_PREFIX,
+  agentPermissionAnswerError,
+  agentPermissionAnswerFailureError
+} from '../lib/agentPermissionAnswerMessages'
 import { invokeForCurrentSession } from '../lib/agentInterruptInvocation'
 import { createAgentLaunchWatches } from '../lib/agentLaunchWatches'
 import { toError } from '../lib/errorUtils'
@@ -87,6 +93,16 @@ export type AgentInterruptFollowUpOutcome =
   | { kind: 'stale' }
   | { kind: 'error'; message: string }
 
+/** 許可の確認への答えの結果(main の結果をそのまま返し、renderer の側の skipped・stale・error を足す)。送れたかだけを扱う(L-001) */
+export type AgentPermissionAnswerOutcome =
+  | AgentPermissionAnswerResult
+  /** そのタブにセッションが無い(IPC を呼ばない) */
+  | { kind: 'skipped' }
+  /** 結果が届いた時点で、そのタブの sessionId が送った値と違う(起動し直した・終了した・閉じた)。何も出さない */
+  | { kind: 'stale' }
+  /** invoke の拒否・同期の例外 */
+  | { kind: 'error'; message: string }
+
 export interface AgentLastExit extends AgentSessionExitView {
   sessionId: string
 }
@@ -110,6 +126,10 @@ export interface AgentSessionsState {
   /** 1 回目を送ったセッション(sessionId)へ中断の 2 回目を頼む。そのタブの今の sessionId が違う・閉じる途中なら IPC を呼ばず stale。
    *  結果が届いた時点でも確かめ、違えば stale(L-037)。送れなかったらそのタブの error に出し、送れたら中断の失敗の文言だけを消す。拒否しない */
   interruptFollowUp: (slotId: string, sessionId: string) => Promise<AgentInterruptFollowUpOutcome>
+  /** そのタブの CLI の許可の確認に、選択肢の番号キーを送る(書くバイトは main が番号から決める)。そのタブにセッションが無ければ IPC を
+   *  呼ばず skipped。押した時点の sessionId を控え、結果が届いた時点で同じときだけ結果を出す(違えば stale。L-040・L-093)。送れなかったら
+   *  そのタブの error に出し、送れたらそのタブの答えの失敗の文言だけを消す。拒否しない */
+  answerPermission: (slotId: string, optionNumber: number) => Promise<AgentPermissionAnswerOutcome>
   /** タブを作って選択し、起動する */
   addTab: () => Promise<void>
   /** 新しいタブを足して選択し、そのタブで cliSessionId を再開する(+ と同じ検査の後。同じ ID のタブが起動中・実行中なら
@@ -490,14 +510,14 @@ export function useAgentSessions({
     [patchTab]
   )
 
-  // 送れたときに、そのタブの error が中断の失敗の文言なら消す(終了の失敗などほかの文言は消さない)
-  const clearInterruptError = useCallback(
-    (slotId: string): void => {
+  // 送れたときに、そのタブの error が prefix で始まる文言(その操作の失敗の文言)なら消す(終了の失敗などほかの文言は消さない)
+  const clearErrorWithPrefix = useCallback(
+    (slotId: string, prefix: string): void => {
       if (!mountedRef.current) return
       if (findTab(slotId) === undefined) return
       setStates((prev) => {
         const fields = agentTabSessionFieldsOf(prev, slotId)
-        if (fields.error?.startsWith(AGENT_INTERRUPT_ERROR_PREFIX) !== true) return prev
+        if (fields.error?.startsWith(prefix) !== true) return prev
         return new Map(prev).set(slotId, { ...fields, error: null })
       })
     },
@@ -526,7 +546,7 @@ export function useAgentSessions({
       }
       const { result } = invoked
       if (result.kind === 'sent') {
-        clearInterruptError(slotId)
+        clearErrorWithPrefix(slotId, AGENT_INTERRUPT_ERROR_PREFIX)
         return {
           kind: 'sent',
           followUp:
@@ -537,7 +557,7 @@ export function useAgentSessions({
       patchTab(slotId, { error: agentInterruptFailureError(result.kind, commandNameOf(slotId)) })
       return result
     },
-    [patchTab, clearInterruptError, commandNameOf]
+    [patchTab, clearErrorWithPrefix, commandNameOf]
   )
 
   const interruptFollowUp = useCallback(
@@ -557,13 +577,40 @@ export function useAgentSessions({
       }
       const { result } = invoked
       if (result.kind === 'sent') {
-        clearInterruptError(slotId)
+        clearErrorWithPrefix(slotId, AGENT_INTERRUPT_ERROR_PREFIX)
         return result
       }
       patchTab(slotId, { error: agentInterruptFailureError(result.kind, commandNameOf(slotId)) })
       return result
     },
-    [patchTab, clearInterruptError, commandNameOf]
+    [patchTab, clearErrorWithPrefix, commandNameOf]
+  )
+
+  const answerPermission = useCallback(
+    async (slotId: string, optionNumber: number): Promise<AgentPermissionAnswerOutcome> => {
+      // 最初の await より前に、押した時点のセッションを控える(L-093)
+      const id = sessionIdBySlotRef.current.get(slotId)
+      if (id === undefined) return { kind: 'skipped' }
+      const invoked = await invokeForCurrentSession(
+        () => agentTerminalApi.answerAgentPermission(id, optionNumber),
+        () => sessionIdBySlotRef.current.get(slotId) === id
+      )
+      if (invoked.kind === 'stale') return invoked
+      if (invoked.kind === 'error') {
+        patchTab(slotId, { error: agentPermissionAnswerError(invoked.message) })
+        return invoked
+      }
+      const { result } = invoked
+      if (result.kind === 'sent') {
+        clearErrorWithPrefix(slotId, AGENT_PERMISSION_ANSWER_ERROR_PREFIX)
+        return result
+      }
+      patchTab(slotId, {
+        error: agentPermissionAnswerFailureError(result.kind, commandNameOf(slotId))
+      })
+      return result
+    },
+    [patchTab, clearErrorWithPrefix, commandNameOf]
   )
 
   const closeTab = useCallback(
@@ -673,6 +720,7 @@ export function useAgentSessions({
     stop,
     interrupt,
     interruptFollowUp,
+    answerPermission,
     addTab,
     resumeInNewTab,
     closeTab,

@@ -8,6 +8,7 @@ const mockApi = {
   stopAgentSession: vi.fn(),
   interruptAgentSession: vi.fn(),
   interruptAgentSessionFollowUp: vi.fn(),
+  answerAgentPermission: vi.fn(),
   getAgentSessions: vi.fn(),
   getLastAgentSession: vi.fn(),
   onAgentData: vi.fn(),
@@ -36,6 +37,7 @@ describe('agentTerminalApi', () => {
     agentTerminalApi.stopAgentSession('s')
     agentTerminalApi.interruptAgentSession('s')
     agentTerminalApi.interruptAgentSessionFollowUp('s')
+    agentTerminalApi.answerAgentPermission('s', 2)
     agentTerminalApi.getAgentSessions()
     agentTerminalApi.getLastAgentSession('/p', 'copilot')
     agentTerminalApi.setAgentTerminalFocused(true)
@@ -53,6 +55,8 @@ describe('agentTerminalApi', () => {
     expect(mockApi.stopAgentSession).toHaveBeenCalledWith('s')
     expect(mockApi.interruptAgentSession).toHaveBeenCalledWith('s')
     expect(mockApi.interruptAgentSessionFollowUp).toHaveBeenCalledWith('s')
+    // 1 以外の番号で、番号がそのまま渡ることを確かめる(取り違えると拒否で 1(Yes)が書かれる)
+    expect(mockApi.answerAgentPermission).toHaveBeenCalledWith('s', 2)
     expect(mockApi.getAgentSessions).toHaveBeenCalledOnce()
     expect(mockApi.getLastAgentSession).toHaveBeenCalledWith('/p', 'copilot')
     expect(mockApi.setAgentTerminalFocused).toHaveBeenCalledWith(true)
