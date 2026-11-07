@@ -220,10 +220,10 @@ export interface AgentInstructionsPanelState {
 - `src/renderer/src/lib/agentInstructionMessages.ts`: サブフォルダの固定の文言を足す(下の「文言」)
 - `src/renderer/src/types.ts`: `AgentInstructionSubfolderRow` と `AgentInstructionsPanelState` の追加
 - `src/renderer/src/hooks/useAgentInstructionFiles.ts`: 探索の結果・`openSubfolderFile`・`refresh`・`isRefreshing`
-- `src/renderer/src/components/explorer/AgentInstructionFilesSection.tsx`: 見出しの行に `更新` を足し、小見出し `このフォルダ` を足し、サブフォルダの部分を下の部品に任せる
+- `src/renderer/src/components/explorer/AgentInstructionFilesSection.tsx`: 見出しの行に `更新` を足し、小見出し `このフォルダ` を足し、サブフォルダの部分を下の部品に任せる。「このフォルダ」の `開く` を `AgentInstructionOpenButton` に置き換える。失敗の文言は「このフォルダ」の一覧の直後に置き、出たら `scrollIntoView({ block: 'nearest' })` で節の中を動かす effect を足す(下の「画面」)
 - `src/renderer/src/components/explorer/AgentInstructionSubfolderList.tsx`(新規): 開閉のボタン・注・一覧・`ほか N 件`・0 件の文言。開閉の state を持つ
 - `src/renderer/src/components/explorer/AgentInstructionOpenButton.tsx`(新規): `このフォルダ` とサブフォルダで共通の `開く`。clone 中は `disabled`、作成の途中は `aria-disabled` にする判定をここに集める(L-157)
-- `src/renderer/src/assets/main.css`: 見出しの行・`更新`・小見出し・開閉のボタン・注・`ほか N 件` の見た目(今の `agent-instructions__*` に揃える)
+- `src/renderer/src/assets/main.css`: 見出しの行・小見出し・開閉のボタン・注・`ほか N 件` の見た目(今の `agent-instructions__*` に揃える。`更新` は既存の `__button` を使う)。あわせて高さの扱いとして、`.agent-instructions` を `flex: 0 1 auto; min-height: 0; overflow-y: auto` にし、`.agent-instructions__subfolder-region` に `max-height: 40vh; overflow-y: auto` を、`.file-tree` に `min-height: 88px` を足す(下の「画面」)
 - 配線: `useAppState` で `useAgentInstructionFiles` に `refreshTree`(`fileSystem.refreshTree`)を 1 つ渡す。`ExplorerPanel`・`Sidebar`・`App` は変えない(状態は今の `agentInstructions` の props に入る)。新しい引数と `AgentInstructionSubfolderList` の props は省略できないものにする(L-060)
 - main・preload・IPC は変えない
 
