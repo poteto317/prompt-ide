@@ -378,7 +378,8 @@ export function useAppState(): AppState {
     fileTree: fileSystem.fileTree,
     cliKind: agentWorkspace.agentTerminal.appCliKind,
     createFile: createAgentInstructionFile,
-    openFile: selectFile
+    openFile: selectFile,
+    refreshTree: fileSystem.refreshTree
   })
   const createDirectory: typeof fileSystem.createDirectory = async (parentPath, name) => {
     await fileSystem.createDirectory(parentPath, name)

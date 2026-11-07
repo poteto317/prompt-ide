@@ -242,12 +242,14 @@ describe('ExplorerPanel', () => {
     expect(section.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
-  it('clone の実行中 → 節のボタンがすべて disabled(isBlocked の配線)', () => {
+  it('clone の実行中 → 節の開閉のボタン以外がすべて disabled(isBlocked の配線)', () => {
     render(
       <ExplorerPanel {...openedProps} clone={makeCloneRepositoryPanelState({ isCloning: true })} />
     )
     const section = screen.getByRole('region', { name: 'エージェントの指示ファイル(Claude Code)' })
-    for (const button of within(section).getAllByRole('button')) expect(button).toBeDisabled()
+    for (const button of within(section).getAllByRole('button')) {
+      if (!button.hasAttribute('aria-expanded')) expect(button).toBeDisabled()
+    }
   })
 
   it('フォルダを開いていない → 指示ファイルの節を出さない', () => {

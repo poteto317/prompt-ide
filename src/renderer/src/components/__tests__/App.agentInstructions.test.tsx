@@ -73,4 +73,104 @@ describe('App: 指示ファイルの配線', () => {
     expect(await screen.findByRole('button', { name: 'CLAUDE.md を開く' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'CLAUDE.md を作成' })).not.toBeInTheDocument()
   })
+
+  it('サブフォルダの CLAUDE.md → 開閉のボタンを開いて 開く を押すとそのファイルを読む', async () => {
+    const withSub: FileTreeNode[] = [
+      {
+        name: 'src',
+        path: '/p/src',
+        type: 'directory',
+        children: [{ name: 'CLAUDE.md', path: '/p/src/CLAUDE.md', type: 'file' }]
+      },
+      ...before
+    ]
+    window.api.readDirectory = vi.fn().mockResolvedValue(withSub)
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'サブフォルダ(1 件)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'src/CLAUDE.md を開く' }))
+    await waitFor(() => expect(window.api.readFile).toHaveBeenCalledWith('/p/src/CLAUDE.md'))
+  })
+
+  it('更新 → ツリーを読み直し、外で足したサブフォルダのファイルとこのフォルダの行が新しくなる', async () => {
+    const added: FileTreeNode[] = [
+      { name: 'CLAUDE.md', path: '/p/CLAUDE.md', type: 'file' },
+      {
+        name: 'src',
+        path: '/p/src',
+        type: 'directory',
+        children: [{ name: 'CLAUDE.md', path: '/p/src/CLAUDE.md', type: 'file' }]
+      },
+      ...before
+    ]
+    // 読み込みの回数に頼らず、フォルダを開いた後に外で足したことにする
+    let tree = before
+    window.api.readDirectory = vi.fn(async () => tree)
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    expect(await screen.findByRole('button', { name: 'サブフォルダ(0 件)' })).toBeInTheDocument()
+    tree = added
+    const refreshButton = screen.getByRole('button', { name: '指示ファイルの一覧を更新' })
+    await userEvent.click(refreshButton)
+    expect(await screen.findByRole('button', { name: 'サブフォルダ(1 件)' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'CLAUDE.md を開く' })).toBeInTheDocument()
+    // 読み直しの後もフォーカスは押した `更新` に残る(body に落ちない)
+    expect(document.activeElement).toBe(refreshButton)
+  })
+
+  it('サブフォルダを開いた状態で 更新 → 節は作り直されず、開いたまま', async () => {
+    const withSub: FileTreeNode[] = [
+      {
+        name: 'src',
+        path: '/p/src',
+        type: 'directory',
+        children: [{ name: 'CLAUDE.md', path: '/p/src/CLAUDE.md', type: 'file' }]
+      },
+      ...before
+    ]
+    window.api.readDirectory = vi.fn().mockResolvedValue(withSub)
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    const toggle = await screen.findByRole('button', { name: 'サブフォルダ(1 件)' })
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    const readsBefore = vi.mocked(window.api.readDirectory).mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: '指示ファイルの一覧を更新' }))
+    await waitFor(() =>
+      expect(vi.mocked(window.api.readDirectory).mock.calls.length).toBeGreaterThan(readsBefore)
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: '指示ファイルの一覧を更新' })).not.toHaveAttribute(
+        'aria-disabled'
+      )
+    )
+    expect(screen.getByRole('button', { name: 'サブフォルダ(1 件)' })).toBe(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'src/CLAUDE.md を開く' })).toBeInTheDocument()
+  })
+
+  it('更新の失敗 → 節に固定の文言を出し、例外の文言は出さない', async () => {
+    let fails = false
+    window.api.readDirectory = vi.fn(async () => {
+      if (fails) throw new Error('EACCES: /p/secret')
+      return before
+    })
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      render(<App />)
+      await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+      const refreshButton = await screen.findByRole('button', { name: '指示ファイルの一覧を更新' })
+      fails = true
+      await userEvent.click(refreshButton)
+      const section = screen.getByRole('region', {
+        name: 'エージェントの指示ファイル(Claude Code)'
+      })
+      expect(await within(section).findByRole('alert')).toHaveTextContent(
+        'ファイルツリーを読み直せませんでした'
+      )
+      expect(screen.queryByText(/EACCES/)).not.toBeInTheDocument()
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
 })

@@ -17,3 +17,27 @@ export function agentInstructionCreateFailureMessage(
 
 export const AGENT_INSTRUCTION_OPEN_AFTER_CREATE_FAILED =
   '作成しましたが、開けませんでした。ファイルツリーから開いてください'
+
+/** 節の `更新` で、ファイルツリーの読み直しが拒否されたとき(例外の文言は出さない。L-017) */
+export const AGENT_INSTRUCTION_REFRESH_FAILED = 'ファイルツリーを読み直せませんでした'
+
+/** 節の小見出し(設計書 2026-11-07「文言」) */
+export const AGENT_INSTRUCTION_THIS_FOLDER_HEADING = 'このフォルダ'
+
+/** サブフォルダの開閉のボタン。件数は上限で隠した分を含む全件 */
+export function agentInstructionSubfolderToggleLabel(total: number): string {
+  return `サブフォルダ(${total} 件)`
+}
+
+export const AGENT_INSTRUCTION_SUBFOLDER_EMPTY = 'サブフォルダに指示ファイルはありません'
+
+/** 上限を超えて一覧に出さなかった分 */
+export function agentInstructionSubfolderHiddenLabel(count: number): string {
+  return `ほか ${count} 件(ファイルツリーから開いてください)`
+}
+
+/** 節の `更新`。aria-label はソース管理のツールバーの `更新`(↻)と読み上げで区別する */
+export const AGENT_INSTRUCTION_REFRESH_TEXT = '更新'
+export const AGENT_INSTRUCTION_REFRESH_LABEL = '指示ファイルの一覧を更新'
+export const AGENT_INSTRUCTION_REFRESH_TITLE =
+  'ファイルツリーを読み直して、指示ファイルを探し直します'

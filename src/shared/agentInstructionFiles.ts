@@ -75,3 +75,37 @@ export function findAgentInstructionFile(
 export function agentInstructionRelativePath(file: AgentInstructionFile): string {
   return file.segments.join('/')
 }
+
+/** サブフォルダの中で探すファイル名(設計書 2026-11-07「表」)。名前は完全一致で比べる(L-009) */
+export interface AgentInstructionSubfolderFileName {
+  name: string
+  /** 一覧に出す短い説明 */
+  description: string
+}
+
+export interface AgentInstructionSubfolderSpec {
+  /** 探すファイル名。同じフォルダの中はこの順に並べる */
+  names: readonly AgentInstructionSubfolderFileName[]
+  /** 一覧の上に出す注(無ければ null) */
+  note: string | null
+}
+
+// renderer だけが読む(サブフォルダの行は作成しない)。CLI の対応を今の表と 1 か所で見比べられるよう、ここに置く
+export const AGENT_INSTRUCTION_SUBFOLDER_FILES: Record<
+  AgentCliKind,
+  AgentInstructionSubfolderSpec
+> = {
+  claude: {
+    names: [
+      { name: 'CLAUDE.md', description: '共有の指示' },
+      { name: 'CLAUDE.local.md', description: '個人の指示' }
+    ],
+    // Claude Code はサブフォルダの CLAUDE.md を、そのフォルダのファイルを読んだときに読む
+    note: null
+  },
+  copilot: {
+    names: [{ name: 'AGENTS.md', description: '共有の指示' }],
+    // copilot は cwd から git root までの分だけを読み、根で起動すると子孫のフォルダの AGENTS.md は読まない(1.0.106 で確かめた)
+    note: 'GitHub Copilot CLI は、サブフォルダの AGENTS.md を読まないことがあります(このアプリはフォルダの根で CLI を起動するため)'
+  }
+}

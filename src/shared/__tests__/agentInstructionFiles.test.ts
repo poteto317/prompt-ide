@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { AGENT_CLI_KINDS } from '../agentCliKinds'
 import {
   AGENT_INSTRUCTION_FILES,
+  AGENT_INSTRUCTION_SUBFOLDER_FILES,
   agentInstructionRelativePath,
   findAgentInstructionFile
 } from '../agentInstructionFiles'
@@ -79,5 +80,43 @@ describe('findAgentInstructionFile', () => {
 
   it.each([null, undefined, 1, '', 'unknown', {}, ['claude-root']])('不正な id %p → null', (id) => {
     expect(findAgentInstructionFile('claude', id)).toBeNull()
+  })
+})
+
+describe('AGENT_INSTRUCTION_SUBFOLDER_FILES', () => {
+  it('すべての CLI の種類に名前が 1 つ以上あり、重複しない', () => {
+    for (const kind of AGENT_CLI_KINDS) {
+      const names = AGENT_INSTRUCTION_SUBFOLDER_FILES[kind].names.map((n) => n.name)
+      expect(names.length).toBeGreaterThan(0)
+      expect(new Set(names).size).toBe(names.length)
+    }
+  })
+
+  it('名前は区切りや .. を含まず、説明は空でない', () => {
+    for (const kind of AGENT_CLI_KINDS) {
+      for (const entry of AGENT_INSTRUCTION_SUBFOLDER_FILES[kind].names) {
+        expect(entry.name).not.toMatch(/[\\/]/)
+        expect(entry.name).not.toBe('..')
+        expect(entry.name).not.toBe('')
+        expect(entry.description).not.toBe('')
+      }
+    }
+  })
+
+  it('claude は CLAUDE.md・CLAUDE.local.md の順で、注は無い', () => {
+    expect(AGENT_INSTRUCTION_SUBFOLDER_FILES.claude).toEqual({
+      names: [
+        { name: 'CLAUDE.md', description: '共有の指示' },
+        { name: 'CLAUDE.local.md', description: '個人の指示' }
+      ],
+      note: null
+    })
+  })
+
+  it('copilot は AGENTS.md だけで、読まないことがある旨の注がある', () => {
+    expect(AGENT_INSTRUCTION_SUBFOLDER_FILES.copilot).toEqual({
+      names: [{ name: 'AGENTS.md', description: '共有の指示' }],
+      note: 'GitHub Copilot CLI は、サブフォルダの AGENTS.md を読まないことがあります(このアプリはフォルダの根で CLI を起動するため)'
+    })
   })
 })

@@ -115,6 +115,14 @@ export interface AgentInstructionFileRow {
   node: FileTreeNode | null
 }
 
+/** サブフォルダの指示ファイルの 1 行(設計書 2026-11-07「状態」) */
+export interface AgentInstructionSubfolderRow {
+  /** 根からの相対パス(区切りは /)。表示と aria-label に使う */
+  relativePath: string
+  description: string
+  node: FileTreeNode
+}
+
 /** エクスプローラーの「エージェントの指示ファイル」の節の状態と操作(設計書 2026-11-05) */
 export interface AgentInstructionsPanelState {
   /** 一覧の CLI(設定の種類。読み込み中は既定の claude) */
@@ -128,6 +136,18 @@ export interface AgentInstructionsPanelState {
   open: (row: AgentInstructionFileRow) => void
   /** 無い行を雛形で作って開く */
   create: (row: AgentInstructionFileRow) => Promise<void>
+  /** サブフォルダの指示ファイル(上限までに切った分。設計書 2026-11-07) */
+  subfolderRows: readonly AgentInstructionSubfolderRow[]
+  /** 見つかった全件の数(上限で隠した分を含む) */
+  subfolderTotal: number
+  /** サブフォルダの一覧の上に出す注(無ければ null) */
+  subfolderNote: string | null
+  /** サブフォルダの行を開く(エクスプローラーでファイルを選んだときと同じ経路) */
+  openSubfolderFile: (row: AgentInstructionSubfolderRow) => void
+  /** `更新` の途中(押した結果)。`更新` を aria-disabled にする */
+  isRefreshing: boolean
+  /** ファイルツリーを読み直す(useFileSystem.refreshTree を呼ぶだけ)。拒否しない */
+  refresh: () => Promise<void>
 }
 
 // リポジトリの clone(エクスプローラーの「リポジトリを clone」とそのダイアログ)が受け取る状態と操作。
