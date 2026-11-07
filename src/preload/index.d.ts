@@ -12,6 +12,8 @@ import type {
   AgentInterruptFollowUpResult,
   AgentPermissionAnswerResult,
   AgentInstructionCreateResult,
+  GlobalAgentInstructionCreateResult,
+  GlobalAgentInstructionStatus,
   AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
@@ -67,6 +69,13 @@ declare global {
         cliKind: AgentCliKind,
         fileId: AgentInstructionFileId
       ): Promise<AgentInstructionCreateResult>
+      /** 利用者の全体の指示ファイルの有無(agentInstructions:getGlobalStatus)。場所は main が起動時の環境変数で決める。
+       *  絶対パスは exists のときだけ返る(開くためのノード。画面には displayPath だけを出す) */
+      getGlobalAgentInstructionStatus(cliKind: AgentCliKind): Promise<GlobalAgentInstructionStatus>
+      /** 利用者の全体の指示ファイルを雛形で作る(agentInstructions:createGlobal)。失敗は理由で返す */
+      createGlobalAgentInstructionFile(
+        cliKind: AgentCliKind
+      ): Promise<GlobalAgentInstructionCreateResult>
       createDirectory(parentPath: string, name: string): Promise<void>
       renameEntry(path: string, newName: string): Promise<void>
       deleteEntry(path: string): Promise<void>

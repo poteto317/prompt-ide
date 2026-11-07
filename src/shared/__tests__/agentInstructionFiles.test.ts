@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { AGENT_CLI_KINDS } from '../agentCliKinds'
 import {
+  AGENT_GLOBAL_INSTRUCTION_FILES,
   AGENT_INSTRUCTION_FILES,
   AGENT_INSTRUCTION_SUBFOLDER_FILES,
   agentInstructionRelativePath,
@@ -119,4 +120,44 @@ describe('AGENT_INSTRUCTION_SUBFOLDER_FILES', () => {
       note: 'GitHub Copilot CLI は、サブフォルダの AGENTS.md を読まないことがあります(このアプリはフォルダの根で CLI を起動するため)'
     })
   })
+})
+
+describe('AGENT_GLOBAL_INSTRUCTION_FILES', () => {
+  it('CLI ごとに 1 つ → id が今の表の id と重ならない', () => {
+    const projectIds = [...AGENT_INSTRUCTION_FILES.claude, ...AGENT_INSTRUCTION_FILES.copilot].map(
+      (f) => f.id as string
+    )
+    const globalIds = Object.values(AGENT_GLOBAL_INSTRUCTION_FILES).map((f) => f.id as string)
+    expect(globalIds).toEqual(['claude-global', 'copilot-global'])
+    expect(globalIds.filter((id) => projectIds.includes(id))).toEqual([])
+  })
+
+  it('claude → CLAUDE_CONFIG_DIR・.claude・CLAUDE.md、空の値は既定にしない', () => {
+    expect(AGENT_GLOBAL_INSTRUCTION_FILES.claude).toMatchObject({
+      envName: 'CLAUDE_CONFIG_DIR',
+      defaultDirName: '.claude',
+      emptyEnvMeansDefault: false,
+      fileName: 'CLAUDE.md'
+    })
+  })
+
+  it('copilot → COPILOT_HOME・.copilot・copilot-instructions.md、空の値は既定', () => {
+    expect(AGENT_GLOBAL_INSTRUCTION_FILES.copilot).toMatchObject({
+      envName: 'COPILOT_HOME',
+      defaultDirName: '.copilot',
+      emptyEnvMeansDefault: true,
+      fileName: 'copilot-instructions.md'
+    })
+  })
+
+  it.each(['claude', 'copilot'] as const)(
+    '%s → 名前に区切りが無く、雛形は # 全体の指示 で始まり改行で終わる',
+    (kind) => {
+      const file = AGENT_GLOBAL_INSTRUCTION_FILES[kind]
+      expect(file.fileName).not.toMatch(/[/\\]/)
+      expect(file.template.startsWith('# 全体の指示\n')).toBe(true)
+      expect(file.template.endsWith('\n')).toBe(true)
+      expect(file.description).toBe('個人の指示(全部のプロジェクトに効きます)')
+    }
+  )
 })

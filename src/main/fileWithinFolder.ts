@@ -3,7 +3,7 @@ import type { FolderAccessManager } from './folderAccessManager'
 import { isMissingPathError } from './fsErrors'
 
 // ファイルが許可のフォルダの中にあるかの境界の規則(IPC のイベントに依らない)。handlers/fileAccessGuard.ts が
-// 再エクスポートし、checkedFileWrite.ts(main 直下)はここから直接使う
+// 再エクスポートし、fileAccessScope.ts(main 直下。許可フォルダの規則の側)はここから直接使う
 
 // 削除済みファイル（もうディスク上に存在しない）に対する stage/unstage を許可するため、
 // assertWithinFolder が ENOENT/ENOTDIR で失敗した場合のみ親ディレクトリの境界チェックに

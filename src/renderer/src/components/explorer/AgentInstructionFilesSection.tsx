@@ -8,6 +8,8 @@ import {
   AGENT_INSTRUCTION_REFRESH_TITLE,
   AGENT_INSTRUCTION_THIS_FOLDER_HEADING
 } from '../../lib/agentInstructionMessages'
+import AgentInstructionCreateButton from './AgentInstructionCreateButton'
+import AgentInstructionGlobalList from './AgentInstructionGlobalList'
 import AgentInstructionOpenButton from './AgentInstructionOpenButton'
 import AgentInstructionSubfolderList from './AgentInstructionSubfolderList'
 
@@ -36,7 +38,7 @@ export default function AgentInstructionFilesSection({
         <h3 id={headingId} className="agent-instructions__title">
           エージェントの指示ファイル({AGENT_CLI_PROFILES[state.cliKind].displayName})
         </h3>
-        {/* clone 中は押す前から押せないので disabled。作成の途中(作成が自分で読み直す)と更新の途中は押した結果なので
+        {/* clone 中は押す前から押せないので disabled。作成の途中(作成が自分で一覧を取り直す)と更新の途中は押した結果なので
             aria-disabled にして押しても何もしない(L-157)。フォルダの走査中は押せる(refreshTree が走査の後に読み直す) */}
         <button
           type="button"
@@ -62,29 +64,32 @@ export default function AgentInstructionFilesSection({
             </span>
             {row.node !== null ? (
               <AgentInstructionOpenButton
-                relativePath={row.relativePath}
+                path={row.relativePath}
                 isBlocked={isBlocked}
                 isCreating={creating}
                 onOpen={() => state.open(row)}
               />
             ) : (
-              <button
-                type="button"
-                className="agent-instructions__button"
-                aria-label={`${row.relativePath} を作成`}
-                disabled={isBlocked}
-                aria-disabled={creating ? true : undefined}
-                onClick={() => {
-                  if (!creating) void state.create(row)
-                }}
-              >
-                作成
-              </button>
+              <AgentInstructionCreateButton
+                path={row.relativePath}
+                isBlocked={isBlocked}
+                isCreating={creating}
+                onCreate={() => void state.create(row)}
+              />
             )}
           </li>
         ))}
       </ul>
-      {/* 節が縮んで中でスクロールするとき、下の一覧の後ろに置くと隠れる。「このフォルダ」の一覧の直後に置く */}
+      <AgentInstructionGlobalList
+        cliKind={state.cliKind}
+        row={state.globalRow}
+        isBlocked={isBlocked}
+        isCreating={creating}
+        onOpen={state.openGlobal}
+        onCreate={() => void state.createGlobal()}
+      />
+      {/* 節が縮んで中でスクロールするとき、下の一覧の後ろに置くと隠れる。「全体」の一覧の直後(サブフォルダの開閉のボタンの前)に置く。
+          押したボタン(このフォルダ・全体の行)の近くに出し、出たら上の effect で節の中の見える位置まで動かす */}
       {state.message !== null && (
         <p ref={messageRef} role="alert" className="agent-instructions__message">
           {state.message}

@@ -123,6 +123,14 @@ export interface AgentInstructionSubfolderRow {
   node: FileTreeNode
 }
 
+/** 全体の指示ファイルの行(設計書 2026-11-07 global「画面」)。exists だけが開くためのノードを持つ */
+export type AgentGlobalInstructionRow =
+  | { kind: 'loading' }
+  | { kind: 'exists'; displayPath: string; description: string; node: FileTreeNode }
+  | { kind: 'missing'; displayPath: string; description: string }
+  /** 節の `isBlocked`(clone の実行中など、押せない)とは別の状態で、開く・作成を出さない行(ホームの外へのリンク・確かめられない・環境変数が不正など) */
+  | { kind: 'blocked'; displayPath: string | null; message: string }
+
 /** エクスプローラーの「エージェントの指示ファイル」の節の状態と操作(設計書 2026-11-05) */
 export interface AgentInstructionsPanelState {
   /** 一覧の CLI(設定の種類。読み込み中は既定の claude) */
@@ -146,8 +154,14 @@ export interface AgentInstructionsPanelState {
   openSubfolderFile: (row: AgentInstructionSubfolderRow) => void
   /** `更新` の途中(押した結果)。`更新` を aria-disabled にする */
   isRefreshing: boolean
-  /** ファイルツリーを読み直す(useFileSystem.refreshTree を呼ぶだけ)。拒否しない */
+  /** ファイルツリーを読み直し、全体の指示ファイルを問い合わせ直す。拒否しない */
   refresh: () => Promise<void>
+  /** 全体の指示ファイルの行(設計書 2026-11-07 global) */
+  globalRow: AgentGlobalInstructionRow
+  /** 全体の指示ファイルを開く(exists のときだけ。エクスプローラーでファイルを選んだときと同じ経路) */
+  openGlobal: () => void
+  /** 全体の指示ファイルを雛形で作って開く */
+  createGlobal: () => Promise<void>
 }
 
 // リポジトリの clone(エクスプローラーの「リポジトリを clone」とそのダイアログ)が受け取る状態と操作。

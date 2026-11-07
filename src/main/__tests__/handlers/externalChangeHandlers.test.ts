@@ -21,6 +21,7 @@ import {
   registerExternalChangeHandlers,
   sendExternalChange
 } from '../../handlers/externalChangeHandlers'
+import { NO_GLOBAL_INSTRUCTIONS } from '../helpers/globalAgentInstructionContext'
 
 type Listener = (...args: unknown[]) => unknown
 const handles = new Map<string, Listener>()
@@ -44,7 +45,7 @@ beforeEach(() => {
   watcher = new OpenFileWatcher({ watch: vi.fn(), notify: vi.fn() })
   setWatchedFiles = vi.spyOn(watcher, 'setWatchedFiles').mockImplementation(() => undefined)
   vi.spyOn(watcher, 'clear')
-  registerExternalChangeHandlers(ipcMain as never, folderAccess, watcher)
+  registerExternalChangeHandlers(ipcMain as never, folderAccess, watcher, NO_GLOBAL_INSTRUCTIONS)
 })
 
 const writeChecked = (path: unknown, content: unknown, base: unknown): Promise<unknown> =>

@@ -53,6 +53,16 @@ const invokeCases: Array<[string, () => unknown, unknown[]]> = [
     ['agentInstructions:create', '/p', 'claude', 'claude-dot']
   ],
   [
+    'getGlobalAgentInstructionStatus は agentInstructions:getGlobalStatus チャンネルに cliKind を渡す',
+    () => api.getGlobalAgentInstructionStatus('claude'),
+    ['agentInstructions:getGlobalStatus', 'claude']
+  ],
+  [
+    'createGlobalAgentInstructionFile は agentInstructions:createGlobal チャンネルに cliKind を渡す',
+    () => api.createGlobalAgentInstructionFile('copilot'),
+    ['agentInstructions:createGlobal', 'copilot']
+  ],
+  [
     'createDirectory は fs:createDirectory チャンネルに parentPath と name を渡す',
     () => api.createDirectory('/project', 'sub'),
     ['fs:createDirectory', '/project', 'sub']

@@ -15,7 +15,9 @@ import {
 } from '../fileSystem'
 import { addToGitignore } from '../gitignoreService'
 import type { FolderAccessManager } from '../folderAccessManager'
-import { getAllowedFolder, assertFileAccess, assertFileWithinFolder } from './fileAccessGuard'
+import type { GlobalAgentInstructionContext } from '../globalAgentInstructionLocations'
+import { resolveFileAccessScope } from '../fileAccessScope'
+import { getAllowedFolder, assertFileWithinFolder } from './fileAccessGuard'
 import { assertValidEntryName } from './entryNameValidator'
 import { convertFsError, convertFsAccessError } from '../fsErrorConverter'
 import { isMissingPathError } from '../fsErrors'
@@ -58,8 +60,12 @@ function registerCreateEntryHandler(
 
 export function registerFileSystemHandlers(
   ipcMain: IpcMain,
-  folderAccess: FolderAccessManager
+  folderAccess: FolderAccessManager,
+  globalInstructions: GlobalAgentInstructionContext
 ): void {
+  // 読む・保存するの入口の規則は fileAccessScope.ts が決める(全体の指示ファイルか、許可フォルダか)
+  const scopeDeps = { folderAccess, globalInstructions }
+
   ipcMain.handle('dialog:openFolder', async (event: IpcMainInvokeEvent) => {
     // 送信元のウィンドウのモーダルにする(表示中に clone などの画面の操作をさせない)
     const result = await openFolderDialog(BrowserWindow.fromWebContents(event.sender))
@@ -77,22 +83,24 @@ export function registerFileSystemHandlers(
   })
 
   ipcMain.handle('fs:readFile', async (event: IpcMainInvokeEvent, filePath: string) => {
+    const scope = resolveFileAccessScope(scopeDeps, event.sender.id, filePath)
     try {
-      await assertFileAccess(folderAccess, event, filePath)
+      await scope.assertExisting(filePath)
       return await readFileContent(filePath)
     } catch (err) {
-      throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
+      throw scope.toRendererError(err, 'read')
     }
   })
 
   ipcMain.handle(
     'fs:writeFile',
     async (event: IpcMainInvokeEvent, filePath: string, content: string) => {
+      const scope = resolveFileAccessScope(scopeDeps, event.sender.id, filePath)
       try {
-        await assertFileAccess(folderAccess, event, filePath)
+        await scope.assertExisting(filePath)
         return await writeFileContent(filePath, content)
       } catch (err) {
-        throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
+        throw scope.toRendererError(err, 'write')
       }
     }
   )

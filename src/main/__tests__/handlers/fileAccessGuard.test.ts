@@ -1,11 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { IpcMainInvokeEvent } from 'electron'
 import type { FolderAccessManager } from '../../folderAccessManager'
-import {
-  getAllowedFolder,
-  assertFileAccess,
-  assertFileWithinFolder
-} from '../../handlers/fileAccessGuard'
+import { getAllowedFolder, assertFileWithinFolder } from '../../handlers/fileAccessGuard'
 import { assertFileWithinFolder as assertFileWithinFolderInMain } from '../../fileWithinFolder'
 
 function makeFolderAccess(overrides?: Partial<FolderAccessManager>): FolderAccessManager {
@@ -42,36 +38,6 @@ describe('getAllowedFolder', () => {
   })
 })
 
-describe('assertFileAccess', () => {
-  it('getAllowedFolder の結果を assertWithinFolder に渡す', async () => {
-    const assertWithinFolder = vi.fn().mockResolvedValue(undefined)
-    const folderAccess = makeFolderAccess({
-      get: vi.fn().mockReturnValue('/project'),
-      assertWithinFolder
-    })
-    await assertFileAccess(folderAccess, makeEvent(1), '/project/index.ts')
-    expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/index.ts')
-  })
-
-  it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
-    const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
-    await expect(assertFileAccess(folderAccess, makeEvent(1), '/project/index.ts')).rejects.toThrow(
-      'No folder open'
-    )
-  })
-
-  it('assertWithinFolder が拒否したときエラーが伝播する', async () => {
-    const folderAccess = makeFolderAccess({
-      get: vi.fn().mockReturnValue('/project'),
-      assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd'))
-    })
-    await expect(assertFileAccess(folderAccess, makeEvent(1), '/etc/passwd')).rejects.toThrow(
-      'Access denied'
-    )
-  })
-})
-
-// 規則の本体とテストは main 直下の fileWithinFolder.ts。既存の handler の import を変えないための再エクスポート
 describe('assertFileWithinFolder', () => {
   it('main 直下の fileWithinFolder の関数をそのまま再エクスポートする', () => {
     expect(assertFileWithinFolder).toBe(assertFileWithinFolderInMain)

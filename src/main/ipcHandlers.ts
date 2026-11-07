@@ -1,9 +1,11 @@
 import { randomBytes, randomUUID } from 'node:crypto'
 import { watch } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
+import { resolve } from 'node:path'
 import type { IpcMain } from 'electron'
 import { app, shell, BrowserWindow, Notification } from 'electron'
 import { FolderAccessManager } from './folderAccessManager'
+import { resolveGlobalAgentInstructionContext } from './globalAgentInstructionLocations'
 import { setupFolderAccessLifecycle } from './folderAccessLifecycle'
 import { registerFileSystemHandlers } from './handlers/fileSystemHandlers'
 import { registerAgentInstructionsHandlers } from './handlers/agentInstructionsHandlers'
@@ -65,11 +67,17 @@ import { registerAgentNotificationHandlers } from './handlers/agentNotificationH
 
 export function registerIpcHandlers(ipcMain: IpcMain): void {
   const folderAccess = new FolderAccessManager()
+  // 全体の指示ファイルの場所は起動時の process.env で 1 回だけ決める(CLI の起動のたびに作る環境と同じ値。設計書 2026-11-07 global)。
+  // ホームは resolve で正規化する(HOME の末尾の区切りなどで、場所の dirPath とホームの文字列の比較を食い違わせない)
+  const globalInstructions = resolveGlobalAgentInstructionContext({
+    env: process.env,
+    homeDir: resolve(homedir())
+  })
 
   setupFolderAccessLifecycle(app, folderAccess)
 
-  registerFileSystemHandlers(ipcMain, folderAccess)
-  registerAgentInstructionsHandlers(ipcMain, folderAccess)
+  registerFileSystemHandlers(ipcMain, folderAccess, globalInstructions)
+  registerAgentInstructionsHandlers(ipcMain, folderAccess, globalInstructions)
   registerGitHandlers(ipcMain, folderAccess)
   // clone は成功したフォルダを開く許可に切り替えるため、同じ FolderAccessManager を渡す
   const cloneRegistry = new CloneRegistry()
@@ -152,7 +160,7 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
     notify: sendExternalChange
   })
   setupOpenFileWatcherLifecycle(app, openFileWatcher, folderAccess)
-  registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher)
+  registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher, globalInstructions)
   registerShellHandlers(ipcMain, (url) => shell.openExternal(url))
   // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる。
   // 記録中は記録の tree を専用の ref から守る(hook の無いディレクトリは userData の下)。main の起動ごとの ID は 1 回だけ作り、

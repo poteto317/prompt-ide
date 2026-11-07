@@ -30,6 +30,7 @@ import { useGitTagOperations } from './useGitTagOperations'
 import { useGitRemoteSetup } from './useGitRemoteSetup'
 import { useCloneRepository } from './useCloneRepository'
 import { useAgentInstructionFiles } from './useAgentInstructionFiles'
+import * as agentInstructionsApi from '../lib/agentInstructionsApi'
 import type { ConflictFileState } from './useConflictFile'
 import { useFileOperationLock } from './useFileOperationLock'
 import { useOnChange } from './useOnChange'
@@ -379,7 +380,10 @@ export function useAppState(): AppState {
     cliKind: agentWorkspace.agentTerminal.appCliKind,
     createFile: createAgentInstructionFile,
     openFile: selectFile,
-    refreshTree: fileSystem.refreshTree
+    refreshTree: fileSystem.refreshTree,
+    // 関数をそのまま渡す(包むと毎レンダーで新しい参照になる)
+    getGlobalStatus: agentInstructionsApi.getGlobalAgentInstructionStatus,
+    createGlobalFile: agentInstructionsApi.createGlobalAgentInstructionFile
   })
   const createDirectory: typeof fileSystem.createDirectory = async (parentPath, name) => {
     await fileSystem.createDirectory(parentPath, name)

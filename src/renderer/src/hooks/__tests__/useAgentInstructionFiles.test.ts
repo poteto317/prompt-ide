@@ -1,10 +1,10 @@
 import { act, renderHook } from '@testing-library/react'
-import type { RenderHookResult } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { FileTreeNode, AgentInstructionsPanelState } from '../../types'
+import type { FileTreeNode } from '../../types'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import { useAgentInstructionFiles } from '../useAgentInstructionFiles'
 import type { UseAgentInstructionFilesOptions } from '../useAgentInstructionFiles'
+import { renderAgentInstructionFiles as renderFiles } from '../../__tests__/renderAgentInstructionFiles'
 import type { AgentInstructionCreateOutcome } from '../agentInstructionFileCreation'
 import {
   AGENT_INSTRUCTION_OPEN_AFTER_CREATE_FAILED,
@@ -14,22 +14,7 @@ import {
 
 const claudeNode: FileTreeNode = { name: 'CLAUDE.md', path: '/p/CLAUDE.md', type: 'file' }
 
-function renderFiles(
-  overrides: Partial<UseAgentInstructionFilesOptions> = {}
-): RenderHookResult<AgentInstructionsPanelState, UseAgentInstructionFilesOptions> {
-  const initialProps: UseAgentInstructionFilesOptions = {
-    folderPath: '/p',
-    fileTree: [],
-    cliKind: 'claude',
-    createFile: vi.fn<UseAgentInstructionFilesOptions['createFile']>(),
-    openFile: vi.fn<UseAgentInstructionFilesOptions['openFile']>().mockResolvedValue(true),
-    refreshTree: vi.fn<UseAgentInstructionFilesOptions['refreshTree']>().mockResolvedValue(true),
-    ...overrides
-  }
-  return renderHook((props) => useAgentInstructionFiles(props), { initialProps })
-}
-
-describe('useAgentInstructionFiles', () => {
+describe('useAgentInstructionFiles(このフォルダ・サブフォルダ)', () => {
   it('claude → 3 行。ツリーにある行だけ node が入る', () => {
     const { result } = renderFiles({ fileTree: [claudeNode] })
     expect(result.current.rows.map((r) => r.relativePath)).toEqual([
@@ -218,7 +203,12 @@ describe('useAgentInstructionFiles', () => {
         cliKind: 'claude',
         createFile,
         openFile,
-        refreshTree: vi.fn().mockResolvedValue(true)
+        refreshTree: vi.fn().mockResolvedValue(true),
+        getGlobalStatus: vi.fn().mockResolvedValue({
+          kind: 'missing',
+          displayPath: '~/.copilot/copilot-instructions.md'
+        }),
+        createGlobalFile: vi.fn()
       })
       await act(async () => {
         resolveCreate(outcome)
@@ -253,7 +243,12 @@ describe('useAgentInstructionFiles', () => {
         cliKind: 'copilot',
         createFile,
         openFile,
-        refreshTree: vi.fn().mockResolvedValue(true)
+        refreshTree: vi.fn().mockResolvedValue(true),
+        getGlobalStatus: vi.fn().mockResolvedValue({
+          kind: 'missing',
+          displayPath: '~/.copilot/copilot-instructions.md'
+        }),
+        createGlobalFile: vi.fn()
       })
       await act(async () => {
         resolveCreate(outcome)
@@ -317,7 +312,12 @@ describe('useAgentInstructionFiles', () => {
         cliKind: 'claude',
         createFile: vi.fn(),
         openFile: vi.fn(),
-        refreshTree: vi.fn().mockResolvedValue(true)
+        refreshTree: vi.fn().mockResolvedValue(true),
+        getGlobalStatus: vi.fn().mockResolvedValue({
+          kind: 'missing',
+          displayPath: '~/.copilot/copilot-instructions.md'
+        }),
+        createGlobalFile: vi.fn()
       }
       const { result, rerender } = renderHook((p) => useAgentInstructionFiles(p), {
         initialProps: props
@@ -334,7 +334,12 @@ describe('useAgentInstructionFiles', () => {
         cliKind: 'claude',
         createFile: vi.fn(),
         openFile: vi.fn(),
-        refreshTree: vi.fn().mockResolvedValue(true)
+        refreshTree: vi.fn().mockResolvedValue(true),
+        getGlobalStatus: vi.fn().mockResolvedValue({
+          kind: 'missing',
+          displayPath: '~/.copilot/copilot-instructions.md'
+        }),
+        createGlobalFile: vi.fn()
       }
       const { result, rerender } = renderHook((p) => useAgentInstructionFiles(p), {
         initialProps: props
@@ -532,7 +537,12 @@ describe('useAgentInstructionFiles', () => {
           cliKind: 'claude',
           createFile: vi.fn(),
           openFile: vi.fn(),
-          refreshTree
+          refreshTree,
+          getGlobalStatus: vi.fn().mockResolvedValue({
+            kind: 'missing',
+            displayPath: '~/.copilot/copilot-instructions.md'
+          }),
+          createGlobalFile: vi.fn()
         }
         const { result, rerender } = renderHook((p) => useAgentInstructionFiles(p), {
           initialProps: props

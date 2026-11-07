@@ -27,6 +27,10 @@ describe('App: 指示ファイルの配線', () => {
     )
     window.api.readFile = vi.fn().mockResolvedValue('# プロジェクトの指示\n')
     window.api.createAgentInstructionFile = vi.fn().mockResolvedValue({ ok: true })
+    window.api.getGlobalAgentInstructionStatus = vi
+      .fn()
+      .mockResolvedValue({ kind: 'missing', displayPath: '~/.claude/CLAUDE.md' })
+    window.api.createGlobalAgentInstructionFile = vi.fn().mockResolvedValue({ ok: true })
   })
 
   afterEach(() => {
@@ -172,5 +176,41 @@ describe('App: 指示ファイルの配線', () => {
     } finally {
       consoleError.mockRestore()
     }
+  })
+
+  it('全体の指示ファイルが exists → 開く を押すとそのパスで読み、タブの名前が ~/… になる', async () => {
+    window.api.getGlobalAgentInstructionStatus = vi.fn().mockResolvedValue({
+      kind: 'exists',
+      filePath: '/home/u/.claude/CLAUDE.md',
+      displayPath: '~/.claude/CLAUDE.md'
+    })
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    await userEvent.click(await screen.findByRole('button', { name: '~/.claude/CLAUDE.md を開く' }))
+    await waitFor(() =>
+      expect(window.api.readFile).toHaveBeenCalledWith('/home/u/.claude/CLAUDE.md')
+    )
+    expect(await screen.findByRole('tab', { name: /~\/\.claude\/CLAUDE\.md/ })).toBeInTheDocument()
+    expect(screen.queryByText('/home/u/.claude/CLAUDE.md')).not.toBeInTheDocument()
+  })
+
+  it('全体の指示ファイルが missing → 作成 を押すと claude で作成を呼ぶ', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    await userEvent.click(await screen.findByRole('button', { name: '~/.claude/CLAUDE.md を作成' }))
+    expect(window.api.createGlobalAgentInstructionFile).toHaveBeenCalledWith('claude')
+  })
+
+  it('更新 → 全体の指示ファイルをもう一度問い合わせる', async () => {
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
+    await screen.findByRole('button', { name: '~/.claude/CLAUDE.md を作成' })
+    const before = vi.mocked(window.api.getGlobalAgentInstructionStatus).mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: '指示ファイルの一覧を更新' }))
+    await waitFor(() =>
+      expect(
+        vi.mocked(window.api.getGlobalAgentInstructionStatus).mock.calls.length
+      ).toBeGreaterThan(before)
+    )
   })
 })

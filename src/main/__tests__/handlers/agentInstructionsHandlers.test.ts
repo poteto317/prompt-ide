@@ -2,10 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { IpcMainInvokeEvent } from 'electron'
 import { FolderAccessDeniedError } from '../../folderAccessManager'
 import type { FolderAccessManager } from '../../folderAccessManager'
+import { resolveGlobalAgentInstructionContext } from '../../globalAgentInstructionLocations'
+import { GlobalAgentInstructionAccessDeniedError } from '../../globalAgentInstructionAccess'
+import { NO_GLOBAL_INSTRUCTIONS } from '../helpers/globalAgentInstructionContext'
 
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockCreate = vi.hoisted(() => vi.fn())
 vi.mock('../../agentInstructionFileCreator', () => ({ createAgentInstructionFile: mockCreate }))
+const mockGetGlobalStatus = vi.hoisted(() => vi.fn())
+vi.mock('../../globalAgentInstructionStatus', () => ({
+  getGlobalAgentInstructionStatus: mockGetGlobalStatus
+}))
+const mockCreateGlobal = vi.hoisted(() => vi.fn())
+vi.mock('../../globalAgentInstructionFileCreator', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../globalAgentInstructionFileCreator')>()
+  return { ...actual, createGlobalAgentInstructionFile: mockCreateGlobal }
+})
 const mockRealpath = vi.hoisted(() => vi.fn(async (path: string) => path))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>()
@@ -28,7 +40,11 @@ const fsError = (code: string): NodeJS.ErrnoException => {
 
 const register = (folder: string | undefined): Handler => {
   const folderAccess = { get: vi.fn(() => folder) } as unknown as FolderAccessManager
-  registerAgentInstructionsHandlers({ handle: mockHandle } as never, folderAccess)
+  registerAgentInstructionsHandlers(
+    { handle: mockHandle } as never,
+    folderAccess,
+    NO_GLOBAL_INSTRUCTIONS
+  )
   const call = mockHandle.mock.calls.find(([channel]) => channel === 'agentInstructions:create')
   if (call === undefined) throw new Error('not registered')
   return call[1] as Handler
@@ -142,5 +158,82 @@ describe('agentInstructions:create', () => {
 describe('toAgentInstructionCreateFailureReason', () => {
   it('EEXIST → exists', () => {
     expect(toAgentInstructionCreateFailureReason(fsError('EEXIST'))).toBe('exists')
+  })
+})
+
+const registerGlobal = (channel: string, env: NodeJS.ProcessEnv = {}): Handler => {
+  mockHandle.mockClear()
+  const context = resolveGlobalAgentInstructionContext({ env, homeDir: '/home/u' })
+  registerAgentInstructionsHandlers(
+    { handle: mockHandle } as never,
+    {} as FolderAccessManager,
+    context
+  )
+  const found = mockHandle.mock.calls.find(([c]) => c === channel)
+  if (found === undefined) throw new Error('not registered')
+  return found[1] as Handler
+}
+
+describe('agentInstructions:getGlobalStatus', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('claude → claude の場所とホームで問い合わせ、結果をそのまま返す', async () => {
+    mockGetGlobalStatus.mockResolvedValue({ kind: 'missing', displayPath: '~/.claude/CLAUDE.md' })
+    const handler = registerGlobal('agentInstructions:getGlobalStatus')
+    await expect(handler(event, 'claude')).resolves.toEqual({
+      kind: 'missing',
+      displayPath: '~/.claude/CLAUDE.md'
+    })
+    expect(mockGetGlobalStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'resolved', displayPath: '~/.claude/CLAUDE.md' }),
+      '/home/u'
+    )
+  })
+
+  it.each(['codex', null, 1])('不正な cliKind(%s) → 例外で、問い合わせない', async (value) => {
+    const handler = registerGlobal('agentInstructions:getGlobalStatus')
+    await expect(handler(event, value)).rejects.toThrow()
+    expect(mockGetGlobalStatus).not.toHaveBeenCalled()
+  })
+})
+
+describe('agentInstructions:createGlobal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  })
+
+  it('作れた → { ok: true }', async () => {
+    mockCreateGlobal.mockResolvedValue(undefined)
+    const handler = registerGlobal('agentInstructions:createGlobal')
+    await expect(handler(event, 'copilot')).resolves.toEqual({ ok: true })
+    expect(mockCreateGlobal).toHaveBeenCalledWith(
+      expect.objectContaining({ displayPath: '~/.copilot/copilot-instructions.md' }),
+      '/home/u'
+    )
+  })
+
+  it('場所を決められない → unavailable で、作成を呼ばない', async () => {
+    const handler = registerGlobal('agentInstructions:createGlobal', { CLAUDE_CONFIG_DIR: 'rel' })
+    await expect(handler(event, 'claude')).resolves.toEqual({ ok: false, reason: 'unavailable' })
+    expect(mockCreateGlobal).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    [new GlobalAgentInstructionAccessDeniedError(), 'outside'],
+    [fsError('EEXIST'), 'exists'],
+    [fsError('EACCES'), 'failed']
+  ])('作成の例外(%s) → 理由で返し、文言・パスを入れない', async (err, reason) => {
+    mockCreateGlobal.mockRejectedValue(err)
+    const handler = registerGlobal('agentInstructions:createGlobal')
+    const result = await handler(event, 'claude')
+    expect(result).toEqual({ ok: false, reason })
+    expect(JSON.stringify(result)).not.toContain('/')
+  })
+
+  it('不正な cliKind → 例外で、作成を呼ばない', async () => {
+    const handler = registerGlobal('agentInstructions:createGlobal')
+    await expect(handler(event, 'codex')).rejects.toThrow()
+    expect(mockCreateGlobal).not.toHaveBeenCalled()
   })
 })

@@ -15,6 +15,9 @@ Object.defineProperty(window, 'api', {
     writeFile: () => Promise.resolve(),
     createFile: () => Promise.resolve(),
     createAgentInstructionFile: () => Promise.resolve({ ok: true }),
+    getGlobalAgentInstructionStatus: () =>
+      Promise.resolve({ kind: 'missing', displayPath: '~/.claude/CLAUDE.md' }),
+    createGlobalAgentInstructionFile: () => Promise.resolve({ ok: true }),
     createDirectory: () => Promise.resolve(),
     renameEntry: () => Promise.resolve(),
     deleteEntry: () => Promise.resolve(),

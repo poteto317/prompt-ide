@@ -7,6 +7,8 @@ vi.mock('node:fs/promises', () => ({ default: { realpath: mockRealpath }, realpa
 import { FolderAccessManager } from '../folderAccessManager'
 import { checkDiskUnchanged, writeFileChecked } from '../checkedFileWrite'
 import type { CheckedFileWriteIo } from '../checkedFileWrite'
+import { assertFileWithinFolder } from '../fileWithinFolder'
+import type { FileAccessScope } from '../fileAccessScope'
 
 const enoent = (): NodeJS.ErrnoException => Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
 const eexist = (): NodeJS.ErrnoException => Object.assign(new Error('EEXIST'), { code: 'EEXIST' })
@@ -40,14 +42,16 @@ const makeUnresolvable = (): void => {
   )
 }
 
+const folderScope = (): Pick<FileAccessScope, 'assertExisting' | 'assertRecreatable'> => ({
+  assertExisting: (path) => folderAccess.assertWithinFolder('/work', path),
+  assertRecreatable: (path) => assertFileWithinFolder(folderAccess, '/work', path)
+})
+
 const write = (
   baseContent: string | null,
   filePath = '/work/a.ts'
 ): ReturnType<typeof writeFileChecked> =>
-  writeFileChecked(
-    { folderAccess, allowedFolder: '/work', filePath, content: 'new', baseContent },
-    io
-  )
+  writeFileChecked({ scope: folderScope(), filePath, content: 'new', baseContent }, io)
 
 describe('writeFileChecked(解決できるパス)', () => {
   it('ディスクが基準と同じなら通常の書き込みで written', async () => {

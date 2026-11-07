@@ -1,11 +1,10 @@
 import type { ExternalChangeKind, WriteFileCheckedResult } from '@shared/types'
-import type { FolderAccessManager } from './folderAccessManager'
 import { createFileContent, readFileContent, writeFileContent } from './fileSystem'
 import { isFsError, isMissingPathError } from './fsErrors'
-import { assertFileWithinFolder } from './fileWithinFolder'
+import type { FileAccessScope } from './fileAccessScope'
 
 // 照合付きの保存(設計書「保存の直前の照合」)。許可の確認・照合・書き込み方式の選択を持ち、IPC の受け口
-// (fs:writeFileChecked。型の検証とエラーの変換)は handlers/externalChangeHandlers.ts
+// (fs:writeFileChecked。型の検証と scope の選択)は handlers/externalChangeHandlers.ts
 
 export interface CheckedFileWriteIo {
   readFile: (path: string) => Promise<string>
@@ -42,8 +41,8 @@ export async function checkDiskUnchanged(
 }
 
 export interface CheckedFileWriteRequest {
-  folderAccess: FolderAccessManager
-  allowedFolder: string
+  /** 許可の確認(許可フォルダか全体の指示ファイルか。fileAccessScope.ts の resolveFileAccessScope が決める) */
+  scope: Pick<FileAccessScope, 'assertExisting' | 'assertRecreatable'>
   filePath: string
   content: string
   /** タブが最後にディスクと一致した内容(savedContent)。null は照合せずに書く(上書きの確認で OK の後) */
@@ -51,19 +50,19 @@ export interface CheckedFileWriteRequest {
 }
 
 export async function writeFileChecked(
-  { folderAccess, allowedFolder, filePath, content, baseContent }: CheckedFileWriteRequest,
+  { scope, filePath, content, baseContent }: CheckedFileWriteRequest,
   io: CheckedFileWriteIo = defaultIo
 ): Promise<WriteFileCheckedResult> {
   // 対象を realpath で解決できたか。できなかった(削除された・ぶら下がったシンボリックリンク)ときは、許可の確認を
-  // 親フォルダへ倒し(削除されたファイルを作り直せるよう)、書き込みは排他的作成にする(リンクを辿ってフォルダの外へ
+  // 親フォルダへ倒し(削除されたファイルを作り直せるよう)、書き込みは排他的作成にする(リンクを辿って範囲の外へ
   // 作らない。照合と書き込みの間にファイルが復活した場合も上書きせず modified として返す)
   let resolved = true
   try {
-    await folderAccess.assertWithinFolder(allowedFolder, filePath)
+    await scope.assertExisting(filePath)
   } catch (err) {
     if (!isMissingPathError(err)) throw err
     resolved = false
-    await assertFileWithinFolder(folderAccess, allowedFolder, filePath)
+    await scope.assertRecreatable(filePath)
   }
   if (baseContent !== null) {
     const check = await checkDiskUnchanged(filePath, baseContent, io.readFile)

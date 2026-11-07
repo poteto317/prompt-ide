@@ -41,6 +41,7 @@ vi.mock('../../pathNormalize', () => ({
 }))
 
 import { registerFileSystemHandlers } from '../../handlers/fileSystemHandlers'
+import { NO_GLOBAL_INSTRUCTIONS } from '../helpers/globalAgentInstructionContext'
 
 const mockIpcMain = { handle: mockHandle } as never
 
@@ -93,7 +94,7 @@ describe('registerFileSystemHandlers', () => {
   describe('dialog:openFolder', () => {
     it('openFolderDialog に委譲して結果を返す', async () => {
       const folderAccess = makeFolderAccess()
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockOpenFolderDialog.mockResolvedValue('/project')
       const result = await getRegisteredHandler('dialog:openFolder')(makeEvent(1))
       expect(mockOpenFolderDialog).toHaveBeenCalledOnce()
@@ -102,7 +103,7 @@ describe('registerFileSystemHandlers', () => {
 
     it('結果が null のとき folderAccess.set を呼ばない', async () => {
       const folderAccess = makeFolderAccess()
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockOpenFolderDialog.mockResolvedValue(null)
       const result = await getRegisteredHandler('dialog:openFolder')(makeEvent(1))
       expect(result).toBeNull()
@@ -111,7 +112,7 @@ describe('registerFileSystemHandlers', () => {
 
     it('結果が非 null のとき realpath 解決後に folderAccess.set を呼ぶ', async () => {
       const folderAccess = makeFolderAccess()
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockOpenFolderDialog.mockResolvedValue('/project')
       await getRegisteredHandler('dialog:openFolder')(makeEvent(1))
       expect(folderAccess.set).toHaveBeenCalledWith(1, '/project')
@@ -121,7 +122,7 @@ describe('registerFileSystemHandlers', () => {
     // 書き換わる。送信元のウィンドウのモーダルにして、表示中は画面を操作させない
     it('送信元のウィンドウ(sender から引いた BrowserWindow)をダイアログに渡す', async () => {
       const folderAccess = makeFolderAccess()
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       const window = { id: 'window' }
       mockFromWebContents.mockReturnValueOnce(window)
       mockOpenFolderDialog.mockResolvedValueOnce(null)
@@ -135,14 +136,14 @@ describe('registerFileSystemHandlers', () => {
   describe('fs:readDirectory', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       const handler = getRegisteredHandler('fs:readDirectory')
       await expect(handler(makeEvent(1), '/project')).rejects.toThrow('No folder open')
     })
 
     it('allowedFolder と同じ realpath のとき readDirRecursive を呼ぶ', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockReadDirRecursive.mockResolvedValue([])
       const handler = getRegisteredHandler('fs:readDirectory')
       await handler(makeEvent(1), '/project')
@@ -151,7 +152,7 @@ describe('registerFileSystemHandlers', () => {
 
     it('allowedFolder と異なるパスは "Access denied" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue('/project') })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       const handler = getRegisteredHandler('fs:readDirectory')
       await expect(handler(makeEvent(1), '/other')).rejects.toThrow('Access denied')
       expect(mockReadDirRecursive).not.toHaveBeenCalled()
@@ -161,7 +162,7 @@ describe('registerFileSystemHandlers', () => {
   describe('fs:readFile', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:readFile')(makeEvent(1), '/project/index.ts')
       ).rejects.toThrow('No folder open')
@@ -172,7 +173,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockReadFileContent.mockResolvedValue('content')
       await getRegisteredHandler('fs:readFile')(makeEvent(1), '/project/index.ts')
       expect(folderAccess.assertWithinFolder).toHaveBeenCalledWith('/project', '/project/index.ts')
@@ -183,7 +184,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockReadFileContent.mockResolvedValue('const x = 1')
       const result = await getRegisteredHandler('fs:readFile')(makeEvent(1), '/project/index.ts')
       expect(result).toBe('const x = 1')
@@ -194,7 +195,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd'))
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:readFile')(makeEvent(1), '/etc/passwd')
       ).rejects.toThrow('Access denied')
@@ -206,7 +207,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockRejectedValue(makeEnoentError('/project/index.ts'))
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:readFile')(makeEvent(1), '/project/index.ts')
       ).rejects.toThrow('ファイルが見つかりません: /project/index.ts')
@@ -217,7 +218,7 @@ describe('registerFileSystemHandlers', () => {
   describe('fs:writeFile', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
       ).rejects.toThrow('No folder open')
@@ -228,7 +229,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
       expect(folderAccess.assertWithinFolder).toHaveBeenCalledWith('/project', '/project/index.ts')
     })
@@ -238,7 +239,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'new content')
       expect(mockWriteFileContent).toHaveBeenCalledWith('/project/index.ts', 'new content')
     })
@@ -248,7 +249,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockRejectedValue(new Error('Access denied: /etc/passwd'))
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:writeFile')(makeEvent(1), '/etc/passwd', 'x')
       ).rejects.toThrow('Access denied')
@@ -260,7 +261,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockRejectedValue(makeEnoentError('/project/index.ts'))
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
       ).rejects.toThrow('ファイルが見つかりません: /project/index.ts')
@@ -272,7 +273,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockWriteFileContent.mockRejectedValue(makeEnoentError('/project/index.ts'))
       await expect(
         getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
@@ -284,7 +285,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockWriteFileContent.mockRejectedValue(new Error('Access denied: /project/index.ts'))
       await expect(
         getRegisteredHandler('fs:writeFile')(makeEvent(1), '/project/index.ts', 'x')
@@ -296,7 +297,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockWriteFileContent.mockRejectedValue(
         Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
       )
@@ -313,7 +314,7 @@ describe('registerFileSystemHandlers', () => {
         assertParentWithinFolder: vi.fn().mockResolvedValue('/project/src'),
         ...overrides
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       return folderAccess
     }
 
@@ -390,7 +391,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertParentWithinFolder: vi.fn().mockResolvedValue('/project')
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await getRegisteredHandler('fs:createDirectory')(makeEvent(1), '/project', 'newdir')
       expect(mockCreateDirectory).toHaveBeenCalledWith('/project/newdir')
     })
@@ -400,7 +401,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertParentWithinFolder: vi.fn().mockResolvedValue('/project')
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockCreateDirectory.mockRejectedValue(makeEexistError('/project/newdir'))
       await expect(
         getRegisteredHandler('fs:createDirectory')(makeEvent(1), '/project', 'newdir')
@@ -412,7 +413,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertParentWithinFolder: vi.fn().mockResolvedValue('/project')
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:createDirectory')(makeEvent(1), '/project', '../evil')
       ).rejects.toThrow('無効な名前です')
@@ -427,7 +428,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder: vi.fn().mockResolvedValue(undefined),
         ...overrides
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       return folderAccess
     }
 
@@ -484,7 +485,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder: vi.fn().mockResolvedValue(undefined),
         ...overrides
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       return folderAccess
     }
 
@@ -547,7 +548,7 @@ describe('registerFileSystemHandlers', () => {
   describe('fs:addToGitignore', () => {
     it('folderAccess が未設定のとき "No folder open" エラーをスロー', async () => {
       const folderAccess = makeFolderAccess({ get: vi.fn().mockReturnValue(undefined) })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
       ).rejects.toThrow('No folder open')
@@ -565,7 +566,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder: vi.fn().mockResolvedValue(undefined),
         assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockIsSymbolicLink.mockResolvedValue(true)
       mockAddToGitignore.mockResolvedValue(undefined)
 
@@ -581,7 +582,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder: vi.fn().mockResolvedValue(undefined),
         assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       // lstat は対象が存在しなければ ENOENT を投げる
       mockIsSymbolicLink.mockRejectedValue(makeEnoentError('/project/.gitignore'))
       mockAddToGitignore.mockResolvedValue(undefined)
@@ -606,7 +607,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder: vi.fn().mockResolvedValue(undefined),
         assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       // 後続のテストに影響しないよう、この1回限りの動作として設定する
       // (mockIsSymbolicLink は各テストが個別に mockResolvedValue/mockRejectedValue で
       // 上書きする前提で、vi.clearAllMocks() は実装まではクリアしないため)
@@ -631,7 +632,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder,
         assertParentWithinFolder: vi.fn().mockResolvedValue(undefined)
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockAddToGitignore.mockResolvedValue(undefined)
 
       await expect(
@@ -646,7 +647,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockAddToGitignore.mockResolvedValue(undefined)
       await getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/dist')
       expect(assertWithinFolder).toHaveBeenCalledWith('/project', '/project/dist')
@@ -662,7 +663,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockAddToGitignore.mockResolvedValue(undefined)
       mockToGitRelativePath.mockReturnValue('NORMALIZED_PATH')
 
@@ -686,7 +687,7 @@ describe('registerFileSystemHandlers', () => {
         assertWithinFolder,
         assertParentWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockAddToGitignore.mockResolvedValue(undefined)
       mockToGitRelativePath.mockReturnValue('deleted.txt')
 
@@ -706,7 +707,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       await expect(
         getRegisteredHandler('fs:addToGitignore')(makeEvent(1), '/project/locked.txt')
       ).rejects.toThrow('ファイル操作に失敗しました(EACCES): /project/locked.txt')
@@ -723,7 +724,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockToGitRelativePath.mockReturnValue('dist')
       mockAddToGitignore.mockRejectedValue(
         Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' })
@@ -740,7 +741,7 @@ describe('registerFileSystemHandlers', () => {
         get: vi.fn().mockReturnValue('/project'),
         assertWithinFolder
       })
-      registerFileSystemHandlers(mockIpcMain, folderAccess)
+      registerFileSystemHandlers(mockIpcMain, folderAccess, NO_GLOBAL_INSTRUCTIONS)
       mockToGitRelativePath.mockReturnValue('dist')
       // 後続のテストへ漏れないよう、この 1 回限りの動作として設定する
       mockIsSymbolicLink.mockRejectedValueOnce(

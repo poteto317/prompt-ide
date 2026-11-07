@@ -70,7 +70,7 @@ export default function AgentInstructionSubfolderList({
                       <span className="agent-instructions__description">{row.description}</span>
                     </span>
                     <AgentInstructionOpenButton
-                      relativePath={row.relativePath}
+                      path={row.relativePath}
                       isBlocked={isBlocked}
                       isCreating={isCreating}
                       onOpen={() => onOpen(row)}

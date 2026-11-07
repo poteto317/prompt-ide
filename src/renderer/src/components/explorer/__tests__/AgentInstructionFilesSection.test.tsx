@@ -25,6 +25,23 @@ const claudeRows = (existing: string[]): AgentInstructionFileRow[] =>
     }
   })
 
+/** 小見出し `このフォルダ` の直後の一覧(全体の一覧・サブフォルダの一覧と区別する) */
+const thisFolderList = (): HTMLElement => {
+  const heading = screen.getByRole('heading', { level: 4, name: 'このフォルダ' })
+  const list = heading.nextElementSibling
+  if (!(list instanceof HTMLElement) || list.tagName !== 'UL')
+    throw new Error('このフォルダ の一覧が無い')
+  return list
+}
+
+/** 小見出し `全体(すべてのプロジェクト)` の直後の一覧 */
+const globalList = (): HTMLElement => {
+  const heading = screen.getByRole('heading', { level: 4, name: '全体(すべてのプロジェクト)' })
+  const list = heading.nextElementSibling
+  if (!(list instanceof HTMLElement) || list.tagName !== 'UL') throw new Error('全体 の一覧が無い')
+  return list
+}
+
 describe('AgentInstructionFilesSection', () => {
   it('見出しに CLI の表示名を出す', () => {
     render(
@@ -60,7 +77,7 @@ describe('AgentInstructionFilesSection', () => {
         isBlocked={false}
       />
     )
-    const items = screen.getAllByRole('listitem')
+    const items = within(thisFolderList()).getAllByRole('listitem')
     expect(items).toHaveLength(3)
     expect(within(items[0]).getByText('CLAUDE.md')).toBeInTheDocument()
     expect(within(items[0]).getByText('共有の指示')).toBeInTheDocument()
@@ -155,7 +172,7 @@ describe('AgentInstructionFilesSection', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('フォルダの外には作成できません')
   })
 
-  it('文言 → 「このフォルダ」の一覧の後、サブフォルダの開閉のボタンより前に置く(節が縮んで中でスクロールしても隠れない)', () => {
+  it('文言 → 「全体」の一覧の後、サブフォルダの開閉のボタンより前に置く(節が縮んで中でスクロールしても隠れない)', () => {
     const subfolderRows = [
       {
         relativePath: 'src/CLAUDE.md',
@@ -174,11 +191,11 @@ describe('AgentInstructionFilesSection', () => {
       />
     )
     const alert = screen.getByRole('alert')
-    const thisFolderList = screen.getByRole('list')
+    const list = thisFolderList()
+    const global = globalList()
     const toggle = screen.getByRole('button', { name: 'サブフォルダ(1 件)' })
-    expect(
-      thisFolderList.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy()
+    expect(list.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(global.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(alert.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
@@ -226,21 +243,68 @@ describe('AgentInstructionFilesSection', () => {
     const state = makeAgentInstructionsPanelState({ subfolderRows, subfolderTotal: 1 })
     render(<AgentInstructionFilesSection state={state} isBlocked={false} />)
     const heading = screen.getByRole('heading', { level: 4, name: 'このフォルダ' })
-    const thisFolderList = screen.getByRole('list')
+    const list = thisFolderList()
     const toggle = screen.getByRole('button', { name: 'サブフォルダ(1 件)' })
     // 見出し → 今の行の ul → 開閉のボタン、の順
-    expect(
-      heading.compareDocumentPosition(thisFolderList) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy()
-    expect(
-      thisFolderList.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy()
-    expect(thisFolderList).toContainElement(
-      screen.getByRole('button', { name: 'CLAUDE.md を作成' })
-    )
+    expect(heading.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(list.compareDocumentPosition(toggle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(list).toContainElement(screen.getByRole('button', { name: 'CLAUDE.md を作成' }))
     await userEvent.click(toggle)
     await userEvent.click(screen.getByRole('button', { name: 'src/CLAUDE.md を開く' }))
     expect(state.openSubfolderFile).toHaveBeenCalledWith(subfolderRows[0])
+  })
+
+  it('全体の一覧 → このフォルダの一覧の後、失敗の文言とサブフォルダの開閉のボタンの前', () => {
+    render(
+      <AgentInstructionFilesSection
+        state={makeAgentInstructionsPanelState({ message: '失敗' })}
+        isBlocked={false}
+      />
+    )
+    const globalHeading = screen.getByRole('heading', {
+      level: 4,
+      name: '全体(すべてのプロジェクト)'
+    })
+    const thisFolder = screen.getByRole('heading', { level: 4, name: 'このフォルダ' })
+    const alert = screen.getByRole('alert')
+    const toggle = screen.getByRole('button', { name: /サブフォルダ/ })
+    const follows = (a: Element, b: Element): boolean =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    expect(follows(thisFolderList(), globalHeading)).toBe(true)
+    expect(follows(thisFolder, globalHeading)).toBe(true)
+    expect(follows(globalHeading, alert)).toBe(true)
+    expect(follows(alert, toggle)).toBe(true)
+    expect(within(globalList()).getAllByRole('listitem')).toHaveLength(1)
+  })
+
+  it('全体の 作成 → state.createGlobal を呼ぶ', async () => {
+    const state = makeAgentInstructionsPanelState()
+    render(<AgentInstructionFilesSection state={state} isBlocked={false} />)
+    await userEvent.click(screen.getByRole('button', { name: '~/.claude/CLAUDE.md を作成' }))
+    expect(state.createGlobal).toHaveBeenCalledTimes(1)
+  })
+
+  it('全体の 開く → state.openGlobal を呼ぶ', async () => {
+    const state = makeAgentInstructionsPanelState({
+      globalRow: {
+        kind: 'exists',
+        displayPath: '~/.claude/CLAUDE.md',
+        description: '個人の指示(全部のプロジェクトに効きます)',
+        node: { type: 'file', name: '~/.claude/CLAUDE.md', path: '/h/.claude/CLAUDE.md' }
+      }
+    })
+    render(<AgentInstructionFilesSection state={state} isBlocked={false} />)
+    await userEvent.click(screen.getByRole('button', { name: '~/.claude/CLAUDE.md を開く' }))
+    expect(state.openGlobal).toHaveBeenCalledTimes(1)
+  })
+
+  it('作成の途中 → 全体の 作成 は aria-disabled で、押しても createGlobal を呼ばない', async () => {
+    const state = makeAgentInstructionsPanelState({ isCreating: true })
+    render(<AgentInstructionFilesSection state={state} isBlocked={false} />)
+    const button = screen.getByRole('button', { name: '~/.claude/CLAUDE.md を作成' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.click(button)
+    expect(state.createGlobal).not.toHaveBeenCalled()
   })
 
   describe('サブフォルダの一覧への受け渡し', () => {
@@ -286,7 +350,7 @@ describe('AgentInstructionFilesSection', () => {
       expect(refreshButton()).toHaveTextContent('更新')
       expect(refreshButton()).toHaveAttribute(
         'title',
-        'ファイルツリーを読み直して、指示ファイルを探し直します'
+        'ファイルツリーを読み直し、全体の指示ファイルの有無も確かめ直します'
       )
       await userEvent.click(refreshButton())
       expect(state.refresh).toHaveBeenCalledTimes(1)

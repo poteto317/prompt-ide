@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { FolderAccessManager } from '../../folderAccessManager'
 import { OpenFileWatcher } from '../../openFileWatcher'
 import { registerExternalChangeHandlers } from '../../handlers/externalChangeHandlers'
+import { NO_GLOBAL_INSTRUCTIONS } from '../helpers/globalAgentInstructionContext'
 
 // 実物のファイルシステムで、照合付きの保存がフォルダの外へ書き込まないことを確かめる(モックでは
 // シンボリックリンクを辿る書き込みを再現できない)
@@ -36,7 +37,7 @@ beforeEach(() => {
   const folderAccess = new FolderAccessManager()
   folderAccess.set(1, work)
   const watcher = new OpenFileWatcher({ watch: vi.fn(), notify: vi.fn() })
-  registerExternalChangeHandlers(ipcMain as never, folderAccess, watcher)
+  registerExternalChangeHandlers(ipcMain as never, folderAccess, watcher, NO_GLOBAL_INSTRUCTIONS)
 })
 
 afterEach(() => {

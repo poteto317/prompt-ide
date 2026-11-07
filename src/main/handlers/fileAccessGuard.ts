@@ -10,14 +10,5 @@ export function getAllowedFolder(
   return allowedFolder
 }
 
-export async function assertFileAccess(
-  folderAccess: FolderAccessManager,
-  event: IpcMainInvokeEvent,
-  filePath: string
-): Promise<void> {
-  const allowedFolder = getAllowedFolder(folderAccess, event)
-  await folderAccess.assertWithinFolder(allowedFolder, filePath)
-}
-
 // 境界の規則(イベントに依らない)は main 直下。既存の handler の import を変えないよう、ここからも出す
 export { assertFileWithinFolder } from '../fileWithinFolder'

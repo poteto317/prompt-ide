@@ -14,6 +14,8 @@ import type {
   AgentInterruptFollowUpResult,
   AgentPermissionAnswerResult,
   AgentInstructionCreateResult,
+  GlobalAgentInstructionCreateResult,
+  GlobalAgentInstructionStatus,
   AgentInterruptResult,
   AgentRevertAllEntry,
   AgentRevertAllResult,
@@ -70,6 +72,12 @@ export const api = {
     fileId: AgentInstructionFileId
   ): Promise<AgentInstructionCreateResult> =>
     ipcRenderer.invoke('agentInstructions:create', expectedRoot, cliKind, fileId),
+  getGlobalAgentInstructionStatus: (cliKind: AgentCliKind): Promise<GlobalAgentInstructionStatus> =>
+    ipcRenderer.invoke('agentInstructions:getGlobalStatus', cliKind),
+  createGlobalAgentInstructionFile: (
+    cliKind: AgentCliKind
+  ): Promise<GlobalAgentInstructionCreateResult> =>
+    ipcRenderer.invoke('agentInstructions:createGlobal', cliKind),
   createDirectory: (parentPath: string, name: string): Promise<void> =>
     ipcRenderer.invoke('fs:createDirectory', parentPath, name),
   renameEntry: (path: string, newName: string): Promise<void> =>

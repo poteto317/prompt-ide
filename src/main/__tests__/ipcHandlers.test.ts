@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
+import { resolve } from 'node:path'
 
 const mockHandle = vi.hoisted(() => vi.fn())
 const mockSetupFolderAccessLifecycle = vi.hoisted(() => vi.fn())
@@ -203,6 +204,7 @@ vi.mock('../handlers/claudeHandlers', () => ({
 import { registerIpcHandlers } from '../ipcHandlers'
 import { isCliSessionId } from '@shared/types'
 import { CloneRegistry } from '../cloneRegistry'
+import { FolderAccessManager } from '../folderAccessManager'
 import { AgentSessionRegistry } from '../agentSessionRegistry'
 import { AgentBaselineRegistry } from '../agentBaselineRegistry'
 import type { AgentBaselineRegistryDeps } from '../agentBaselineRegistry'
@@ -243,19 +245,28 @@ describe('registerIpcHandlers', () => {
     expect(mockSetupCloneLifecycle.mock.calls[0][1]).toBe(registry)
   })
 
-  it('registerFileSystemHandlers を ipcMain と FolderAccessManager を引数に呼び出す', () => {
+  it('registerFileSystemHandlers を ipcMain と FolderAccessManager と全体の指示ファイルの文脈を引数に呼び出す', () => {
     registerIpcHandlers(mockIpcMain)
     expect(mockRegisterFileSystemHandlers).toHaveBeenCalledOnce()
-    expect(mockRegisterFileSystemHandlers).toHaveBeenCalledWith(mockIpcMain, expect.any(Object))
+    const [ipc, folderAccess, globalInstructions] = mockRegisterFileSystemHandlers.mock.calls[0]
+    expect(ipc).toBe(mockIpcMain)
+    expect(folderAccess).toBeInstanceOf(FolderAccessManager)
+    // ホームは resolve で正規化した値(HOME の末尾の区切りで、場所とホームの文字列の比較を食い違わせない)
+    expect(globalInstructions).toEqual(
+      expect.objectContaining({ locations: expect.anything(), homeDir: resolve(homedir()) })
+    )
   })
 
-  it('registerAgentInstructionsHandlers を ipcMain と registerFileSystemHandlers と同じ FolderAccessManager で呼び出す', () => {
+  it('registerAgentInstructionsHandlers を ipcMain と registerFileSystemHandlers と同じ FolderAccessManager と全体の指示ファイルの文脈で呼び出す', () => {
     registerIpcHandlers(mockIpcMain)
     expect(mockRegisterAgentInstructionsHandlers).toHaveBeenCalledOnce()
     const [ipcMain, folderAccess] = mockRegisterAgentInstructionsHandlers.mock.calls[0]
     expect(ipcMain).toBe(mockIpcMain)
     // 同じインスタンス(深い比較ではなく参照)。別の FolderAccessManager だと許可フォルダが常に無い
     expect(folderAccess).toBe(mockRegisterFileSystemHandlers.mock.calls[0][1])
+    // 全体の指示ファイルの文脈も同じ値を共有する(L-060)
+    const globalInstructions = mockRegisterFileSystemHandlers.mock.calls[0][2]
+    expect(mockRegisterAgentInstructionsHandlers.mock.calls[0][2]).toBe(globalInstructions)
   })
 
   it('registerGitHandlers を ipcMain と FolderAccessManager を引数に呼び出す', () => {
@@ -592,17 +603,21 @@ describe('registerIpcHandlers', () => {
     expect(createCliSessionId()).not.toBe(cliId)
   })
 
-  it('外部変更の IPC と監視の寿命に、同じ FolderAccessManager と同じ OpenFileWatcher を渡す', () => {
+  it('外部変更の IPC と監視の寿命に、同じ FolderAccessManager と同じ OpenFileWatcher と、同じ全体の指示ファイルの文脈を渡す', () => {
     registerIpcHandlers(mockIpcMain)
     const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1]
     const [, watcher, lifecycleFolderAccess] = mockSetupOpenFileWatcherLifecycle.mock.calls[0]
     expect(watcher).toBeInstanceOf(OpenFileWatcher)
     expect(lifecycleFolderAccess).toBe(folderAccess)
-    expect(mockRegisterExternalChangeHandlers).toHaveBeenCalledWith(
-      mockIpcMain,
-      folderAccess,
-      watcher
-    )
+    const globalInstructions = mockRegisterFileSystemHandlers.mock.calls[0][2]
+    expect(globalInstructions.homeDir).toBe(resolve(homedir()))
+    expect(mockRegisterExternalChangeHandlers).toHaveBeenCalledOnce()
+    const [ipc, externalFolderAccess, externalWatcher, externalGlobal] =
+      mockRegisterExternalChangeHandlers.mock.calls[0]
+    expect(ipc).toBe(mockIpcMain)
+    expect(externalFolderAccess).toBe(folderAccess)
+    expect(externalWatcher).toBe(watcher)
+    expect(externalGlobal).toBe(globalInstructions)
     expect(mockRegisterShellHandlers).toHaveBeenCalledWith(mockIpcMain, expect.any(Function))
   })
 

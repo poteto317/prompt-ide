@@ -4,8 +4,8 @@ import type { FolderAccessManager } from '../folderAccessManager'
 import type { OpenFileWatcher } from '../openFileWatcher'
 import { isAbsolute } from 'node:path'
 import { writeFileChecked } from '../checkedFileWrite'
-import { convertFsAccessError } from '../fsErrorConverter'
-import { getAllowedFolder } from './fileAccessGuard'
+import type { GlobalAgentInstructionContext } from '../globalAgentInstructionLocations'
+import { resolveFileAccessScope } from '../fileAccessScope'
 import { sendToOwner } from '../safeWebContentsSend'
 
 // 外部変更の検知の IPC(設計書「外部変更の検知」)。照合付きの保存と、開いているタブの監視の登録
@@ -24,10 +24,14 @@ export function sendExternalChange(ownerId: number, paths: string[]): void {
 export function registerExternalChangeHandlers(
   ipcMain: IpcMain,
   folderAccess: FolderAccessManager,
-  watcher: OpenFileWatcher
+  watcher: OpenFileWatcher,
+  globalInstructions: GlobalAgentInstructionContext
 ): void {
+  // 保存・監視の入口の規則は fileAccessScope.ts が決める(全体の指示ファイルか、許可フォルダか)
+  const scopeDeps = { folderAccess, globalInstructions }
+
   // baseContent はタブが最後にディスクと一致した内容(savedContent)。null は照合せずに書く(上書きの確認で OK の後)。
-  // 許可の確認・照合・書き込み方式の選択は checkedFileWrite.ts
+  // 許可の確認の規則は fileAccessScope.ts、照合・書き込み方式の選択は checkedFileWrite.ts
   ipcMain.handle(
     'fs:writeFileChecked',
     async (
@@ -42,17 +46,11 @@ export function registerExternalChangeHandlers(
       if (baseContent !== null && typeof baseContent !== 'string') {
         throw new Error('baseContent は文字列か null である必要があります')
       }
+      const scope = resolveFileAccessScope(scopeDeps, event.sender.id, filePath)
       try {
-        const allowedFolder = getAllowedFolder(folderAccess, event)
-        return await writeFileChecked({
-          folderAccess,
-          allowedFolder,
-          filePath,
-          content,
-          baseContent
-        })
+        return await writeFileChecked({ scope, filePath, content, baseContent })
       } catch (err) {
-        throw convertFsAccessError(err, `ファイルが見つかりません: ${filePath}`, filePath)
+        throw scope.toRendererError(err, 'write')
       }
     }
   )
@@ -65,11 +63,8 @@ export function registerExternalChangeHandlers(
         throw new Error(`paths は ${MAX_WATCHED_FILES} 件以下の配列である必要があります`)
       }
       const ownerId = event.sender.id
-      const allowedFolder = folderAccess.get(ownerId)
-      if (allowedFolder === undefined) {
-        watcher.clear(ownerId)
-        return
-      }
+      // 全体の指示ファイルはフォルダに依らずに監視する。フォルダの中のパスは、フォルダが無ければ scope が断る
+      const folderAtStart = folderAccess.get(ownerId)
       // 呼び出しが重なったとき(タブの一覧は変わるたびに送られる)、後から出た呼び出しや、検証の間の clear
       // (リロード・フォルダの切り替え・破棄)より古い呼び出しの一覧を反映しない
       const generation = watcher.beginUpdate(ownerId)
@@ -83,7 +78,7 @@ export function registerExternalChangeHandlers(
           continue
         }
         try {
-          await folderAccess.assertWithinFolder(allowedFolder, path)
+          await resolveFileAccessScope(scopeDeps, ownerId, path).assertExisting(path)
           valid.push(path)
         } catch {
           // 範囲外・存在しない
@@ -92,7 +87,12 @@ export function registerExternalChangeHandlers(
         if (!watcher.isCurrentUpdate(ownerId, generation)) return
       }
       // 検証の間にフォルダが切り替わっていたら、古いフォルダのパスで監視を張らない
-      if (folderAccess.get(ownerId) !== allowedFolder) return
+      if (folderAccess.get(ownerId) !== folderAtStart) return
+      // フォルダが無く、監視するものも無ければ、今までどおり監視を消す
+      if (folderAtStart === undefined && valid.length === 0) {
+        watcher.clear(ownerId)
+        return
+      }
       watcher.setWatchedFiles(ownerId, valid)
     }
   )

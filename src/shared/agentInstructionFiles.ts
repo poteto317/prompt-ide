@@ -109,3 +109,46 @@ export const AGENT_INSTRUCTION_SUBFOLDER_FILES: Record<
     note: 'GitHub Copilot CLI は、サブフォルダの AGENTS.md を読まないことがあります(このアプリはフォルダの根で CLI を起動するため)'
   }
 }
+
+/** 利用者の全体の指示ファイル(設計書 2026-11-07 global「表」)。場所の決定と雛形は main だけが使う。renderer は description・envName(環境変数の名前だけを文言に入れる)・id(key)を読む */
+export type AgentGlobalInstructionFileId = 'claude-global' | 'copilot-global'
+
+export interface AgentGlobalInstructionFile {
+  id: AgentGlobalInstructionFileId
+  /** 設定のフォルダを変える環境変数 */
+  envName: 'CLAUDE_CONFIG_DIR' | 'COPILOT_HOME'
+  /** 環境変数が無いときの、ホームの直下のフォルダの名前 */
+  defaultDirName: '.claude' | '.copilot'
+  /** 環境変数が空の文字列のとき、既定のフォルダとして扱うか(copilot は実物で確かめた。claude は決められない) */
+  emptyEnvMeansDefault: boolean
+  /** 設定のフォルダの中のファイル名 */
+  fileName: string
+  description: string
+  template: string
+}
+
+const GLOBAL_TEMPLATE = `# 全体の指示\n${TEMPLATE_SECTIONS}`
+const GLOBAL_DESCRIPTION = '個人の指示(全部のプロジェクトに効きます)'
+
+export const AGENT_GLOBAL_INSTRUCTION_FILES: Record<AgentCliKind, AgentGlobalInstructionFile> = {
+  claude: {
+    id: 'claude-global',
+    envName: 'CLAUDE_CONFIG_DIR',
+    defaultDirName: '.claude',
+    // Claude Code 2.1.291 は空の値を場所によって既定(||)にも空のまま(??)にも使う
+    emptyEnvMeansDefault: false,
+    fileName: 'CLAUDE.md',
+    description: GLOBAL_DESCRIPTION,
+    template: GLOBAL_TEMPLATE
+  },
+  copilot: {
+    id: 'copilot-global',
+    envName: 'COPILOT_HOME',
+    defaultDirName: '.copilot',
+    // copilot 1.0.106 は COPILOT_HOME||join(HOME, '.copilot')。空の値で既定と同じ結果になることを確かめた
+    emptyEnvMeansDefault: true,
+    fileName: 'copilot-instructions.md',
+    description: GLOBAL_DESCRIPTION,
+    template: GLOBAL_TEMPLATE
+  }
+}
