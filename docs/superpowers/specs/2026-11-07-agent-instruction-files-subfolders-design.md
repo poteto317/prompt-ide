@@ -154,12 +154,7 @@ export const AGENT_INSTRUCTION_SUBFOLDER_FILES: Record<AgentCliKind, AgentInstru
 ```ts
 export const AGENT_INSTRUCTION_SUBFOLDER_LIMIT = 50
 
-export interface AgentInstructionSubfolderRow {
-  node: FileTreeNode
-  /** 根からの相対パス(区切りは /) */
-  relativePath: string
-  description: string
-}
+// AgentInstructionSubfolderRow は types.ts に置き(下の「状態」)、ここでは import type で使う
 
 export interface AgentInstructionSubfolderLookupResult {
   /** 並べ替えて上限までに切った分 */
@@ -227,6 +222,7 @@ export interface AgentInstructionsPanelState {
 - `src/renderer/src/hooks/useAgentInstructionFiles.ts`: 探索の結果・`openSubfolderFile`・`refresh`・`isRefreshing`
 - `src/renderer/src/components/explorer/AgentInstructionFilesSection.tsx`: 見出しの行に `更新` を足し、小見出し `このフォルダ` を足し、サブフォルダの部分を下の部品に任せる
 - `src/renderer/src/components/explorer/AgentInstructionSubfolderList.tsx`(新規): 開閉のボタン・注・一覧・`ほか N 件`・0 件の文言。開閉の state を持つ
+- `src/renderer/src/components/explorer/AgentInstructionOpenButton.tsx`(新規): `このフォルダ` とサブフォルダで共通の `開く`。clone 中は `disabled`、作成の途中は `aria-disabled` にする判定をここに集める(L-157)
 - `src/renderer/src/assets/main.css`: 見出しの行・`更新`・小見出し・開閉のボタン・注・`ほか N 件` の見た目(今の `agent-instructions__*` に揃える)
 - 配線: `useAppState` で `useAgentInstructionFiles` に `refreshTree`(`fileSystem.refreshTree`)を 1 つ渡す。`ExplorerPanel`・`Sidebar`・`App` は変えない(状態は今の `agentInstructions` の props に入る)。新しい引数と `AgentInstructionSubfolderList` の props は省略できないものにする(L-060)
 - main・preload・IPC は変えない
