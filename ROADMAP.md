@@ -713,11 +713,17 @@ MVP（下記）を実装しました（2026-10-04）。旧方式は**設定で�
 - [x] 作成の失敗は節の中に固定の文言で出す（同じ名前のもの・フォルダの外・それ以外）。パスは画面に出さない
 - [x] フォルダの切り替えの途中（新しいフォルダの読み込みの間）に前のフォルダの節から `作成` を押しても、どちらのフォルダにも作らない（main が renderer の開いているフォルダと許可フォルダを比べる）
 - [x] 節を小見出し `このフォルダ`・`サブフォルダ(N 件)` に分け、サブフォルダの指示ファイル（claude: `CLAUDE.md`・`CLAUDE.local.md`、copilot: `AGENTS.md`）を一覧して開く。ファイルツリーから探し、ツリーの読み直しに連動する。節の `更新` でファイルツリーを読み直す。既定は折りたたみ、上限は 50 件（超えた分は `ほか N 件`）。作成は出さない。copilot には読まないことがある旨の注を出す（2026-11-07。設計書 `docs/superpowers/specs/2026-11-07-agent-instruction-files-subfolders-design.md`）
+- [x] 節に小見出し `全体(すべてのプロジェクト)` を足し、利用者の全体の指示ファイル（claude: `~/.claude/CLAUDE.md`〈`CLAUDE_CONFIG_DIR` があればその下〉、copilot: `~/.copilot/copilot-instructions.md`〈`COPILOT_HOME` があればその下〉）を `~/…` の形で出し、あれば `開く`、無ければ `作成`（フォルダが無ければ `0o700` で 1 段だけ作る）。場所はアプリの起動時の環境変数で決める。ホームの外を指すリンク・環境変数は扱わない。読む・保存する・監視するの境界は、main が決めた固定のパスと完全に一致するときだけ許す（2026-11-07。設計書 `docs/superpowers/specs/2026-11-07-agent-instruction-files-global-design.md`）
 
 既知の制約（サブフォルダの指示ファイルの一覧。設計書の「既知の制約」から抜粋）:
 - 外部（ターミナルやエージェント CLI）で足した・消した指示ファイルは、ツリーを読み直すまで一覧に反映しない。節の `更新` を押す（自動の反映は file watcher）
 - 探すのはファイルツリーに出ている範囲だけ。`SKIP_DIRS`（`node_modules`・`.git`・`out`・`dist`・`.next`）の中と、6 段目以降のフォルダの中は探さない。`.gitignore` を見ないので、worktree の中（`.worktrees/<名前>/CLAUDE.md` など）も並ぶ
 - copilot（1.0.106）は、このアプリから起動したときはサブフォルダの `AGENTS.md` を読まないことがある。一覧に出ていても CLI に効いているとは限らない
+
+既知の制約（全体の指示ファイル。設計書の「既知の制約」から抜粋）:
+- 場所はアプリの起動時の環境変数（`CLAUDE_CONFIG_DIR`・`COPILOT_HOME`）で決めるため、自分のターミナルで起動する CLI と環境変数が食い違うと、一覧の場所と CLI が読む場所がずれうる
+- ホームの外を指すリンク・環境変数は扱わない（`ホームフォルダの外を指すリンクのため、開けません` などを出す）
+- 外部（ターミナルやエージェント CLI）で足した・消した全体の指示ファイルは、次のきっかけ（節の `更新`・CLI の種類の切り替え・フォルダの切り替え・全体の作成の後）まで一覧に反映しない
 
 ### エージェントの許可の確認への帯からの答え
 
@@ -818,7 +824,7 @@ MVP で「エージェント CLI をアプリ内ターミナルで動かし、�
       - 実装済み（2026-10-25。段階 3a。設計書 `docs/superpowers/specs/2026-10-23-agent-cli-copilot-resume-design.md`）: copilot のセッションの再開（前回の続きから・このセッションで再開。新しい起動は --session-id、再開は --resume=）と、起動の記録の種類ごとのファイル、実行履歴への CLI の種類の記録（copilot へ送ったプロンプトも記録する）。実装済み機能の「copilot のセッションの再開と履歴への CLI の種類（段階 3a）」を参照
       - 実装済み（2026-10-28。段階 3b。設計書 `docs/superpowers/specs/2026-10-26-agent-cli-copilot-hooks-design.md`）: copilot の hooks による利用者の変更との区別（アプリが起動する copilot に --plugin-dir で http の hooks を渡す）。実装済み機能の「copilot の hooks による利用者の変更との区別（段階 3b）」を参照
 - [x] エージェント向けの指示ファイル（`CLAUDE.md` など）の編集支援
-      - 実装済み（2026-11-05。設計書 `docs/superpowers/specs/2026-11-05-agent-instruction-files-design.md`）: エクスプローラーの上部の「エージェントの指示ファイル」の節。選んでいる CLI の指示ファイル（claude: `CLAUDE.md`・`.claude/CLAUDE.md`・`CLAUDE.local.md`、copilot: `AGENTS.md`・`.github/copilot-instructions.md`）を一覧し、あれば開く、無ければ見出しだけの雛形で作って開く。実装済み（2026-11-07。設計書 `docs/superpowers/specs/2026-11-07-agent-instruction-files-subfolders-design.md`）: サブフォルダの指示ファイルの一覧と、節の `更新`。残り: 利用者の全体の指示ファイル（`~/.claude/CLAUDE.md` など）、プロンプトの内容の追記、外部での追加・削除の自動の反映（file watcher）
+      - 実装済み（2026-11-05。設計書 `docs/superpowers/specs/2026-11-05-agent-instruction-files-design.md`）: エクスプローラーの上部の「エージェントの指示ファイル」の節。選んでいる CLI の指示ファイル（claude: `CLAUDE.md`・`.claude/CLAUDE.md`・`CLAUDE.local.md`、copilot: `AGENTS.md`・`.github/copilot-instructions.md`）を一覧し、あれば開く、無ければ見出しだけの雛形で作って開く。実装済み（2026-11-07。設計書 `docs/superpowers/specs/2026-11-07-agent-instruction-files-subfolders-design.md`）: サブフォルダの指示ファイルの一覧と、節の `更新`。実装済み（2026-11-07。設計書 `docs/superpowers/specs/2026-11-07-agent-instruction-files-global-design.md`）: 利用者の全体の指示ファイル（`~/.claude/CLAUDE.md` など）の一覧・作成・編集。残り: プロンプトの内容の追記、外部での追加・削除の自動の反映（file watcher）
 
 ### AI エージェント / 自律実行
 

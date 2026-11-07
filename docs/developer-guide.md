@@ -67,7 +67,7 @@ src/
    例外は `ipcMain.handle` を通して renderer 側の Promise の拒否になる。
 
 受け口の登録は `src/main/ipcHandlers.ts`(composition root)にまとまっている。フォルダへのアクセスを伴う受け口は
-`FolderAccessManager` を共有し、開いているフォルダの外へのアクセスを `handlers/fileAccessGuard.ts` で拒む。
+`FolderAccessManager` を共有し、開いているフォルダの外へのアクセスを `handlers/fileAccessGuard.ts` で拒む。読む・保存する・監視するの入口（`fs:readFile`・`fs:writeFile`・`fs:writeFileChecked`・`fs:setWatchedFiles`）は `fileAccessScope.ts` の `resolveFileAccessScope` で規則を選び、全体の指示ファイル（main が起動時に決めた固定のパスと完全に一致するもの）だけはホームの中かで確かめる。新しくファイルのパスを受け取る入口を足すときは、この関数を通すか、許可フォルダだけを許すかを決めて、設計書の入口の表に足す。
 
 Git の受け口(`handlers/gitHandlers.ts`)は、領域ごとの `registerGit*Handlers`(作業ツリー・コンフリクト・履歴・ブランチ・stash・リモート)に
 分かれており、`registerGitHandlers` がそれらをまとめて登録する。renderer から受ける引数の検証は `handlers/gitPayloadParser.ts` の
@@ -103,7 +103,7 @@ payload を検証してからリスナーを呼び、購読の解除関数を返
 エディタの下部のターミナル(xterm.js + node-pty)で `claude`・`copilot` を起動し、登録したプロンプトを入力欄へ送る。
 main 側は `agentSession*.ts`(起動・停止)・`agentHook*.ts`(CLI の hooks を受ける HTTP の受け口)・`agentBaseline*.ts`/
 `agentChanges*.ts`(変更の記録と戻す操作)、renderer 側は `hooks/useAgent*.ts` と `lib/agent*.ts` が担う。
-CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/agentCliLaunchSpecs.ts`・`renderer/src/lib/agentPromptSendSpecs.ts`・`src/shared/agentInstructionFiles.ts`〈指示ファイルの一覧と雛形・サブフォルダで探す名前〉・`renderer/src/lib/agentPermissionPromptReaders.ts`〈許可の確認の読み取り〉・`renderer/src/lib/agentPermissionAnswerMessages.ts` の `AGENT_PERMISSION_ANSWER_TEXTS`〈許可の確認への答えの文言〉)に
+CLI の種類ごとの違いは表(`src/shared/agentCliKinds.ts`・`src/main/agentCliLaunchSpecs.ts`・`renderer/src/lib/agentPromptSendSpecs.ts`・`src/shared/agentInstructionFiles.ts`〈指示ファイルの一覧と雛形・サブフォルダで探す名前・全体の指示ファイルの場所〉・`renderer/src/lib/agentPermissionPromptReaders.ts`〈許可の確認の読み取り〉・`renderer/src/lib/agentPermissionAnswerMessages.ts` の `AGENT_PERMISSION_ANSWER_TEXTS`〈許可の確認への答えの文言〉)に
 まとめてあり、種類を足すときは表に行を足す。設計の経緯は `docs/superpowers/specs/` の設計書にある。
 
 ### 3.5 設定の読み書きのフック

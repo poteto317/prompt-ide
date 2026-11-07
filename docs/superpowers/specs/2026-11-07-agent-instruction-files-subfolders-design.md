@@ -49,7 +49,7 @@ ROADMAP の「エージェント実行の支援(MVP の次)」の「エージェ
 
 この設計で決めたこと:
 
-- `更新` は既存の `refreshTree` を呼ぶだけにする。ツリーが新しくなるので、「このフォルダ」の行の有無(`開く`・`作成`)とサブフォルダの一覧が同時に新しくなる。新しい読み直しの仕組みは作らない
+- `更新` は既存の `refreshTree` を呼ぶだけにする。ツリーが新しくなるので、「このフォルダ」の行の有無(`開く`・`作成`)とサブフォルダの一覧が同時に新しくなる。新しい読み直しの仕組みは作らない（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`更新` は `refreshTree` を呼ぶだけでなく、全体の指示ファイルの問い合わせも並べて待つ形〈`Promise.allSettled([refreshTree(), queryGlobalStatus()])`〉に変えた。問い合わせの失敗は行に出し、節の失敗の文言には含めない）
 - サブフォルダの一覧はツリーから計算するだけで、`更新` も既存の `refreshTree` を呼ぶだけなので、新しい IPC・main の処理・preload の変更は無い
 - 名前の比較は完全一致(今の判定と同じ。L-009)
 - フォルダ直下のファイルと、表の「このフォルダ」の行と同じ位置のファイル(`.claude/CLAUDE.md`)は、サブフォルダの一覧に出さない(同じファイルが 2 か所に出ないようにする)
@@ -91,7 +91,7 @@ copilot のとき(開いたとき)は、一覧の上に注を出す:
 - 節の見出し(`h3`)は今のまま。見出しの行の右端に `更新` のボタンを置く(下の「`更新` のボタン」)。見出しの下に小見出し(`h4`)を 2 つ置く
   - `このフォルダ`: 今の行の一覧(`<ul>`)をこの下に置く。行・ボタンは変えない
   - `サブフォルダ(N 件)`: 開閉のボタンを中に持つ小見出し(`<h4><button aria-expanded aria-controls>…</button></h4>`。WAI-ARIA の disclosure の形)。N は見つかった全件の数(上限で隠した分を含む)
-- 節の失敗の文言(`role="alert"`)は、「このフォルダ」の一覧の直後、サブフォルダの開閉のボタンの前に置く(節が縮んで中でスクロールするとき、サブフォルダの一覧の後ろに置くと隠れるため。1280×650 でサブフォルダを開くと 89px 分すべて隠れた)。それでも、ウィンドウの高さが約 477px より低いと文言が節の見える範囲の外に出るので、文言が出たとき(`message` が `null` 以外に変わったとき)に `scrollIntoView({ block: 'nearest' })` で節の中を見える位置まで動かす。フォーカスは動かさない
+- 節の失敗の文言(`role="alert"`)は、「このフォルダ」の一覧の直後、サブフォルダの開閉のボタンの前に置く(節が縮んで中でスクロールするとき、サブフォルダの一覧の後ろに置くと隠れるため。1280×650 でサブフォルダを開くと 89px 分すべて隠れた)。それでも、ウィンドウの高さが約 477px より低いと文言が節の見える範囲の外に出るので、文言が出たとき(`message` が `null` 以外に変わったとき)に `scrollIntoView({ block: 'nearest' })` で節の中を見える位置まで動かす。フォーカスは動かさない（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、失敗の文言は「全体」の一覧の直後〈サブフォルダの開閉のボタンの前〉へ移した。ここに書いた「このフォルダ」の一覧の直後という位置は、その PR より前の状態である）
 - 開閉のボタンは、0 件のときも出す(開くと「サブフォルダに指示ファイルはありません」が出る)。件数に応じてボタンを出し消しすると、ツリーの読み直しで 0 件になったときにフォーカスを持つボタンが消え、フォーカスが body に落ちるため
 - 既定は折りたたむ。開閉の状態は節の部品の中の state に持ち、保存はしない(フォルダや CLI を切り替えても、ツリーを読み直しても、節が出ている間は保つ)
 - 開閉のボタンは、clone の実行中・作成の途中・`更新` の途中も押せる(フォルダもファイルも変えない操作のため)
@@ -104,8 +104,8 @@ copilot のとき(開いたとき)は、一覧の上に注を出す:
 
 ### `更新` のボタン
 
-- 押すと `refreshTree()` を 1 回呼ぶ。中身はそれだけで、結果のツリーから一覧が計算し直される(「このフォルダ」の行も同時に新しくなる)
-- 見える文字は `更新`(節のほかのボタン〈`開く`・`作成`〉と同じく文字のボタン)。`aria-label` は `指示ファイルの一覧を更新`(ソース管理のツールバーの `更新`〈`↻`〉と読み上げで区別するため)。`title` は `ファイルツリーを読み直して、指示ファイルを探し直します`
+- 押すと `refreshTree()` を 1 回呼ぶ。中身はそれだけで、結果のツリーから一覧が計算し直される(「このフォルダ」の行も同時に新しくなる)（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`更新` は `refreshTree` を呼ぶだけでなく、全体の指示ファイルの問い合わせも並べて待つ形〈`Promise.allSettled([refreshTree(), queryGlobalStatus()])`〉に変えた。問い合わせの失敗は行に出し、節の失敗の文言には含めない）
+- 見える文字は `更新`(節のほかのボタン〈`開く`・`作成`〉と同じく文字のボタン)。`aria-label` は `指示ファイルの一覧を更新`(ソース管理のツールバーの `更新`〈`↻`〉と読み上げで区別するため)。`title` は `ファイルツリーを読み直して、指示ファイルを探し直します`。（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`title` を `ファイルツリーを読み直し、全体の指示ファイルの有無も確かめ直します` に変えた）
 - 押せない条件:
   - clone の実行中: `disabled`(節のほかのボタンと同じ。押す前から押せない状態で、成功するとフォルダが切り替わるため)
   - 作成の途中: `aria-disabled="true"` で押しても何もしない(作成は終わりに自分でツリーを読み直すため、重ねて読む理由が無い)
@@ -209,9 +209,11 @@ export interface AgentInstructionsPanelState {
 }
 ```
 
+（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`更新` は `refreshTree` を呼ぶだけでなく、全体の指示ファイルの問い合わせも並べて待つ形〈`Promise.allSettled([refreshTree(), queryGlobalStatus()])`〉に変えた。問い合わせの失敗は行に出し、節の失敗の文言には含めない）
+
 - `openSubfolderFile` は今の `open` と同じ規則にする: 作成の途中(`creatingRef`)なら何もしない、失敗の文言を消す、`openFile(row.node)`(`useAppState` の `selectFile`)を呼ぶ。読み込みの失敗は今までどおり `selectFile` がエクスプローラーのエラーに出す
 - 今の `open` と中身が同じになるので、ノードを開く内部の関数を 1 つにし、`open` と `openSubfolderFile` はそれを呼ぶだけにする
-- `refresh` の手順: 作成の途中(`creatingRef`)か `更新` の途中(`refreshingRef`)なら何もしない → `refreshingRef` と `isRefreshing` を立てる → 失敗の文言を消す → `await refreshTree()` → 拒否されたら `console.error` に残し、開始時と同じフォルダ・CLI の種類のときだけ `ファイルツリーを読み直せませんでした` を出す(フォルダと CLI の種類は、作成と同じく `useLatestRef` で控えた最新の値と比べる)→ `finally` で下ろす
+- `refresh` の手順: 作成の途中(`creatingRef`)か `更新` の途中(`refreshingRef`)なら何もしない → `refreshingRef` と `isRefreshing` を立てる → 失敗の文言を消す → `await refreshTree()` → 拒否されたら `console.error` に残し、開始時と同じフォルダ・CLI の種類のときだけ `ファイルツリーを読み直せませんでした` を出す(フォルダと CLI の種類は、作成と同じく `useLatestRef` で控えた最新の値と比べる)→ `finally` で下ろす（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`更新` は `refreshTree` を呼ぶだけでなく、全体の指示ファイルの問い合わせも並べて待つ形〈`Promise.allSettled([refreshTree(), queryGlobalStatus()])`〉に変えた。問い合わせの失敗は行に出し、節の失敗の文言には含めない）
 
 ### 部品
 
@@ -220,7 +222,7 @@ export interface AgentInstructionsPanelState {
 - `src/renderer/src/lib/agentInstructionMessages.ts`: サブフォルダの固定の文言を足す(下の「文言」)
 - `src/renderer/src/types.ts`: `AgentInstructionSubfolderRow` と `AgentInstructionsPanelState` の追加
 - `src/renderer/src/hooks/useAgentInstructionFiles.ts`: 探索の結果・`openSubfolderFile`・`refresh`・`isRefreshing`
-- `src/renderer/src/components/explorer/AgentInstructionFilesSection.tsx`: 見出しの行に `更新` を足し、小見出し `このフォルダ` を足し、サブフォルダの部分を下の部品に任せる。「このフォルダ」の `開く` を `AgentInstructionOpenButton` に置き換える。失敗の文言は「このフォルダ」の一覧の直後に置き、出たら `scrollIntoView({ block: 'nearest' })` で節の中を動かす effect を足す(下の「画面」)
+- `src/renderer/src/components/explorer/AgentInstructionFilesSection.tsx`: 見出しの行に `更新` を足し、小見出し `このフォルダ` を足し、サブフォルダの部分を下の部品に任せる。「このフォルダ」の `開く` を `AgentInstructionOpenButton` に置き換える。失敗の文言は「このフォルダ」の一覧の直後に置き、出たら `scrollIntoView({ block: 'nearest' })` で節の中を動かす effect を足す(下の「画面」)（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、失敗の文言は「全体」の一覧の直後〈サブフォルダの開閉のボタンの前〉へ移した。ここに書いた「このフォルダ」の一覧の直後という位置は、その PR より前の状態である）
 - `src/renderer/src/components/explorer/AgentInstructionSubfolderList.tsx`(新規): 開閉のボタン・注・一覧・`ほか N 件`・0 件の文言。開閉の state を持つ
 - `src/renderer/src/components/explorer/AgentInstructionOpenButton.tsx`(新規): `このフォルダ` とサブフォルダで共通の `開く`。clone 中は `disabled`、作成の途中は `aria-disabled` にする判定をここに集める(L-157)
 - `src/renderer/src/assets/main.css`: 見出しの行・小見出し・開閉のボタン・注・`ほか N 件` の見た目(今の `agent-instructions__*` に揃える。`更新` は既存の `__button` を使う)。あわせて高さの扱いとして、`.agent-instructions` を `flex: 0 1 auto; min-height: 0; overflow-y: auto` にし、`.agent-instructions__subfolder-region` に `max-height: 40vh; overflow-y: auto` を、`.file-tree` に `min-height: 88px` を足す(下の「画面」)
@@ -231,7 +233,7 @@ export interface AgentInstructionsPanelState {
 
 | 場所                         | 文言                                                                                                       |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `更新` の文字・`aria-label`・`title` | `更新`・`指示ファイルの一覧を更新`・`ファイルツリーを読み直して、指示ファイルを探し直します` |
+| `更新` の文字・`aria-label`・`title` | `更新`・`指示ファイルの一覧を更新`・`ファイルツリーを読み直して、指示ファイルを探し直します`（2026-11-07 の全体の指示ファイルの PR〈設計書 `2026-11-07-agent-instruction-files-global-design.md`〉で、`title` を `ファイルツリーを読み直し、全体の指示ファイルの有無も確かめ直します` に変えた） |
 | 小見出し                     | `このフォルダ`                                                                                             |
 | 開閉のボタン                 | `サブフォルダ(N 件)`                                                                                      |
 | 0 件(開いたとき)           | `サブフォルダに指示ファイルはありません`                                                                   |

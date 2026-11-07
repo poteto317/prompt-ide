@@ -8,7 +8,7 @@ Electron + React + TypeScript 製のデスクトップアプリです。別の�
 
 ## 主な機能
 
-- **エクスプローラー・エディタ**: フォルダを開いてファイルツリーを表示し、Monaco エディタで編集・保存します。複数タブ、クイックオープン（Ctrl/Cmd+P）、外部での変更の検知に対応しています。エクスプローラーの上部から、エージェントの指示ファイル（`CLAUDE.md`・`AGENTS.md` など）を開く・雛形で作ることもできます。サブフォルダにある指示ファイルも一覧から開けます。
+- **エクスプローラー・エディタ**: フォルダを開いてファイルツリーを表示し、Monaco エディタで編集・保存します。複数タブ、クイックオープン（Ctrl/Cmd+P）、外部での変更の検知に対応しています。エクスプローラーの上部から、エージェントの指示ファイル（`CLAUDE.md`・`AGENTS.md` など）を開く・雛形で作ることもできます。サブフォルダにある指示ファイルも一覧から開けます。すべてのプロジェクトに効く全体の指示ファイル（`~/.claude/CLAUDE.md` など）も開く・作ることができます。
 - **プロンプト管理**: プロンプトの追加・編集・タグ付け・並び替え・インポート/エクスポート、`{{variable}}` 形式の変数の差し込みを扱えます。一覧の最上部のトグルで「表示モード」にすると、`編集`・`削除` を表示しなくなり、誤タップを防げます（設定として保存。`実行`・追加などは両方のモードで使えます）。
 - **実行履歴**: 実行したプロンプトを保存し、再表示・再実行や、エージェントのセッションの再開ができます（アクティビティバーの「実行履歴」）。
 - **進捗管理**: タスクごとに開発のステージ（プラン作成・実装・リファクタ・ローカルレビュー・コミット・PR 作成・PR レビュー・PR マージ）の進み具合と履歴を記録します（アクティビティバーの「進捗管理」）。
@@ -68,6 +68,7 @@ docs/            実機テスト仕様書・レビューの運用手順・設計
 - `handlers/`: IPC の受け口。`*PayloadParser.ts` と `payloadValidators.ts` で renderer からの入力を検証し、`ipcSenderGuard.ts` で送信元のフレームを確かめてから処理に渡します。
   - `gitHandlers.ts`・`gitPayloadParser.ts`: Git の受け口は領域ごとの `registerGit*Handlers` に分かれます。引数の検証は `gitPayloadParser.ts` の `assert*Arg` 関数に置きます。
 - `folderAccessManager.ts`・`traversalPolicy.ts`・`handlers/fileAccessGuard.ts`: ウィンドウごとに開いているフォルダを持ち、その外へのアクセス（パストラバーサル）を防ぎます。
+- `fileAccessScope.ts`・`globalAgentInstructionAccess.ts`: 読む・保存する・監視するの入口で、全体の指示ファイルの固定のパスだけを許可フォルダの外として許します（ホームの中かを realpath で確かめます）。
 - `agentSession*.ts`・`agentCommand.ts`・`agentCliLaunchSpecs.ts`: エージェント CLI のセッションの起動・停止と、CLI の種類ごとの起動の規則。
 - `agentRuntime.ts`・`agentHooksRuntime.ts`: 実物の依存（node-pty・ログインシェル・プロセスの停止・hooks の受け口）を組み立てるモジュール。テストではモジュールごと差し替えます。
 - `agentBaseline*.ts`・`agentChanges*.ts`: エージェントの変更の記録・一覧・戻す操作・戻した操作の取り消し。
