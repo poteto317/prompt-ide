@@ -6,7 +6,7 @@
 
 ## 背景
 
-### 今の作り
+### 変更前の作り（この設計を入れる前の 2026-11-07 時点）
 
 - 送信の手順の表 `lib/agentPromptSendSpecs.ts` で、`claude` は `requiresIdle: false`。作業中の `Enter` は `claude` が送信待ち（`Press up to edit queued messages`）に積むので、作業中でも送れるようにしている（AGT-010・AGT-015）。
 - そのため押せる条件 `getPromptRunAvailability`（`lib/promptRunAvailability.ts`）は、`claude` では活動を見ない。許可待ち（`permission`）・確認待ち（`confirm`）の間も `実行`・履歴の `再実行`・送信前の確認の `送信` を押せる。3 つの入口はどれも `useAgentWorkspace` の `sendGateOf` で同じ活動を渡し、`agentSender.send`（`useAgentPromptSender`）→ 表の `send`（`sendClaudePrompt`）を通る。ほかに `claude` の pty へプロンプトを書く入口は無い（`writeToSession` の呼び出しは `useAgentPromptSender` だけ）。
@@ -15,12 +15,12 @@
 
 ### 確かめた結果（書き捨てのテスト。確かめた後に消した）
 
-記録した実画面（`lib/__tests__/fixtures/agentScreens.json`。`claude` 2.1.288）で次を確かめた。
+記録した実画面（`lib/__tests__/fixtures/agentScreens.json`。`claude` 2.1.288）で、変更前の手順について次を確かめた（この設計の後の挙動は、各項目の括弧書きと「設計」の節）。
 
 1. **入力欄の取り違えは無い**: `permission`・`permissionAfterClear`（許可の確認）、`trust`・`fullscreen`（確認待ち）のどれも、`findInputBox` は null。許可の確認の画面の `─` の罫線は 1 本だけで（下の区切りは `╌`）、上の罫線が見つからず、字下げの行だけの画面でもないため。カーソルの行 ` ❯ 1. Yes` は行頭が空白なので、入力欄の記号の行（`SYMBOL_LINE` は行頭の `❯`）にも当たらない。逆に、入力欄のある 28 画面は、活動の判定がどれも `permission`・`confirm` にならない（`classifyClaudeScreen` は入力欄が無いときだけ許可待ち・確認待ちにする）。
 2. **最初から許可待ちの画面で `実行` を押した場合**: 変更前の `sendClaudePrompt` は最初の読み取りで `input-not-found` を返し、何も書かなかった（書き込み 0 件）。利用者には `エージェントの入力欄が見つかりません。…` が出ていた（変更前の AGT-019。この設計の後は `実行` を押せず、押した時点の手順でも `screen-permission` で止まる）。描いた画面が許可待ちのままなら、許可の確認へは何も届かない。
-3. **消去を書いた後に許可の確認に変わった場合**: 消去の 24 バイトを 1 回書いた後の読み取りで `input-not-found`。貼り付け・`Enter` は書かない。
-4. **貼り付けを書いた後に許可の確認に変わった場合**: 本文が現れたかの確認が、入力欄の無い画面を 1,000ms 読み続けてから `not-echoed`。`Enter` は書かない。
+3. **消去を書いた後に許可の確認に変わった場合**: 変更前は、消去の 24 バイトを 1 回書いた後の読み取りで `input-not-found` になり、貼り付け・`Enter` は書かなかった（この設計の後は、消去の繰り返しの読み取りで `screen-permission` になって止まる）。
+4. **貼り付けを書いた後に許可の確認に変わった場合**: 変更前は、本文が現れたかの確認が入力欄の無い画面を 1,000ms 読み続けてから `not-echoed` になり、`Enter` は書かなかった（この設計の後は、止める判定が 2 回続いた時点〈約 32ms〉で `screen-permission` になって止まる）。
 
 ### どの経路で `Enter` などが許可の確認に届くか
 
