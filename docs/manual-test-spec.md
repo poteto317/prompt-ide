@@ -209,6 +209,25 @@
 - [ ] **EXP-084** `リポジトリを clone` で clone を実行している間に節を見る → `開く`・`作成` のボタンがすべて押せない
 - [ ] **EXP-085** 端末で `A="$(mktemp -d)" && B="$(mktemp -d)" && (cd "${B:?}" && for d in $(seq 1 300); do mkdir "d$d" && touch "d$d"/f{1..100}.md; done) && echo "$A" "$B"` を実行して空のフォルダ A と 3 万ファイルのフォルダ B を作り、`フォルダを変更` で A を開く。もう一度 `フォルダを変更` で B を選び、ツリーが B に切り替わる前に節の `CLAUDE.md` の `作成` を押す(切り替えが速くて押せないときは `seq` の数を増やして B を作り直す) → 節に文言は出ず、どのタブも開かない。ツリーが B に切り替わった後も節の `CLAUDE.md` は `作成` のまま。端末で `ls -A "${A:?}"; ls "${B:?}" | grep -ci claude` を実行すると、A は何も表示されず、B は `0`(どちらのフォルダにも作られていない)
 
+### サブフォルダのエージェントの指示ファイル
+
+> 前提: 端末で `DIR="$(mktemp -d)" && mkdir -p "$DIR"/src/sub "$DIR"/lower "$DIR"/.claude "$DIR"/node_modules/pkg && for f in CLAUDE.md .claude/CLAUDE.md src/CLAUDE.md src/CLAUDE.local.md src/sub/CLAUDE.md lower/claude.md node_modules/pkg/CLAUDE.md src/AGENTS.md; do echo x > "$DIR/$f"; done && echo "$DIR"` を実行し、アプリの `フォルダを開く` で `$DIR` を開く(フォルダの選択画面では Cmd+Shift+G でパスを入力できる)。設定の `使うエージェント CLI` は `Claude Code` から始める。`${DIR:?}` は、端末を開き直して `$DIR` が空のときは止まる。元の設定が `GitHub Copilot CLI` だった場合は、最後の項目の後で設定を戻す。
+
+- [ ] **EXP-086** フォルダを開いてエクスプローラーの節を見る → 節の見出しの右に `更新` がある。節の中に小見出し `このフォルダ` があり、その下に今までの 3 行が並ぶ。その下に `サブフォルダ(3 件)` のボタンがあり、折りたたまれていて、サブフォルダの行は見えない
+- [ ] **EXP-087** `サブフォルダ(3 件)` を押す → `src/CLAUDE.md`(共有の指示)・`src/CLAUDE.local.md`(個人の指示)・`src/sub/CLAUDE.md`(共有の指示)の 3 行がこの順に `開く` 付きで出る。`.claude/CLAUDE.md`・`lower/claude.md`・`node_modules/pkg/CLAUDE.md`・`src/AGENTS.md` は出ない。もう一度押すと折りたたまれる
+- [ ] **EXP-088** サブフォルダが閉じていれば開き、`src/sub/CLAUDE.md` の `開く` を押す → `src/sub/CLAUDE.md` がタブで開き、中身は `x`。もう一度押すと、同じタブに切り替わる(タブは増えない)
+- [ ] **EXP-089** ファイルツリーで `src/sub` フォルダを右クリックして `新規ファイル` を選び、`CLAUDE.local.md` を作る → 節のボタンが `サブフォルダ(4 件)` に変わり、開いていれば `src/sub/CLAUDE.md` の後に `src/sub/CLAUDE.local.md` が出る(開き直さなくても出る)
+- [ ] **EXP-090** 端末で `mkdir -p "${DIR:?}/src/new" && echo x > "${DIR:?}/src/new/CLAUDE.md" && echo x > "${DIR:?}/CLAUDE.local.md"` を実行して節を見る → 一覧は変わらない。Tab で `更新` に移って Enter で押すと、タブは閉じずに、サブフォルダの件数が 1 増えて(閉じていれば開くと)`src/new/CLAUDE.md` が出て、「このフォルダ」の `CLAUDE.local.md` の行が `開く` に変わる。押した後もフォーカスの枠が `更新` に残る
+- [ ] **EXP-091** 端末で `mkdir -p "${DIR:?}/a/b/c/d/e/f" && echo x > "${DIR:?}/a/b/c/d/e/CLAUDE.md" && echo x > "${DIR:?}/a/b/c/d/e/f/CLAUDE.md"` を実行し、節の `更新` を押してサブフォルダが閉じていれば開く → `a/b/c/d/e/CLAUDE.md` は出て、`a/b/c/d/e/f/CLAUDE.md` は出ない(ファイルツリーで `f` を開いても中が空なのと同じ)
+- [ ] **EXP-092** 端末で `for i in $(seq 1 55); do mkdir -p "${DIR:?}/many/m$i" && echo x > "${DIR:?}/many/m$i/CLAUDE.md"; done` を実行し、節の `更新` を押してサブフォルダが閉じていれば開く → ボタンが `サブフォルダ(61 件)` になり、行は 50 行まで出て、一覧をスクロールすると最後に `ほか 11 件(ファイルツリーから開いてください)` が見える
+- [ ] **EXP-093** 設定の `使うエージェント CLI` を `GitHub Copilot CLI` に変えてエクスプローラーに戻り、サブフォルダが閉じていれば開く → `src/AGENTS.md`(共有の指示)だけが出て、一覧の上に `GitHub Copilot CLI は、サブフォルダの AGENTS.md を読まないことがあります(このアプリはフォルダの根で CLI を起動するため)` が出る。`CLAUDE.md` の行は出ない
+- [ ] **EXP-094** 設定を `Claude Code` に戻し、端末で `D2="$(mktemp -d)" && echo "$D2"` を実行して空のフォルダを作り、`フォルダを変更` で開き、サブフォルダが閉じていれば開く → `サブフォルダ(0 件)` で、開いた中に `サブフォルダに指示ファイルはありません` が出る
+- [ ] **EXP-095** 端末で `mkdir -p "${DIR:?}/a-very-long-folder-name-for-wrapping-check" && echo x > "${DIR:?}/a-very-long-folder-name-for-wrapping-check/CLAUDE.md"` を実行し、`フォルダを変更` で `$DIR` を開き直し、節の `更新` を押してサブフォルダが閉じていれば開いて、サイドバーを最も狭い幅(220px)までドラッグで狭める → 長い相対パス(`a-very-long-folder-name-for-wrapping-check/CLAUDE.md`)と説明が折り返し、`開く` のボタンは行の右端に収まる。見出しの `更新` も見出しの行の右端に収まる
+- [ ] **EXP-096** VoiceOver を有効にし、Tab で `サブフォルダ(N 件)` のボタンに移って Space で開閉する → 開閉に合わせて「展開」「折りたたみ」の状態が読み上げられ、件数もボタンの名前として読み上げられる。`a/b/c/d/e/CLAUDE.md を開く` のように、どのファイルを開くボタンかが読み上げられる。`更新` は `指示ファイルの一覧を更新` と読み上げられる
+- [ ] **EXP-097** `リポジトリを clone` で clone を実行している間に節を見る(clone が終わると開いているフォルダが clone 先に切り替わるので、この項目は EXP-098・EXP-099 の後に行う) → 開閉のボタンは押せ、`更新` とサブフォルダの行の `開く` は押せない
+- [ ] **EXP-098** `フォルダを変更` で `$DIR` を開き直し(EXP-092・EXP-095 の後で 62 件ある)、サブフォルダが閉じていれば開く → ファイルツリーが画面に残る。一覧はその中でスクロールでき、最後の行まで見える。ウィンドウの高さを縮めても、ファイルツリーが少なくとも 3 行分残り、節は中でスクロールできる(閉じたとき・開閉のボタン・`更新` も、節の中のスクロールで届く)
+- [ ] **EXP-099** EXP-098 の状態(サブフォルダを開き、ウィンドウを低くした状態)で、EXP-081 と同じ操作(端末で `rm "${DIR:?}/CLAUDE.local.md" && echo x > "${DIR:?}/claude.local.md"` を実行してから `フォルダを変更` で `$DIR` を開き直し、`CLAUDE.local.md` の `作成` を押す)をする → 低いウィンドウでも、失敗の文言(EXP-080 と同じ)が見える位置まで節の中が動き、`このフォルダ` の一覧のすぐ下(サブフォルダの開閉のボタンの上)に文言が見える
+
 ## エディタ
 
 ### Welcome 表示
