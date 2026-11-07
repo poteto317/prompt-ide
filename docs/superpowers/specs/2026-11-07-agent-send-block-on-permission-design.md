@@ -18,7 +18,7 @@
 記録した実画面（`lib/__tests__/fixtures/agentScreens.json`。`claude` 2.1.288）で次を確かめた。
 
 1. **入力欄の取り違えは無い**: `permission`・`permissionAfterClear`（許可の確認）、`trust`・`fullscreen`（確認待ち）のどれも、`findInputBox` は null。許可の確認の画面の `─` の罫線は 1 本だけで（下の区切りは `╌`）、上の罫線が見つからず、字下げの行だけの画面でもないため。カーソルの行 ` ❯ 1. Yes` は行頭が空白なので、入力欄の記号の行（`SYMBOL_LINE` は行頭の `❯`）にも当たらない。逆に、入力欄のある 28 画面は、活動の判定がどれも `permission`・`confirm` にならない（`classifyClaudeScreen` は入力欄が無いときだけ許可待ち・確認待ちにする）。
-2. **最初から許可待ちの画面で `実行` を押した場合**: `sendClaudePrompt` は最初の読み取りで `input-not-found` を返し、何も書かない（書き込み 0 件）。利用者には `エージェントの入力欄が見つかりません。…` が出る（AGT-019）。描いた画面が許可待ちのままなら、許可の確認へは何も届かない。
+2. **最初から許可待ちの画面で `実行` を押した場合**: 変更前の `sendClaudePrompt` は最初の読み取りで `input-not-found` を返し、何も書かなかった（書き込み 0 件）。利用者には `エージェントの入力欄が見つかりません。…` が出ていた（変更前の AGT-019。この設計の後は `実行` を押せず、押した時点の手順でも `screen-permission` で止まる）。描いた画面が許可待ちのままなら、許可の確認へは何も届かない。
 3. **消去を書いた後に許可の確認に変わった場合**: 消去の 24 バイトを 1 回書いた後の読み取りで `input-not-found`。貼り付け・`Enter` は書かない。
 4. **貼り付けを書いた後に許可の確認に変わった場合**: 本文が現れたかの確認が、入力欄の無い画面を 1,000ms 読み続けてから `not-echoed`。`Enter` は書かない。
 
@@ -129,8 +129,10 @@ claude: {
 | `src/renderer/src/lib/promptRunAvailability.ts` | 押せる条件の分岐（「判定」）とコメント・`AgentRunConditions` の JSDoc |
 | `src/renderer/src/lib/claudePromptSend.ts` | `blockedByScreen` と各段の呼び出し（「各段の守り」）、ファイルの先頭と `sendClaudePrompt` のコメント |
 | `src/renderer/src/lib/agentPromptSendSpecs.ts` | `claude` の `discardHeldInputOn`、`requiresIdle`・`discardHeldInputOn` の JSDoc（「表」） |
-| `src/renderer/src/lib/agentPromptSend.ts` | `AgentSendTarget` の JSDoc。`readViewport` の「claude の手順が読む」を「claude の手順が入力欄を探すのに読む」に、`readScreen` の「copilot の手順が読む…」を「copilot の手順と、claude の手順の画面の活動の確かめが読む（活動の判定と同じ読み方）」に直す |
+| `src/renderer/src/lib/agentPromptSend.ts` | `AgentSendTarget` の JSDoc。`readViewport` の「claude の手順が読む」を「claude の手順が入力欄を探すのに読む」に、`readScreen` の「copilot の手順が読む…」を「copilot の手順と、claude の手順の画面の活動の確かめが読む（活動の判定と同じ読み方）」に直す。`AgentSendScreenFailure` の JSDoc に、`claude` の手順も `permission`・`confirm` を返すことを足す |
 | `src/renderer/src/hooks/useAgentWorkspace.ts` | `sendGateOf` のコメントだけ（配線は変えない） |
+| `src/renderer/src/hooks/useAgentPromptSender.ts` | 手順を表から引く所のコメントだけ（どちらの手順も画面の末尾を読む） |
+| `src/renderer/src/lib/agentSendMessages.ts` | `AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX` の JSDoc だけ（捨てる失敗は表の `discardHeldInputOn` に載るもの） |
 | 各テスト | 「テスト方針」の各節 |
 | `ROADMAP.md`・`README.md`・`docs/manual-test-spec.md` | 「ROADMAP・ドキュメントの更新の方針」「実機テスト仕様書」 |
 
@@ -246,5 +248,5 @@ claude: {
 
 - ROADMAP「危険な操作の承認フロー」の「残り」から「許可待ちの画面での `claude` へのプロンプトの送信を断る（…）」を外し、実装済みの記述（この設計書へのリンク）を足す。「エージェントの許可の確認への帯からの答え」の節に、許可待ち・確認待ちの間は `claude` へも送れないことと、既知の制約（描画の遅れの窓）を足す。
 - ROADMAP の溜めた入力の記述: 「copilot へのプロンプトの送信（段階 2b）」の 614 行目付近の「`claude` は変えていない（下の MVP の既知の制約）」と、MVP の既知の制約の 1413 行目付近の「`claude` の挙動は変えていない」は、この機能の後は正しくない。どちらも「`claude` は、当時は変えていなかった。2026-11-07（この設計書）から、許可待ち・確認待ちで止めたときだけ溜めた入力を捨てる。ほかの失敗では今のまま流す」の形に直す（変える前の状態は過去形で書く）。
-- README: 17 行目（「エージェント CLI の実行（既定の実行方式）」の説明の 3 行目。「完了・許可待ちの通知、中断、許可の確認への帯の 許可・拒否 での答え、セッションの再開に対応しています。」）の後ろに「許可待ち・確認待ちの間は、プロンプトを送信しません（答えてから送ります）。」を足す。README には今、押せる条件の記述は無い。
+- README: 17 行目（「エージェント CLI の実行（既定の実行方式）」の説明の 3 行目。「完了・許可待ちの通知、中断、許可の確認への帯の 許可・拒否 での答え、セッションの再開に対応しています。」）の後ろに「許可待ち・確認待ちの間は、プロンプトを送信しません（ターミナルで答えてから、もう一度実行します）。」を足す（アプリが答えた後に自動で送るとも読めないよう、ローカルレビューで括弧書きを直した）。README には今、押せる条件の記述は無い。
 - 開発者ガイド（`docs/developer-guide.md`）: 変えない。エージェント CLI 方式の節は「3.4 エージェント CLI 方式」だけで、構成（main・renderer の担当ファイル）と、種類ごとの違いを置く表の一覧（`agentPromptSendSpecs.ts` を含む）だけを書いており、押せる条件や送信の手順の段は書いていない。この機能は表に欄を足さず（決めたこと 1）、担当ファイルも増えないので、書き足す所が無い。
