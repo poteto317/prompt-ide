@@ -850,6 +850,61 @@ describe('useAgentWorkspace', () => {
       })
     })
 
+    it.each(['permission', 'confirm'] as const)(
+      '選択中の claude のタブが %s なら、実行・再実行・送信前の確認の理由が活動の理由になる',
+      async (activity) => {
+        const reason = agentSendBlockedByActivityReason(activity, 'claude')
+        setMode('agent-cli')
+        mockUseAgentSessions.mockReturnValue(runningTabOf('claude'))
+        mockUseAgentActivity.mockReturnValue(activityOf(activity))
+        const { result } = renderWorkspace({ folderPath: '/p' })
+        expect(result.current.promptRun).toMatchObject({
+          isRunDisabled: true,
+          runDisabledReason: reason
+        })
+        expect(result.current.getHistoryActions(agentEntry).rerun).toEqual({
+          disabled: true,
+          reason
+        })
+        await act(async () => {
+          await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+        })
+        expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(reason)
+        expect(result.current.agentSendConfirmDialog.pending?.cliKind).toBe('claude')
+      }
+    )
+
+    it('送信前の確認を開いた後に claude が許可待ちになると、確認の理由が許可待ちの理由になり、入力待ちに戻ると消える', async () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('claude'))
+      mockUseAgentActivity.mockReturnValue(activityOf('idle'))
+      const { result, rerender } = renderWorkspace({ folderPath: '/p' })
+      await act(async () => {
+        await result.current.sendToAgent('hello', { promptId: 'p1', unsavedPaths: [] })
+      })
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBeNull()
+      mockUseAgentActivity.mockReturnValue(activityOf('permission'))
+      rerender()
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBe(
+        agentSendBlockedByActivityReason('permission', 'claude')
+      )
+      mockUseAgentActivity.mockReturnValue(activityOf('idle'))
+      rerender()
+      expect(result.current.agentSendConfirmDialog.targetBlockedReason).toBeNull()
+    })
+
+    it('claude のタブが入力待ち・不明・作業中なら、実行・再実行を押せる(今のまま)', () => {
+      setMode('agent-cli')
+      mockUseAgentSessions.mockReturnValue(runningTabOf('claude'))
+      for (const activity of ['idle', 'unknown', 'working'] as const) {
+        mockUseAgentActivity.mockReturnValue(activityOf(activity))
+        const { result, unmount } = renderWorkspace({ folderPath: '/p' })
+        expect(result.current.promptRun.isRunDisabled).toBe(false)
+        expect(result.current.getHistoryActions(agentEntry).rerun.disabled).toBe(false)
+        unmount()
+      }
+    })
+
     it('中断を押した直後は、実行・再実行・送信前の確認の理由が RUN_DISABLED_INTERRUPTING で、1,000ms の待ちが明けると活動の理由に戻る', async () => {
       // 1,000ms の待ちを実時間で待たないよう、偽のタイマーで進める(このテストは waitFor を使わない)
       vi.useFakeTimers()

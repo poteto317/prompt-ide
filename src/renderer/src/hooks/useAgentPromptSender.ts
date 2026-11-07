@@ -125,7 +125,7 @@ export function useAgentPromptSender({
       }
       // 送信の手順の間は利用者のキー入力を溜める(貼り付けの途中に打鍵が混ざらないように)。finally で必ず解く
       controller.beginSending()
-      // 手順は送り先の CLI の種類の表から引く(claude は今の手順のまま。copilot は画面の末尾を読む)
+      // 手順は送り先の CLI の種類の表から引く(どちらも画面の末尾を読む。claude は許可待ち・確認待ちで止め、copilot は入力待ちのときだけ送る)
       const spec = AGENT_PROMPT_SEND_SPECS[target.cliKind]
       // 溜めた入力を流さずに捨てるか(表の discardHeldInputOn の失敗のとき。例外のときは今のまま流す)
       let discardHeldInput = false

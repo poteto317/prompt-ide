@@ -50,7 +50,7 @@ import {
   makeFakeFitAddon,
   makeFakeTerminal
 } from '../../__tests__/makeFakeAgentTerminal'
-import { makeLine } from '../../lib/__tests__/fixtures/agentScreens'
+import { agentScreen, makeLine } from '../../lib/__tests__/fixtures/agentScreens'
 import { copilotInputScreen } from '../../lib/__tests__/fixtures/copilotInputScreens'
 import { copilotScreen } from '../../lib/__tests__/fixtures/copilotScreens'
 import { toAnnouncementText } from '../../lib/announcementText'
@@ -158,6 +158,81 @@ describe('useAgentPromptSender', () => {
     )
     expect(controller.endSending).toHaveBeenCalledOnce()
     expect(onSettled).toHaveBeenCalledOnce()
+  })
+
+  it('claude の画面の末尾が許可待ちなら何も書かず、許可待ちの理由を出してパネルを開く', async () => {
+    const controller = controllerWithEmptyInput()
+    controller.screen = agentScreen('permission').lines
+    const onSettled = vi.fn()
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled, clock })
+    )
+    let outcome: AgentPromptSendResult | undefined
+    await act(async () => {
+      outcome = await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'claude'
+      })
+    })
+    expect(outcome).toEqual({ kind: 'failed', reason: 'screen-permission' })
+    expect(controller.writes).toEqual([])
+    expect(result.current.error).toBe(agentSendBlockedByActivityReason('permission', 'claude'))
+    expect(onSettled).toHaveBeenCalledOnce()
+    // 溜めた入力は無い(beginSending と同じ同期の区間で断る)ので、捨てても添え書きは付かない
+    expect(controller.endSending).toHaveBeenCalledExactlyOnceWith({ discard: true })
+  })
+
+  it('claude へ貼り付けた後に許可待ちになったら Enter を書かず、溜めた入力を捨てて添え書きを付ける', async () => {
+    // 表示中の行は空の入力欄から始め、貼り付けを書いた時点で(本文が入力欄に現れる前に)画面の末尾を許可の確認に替える
+    const controller = makeFakeController()
+    const border = makeLine('─'.repeat(40))
+    controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
+    const write = controller.writeToSession
+    controller.writeToSession = (data) => {
+      write(data)
+      if (data.startsWith('\x1b[200~')) controller.screen = agentScreen('permission').lines
+    }
+    // 捨てた入力の数が 0 だと添え書きが付かず、配線を確かめられない
+    controller.endSending.mockImplementation((options) => (options?.discard === true ? 2 : 0))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'claude'
+      })
+    })
+    expect(controller.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, buildAgentPasteBytes('hello')])
+    expect(controller.endSending).toHaveBeenCalledExactlyOnceWith({ discard: true })
+    expect(result.current.error).toBe(
+      `${agentSendBlockedByActivityReason('permission', 'claude')}${AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX}`
+    )
+  })
+
+  it('claude のほかの失敗(not-echoed)では、今までどおり溜めた入力を流す', async () => {
+    // 貼り付けても本文が現れず、画面の末尾も許可の確認にならない(screen は [] で判定は unknown)
+    const controller = makeFakeController()
+    const border = makeLine('─'.repeat(40))
+    controller.viewport = [border, makeLine('❯\xa0 ', [], [[2, 3]]), border]
+    controller.endSending.mockImplementation((options) => (options?.discard === true ? 2 : 0))
+    const { result } = renderHook(() =>
+      useAgentPromptSender({ isInterrupting: notInterrupting, onSettled: vi.fn(), clock })
+    )
+    await act(async () => {
+      await result.current.send('hello', {
+        slotId: 'a',
+        controller,
+        describeSession: noSession,
+        cliKind: 'claude'
+      })
+    })
+    expect(controller.endSending).toHaveBeenCalledExactlyOnceWith({ discard: false })
+    expect(result.current.error).toBe(agentSendFailureMessage('not-echoed', 'claude'))
   })
 
   it('clearResult は前の送信の失敗の文言と成功の通知を消す', async () => {

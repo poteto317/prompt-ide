@@ -7,7 +7,7 @@ import type { ViewportLine } from './agentViewport'
 // プロンプトの送信の手順(claudePromptSend.ts・copilotPromptSend.ts)と呼び出し側(useAgentPromptSender)が共有する型と時計
 // (設計書 2026-10-22「送信の手順の表」)。手順は CLI の種類ごとの表(agentPromptSendSpecs.ts)から引く
 
-/** 送り先の画面の活動が入力待ちでない(copilot の手順 3)。活動を足したときの決め忘れを型エラーにする */
+/** 送り先の画面の活動が入力待ちでない(copilot の手順 3 と、claude の手順の画面の末尾の確かめ。claude が返すのは permission・confirm だけ)。活動を足したときの決め忘れを型エラーにする */
 export type AgentSendScreenFailure = `screen-${Exclude<AgentActivity, 'idle'>}`
 
 export type AgentSendFailure =
@@ -52,9 +52,9 @@ export type AgentPromptSendResult =
 /** 送り先(agentTerminalController の一部)。write は利用者のキー入力の保留とは別に、直接 pty へ送る */
 export interface AgentSendTarget {
   isBracketedPasteEnabled(): boolean
-  /** 表示中の行(claude の手順が読む) */
+  /** 表示中の行(claude の手順が入力欄を探すのに読む) */
   readViewport(): ViewportLine[]
-  /** 画面の末尾の行(copilot の手順が読む。段階 2a の判定と同じ読み方。代替画面なので見え方は readViewport と同じ) */
+  /** 画面の末尾の行(copilot の手順と、claude の手順の画面の活動の確かめが読む。活動の判定と同じ読み方。copilot は代替画面なので見え方は readViewport と同じ) */
   readScreen(): ViewportLine[]
   getCols(): number
   write(data: string): void

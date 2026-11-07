@@ -306,7 +306,7 @@ export function useAgentWorkspace({
     answerPermission: agentSessions.answerPermission
   })
   // 実行・再実行・送信前の確認の押せる条件に渡す、送り先のタブの活動(中断の判定と同じ写像。L-058)と中断の流れ。3 つの入口で同じ組を
-  // 渡すため 1 か所で作る。requiresIdle の種類(copilot)だけが見る
+  // 渡すため 1 か所で作る。許可待ち・確認待ちはどの種類でも、作業中・判定できない・中断の流れは requiresIdle の種類(copilot)だけが見る
   const sendGateOf = (slotId: string): { activity: AgentActivity; isInterrupting: boolean } => ({
     activity: activities.get(slotId) ?? 'unknown',
     isInterrupting: agentInterrupt.isInterruptPending(slotId)

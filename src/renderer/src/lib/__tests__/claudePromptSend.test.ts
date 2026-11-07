@@ -30,7 +30,8 @@ function makeClock(): AgentSendClock & { elapsed(): number } {
 }
 
 // claude の入力欄を真似る偽の送り先。入力欄の文字列を持ち、消去のキー 24 バイトごとに clearPerChunk 文字を消し、
-// 貼り付けで本文を入れ、Enter で入力欄の文字列を送信する(submitted に記録して空にする)。書き込みはすべて記録する
+// 貼り付けで本文を入れ、Enter で入力欄の文字列を送信する(submitted に記録して空にする)。書き込みはすべて記録する。
+// readScreen は表示中の行と同じ画面を返す(screen を上書きしたときだけ別の画面)。reads には記録しない
 interface FakeClaude extends AgentSendTarget {
   writes: string[]
   /** 各書き込みの時刻(options.clock を渡したとき。writes と同じ順) */
@@ -39,7 +40,12 @@ interface FakeClaude extends AgentSendTarget {
   reads: Array<{ at: number; empty: boolean }>
   submitted: string[]
   input: string
-  mode: 'prompt' | 'shell' | 'dialog'
+  /** 画面の末尾(readScreen)を表示中の行と別の画面にするとき。null なら表示中の行と同じ画面 */
+  screen: ViewportLine[] | null
+  /** readScreen を読んだ回数(reads には記録しない) */
+  screenReads: number
+  /** 'noBox' は入力欄の無い行だけの画面(上へスクロールした表示・描き直しの途中の形。判定は unknown) */
+  mode: 'prompt' | 'shell' | 'dialog' | 'noBox'
   bracketed: boolean
 }
 
@@ -58,11 +64,34 @@ function makeFakeClaude(
     /** 書き込み・読み取りの時刻を記録する時計 */
     clock?: AgentSendClock
     onWrite?: (fake: FakeClaude, data: string) => void
+    /** readScreen を読むたびに(画面を返す前に)呼ぶ。screenReads はこの呼び出しの前に数える */
+    onReadScreen?: (fake: FakeClaude) => void
   } = {}
 ): FakeClaude {
   const border = makeLine('─'.repeat(60))
   const ghostActive = (): boolean =>
     options.ghostSuggestion !== undefined && fake.mode === 'prompt' && fake.input.length === 1
+  const render = (): ViewportLine[] => {
+    if (fake.mode === 'dialog') return agentScreen('trust').lines
+    if (fake.mode === 'noBox') return [makeLine('history'), makeLine('1'), makeLine('2')]
+    if (ghostActive()) {
+      const suggestion = options.ghostSuggestion ?? ''
+      const line = makeLine(
+        `❯\xa0${fake.input}${suggestion} `,
+        [[3, 3 + suggestion.length]],
+        [[2, 3]]
+      )
+      return [makeLine('history'), border, line, border, makeLine('  status')]
+    }
+    const symbol = fake.mode === 'shell' ? '!' : '❯'
+    const [first, ...rest] = fake.input.split('\n')
+    const cursorAt = 2 + (rest.length === 0 ? first.length : 0)
+    const lines = [
+      makeLine(`${symbol}\xa0${first} `, [], rest.length === 0 ? [[cursorAt, cursorAt + 1]] : [])
+    ]
+    for (const line of rest) lines.push(makeLine(`  ${line}`))
+    return [makeLine('history'), border, ...lines, border, makeLine('  status')]
+  }
   const fake: FakeClaude = {
     writes: [],
     writeTimes: [],
@@ -70,11 +99,15 @@ function makeFakeClaude(
     submitted: [],
     input: options.input ?? '',
     mode: options.mode ?? 'prompt',
+    screen: null,
+    screenReads: 0,
     bracketed: true,
     isBracketedPasteEnabled: () => fake.bracketed,
     getCols: () => 60,
     readScreen: (): ViewportLine[] => {
-      throw new Error('claude の手順は readScreen を読まない(readViewport を読む)')
+      fake.screenReads += 1
+      options.onReadScreen?.(fake)
+      return fake.screen ?? render()
     },
     readViewport: (): ViewportLine[] => {
       if (options.clock !== undefined)
@@ -82,24 +115,7 @@ function makeFakeClaude(
           at: options.clock.now(),
           empty: fake.mode === 'prompt' && fake.input === ''
         })
-      if (fake.mode === 'dialog') return agentScreen('trust').lines
-      if (ghostActive()) {
-        const suggestion = options.ghostSuggestion ?? ''
-        const line = makeLine(
-          `❯\xa0${fake.input}${suggestion} `,
-          [[3, 3 + suggestion.length]],
-          [[2, 3]]
-        )
-        return [makeLine('history'), border, line, border, makeLine('  status')]
-      }
-      const symbol = fake.mode === 'shell' ? '!' : '❯'
-      const [first, ...rest] = fake.input.split('\n')
-      const cursorAt = 2 + (rest.length === 0 ? first.length : 0)
-      const lines = [
-        makeLine(`${symbol}\xa0${first} `, [], rest.length === 0 ? [[cursorAt, cursorAt + 1]] : [])
-      ]
-      for (const line of rest) lines.push(makeLine(`  ${line}`))
-      return [makeLine('history'), border, ...lines, border, makeLine('  status')]
+      return render()
     },
     write: (data) => {
       fake.writes.push(data)
@@ -211,8 +227,32 @@ describe('sendClaudePrompt', () => {
     expect(fake.writes.every((data) => data === AGENT_CLEAR_INPUT_CHUNK)).toBe(true)
   })
 
-  it('入力欄が見つからなければ(確認画面)何も送らない', async () => {
+  it('確認待ちの画面なら(フォルダの信頼)何も送らず screen-confirm', async () => {
     const fake = makeFakeClaude({ mode: 'dialog' })
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+      kind: 'failed',
+      reason: 'screen-confirm'
+    })
+    expect(fake.writes).toEqual([])
+  })
+
+  it('消している途中で確認待ちの画面になったら止めて screen-confirm', async () => {
+    const fake = makeFakeClaude({
+      input: 'abcdefgh',
+      clearPerChunk: 2,
+      onWrite: (f) => {
+        f.mode = 'dialog'
+      }
+    })
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+      kind: 'failed',
+      reason: 'screen-confirm'
+    })
+    expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK])
+  })
+
+  it('入力欄も確認も無い画面(判定は unknown)なら何も送らず input-not-found', async () => {
+    const fake = makeFakeClaude({ mode: 'noBox' })
     await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
       kind: 'failed',
       reason: 'input-not-found'
@@ -220,12 +260,38 @@ describe('sendClaudePrompt', () => {
     expect(fake.writes).toEqual([])
   })
 
-  it('消している途中で入力欄が見つからなくなったら止める', async () => {
+  it('画面の末尾は入力待ちでも、表示中の行に入力欄が無ければ(上へスクロール)何も送らず input-not-found', async () => {
+    const fake = makeFakeClaude({ mode: 'noBox' })
+    fake.screen = agentScreen('empty').lines
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+      kind: 'failed',
+      reason: 'input-not-found'
+    })
+    expect(fake.writes).toEqual([])
+  })
+
+  it('消している途中で入力欄も確認も無い画面になったら止めて input-not-found', async () => {
     const fake = makeFakeClaude({
       input: 'abcdefgh',
       clearPerChunk: 2,
       onWrite: (f) => {
-        f.mode = 'dialog'
+        f.mode = 'noBox'
+      }
+    })
+    await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+      kind: 'failed',
+      reason: 'input-not-found'
+    })
+    expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK])
+  })
+
+  it('消している途中で表示中の行から入力欄が消えても、末尾が入力待ちなら止めて input-not-found', async () => {
+    const fake = makeFakeClaude({
+      input: 'abcdefgh',
+      clearPerChunk: 2,
+      onWrite: (f) => {
+        f.mode = 'noBox'
+        f.screen = agentScreen('empty').lines
       }
     })
     await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
@@ -325,5 +391,231 @@ describe('sendClaudePrompt', () => {
     const fake = makeFakeClaude()
     await sendClaudePrompt(fake, 'a\x1b[201~\rb', makeClock())
     expect(fake.writes[1]).toBe('\x1b[200~a[201~\nb\x1b[201~')
+  })
+
+  describe('画面の末尾が許可待ち・確認待ちなら止める(設計書 2026-11-07)', () => {
+    it.each([
+      ['permission', 'screen-permission'],
+      ['permissionAfterClear', 'screen-permission'],
+      ['trust', 'screen-confirm'],
+      ['fullscreen', 'screen-confirm']
+    ] as const)(
+      '表示中の行は空の入力欄のままでも(上へスクロールしている形)、最初から末尾が %s の画面なら何も書かず %s',
+      async (name, reason) => {
+        // 表示中の行(readViewport)は既定の空の入力欄で、画面の末尾(readScreen)だけが選択の画面
+        const fake = makeFakeClaude()
+        fake.screen = agentScreen(name).lines
+        await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+          kind: 'failed',
+          reason
+        })
+        expect(fake.writes).toEqual([])
+        expect(fake.submitted).toEqual([])
+      }
+    )
+
+    it('bracketed paste が無効でも、許可待ちの理由を先に返す', async () => {
+      const fake = makeFakeClaude()
+      fake.bracketed = false
+      fake.screen = agentScreen('permission').lines
+      await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'screen-permission'
+      })
+      expect(fake.writes).toEqual([])
+    })
+
+    it('消去を 1 回書いた後に許可待ちになったら、消去の 1 件だけで止める', async () => {
+      const fake = makeFakeClaude({
+        input: 'abcdefgh',
+        clearPerChunk: 2,
+        onWrite: (f) => {
+          f.screen = agentScreen('permission').lines
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'screen-permission'
+      })
+      expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK])
+    })
+
+    it('空の確認の 2 回目(貼り付けの直前)で許可待ちになったら、貼り付けを書かずに止める', async () => {
+      // readScreen は 1 回目が手順の最初、2 回目が空の確認の 1 回目、3 回目が空の確認の 2 回目
+      const fake = makeFakeClaude({
+        onReadScreen: (f) => {
+          if (f.screenReads === 3) f.screen = agentScreen('permission').lines
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'p', makeClock())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'screen-permission'
+      })
+      expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK])
+    })
+
+    it('貼り付けを書いた後に許可待ちが 2 回続いたら、時間切れを待たずに止めて Enter を書かない', async () => {
+      const clock = makeClock()
+      const fake = makeFakeClaude({
+        clock,
+        onWrite: (f, data) => {
+          if (data.startsWith('\x1b[200~')) f.screen = agentScreen('permission').lines
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'hello', clock)).resolves.toEqual({
+        kind: 'failed',
+        reason: 'screen-permission'
+      })
+      expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~'])
+      expect(fake.submitted).toEqual([])
+      // 1 回目の止める判定では止めず、次の読み取りで 2 回続いたことを確かめてから止める
+      expect(clock.elapsed() - fake.writeTimes[1]).toBe(AGENT_ECHO_POLL_MS * 2)
+    })
+
+    it('貼り付けの後に止める判定が 1 回だけ出ても(描き直しの途中)、次の読み取りで戻れば送って Enter を書く', async () => {
+      // 貼り付けの後の最初の読み取りだけ、画面の末尾を確認待ち(フォルダの信頼)にし、次の読み取りで元に戻す
+      const seen: { readsAfterPaste: number | null; writesAtBlocked: string[] | null } = {
+        readsAfterPaste: null,
+        writesAtBlocked: null
+      }
+      const fake = makeFakeClaude({
+        onWrite: (f, data) => {
+          if (data.startsWith('\x1b[200~')) {
+            seen.readsAfterPaste = 0
+            f.screen = agentScreen('trust').lines
+          }
+        },
+        onReadScreen: (f) => {
+          if (seen.readsAfterPaste === null) return
+          seen.readsAfterPaste += 1
+          if (seen.readsAfterPaste === 1) seen.writesAtBlocked = [...f.writes]
+          if (seen.readsAfterPaste === 2) f.screen = null
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'hello', makeClock())).resolves.toEqual({
+        kind: 'sent',
+        clearedDraft: false
+      })
+      // 止める判定の回には Enter を書いていない
+      expect(seen.writesAtBlocked).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~'])
+      expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+      expect(fake.submitted).toEqual(['hello'])
+    })
+
+    it('貼り付けの後に許可待ちが 2 回続いたら screen-permission で止め、どちらの回にも Enter を書かない', async () => {
+      const writesAtScreenReads: string[][] = []
+      let pasted = false
+      const fake = makeFakeClaude({
+        onWrite: (f, data) => {
+          if (data.startsWith('\x1b[200~')) {
+            pasted = true
+            f.screen = agentScreen('permission').lines
+          }
+        },
+        onReadScreen: (f) => {
+          if (pasted) writesAtScreenReads.push([...f.writes])
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'hello', makeClock())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'screen-permission'
+      })
+      expect(writesAtScreenReads).toHaveLength(2)
+      for (const writes of writesAtScreenReads) expect(writes).not.toContain('\r')
+      expect(fake.writes).not.toContain('\r')
+      expect(fake.submitted).toEqual([])
+    })
+
+    it('貼り付けの後の止める判定は、間に止めない判定が入ると数え直す(交互なら時間切れまで止めず、時間切れの回が止める判定ならその理由)', async () => {
+      // 貼り付けの後は、止める判定(許可待ち)と止めない判定(本文の現れない入力欄)を交互に返す。本文は現れない
+      const seen = { pasted: false, readsAfterPaste: 0 }
+      const clock = makeClock()
+      const fake = makeFakeClaude({
+        clock,
+        echo: false,
+        onWrite: (_f, data) => {
+          if (data.startsWith('\x1b[200~')) seen.pasted = true
+        },
+        onReadScreen: (f) => {
+          if (!seen.pasted) return
+          seen.readsAfterPaste += 1
+          f.screen = seen.readsAfterPaste % 2 === 1 ? agentScreen('permission').lines : null
+        }
+      })
+      const outcome = await sendClaudePrompt(fake, 'hello', clock)
+      expect(fake.writes).not.toContain('\r')
+      // 2 回続かないので時間切れまで読み続ける(止める判定が通算 2 回になっても止めない)
+      expect(seen.readsAfterPaste).toBeGreaterThan(3)
+      expect(clock.elapsed() - fake.writeTimes[1]).toBeGreaterThanOrEqual(AGENT_ECHO_TIMEOUT_MS)
+      // 16ms ごとに読み、63 回目(1,008ms)で時間切れ。その回は止める判定(奇数回)なので、not-echoed ではなくその理由を返す
+      expect(seen.readsAfterPaste).toBe(Math.ceil(AGENT_ECHO_TIMEOUT_MS / AGENT_ECHO_POLL_MS))
+      expect(seen.readsAfterPaste % 2).toBe(1)
+      expect(outcome).toEqual({ kind: 'failed', reason: 'screen-permission' })
+    })
+
+    it('止める判定と止めない判定が交互に続き、時間切れの回が止めない判定なら、前の止める判定の理由ではなく not-echoed', async () => {
+      // 上の交互のテストと組を逆にする(奇数回は止めない判定、偶数回は許可待ち)。本文は現れない
+      const seen = { pasted: false, readsAfterPaste: 0 }
+      const clock = makeClock()
+      const fake = makeFakeClaude({
+        clock,
+        echo: false,
+        onWrite: (_f, data) => {
+          if (data.startsWith('\x1b[200~')) seen.pasted = true
+        },
+        onReadScreen: (f) => {
+          if (!seen.pasted) return
+          seen.readsAfterPaste += 1
+          f.screen = seen.readsAfterPaste % 2 === 0 ? agentScreen('permission').lines : null
+        }
+      })
+      const outcome = await sendClaudePrompt(fake, 'hello', clock)
+      expect(fake.writes).not.toContain('\r')
+      // 63 回目(1,008ms)で時間切れ。その回は止めない判定(奇数回)
+      expect(seen.readsAfterPaste).toBe(Math.ceil(AGENT_ECHO_TIMEOUT_MS / AGENT_ECHO_POLL_MS))
+      expect(seen.readsAfterPaste % 2).toBe(1)
+      expect(outcome).toEqual({ kind: 'failed', reason: 'not-echoed' })
+    })
+
+    it('止める判定を 1 回返した後にシェルのモード(!)になったら、前の止める判定の理由ではなく not-echoed', async () => {
+      const seen = { pasted: false, readsAfterPaste: 0 }
+      const fake = makeFakeClaude({
+        echo: false,
+        onWrite: (f, data) => {
+          if (data.startsWith('\x1b[200~')) {
+            seen.pasted = true
+            f.screen = agentScreen('permission').lines
+          }
+        },
+        onReadScreen: (f) => {
+          if (!seen.pasted) return
+          seen.readsAfterPaste += 1
+          // 1 回目は許可待ちのまま返し、2 回目からは表示中の行と同じ画面(シェルのモードの入力欄)
+          if (seen.readsAfterPaste === 2) {
+            f.screen = null
+            f.mode = 'shell'
+          }
+        }
+      })
+      await expect(sendClaudePrompt(fake, 'hello', makeClock())).resolves.toEqual({
+        kind: 'failed',
+        reason: 'not-echoed'
+      })
+      expect(seen.readsAfterPaste).toBe(2)
+      expect(fake.writes).not.toContain('\r')
+    })
+
+    it.each(['working', 'queuedEmpty', 'tallTyped'] as const)(
+      '画面の末尾が %s(作業中・判定できない)なら、今までどおり送る',
+      async (name) => {
+        const fake = makeFakeClaude()
+        fake.screen = agentScreen(name).lines
+        await expect(sendClaudePrompt(fake, 'hello', makeClock())).resolves.toEqual({
+          kind: 'sent',
+          clearedDraft: false
+        })
+        expect(fake.writes).toEqual([AGENT_CLEAR_INPUT_CHUNK, '\x1b[200~hello\x1b[201~', '\r'])
+      }
+    )
   })
 })

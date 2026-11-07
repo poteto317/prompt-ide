@@ -116,7 +116,8 @@ export function agentSendFailureMessage(reason: AgentSendFailure, kind: AgentCli
 }
 
 /**
- * 貼り付けの後の失敗(AGENT_PROMPT_SEND_SPECS の discardHeldInputOn)で、送信の手順の間に利用者が打ったキー入力を捨てたときに、
+ * 送信の手順が止まった失敗のうち表の discardHeldInputOn に載るもの(AGENT_PROMPT_SEND_SPECS。copilot は貼り付けの後の失敗、
+ * claude は許可待ち・確認待ち)で、送信の手順の間に利用者が打ったキー入力を捨てたときに、
  * 失敗の文言の後ろに添える文。捨てた入力があったときだけ添える
  */
 export const AGENT_SEND_HELD_INPUT_DISCARDED_SUFFIX =

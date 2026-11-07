@@ -2,6 +2,7 @@ import { AGENT_CLI_PROFILES, agentCliCapabilities } from '@shared/agentCliKinds'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { PromptExecutionMode } from '@shared/types'
 import type { AgentActivity } from './agentActivity'
+import { isAgentActivityWaitingForUser } from './agentActivity'
 import { AGENT_PROMPT_SEND_SPECS } from './agentPromptSendSpecs'
 import {
   RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
@@ -19,7 +20,7 @@ import { isSamePath } from './pathUtils'
 
 // 実行ボタン・履歴の再実行・送信前の確認を押せるかの判定(設計書 C13・「決定した点」5・2026-10-22「押せる条件」)。React に依らない
 // 純粋関数。押せない理由の文言は agentSendMessages.ts、送り先の種類が入力待ちを求めるか(requiresIdle)は送信の手順の表
-// agentPromptSendSpecs.ts から引く。段階 2b のリファクタリングで agentSendMessages.ts から中身を変えずに移した
+// agentPromptSendSpecs.ts から引く。許可待ち・確認待ちは種類に依らず押せない(設計書 2026-11-07)。段階 2b のリファクタリングで agentSendMessages.ts から中身を変えずに移した
 
 export interface PromptRunAvailability {
   disabled: boolean
@@ -37,7 +38,7 @@ export interface AgentRunConditions {
   isSessionRunning: boolean
   isSessionClosing: boolean
   isSending: boolean
-  /** 送り先のタブの活動(activities.get(slotId) ?? 'unknown'。中断の判定と同じ写像)。requiresIdle の種類だけが見る */
+  /** 送り先のタブの活動(activities.get(slotId) ?? 'unknown'。中断の判定と同じ写像)。許可待ち・確認待ちはどの種類でも見る。作業中・判定できないは requiresIdle の種類だけが見る */
   activity: AgentActivity
   /** 送り先のタブが中断の流れの間か(useAgentInterrupt の isInterruptPending)。requiresIdle の種類だけが見る */
   isInterrupting: boolean
@@ -46,7 +47,7 @@ export interface AgentRunConditions {
 /** 実行ボタンを押せるか(設計書 C13: エージェント CLI 方式は「セッションが running で、送信中でない」。複数タブでは加えて
  *  「送り先のタブが閉じる途中でない」。閉じる途中のタブへ送ると、止めたセッションに届かず捨てられるため)。
  *  送り先の CLI が送信に対応していなければ押せない。送り先の種類の手順が requiresIdle(copilot)なら、加えて「送り先のタブが
- *  中断の流れの外」で「画面の活動が入力待ち」のときだけ押せる(設計書 2026-10-22「押せる条件」。claude は活動を見ない) */
+ *  中断の流れの外」で「画面の活動が入力待ち」のときだけ押せる(設計書 2026-10-22「押せる条件」)。許可待ち・確認待ちは、どの種類でも押せない(設計書 2026-11-07。claude の作業中は今までどおり押せる) */
 export function getPromptRunAvailability(params: AgentRunConditions): PromptRunAvailability {
   if (params.mode === null) return { disabled: true, reason: RUN_DISABLED_LOADING_MODE }
   if (params.mode === 'legacy') return { disabled: params.isExecuting, reason: null }
@@ -59,15 +60,24 @@ export function getPromptRunAvailability(params: AgentRunConditions): PromptRunA
   if (params.isSessionClosing) return { disabled: true, reason: RUN_DISABLED_CLOSING }
   if (!params.isSessionRunning) return { disabled: true, reason: RUN_DISABLED_NO_SESSION }
   if (params.isSending) return { disabled: true, reason: RUN_DISABLED_SENDING }
-  if (AGENT_PROMPT_SEND_SPECS[params.cliKind].requiresIdle) {
-    // 中断の 2 回目を待つ間に貼り付けると、2 回目の Esc が貼った本文を消しうる(L-594)
-    if (params.isInterrupting) return { disabled: true, reason: RUN_DISABLED_INTERRUPTING }
-    // 作業中の Enter は送信待ちになり、作業が終わると勝手に送られる。許可待ち・確認待ちの画面へ貼らない
-    if (params.activity !== 'idle') {
-      return {
-        disabled: true,
-        reason: agentSendBlockedByActivityReason(params.activity, commandName)
-      }
+  const { requiresIdle } = AGENT_PROMPT_SEND_SPECS[params.cliKind]
+  // 中断の 2 回目を待つ間に貼り付けると、2 回目の Esc が貼った本文を消しうる(L-594)。requiresIdle の種類だけが見る
+  if (requiresIdle && params.isInterrupting) {
+    return { disabled: true, reason: RUN_DISABLED_INTERRUPTING }
+  }
+  // 許可待ち・確認待ち(利用者の操作を待っている活動)の画面へ送ると、送信の手順の Enter・貼り付けが選択の画面に届いて既定の
+  // 選択肢で答えうる。どの種類でも送らない(claude の送信の手順も各段で同じ判定で止める。claudePromptSend.ts。L-058)
+  if (isAgentActivityWaitingForUser(params.activity)) {
+    return {
+      disabled: true,
+      reason: agentSendBlockedByActivityReason(params.activity, commandName)
+    }
+  }
+  // 作業中の Enter は送信待ちになり、作業が終わると勝手に送られる(requiresIdle の種類は作業中・判定できない間も送らない)
+  if (requiresIdle && params.activity !== 'idle') {
+    return {
+      disabled: true,
+      reason: agentSendBlockedByActivityReason(params.activity, commandName)
     }
   }
   return { disabled: false, reason: null }

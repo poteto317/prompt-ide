@@ -29,6 +29,7 @@ afterEach(() => {
 })
 import type { PromptExecutionMode } from '@shared/types'
 import { AGENT_CLI_KINDS } from '@shared/agentCliKinds'
+import type { AgentActivity } from '../agentActivity'
 import { AGENT_PROMPT_SEND_SPECS } from '../agentPromptSendSpecs'
 import {
   RERUN_DISABLED_AGENT_ENTRY_LEGACY_MODE,
@@ -275,7 +276,7 @@ describe('送信の入口の CLI の種類(送り先のタブの cliKind)', () =
   })
 })
 
-describe('押せる条件の活動と中断の流れ(requiresIdle の種類だけが見る)', () => {
+describe('押せる条件の活動と中断の流れ(許可待ち・確認待ちはどの種類でも、作業中・不明・中断の流れは requiresIdle の種類だけが見る)', () => {
   const copilotIdle = {
     mode: 'agent-cli' as const,
     isExecuting: false,
@@ -311,6 +312,16 @@ describe('押せる条件の活動と中断の流れ(requiresIdle の種類だ�
     ).toEqual({ disabled: true, reason: RUN_DISABLED_INTERRUPTING })
   })
 
+  it.each(['permission', 'confirm'] as const)(
+    'copilot が中断の流れの間なら、%s でも RUN_DISABLED_INTERRUPTING(理由の順は 中断の流れ → 活動)',
+    (activity) => {
+      expect(getPromptRunAvailability({ ...copilotIdle, activity, isInterrupting: true })).toEqual({
+        disabled: true,
+        reason: RUN_DISABLED_INTERRUPTING
+      })
+    }
+  )
+
   it('閉じる途中・動いていない・送信中の理由は、中断の流れと活動の理由より先', () => {
     const busy = { ...copilotIdle, activity: 'working' as const, isInterrupting: true }
     expect(getPromptRunAvailability({ ...busy, isSessionClosing: true }).reason).toBe(
@@ -322,8 +333,8 @@ describe('押せる条件の活動と中断の流れ(requiresIdle の種類だ�
     expect(getPromptRunAvailability({ ...busy, isSending: true }).reason).toBe(RUN_DISABLED_SENDING)
   })
 
-  it.each(['working', 'permission', 'confirm', 'unknown', 'idle'] as const)(
-    'claude は活動(%s)と中断の流れに関わらず、今と同じく押せる',
+  it.each(['working', 'unknown', 'idle'] as const)(
+    'claude は活動が %s なら、中断の流れに関わらず今と同じく押せる',
     (activity) => {
       for (const isInterrupting of [false, true]) {
         expect(
@@ -332,6 +343,53 @@ describe('押せる条件の活動と中断の流れ(requiresIdle の種類だ�
       }
     }
   )
+
+  it.each(['permission', 'confirm'] as const)(
+    'claude の活動が %s なら、中断の流れに関わらず押せず、活動の理由を出す',
+    (activity) => {
+      for (const isInterrupting of [false, true]) {
+        expect(
+          getPromptRunAvailability({ ...copilotIdle, cliKind: 'claude', activity, isInterrupting })
+        ).toEqual({
+          disabled: true,
+          reason: agentSendBlockedByActivityReason(activity, 'claude')
+        })
+      }
+    }
+  )
+
+  it('claude の閉じる途中・動いていない・送信中の理由は、許可待ちの理由より先', () => {
+    const waiting = { ...copilotIdle, cliKind: 'claude' as const, activity: 'permission' as const }
+    expect(getPromptRunAvailability({ ...waiting, isSessionClosing: true }).reason).toBe(
+      RUN_DISABLED_CLOSING
+    )
+    expect(getPromptRunAvailability({ ...waiting, isSessionRunning: false }).reason).toBe(
+      RUN_DISABLED_NO_SESSION
+    )
+    expect(getPromptRunAvailability({ ...waiting, isSending: true }).reason).toBe(
+      RUN_DISABLED_SENDING
+    )
+  })
+
+  it('claude の履歴の再実行も同じ(記録したフォルダの理由が先)', () => {
+    const entry = {
+      ...copilotIdle,
+      cliKind: 'claude' as const,
+      recordedFolderPath: '/repo',
+      folderPath: '/repo'
+    }
+    expect(getHistoryRerunAvailability({ ...entry, activity: 'permission' })).toEqual({
+      disabled: true,
+      reason: agentSendBlockedByActivityReason('permission', 'claude')
+    })
+    expect(
+      getHistoryRerunAvailability({ ...entry, folderPath: '/other', activity: 'permission' })
+    ).toEqual({ disabled: true, reason: rerunDisabledAgentEntryFolderMismatch('/repo') })
+    expect(getHistoryRerunAvailability({ ...entry, activity: 'working' })).toEqual({
+      disabled: false,
+      reason: null
+    })
+  })
 
   it('履歴の再実行も同じ(記録したフォルダの理由が先)', () => {
     const entry = { ...copilotIdle, recordedFolderPath: '/repo', folderPath: '/repo' }
@@ -357,6 +415,25 @@ describe('押せる条件の活動と中断の流れ(requiresIdle の種類だ�
       expect(
         getPromptRunAvailability({ ...copilotIdle, cliKind, isInterrupting: true }).disabled
       ).toBe(requiresIdle)
+    }
+  )
+
+  it.each(AGENT_CLI_KINDS)(
+    '%s は、利用者の操作を待っている活動ではいつも押せず、作業中・不明では requiresIdle のときだけ押せない',
+    (cliKind) => {
+      const { requiresIdle } = AGENT_PROMPT_SEND_SPECS[cliKind]
+      const expected: Record<AgentActivity, boolean> = {
+        idle: false,
+        permission: true,
+        confirm: true,
+        working: requiresIdle,
+        unknown: requiresIdle
+      }
+      for (const activity of Object.keys(expected) as AgentActivity[]) {
+        expect(getPromptRunAvailability({ ...copilotIdle, cliKind, activity }).disabled).toBe(
+          expected[activity]
+        )
+      }
     }
   )
 })
