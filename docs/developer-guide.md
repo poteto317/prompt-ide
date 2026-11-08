@@ -77,7 +77,7 @@ Git の受け口(`handlers/gitHandlers.ts`)は、領域ごとの `registerGit*Ha
 ### 3.2 main → renderer の通知
 
 ストリーミングの出力(`prompt:streamChunk`)・エージェントの端末の出力(`agentTerminal:data`)・外部でのファイルの変更
-(`fs:externalChange`)などは、main から renderer へ送る。送り先のウィンドウが破棄済みのときに例外を出さないよう、
+(`fs:externalChange`)・開いているフォルダの変化の合図(`fs:folderChange`。監視を張るかは renderer の `fs:setFolderWatch`、どのフォルダかは main が決める)などは、main から renderer へ送る。送り先のウィンドウが破棄済みのときに例外を出さないよう、
 `safeWebContentsSend.ts` の `sendToOwner` などを通す(呼び出し元の応答の中で送るストリーミングは `handlers/streamDelivery.ts`)。
 preload の `on*` 関数(`onAgentData` など)が
 payload を検証してからリスナーを呼び、購読の解除関数を返す。形の合わない payload は黙って捨てる
@@ -223,6 +223,13 @@ expect(caught).toBe(failure)
 - **`settings.json` の API キーのフィールドは型の検証を通らない。** `readSettingsFile` は各フィールドの型を確かめずに `SettingsFile` として返す。
   ほかの設定のストアは読むときに型を確かめるが、`apiKeyStore.ts` の `getApiKey` は `apiKey` を文字列とみなして `trim()` を呼ぶ
   (手で `"apiKey": 123` と書き換えると `TypeError` になる。2026-10-30 時点の既知の点)。
+- **アプリが実行する `git status` は `.git/index` を書き換えうる。** `git status` は `.git/index.lock` を作って消し、作業ツリーの stat の情報が
+  古いと `.git/index` も書き直す。`.git` の監視を契機に git status を取り直すと、自分の取得が次の通知を起こして止まらなくなりうるので、
+  `gitService.ts` の `getGitStatus` は `GIT_OPTIONAL_LOCKS=0` で取る(設計書 2026-11-08 の 1 章の 8・9)。
+  なお `git diff` も、内容が同じで更新時刻だけ変わったファイルがあると `.git/index.lock` を取って `.git/index` を書き直す(`GIT_OPTIONAL_LOCKS=0` では止まらない)。
+  監視を契機に走るアプリの diff が `index.lock` を持つ間に外の `git add`・`git commit` が失敗しうるので、`getDiff` は `-c diff.autoRefreshIndex=false` で
+  書かせない(stat だけ変わったファイルの diff は空のまま。同じ設計書の 1 章の 10)。
+  未ステージの diff の pathspec がサブモジュールだと、dirty を調べる子の `git status` が `.git/modules/<sub>/index.lock` を取るので、`getDiff` の git は `GIT_OPTIONAL_LOCKS=0` も足して子のロックを止める(`--ignore-submodules=dirty` は表示が変わるので使わない)。
 
 ## 7. 関連する文書
 
