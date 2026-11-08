@@ -40,8 +40,8 @@ export function useStashPanel({
   )
   // stash・復元も checkout・マージと同じく working tree を書き換えるため、runEditorSyncedOperation で
   // 「未保存編集の破棄確認 → 操作 → 成功時のみタブを再読込」にする。stash は未追跡ファイルを消し、
-  // 復元は未追跡ファイルを作るため、成功後はファイルツリーも読み直す(変更の取り消しと同じ理由。
-  // ファイルウォッチャーが無い)。ツリーの読み直しの失敗はツリー側が自身のエラー表示へ報告するため、
+  // 復元は未追跡ファイルを作るため、成功後はファイルツリーも読み直す(変更の取り消しと同じ理由。操作の直後に反映する。
+  // フォルダの監視の通知は合流の待ちの後に届き、Linux では監視を張らない)。ツリーの読み直しの失敗はツリー側が自身のエラー表示へ報告するため、
   // タブの再読込を止めない
   const refreshTreeAfter = async (operation: () => Promise<boolean>): Promise<boolean> => {
     const succeeded = await operation()

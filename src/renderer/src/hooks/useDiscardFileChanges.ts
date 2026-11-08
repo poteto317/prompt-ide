@@ -49,9 +49,9 @@ export function useDiscardFileChanges({
     if (!succeeded) return false
     if (movesToTrash) closeTabsAtOrInside(absolutePath)
     else await reloadOpenFile(absolutePath)
-    // ファイルウォッチャーが無いため、ゴミ箱へ移した未追跡ファイルがツリーに残り
-    // (クリックすると開けない)、復元された削除済みファイルもツリーに現れない。
-    // 追跡済み・未追跡のどちらでもツリーの構成が変わり得るため、成功時は常に読み直す。
+    // ゴミ箱へ移した未追跡ファイルがツリーに残る(クリックすると開けない)・復元された削除済みファイルが
+    // ツリーに現れない、を操作の直後に解消するため読み直す(フォルダの監視の通知は合流の待ちの後に届き、
+    // Linux では監視を張らない)。追跡済み・未追跡のどちらでもツリーの構成が変わり得るため、成功時は常に読み直す。
     // 読み直しの失敗は refreshTree 自身がツリーのエラー表示へ報告するため、ここでは
     // 握り潰して取り消しの成功を返す(最終レビューで追加)
     await refreshTree().catch(() => undefined)

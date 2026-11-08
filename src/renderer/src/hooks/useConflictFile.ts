@@ -178,7 +178,8 @@ export function useConflictFile({
       // ロック中などで実行しなかった(no-op)
       if (!held) return false
       if (succeeded && writesFile) await reloadOpenFile(absolutePath)
-      // ファイルの監視が無いため、削除・復元したファイルはツリーを読み直さないとエクスプローラーに反映されない。
+      // 削除・復元したファイルを操作の直後にエクスプローラーへ反映するため、ツリーを読み直す(フォルダの監視の通知は
+      // 合流の待ちの後に届き、Linux では監視を張らない)。
       // ツリーの読み直しの失敗はツリー側が自身のエラー表示へ報告するため、操作の結果は変えない(useMergeState と同じ)
       if (succeeded && refreshesTree) await refreshTree().catch(() => undefined)
       // 実行中に別のファイル・フォルダへ移っていたら、読み直しは古いファイルを反映してしまうので行わない。
