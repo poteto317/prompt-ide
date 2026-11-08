@@ -80,6 +80,7 @@ function makeOptions(
     recording: makeRecording(),
     gitStatus: null,
     refreshGitStatus: vi.fn(async () => undefined),
+    wasGitStatusSetQuietly: () => false,
     agentSessionExit: null,
     agentRunning: false,
     agentTabs: [],
@@ -152,6 +153,18 @@ describe('useAgentChangesWiring', () => {
       expect(refresh).toHaveBeenCalledOnce()
       // 同じ内容でも、新しいオブジェクトなら取り直す
       update({ gitStatus: gitStatusOf('main') })
+      expect(refresh).toHaveBeenCalledTimes(2)
+    })
+
+    it('静かな取り直しが置いた git status → 一覧も静かに取り直す({ quiet: true })。通常の取得が置いたもの → 引数無し', () => {
+      let setQuietly = true
+      const { update, options } = setup(makeOptions({ wasGitStatusSetQuietly: () => setQuietly }))
+      const refresh = options().recording.changes.refresh
+      update({ gitStatus: gitStatusOf('main') })
+      expect(refresh).toHaveBeenLastCalledWith({ quiet: true })
+      setQuietly = false
+      update({ gitStatus: gitStatusOf('dev') })
+      expect(refresh).toHaveBeenLastCalledWith()
       expect(refresh).toHaveBeenCalledTimes(2)
     })
 

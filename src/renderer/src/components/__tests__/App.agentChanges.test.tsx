@@ -200,10 +200,19 @@ describe('App: エージェントの変更の配線', () => {
       const listCalls = vi.mocked(window.api.listAgentChanges).mock.calls.length
       const pending = deferredList()
       vi.mocked(window.api.listAgentChanges).mockReturnValueOnce(pending.promise)
+
+      window.dispatchEvent(new Event('focus'))
+      // 開いているフォルダの自動の反映(useFolderAutoRefresh。git status が同じでも受け入れたら diff を静かに取り直す。
+      // 設計書 2026-11-08)が、一覧の取り直しより先に diff を 1 回取る。読み込み中にせず、フォーカスも保つ
+      await waitFor(() =>
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      )
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+      expect(hunk).toHaveFocus()
+      // 一覧の取り直しの後の diff だけを止める(自動の反映の 1 回の後に差し込む)
       const pendingDiff = deferredDiff()
       vi.mocked(window.api.getAgentChangeDiff).mockReturnValueOnce(pendingDiff.promise)
 
-      window.dispatchEvent(new Event('focus'))
       await waitFor(() => expect(window.api.listAgentChanges).toHaveBeenCalledTimes(listCalls + 1))
       // 取り直しの間: セクションの ↶・すべて戻す・ハンクの戻すは押せるまま、フォーカスはハンクのまま
       expect(
@@ -218,7 +227,7 @@ describe('App: エージェントの変更の配線', () => {
         pending.resolve(listed)
       })
       await waitFor(() =>
-        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 2)
       )
       expect(screen.queryByText('読み込み中...')).toBeNull()
       expect(hunk).toBeInTheDocument()
@@ -230,7 +239,7 @@ describe('App: エージェントの変更の配線', () => {
         )
         await new Promise((resolve) => setTimeout(resolve, 50))
       })
-      expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 2)
       expect(screen.queryByText('読み込み中...')).toBeNull()
       expect(hunk).toBeInTheDocument()
       expect(hunk).toHaveFocus()
@@ -238,11 +247,27 @@ describe('App: エージェントの変更の配線', () => {
 
     it('一覧が同じでも、同じファイルの続きの変更は、読み込み中を挟まずに開いている diff へ反映する', async () => {
       await openAgentDiffAndFocusHunk()
+      const getDiff = vi.mocked(window.api.getAgentChangeDiff)
+      const diffCalls = getDiff.mock.calls.length
+      // 一覧の取り直しの後の diff(focus から 2 回目)だけを止める。1 回目(自動の反映)は既定の内容(続きの変更なし)を返す。
+      // 呼ばれた回数で選ぶので、2 つの取得の間の実時間の差に頼らない
       const pendingDiff = deferredDiff()
-      vi.mocked(window.api.getAgentChangeDiff).mockReturnValueOnce(pendingDiff.promise)
+      const defaultDiff = getDiff.getMockImplementation()
+      if (defaultDiff === undefined) throw new Error('getAgentChangeDiff の既定の実装が無い')
+      getDiff.mockImplementation((...args) =>
+        getDiff.mock.calls.length === diffCalls + 2 ? pendingDiff.promise : defaultDiff(...args)
+      )
 
       window.dispatchEvent(new Event('focus'))
-      await waitFor(() => expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(2))
+      // 開いているフォルダの自動の反映が先に diff を 1 回静かに取る(設計書 2026-11-08)
+      await waitFor(() =>
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+      )
+      expect(screen.queryByText('読み込み中...')).toBeNull()
+      // 一覧の取り直しの完了で、開いている diff をもう 1 回静かに取る
+      await waitFor(() =>
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 2)
+      )
       expect(screen.queryByText('読み込み中...')).toBeNull()
       await act(async () => {
         pendingDiff.resolve(
@@ -268,8 +293,9 @@ describe('App: エージェントの変更の配線', () => {
       )
 
       window.dispatchEvent(new Event('focus'))
+      // 1 回目は開いているフォルダの自動の反映(設計書 2026-11-08)、2 回目が一覧の変化での取り直し
       await waitFor(() =>
-        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 1)
+        expect(window.api.getAgentChangeDiff).toHaveBeenCalledTimes(diffCalls + 2)
       )
       expect(window.api.getAgentChangeDiff).toHaveBeenLastCalledWith('a.txt', { kind: 'all' })
     })

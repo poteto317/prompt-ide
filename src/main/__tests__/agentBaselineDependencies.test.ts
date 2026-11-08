@@ -21,8 +21,12 @@ describe('記録の部品の依存の向き', () => {
     ])
   })
 
-  it('git の起動の層(agentBaselineGit)は、同じ階層のどのモジュールも import しない(記録の手順・方式の判定・registry を型でも参照しない)', () => {
-    expect(localImportsOf('agentBaselineGit.ts')).toEqual([])
+  it('git の起動の層(agentBaselineGit)は、同じ階層では環境の検査の許可(gitInheritedEnv)だけを import する(記録の手順・方式の判定・registry を型でも参照しない)', () => {
+    expect(localImportsOf('agentBaselineGit.ts')).toEqual(['gitInheritedEnv'])
+  })
+
+  it('環境の検査の許可(gitInheritedEnv)は、同じ階層のどのモジュールも import しない', () => {
+    expect(localImportsOf('gitInheritedEnv.ts')).toEqual([])
   })
 
   it('隠れた git の作成(agentBaselineHiddenGit)は git の起動の層だけを使う', () => {

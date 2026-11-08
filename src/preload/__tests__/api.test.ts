@@ -519,6 +519,11 @@ describe('エージェントのターミナル・外部変更・実行方式・�
       ['fs:setWatchedFiles', ['/p/a']]
     ],
     [
+      'setFolderWatch は fs:setFolderWatch に真偽値を渡す',
+      () => api.setFolderWatch(true),
+      ['fs:setFolderWatch', true]
+    ],
+    [
       'getPromptExecutionMode は settings:getPromptExecutionMode を呼ぶ',
       () => api.getPromptExecutionMode(),
       ['settings:getPromptExecutionMode']
@@ -660,6 +665,13 @@ describe.each([
     [null, { paths: '/a' }, { paths: [1] }]
   ],
   [
+    'onFolderChange',
+    'fs:folderChange',
+    (l: (p: unknown) => void) => api.onFolderChange(l),
+    { treeChanged: true },
+    [null, {}, { treeChanged: 'true' }, { treeChanged: 1 }]
+  ],
+  [
     'onAgentNotificationActivated',
     'agentNotification:activated',
     (l: (p: unknown) => void) => api.onAgentNotificationActivated(l),
@@ -746,5 +758,15 @@ describe('hasApiKey の戻り値', () => {
   it('main が返した API キーの状態(理由の種類)をそのまま返す', async () => {
     mockInvoke.mockResolvedValueOnce({ ok: false, reason: 'keystore-unavailable' })
     await expect(api.hasApiKey()).resolves.toEqual({ ok: false, reason: 'keystore-unavailable' })
+  })
+})
+
+describe('onFolderChange の正規化', () => {
+  it('treeChanged だけを渡す(ほかの項目は捨てる)', () => {
+    const listener = vi.fn()
+    api.onFolderChange(listener)
+    const wrapped = mockOn.mock.calls.find(([ch]) => ch === 'fs:folderChange')?.[1]
+    wrapped({}, { treeChanged: false, path: '/secret' })
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ treeChanged: false })
   })
 })

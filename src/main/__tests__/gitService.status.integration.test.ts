@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdirSync, mkdtempSync } from 'fs'
+import { mkdirSync, mkdtempSync, readFileSync, statSync, utimesSync } from 'fs'
 import { removeTempPathSync } from '@shared/__tests__/helpers/tempDirGuard'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -435,5 +435,44 @@ describe('getLog・getHeadCommitMessage(実 git)', () => {
     runGit(repo, 'add', '-A')
     runGit(repo, 'commit', '-q', '-m', 'subject', '-m', 'body line')
     await expect(getHeadCommitMessage(repo)).resolves.toBe('subject\n\nbody line')
+  })
+})
+
+// アプリの git status は .git/index を書かない(設計書 2026-11-08 の 1 章の 8・9。書くと監視の通知を起こし、取り直しが止まらなくなる)
+describe('getGitStatus は .git/index を書かない(実 git)', () => {
+  let root: string
+  let repo: string
+
+  beforeEach(() => {
+    stubIsolatedGitEnv()
+    root = mkdtempSync(join(tmpdir(), 'status-optional-locks-'))
+    repo = join(root, 'repo')
+    mkdirSync(repo)
+    initRepo(repo)
+    writeRepoFile(repo, 'a.txt', '1\n')
+    commitAll(repo, 'first')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    removeTempPathSync(root)
+  })
+
+  it('更新時刻が未来のファイルがあっても、getGitStatus の後に .git/index の mtime と中身が変わらない', async () => {
+    // stat の情報が古いと、ふつうの git status は毎回 .git/index を書き直す(1 章の 8)
+    const future = new Date('2099-01-01T00:00:00Z')
+    utimesSync(join(repo, 'a.txt'), future, future)
+    const indexPath = join(repo, '.git', 'index')
+    const mtimeBefore = statSync(indexPath).mtimeMs
+    const contentBefore = readFileSync(indexPath)
+    await getGitStatus(repo)
+    await getGitStatus(repo)
+    expect(statSync(indexPath).mtimeMs).toBe(mtimeBefore)
+    expect(readFileSync(indexPath).equals(contentBefore)).toBe(true)
+  })
+
+  it('GIT_ASKPASS が環境にあっても投げずに取れる(simple-git の環境の検査を外している)', async () => {
+    vi.stubEnv('GIT_ASKPASS', '/usr/bin/true')
+    await expect(getGitStatus(repo)).resolves.toMatchObject({ isRepo: true, branch: 'main' })
   })
 })

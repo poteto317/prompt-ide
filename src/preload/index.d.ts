@@ -26,6 +26,7 @@ import type {
   AgentStartResult,
   CLIOnlyToolId,
   ExternalFileChangeEvent,
+  FolderChangeEvent,
   PromptExecutionMode,
   PromptListMode,
   WriteFileCheckedResult,
@@ -198,6 +199,8 @@ declare global {
       ): Promise<WriteFileCheckedResult>
       setWatchedFiles(paths: string[]): Promise<void>
       onExternalFileChange(listener: (event: ExternalFileChangeEvent) => void): () => void
+      setFolderWatch(enabled: boolean): Promise<void>
+      onFolderChange(listener: (event: FolderChangeEvent) => void): () => void
       openExternalLink(url: string): Promise<boolean>
       beginAgentChanges(trigger: AgentChangesBeginTrigger): Promise<AgentChangesState>
       getAgentChangesState(): Promise<AgentChangesState>

@@ -41,7 +41,7 @@ export interface DiffOperationsState {
    *  activeFileStatusKey 依存の自動再取得では検知できない。取り直さないと、
    *  保存前の古い diffContent から作った patch を「このハンクをステージ」で
    *  送ってしまい、ユーザーが一度も意図していない内容が index に入る。
-   *  quiet(エージェントの変更の自動の取り直しの後)なら、同じタブの内容を出したまま取り直し、届いた内容が同じなら置き換えない
+   *  quiet(エージェントの変更の自動の取り直しの後・開いているフォルダの監視の通知とフォーカスの復帰の useFolderAutoRefresh)なら、同じタブの内容を出したまま取り直し、届いた内容が同じなら置き換えない
    *  (読み込み中に差し替えず、DiffView のスクロールとフォーカスを保つ)。取得の失敗を出しているタブでは、エラーを出したまま取り直す。
    *  同じ描画で手動の取り直しも頼まれたら手動を優先する */
   refreshDiff: (options?: DiffRefreshOptions) => void

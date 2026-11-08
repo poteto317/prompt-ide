@@ -1381,3 +1381,36 @@ describe('静かな diff の取り直し(refreshDiff({ quiet: true }))', () => {
     expect(result.current.diffContent).toBe('B_DIFF')
   })
 })
+
+describe('外の変更での静かな取り直し(git status の文字が変わる)', () => {
+  it('同じ描画で status の文字が変わり refreshDiff({ quiet: true }) も頼まれる → 取得は 1 回で、届くまで前の内容を出したまま(読み込み中にしない)', async () => {
+    const tab: DiffTabKey = { path: 'b.txt', kind: 'unstaged' }
+    const refreshGitStatus = vi.fn().mockResolvedValue(undefined)
+    const before: GitFileStatus[] = [{ path: 'b.txt', index: ' ', workingDir: 'M' }]
+    const after: GitFileStatus[] = [{ path: 'b.txt', index: 'M', workingDir: 'M' }]
+    mockGetDiff.mockResolvedValue('OLD_DIFF')
+    const { result, rerender } = renderHook(
+      ({ files }: { files: GitFileStatus[] }) =>
+        useDiffOperationsForTest(tab, refreshGitStatus, files),
+      { initialProps: { files: before } }
+    )
+    await waitFor(() => expect(result.current.diffContent).toBe('OLD_DIFF'))
+    let resolveNew: (value: string) => void = () => undefined
+    mockGetDiff.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveNew = resolve
+      })
+    )
+    const callsBefore = mockGetDiff.mock.calls.length
+    act(() => {
+      result.current.refreshDiff({ quiet: true })
+      rerender({ files: after })
+    })
+    expect(mockGetDiff.mock.calls.length - callsBefore).toBe(1)
+    expect(result.current.diffContent).toBe('OLD_DIFF')
+    await act(async () => {
+      resolveNew('NEW_DIFF')
+    })
+    expect(result.current.diffContent).toBe('NEW_DIFF')
+  })
+})

@@ -17,3 +17,9 @@ export type WriteFileCheckedResult =
 export interface ExternalFileChangeEvent {
   paths: string[]
 }
+
+/** fs:folderChange の通知。開いているフォルダの中で何かが変わった合図(パスは含めない。renderer は今のフォルダを読み直す)。
+ *  treeChanged が偽なら、git status だけが変わりうる(ツリーに出ない深さ・.git の中の変化) */
+export interface FolderChangeEvent {
+  treeChanged: boolean
+}

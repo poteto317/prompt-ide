@@ -1,6 +1,6 @@
 import { join } from 'path'
 import { readdir, readFile, writeFile, mkdir, rename, rm, stat, lstat } from 'node:fs/promises'
-import { shouldSkipDir, MAX_DEPTH, sortFileTree } from './traversalPolicy'
+import { shouldSkipDir, isWithinTreeDepth, sortFileTree } from './traversalPolicy'
 import { isEnoentError } from './fsErrors'
 import type { FileTreeNode } from '@shared/types'
 
@@ -101,7 +101,8 @@ export async function deleteEntry(targetPath: string): Promise<void> {
 }
 
 export async function readDirRecursive(dirPath: string, depth = 0): Promise<FileTreeNode[]> {
-  if (depth > MAX_DEPTH) return []
+  // このディレクトリの中身は depth + 1 段(ツリーに出る深さの境界は traversalPolicy の 1 か所で決める)
+  if (!isWithinTreeDepth(depth + 1)) return []
   const entries = await readdir(dirPath, { withFileTypes: true })
   const nodes = await Promise.all(
     entries

@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { SKIP_DIRS, MAX_DEPTH, shouldSkipDir, sortFileTree } from '../traversalPolicy'
+import {
+  SKIP_DIRS,
+  MAX_DEPTH,
+  isWithinTreeDepth,
+  shouldSkipDir,
+  sortFileTree
+} from '../traversalPolicy'
 
 describe('SKIP_DIRS', () => {
   it.each([...SKIP_DIRS])('"%s" はスキップ対象に含まれる', (dir) => {
@@ -17,6 +23,17 @@ describe('MAX_DEPTH', () => {
   it('正の整数である', () => {
     expect(Number.isInteger(MAX_DEPTH)).toBe(true)
     expect(MAX_DEPTH).toBeGreaterThan(0)
+  })
+})
+
+describe('isWithinTreeDepth', () => {
+  it('根の直下(1 段)から MAX_DEPTH + 1 段までは true', () => {
+    expect(isWithinTreeDepth(1)).toBe(true)
+    expect(isWithinTreeDepth(MAX_DEPTH + 1)).toBe(true)
+  })
+
+  it('MAX_DEPTH + 2 段は false', () => {
+    expect(isWithinTreeDepth(MAX_DEPTH + 2)).toBe(false)
   })
 })
 

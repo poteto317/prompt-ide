@@ -12,7 +12,9 @@ import {
   addToGitignore,
   writeFileContentChecked,
   setWatchedFiles,
-  onExternalFileChange
+  onExternalFileChange,
+  setFolderWatch,
+  onFolderChange
 } from '../fileSystemApi'
 
 const mockApi = {
@@ -27,7 +29,9 @@ const mockApi = {
   addToGitignore: vi.fn(),
   writeFileChecked: vi.fn(),
   setWatchedFiles: vi.fn(),
-  onExternalFileChange: vi.fn()
+  onExternalFileChange: vi.fn(),
+  setFolderWatch: vi.fn(),
+  onFolderChange: vi.fn()
 }
 
 beforeEach(() => {
@@ -135,5 +139,15 @@ describe('外部変更の検知', () => {
     expect(onExternalFileChange(listener)).toBe(unsubscribe)
     expect(mockApi.setWatchedFiles).toHaveBeenCalledWith(['/p/a'])
     expect(mockApi.onExternalFileChange).toHaveBeenCalledWith(listener)
+  })
+
+  it('setFolderWatch・onFolderChange は window.api に委譲する', async () => {
+    const unsubscribe = vi.fn()
+    mockApi.onFolderChange.mockReturnValue(unsubscribe)
+    await setFolderWatch(false)
+    const listener = vi.fn()
+    expect(onFolderChange(listener)).toBe(unsubscribe)
+    expect(mockApi.setFolderWatch).toHaveBeenCalledWith(false)
+    expect(mockApi.onFolderChange).toHaveBeenCalledWith(listener)
   })
 })

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AgentCliKind } from '@shared/agentCliKinds'
 import type { AgentInstructionFile } from '@shared/agentInstructionFiles'
@@ -12,6 +12,7 @@ import {
   replacePathPrefix
 } from '../lib/pathUtils'
 import * as fileSystemApi from '../lib/fileSystemApi'
+import { isSameFileTree } from '../lib/fileTreeEquality'
 import {
   SAVE_ABORTED_BY_CREATE,
   SAVE_ABORTED_BY_CREATE_DIRECTORY,
@@ -75,6 +76,11 @@ interface FileTreeOperationsState {
   deleteEntry: (node: FileTreeNode) => Promise<void>
   /** ツリーを再読込する。実際に現在のツリーへ反映した場合のみ true */
   refreshTree: () => Promise<boolean>
+  /**
+   * ツリーを静かに読み直す(監視の通知・フォーカスの復帰。設計書 2026-11-08)。内容が同じなら置き換えず、失敗は表示せず前のツリーを残す。
+   * 手動の読み直しの途中なら読まずに、手動の後に 1 回だけ読み直す。投げない
+   */
+  refreshTreeQuietly: () => Promise<void>
   /** 指示ファイルを表の雛形で作ってツリーを読み直す。成否は結果で返し、共有の error には書かない(設計書 2026-11-05) */
   createAgentInstructionFile: (
     cliKind: AgentCliKind,
@@ -101,12 +107,17 @@ export function useFileTreeOperations({
   const [fileTree, setFileTree] = useState<FileTreeNode[]>([])
   const [error, setError] = useState<Error | null>(null)
 
+  // 実行中の手動の読み直しの数と、その間に届いた静かな読み直しの印(手動の後に 1 回だけ走らせる)。
+  // 静かな読み直しも beginTreeWrite で世代を進めるため、手動の途中で走らせると手動の結果が古くなり、手動の呼び出し元
+  // (指示ファイルの作成・走査の後のやり直し)が戻り値の null を失敗として扱ってしまう(設計書 2026-11-08 の (a))
+  const manualReloadsInFlightRef = useRef(0)
+  const quietAfterManualRef = useRef(false)
+
   // fs:readDirectory はルートフォルダしか受け付けないため、ツリー更新はルートからの
   // 全再読込で行う(木は MAX_DEPTH=5 で小さく、部分更新の複雑さに見合わない)
-  // ツリーを読み直して反映する。反映したらそのツリー、反映しなかった(走査中・古い結果・フォルダが無い)ら null。
-  // 読み込みの失敗は reportTreeLoad の後に投げ直す(refreshTree と指示ファイルの作成が使う)
-  const reloadTree = async (): Promise<FileTreeNode[] | null> => {
-    // フォルダ走査中は触らない。権威あるツリーはフォルダ読み込み側が書く
+  // 1 回読んで反映する。反映したらそのツリー、反映しなかった(走査中・古い結果・フォルダが無い・静かな失敗)ら null
+  const readAndApplyTree = async (quiet: boolean): Promise<FileTreeNode[] | null> => {
+    // フォルダ走査中は触らない。権威あるツリーはフォルダ読み込み側が書く(走査の後に手動でやり直す)
     const isLatestWrite = beginTreeWrite()
     if (isLatestWrite === null) return null
     // クロージャではなく「読み込む時点」のフォルダを見る。CRUD の完了が遅れると
@@ -119,14 +130,45 @@ export function useFileTreeOperations({
     try {
       const tree = await fileSystemApi.readDirectory(target)
       if (isStale()) return null
-      setFileTree(tree)
+      if (quiet) {
+        // await の前のクロージャの fileTree ではなく、最新のツリーと比べる(読む間に置き換わっていることがある。L-040)
+        setFileTree((prev) => (isSameFileTree(prev, tree) ? prev : tree))
+      } else {
+        setFileTree(tree)
+      }
       reportTreeLoad(null)
       return tree
     } catch (err) {
-      // 古い再読込の失敗を、現在の画面に出さない
-      if (isStale()) return null
+      // 古い再読込の失敗を、現在の画面に出さない。静かな読み直しの失敗も出さない(前のツリーと表示を残す。L-002)
+      if (isStale() || quiet) return null
       reportTreeLoad(err instanceof Error ? err : new Error(String(err)))
       throw err
+    }
+  }
+
+  // 静かに読み直す。手動の読み直しの途中なら読まずに印だけ立て、手動の後に 1 回だけ読み直す(reloadTree の finally)。投げない
+  const refreshTreeQuietly = async (): Promise<void> => {
+    if (manualReloadsInFlightRef.current > 0) {
+      quietAfterManualRef.current = true
+      return
+    }
+    await readAndApplyTree(true)
+  }
+
+  // 手動でツリーを読み直して反映する。反映したらそのツリー、反映しなかったら null。
+  // 読み込みの失敗は reportTreeLoad の後に投げ直す(refreshTree と指示ファイルの作成が使う)
+  const reloadTree = async (): Promise<FileTreeNode[] | null> => {
+    manualReloadsInFlightRef.current += 1
+    try {
+      return await readAndApplyTree(false)
+    } finally {
+      // 成功・失敗・古い結果・早期の return のどれでも減らす。最後の手動が終わったら、届いていた静かな読み直しを 1 回だけ
+      // 走らせる(待たない。手動の戻り値を遅らせない)
+      manualReloadsInFlightRef.current -= 1
+      if (manualReloadsInFlightRef.current === 0 && quietAfterManualRef.current) {
+        quietAfterManualRef.current = false
+        void refreshTreeQuietly().catch(() => undefined)
+      }
     }
   }
 
@@ -436,6 +478,7 @@ export function useFileTreeOperations({
     renameEntry,
     deleteEntry,
     refreshTree,
+    refreshTreeQuietly,
     createAgentInstructionFile
   }
 }

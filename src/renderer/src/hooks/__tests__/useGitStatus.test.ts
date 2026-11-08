@@ -6,6 +6,7 @@ vi.mock('../../lib/gitApi')
 
 import * as gitApi from '../../lib/gitApi'
 import { useGitStatus } from '../useGitStatus'
+import type { GitStatusOptions } from '../useGitStatus'
 
 const mockGetGitStatus = vi.mocked(gitApi.getGitStatus)
 
@@ -22,6 +23,9 @@ const mockResult: GitStatusResult = {
   files: []
 }
 
+// 走査中でない(既存のテストの前提)
+const notScanning: GitStatusOptions = { isFolderScanPending: () => false }
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -29,14 +33,14 @@ beforeEach(() => {
 describe('useGitStatus', () => {
   it('初期状態: gitStatus=null, gitLoading=false, gitError=null（folderPath=null）', () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
-    const { result } = renderHook(() => useGitStatus(null))
+    const { result } = renderHook(() => useGitStatus(null, notScanning))
     expect(result.current.gitStatus).toBeNull()
     expect(result.current.gitLoading).toBe(false)
     expect(result.current.gitError).toBeNull()
   })
 
   it('folderPath が null のとき getGitStatus を呼ばない', async () => {
-    const { result } = renderHook(() => useGitStatus(null))
+    const { result } = renderHook(() => useGitStatus(null, notScanning))
     await act(async () => {})
     expect(mockGetGitStatus).not.toHaveBeenCalled()
     expect(result.current.gitStatus).toBeNull()
@@ -44,7 +48,7 @@ describe('useGitStatus', () => {
 
   it('folderPath が設定されると自動で getGitStatus が呼ばれ gitStatus がセットされる', async () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
-    const { result } = renderHook(() => useGitStatus('/project'))
+    const { result } = renderHook(() => useGitStatus('/project', notScanning))
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
     expect(mockGetGitStatus).toHaveBeenCalledOnce()
     expect(result.current.gitLoading).toBe(false)
@@ -53,7 +57,7 @@ describe('useGitStatus', () => {
 
   it('getGitStatus が throw したとき gitError にセットされ gitStatus は null のまま', async () => {
     mockGetGitStatus.mockRejectedValue(new Error('ipc error'))
-    const { result } = renderHook(() => useGitStatus('/project'))
+    const { result } = renderHook(() => useGitStatus('/project', notScanning))
     await waitFor(() => expect(result.current.gitError).toBeInstanceOf(Error))
     expect(result.current.gitError?.message).toBe('ipc error')
     expect(result.current.gitStatus).toBeNull()
@@ -62,7 +66,7 @@ describe('useGitStatus', () => {
 
   it('refreshGitStatus を手動で呼ぶと再取得される', async () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
-    const { result } = renderHook(() => useGitStatus('/project'))
+    const { result } = renderHook(() => useGitStatus('/project', notScanning))
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
 
     const updated: GitStatusResult = { ...mockResult, branch: 'feature/foo' }
@@ -77,7 +81,7 @@ describe('useGitStatus', () => {
   it('folderPath が変わると再取得される', async () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project-a' as string | null } }
     )
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
@@ -97,7 +101,7 @@ describe('useGitStatus', () => {
     // B 側の同名ファイルをステージしてしまう(無ければエラー)
     mockGetGitStatus.mockResolvedValue(mockResult)
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project-a' as string | null } }
     )
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
@@ -114,7 +118,7 @@ describe('useGitStatus', () => {
     // クリアすると、SourceControlPanel が GitRepoView をアンマウントし、
     // CommitSection のローカル state(入力中のメッセージ)が破棄されてしまう
     mockGetGitStatus.mockResolvedValue(mockResult)
-    const { result } = renderHook(() => useGitStatus('/project-a'))
+    const { result } = renderHook(() => useGitStatus('/project-a', notScanning))
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
 
     mockGetGitStatus.mockImplementation(() => new Promise<GitStatusResult>(() => {}))
@@ -128,7 +132,7 @@ describe('useGitStatus', () => {
   it('folderPath が null に戻ると gitStatus / gitLoading / gitError が全てリセットされる', async () => {
     mockGetGitStatus.mockResolvedValue(mockResult)
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project' as string | null } }
     )
     await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
@@ -142,7 +146,7 @@ describe('useGitStatus', () => {
   it('エラー後に folderPath が null に戻ると gitError もリセットされる', async () => {
     mockGetGitStatus.mockRejectedValue(new Error('network error'))
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project' as string | null } }
     )
     await waitFor(() => expect(result.current.gitError).toBeInstanceOf(Error))
@@ -167,7 +171,7 @@ describe('useGitStatus', () => {
       files: []
     }
     mockGetGitStatus.mockResolvedValue(notRepo)
-    const { result } = renderHook(() => useGitStatus('/not-a-repo'))
+    const { result } = renderHook(() => useGitStatus('/not-a-repo', notScanning))
     await waitFor(() => expect(result.current.gitStatus).toEqual(notRepo))
   })
 
@@ -186,7 +190,7 @@ describe('useGitStatus', () => {
       .mockResolvedValueOnce(secondResult)
 
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project-a' as string | null } }
     )
 
@@ -206,7 +210,7 @@ describe('useGitStatus', () => {
 
   it('取得中は gitLoading が true になり、gitError を消す', async () => {
     mockGetGitStatus.mockRejectedValueOnce(new Error('first failure'))
-    const { result } = renderHook(() => useGitStatus('/project'))
+    const { result } = renderHook(() => useGitStatus('/project', notScanning))
     await waitFor(() => expect(result.current.gitError).toBeInstanceOf(Error))
 
     mockGetGitStatus.mockImplementation(() => new Promise<GitStatusResult>(() => {}))
@@ -230,7 +234,7 @@ describe('useGitStatus', () => {
       .mockResolvedValueOnce(mockResult)
 
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project-a' as string | null } }
     )
     rerender({ path: '/project-b' })
@@ -257,7 +261,7 @@ describe('useGitStatus', () => {
       .mockImplementationOnce(() => new Promise<GitStatusResult>(() => {}))
 
     const { result, rerender } = renderHook(
-      ({ path }: { path: string | null }) => useGitStatus(path),
+      ({ path }: { path: string | null }) => useGitStatus(path, notScanning),
       { initialProps: { path: '/project-a' as string | null } }
     )
     rerender({ path: '/project-b' })
@@ -269,5 +273,301 @@ describe('useGitStatus', () => {
 
     expect(result.current.gitLoading).toBe(true)
     expect(result.current.gitStatus).toBeNull()
+  })
+})
+
+// 受け入れる・置き換える・失敗を出すかの判定の規則そのものは quietGitStatusDecision.test.ts で確かめる。
+// ここでは、判定に渡す控え・走査中かを読む時点と、結果の反映(取得の番号での追い越し・gitLoading の引き継ぎ・静かに置いた印)を確かめる
+describe('静かな取り直し(refreshGitStatusQuietly)', () => {
+  const changed: GitStatusResult = {
+    ...mockResult,
+    files: [{ path: 'a.txt', index: ' ', workingDir: 'M' }]
+  }
+
+  function deferred<T>(): {
+    promise: Promise<T>
+    resolve: (value: T) => void
+    reject: (err: Error) => void
+  } {
+    let resolve: (value: T) => void = () => undefined
+    let reject: (err: Error) => void = () => undefined
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  async function renderLoaded(
+    options: GitStatusOptions = notScanning
+  ): Promise<{ current: ReturnType<typeof useGitStatus> }> {
+    mockGetGitStatus.mockResolvedValue(mockResult)
+    const { result } = renderHook(() => useGitStatus('/project', options))
+    await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
+    return result
+  }
+
+  it('取得の間 → gitLoading は偽のまま、前のエラーを消さない。取れたら → エラーを消す', async () => {
+    const result = await renderLoaded()
+    mockGetGitStatus.mockRejectedValueOnce(new Error('loud failed'))
+    await act(async () => {
+      await result.current.refreshGitStatus()
+    })
+    expect(result.current.gitError?.message).toBe('loud failed')
+    const pending = deferred<GitStatusResult>()
+    mockGetGitStatus.mockReturnValueOnce(pending.promise)
+    let accepted: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      accepted = result.current.refreshGitStatusQuietly()
+    })
+    expect(result.current.gitLoading).toBe(false)
+    expect(result.current.gitError?.message).toBe('loud failed')
+    await act(async () => {
+      pending.resolve(changed)
+      await accepted
+    })
+    await expect(accepted).resolves.toBe(true)
+    expect(result.current.gitError).toBeNull()
+    expect(result.current.gitStatus).toEqual(changed)
+  })
+
+  it('同じ内容 → 置き換えない(参照が同じ・静かに置いた印も立てない)。受け入れたので true。マウント時に作った関数でも完了の時点の控えと比べる(L-040)', async () => {
+    mockGetGitStatus.mockResolvedValue(mockResult)
+    const { result } = renderHook(() => useGitStatus('/project', notScanning))
+    // gitStatus が null の時点の関数(クロージャの gitStatus と比べると、別物として置き換えてしまう)
+    const quietAtMount = result.current.refreshGitStatusQuietly
+    await waitFor(() => expect(result.current.gitStatus).toEqual(mockResult))
+    const before = result.current.gitStatus
+    mockGetGitStatus.mockResolvedValueOnce({ ...mockResult })
+    let accepted = false
+    await act(async () => {
+      accepted = await quietAtMount()
+    })
+    expect(accepted).toBe(true)
+    expect(result.current.gitStatus).toBe(before)
+    expect(result.current.wasGitStatusSetQuietly()).toBe(false)
+  })
+
+  it('違う内容 → 置き換え、wasGitStatusSetQuietly が真。その後の通常の取得 → 偽に戻る', async () => {
+    const result = await renderLoaded()
+    mockGetGitStatus.mockResolvedValueOnce(changed)
+    await act(async () => {
+      await result.current.refreshGitStatusQuietly()
+    })
+    expect(result.current.gitStatus).toEqual(changed)
+    expect(result.current.wasGitStatusSetQuietly()).toBe(true)
+    mockGetGitStatus.mockResolvedValueOnce(mockResult)
+    await act(async () => {
+      await result.current.refreshGitStatus()
+    })
+    expect(result.current.wasGitStatusSetQuietly()).toBe(false)
+  })
+
+  it('失敗 → 前の status とエラーを残し、false を返し、投げない(L-002)', async () => {
+    const result = await renderLoaded()
+    mockGetGitStatus.mockRejectedValueOnce(new Error('loud failed'))
+    await act(async () => {
+      await result.current.refreshGitStatus()
+    })
+    const before = result.current.gitStatus
+    mockGetGitStatus.mockRejectedValueOnce(new Error('quiet failed'))
+    let accepted = true
+    await act(async () => {
+      accepted = await result.current.refreshGitStatusQuietly()
+    })
+    expect(accepted).toBe(false)
+    expect(result.current.gitStatus).toBe(before)
+    expect(result.current.gitError?.message).toBe('loud failed')
+  })
+
+  it.each<
+    [
+      string,
+      (pending: ReturnType<typeof deferred<GitStatusResult>>) => void,
+      (r: ReturnType<typeof useGitStatus>) => void
+    ]
+  >([
+    ['成功', (pending) => pending.resolve(changed), (r) => expect(r.gitStatus).toEqual(changed)],
+    [
+      '失敗',
+      (pending) => pending.reject(new Error('quiet failed')),
+      (r) => expect(r.gitError?.message).toBe('quiet failed')
+    ]
+  ])(
+    '通常の取得の途中で静かな取得が追い越して%s → 完了で gitLoading を下ろし、結果を出す。遅れた通常の結果は捨てる',
+    async (_label, finish, check) => {
+      const result = await renderLoaded()
+      const loud = deferred<GitStatusResult>()
+      const quiet = deferred<GitStatusResult>()
+      mockGetGitStatus.mockReturnValueOnce(loud.promise).mockReturnValueOnce(quiet.promise)
+      let loudDone: Promise<void> = Promise.resolve()
+      let quietDone: Promise<boolean> = Promise.resolve(false)
+      act(() => {
+        loudDone = result.current.refreshGitStatus()
+      })
+      expect(result.current.gitLoading).toBe(true)
+      act(() => {
+        quietDone = result.current.refreshGitStatusQuietly()
+      })
+      await act(async () => {
+        finish(quiet)
+        await quietDone
+      })
+      expect(result.current.gitLoading).toBe(false)
+      check(result.current)
+      const afterQuiet = result.current.gitStatus
+      await act(async () => {
+        loud.resolve({ ...mockResult, branch: 'stale' })
+        await loudDone
+      })
+      expect(result.current.gitStatus).toBe(afterQuiet)
+    }
+  )
+
+  it('通常の取得を追い越した静かな取得が控えと同じ内容 → 新しい参照で通常の取得として置く(一覧の取り直しの合図を失わない)', async () => {
+    const result = await renderLoaded()
+    const before = result.current.gitStatus
+    const loud = deferred<GitStatusResult>()
+    const quiet = deferred<GitStatusResult>()
+    mockGetGitStatus.mockReturnValueOnce(loud.promise).mockReturnValueOnce(quiet.promise)
+    let loudDone: Promise<void> = Promise.resolve()
+    let quietDone: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      loudDone = result.current.refreshGitStatus()
+    })
+    act(() => {
+      quietDone = result.current.refreshGitStatusQuietly()
+    })
+    await act(async () => {
+      quiet.resolve({ ...mockResult })
+      await quietDone
+    })
+    await act(async () => {
+      loud.resolve({ ...mockResult, branch: 'stale' })
+      await loudDone
+    })
+    await expect(quietDone).resolves.toBe(true)
+    expect(result.current.gitStatus).toEqual(mockResult)
+    expect(result.current.gitStatus).not.toBe(before)
+    expect(result.current.wasGitStatusSetQuietly()).toBe(false)
+    expect(result.current.gitLoading).toBe(false)
+  })
+
+  it('静かな取得が通常の取得に追い越された → 反映せず false', async () => {
+    const result = await renderLoaded()
+    const quiet = deferred<GitStatusResult>()
+    mockGetGitStatus.mockReturnValueOnce(quiet.promise).mockResolvedValueOnce(changed)
+    let quietDone: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      quietDone = result.current.refreshGitStatusQuietly()
+    })
+    await act(async () => {
+      await result.current.refreshGitStatus()
+    })
+    let accepted = true
+    await act(async () => {
+      quiet.resolve({ ...mockResult, branch: 'stale' })
+      accepted = await quietDone
+    })
+    expect(accepted).toBe(false)
+    expect(result.current.gitStatus).toEqual(changed)
+  })
+
+  it.each<[string, (pending: ReturnType<typeof deferred<GitStatusResult>>) => void]>([
+    ['成功', (pending) => pending.resolve(changed)],
+    ['失敗', (pending) => pending.reject(new Error('quiet failed'))]
+  ])(
+    '取得の間にフォルダの走査が始まって%s → 結果も失敗も反映せず false(L-037)',
+    async (_label, finish) => {
+      let scanning = false
+      const result = await renderLoaded({ isFolderScanPending: () => scanning })
+      const before = result.current.gitStatus
+      const quiet = deferred<GitStatusResult>()
+      mockGetGitStatus.mockReturnValueOnce(quiet.promise)
+      let quietDone: Promise<boolean> = Promise.resolve(true)
+      act(() => {
+        quietDone = result.current.refreshGitStatusQuietly()
+      })
+      scanning = true
+      let accepted = true
+      await act(async () => {
+        finish(quiet)
+        accepted = await quietDone
+      })
+      expect(accepted).toBe(false)
+      expect(result.current.gitStatus).toBe(before)
+      expect(result.current.gitError).toBeNull()
+    }
+  )
+
+  it('通常の取得を引き継いだ静かな取得が走査中に完了 → 反映しないが gitLoading は下ろす', async () => {
+    let scanning = false
+    const result = await renderLoaded({ isFolderScanPending: () => scanning })
+    const loud = deferred<GitStatusResult>()
+    const quiet = deferred<GitStatusResult>()
+    mockGetGitStatus.mockReturnValueOnce(loud.promise).mockReturnValueOnce(quiet.promise)
+    act(() => {
+      void result.current.refreshGitStatus()
+    })
+    let quietDone: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      quietDone = result.current.refreshGitStatusQuietly()
+    })
+    scanning = true
+    await act(async () => {
+      quiet.resolve(changed)
+      await quietDone
+    })
+    expect(result.current.gitLoading).toBe(false)
+    expect(result.current.gitStatus).toEqual(mockResult)
+  })
+
+  it('通常の取得を引き継いだ静かな取得が走査中に失敗 → 失敗を出さないが gitLoading は下ろす(L-180)', async () => {
+    let scanning = false
+    const result = await renderLoaded({ isFolderScanPending: () => scanning })
+    const loud = deferred<GitStatusResult>()
+    const quiet = deferred<GitStatusResult>()
+    mockGetGitStatus.mockReturnValueOnce(loud.promise).mockReturnValueOnce(quiet.promise)
+    act(() => {
+      void result.current.refreshGitStatus()
+    })
+    let quietDone: Promise<boolean> = Promise.resolve(true)
+    act(() => {
+      quietDone = result.current.refreshGitStatusQuietly()
+    })
+    scanning = true
+    let accepted = true
+    await act(async () => {
+      quiet.reject(new Error('quiet failed'))
+      accepted = await quietDone
+    })
+    expect(accepted).toBe(false)
+    expect(result.current.gitLoading).toBe(false)
+    expect(result.current.gitError).toBeNull()
+    expect(result.current.gitStatus).toEqual(mockResult)
+  })
+
+  it('getGitStatus が同期で投げる → 投げず false、前の status を残し、失敗を出さない', async () => {
+    const result = await renderLoaded()
+    mockGetGitStatus.mockImplementationOnce(() => {
+      throw new Error('sync failed')
+    })
+    let accepted = true
+    await act(async () => {
+      accepted = await result.current.refreshGitStatusQuietly()
+    })
+    expect(accepted).toBe(false)
+    expect(result.current.gitStatus).toEqual(mockResult)
+    expect(result.current.gitError).toBeNull()
+  })
+
+  it('フォルダが null → 取得せず false', async () => {
+    const { result } = renderHook(() => useGitStatus(null, notScanning))
+    let accepted = true
+    await act(async () => {
+      accepted = await result.current.refreshGitStatusQuietly()
+    })
+    expect(accepted).toBe(false)
+    expect(mockGetGitStatus).not.toHaveBeenCalled()
   })
 })

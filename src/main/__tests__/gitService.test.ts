@@ -134,6 +134,22 @@ describe('getGitStatus', () => {
     mockRaw.mockResolvedValue('')
   })
 
+  it('git status は GIT_OPTIONAL_LOCKS=0 を足した環境で、環境の検査を外した simple-git で取る(.git/index を書かない)', async () => {
+    const before = process.env.GIT_OPTIONAL_LOCKS
+    mockCheckIsRepo.mockResolvedValue(true)
+    mockStatus.mockResolvedValue(baseStatusResult)
+    await getGitStatus('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true })
+    })
+    expect(mockEnv).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ GIT_OPTIONAL_LOCKS: '0', PATH: process.env.PATH })
+    )
+    expect(mockStatus).toHaveBeenCalledOnce()
+    // process.env そのものは書き換えない
+    expect(process.env.GIT_OPTIONAL_LOCKS).toBe(before)
+  })
+
   it('simpleGit を folderPath を引数に呼ぶ', async () => {
     mockCheckIsRepo.mockResolvedValue(false)
     await getGitStatus('/project')
@@ -443,6 +459,25 @@ describe('isStagedRenameDiff', () => {
 })
 
 describe('getDiff', () => {
+  it('diff の git は GIT_OPTIONAL_LOCKS=0 を足した環境で、環境の検査を外した simple-git で取る(サブモジュールの子の status にロックを取らせない)', async () => {
+    // 未ステージの diff の pathspec がサブモジュール(gitlink)だと、git diff は dirty かを調べる子の git status を起動する。
+    // 子は GIT_OPTIONAL_LOCKS が無いと .git/modules/<sub>/index.lock を取り、stat が古ければ index も書き直す
+    // (diff.autoRefreshIndex=false は親の書き直ししか止めない。設計書 2026-11-08 の 1 章の 10)
+    const before = process.env.GIT_OPTIONAL_LOCKS
+    mockDiff.mockResolvedValue('')
+    await getDiff('/project', 'sub', false, false)
+    expect(mockSimpleGit).toHaveBeenCalledExactlyOnceWith('/project', {
+      config: expect.arrayContaining(['diff.autoRefreshIndex=false']),
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true })
+    })
+    expect(mockEnv).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ GIT_OPTIONAL_LOCKS: '0', PATH: process.env.PATH })
+    )
+    expect(mockDiff).toHaveBeenCalledOnce()
+    // process.env そのものは書き換えない
+    expect(process.env.GIT_OPTIONAL_LOCKS).toBe(before)
+  })
+
   it("未ステージの変更を simpleGit を folderPath で呼び、diff を ['-U3', '--', filePath] で呼ぶ(status は呼ばない)", async () => {
     // isUntracked は呼び出し元(renderer)が既に持っている git status 由来の情報。
     // ここで改めて git.status() を呼ぶと、diff タブを開くたびにリポジトリ全体を
@@ -453,9 +488,16 @@ describe('getDiff', () => {
     // git diff の出力がダブルクォート+オクタルエスケープされ(例: "b/\346...")、
     // diffParser.ts の toSelfDiffHeaderLines が "+++ b/" の固定長プレフィックスで
     // 新パスを切り出せなくなる(実機で再現確認済み)。diff.suppressBlankEmpty=false はパッチの形式を固定する設定
-    // (gitDiffArgs の PATCH_FORMAT_CONFIG。実 git の出力は gitService.diff.integration.test.ts で固定)
+    // (gitDiffArgs の PATCH_FORMAT_CONFIG。実 git の出力は gitService.diff.integration.test.ts で固定)。
+    // diff.autoRefreshIndex=false は、stat だけ変わったファイルがあっても .git/index を書き直させない
+    // (index.lock を持つ間に外の git add・commit が失敗しうる。設計書 2026-11-08 の 1 章の 10)
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
-      config: ['core.quotePath=false', 'diff.suppressBlankEmpty=false']
+      config: [
+        'core.quotePath=false',
+        'diff.suppressBlankEmpty=false',
+        'diff.autoRefreshIndex=false'
+      ],
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true })
     })
     expect(mockStatus).not.toHaveBeenCalled()
     expect(mockDiff).toHaveBeenCalledWith([

@@ -58,6 +58,7 @@ import { AGENT_STOP_ON_FOLDER_CHANGE_CONFIRM } from '../lib/agentSessionMessages
 import { useAgentChangesRecording } from './useAgentChangesRecording'
 import { useAgentChangesWiring } from './useAgentChangesWiring'
 import type { AgentChangesWiring } from './useAgentChangesWiring'
+import { useFolderAutoRefresh } from './useFolderAutoRefresh'
 
 type AppState = {
   quickOpen: ReturnType<typeof useQuickOpen>
@@ -158,7 +159,10 @@ export function useAppState(): AppState {
   const prompts = usePrompts()
   const promptListMode = usePromptListMode()
   const progress = useProgressTasks()
-  const git = useGitStatus(fileSystem.folderPath)
+  // 走査中は静かな git status の取得を反映しない(main の許可は新しいフォルダ、画面は前のフォルダのまま。設計書 2026-11-08)
+  const git = useGitStatus(fileSystem.folderPath, {
+    isFolderScanPending: fileSystem.isFolderScanPending
+  })
   // ファイル全体の stage/unstage(useGitOperations)とハンク単位の stage/unstage
   // (useDiffOperations)は、どちらも同じ .git/index を書き換える(git add/reset と
   // git apply --cached)。別々のロックのままだと、同じファイルに対して片方が
@@ -569,6 +573,7 @@ export function useAppState(): AppState {
     recording: agentChangesRecording,
     gitStatus: git.gitStatus,
     refreshGitStatus: git.refreshGitStatus,
+    wasGitStatusSetQuietly: git.wasGitStatusSetQuietly,
     agentSessionExit: agentWorkspace.agentTerminal.sessions.lastExit,
     agentRunning: agentWorkspace.agentTerminal.sessions.isAnyActive,
     agentTabs: agentWorkspace.agentTerminal.sessions.tabs,
@@ -582,6 +587,15 @@ export function useAppState(): AppState {
     fileLock: fileOperationLock,
     fileSystem,
     showSourceControl: () => panel.showPanel('source-control')
+  })
+  // 開いているフォルダの外の変更(エージェント・端末・外の git)の自動の反映(設計書 2026-11-08)。監視の通知とフォーカスの復帰で、
+  // ツリー・git status・アクティブな diff タブを静かに取り直す。effect の順序を変えないため、ほかの hook の後で呼ぶ
+  useFolderAutoRefresh({
+    folderPath: fileSystem.folderPath,
+    refreshTreeQuietly: fileSystem.refreshTreeQuietly,
+    refreshGitStatusQuietly: git.refreshGitStatusQuietly,
+    refreshDiffQuietly: () => diffOperations.refreshDiff({ quiet: true }),
+    isFolderScanPending: fileSystem.isFolderScanPending
   })
   return {
     quickOpen,

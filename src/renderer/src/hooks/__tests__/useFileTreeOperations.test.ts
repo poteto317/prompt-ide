@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { useRef, useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { FileTreeNode, OpenFile } from '../../types'
@@ -40,6 +40,7 @@ interface RenderOperationsConfig {
   ) => Promise<() => void>
   invalidatePendingReads?: (affectedPath: string) => void
   beginTreeWrite?: () => (() => boolean) | null
+  reportTreeLoad?: (error: Error | null) => void
 }
 
 type FileTreeOperations = ReturnType<typeof useFileTreeOperations>
@@ -51,9 +52,11 @@ interface RenderedOperations {
   onConfirm: NonNullable<RenderOperationsConfig['onConfirm']>
   invalidatePendingReads: NonNullable<RenderOperationsConfig['invalidatePendingReads']>
   lockPathForFileOperation: NonNullable<RenderOperationsConfig['lockPathForFileOperation']>
+  reportTreeLoad: NonNullable<RenderOperationsConfig['reportTreeLoad']>
 }
 
 function renderOperations(config?: RenderOperationsConfig): RenderedOperations {
+  const reportTreeLoad = config?.reportTreeLoad ?? vi.fn()
   const resetForFileChange = config?.resetForFileChange ?? vi.fn()
   const invalidatePath = config?.invalidatePath ?? vi.fn()
   const lockPathForFileOperation = config?.lockPathForFileOperation ?? (async () => () => {})
@@ -76,7 +79,7 @@ function renderOperations(config?: RenderOperationsConfig): RenderedOperations {
       invalidatePendingReads,
       beginTreeWrite: config?.beginTreeWrite ?? treeWriteGuard,
       lockPathForFileOperation,
-      reportTreeLoad: vi.fn()
+      reportTreeLoad
     })
     return { ...ops, openFiles }
   })
@@ -86,7 +89,8 @@ function renderOperations(config?: RenderOperationsConfig): RenderedOperations {
     invalidatePath,
     onConfirm,
     invalidatePendingReads,
-    lockPathForFileOperation
+    lockPathForFileOperation,
+    reportTreeLoad
   }
 }
 
@@ -1030,5 +1034,160 @@ describe('createAgentInstructionFile', () => {
       }
     })
     expect(caught).toBeInstanceOf(Error)
+  })
+})
+
+describe('静かな読み直し(refreshTreeQuietly)', () => {
+  const treeA: FileTreeNode[] = [{ name: 'a.ts', path: '/project/a.ts', type: 'file' }]
+  const treeB: FileTreeNode[] = [
+    { name: 'a.ts', path: '/project/a.ts', type: 'file' },
+    { name: 'b.ts', path: '/project/b.ts', type: 'file' }
+  ]
+
+  function deferred<T>(): {
+    promise: Promise<T>
+    resolve: (value: T) => void
+    reject: (err: Error) => void
+  } {
+    let resolve: (value: T) => void = () => undefined
+    let reject: (err: Error) => void = () => undefined
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  async function renderWithTree(config?: RenderOperationsConfig): Promise<RenderedOperations> {
+    const rendered = renderOperations(config)
+    mockReadDirectory.mockResolvedValueOnce(structuredClone(treeA))
+    await act(async () => {
+      await rendered.result.current.refreshTree()
+    })
+    return rendered
+  }
+
+  it('同じ内容のツリー → 置き換えない(参照が同じ)。読み込みの失敗の表示は消す', async () => {
+    const { result, reportTreeLoad } = await renderWithTree()
+    const before = result.current.fileTree
+    vi.mocked(reportTreeLoad).mockClear()
+    mockReadDirectory.mockResolvedValueOnce(structuredClone(treeA))
+    await act(async () => {
+      await result.current.refreshTreeQuietly()
+    })
+    expect(result.current.fileTree).toBe(before)
+    expect(reportTreeLoad).toHaveBeenCalledExactlyOnceWith(null)
+  })
+
+  it('違う内容のツリー → 置き換える', async () => {
+    const { result } = await renderWithTree()
+    mockReadDirectory.mockResolvedValueOnce(structuredClone(treeB))
+    await act(async () => {
+      await result.current.refreshTreeQuietly()
+    })
+    expect(result.current.fileTree).toEqual(treeB)
+  })
+
+  it('読み込みの失敗 → reportTreeLoad を呼ばず、投げず、前のツリーを残す(L-002)', async () => {
+    const { result, reportTreeLoad } = await renderWithTree()
+    const before = result.current.fileTree
+    vi.mocked(reportTreeLoad).mockClear()
+    mockReadDirectory.mockRejectedValueOnce(new Error('read failed'))
+    await act(async () => {
+      await expect(result.current.refreshTreeQuietly()).resolves.toBeUndefined()
+    })
+    expect(reportTreeLoad).not.toHaveBeenCalled()
+    expect(result.current.fileTree).toBe(before)
+  })
+
+  it('走査中(beginTreeWrite が null) → 読まない', async () => {
+    const { result } = renderOperations({ beginTreeWrite: () => null })
+    await act(async () => {
+      await result.current.refreshTreeQuietly()
+    })
+    expect(mockReadDirectory).not.toHaveBeenCalled()
+  })
+
+  it('比べる相手は完了の時点の最新のツリー(読む間に置き換わったツリーと同じなら、その参照を保つ。L-040)', async () => {
+    const { result } = await renderWithTree()
+    const quiet = deferred<FileTreeNode[]>()
+    mockReadDirectory.mockReturnValueOnce(quiet.promise)
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.refreshTreeQuietly()
+    })
+    const replaced = structuredClone(treeB)
+    act(() => result.current.setFileTree(replaced))
+    await act(async () => {
+      quiet.resolve(structuredClone(treeB))
+      await pending
+    })
+    expect(result.current.fileTree).toBe(replaced)
+  })
+
+  it('手動の読み直しの途中に静かな読み直しを 2 回頼む → 手動はツリーを反映して true を返し、静かな読み直しは手動の後に 1 回だけ走る', async () => {
+    const { result } = await renderWithTree()
+    mockReadDirectory.mockClear()
+    const manual = deferred<FileTreeNode[]>()
+    mockReadDirectory.mockReturnValueOnce(manual.promise)
+    let refreshed: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      refreshed = result.current.refreshTree()
+    })
+    await act(async () => {
+      await result.current.refreshTreeQuietly()
+      await result.current.refreshTreeQuietly()
+    })
+    // 手動の途中は読まない(世代を進めて手動の結果を古くしない)
+    expect(mockReadDirectory).toHaveBeenCalledOnce()
+    mockReadDirectory.mockResolvedValue(structuredClone(treeB))
+    let applied = false
+    await act(async () => {
+      manual.resolve(structuredClone(treeA))
+      applied = await refreshed
+    })
+    expect(applied).toBe(true)
+    await waitFor(() => expect(result.current.fileTree).toEqual(treeB))
+    expect(mockReadDirectory).toHaveBeenCalledTimes(2)
+  })
+
+  it('手動の読み直しが失敗しても → 静かな読み直しは手動の後に 1 回走る(L-180)', async () => {
+    const { result } = await renderWithTree()
+    mockReadDirectory.mockClear()
+    const manual = deferred<FileTreeNode[]>()
+    mockReadDirectory.mockReturnValueOnce(manual.promise)
+    let refreshed: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      refreshed = result.current.refreshTree()
+    })
+    await act(async () => {
+      await result.current.refreshTreeQuietly()
+    })
+    mockReadDirectory.mockResolvedValue(structuredClone(treeB))
+    await act(async () => {
+      manual.reject(new Error('read failed'))
+      await refreshed.catch(() => undefined)
+    })
+    await waitFor(() => expect(result.current.fileTree).toEqual(treeB))
+    expect(mockReadDirectory).toHaveBeenCalledTimes(2)
+  })
+
+  it('静かな読み直しの途中に手動の読み直しが始まる → 手動が勝ち、遅れて届いた静かな結果は捨てる', async () => {
+    const { result } = await renderWithTree()
+    const quiet = deferred<FileTreeNode[]>()
+    mockReadDirectory.mockReturnValueOnce(quiet.promise)
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current.refreshTreeQuietly()
+    })
+    mockReadDirectory.mockResolvedValueOnce(structuredClone(treeB))
+    await act(async () => {
+      await result.current.refreshTree()
+    })
+    await act(async () => {
+      quiet.resolve([{ name: 'stale.ts', path: '/project/stale.ts', type: 'file' }])
+      await pending
+    })
+    expect(result.current.fileTree).toEqual(treeB)
   })
 })

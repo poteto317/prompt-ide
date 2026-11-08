@@ -14,6 +14,7 @@ import {
 } from '../lib/agentChangesWiring'
 import { recordingStartedAtOf } from '../lib/agentChangesView'
 import type { AgentChangesController } from './useAgentChanges'
+import { useLatestRef } from './useLatestRef'
 import { useAgentChangesAutoRefresh } from './useAgentChangesAutoRefresh'
 import type { AgentChangesRecording } from './useAgentChangesRecording'
 import { useAgentChangesRevert } from './useAgentChangesRevert'
@@ -29,7 +30,9 @@ import type { DiffTabsState } from './useDiffTabs'
 import type { FileOperationLock } from './useFileOperationLock'
 
 // エージェントの変更の組み立ての後段(useAppState の中で useDiffOperations・useAgentWorkspace・useExternalFileChanges の
-// 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機(自動の取り直しは useAgentChangesAutoRefresh)、一覧から消えたパスの diff タブの
+// 後に呼ぶ。effect の順序を変えないため、呼ぶ位置を動かさない)。一覧を取り直す契機(活動の出来事・フォーカスの復帰の自動の
+// 取り直しは useAgentChangesAutoRefresh。監視の通知・フォーカスの復帰の静かな git status の後の一覧の静かな取り直しは、
+// このファイルの git status の契機)、一覧から消えたパスの diff タブの
 // 同期、戻す操作(useAgentChangesRevert)と取り消し(useAgentChangesUndo。実行の共有 useAgentChangesWriteRunner を共有する)、表示用の値(セクション・diff タブの操作・ターミナルの帯)の組み立てを持つ
 
 // 一覧のパスと diff タブのパスの照合(フォルダの行は末尾に / が付く。どちらかが null なら一致しない)
@@ -81,6 +84,8 @@ export interface AgentChangesWiringOptions {
   recording: AgentChangesRecording
   gitStatus: GitStatusResult | null
   refreshGitStatus: () => Promise<void>
+  /** 今の gitStatus を静かな取得が置いたか(useGitStatus.wasGitStatusSetQuietly)。真なら一覧も静かに取り直す */
+  wasGitStatusSetQuietly: () => boolean
   /** いずれかのタブのセッションの最後の終了(一覧を取り直す契機。終了のたびに新しいオブジェクト) */
   agentSessionExit: AgentLastExit | null
   /** どれかのタブのセッションが動いているか(起動中を含む。戻すの確認の文言に足す) */
@@ -126,6 +131,7 @@ export function useAgentChangesWiring({
   recording,
   gitStatus,
   refreshGitStatus,
+  wasGitStatusSetQuietly,
   agentSessionExit,
   agentRunning,
   agentTabs,
@@ -147,10 +153,14 @@ export function useAgentChangesWiring({
   const consumeFocusRequest = useCallback(() => setIsFocusRequested(false), [])
   const { refresh: refreshAgentChanges } = changes
   // 一覧を取り直す契機(設計書「いつ完了とするか」): git status の取り直し(Git の操作・保存・ソース管理の
-  // 更新のボタンの後)と、エージェントのセッションの終了。記録が無ければ refresh は何もしない
+  // 更新のボタンの後・監視の通知とフォーカスの復帰の静かな取り直し〈静かに取る〉)と、エージェントのセッションの終了。
+  // 記録が無ければ refresh は何もしない。静かな取り直しが置いた status なら、一覧も静かに取る(isLoading を立てない。設計書 2026-11-08)
+  const wasGitStatusSetQuietlyRef = useLatestRef(wasGitStatusSetQuietly)
   useEffect(() => {
-    if (gitStatus !== null) void refreshAgentChanges()
-  }, [gitStatus, refreshAgentChanges])
+    if (gitStatus === null) return
+    if (wasGitStatusSetQuietlyRef.current()) void refreshAgentChanges({ quiet: true })
+    else void refreshAgentChanges()
+  }, [gitStatus, refreshAgentChanges, wasGitStatusSetQuietlyRef])
   useEffect(() => {
     if (agentSessionExit !== null) void refreshAgentChanges()
   }, [agentSessionExit, refreshAgentChanges])

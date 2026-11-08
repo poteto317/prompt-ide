@@ -2,7 +2,12 @@
 // object の ID の形、掃除で消す候補か、同期で ref に行う書き込みと失敗の後の読み直しの分類を、git を実行せずに決める。
 // git の実行と出力の解析は agentChangesProtectionRef に置く(registry はこのファイルの規則と、注入された git の操作だけを使う)
 
-export const AGENT_CHANGES_PROTECTION_REF_PREFIX = 'refs/prompt-ide/agent-changes/'
+/**
+ * アプリ自身が書く ref の名前空間(refs/<これ>/…)。この下の ref は git status に出ないため、開いているフォルダの監視
+ * (folderChangeClassifier)は .git/refs/<これ>/ の下の書き込みを捨てる
+ */
+export const APP_REFS_NAMESPACE = 'prompt-ide'
+export const AGENT_CHANGES_PROTECTION_REF_PREFIX = `refs/${APP_REFS_NAMESPACE}/agent-changes/`
 
 const REF_NAME_PATTERN =
   /^refs\/prompt-ide\/agent-changes\/([1-9][0-9]*)-([0-9a-f]{8})\/([1-9][0-9]*)$/

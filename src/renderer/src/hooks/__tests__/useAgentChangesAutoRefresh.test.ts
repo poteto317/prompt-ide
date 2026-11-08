@@ -74,6 +74,9 @@ afterEach(() => {
   Reflect.deleteProperty(document, 'visibilityState')
 })
 
+// 待ち・上限・実行中のもう 1 回・reset と accepts での捨て方・古い完了の扱いの規則そのものは refreshScheduler.test.ts で確かめる。
+// ここ(下の 2 つの describe)では、hook が渡す待ちの時間・記録中か(accepts)・静かに取る引数と、契機(活動の出来事・focus・
+// visibilitychange)の拾い方、記録の終わり・フォルダの切り替え・アンマウントで取り消すことを確かめる
 describe('useAgentChangesAutoRefresh', () => {
   it('活動が working → idle(完了)になると、待ちの時間の後に 1 回だけ、読み上げずに静かに(quiet)取り直す', async () => {
     const { refresh, update } = setup()

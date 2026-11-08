@@ -41,6 +41,10 @@ import {
   registerExternalChangeHandlers,
   sendExternalChange
 } from './handlers/externalChangeHandlers'
+import { FolderChangeWatcher } from './folderChangeWatcher'
+import { createRecursiveFolderWatch } from './recursiveFolderWatch'
+import { setupFolderChangeWatcherLifecycle } from './folderChangeWatcherLifecycle'
+import { registerFolderChangeHandlers, sendFolderChange } from './handlers/folderChangeHandlers'
 import { registerShellHandlers } from './handlers/shellHandlers'
 import { AgentBaselineRegistry } from './agentBaselineRegistry'
 import { setupAgentBaselineLifecycle } from './agentBaselineLifecycle'
@@ -161,6 +165,16 @@ export function registerIpcHandlers(ipcMain: IpcMain): void {
   })
   setupOpenFileWatcherLifecycle(app, openFileWatcher, folderAccess)
   registerExternalChangeHandlers(ipcMain, folderAccess, openFileWatcher, globalInstructions)
+  // 開いているフォルダの recursive の監視(ツリー・ソース管理・diff タブの自動の取り直しの合図。設計書 2026-11-08)。
+  // 張るかは renderer の fs:setFolderWatch、どのフォルダかは許可フォルダで決め、フォルダの切り替えで張り直す
+  const folderChangeWatcher = new FolderChangeWatcher({
+    watch: createRecursiveFolderWatch(process.platform, watch),
+    getFolder: (ownerId) => folderAccess.get(ownerId),
+    notify: sendFolderChange,
+    platform: process.platform
+  })
+  setupFolderChangeWatcherLifecycle(app, folderChangeWatcher, folderAccess)
+  registerFolderChangeHandlers(ipcMain, folderChangeWatcher)
   registerShellHandlers(ipcMain, (url) => shell.openExternal(url))
   // エージェントの変更の記録(所有者ごと)。フォルダの切り替え・リロード・破棄・アプリの終了で捨てる。
   // 記録中は記録の tree を専用の ref から守る(hook の無いディレクトリは userData の下)。main の起動ごとの ID は 1 回だけ作り、

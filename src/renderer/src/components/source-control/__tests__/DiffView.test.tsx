@@ -660,3 +660,77 @@ describe('DiffView — エージェントの変更', () => {
     }
   })
 })
+
+describe('DiffView — 静かな取り直しでのフォーカス保持', () => {
+  const makeDiff = (shift: number): string =>
+    [
+      'diff --git a/src/index.ts b/src/index.ts',
+      'index abc123..def456 100644',
+      '--- a/src/index.ts',
+      '+++ b/src/index.ts',
+      `@@ -1,2 +1,${2 + shift} @@`,
+      ' line1',
+      ...Array.from({ length: shift }, (_, i) => `+added${i}`),
+      '-line2',
+      '+line2modified',
+      `@@ -10,1 +${10 + shift},2 @@`,
+      ' line10',
+      '+line11new',
+      ''
+    ].join('\n')
+
+  it('先頭に行が足されて新しい側の行番号だけずれても、2 つ目のハンクのボタンのフォーカスが残る', () => {
+    const props = { staged: false, onStageHunk: vi.fn(), onUnstageHunk: vi.fn() }
+    const { rerender } = render(<DiffView diffText={makeDiff(0)} {...props} />)
+    const button = screen.getAllByRole('button', { name: 'このハンクをステージ' })[1]
+    button.focus()
+    expect(document.activeElement).toBe(button)
+
+    rerender(<DiffView diffText={makeDiff(1)} {...props} />)
+
+    const after = screen.getAllByRole('button', { name: 'このハンクをステージ' })[1]
+    expect(after).toBe(button)
+    expect(button.isConnected).toBe(true)
+    expect(document.activeElement).toBe(button)
+  })
+
+  it('未追跡ファイルの行数が変わっても、ハンクのボタンのフォーカスが残る', () => {
+    const makeUntracked = (n: number): string =>
+      [
+        'diff --git a/new.txt b/new.txt',
+        'new file mode 100644',
+        '--- /dev/null',
+        '+++ b/new.txt',
+        `@@ -0,0 +1,${n} @@`,
+        ...Array.from({ length: n }, (_, i) => `+l${i}`),
+        ''
+      ].join('\n')
+    const props = { staged: false, isUntracked: true, onStageHunk: vi.fn(), onUnstageHunk: vi.fn() }
+    const { rerender } = render(<DiffView diffText={makeUntracked(2)} {...props} />)
+    const button = screen.getByRole('button', { name: 'このハンクをステージ' })
+    button.focus()
+
+    rerender(<DiffView diffText={makeUntracked(3)} {...props} />)
+
+    expect(button.isConnected).toBe(true)
+    expect(document.activeElement).toBe(button)
+  })
+
+  it('旧の側の開始行が同じハンクが並んでも key が重複しない', () => {
+    const dup = [
+      'diff --git a/a b/a',
+      '--- a/a',
+      '+++ b/a',
+      '@@ -5,0 +6 @@',
+      '+x',
+      '@@ -5,0 +8 @@',
+      '+y',
+      ''
+    ].join('\n')
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<DiffView diffText={dup} staged={false} onStageHunk={vi.fn()} onUnstageHunk={vi.fn()} />)
+    expect(screen.getAllByRole('button', { name: 'このハンクをステージ' })).toHaveLength(2)
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+})

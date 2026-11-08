@@ -1,4 +1,8 @@
-import type { ExternalFileChangeEvent, WriteFileCheckedResult } from '@shared/types'
+import type {
+  ExternalFileChangeEvent,
+  FolderChangeEvent,
+  WriteFileCheckedResult
+} from '@shared/types'
 import type { FileTreeNode } from '../types'
 
 export function openFolder(): Promise<string | null> {
@@ -58,4 +62,14 @@ export function onExternalFileChange(
   listener: (event: ExternalFileChangeEvent) => void
 ): () => void {
   return window.api.onExternalFileChange(listener)
+}
+
+/** 開いているフォルダの監視を張る(true)・外す(false)。どのフォルダかは main が決める */
+export function setFolderWatch(enabled: boolean): Promise<void> {
+  return window.api.setFolderWatch(enabled)
+}
+
+/** 開いているフォルダの変化の合図を購読する。戻り値で解除する */
+export function onFolderChange(listener: (event: FolderChangeEvent) => void): () => void {
+  return window.api.onFolderChange(listener)
 }

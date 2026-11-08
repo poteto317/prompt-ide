@@ -2,7 +2,8 @@ import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import simpleGit, { GitPluginError } from 'simple-git'
-import type { SimpleGit, SimpleGitOptions } from 'simple-git'
+import type { SimpleGit } from 'simple-git'
+import { INHERITED_ENV_ALLOWANCES } from './gitInheritedEnv'
 
 // 記録のインデックス(利用者の .git/index の写しに作業ツリーを入れたもの)で問い合わせる git を作る(設計書「確認の結果」14)。
 // GIT_INDEX_FILE を渡すには simple-git の env() が要るが、env() は環境変数の中身を検査し、simple-git 3.36.0
@@ -243,37 +244,11 @@ export function buildEnglishMessagesGitEnv(source: NodeJS.ProcessEnv): Record<st
   return env
 }
 
-// simple-git は env() で渡した環境を検査し、拒否する変数(GIT_ASKPASS・GIT_CONFIG_GLOBAL など)や GIT_CONFIG_KEY_n の設定があると
-// 投げる。方式の判定の git は env() を使う前(createRepoGit)と同じく親の環境をそのまま引き継ぐため、環境の検査だけを外す。
-// 命令は rev-parse(checkIsRepo を含む)に固定で、-c も付けない。型で全部の分類を並べさせる(版を上げて分類が増えたら型が落ちる)
-const INHERITED_ENV_ALLOWANCES: Required<
-  Omit<NonNullable<SimpleGitOptions['unsafe']>, 'allowUnsafeCustomBinary'>
-> = {
-  allowUnsafeAlias: true,
-  allowUnsafeAskPass: true,
-  allowUnsafeConfigPaths: true,
-  allowUnsafeConfigEnvCount: true,
-  allowUnsafeCredentialHelper: true,
-  allowUnsafeEditor: true,
-  allowUnsafeMergeDriver: true,
-  allowUnsafePager: true,
-  allowUnsafeProtocolOverride: true,
-  allowUnsafePack: true,
-  allowUnsafeSshCommand: true,
-  allowUnsafeGitProxy: true,
-  allowUnsafeHooksPath: true,
-  allowUnsafeDiffExternal: true,
-  allowUnsafeDiffTextConv: true,
-  allowUnsafeFilter: true,
-  allowUnsafeFsMonitor: true,
-  allowUnsafeGpgProgram: true,
-  allowUnsafeTemplateDir: true
-}
-
 /**
  * 方式の判定(checkIsRepo・rev-parse --show-toplevel・rev-parse --git-dir)の git。createRepoGit と同じく利用者の環境
  * (process.env)で問い合わせ、写しの環境だけを buildModeGitEnv で英語のメッセージにする(process.env は書き換えない)。
- * 記録・一覧などのほかの git(リポジトリの方式の記録の createRepoGit を含む)は変えない。unsafe をすべて許しているため、
+ * 記録・一覧などのほかの git(リポジトリの方式の記録の createRepoGit を含む)は変えない。unsafe をすべて許しているため
+ * (環境の検査を外す理由は gitInheritedEnv.ts)、命令は rev-parse(checkIsRepo を含む)に固定し、
  * 戻り値の型を方式の判定が使う checkIsRepo・raw に絞る(ほかの命令に流用しない)
  */
 export function createModeGit(

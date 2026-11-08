@@ -49,6 +49,8 @@ const mockUseFileSystem = vi.hoisted(() =>
         cliKind: AgentCliKind,
         file: AgentInstructionFile
       ) => Promise<AgentInstructionCreateOutcome>
+      isFolderScanPending?: () => boolean
+      refreshTreeQuietly?: () => Promise<void>
     } => ({
       folderPath: null,
       fileTree: [],
@@ -62,7 +64,9 @@ const mockUseFileSystem = vi.hoisted(() =>
       createFile: vi.fn().mockResolvedValue(undefined),
       createDirectory: vi.fn().mockResolvedValue(undefined),
       renameEntry: vi.fn().mockResolvedValue(undefined),
-      deleteEntry: vi.fn().mockResolvedValue(undefined)
+      deleteEntry: vi.fn().mockResolvedValue(undefined),
+      isFolderScanPending: vi.fn(() => false),
+      refreshTreeQuietly: vi.fn().mockResolvedValue(undefined)
     })
   )
 )
@@ -262,7 +266,11 @@ vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
-vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
+// 静かな取り直しの 2 つは既定を足す(テストごとの mockReturnValue に書かなくてよいように。値を返したモックが優先)
+vi.mock('../useGitStatus', async () => {
+  const { withQuietGitStatusDefaults } = await import('../../__tests__/withQuietGitStatusDefaults')
+  return { useGitStatus: withQuietGitStatusDefaults(mockUseGitStatus) }
+})
 vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
 vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
 vi.mock('../useHistory', () => ({ useHistory: mockUseHistory }))
@@ -282,6 +290,7 @@ vi.mock('../useCloneRepository', () => ({ useCloneRepository: mockUseCloneReposi
 // mock.calls[0][0] で呼び出し引数を検証するため、引数を受け取る型として宣言する
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mockUseExternalFileChanges = vi.hoisted(() => vi.fn((_options?: unknown) => null))
+const mockUseFolderAutoRefresh = vi.hoisted(() => vi.fn())
 const mockUseAgentWorkspace = vi.hoisted(() =>
   vi.fn<typeof import('../useAgentWorkspace').useAgentWorkspace>()
 )
@@ -292,6 +301,28 @@ const mockUsePromptListMode = vi.hoisted(() =>
 vi.mock('../usePromptListMode', () => ({ usePromptListMode: mockUsePromptListMode }))
 vi.mock('../useAgentWorkspace', () => ({ useAgentWorkspace: mockUseAgentWorkspace }))
 vi.mock('../useExternalFileChanges', () => ({ useExternalFileChanges: mockUseExternalFileChanges }))
+// useFileSystem のモックは静かな取り直しの関数を持たないことがあるため、hook の中身はここでは走らせない
+vi.mock('../useFolderAutoRefresh', () => ({ useFolderAutoRefresh: mockUseFolderAutoRefresh }))
+// useDiffOperations は実物のまま、refreshDiff に渡された引数だけを記録する(組み立てで { quiet: true } を渡すかを確かめる)
+const mockRefreshDiff = vi.hoisted(() => vi.fn())
+vi.mock('../useDiffOperations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../useDiffOperations')>()
+  return {
+    ...actual,
+    useDiffOperations: (
+      ...args: Parameters<typeof actual.useDiffOperations>
+    ): ReturnType<typeof actual.useDiffOperations> => {
+      const operations = actual.useDiffOperations(...args)
+      return {
+        ...operations,
+        refreshDiff: (options) => {
+          mockRefreshDiff(options)
+          operations.refreshDiff(options)
+        }
+      }
+    }
+  }
+})
 
 import { useAppState } from '../useAppState'
 
@@ -338,10 +369,41 @@ describe('useAppState', () => {
     expect(result.current.promptListMode).toBe(state)
   })
 
-  it('useGitStatus を呼び出す（folderPath を引数に）', () => {
+  it('useGitStatus を呼び出す（folderPath と、useFileSystem の走査中かの判定を引数に）', () => {
     renderHook(() => useAppState())
     expect(mockUseGitStatus).toHaveBeenCalledOnce()
-    expect(mockUseGitStatus).toHaveBeenCalledWith(null)
+    const fileSystem = mockUseFileSystem.mock.results[0].value
+    expect(mockUseGitStatus).toHaveBeenCalledWith(null, {
+      isFolderScanPending: fileSystem.isFolderScanPending
+    })
+  })
+
+  it('useFolderAutoRefresh に、フォルダと、ツリー・git status・diff の静かな取り直しと、走査中かを渡す', () => {
+    const refreshGitStatusQuietly = vi.fn(async (): Promise<boolean> => true)
+    const defaultUseGitStatus = mockUseGitStatus.getMockImplementation()
+    if (defaultUseGitStatus === undefined) throw new Error('useGitStatus の既定の実装が無い')
+    const gitStatusState = { ...defaultUseGitStatus(), refreshGitStatusQuietly }
+    mockUseGitStatus.mockImplementation(() => gitStatusState)
+    try {
+      renderHook(() => useAppState())
+      const fileSystem = mockUseFileSystem.mock.results[0].value
+      const options = mockUseFolderAutoRefresh.mock.calls.at(-1)?.[0]
+      expect(options).toMatchObject({
+        folderPath: null,
+        refreshTreeQuietly: fileSystem.refreshTreeQuietly,
+        isFolderScanPending: fileSystem.isFolderScanPending
+      })
+      expect(options.refreshGitStatusQuietly).toBe(refreshGitStatusQuietly)
+      mockRefreshDiff.mockClear()
+      act(() => {
+        options.refreshDiffQuietly()
+      })
+      expect(mockRefreshDiff).toHaveBeenCalledOnce()
+      expect(mockRefreshDiff).toHaveBeenCalledWith({ quiet: true })
+    } finally {
+      // 後のテストへ持ち込まない(パターン 103)
+      mockUseGitStatus.mockImplementation(defaultUseGitStatus)
+    }
   })
 
   it('panelState の値が含まれる（activePanel, sidebarOpen, handlePanelChange）', () => {

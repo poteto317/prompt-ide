@@ -69,6 +69,9 @@ const mockSetupOpenFileWatcherLifecycle = vi.hoisted(() => vi.fn())
 const mockRegisterExternalChangeHandlers = vi.hoisted(() => vi.fn())
 const mockRegisterShellHandlers = vi.hoisted(() => vi.fn())
 const mockSendExternalChange = vi.hoisted(() => vi.fn())
+const mockSetupFolderChangeWatcherLifecycle = vi.hoisted(() => vi.fn())
+const mockRegisterFolderChangeHandlers = vi.hoisted(() => vi.fn())
+const mockSendFolderChange = vi.hoisted(() => vi.fn())
 // 親ディレクトリの監視(fs.watch)。実物のディレクトリを監視しない
 const mockWatch = vi.hoisted(() => vi.fn(() => ({ close: vi.fn(), on: vi.fn() })))
 const mockMkdirSync = vi.hoisted(() => vi.fn())
@@ -154,6 +157,13 @@ vi.mock('../handlers/externalChangeHandlers', () => ({
   registerExternalChangeHandlers: mockRegisterExternalChangeHandlers,
   sendExternalChange: mockSendExternalChange
 }))
+vi.mock('../folderChangeWatcherLifecycle', () => ({
+  setupFolderChangeWatcherLifecycle: mockSetupFolderChangeWatcherLifecycle
+}))
+vi.mock('../handlers/folderChangeHandlers', () => ({
+  registerFolderChangeHandlers: mockRegisterFolderChangeHandlers,
+  sendFolderChange: mockSendFolderChange
+}))
 // ipcHandlers は名前付きの import(watch)だが、組み込みのモジュールは default 経由で解決されるため両方を差し替える
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>()
@@ -212,6 +222,7 @@ import { collectAgentChangeEntries, collectAgentChangeEntriesBetween } from '../
 import { isProcessAliveOnThisMachine } from '../agentChangesProtectionRef'
 import { AGENT_CHANGES_UNDO_MAX_BYTES } from '../agentChangesUndo'
 import { OpenFileWatcher, EXTERNAL_CHANGE_DEBOUNCE_MS } from '../openFileWatcher'
+import { FolderChangeWatcher, FOLDER_CHANGE_WAIT_MS } from '../folderChangeWatcher'
 
 const mockIpcMain = { handle: mockHandle } as never
 
@@ -640,5 +651,60 @@ describe('registerIpcHandlers', () => {
     await vi.advanceTimersByTimeAsync(EXTERNAL_CHANGE_DEBOUNCE_MS)
     expect(mockSendExternalChange).toHaveBeenCalledExactlyOnceWith(1, ['/a/b.txt'])
     watcher.setWatchedFiles(1, [])
+  })
+
+  it('開いているフォルダの監視の寿命と IPC に、同じ FolderAccessManager と同じ FolderChangeWatcher を渡す', () => {
+    registerIpcHandlers(mockIpcMain)
+    const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1]
+    const [lifecycleApp, watcher, lifecycleFolderAccess] =
+      mockSetupFolderChangeWatcherLifecycle.mock.calls[0]
+    expect(lifecycleApp).toBe(mockApp)
+    expect(watcher).toBeInstanceOf(FolderChangeWatcher)
+    expect(lifecycleFolderAccess).toBe(folderAccess)
+    expect(mockRegisterFolderChangeHandlers).toHaveBeenCalledExactlyOnceWith(mockIpcMain, watcher)
+  })
+
+  it('FolderChangeWatcher は許可フォルダを recursive・persistent: false で監視し、変化を sendFolderChange で所有者へ送る', async () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin')
+    try {
+      vi.useFakeTimers()
+      registerIpcHandlers(mockIpcMain)
+      const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1] as FolderAccessManager
+      const watcher = mockSetupFolderChangeWatcherLifecycle.mock.calls[0][1] as FolderChangeWatcher
+      folderAccess.set(1, '/repo')
+      mockWatch.mockClear()
+      watcher.enable(1)
+      expect(mockWatch).toHaveBeenCalledExactlyOnceWith(
+        '/repo',
+        { recursive: true, persistent: false },
+        expect.any(Function)
+      )
+      const listener = (mockWatch.mock.calls[0] as unknown[])[2] as (
+        eventType: string,
+        filename: string | null
+      ) => void
+      listener('rename', 'a.txt')
+      await vi.advanceTimersByTimeAsync(FOLDER_CHANGE_WAIT_MS)
+      expect(mockSendFolderChange).toHaveBeenCalledExactlyOnceWith(1, { treeChanged: true })
+      watcher.disable(1)
+    } finally {
+      platform.mockRestore()
+    }
+  })
+
+  it('Linux では開いているフォルダの監視を張らない(設計書 2 章の 5)', () => {
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
+    try {
+      registerIpcHandlers(mockIpcMain)
+      const folderAccess = mockRegisterFileSystemHandlers.mock.calls[0][1] as FolderAccessManager
+      const watcher = mockSetupFolderChangeWatcherLifecycle.mock.calls[0][1] as FolderChangeWatcher
+      folderAccess.set(1, '/repo')
+      mockWatch.mockClear()
+      watcher.enable(1)
+      expect(mockWatch).not.toHaveBeenCalled()
+      expect(watcher.watchedFolder(1)).toBeNull()
+    } finally {
+      platform.mockRestore()
+    }
   })
 })

@@ -84,6 +84,8 @@ Object.defineProperty(window, 'api', {
     writeFileChecked: () => Promise.resolve({ kind: 'written' }),
     setWatchedFiles: () => Promise.resolve(),
     onExternalFileChange: () => () => {},
+    setFolderWatch: () => Promise.resolve(),
+    onFolderChange: () => () => {},
     openExternalLink: () => Promise.resolve(true),
     // エージェントの変更。既定は記録なし(個別のテストで差し替える)
     beginAgentChanges: () => Promise.resolve({ kind: 'none' }),

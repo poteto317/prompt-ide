@@ -26,6 +26,7 @@ import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
+import { INHERITED_ENV_ALLOWANCES } from './gitInheritedEnv'
 import { buildMergeAbortMessage, buildMergeConflictMessage } from './gitMergeMessages'
 import {
   hasMergeInProgress,
@@ -42,6 +43,51 @@ import { simpleGitWithRemoteTimeout, toRemoteOperationError } from './gitRemoteT
 // スキップする。Electron のメインプロセスは全ウィンドウで共有されているため、
 // 巨大ファイルでのメモリ/CPU スパイクはこのプロセス全体をブロックしてしまう
 export const MAX_UNTRACKED_DIFF_FILE_SIZE_BYTES = 5 * 1024 * 1024
+
+/**
+ * GIT_OPTIONAL_LOCKS=0 の git。GIT_OPTIONAL_LOCKS を渡すには env() が要るので、親の環境を引き継いだうえで simple-git の検査を外す
+ * (環境の検査と同じ分類で、-c などの引数の検査も外れる。gitInheritedEnv.ts)。使う側(createStatusGit・createDiffGit)が命令を型で絞り、
+ * config・オプションは固定の値だけを渡し、利用者の値は `--` の後の pathspec にだけ入れる
+ */
+function createNoOptionalLocksGit(folderPath: string, config?: readonly string[]): SimpleGit {
+  return simpleGit(folderPath, {
+    ...(config ? { config: [...config] } : {}),
+    unsafe: INHERITED_ENV_ALLOWANCES
+  }).env({
+    ...process.env,
+    GIT_OPTIONAL_LOCKS: '0'
+  })
+}
+
+/**
+ * git status の git。git status は .git/index.lock を作って消し、作業ツリーの stat の情報が古いと .git/index も書き直す。
+ * 開いているフォルダの監視は .git/index の変化で git status を取り直すため、アプリの git status が書くと次の通知を起こし、
+ * 取り直しが止まらなくなりうる(設計書 2026-11-08 の 1 章の 8)。GIT_OPTIONAL_LOCKS=0 で書かせない(1 章の 9)。命令は status に固定する
+ */
+function createStatusGit(folderPath: string): Pick<SimpleGit, 'status'> {
+  return createNoOptionalLocksGit(folderPath)
+}
+
+/**
+ * getDiff の git。命令は diff に固定する。
+ * - core.quotePath=false: ファイル名に非ASCII文字を含む場合、git diff の出力がダブルクォート+オクタルエスケープされる
+ *   (例: "b/\346\227\245\346\234\254.txt")。toSelfDiffHeaderLines(diffParser.ts)は "+++ b/" の固定長プレフィックスで
+ *   新パスを切り出すため、エスケープされた形式だとリネームを伴うファイルのハンク単位ステージ/アンステージが壊れる(実機で再現確認済み)
+ * - diff.autoRefreshIndex=false: 内容が同じで stat だけ変わったファイルが pathspec にあると、git diff は index.lock を取って
+ *   .git/index 全体を書き直す(GIT_OPTIONAL_LOCKS=0 では止まらない)。監視が外の書き直しを契機にこの diff を取り直すため、
+ *   その間に外の git add・commit が index.lock の取り合いで失敗しうる。書かせなくても、stat だけ変わったファイルの diff は
+ *   今どおり空になる(git 2.50.1 で実測。設計書 2026-11-08 の 1 章の 10)。--cached は index を書かないが、分けずに同じ設定で作る
+ * - GIT_OPTIONAL_LOCKS=0: 未ステージの diff の pathspec がサブモジュール(gitlink)だと、git diff は dirty かを調べるため
+ *   子の git status を起動し、子は .git/modules/<sub>/index.lock を取って stat が古ければ index も書き直す
+ *   (diff.autoRefreshIndex=false は親の書き直ししか止めない)。子にもロックを取らせない(出力の -dirty は変わらない)
+ */
+function createDiffGit(folderPath: string): Pick<SimpleGit, 'diff'> {
+  return createNoOptionalLocksGit(folderPath, [
+    'core.quotePath=false',
+    ...PATCH_FORMAT_CONFIG,
+    'diff.autoRefreshIndex=false'
+  ])
+}
 
 export async function getGitStatus(folderPath: string): Promise<GitStatusResult> {
   const git = simpleGit(folderPath)
@@ -64,7 +110,7 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
   // 同じ出力から決める。upstream と detached は git.status() の結果に含まれる(追加の git 呼び出しは無い)。
   // リモートのバナー(renderer の remoteSetupState)がこの 4 つで表示を決める
   const [status, mergeInProgress, remoteNames] = await Promise.all([
-    git.status(),
+    createStatusGit(folderPath).status(),
     hasMergeInProgress(git),
     listRemoteNames(git)
   ])
@@ -154,13 +200,8 @@ export async function getDiff(
    *  取るときだけ pathspec に併記する */
   renamedFrom?: string
 ): Promise<string> {
-  // core.quotePath(既定 true)を打ち消さないと、ファイル名に非ASCII文字を含む
-  // 場合 git diff の出力がダブルクォート+オクタルエスケープされる
-  // (例: "b/\346\227\245\346\234\254.txt")。toSelfDiffHeaderLines(diffParser.ts)
-  // は "+++ b/" の固定長プレフィックスで新パスを切り出すため、エスケープされた
-  // 形式だとリネームを伴うファイルのハンク単位ステージ/アンステージが壊れる
-  // (実機で再現確認済み)
-  const git = simpleGit(folderPath, { config: ['core.quotePath=false', ...PATCH_FORMAT_CONFIG] })
+  // 設定と環境は createDiffGit を参照
+  const git = createDiffGit(folderPath)
   // 未追跡かどうかは呼び出し元(renderer)が既に持っている git status 由来の情報を
   // そのまま受け取る。ここで改めて git.status() を呼んでリポジトリ全体を再スキャン
   // すると、diff タブを開くたびに無駄な I/O が発生する

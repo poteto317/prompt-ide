@@ -28,6 +28,7 @@ import type {
   AgentStartResult,
   CLIOnlyToolId,
   ExternalFileChangeEvent,
+  FolderChangeEvent,
   PromptExecutionMode,
   PromptListMode,
   WriteFileCheckedResult,
@@ -332,6 +333,19 @@ export const api = {
     ipcRenderer.on('fs:externalChange', wrapped)
     return () => {
       ipcRenderer.removeListener('fs:externalChange', wrapped)
+    }
+  },
+  // 開いているフォルダの監視を張るかだけを送る(どのフォルダかは main の許可フォルダで決める。設計書 2026-11-08)
+  setFolderWatch: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('fs:setFolderWatch', enabled),
+  onFolderChange: (listener: (event: FolderChangeEvent) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      if (!isObjectLike(payload) || typeof payload.treeChanged !== 'boolean') return
+      listener({ treeChanged: payload.treeChanged })
+    }
+    ipcRenderer.on('fs:folderChange', wrapped)
+    return () => {
+      ipcRenderer.removeListener('fs:folderChange', wrapped)
     }
   },
   openExternalLink: (url: string): Promise<boolean> =>

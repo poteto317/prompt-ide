@@ -5,8 +5,8 @@ import type {
   AgentChangesState
 } from '@shared/types'
 import type { AgentChangesView } from '../types'
-import { isObjectLike } from '@shared/typeGuards'
 import { findAgentChangesRun } from './agentChangesScope'
+import { isSamePlainData } from './plainDataEquality'
 
 // main の応答(状態・一覧)を記録の写し(AgentChangesView)へどう反映するかの規則(記録の区別の要約 attribution と記録の置き場 storage も写す)と、
 // 写しの記録の見分け方(同じ記録か・始点の時刻)(設計書「記録の写しと範囲」)。useAgentChanges から外して、描画なしで検査できるようにする。
@@ -33,22 +33,10 @@ export function recordingStartedAtOf(view: AgentChangesView): number | null {
   return view.kind === 'recording' ? view.startedAt : null
 }
 
-// 写しは IPC で届いた素のデータ(オブジェクト・配列・数・文字列・真偽・null)だけでできているため、構造で比べる
-function isSamePlainData(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true
-  if (!isObjectLike(a) || !isObjectLike(b)) return false
-  if (Array.isArray(a) !== Array.isArray(b)) return false
-  const aRecord = a
-  const bRecord = b
-  const aKeys = Object.keys(aRecord).filter((key) => aRecord[key] !== undefined)
-  const bKeys = Object.keys(bRecord).filter((key) => bRecord[key] !== undefined)
-  if (aKeys.length !== bKeys.length) return false
-  return aKeys.every((key) => isSamePlainData(aRecord[key], bRecord[key]))
-}
-
 /**
  * 写しの中身(記録・実行の一覧・一覧の行の並びと状態・HEAD の帯など)が同じか。静かな取り直し(自動の取り直し)は、
- * 同じなら写しを置き換えない(参照を保ち、一覧の変化として扱わない。diff タブは useAgentChangesWiring が静かに取り直す)
+ * 同じなら写しを置き換えない(参照を保ち、一覧の変化として扱わない。diff タブは useAgentChangesWiring が静かに取り直す)。
+ * 写しは IPC で届いた素のデータだけでできているため、構造で比べる(isSamePlainData)
  */
 export function isSameAgentChangesView(a: AgentChangesView, b: AgentChangesView): boolean {
   return isSamePlainData(a, b)

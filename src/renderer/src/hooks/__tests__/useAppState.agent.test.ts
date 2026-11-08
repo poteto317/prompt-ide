@@ -289,7 +289,11 @@ vi.mock('../useQuickOpen', () => ({ useQuickOpen: mockUseQuickOpen }))
 vi.mock('../usePanelState', () => ({ usePanelState: mockUsePanelState }))
 vi.mock('../useFileSystem', () => ({ useFileSystem: mockUseFileSystem }))
 vi.mock('../usePrompts', () => ({ usePrompts: mockUsePrompts }))
-vi.mock('../useGitStatus', () => ({ useGitStatus: mockUseGitStatus }))
+// 静かな取り直しの 2 つは既定を足す(テストごとの mockReturnValue に書かなくてよいように。値を返したモックが優先)
+vi.mock('../useGitStatus', async () => {
+  const { withQuietGitStatusDefaults } = await import('../../__tests__/withQuietGitStatusDefaults')
+  return { useGitStatus: withQuietGitStatusDefaults(mockUseGitStatus) }
+})
 vi.mock('../useSettings', () => ({ useSettings: mockUseSettings }))
 vi.mock('../usePromptExecution', () => ({ usePromptExecution: mockUsePromptExecution }))
 vi.mock('../useHistory', () => ({ useHistory: mockUseHistory }))
@@ -308,6 +312,7 @@ vi.mock('../useCloneRepository', () => ({ useCloneRepository: mockUseCloneReposi
 // mock.calls[0][0] で呼び出し引数を検証するため、引数を受け取る型として宣言する
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const mockUseExternalFileChanges = vi.hoisted(() => vi.fn((_options?: unknown) => null))
+const mockUseFolderAutoRefresh = vi.hoisted(() => vi.fn())
 const mockUseAgentWorkspace = vi.hoisted(() =>
   vi.fn<typeof import('../useAgentWorkspace').useAgentWorkspace>()
 )
@@ -318,6 +323,8 @@ const mockUseAgentReferences = vi.hoisted(() =>
 )
 vi.mock('../useAgentReferences', () => ({ useAgentReferences: mockUseAgentReferences }))
 vi.mock('../useExternalFileChanges', () => ({ useExternalFileChanges: mockUseExternalFileChanges }))
+// useFileSystem のモックは静かな取り直しの関数を持たないことがあるため、hook の中身はここでは走らせない
+vi.mock('../useFolderAutoRefresh', () => ({ useFolderAutoRefresh: mockUseFolderAutoRefresh }))
 
 import { useAppState } from '../useAppState'
 import type { ExternalChangeMarks } from '../useExternalChangeMarks'

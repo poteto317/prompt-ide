@@ -89,6 +89,21 @@ function lineClassName(line: string, prefixLength: number): string {
   return 'diff-view__line diff-view__line--context'
 }
 
+// ハンクの key。作業ツリーの側の書き換えで変わらない「旧の側の開始行」を使う。
+// 外部の書き換えで静かな取り直しが新しい diff を置いたとき、行番号がずれただけの
+// ハンクが再マウントされてボタンのフォーカスが body に落ちるのを防ぐ。
+// 旧の側の開始行が取れない見出し(combined diff など)や、重なった場合は index を足す
+function buildHunkKeys(hunks: { header: string }[]): string[] {
+  const seen = new Set<string>()
+  return hunks.map((hunk, index) => {
+    const match = /^@@ -(\d+)(?:,\d+)? \+/.exec(hunk.header)
+    let key = match === null ? `idx-${index}` : `old-${match[1]}`
+    if (seen.has(key)) key = `${key}-idx-${index}`
+    seen.add(key)
+    return key
+  })
+}
+
 export default function DiffView({
   diffText,
   staged,
@@ -104,6 +119,7 @@ export default function DiffView({
   // disabled(実行中フラグ)の切り替えだけでも再レンダーされるため、diffText 自体が
   // 変わっていないときに毎回パースし直さないよう memo 化する
   const parsed = useMemo(() => parseDiff(diffText), [diffText])
+  const hunkKeys = useMemo(() => buildHunkKeys(parsed.hunks), [parsed])
   // ハンクが無い diff(バイナリ等)で表示する説明行。配管出力は取り除く
   const visibleHeaderLines = useMemo(
     () => parsed.headerLines.filter((line) => !isInternalDiffHeader(line)),
@@ -170,7 +186,7 @@ export default function DiffView({
           !parsed.isCombined &&
           (isUntracked || !(isTruncated && visibleLinesByHunk[index].length < hunk.lines.length))
         return (
-          <div key={`${hunk.header}-${index}`} className="diff-view__hunk">
+          <div key={hunkKeys[index]} className="diff-view__hunk">
             <div className="diff-view__hunk-header">
               <span className="diff-view__hunk-header-text">{hunk.header}</span>
               {/* 一部でも打ち切られたハンクは操作させない。「表示行数が 0」だけを

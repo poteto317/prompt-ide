@@ -87,6 +87,10 @@ interface FileSystemState {
   /** ルートからファイルツリーを読み直す。アプリ外/このフック外の要因で
    *  ディスク上のファイル構成が変わったとき(.gitignore の新規作成等)に使う */
   refreshTree: () => Promise<boolean>
+  /** ルートからファイルツリーを静かに読み直す(監視の通知・フォーカスの復帰。useFileTreeOperations.refreshTreeQuietly)。投げない */
+  refreshTreeQuietly: () => Promise<void>
+  /** フォルダの走査中か。走査中は main の許可が新しいフォルダ、画面が前のフォルダのままなので、静かな取り直しを反映しない */
+  isFolderScanPending: () => boolean
   /** dirty なタブがあれば破棄確認ダイアログを出し、その結果を返す(無ければ
    *  確認せず true)。checkout 等、working tree を書き換える操作の実行前に
    *  呼び出し側が使う */
@@ -156,6 +160,8 @@ export function useFileSystem(options?: Options): FileSystemState {
   // 実行中の openFolder 数。走査中は再読込にツリーを触らせない(権威ある結果は
   // フォルダ読み込み側が書く)
   const pendingFolderOpenRef = useRef(0)
+  // 走査中か(実行中の openFolder があるか)。数を読む判定はこれだけを通す(ツリーの書き込みの抑止・静かな取り直しの抑止が同じ事実を読む)
+  const isFolderScanPending = (): boolean => pendingFolderOpenRef.current > 0
   // 走査中に抑止した再読込があるか。最後の走査が終わった時点でやり直す
   const refreshSkippedRef = useRef(false)
   // 実際に openFile をコミットした回数。「読み込みを開始したか」ではなく
@@ -341,6 +347,7 @@ export function useFileSystem(options?: Options): FileSystemState {
     renameEntry,
     deleteEntry,
     refreshTree,
+    refreshTreeQuietly,
     createAgentInstructionFile
   } = useFileTreeOperations({
     getOpenFiles: () => openFilesMirrorRef.current,
@@ -359,13 +366,13 @@ export function useFileSystem(options?: Options): FileSystemState {
     // ツリーへの書き込みを開始する。フォルダ走査中は書き込ませない(null)。
     // 返る関数は「自分がまだ最新の書き込みか」を返す
     beginTreeWrite: () => {
-      if (pendingFolderOpenRef.current > 0) {
+      if (isFolderScanPending()) {
         // 走査中は書かせないが、取りこぼさないよう「抑止した」ことを記録する
         refreshSkippedRef.current = true
         return null
       }
       const seq = ++treeWriteSeqRef.current
-      return () => seq === treeWriteSeqRef.current && pendingFolderOpenRef.current === 0
+      return () => seq === treeWriteSeqRef.current && !isFolderScanPending()
     },
     // リネーム・削除は、対象の保存が終わってから行う。書き込みが後に解決すると
     // 旧パスを再作成してしまい、削除したファイルが復活する
@@ -520,7 +527,7 @@ export function useFileSystem(options?: Options): FileSystemState {
       // 走査中に抑止した再読込を、すべての走査が終わった時点でやり直す。
       // 走査が失敗・キャンセルした経路でも必要。並行する走査があるうちは
       // まだ抑止されるため、最後の 1 本が終わったときにだけ実行する
-      if (pendingFolderOpenRef.current === 0 && refreshSkippedRef.current) {
+      if (!isFolderScanPending() && refreshSkippedRef.current) {
         await retryRefreshSkippedDuringScan()
       }
     }
@@ -831,6 +838,8 @@ export function useFileSystem(options?: Options): FileSystemState {
     renameEntry,
     deleteEntry,
     refreshTree,
+    refreshTreeQuietly,
+    isFolderScanPending,
     confirmDiscardAnyDirty,
     captureDirtySnapshot,
     reloadOpenFiles,
