@@ -67,7 +67,14 @@ export function useQuickOpen({
 }: Options): QuickOpenController {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQueryState] = useState('')
-  const [rawActiveIndex, setActiveIndex] = useState(0)
+  // 選択は位置と、その位置で選んだファイルのパスの組で持つ。フォルダの監視の通知・フォーカスの復帰でツリーが静かに
+  // 読み直されると、ダイアログを開いたまま候補が並び直す。位置だけで持つと同じ位置の別のファイルが選ばれ、Enter で
+  // 選んだつもりと別のファイルを開いてしまう。パスが候補に残っていればその位置を選び、消えたときだけ位置で収める。
+  // path が null は、まだ選んでいない(先頭が選ばれている扱い)
+  const [selection, setSelection] = useState<{ index: number; path: string | null }>({
+    index: 0,
+    path: null
+  })
   // 履歴と「どこまで処理したか」をまとめて持つ。openFilePath の変化ではなく
   // 「実際に開いた」信号で積むのは、リネームでも path が変わるため。path の変化で
   // 積むと、リネームのたびに存在しないパスが履歴の枠を埋めてしまう
@@ -121,9 +128,18 @@ export function useQuickOpen({
     return searchFiles('', recentFiles.length > 0 ? recentFiles : fallbackFiles, folderPath)
   }, [query, files, folderPath, recentPaths, openFilePath])
 
-  // 候補の増減に追随して選択位置を有効な範囲に収める。state を書き換えるのではなく
+  // 候補の増減・並び直しに追随して選択位置を決める。state を書き換えるのではなく
   // 参照時に補正することで、results と activeIndex が食い違う瞬間を作らない
-  const activeIndex = results.length === 0 ? 0 : Math.min(rawActiveIndex, results.length - 1)
+  const activeIndex = resolveActiveIndex(results, selection)
+
+  // 位置を選ぶときは、その位置の候補のパスも控える(並び直しの後も同じファイルを選ぶため)
+  const selectIndex = useCallback(
+    (index: number): void => {
+      const path = results[index]?.node.path ?? null
+      setSelection({ index, path })
+    },
+    [results]
+  )
 
   // selectFile の解決を待つ間ダイアログは開いたままで入力欄もフォーカスを保持する。
   // Enter のキーリピートで多重に走らせると、破棄確認が何度も出たうえ、
@@ -188,7 +204,7 @@ export function useQuickOpen({
     // 復帰処理が、成功済みの試行が渡したエディタからフォーカスを奪う
     if (!isOpenRef.current && inFlightOpensRef.current === 0) openSucceededRef.current = false
     setQueryState('')
-    setActiveIndex(0)
+    setSelection({ index: 0, path: null })
     setIsOpen(true)
     startNewGeneration()
   }, [startNewGeneration, isOpenRef])
@@ -204,7 +220,7 @@ export function useQuickOpen({
   const setQuery = useCallback((next: string): void => {
     setQueryState(next)
     // 候補の並びが変わるため、選択位置は毎回先頭に戻す
-    setActiveIndex(0)
+    setSelection({ index: 0, path: null })
   }, [])
 
   const moveSelection = useCallback(
@@ -212,9 +228,9 @@ export function useQuickOpen({
       const count = results.length
       if (count === 0) return
       // 補正前の値から動かすと、候補が減った直後に表示上の位置と移動先がずれる
-      setActiveIndex((activeIndex + delta + count) % count)
+      selectIndex((activeIndex + delta + count) % count)
     },
-    [results.length, activeIndex]
+    [results.length, activeIndex, selectIndex]
   )
 
   const confirm = useCallback(
@@ -338,7 +354,24 @@ export function useQuickOpen({
     close,
     setQuery,
     moveSelection,
-    setActiveIndex,
+    setActiveIndex: selectIndex,
     confirm
   }
+}
+
+/**
+ * 選択中の位置を決める。選んだファイルが候補に残っていればその位置、無ければ(未選択・消えた)控えた位置を
+ * 有効な範囲に収めた位置。パスは表記の揺れ(Windows の case-only rename)を吸収して比べる
+ */
+function resolveActiveIndex(
+  results: readonly QuickOpenResult[],
+  selection: { index: number; path: string | null }
+): number {
+  if (results.length === 0) return 0
+  if (selection.path !== null) {
+    const key = toComparablePath(selection.path)
+    const found = results.findIndex((result) => toComparablePath(result.node.path) === key)
+    if (found !== -1) return found
+  }
+  return Math.min(selection.index, results.length - 1)
 }

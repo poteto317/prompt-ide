@@ -430,6 +430,60 @@ describe('useQuickOpen', () => {
     expect(result.current.activeIndex).toBe(2)
   })
 
+  // フォルダの監視の通知・フォーカスの復帰でツリーが静かに読み直されると、ダイアログを開いたまま候補が並び直す。
+  // 選択を位置で持つと同じ位置の別のファイルが選ばれ、Enter で選んだつもりと別のファイルを開いてしまう
+  it('開いている間にツリーへファイルが増えても、選んでいたファイルを選択中のまま保つ', async () => {
+    const { result, rerender, selectFile } = setup()
+    act(() => result.current.open())
+    act(() => result.current.moveSelection(1))
+    const chosen = result.current.results[result.current.activeIndex].node.path
+    rerender({
+      openFilePath: null,
+      openedFileSignal: NO_SIGNAL,
+      fileTree: [file('AAA.ts', '/project/AAA.ts'), file('000.ts', '/project/000.ts'), ...tree]
+    })
+    expect(result.current.results.map((r) => r.node.path)).toContain('/project/AAA.ts')
+    expect(result.current.results[result.current.activeIndex].node.path).toBe(chosen)
+    await act(async () => result.current.confirm())
+    expect(selectFile).toHaveBeenCalledWith(
+      expect.objectContaining({ path: chosen }),
+      expect.anything()
+    )
+  })
+
+  it('setActiveIndex で選んだファイルも、候補が並び直した後に選択中のまま保つ', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(2))
+    const chosen = result.current.results[2].node.path
+    rerender({
+      openFilePath: null,
+      openedFileSignal: NO_SIGNAL,
+      fileTree: [file('000.ts', '/project/000.ts'), ...tree]
+    })
+    expect(result.current.results[result.current.activeIndex].node.path).toBe(chosen)
+  })
+
+  it('選んでいたファイルがツリーから消えたら、位置で有効な範囲に収める', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.open())
+    act(() => result.current.setActiveIndex(3))
+    const chosen = result.current.results[3].node.path
+    rerender({
+      openFilePath: null,
+      openedFileSignal: NO_SIGNAL,
+      fileTree: tree
+        .filter((node) => node.path !== chosen)
+        .map((node) =>
+          node.children === undefined
+            ? node
+            : { ...node, children: node.children.filter((child) => child.path !== chosen) }
+        )
+    })
+    expect(result.current.results).toHaveLength(3)
+    expect(result.current.activeIndex).toBe(2)
+  })
+
   it('候補が減ったあとの moveSelection は補正後の位置から動く', () => {
     const { result, rerender } = setup()
     act(() => result.current.open())
