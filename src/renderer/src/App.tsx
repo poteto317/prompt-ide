@@ -243,13 +243,14 @@ export default function App(): React.JSX.Element {
       // 混ぜると、書き込みは成功しているのにエクスプローラーへ追加失敗の
       // エラーが出て、ユーザーが再実行してしまう。
       //
-      // 未追跡ファイルは .gitignore 追加によって追跡対象外になる。refreshGitStatus を
-      // 呼ばないと、別の stage/unstage 操作等で git status が再取得されるまで
-      // Changes 一覧に消えたはずのファイルが残り続けてしまう。
+      // 未追跡ファイルは .gitignore 追加によって追跡対象外になる。操作の直後に Changes 一覧から
+      // 消すため refreshGitStatus を呼ぶ(以前は、呼ばないと別の操作で git status が再取得されるまで
+      // 残り続けていた。2026-11-08 からはフォルダの監視の通知でも取り直すが、通知は合流の待ちの後に届き、
+      // Linux では監視を張らない)。
       // (既に追跡済みのファイルは git が追跡を続けるため Changes に残る。これは
       //  git の仕様で、解除には別途 git rm --cached が必要)
-      // .gitignore がまだ無いフォルダでは新規作成されるため、ツリーも読み直さないと
-      // 作成されたファイルがエクスプローラーに現れない
+      // .gitignore がまだ無いフォルダでは新規作成されるため、作成されたファイルを操作の直後に
+      // エクスプローラーへ出すようにツリーも読み直す(理由は refreshGitStatus と同じ)
       await Promise.allSettled([refreshGitStatus(), refreshTree()])
     })()
   }

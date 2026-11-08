@@ -1627,7 +1627,7 @@ describe('useAppState', () => {
         expect(confirmSpy).toHaveBeenCalled()
         expect(window.api.discardChanges).toHaveBeenCalledWith('src/a.ts')
         expect(reloadOpenFile).toHaveBeenCalledWith('/project/src/a.ts')
-        // ファイルウォッチャーが無いため、成功後にツリーを読み直す(最終レビューで追加)
+        // 操作の直後に反映するため、成功後にツリーを読み直す(フォルダの監視の通知は合流の待ちの後に届き、Linux では監視を張らない)(最終レビューで追加)
         expect(refreshTree).toHaveBeenCalledTimes(1)
       } finally {
         window.api.discardChanges = original

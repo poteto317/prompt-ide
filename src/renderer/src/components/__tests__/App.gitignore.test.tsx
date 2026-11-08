@@ -172,8 +172,8 @@ describe('App: .gitignore への追加後の Changes 一覧反映', () => {
   })
 
   it('.gitignore への追加が成功したら、ファイルツリーも再読み込みする(新規作成された .gitignore を表示するため)', async () => {
-    // .gitignore がまだ無いフォルダで初めて追加した場合、ツリーを読み直さないと
-    // 作成されたはずの .gitignore がエクスプローラーに現れない
+    // .gitignore がまだ無いフォルダで初めて追加した場合、作成された .gitignore を操作の直後に
+    // エクスプローラーへ出すためツリーを読み直す(フォルダの監視の通知は合流の待ちの後に届き、Linux では監視を張らない)
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'フォルダを開く' }))
     await waitFor(() =>
