@@ -444,7 +444,9 @@ Expected: FAIL（`renderHtml` がまだ旧形式のため、新しいテスト�
     var load = function () {
       try {
         var raw = window.localStorage.getItem(KEY);
-        return raw ? JSON.parse(raw) : {};
+        var saved = raw ? JSON.parse(raw) : {};
+        var isMap = saved !== null && typeof saved === 'object' && !Array.isArray(saved);
+        return isMap ? saved : {};
       } catch (e) {
         persistent = false;
         return memory;

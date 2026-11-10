@@ -296,6 +296,21 @@ describe('renderHtml', () => {
     expect(document.getElementById('root').textContent).toContain('ページを表示できませんでした')
   })
 
+  it('描画の後の初期化で投げても、失敗の 1 文に置き換え、描いた項目は残らない', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // 描画の後の refresh が #done を引いて投げる
+      mountText(SAMPLE, (html) => html.replace('id="done"', 'id="x"'))
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
+    expect(document.getElementById('root').textContent).toBe(
+      'ページを表示できませんでした。仕様書を作り直してください'
+    )
+    expect(document.querySelectorAll('.item__check')).toHaveLength(0)
+  })
+
   it('total と描画した項目の数が違うとき、失敗の 1 文に置き換える', () => {
     mountText(SAMPLE, (html) => html.replace('{"total":4,', '{"total":5,'))
     expect(document.getElementById('root').textContent).toContain('ページを表示できませんでした')
