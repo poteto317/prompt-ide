@@ -220,6 +220,9 @@ expect(caught).toBe(failure)
 - **Prettier の崩れも lint の失敗になる。** 警告 0 件の運用なので、`npx eslint <パス> --max-warnings 0` で確かめ、崩れは `npx prettier --write <パス>` で直す。
 - **実機テスト仕様書の ID は振り直さない。** 機能を足したら `docs/manual-test-spec.md` に項目を足し、`node scripts/build-manual-test-spec.mjs` で
   HTML を再生成して `npx vitest run scripts` を通す(書式は CLAUDE.md)。
+- **実機テスト仕様書の HTML は、項目を JSON で持ち、ブラウザの JavaScript で描く。** 生成するのは `.superpowers/manual-test-spec.html`
+  (Artifact として公開)で、作りは `scripts/build-manual-test-spec.mjs`。ファイルを小さく保つのは、Artifact を再公開するとき、公開中の版を
+  最後の行まで読む必要があるため。データは 1 行 1 件で出す形を崩さない(長い 1 行は読めない)。
 - **`settings.json` の API キーのフィールドは型の検証を通らない。** `readSettingsFile` は各フィールドの型を確かめずに `SettingsFile` として返す。
   ほかの設定のストアは読むときに型を確かめるが、`apiKeyStore.ts` の `getApiKey` は `apiKey` を文字列とみなして `trim()` を呼ぶ
   (手で `"apiKey": 123` と書き換えると `TypeError` になる。2026-10-30 時点の既知の点)。
