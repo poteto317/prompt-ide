@@ -309,10 +309,14 @@ it('生成した HTML は、枠が小さく(HTML − データ JSON ≤ 40,000 �
   const html = renderHtml(parseSpec(markdown))
   const data = renderDataScript(parseSpec(markdown))
   const bytes = (text) => Buffer.byteLength(text, 'utf-8')
-  expect(bytes(html) - bytes(data)).toBeLessThanOrEqual(40000)
-  expect(bytes(html)).toBeLessThanOrEqual(bytes(markdown) * 1.1)
-  const longest = Math.max(...html.split('\n').map(bytes))
-  expect(longest).toBeLessThanOrEqual(4000)
+  expect(
+    bytes(html) - bytes(data),
+    'データ以外（CSS・JS・見出し）が大きくなりすぎた'
+  ).toBeLessThanOrEqual(40000)
+  expect(bytes(html), 'HTML が md の 1.1 倍を超えた').toBeLessThanOrEqual(bytes(markdown) * 1.1)
+  // 長い 1 行は Artifact の再公開で読めないため、最長の行を上限で縛る(超えたら、その項目や前提を短くするか分ける)
+  const longest = html.split('\n').reduce((a, line) => (bytes(line) > bytes(a) ? line : a), '')
+  expect(bytes(longest), `最長の行(先頭: ${longest.slice(0, 80)})`).toBeLessThanOrEqual(4000)
 })
 
 it('U+2028・U+2029 の文字をソースに含めない', () => {
