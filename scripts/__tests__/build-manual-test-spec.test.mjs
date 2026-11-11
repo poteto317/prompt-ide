@@ -206,7 +206,7 @@ describe('renderHtml', () => {
     expect(document.querySelector('.item__expect').innerHTML).toContain(inline(expectText))
   })
 
-  it('バッククォートが奇数個・2 つ続く本文でも、現行の inline と同じ <code> の数とテキストにする', () => {
+  it('対にならない・2 つ続くバッククォートを含む本文でも、現行の inline と同じ <code> の数とテキストにする', () => {
     const body = '`a` と `` と `b と `c` d`'
     mountText(`## A\n- [ ] **AAA-001** ${body} → ok\n`)
     const codes = [...document.querySelectorAll('.item__step code')].map((c) => c.textContent)
@@ -566,8 +566,10 @@ describe('docs/manual-test-spec.md(実物)', () => {
       document.body.innerHTML = ''
     }
   })
+})
 
-  it('U+2028・U+2029 の文字をソースに含めない', () => {
+describe('ソースの不可視文字', () => {
+  it('U+2028・U+2029 の文字を、スクリプトとテストのソースに含めない', () => {
     for (const file of ['../build-manual-test-spec.mjs', './build-manual-test-spec.test.mjs']) {
       const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), file), 'utf-8')
       expect(source.includes(String.fromCharCode(0x2028)), file).toBe(false)

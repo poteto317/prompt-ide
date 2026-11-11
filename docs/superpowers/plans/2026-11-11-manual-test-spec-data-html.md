@@ -235,7 +235,7 @@ describe('renderHtml', () => {
     expect(document.querySelector('s')).toBeNull()
   })
 
-  it('バッククォートが奇数個・2 つ続く本文でも、現行の inline と同じ <code> の数とテキストにする', () => {
+  it('対にならない・2 つ続くバッククォートを含む本文でも、現行の inline と同じ <code> の数とテキストにする', () => {
     const body = '`a` と `` と `b と `c` d`'
     mountText(`## A\n- [ ] **AAA-001** ${body} → ok\n`)
     const codes = [...document.querySelectorAll('.item__step code')].map((c) => c.textContent)
@@ -318,13 +318,19 @@ it('生成した HTML は、枠が小さく(HTML − データ JSON ≤ 40,000 �
   const longest = html.split('\n').reduce((a, line) => (bytes(line) > bytes(a) ? line : a), '')
   expect(bytes(longest), `最長の行(先頭: ${longest.slice(0, 80)})`).toBeLessThanOrEqual(4000)
 })
+```
 
-it('U+2028・U+2029 の文字をソースに含めない', () => {
-  for (const file of ['../build-manual-test-spec.mjs', './build-manual-test-spec.test.mjs']) {
-    const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), file), 'utf-8')
-    expect(source.includes(String.fromCharCode(0x2028)), file).toBe(false)
-    expect(source.includes(String.fromCharCode(0x2029)), file).toBe(false)
-  }
+そのあと、ファイルの末尾（`describe('docs/manual-test-spec.md(実物)', …)` の外）に、不可視文字の検査を別の `describe` として足す（md の問題と区別するため）。
+
+```js
+describe('ソースの不可視文字', () => {
+  it('U+2028・U+2029 の文字を、スクリプトとテストのソースに含めない', () => {
+    for (const file of ['../build-manual-test-spec.mjs', './build-manual-test-spec.test.mjs']) {
+      const source = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), file), 'utf-8')
+      expect(source.includes(String.fromCharCode(0x2028)), file).toBe(false)
+      expect(source.includes(String.fromCharCode(0x2029)), file).toBe(false)
+    }
+  })
 })
 ```
 
