@@ -2,7 +2,7 @@
 
 新しく参加する開発者が、環境を作ってから最初の変更を検証し終えるまでに必要なことをまとめる。
 機能の一覧は [README.md](../README.md)、実装済みの機能と今後の候補は [ROADMAP.md](../ROADMAP.md)、
-作業の進め方(コミット・PR・レビュー対応)のルールはリポジトリ直下の `CLAUDE.md` を参照する。
+作業の進め方(コミット・PR・レビュー対応)のルールはリポジトリ直下の `CLAUDE.md`（または `AGENTS.md`）を参照する。
 
 ## 1. セットアップ
 
@@ -28,7 +28,7 @@ npm run dev   # electron-vite の開発モードで起動する
 
 | コマンド                        | 内容                                                                                |
 | ------------------------------- | ----------------------------------------------------------------------------------- |
-| `npm test`                      | Vitest でテストを 1 回実行する(600 ファイル余りあり、数分かかる)                    |
+| `npm test`                      | Vitest でテストを 1 回実行する(約 690 ファイル・15,000 件余りあり、数分かかる)      |
 | `npm run typecheck`             | main・preload(`tsconfig.node.json`)と renderer(`tsconfig.web.json`)を型チェックする |
 | `npx eslint . --max-warnings 0` | ESLint。警告も 0 件に保つ(Prettier の整形の崩れも警告として出る)                    |
 | `npm run build`                 | 型チェックしてから electron-vite でビルドする(出力は `out/`)                        |

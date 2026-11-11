@@ -94,10 +94,10 @@ comments なし」と読み替えてしまう。複数件を取り、Bot（`__ty
 ```bash
 npm test          # 全スイート
 npm run typecheck # 型
-npx eslint <変更したファイル>
+npx eslint <変更したファイル> --max-warnings 0 # または npm run lint（リポジトリ全体）
 ```
 
-lint はリポジトリ全体では既存の警告が多いため、変更したファイルだけを見る。
+lint はエラーだけでなく警告も 0 件の状態を保っている（`npm run lint`・`npx eslint . --max-warnings 0`）。変更したファイルだけを素早く確認するときは `npx eslint <変更したファイル> --max-warnings 0` を使う。
 
 実機確認は Electron を起動して CDP から操作する。手順とスクリプトの雛形は
 「実機確認」の節を参照。
