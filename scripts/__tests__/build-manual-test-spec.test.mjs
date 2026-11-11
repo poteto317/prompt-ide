@@ -179,6 +179,7 @@ describe('renderHtml', () => {
       parseSpec('# T<script>\n\n導入の `<i>` です。\n\n## A\n- [ ] **AAA-001** a → b\n')
     )
     expect(html).toContain('<title>T&lt;script&gt;</title>')
+    expect(html).toContain('<h1>T&lt;script&gt;</h1>')
     expect(html).toContain('<p class="intro">導入の <code>&lt;i&gt;</code> です。</p>')
   })
 
