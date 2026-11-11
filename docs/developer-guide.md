@@ -222,7 +222,8 @@ expect(caught).toBe(failure)
   HTML を再生成して `npx vitest run scripts` を通す(書式は CLAUDE.md)。
 - **実機テスト仕様書の HTML は、項目を JSON で持ち、ブラウザの JavaScript で描く。** 生成するのは `.superpowers/manual-test-spec.html`
   (Artifact として公開)で、作りは `scripts/build-manual-test-spec.mjs`。ファイルを小さく保つのは、Artifact を再公開するとき、公開中の版を
-  最後の行まで読む必要があるため。データは 1 行 1 件で出す形を崩さない(長い 1 行は読めない)。
+  最後の行まで読む必要があるため。データは 1 行 1 件で出す形を崩さない(長い 1 行は読めない)。1 行は 4,000 バイト以下で、超えたら `npx vitest run scripts` が、
+  最長の行の先頭を添えて落ちる。その項目や前提を短くするか分ける。
 - **`settings.json` の API キーのフィールドは型の検証を通らない。** `readSettingsFile` は各フィールドの型を確かめずに `SettingsFile` として返す。
   ほかの設定のストアは読むときに型を確かめるが、`apiKeyStore.ts` の `getApiKey` は `apiKey` を文字列とみなして `trim()` を呼ぶ
   (手で `"apiKey": 123` と書き換えると `TypeError` になる。2026-10-30 時点の既知の点)。

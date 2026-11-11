@@ -333,6 +333,8 @@ Expected: FAIL（`renderHtml` がまだ旧形式のため、新しいテスト�
 
 - [ ] **Step 3: 実装する**
 
+> 注記: 実装後に、`renderHtml` を `PAGE_STYLE`・`PAGE_SCRIPT`・`renderShell` の定数と関数に分けた（コミット a6c0e90）。下のコードはその分け方の前の形で、描画スクリプトの中身は `PAGE_SCRIPT` と同じ。
+
 `build-manual-test-spec.mjs` を次のとおり直す。
 
 1. `renderItem`・`renderFeature`・`renderArea` を削除する。`inline`・`escapeHtml` は残す（導入の段落と `<title>`・`<h1>` で使う）。ファイル先頭のコメントに「項目は JSON で持ち、ブラウザで描く」旨を 1 行足す。
@@ -529,7 +531,7 @@ Expected: PASS（新しいテストと、既存のチェック動作のテスト
 - [ ] **Step 5: 実物で生成して大きさを確かめる**
 
 Run: `node scripts/build-manual-test-spec.mjs && wc -c .superpowers/manual-test-spec.html && awk '{ if (length($0) > m) m = length($0) } END { print m }' .superpowers/manual-test-spec.html`
-Expected: `(19 領域 / 1565 項目)` に近い表示（項目の数は変わらない）、HTML が 700,000 バイト以下、最長の行の文字数が 4,000 以下。
+Expected: `(19 領域 / 1565 項目)` に近い表示（項目の数は変わらない）、HTML が 750,000 バイト（設計書の「約 0.75MB 以下」）以下、最長の行が 4,000 バイト以下（`awk` の `length` はロケールにより文字数のため、バイト数はテストで確かめる）。
 
 - [ ] **Step 6: 整形・検査**
 
