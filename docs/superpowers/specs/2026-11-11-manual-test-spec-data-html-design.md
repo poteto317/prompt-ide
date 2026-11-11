@@ -36,14 +36,14 @@
 - 本文の圧縮（gzip や base64 の埋め込み）。人が読めない版になり、レビューと差分の確認ができなくなるため行わない。
 - 領域ごとの遅延描画や、検索の機能の追加。
 - Artifact の公開方法の変更（公開は今までどおり Artifact ツールで、同じ URL に上書きする）。
-- `CLAUDE.md` と `docs/developer-guide.md` の手順の変更（再公開の手順は変わらない）。`docs/developer-guide.md` には、仕様書の HTML の構造の説明が無いため、1 文だけ（「項目を JSON で持ち、ブラウザで描く」）を、221〜222 行目あたりの「再生成して `npx vitest run scripts` を通す」段落の後に書き足す。
+- `CLAUDE.md` と `docs/developer-guide.md` の手順の変更（再公開の手順は変わらない）。`docs/developer-guide.md` には、仕様書の HTML の構造の説明が無いため、1 項目だけ（「項目を JSON で持ち、ブラウザで描く」）を、221〜222 行目あたりの「再生成して `npx vitest run scripts` を通す」段落の後に書き足す。
 - `docs/manual-test-spec.md` への項目の追加（アプリの挙動は変わらない）。最終タスクで HTML を再生成し、Artifact を同じパスで再公開する。新しい形式で最初に再公開するときは、公開中の旧版（約 1.5MB）を読む必要が 1 回だけ残る。
 
 ## 変更するファイル
 
 - `scripts/build-manual-test-spec.mjs`: `renderHtml` を、データ JSON＋描画スクリプトの出力に変える。`renderItem`・`renderFeature`・`renderArea` の HTML 文字列組み立てを、描画スクリプトの側へ移す。ビルド側には `escapeHtml` と `inline` を、`<title>`・`<h1>`・導入の段落のために残す。データの組み立て（行の列）と、埋め込みのエスケープを、ビルド側の関数に分ける。
 - `scripts/__tests__/build-manual-test-spec.test.mjs`: 出力の形（JSON の埋め込み・エスケープ・行の形・1 行の長さ・サイズ）と、描画後の動作（既存のチェック動作のテスト）を更新する。
-- `docs/developer-guide.md`: 上記の 1 文。
+- `docs/developer-guide.md`: 上記の 1 項目。
 
 ## テストの方針
 

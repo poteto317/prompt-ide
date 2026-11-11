@@ -25,7 +25,7 @@
 
 - 変更: `scripts/build-manual-test-spec.mjs`（データの組み立て・埋め込みのエスケープ・描画スクリプト・`renderHtml`）
 - 変更: `scripts/__tests__/build-manual-test-spec.test.mjs`
-- 変更: `docs/developer-guide.md`（1 文）
+- 変更: `docs/developer-guide.md`（1 項目）
 - 再生成（git 管理外）: `.superpowers/manual-test-spec.html`
 
 ---
@@ -561,12 +561,15 @@ Expected: エラーなし。prettier が描画スクリプトの文字列（テ�
 - Modify: `docs/developer-guide.md`
 - Modify: `ROADMAP.md`（該当する項目があれば。無ければ変更しない）
 
-- [ ] **Step 1: developer-guide に 1 文を足す**
+- [ ] **Step 1: developer-guide に 1 項目を足す**
 
-`docs/developer-guide.md` の 221〜222 行目あたりの「実機テスト仕様書の ID は振り直さない…再生成して `npx vitest run scripts` を通す」の段落の直後に、次の 1 行を足す。
+`docs/developer-guide.md` の 221〜222 行目あたりの「実機テスト仕様書の ID は振り直さない…再生成して `npx vitest run scripts` を通す」の段落の直後に、次の 1 項目を足す。
 
 ```markdown
-- 実機テスト仕様書の HTML（`.superpowers/manual-test-spec.html`、Artifact として公開）は、項目を JSON で持ち、ブラウザの JavaScript で描く作りになっている（`scripts/build-manual-test-spec.mjs`）。ファイルを小さく保つのは、Artifact を再公開するとき、公開中の版を最後の行まで読む必要があるため。1 行 1 件で出す形を崩さない。
+- **実機テスト仕様書の HTML は、項目を JSON で持ち、ブラウザの JavaScript で描く。** 生成するのは `.superpowers/manual-test-spec.html`
+  (Artifact として公開)で、作りは `scripts/build-manual-test-spec.mjs`。ファイルを小さく保つのは、Artifact を再公開するとき、公開中の版を
+  最後の行まで読む必要があるため。データは 1 行 1 件で出す形を崩さない(長い 1 行は読めない)。1 行は 4,000 バイト以下で、超えたら `npx vitest run scripts` が、
+  最長の行の先頭を添えて落ちる。その項目や前提を短くするか分ける。
 ```
 
 書式は周囲の箇条書きに合わせる（周囲が箇条書きでなければ、段落にする）。
