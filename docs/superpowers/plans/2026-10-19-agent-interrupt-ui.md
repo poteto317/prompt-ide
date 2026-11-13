@@ -397,7 +397,7 @@ python3 "$W/sanitize.py" .superpowers/agent-terminal-mvp/agent-screens.json src/
 wc -c .superpowers/agent-terminal-mvp/agent-screens.json src/renderer/src/lib/__tests__/fixtures/agentScreens.json
 diff .superpowers/agent-terminal-mvp/agent-screens.json src/renderer/src/lib/__tests__/fixtures/agentScreens.json | grep -c '^>'
 diff .superpowers/agent-terminal-mvp/agent-screens.json src/renderer/src/lib/__tests__/fixtures/agentScreens.json | grep '^>' | tail -n +31
-grep -nE '/Users/|-Users-|/private/(tmp|var)|/var/folders|claude-[0-9]+|mash' src/renderer/src/lib/__tests__/fixtures/agentScreens.json || echo "個人情報なし"
+grep -nE '/Users/|-Users-|/private/(tmp|var)|/var/folders|claude-[0-9]+' src/renderer/src/lib/__tests__/fixtures/agentScreens.json || echo "個人情報なし"
 shasum -a 256 src/renderer/src/lib/__tests__/fixtures/agentScreens.json
 ````
 

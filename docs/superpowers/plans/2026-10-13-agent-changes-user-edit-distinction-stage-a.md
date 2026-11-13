@@ -94,7 +94,7 @@
 > **止める条件: `--settings <ファイル>` で渡した `http` の hook の知らせが、手元の `claude`（2.1.291）から 1 件も届かない、または `claude` が設定のファイルを拒んだ（`--settings` の `http` の hook を受け付けない）と分かったら、ここで止めて報告する。Task 2 以降に進まない**（`command` の hook に切り替えるかは、設計の選択としてコントローラーが利用者に聞く）。`PreToolUse` の応答の待ちが効かない・`UserPromptSubmit` だけが届かないなど、`http` の hook は届くが設計の前提と違う点は、止めずに報告に書き、確認の結果に記録する。
 
 **Files:**
-- 作業場所（git 管理外。消さなくてよい）: scratchpad `S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/hooks-probe`
+- 作業場所（git 管理外。消さなくてよい）: scratchpad `S=$SCRATCHPAD/hooks-probe`
 - 一時ファイル（計測の後に消す。コミットしない）: `src/main/__tests__/agentHookTiming.local.test.ts`
 - Modify: `docs/superpowers/specs/2026-10-13-agent-changes-user-edit-distinction-design.md`（「確認の結果」の 14 の後に 15 を足す。「未確認事項」の 1・2・4・6 の末尾に `（段階 A のタスク 1 で確かめた。確認の結果 15）` を足す）
 
@@ -107,7 +107,7 @@
 - [ ] **Step 1: 作業場所と測定用の受け口を用意する**
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/hooks-probe
+S=$SCRATCHPAD/hooks-probe
 mkdir -p "$S/repo" && cd "$S/repo" && git init -q -b main && printf 'one\n' > a.txt && git add a.txt && git -c user.name=t -c user.email=t@example.com commit -qm init
 ```
 

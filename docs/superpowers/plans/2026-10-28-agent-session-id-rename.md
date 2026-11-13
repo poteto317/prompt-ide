@@ -61,7 +61,7 @@
 
   ```bash
   cd <repo-root>
-  S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+  S=$SCRATCHPAD
   B="$S/backup/<ラベル>"
   T=$(node -p "require('os').tmpdir()")
   case "$B" in "$T"*|<repo-root>*) echo "退避先が一時ディレクトリかリポジトリの中です。止まる" ;; *) echo "退避先は外" ;; esac
@@ -78,7 +78,7 @@
   期待: `退避先は外`。未追跡の件数と tar の件数が一致し（少なくとも設計書と実装プランの 2 件）、`changes.patch` の大きさが 0 より大きい。違えばテストを流さずに止まって報告する。戻し方（リポジトリの根で。リポジトリごと消えていたら、先に `git clone` し直してその根で）: `git checkout "$(cat "$B/base-commit.txt")" && git apply --index "$B/changes.patch" && tar -xf "$B/untracked.tar"`（`base-commit.txt` は push 済みの `ac0f7f5` の子孫）
 
 - **置き換えの方法。** 機械的な置き換えは、下の「共通の置き換えのエンジン」と各タスクのスクリプトで行う（手で一括置換しない。`sed -i` の部分一致を使わない）。
-  - スクリプトは scratchpad の `rename/` に置く（`S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad`。エンジンが無ければ、このセクションの内容で `$S/rename/rename_engine.py` を作る）。日本語を含むので `# -*- coding: utf-8 -*-` 付きのファイルにして `python3 <ファイル> <repo-root>` で流す（`python3 -c` に日本語を書かない）
+  - スクリプトは scratchpad の `rename/` に置く（`S=$SCRATCHPAD`。エンジンが無ければ、このセクションの内容で `$S/rename/rename_engine.py` を作る）。日本語を含むので `# -*- coding: utf-8 -*-` 付きのファイルにして `python3 <ファイル> <repo-root>` で流す（`python3 -c` に日本語を書かない）
   - エンジンは**語の単位**（英数字と `_` を語の文字とする。`grep -w` と同じ）で当てる。`isClaudeSessionId` は `isClaudeSessionIdActiveElsewhere` に、`claudeSessionId` は `claudeSessionIdSelection`・`claudeSessionIdBySlotRef` に、`CLAUDE_SESSION_ID` は `CLAUDE_SESSION_ID_PATTERN` に当たらない
   - `claudeSessionId` は、ファイルの全部（`'*'`）か、行と「行の中の何個目」を表で指定して直す。指定の無い行（履歴の欄など）には触れない
   - エンジンは、ファイルの件数・行の件数・文言の有無が表と全部合うことを確かめてから書き込む。1 つでも違えば `中止(何も書いていません)` と出して何も書かない。違ったら、表を直さずに止まって報告する（行の番号は計画の時点〈`ac0f7f5`〉のもので、前のタスクの prettier の折り返しまで含めて写しで確かめてある。違うのは前提が崩れたとき）
@@ -404,7 +404,7 @@ Expected: 通る。`git status --short` は ` M` の 2 ファイルと、`??` �
 
 - [ ] **Step 1: エンジンとスクリプトを書く**
 
-`$S/rename/rename_engine.py` を Global Constraints の「共通の置き換えのエンジン」の内容で作り、`$S/rename/rename_task2.py` を次の内容で作る（`S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad`）:
+`$S/rename/rename_engine.py` を Global Constraints の「共通の置き換えのエンジン」の内容で作り、`$S/rename/rename_task2.py` を次の内容で作る（`S=$SCRATCHPAD`）:
 
 ```python
 # -*- coding: utf-8 -*-
@@ -432,7 +432,7 @@ run(sys.argv[1], words, {}, {})
 - [ ] **Step 2: スクリプトを流す**
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 python3 "$S/rename/rename_task2.py" <repo-root>
 ```
 
@@ -620,7 +620,7 @@ run(sys.argv[1], {}, csid, texts)
 - [ ] **Step 2: スクリプトを流す**
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 python3 "$S/rename/rename_task3.py" <repo-root>
 ```
 
@@ -630,9 +630,9 @@ Expected: 22 ファイルが `書き換え済み` で、最後に `完了: 22 �
 
 ```bash
 cd <repo-root>
-git diff --name-only -- src | grep -E '\.(ts|tsx)$' > $AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/rename/task3-files.txt
-wc -l < $AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/rename/task3-files.txt
-xargs npx prettier --write < $AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/rename/task3-files.txt
+git diff --name-only -- src | grep -E '\.(ts|tsx)$' > $SCRATCHPAD/rename/task3-files.txt
+wc -l < $SCRATCHPAD/rename/task3-files.txt
+xargs npx prettier --write < $SCRATCHPAD/rename/task3-files.txt
 ```
 
 Expected: `task3-files.txt` が **29 行**（`git diff --name-only` は Task 1〜3 の変更をまとめて出す。Task 1 の 2 + Task 2 の 8 + Task 3 の 22 − Task 2 と 3 の重なり 3〈`agentTerminalPayloadParser.ts`・`shared/types/agentTerminal.ts`・`shared/__tests__/agentTerminal.test.ts`〉）。prettier は `agentSessionSnapshot.test.ts`・`useAgentSessions.test.ts`・`useAgentSessions.ts` の 3 ファイルだけを書き換え（名前が短くなり、行が畳まれる）、ほかは `(unchanged)`
@@ -743,8 +743,8 @@ Expected: すべて PASS（落ちたら Global Constraints の手順 7。時間�
 
 ```bash
 cd <repo-root>
-xargs npx eslint --max-warnings 0 < $AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/rename/task3-files.txt
-xargs npx prettier --check < $AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/rename/task3-files.txt
+xargs npx eslint --max-warnings 0 < $SCRATCHPAD/rename/task3-files.txt
+xargs npx prettier --check < $SCRATCHPAD/rename/task3-files.txt
 ```
 
 Expected: 通る
@@ -889,7 +889,7 @@ run(sys.argv[1], words, csid, texts)
 - [ ] **Step 3: スクリプトを流す**
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 python3 "$S/rename/rename_task4.py" <repo-root>
 ```
 
@@ -1074,7 +1074,7 @@ run(sys.argv[1], words, csid, texts)
 - [ ] **Step 2: スクリプトを流す**
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 python3 "$S/rename/rename_task5.py" <repo-root>
 ```
 
@@ -1255,7 +1255,7 @@ Expected:
 
 ```bash
 cd <repo-root>
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 npm run typecheck
 npx vitest run --reporter=dot
 { git diff --name-only --diff-filter=d HEAD; git ls-files --others --exclude-standard; } | sort -u | grep -E '^src/.*\.(ts|tsx)$' > "$S/rename/changed.txt"

@@ -3,8 +3,17 @@
   "version": "1.0.0",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "poteto317",
+  "license": "MIT",
+  "homepage": "https://github.com/poteto317/prompt-ide",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/poteto317/prompt-ide.git"
+  },
+  "bugs": {
+    "url": "https://github.com/poteto317/prompt-ide/issues"
+  },
+  "private": true,
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

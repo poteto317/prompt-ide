@@ -37,7 +37,7 @@
   3. **テストを流す前に**、そのタスクで触ったテストのファイルの再帰削除が、すべてガードを通っていることを grep で確かめる（各タスクの「安全の確かめ」の Step）。期待どおりでなければ、テストを流さずに止まって報告する
   4. 広い import の書き換えの後は、テストより先に `npm run typecheck` を流す
   5. ガードに存在するパス（「.」・`process.cwd()`・`tmpdir()`）を渡して消させるテスト・変異を書かない
-  6. **テストを流す前に、作業をリポジトリの外へ退避する。** このプランはコミットも `git stash` もしないので、実装の作業と未追跡のプラン・設計書は作業ツリーにしか無い。各タスクで最初にテストを流す前（と、各タスクの指定の時点）に、`git diff` のパッチと未追跡のファイルの写しを、scratchpad（`$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/`）の下のタスクごとのフォルダ `backup/<ラベル>/` に置く（`.git` の中に置くスナップショットは、リポジトリごと消えると一緒に失われるので使わない。scratchpad はリポジトリの外で、`os.tmpdir()`〈`/var/folders/…/T`〉の外でもあるので、ガードを通る削除にも巻き込まれない）。コマンドと戻し方は、各タスクの「退避」の手順に書いた
+  6. **テストを流す前に、作業をリポジトリの外へ退避する。** このプランはコミットも `git stash` もしないので、実装の作業と未追跡のプラン・設計書は作業ツリーにしか無い。各タスクで最初にテストを流す前（と、各タスクの指定の時点）に、`git diff` のパッチと未追跡のファイルの写しを、scratchpad（`$SCRATCHPAD/`）の下のタスクごとのフォルダ `backup/<ラベル>/` に置く（`.git` の中に置くスナップショットは、リポジトリごと消えると一緒に失われるので使わない。scratchpad はリポジトリの外で、`os.tmpdir()`〈`/var/folders/…/T`〉の外でもあるので、ガードを通る削除にも巻き込まれない）。コマンドと戻し方は、各タスクの「退避」の手順に書いた
 - **素の再帰削除の grep（以下「全体の grep」）。** 移したファイルが未追跡でも当たるよう、追跡中と未追跡の両方から対象を作り、ガードの実装と規則のテストの 2 ファイルを除く:
 
   ```sh
@@ -224,7 +224,7 @@ describe('removeTempPath', () => {
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task1-red
+B=$SCRATCHPAD/backup/task1-red
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -281,7 +281,7 @@ Expected:
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task1
+B=$SCRATCHPAD/backup/task1
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -541,7 +541,7 @@ Expected:
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task2
+B=$SCRATCHPAD/backup/task2
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -787,7 +787,7 @@ Expected:
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task3
+B=$SCRATCHPAD/backup/task3
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -956,7 +956,7 @@ Expected: `fs を使っていない`。続けて全体の grep（Global Constrai
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task4-red
+B=$SCRATCHPAD/backup/task4-red
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -1023,7 +1023,7 @@ const RECURSIVE_RM_OPTION =
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task4
+B=$SCRATCHPAD/backup/task4
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"
@@ -1115,7 +1115,7 @@ Expected:
 
 ```bash
 cd <repo-root>
-B=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad/backup/task5
+B=$SCRATCHPAD/backup/task5
 mkdir -p "$B"
 git rev-parse HEAD > "$B/base-commit.txt"
 git diff --binary HEAD > "$B/changes.patch"

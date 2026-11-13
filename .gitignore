@@ -7,6 +7,20 @@ coverage
 *.log*
 *.tsbuildinfo
 
+# 環境変数・秘密（electron-builder の配布除外とは別に、git でも無視する）
+.env
+.env.*
+!.env.example
+!.env.*.example
+secrets/
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_rsa.pub
+credentials.json
+*-service-account*.json
+
 # Claude Code が使用上限接近時に自動生成するチェックポイント関連ファイル
 AGENTS.md
 .claude/RESUME.md

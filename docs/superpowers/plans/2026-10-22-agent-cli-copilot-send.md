@@ -4554,7 +4554,7 @@ Expected: `missing` が出ず、すべて `OK`。`NG` が出たら、Step 3・4 
 新しい節の本文を一時ファイルに書く（設計書の「新しい節」の下書きのまま。Step 2 で `NG` が出た文言はコードに合わせる）:
 
 ```bash
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 mkdir -p "$S"
 cat > "$S/agt-257-section.md" <<'SECTION_EOF'
 ### copilot へのプロンプトの送信
@@ -4632,7 +4632,7 @@ print('ok')
 
 ```bash
 cd <repo-root>
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 test -f "$S/update-manual-test-spec.py" && test -f "$S/agt-257-section.md" || echo "missing"
 python3 "$S/update-manual-test-spec.py" docs/manual-test-spec.md "$S/agt-257-section.md"
 git diff docs/manual-test-spec.md | grep '^[-+]- \[ \]' | grep -o '\*\*AGT-[0-9]*\*\*' | sort | uniq -c
@@ -4711,7 +4711,7 @@ print('ok')
 
 ```bash
 cd <repo-root>
-S=$AGENT_TMP/938c3431-ec1c-437b-91b6-3d162fd19c49/scratchpad
+S=$SCRATCHPAD
 test -f "$S/update-roadmap.py" || echo "missing"
 sed -n '/^## 既知の制約/,/^## 実機テスト仕様書の新しい項目の下書き/p' docs/superpowers/specs/2026-10-22-agent-cli-copilot-send-design.md | grep '^- ' > "$S/roadmap-constraints.md"
 wc -l "$S/roadmap-constraints.md"
