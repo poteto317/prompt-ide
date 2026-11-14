@@ -1,10 +1,10 @@
-import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { GitStashEntry, StashPopResult } from '@shared/types'
 import { findStashIndex, parseStashList } from './gitStashParser'
 import { buildStashRestoreFailureMessage } from './gitStashMessages'
 import { listUnresolvedFiles } from './gitMergeState'
 import { assertRestorable, assertStashable } from './gitStashGuards'
+import { createAppGit } from './gitInheritedEnv'
 
 // stash(git stash)。stash の識別には番号(stash@{n})ではなく stash コミットの SHA を使う。番号は他の操作
 // (別の stash の追加・削除、外部ターミナルの操作)でずれ、別の stash を指すようになるため
@@ -17,7 +17,7 @@ async function listStashes(git: SimpleGit): Promise<GitStashEntry[]> {
 }
 
 export async function getStashes(folderPath: string): Promise<GitStashEntry[]> {
-  return listStashes(simpleGit(folderPath))
+  return listStashes(createAppGit(folderPath))
 }
 
 // 追跡済みの変更(ステージ済み・未ステージ)と未追跡ファイルを stash する(git stash push -u)。
@@ -31,7 +31,7 @@ export async function getStashes(folderPath: string): Promise<GitStashEntry[]> {
 // そのエラーをそのまま投げる
 export async function stashPush(folderPath: string, message: string): Promise<void> {
   if (message.includes('\0')) throw new Error('メッセージに使用できない文字が含まれています')
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertStashable(git)
   const args =
     message.trim() === ''
@@ -149,7 +149,7 @@ async function dropStashBySha(git: SimpleGit, sha: string): Promise<void> {
 // 結果で返す: renderer は例外のときタブを再読込しないが、これらは変更後のディスクを古いタブが
 // 上書きしないよう再読込が要るため
 export async function stashPop(folderPath: string, sha: string): Promise<StashPopResult> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await findExistingStash(git, sha)
   // 作業ツリーが完全にきれいか(stashPush の assertStashable と同じ status 判定 + 途中の操作と
   // assume-unchanged の確認)
@@ -173,5 +173,5 @@ export async function stashPop(folderPath: string, sha: string): Promise<StashPo
 }
 
 export async function stashDrop(folderPath: string, sha: string): Promise<void> {
-  await dropStashBySha(simpleGit(folderPath), sha)
+  await dropStashBySha(createAppGit(folderPath), sha)
 }

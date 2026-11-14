@@ -18,7 +18,7 @@ const mockRaw = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() => vi.fn(() => ({ raw: mockRaw })))
 
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit,
+  simpleGit: mockSimpleGit,
   GitError: MockGitError,
   GitPluginError: MockGitPluginError
 }))
@@ -111,7 +111,8 @@ describe('createTag の実行', () => {
     setupRaw()
     await createTag('/project', lightweight('v1.0.0'))
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
-      timeout: { block: TAG_CREATE_TIMEOUT_MS }
+      timeout: { block: TAG_CREATE_TIMEOUT_MS },
+      allowEnvironment: expect.any(Array)
     })
     expect(rawCalls()).toContainEqual(['tag', '--no-sign', '--', 'v1.0.0', 'HEAD'])
   })
@@ -464,11 +465,15 @@ describe('作成の失敗', () => {
     setupRaw()
     await createTag('/project', lightweight('v1'))
     expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', {
-      timeout: { block: TAG_CREATE_TIMEOUT_MS }
+      timeout: { block: TAG_CREATE_TIMEOUT_MS },
+      allowEnvironment: expect.any(Array)
     })
     setupRaw()
     await createTag('/project', lightweight('v1'), 1500)
-    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', { timeout: { block: 1500 } })
+    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', {
+      timeout: { block: 1500 },
+      allowEnvironment: expect.any(Array)
+    })
   })
 
   it('git tag がタイムアウト(GitPluginError, plugin: timeout)したら日本語の文言にする', async () => {

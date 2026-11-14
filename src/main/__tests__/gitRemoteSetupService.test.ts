@@ -21,7 +21,7 @@ const mockSimpleGit = vi.hoisted(() =>
 )
 
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit,
+  simpleGit: mockSimpleGit,
   GitError: MockGitError,
   GitPluginError: MockGitPluginError,
   GitConstructError: MockGitConstructError
@@ -170,10 +170,14 @@ describe('initRepository', () => {
     expect(REMOTE_SETUP_LOCAL_TIMEOUT_MS).toBe(30_000)
     await initRepository('/project', 'main')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
-      timeout: { block: REMOTE_SETUP_LOCAL_TIMEOUT_MS }
+      timeout: { block: REMOTE_SETUP_LOCAL_TIMEOUT_MS },
+      allowEnvironment: expect.any(Array)
     })
     await initRepository('/project', 'main', 500)
-    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', { timeout: { block: 500 } })
+    expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', {
+      timeout: { block: 500 },
+      allowEnvironment: expect.any(Array)
+    })
   })
 
   // 入口で 1 回だけ正規化し、以後の検証・init・確認・文言はその名前を使う(パターン 83)
@@ -325,7 +329,8 @@ describe('addOrigin', () => {
       ['config', '--get', 'remote.origin.url']
     ])
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
-      timeout: { block: REMOTE_SETUP_LOCAL_TIMEOUT_MS }
+      timeout: { block: REMOTE_SETUP_LOCAL_TIMEOUT_MS },
+      allowEnvironment: expect.any(Array)
     })
   })
 
@@ -509,14 +514,16 @@ describe('pushSetUpstream', () => {
     await pushSetUpstream('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
     // 1 回目の push の後は、モックの branch.<b>.remote が設定済みになるため作り直す
     setupRaw({ remotes: 'origin\n' })
     await pushSetUpstream('/project', 500)
     expect(mockSimpleGit).toHaveBeenLastCalledWith('/project', {
       timeout: { block: 500 },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
   })
 

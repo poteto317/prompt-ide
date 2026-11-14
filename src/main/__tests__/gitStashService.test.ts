@@ -4,7 +4,7 @@ const mockRaw = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() => vi.fn(() => ({ raw: mockRaw })))
 
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit
+  simpleGit: mockSimpleGit
 }))
 
 import { getStashes, stashPush, stashPop, stashDrop } from '../gitStashService'

@@ -1,6 +1,5 @@
 import { access, lstat, readFile, rename, stat, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
-import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { CONFLICT_CHOICES } from '@shared/types'
 import type { ConflictChoice, ConflictFile, ConflictUnparsableReason } from '@shared/types'
@@ -14,6 +13,7 @@ import {
 } from './gitConflictParser'
 import { getUnmergedEntries, hasMergeInProgress, hasUnmergedFiles } from './gitMergeState'
 import { toLiteralPathspec } from './gitPathParsing'
+import { createAppGit } from './gitInheritedEnv'
 
 const NOT_CONFLICTED_MESSAGE = 'コンフリクト中のファイルではありません'
 const NOT_MERGING_MESSAGE = 'マージ中ではありません'
@@ -175,7 +175,7 @@ async function readText(folderPath: string, filePath: string): Promise<string | 
 }
 
 export async function getConflictFile(folderPath: string, filePath: string): Promise<ConflictFile> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const unmerged = await assertUnmerged(git, filePath)
   const stages = { ours: unmerged.stages.includes(2), theirs: unmerged.stages.includes(3) }
   // サブモジュールは作業ツリー(ディレクトリ)を調べない。解決はターミナルへ案内する
@@ -222,7 +222,7 @@ export async function resolveConflictBlocks(
   expectedDigests: string[],
   choices: Record<number, ConflictChoice>
 ): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertUnmergedFile(git, filePath)
   const text = await readText(folderPath, filePath)
   const parsed =
@@ -249,7 +249,7 @@ export async function resolveConflictWholeFile(
   filePath: string,
   side: 'ours' | 'theirs'
 ): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const stages = await assertUnmergedFile(git, filePath)
   // 自分 = ステージ 2、相手 = ステージ 3。削除された側は存在しない(DU / UD)
   if (!stages.includes(side === 'ours' ? 2 : 3)) {
@@ -265,7 +265,7 @@ export async function resolveConflictWholeFile(
 // 作業ツリーに無いまま add すると、削除として解決してしまうため、
 // 先に存在するステージの版を checkout する
 export async function keepConflictFile(folderPath: string, filePath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const stages = await assertUnmergedFile(git, filePath)
   // 自分と相手の両方がある(UU / AA)と、作業ツリーのマーカー入りの内容をそのままステージしてしまう
   if (stages.includes(2) && stages.includes(3)) {
@@ -285,13 +285,13 @@ export async function keepConflictFile(folderPath: string, filePath: string): Pr
 }
 
 export async function removeConflictFile(folderPath: string, filePath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertUnmergedFile(git, filePath)
   await git.raw(['rm', '--', toLiteralPathspec(filePath)])
 }
 
 export async function markConflictResolved(folderPath: string, filePath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertUnmergedFile(git, filePath)
   // マーカーの検査は通常ファイルだけ。シンボリックリンクは読まずに(リンクの先を見ずに)
   // そのまま add する(リンクのコンフリクトの解決)。バイナリ(NUL を含む)も検査を飛ばす。
@@ -318,14 +318,14 @@ export async function markConflictResolved(folderPath: string, filePath: string)
 }
 
 export async function completeMerge(folderPath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   if (!(await hasMergeInProgress(git))) throw new Error(NOT_MERGING_MESSAGE)
   if (await hasUnmergedFiles(git)) throw new Error('未解決のファイルがあるため完了できません')
   await git.raw(['commit', '--no-edit'])
 }
 
 export async function abortMerge(folderPath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   if (!(await hasMergeInProgress(git))) throw new Error(NOT_MERGING_MESSAGE)
   await git.raw(['merge', '--abort'])
 }

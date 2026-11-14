@@ -1,5 +1,5 @@
 import { join } from 'path'
-import simpleGit, { GitError } from 'simple-git'
+import { GitError } from 'simple-git'
 import type { BranchSummary, SimpleGit } from 'simple-git'
 import { errorMessageOf } from './errorMessage'
 import type {
@@ -26,7 +26,7 @@ import { parseWorktreeBranches } from './gitWorktreeParser'
 import { findConflictingBranchName } from '@shared/branchName'
 import { readFileBuffer, isExecutableFile, isSymbolicLink, getFileSize } from './fileSystem'
 import { convertFsAccessError } from './fsErrorConverter'
-import { INHERITED_ENV_ALLOWANCES } from './gitInheritedEnv'
+import { INHERITED_ENV_ALLOWANCES, allowEnvironmentFrom, createAppGit } from './gitInheritedEnv'
 import { buildMergeAbortMessage, buildMergeConflictMessage } from './gitMergeMessages'
 import {
   hasMergeInProgress,
@@ -50,13 +50,15 @@ export const MAX_UNTRACKED_DIFF_FILE_SIZE_BYTES = 5 * 1024 * 1024
  * config・オプションは固定の値だけを渡し、利用者の値は `--` の後の pathspec にだけ入れる
  */
 function createNoOptionalLocksGit(folderPath: string, config?: readonly string[]): SimpleGit {
-  return simpleGit(folderPath, {
-    ...(config ? { config: [...config] } : {}),
-    unsafe: INHERITED_ENV_ALLOWANCES
-  }).env({
+  const gitEnv = {
     ...process.env,
     GIT_OPTIONAL_LOCKS: '0'
-  })
+  }
+  return createAppGit(folderPath, {
+    ...(config ? { config: [...config] } : {}),
+    unsafe: INHERITED_ENV_ALLOWANCES,
+    allowEnvironment: allowEnvironmentFrom(gitEnv)
+  }).env(gitEnv)
 }
 
 /**
@@ -90,7 +92,7 @@ function createDiffGit(folderPath: string): Pick<SimpleGit, 'diff'> {
 }
 
 export async function getGitStatus(folderPath: string): Promise<GitStatusResult> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const isRepo = await git.checkIsRepo()
   if (!isRepo) {
     return {
@@ -140,7 +142,7 @@ export async function getGitStatus(folderPath: string): Promise<GitStatusResult>
 }
 
 export async function stageFile(folderPath: string, filePath: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   // 未解決のファイルを git add すると、マーカー入りのまま解決済みになり、そのまま完了すると
   // マーカー入りのマージコミットができる(実 git で再現済み)。解決ビューの「解決済みにする」
   // (マーカーを検査する)に誘導する。ChangesFileItem も未解決の行には + を出さない(二重防御)
@@ -161,14 +163,14 @@ export async function unstageFile(
    *  (実機で再現確認済み)。旧パスも reset の対象に含める必要がある */
   renamedFrom?: string
 ): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const pathspecs = [toLiteralPathspec(filePath)]
   if (renamedFrom !== undefined) pathspecs.push(toLiteralPathspec(renamedFrom))
   await git.reset(['--', ...pathspecs])
 }
 
 export async function commit(folderPath: string, message: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   // 未解決のまま git commit すると英語の生のエラーになるため、日本語で拒否する(何も実行しない)
   if (await hasUnmergedFiles(git)) {
     throw new Error(
@@ -323,7 +325,7 @@ export async function getLog(
   limit: number,
   skip: number
 ): Promise<GitLogEntry[]> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   // 「リポジトリでない」の判定は、git の生エラーメッセージへの文字列一致
   // (将来の git バージョンやロケール差異で揺らぎうる)ではなく、checkIsRepo() という
   // 構造的な API に委ねる(getGitStatus と同じ判定方法)。getBranches/getTags は
@@ -378,7 +380,7 @@ export async function getLog(
 // HEAD のコミットメッセージ。履歴の先頭は上流が先行すると HEAD でなくなるため、amend の欄にはこちらを使う。
 // null はリポジトリでない・コミットが無いときだけで、空のメッセージのコミットは ''(amend できる)
 export async function getHeadCommitMessage(folderPath: string): Promise<string | null> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const isRepo = await git.checkIsRepo()
   if (!isRepo) return null
   try {
@@ -399,7 +401,7 @@ export async function getHeadCommitMessage(folderPath: string): Promise<string |
 }
 
 export async function getBranches(folderPath: string): Promise<GitBranch[]> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const summary = await git.branchLocal()
   // ブランチ上にいないとき、branchLocal は all の先頭に実在しない疑似項目(4fd2759、refs/heads/main、
   // rebase 中・bisect 中の `(no` など)を current: true で返す。summary.detached は rebase 中・bisect 中に
@@ -412,7 +414,7 @@ export async function getBranches(folderPath: string): Promise<GitBranch[]> {
 }
 
 export async function getTags(folderPath: string): Promise<string[]> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const result = await git.tags()
   return result.all
 }
@@ -511,7 +513,7 @@ async function assertNotMerging(
 // IPC 境界(gitHandlers.ts)は任意の文字列を受け付けてしまうため、ここで
 // 許可リスト方式(実在するローカルブランチ名のみ)で検証する
 export async function checkoutBranch(folderPath: string, branchName: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const summary = await git.branchLocal()
   assertLocalBranchExists(summary, branchName)
   // マージ中に切り替えると、解決済みの内容が切り替え先と一致するとき MERGE_HEAD ごと
@@ -543,7 +545,7 @@ async function assertCreatableBranchName(git: SimpleGit, branchName: string): Pr
 // 変更はそのまま新しいブランチへ持ち越される(renderer 側で未保存編集の破棄確認や
 // エディタの再読込が不要な理由)
 export async function createBranch(folderPath: string, branchName: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertCreatableBranchName(git, branchName)
   // checkoutBranch と同じ理由: マージ中に作成して切り替えると MERGE_HEAD ごとマージ中の状態が失われる
   await assertNotMerging(git)
@@ -595,7 +597,7 @@ export async function deleteBranch(
   branchName: string,
   force: boolean
 ): Promise<DeleteBranchResult> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertDeletableBranch(git, branchName)
   if (!force && !(await isBranchMerged(git, branchName))) {
     return { deleted: false, reason: 'not-fully-merged' }
@@ -696,7 +698,7 @@ export async function mergeBranch(
   folderPath: string,
   branchName: string
 ): Promise<MergeBranchResult> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   await assertMergeTargetBranch(git, branchName)
   await assertMergeStartable(git)
   let mergeError: unknown = null
@@ -724,7 +726,7 @@ export async function mergeBranch(
 }
 
 export async function amendCommit(folderPath: string, message: string): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   // マージ中の amend は git が英語('You are in the middle of a merge -- cannot amend.')で失敗する。
   // 日本語で拒否する(何も実行しない)
   if (await hasMergeInProgress(git)) {

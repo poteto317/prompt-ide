@@ -1,9 +1,9 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import simpleGit, { GitPluginError } from 'simple-git'
+import { GitPluginError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
-import { INHERITED_ENV_ALLOWANCES } from './gitInheritedEnv'
+import { INHERITED_ENV_ALLOWANCES, allowEnvironmentFrom, createAppGit } from './gitInheritedEnv'
 
 // 記録のインデックス(利用者の .git/index の写しに作業ツリーを入れたもの)で問い合わせる git を作る(設計書「確認の結果」14)。
 // GIT_INDEX_FILE を渡すには simple-git の env() が要るが、env() は環境変数の中身を検査し、simple-git 3.36.0
@@ -158,14 +158,22 @@ export function createBaselineGit(
   // 一覧・diff・戻す操作の git も記録のインデックスを(stat 情報の更新で)書き直すことがある。利用者の core.splitIndex=true が
   // 効くと、共有部分の sharedindex.<sha> が利用者の .git に作られるため、常に split 形式を使わない(最終レビュー A の I1)
   const locationConfig = hiddenGitCommandConfig(location)
-  return simpleGit(location.folderPath, {
+  const gitEnv = buildBaselineGitEnv(env, location)
+  return createAppGit(location.folderPath, {
     timeout: { block: timeoutMs },
     config: ['core.splitIndex=false', ...config, ...locationConfig],
-    // simple-git は -c の core.hooksPath・core.fsmonitor を既定で拒むため、隠れた git の値(main が作った固定の値)だけ許す
-    ...(locationConfig.length > 0
-      ? { unsafe: { allowUnsafeHooksPath: true, allowUnsafeFsMonitor: true } }
-      : {})
-  }).env(buildBaselineGitEnv(env, location))
+    // simple-git v4: .env() に載せた GIT_* は allowEnvironment に列挙しないと拒否される。
+    // GIT_CONFIG_PARAMETERS は buildIsolatedGitEnv が残し、-c(hiddenGitCommandConfig)で上書きする設計のため、
+    // argv-parser 2 の allowUnsafeConfigEnvCount も許す
+    allowEnvironment: allowEnvironmentFrom(gitEnv),
+    unsafe: {
+      allowUnsafeConfigEnvCount: true,
+      // simple-git は -c の core.hooksPath・core.fsmonitor を既定で拒むため、隠れた git の値(main が作った固定の値)だけ許す
+      ...(locationConfig.length > 0
+        ? { allowUnsafeHooksPath: true, allowUnsafeFsMonitor: true }
+        : {})
+    }
+  }).env(gitEnv)
 }
 
 /** 利用者の index で問い合わせる git(記録の HEAD・最上位の確認・コンフリクトの判定)。打ち切りだけを付ける */
@@ -173,7 +181,7 @@ export function createRepoGit(
   folderPath: string,
   { timeoutMs = AGENT_BASELINE_GIT_TIMEOUT_MS }: Pick<BaselineGitOptions, 'timeoutMs'> = {}
 ): SimpleGit {
-  return simpleGit(folderPath, { timeout: { block: timeoutMs } })
+  return createAppGit(folderPath, { timeout: { block: timeoutMs } })
 }
 
 /**
@@ -255,10 +263,12 @@ export function createModeGit(
   folderPath: string,
   { timeoutMs = AGENT_BASELINE_GIT_TIMEOUT_MS }: Pick<BaselineGitOptions, 'timeoutMs'> = {}
 ): Pick<SimpleGit, 'checkIsRepo' | 'raw'> {
-  return simpleGit(folderPath, {
+  const gitEnv = buildModeGitEnv(process.env)
+  return createAppGit(folderPath, {
     timeout: { block: timeoutMs },
-    unsafe: INHERITED_ENV_ALLOWANCES
-  }).env(buildModeGitEnv(process.env))
+    unsafe: INHERITED_ENV_ALLOWANCES,
+    allowEnvironment: allowEnvironmentFrom(gitEnv)
+  }).env(gitEnv)
 }
 
 /**

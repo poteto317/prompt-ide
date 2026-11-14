@@ -5,7 +5,7 @@ const mockRaw = vi.hoisted(() => vi.fn())
 const mockSimpleGit = vi.hoisted(() => vi.fn(() => ({ raw: mockRaw })))
 
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit
+  simpleGit: mockSimpleGit
 }))
 
 vi.mock('../gitApply')
@@ -41,7 +41,10 @@ describe('discardFileChanges', () => {
   it('分類をファイルパスで問い合わせる(pathspec の組み立ては classifier の責務)', async () => {
     classifyAs('tracked')
     await discardFileChanges('/project', 'a[1].txt', vi.fn())
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockClassify).toHaveBeenCalledWith(expect.objectContaining({ raw: mockRaw }), 'a[1].txt')
   })
 
@@ -270,7 +273,10 @@ describe('discardAllChanges', () => {
   it('status を porcelain -z --untracked-files=all で問い合わせる', async () => {
     setup('', {})
     await discardAllChanges('/project', [], vi.fn())
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockRaw).toHaveBeenCalledWith(['status', '--porcelain', '-z', '--untracked-files=all'])
   })
 

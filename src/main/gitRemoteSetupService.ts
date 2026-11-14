@@ -1,4 +1,4 @@
-import simpleGit, { GitConstructError } from 'simple-git'
+import { GitConstructError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { getBranchNameRuleViolation, normalizeInitialBranchName } from '@shared/branchName'
 import { getRemoteUrlRuleViolation, normalizeRemoteUrl } from '@shared/remoteUrl'
@@ -10,6 +10,7 @@ import { ORIGIN_REMOTE, hasOriginRemote } from './gitRemoteNames'
 import { REMOTE_URL_RULE_MESSAGES } from './gitRemoteUrlMessages'
 import { REMOTE_OPERATION_TIMEOUT_MESSAGE, simpleGitWithRemoteTimeout } from './gitRemoteTimeout'
 import { failure, redactCredentials, runGitStep, toStepError } from './gitStepErrors'
+import { createAppGit } from './gitInheritedEnv'
 
 // リモートの管理(新規リポジトリの init・origin の追加・初回 push)。責務はこのファイルにまとめ、
 // gitService.ts には足さない(パターン 55)。どの操作も、前の検証に失敗したら後の git 呼び出しには進まない
@@ -40,7 +41,7 @@ const ADD_ORIGIN_FAILURE = 'リモートを追加できませんでした'
 const SET_UPSTREAM_FAILURE = '初回 push に失敗しました'
 const HEADS_NAMESPACE = 'refs/heads/'
 
-// simple-git を作る。フォルダが存在しない(開いた後に削除・移動された)と、simpleGit() は git を呼ぶ前に
+// simple-git を作る。フォルダが存在しない(開いた後に削除・移動された)と、createAppGit() は git を呼ぶ前に
 // 英語の GitConstructError を投げる(生成の時点で同期的に投げるため、runGitStep の外で漏れる)。
 // フォルダが見つからない旨の日本語にする(パターン 74)。GitConstructError を投げるのはこの確認だけ(simple-git 3.36.0)
 function openGit(
@@ -71,7 +72,7 @@ export async function initRepository(
   const toInitError = (err: unknown): Error => toStepError(err, INIT_TIMEOUT_MESSAGE, INIT_FAILURE)
   const git = openGit(
     folderPath,
-    () => simpleGit(folderPath, { timeout: { block: timeoutMs } }),
+    () => createAppGit(folderPath, { timeout: { block: timeoutMs } }),
     toInitError
   )
   // 1・2. アプリ独自の規則と git の check-ref-format --branch(ブランチの作成と同じ。HEAD・-x・@・a..b を拒否する)
@@ -123,7 +124,7 @@ export async function addOrigin(
     toStepError(err, ADD_ORIGIN_TIMEOUT_MESSAGE, ADD_ORIGIN_FAILURE, redactCredentials)
   const git = openGit(
     folderPath,
-    () => simpleGit(folderPath, { timeout: { block: timeoutMs } }),
+    () => createAppGit(folderPath, { timeout: { block: timeoutMs } }),
     toAddError
   )
   if (!(await runGitStep(() => git.checkIsRepo(), toAddError))) {

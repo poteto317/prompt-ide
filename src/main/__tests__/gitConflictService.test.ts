@@ -12,7 +12,7 @@ const mockFs = vi.hoisted(() => ({
   access: vi.fn()
 }))
 
-vi.mock('simple-git', () => ({ default: mockSimpleGit }))
+vi.mock('simple-git', () => ({ simpleGit: mockSimpleGit }))
 vi.mock('fs/promises', () => ({ ...mockFs, default: mockFs }))
 
 import {
@@ -136,7 +136,10 @@ describe('未解決の確認(共通)', () => {
     await expect(getConflictFile('/p', 'a[1].txt')).rejects.toThrow(UNRESOLVED_MESSAGE)
     expect(gitCalls()[0]).toEqual(['rev-parse', '-q', '--verify', 'MERGE_HEAD'])
     expect(gitCalls()[1]).toEqual(['ls-files', '-u', '-z', '--', ':(literal)a[1].txt'])
-    expect(mockSimpleGit).toHaveBeenCalledWith('/p')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/p',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
   })
 
   // CLI の rebase / cherry-pick 中(MERGE_HEAD が無い)は ours/theirs の意味が違うため拒否する
