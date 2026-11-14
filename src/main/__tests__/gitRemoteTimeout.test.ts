@@ -14,7 +14,7 @@ const MockGitPluginError = vi.hoisted(
 const mockSimpleGit = vi.hoisted(() => vi.fn(() => ({})))
 
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit,
+  simpleGit: mockSimpleGit,
   GitError: MockGitError,
   GitPluginError: MockGitPluginError
 }))
@@ -37,7 +37,8 @@ describe('simpleGitWithRemoteTimeout', () => {
     simpleGitWithRemoteTimeout('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
   })
 
@@ -45,7 +46,8 @@ describe('simpleGitWithRemoteTimeout', () => {
     simpleGitWithRemoteTimeout('/project', 500)
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: 500 },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
   })
 })

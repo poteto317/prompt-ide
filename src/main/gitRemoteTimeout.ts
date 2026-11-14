@@ -1,7 +1,7 @@
-import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import { GIT_REMOTE_TIMEOUT_MS } from '@shared/remoteTimeout'
 import { isGitTimeoutError } from './gitStepErrors'
+import { createAppGit } from './gitInheritedEnv'
 
 // push/pull/fetch/初回 push はネットワークI/Oを伴う。認証プロンプト待ち(認証情報未設定で
 // 端末から起動した場合、git が /dev/tty を開いてプロンプトを出し誰も応答しない)や
@@ -20,7 +20,7 @@ export function simpleGitWithRemoteTimeout(
   folderPath: string,
   timeoutMs: number = GIT_REMOTE_TIMEOUT_MS
 ): SimpleGit {
-  return simpleGit(folderPath, {
+  return createAppGit(folderPath, {
     timeout: { block: timeoutMs },
     // git は stderr が tty に接続されていないと既定で進捗行を出力しない。
     // simple-git は progress オプションを渡した場合のみ push/pull/fetch に

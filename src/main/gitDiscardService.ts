@@ -1,5 +1,4 @@
 import { join } from 'path'
-import simpleGit from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { DiscardAllEntry, DiscardAllResult } from '@shared/types'
 import { applyInOrder, assertSameEntries, listPathsForMessage } from './discardBatch'
@@ -12,6 +11,7 @@ import {
   isApplicableDiscardKind
 } from './gitDiscardClassifier'
 import type { ApplicableDiscardKind } from './gitDiscardClassifier'
+import { createAppGit } from './gitInheritedEnv'
 
 // 状態ごとの取り消しの実行。拒否する状態(conflicted / unknown / overlaps-untracked)は
 // 呼び出し側が assertDiscardable で先に弾く。状態ごとの手段とその理由:
@@ -57,7 +57,7 @@ export async function discardFileChanges(
   filePath: string,
   trash: (absolutePath: string) => Promise<void>
 ): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const kind = await classifyDiscardTarget(git, filePath)
   assertDiscardable(kind, filePath)
   await applyDiscard(git, folderPath, kind, filePath, trash)
@@ -72,7 +72,7 @@ export async function discardHunk(
   filePath: string,
   patch: string
 ): Promise<void> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const kind = await classifyDiscardTarget(git, filePath)
   assertDiscardable(kind, filePath)
   if (kind === 'untracked' || kind === 'intent-to-add') {
@@ -104,7 +104,7 @@ export async function discardAllChanges(
   expected: DiscardAllEntry[],
   trash: (absolutePath: string) => Promise<void>
 ): Promise<DiscardAllResult> {
-  const git = simpleGit(folderPath)
+  const git = createAppGit(folderPath)
   const entries = parseUnstagedStatusEntries(
     await git.raw(['status', '--porcelain', '-z', '--untracked-files=all'])
   )

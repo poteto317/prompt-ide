@@ -1,4 +1,4 @@
-import simpleGit, { GitError } from 'simple-git'
+import { GitError } from 'simple-git'
 import type { SimpleGit } from 'simple-git'
 import type { CreateTagRequest } from '@shared/types'
 import { getTagNameCollision, getTagNameRuleViolation, normalizeTagName } from '@shared/tagName'
@@ -8,6 +8,7 @@ import type { TagMessageRuleViolation } from '@shared/tagMessage'
 // git を打ち切るまでの時間。renderer の作成中の案内(「最大 N 分」)と同じ値を使う
 import { TAG_CREATE_TIMEOUT_MS } from '@shared/tagTimeout'
 import { errorDetail, failure, isGitTimeoutError } from './gitStepErrors'
+import { createAppGit } from './gitInheritedEnv'
 
 // タグの作成(git tag)。付ける先は常に現在の HEAD。タグの責務はこのファイルにまとめ、gitService.ts には
 // 足さない(パターン 55)。ref を 1 つ増やすだけで作業ツリー・index・HEAD を変えないため、
@@ -170,7 +171,7 @@ export async function createTag(
   // 検証・衝突の判定・git tag・作成後の確認のすべてで、この名前を使う(NFD のまま渡すと、
   // check-ref-format を通り、既存の NFC のタグの解決を奪うか、作成後の確認で見つからない。実機で確認)
   const request: CreateTagRequest = { ...rawRequest, name: normalizeTagName(rawRequest.name) }
-  const git = simpleGit(folderPath, { timeout: { block: timeoutMs } })
+  const git = createAppGit(folderPath, { timeout: { block: timeoutMs } })
   await assertCreatableTag(git, request)
   try {
     await git.raw(buildTagArgs(request))

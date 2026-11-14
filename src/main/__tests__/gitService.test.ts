@@ -66,7 +66,7 @@ const MockGitPluginError = vi.hoisted(
     }
 )
 vi.mock('simple-git', () => ({
-  default: mockSimpleGit,
+  simpleGit: mockSimpleGit,
   GitError: MockGitError,
   GitPluginError: MockGitPluginError
 }))
@@ -140,7 +140,8 @@ describe('getGitStatus', () => {
     mockStatus.mockResolvedValue(baseStatusResult)
     await getGitStatus('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
-      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true })
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true }),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockEnv).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ GIT_OPTIONAL_LOCKS: '0', PATH: process.env.PATH })
@@ -153,7 +154,10 @@ describe('getGitStatus', () => {
   it('simpleGit を folderPath を引数に呼ぶ', async () => {
     mockCheckIsRepo.mockResolvedValue(false)
     await getGitStatus('/project')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
   })
 
   it('Git リポジトリでない場合 isRepo: false を返す', async () => {
@@ -371,7 +375,10 @@ describe('stageFile', () => {
   it('simpleGit を folderPath で呼び、add を filePath で呼ぶ', async () => {
     mockAdd.mockResolvedValue(undefined)
     await stageFile('/project', 'src/index.ts')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockAdd).toHaveBeenCalledWith(':(literal)src/index.ts')
   })
 
@@ -385,7 +392,10 @@ describe('unstageFile', () => {
   it('simpleGit を folderPath で呼び、reset を ["--", filePath] で呼ぶ', async () => {
     mockReset.mockResolvedValue(undefined)
     await unstageFile('/project', 'src/index.ts')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockReset).toHaveBeenCalledWith(['--', ':(literal)src/index.ts'])
   })
 
@@ -431,7 +441,10 @@ describe('commit', () => {
   it('simpleGit を folderPath で呼び、commit を message で呼ぶ', async () => {
     mockCommit.mockResolvedValue(undefined)
     await commit('/project', 'feat: 新機能を追加する')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockCommit).toHaveBeenCalledWith('feat: 新機能を追加する')
   })
 
@@ -468,7 +481,8 @@ describe('getDiff', () => {
     await getDiff('/project', 'sub', false, false)
     expect(mockSimpleGit).toHaveBeenCalledExactlyOnceWith('/project', {
       config: expect.arrayContaining(['diff.autoRefreshIndex=false']),
-      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true })
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true, allowUnsafeEditor: true }),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockEnv).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ GIT_OPTIONAL_LOCKS: '0', PATH: process.env.PATH })
@@ -497,7 +511,8 @@ describe('getDiff', () => {
         'diff.suppressBlankEmpty=false',
         'diff.autoRefreshIndex=false'
       ],
-      unsafe: expect.objectContaining({ allowUnsafeAskPass: true })
+      unsafe: expect.objectContaining({ allowUnsafeAskPass: true }),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockStatus).not.toHaveBeenCalled()
     expect(mockDiff).toHaveBeenCalledWith([
@@ -902,7 +917,10 @@ describe('getHeadCommitMessage', () => {
     mockCheckIsRepo.mockResolvedValue(true)
     mockRaw.mockResolvedValue('feat: 新機能\n\n本文\n\n')
     await expect(getHeadCommitMessage('/project')).resolves.toBe('feat: 新機能\n\n本文')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockRaw).toHaveBeenCalledWith(LOG_ARGS)
   })
 
@@ -954,7 +972,10 @@ describe('getBranches', () => {
     mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
     mockRaw.mockResolvedValue('refs/heads/main\n')
     const result = await getBranches('/project')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     // 印の欄そのものが無いことまで固定する(toEqual は undefined の欄を区別しない)
     expect(result).toStrictEqual([
       { name: 'main', current: true },
@@ -1016,7 +1037,10 @@ describe('amendCommit', () => {
     // 「--amend という名前のファイル」を対象にした新規コミットに静かに化ける
     mockCommit.mockResolvedValue(undefined)
     await amendCommit('/project', 'feat: 修正後のメッセージ')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockCommit).toHaveBeenCalledWith('feat: 修正後のメッセージ', undefined, {
       '--amend': null
     })
@@ -1048,7 +1072,8 @@ describe('push', () => {
     await push('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockPush).toHaveBeenCalledWith()
   })
@@ -1128,7 +1153,8 @@ describe('pull', () => {
     await pull('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockPull).toHaveBeenCalledWith()
   })
@@ -1164,7 +1190,8 @@ describe('fetchRemote', () => {
     await fetchRemote('/project')
     expect(mockSimpleGit).toHaveBeenCalledWith('/project', {
       timeout: { block: GIT_REMOTE_TIMEOUT_MS },
-      progress: expect.any(Function)
+      progress: expect.any(Function),
+      allowEnvironment: expect.any(Array)
     })
     expect(mockFetch).toHaveBeenCalledWith()
   })
@@ -1207,7 +1234,10 @@ describe('checkoutBranch', () => {
     mockBranchLocal.mockResolvedValue({ all: ['main', 'feature/x'], current: 'main' })
     mockCheckout.mockResolvedValue(undefined)
     await checkoutBranch('/project', 'feature/x')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockCheckout).toHaveBeenCalledWith('feature/x')
   })
 
@@ -1283,7 +1313,10 @@ describe('createBranch', () => {
     mockBranchLocal.mockResolvedValue({ all: ['main'], current: 'main' })
     mockCheckoutLocalBranch.mockResolvedValue(undefined)
     await createBranch('/project', 'feature/new')
-    expect(mockSimpleGit).toHaveBeenCalledWith('/project')
+    expect(mockSimpleGit).toHaveBeenCalledWith(
+      '/project',
+      expect.objectContaining({ allowEnvironment: expect.any(Array) })
+    )
     expect(mockRaw).toHaveBeenCalledWith(['check-ref-format', '--branch', 'feature/new'])
     expect(mockCheckoutLocalBranch).toHaveBeenCalledWith('feature/new')
   })

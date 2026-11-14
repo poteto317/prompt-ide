@@ -1,7 +1,7 @@
 import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from 'vitest'
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import simpleGit from 'simple-git'
+import { simpleGit } from 'simple-git'
 import {
   AGENT_BASELINE_GIT_TIMEOUT_MS,
   REPO_LOCATION_ENV_KEYS,
@@ -411,7 +411,11 @@ describe('createBaselineGit(実 git)', () => {
 
   // 前提の固定: simple-git の env() に GIT_ASKPASS を含めると拒否される(除かないと使えない理由)
   it('前提: 変数を除かずに env() へ渡すと simple-git が拒否する', async () => {
-    const git = simpleGit(repo).env({ PATH: process.env.PATH, GIT_ASKPASS: '/nonexistent/askpass' })
+    // v4 は allowEnvironment 未許可でも拒否するが、unsafe 分類の拒否を固定するため許可してから確認する
+    const git = simpleGit(repo, { allowEnvironment: ['GIT_ASKPASS'] }).env({
+      PATH: process.env.PATH,
+      GIT_ASKPASS: '/nonexistent/askpass'
+    })
     await expect(git.raw(['ls-files'])).rejects.toThrow(
       'Use of "GIT_ASKPASS" is not permitted without enabling allowUnsafeAskPass'
     )
@@ -421,7 +425,10 @@ describe('createBaselineGit(実 git)', () => {
   it.each(EXPECTED_BLOCKED_ENV_KEYS)(
     '前提: %s を env() へ渡すと simple-git が拒否する',
     async (key) => {
-      const git = simpleGit(repo).env({ PATH: process.env.PATH, [key]: '/nonexistent/value' })
+      const git = simpleGit(repo, { allowEnvironment: [key] }).env({
+        PATH: process.env.PATH,
+        [key]: '/nonexistent/value'
+      })
       await expect(git.raw(['ls-files'])).rejects.toThrow(`Use of "${key}" is not permitted`)
     }
   )
